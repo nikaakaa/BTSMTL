@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -300,7 +300,7 @@ function reconcileSelection() {
       ? found.graph.nodes.some(node => node.id === found.id && node.invocationPath === found.path)
       : found.graph.edges.some(edge => edge.id === found.id && edge.invocationPath === found.path));
   } else {
-    const current = applyTimelineEdits(timelines, edited).filter(timeline => !removed.includes(timelinePath(timeline.documentId)));
+    const current = applyTimelineEdits(timelines, edited, removed);
     exists = kind === 'track' ? findTimelineTrack(current, id) !== null
       : (findTimelineClipInViews(current, id) ?? findTimelineMarker(current, id)) !== null;
   }
@@ -316,6 +316,16 @@ async function reloadDocument() {
 }
 
 export const authoringActions = {
+  async createScenario(name: string, request: ScenarioDraftRequest) {
+    if (hasChanges()) throw new Error('先保存或放弃当前修改，再新建场景方案');
+    const target = { kind: 'scenario', name } as const;
+    const draft = await authoringApi.scenarioDraft(name, request);
+    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, preview: null });
+    await authoringActions.open(target);
+    set({ inputActorId: request.actorId });
+    await Promise.all([authoringActions.listSkills(), session.loadInputs()]);
+  },
+
   async listSkills() {
     try {
       const [skills, scenarios] = await Promise.all([authoringApi.list('skill'), authoringApi.list('scenario')]);
@@ -1048,6 +1058,7 @@ export const inputAuthoring = {
       schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
       plan.Selected = schemes.length - 1;
     });
+    selectionActions.showTimeline(timeline);
   },
 
   removeScheme(path: string, index: number) {
@@ -1417,9 +1428,9 @@ function findTimelineClip(timeline: JsonObject, clipId: string): JsonObject | nu
 }
 
 // 作者 Timeline 叠加未保存修改：轨道、片段与标记取编辑后的文档，宿主给出的片段显示名按身份保留。
-export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<string, JsonValue>): AuthorTimeline[] {
-  if (!Object.keys(edited).length) return timelines;
-  return timelines.map(timeline => {
+export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<string, JsonValue>, removed: readonly string[]): AuthorTimeline[] {
+  const source = timelines.filter(timeline => !removed.includes(timelinePath(timeline.documentId)));
+  const result = source.map(timeline => {
     const document = edited[timelinePath(timeline.documentId)] as JsonObject | undefined;
     if (!document) return timeline;
     const names = new Map(timeline.tracks.flatMap(track => track.clips.map(clip => [clip.id, clip.displayName])));
@@ -1430,6 +1441,18 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
       tracks: tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
     };
   });
+  for (const [path, document] of Object.entries(edited))
+    if (path.startsWith('timelines/') && !removed.includes(path)) {
+      const id = path.slice('timelines/'.length, -'.json'.length);
+      if (!source.some(timeline => timeline.documentId === id)) result.push(timelineOf(id, document as JsonObject, null));
+    }
+  return result;
+}
+
+export function useAuthorTimelines(): AuthorTimeline[] {
+  const timelines = useWorkbench(state => state.timelines);
+  const { edited, removed } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed })));
+  return useMemo(() => applyTimelineEdits(timelines, edited, removed), [timelines, edited, removed]);
 }
 
 // 已编辑过的片段（`documentId/clipId`），Timeline 上标出未保存。

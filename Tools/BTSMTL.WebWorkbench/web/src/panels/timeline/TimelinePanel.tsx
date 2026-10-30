@@ -15,7 +15,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomains, useAuthoring, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
@@ -129,7 +129,7 @@ function DocumentTimeline() {
     skills: state.skills, target: state.target, loading: state.loading, available: state.available,
     reason: state.unavailableReason, error: state.documentError,
   })));
-  const count = useWorkbench(state => state.timelines.length);
+  const count = useAuthorTimelines().length;
   useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
   if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
   if (!target || loading || !count) {
@@ -171,12 +171,13 @@ function fitRange(bounds: Range): Range {
 function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
   const schemes = useInputSchemes();
-  const documentLength = useWorkbench(state => {
+  const authorTimelines = useAuthorTimelines();
+  const documentLength = useMemo(() => {
     if (frames) return 0;
-    const selected = state.timelines.find(item => item.documentId === params.focus);
-    return Math.max(0, ...(selected ? [selected] : state.timelines).map(timeline =>
+    const selected = authorTimelines.find(item => item.documentId === params.focus);
+    return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
       Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
-  });
+  }, [frames, authorTimelines, params.focus, schemes]);
   const tickRate = useAuthoring(state => state.tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
@@ -352,13 +353,13 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const binding = useDocumentObservationBinding();
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
-  const { timelines: runTimelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
-    timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
+  const { inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
+    inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => state.edited);
   const files = useAuthoring(state => state.files);
-  const timelines = useMemo(() => applyTimelineEdits(runTimelines, edited), [runTimelines, edited]);
+  const timelines = useAuthorTimelines();
   const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
     return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds) } : segment;
@@ -1070,7 +1071,7 @@ function selectedClip(): { documentId: string; clipId: string } | null {
 }
 
 const currentClip = (documentId: string, clipId: string) =>
-  applyTimelineEdits(getState().timelines, useAuthoring.getState().edited).find(item => item.documentId === documentId)
+  applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId)
     ?.tracks.flatMap(track => track.clips.map(clip => ({ track, clip }))).find(item => item.clip.id === clipId) ?? null;
 
 // Ctrl+C 复制选中片段；Ctrl+V 粘贴到选中片段所在轨道、紧接其后（选中轨道时接在轨道末尾）。
@@ -1084,7 +1085,7 @@ function pasteAfterSelection() {
   const selection = getState().selection;
   if (!selection || selection.id.startsWith('input/') || !authoringActions.canPasteClip()) return false;
   const [documentId, itemId] = selection.id.split('/');
-  const timeline = applyTimelineEdits(getState().timelines, useAuthoring.getState().edited).find(item => item.documentId === documentId);
+  const timeline = applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId);
   const track = selection.kind === 'track' ? timeline?.tracks.find(item => item.id === itemId)
     : timeline?.tracks.find(item => item.clips.some(clip => clip.id === itemId));
   if (!track) return false;

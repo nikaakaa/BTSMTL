@@ -6,7 +6,7 @@ import { contentActions, useWorkbench } from '../state/store';
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { openPanel } from '../shell/layout';
 import { BarSeparator, Empty, Facts, Fold, PanelBar } from '../ui/blocks';
-import { Button, NumberInput, Select } from '../ui/controls';
+import { Button, NumberInput, Select, TextInput } from '../ui/controls';
 import styles from './panel.module.css';
 
 // 内容面板：场景与录像列表、输入声明；选择结果写入 content 分片，工具栏新建运行使用。
@@ -76,15 +76,51 @@ function RunSources() {
 
 function ScenarioFolders() {
   const { scenarios, target } = useAuthoring(useShallow(state => ({ scenarios: state.scenarios, target: state.target })));
+  const [creating, setCreating] = useState(false);
+  const scenePath = useWorkbench(state => state.scenePath);
   useEffect(() => { if (scenarios === null) void authoringActions.listSkills(); }, [scenarios]);
   if (scenarios === null) return <Empty text="正在读取场景方案" />;
-  if (!scenarios.length) return <Empty text="没有场景方案" />;
-  return <div className={styles.list} role="listbox" aria-label="场景方案">
+  return <>
+    <Button onClick={() => setCreating(!creating)}>新建场景方案</Button>
+    {creating && <NewScenario key={scenePath} onCreated={() => setCreating(false)} />}
+    <div className={styles.list} role="listbox" aria-label="场景方案">
     {scenarios.map(name => <button key={name} className={styles.row} role="option"
       aria-selected={target?.kind === 'scenario' && target.name === name}
       onClick={() => void authoringActions.open({ kind: 'scenario', name })}>
       <span className={styles.rowText}>{name}</span>
     </button>)}
+    </div>
+  </>;
+}
+
+function NewScenario({ onCreated }: { onCreated(): void }) {
+  const { scene, catalog } = useWorkbench(useShallow(state => ({
+    scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
+  })));
+  const [name, setName] = useState('');
+  const [actorId, setActorId] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!scene) return <Empty text="先选择场景" />;
+  if (!catalog || catalog.revision !== scene.revision) return <Button onClick={() => void session.loadInputs()}>读取角色</Button>;
+  const selectedActor = catalog.players.find(player => player.actorId === actorId);
+  return <div className={styles.list}>
+    <TextInput aria-label="场景方案名称" placeholder="方案名称" value={name} onChange={event => setName(event.currentTarget.value)} />
+    <Select label="输入角色" placeholder="选择角色" value={actorId}
+      options={catalog.players.map(player => ({ value: player.actorId, label: player.actorId }))} onChange={setActorId} />
+    <NumberInput label="方案时长（秒）" value={duration} min={0} onChange={setDuration} />
+    <Button disabled={pending || !name.trim() || !selectedActor || duration === null || duration <= 0}
+      onClick={() => {
+        setPending(true);
+        setError(null);
+        void authoringActions.createScenario(name.trim(), { scene: scene.path, sceneRevision: scene.revision,
+          actorId: selectedActor!.actorId, schemeName: name.trim(), rangeEndSeconds: duration!,
+        }).then(() => { onCreated(); openPanel('timeline'); }, (reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }).finally(() => setPending(false));
+      }}>创建</Button>
+    {error && <div role="alert">{error}</div>}
   </div>;
 }
 

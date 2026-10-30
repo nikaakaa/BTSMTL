@@ -447,8 +447,8 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
-  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
-  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const { document: inputGraph } = useCurrentDocument(found?.clip.graphId ? graphPath(found.clip.graphId) : null);
   const instances = useMemo(() => {
@@ -569,8 +569,8 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
   const binding = useDocumentObservationBinding();
   const schemes = useInputSchemes();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
-  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
-  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;
   const { timeline, track } = found;

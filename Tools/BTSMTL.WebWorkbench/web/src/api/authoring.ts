@@ -1,6 +1,6 @@
 import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
-import { getJson, getText, postText, putJson, query } from './http';
+import { getJson, getText, postJson, postText, putJson, query } from './http';
 import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
@@ -286,7 +286,17 @@ export interface InputFragment {
   sceneRevision: string;
 }
 
+export interface ScenarioDraftRequest {
+  scene: string;
+  sceneRevision: string;
+  actorId: string;
+  schemeName: string;
+  rangeEndSeconds: number;
+}
+
 export const authoringApi = {
+  scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
+    postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
