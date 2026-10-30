@@ -243,11 +243,12 @@ function ClipEditing({ step }: { step: number }) {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
     return width > 0 ? pixels * (range.end - range.start) / width : 0;
   };
-  const write = (edit: ClipEdit | undefined, span: Range, deltaStart: number, deltaEnd: number) => {
+  const write = (edit: ClipEdit | undefined, span: Range, direction: ResizeEndEvent['direction'], delta: number) => {
     if (!edit) return;
-    const local = (value: number) => snapTo(value - edit.origin, step);
-    const start = Math.max(0, local(span.start + deltaStart));
-    const end = Math.max(start + step, local(span.end + deltaEnd));
+    const originalStart = span.start - edit.origin;
+    const originalEnd = span.end - edit.origin;
+    const start = direction === 'start' ? Math.max(0, Math.min(originalEnd - step, snapTo(originalStart + delta, step))) : originalStart;
+    const end = direction === 'end' ? Math.max(start + step, snapTo(originalEnd + delta, step)) : originalEnd;
     authoringActions.setClipTime(edit.documentId, edit.clipId, start, end);
   };
   // 松手处所在的作者轨道（`Timeline/轨道`）。
@@ -284,7 +285,7 @@ function ClipEditing({ step }: { step: number }) {
     onResizeEnd(event: ResizeEndEvent) {
       const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
       const delta = pixelsToValue(event.delta.x);
-      if (delta) write(data.edit, data.span, event.direction === 'start' ? delta : 0, event.direction === 'end' ? delta : 0);
+      if (delta) write(data.edit, data.span, event.direction, delta);
     },
   });
   return null;
