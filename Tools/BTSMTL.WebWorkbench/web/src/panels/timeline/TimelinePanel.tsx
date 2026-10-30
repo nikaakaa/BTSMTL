@@ -122,7 +122,7 @@ function DocumentTimeline() {
           <SkillPicker />
         </PanelBar>
         {loading ? <Empty text="正在读取技能" />
-          : <ReportEmpty text={error ?? (skill ? '此技能没有 Timeline' : '选择一个技能，直接编辑它的 JSON')} />}
+          : <ReportEmpty text={error ?? (skill ? '此技能没有 Timeline' : '选择要编辑的技能')} />}
       </div>
     );
   }
@@ -542,7 +542,7 @@ function AuthoringControls() {
         <>
           <span className={styles.authorDirty}>{dirty} 个文件未保存{state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}</span>
           <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
-          <Button variant="ghost" disabled={state.saving} tip="写回技能 JSON，宿主用正式编译器检查"
+          <Button variant="ghost" disabled={state.saving} tip="保存并编译当前技能"
             onClick={() => void authoringActions.save()}>{state.saving ? '保存中' : '保存'}</Button>
         </>
       )}
@@ -554,7 +554,7 @@ function AuthoringControls() {
       )}
       <Button variant="ghost" pressed={state.author} disabled={state.available === false}
         tip={state.available === false ? state.reason ?? '作者接口不可用'
-          : state.author ? (state.loading ? '正在读取技能文件' : `编辑技能 ${state.skill ?? '—'} 的 JSON：拖动片段改时间，拖两端改起止`)
+          : state.author ? (state.loading ? '正在读取技能文件' : `编辑技能 ${state.skill ?? '—'}：拖动片段改时间，拖两端改起止`)
             : '进入作者模式，编辑当前技能'}
         onClick={() => void enter()}>作者</Button>
       <Button variant="ghost" pressed={!state.author} tip="只观察已确认的运行记录" onClick={() => authoringActions.setAuthor(false)}>运行观察</Button>
