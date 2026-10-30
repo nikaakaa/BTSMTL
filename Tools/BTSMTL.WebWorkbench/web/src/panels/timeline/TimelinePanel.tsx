@@ -28,6 +28,7 @@ import {
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
+import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
@@ -49,7 +50,9 @@ interface InputGroupRow { kind: 'inputGroup'; id: string }
 interface InputTrackRow { kind: 'inputTrack'; id: string; selectId: string; track: FrozenInputTimeline['tracks'][number] }
 interface CurveGroupRow { kind: 'curves'; id: string }
 interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
-type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow;
+interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
+interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
+type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 interface Params {
   range: Range | null;
@@ -124,6 +127,8 @@ function rowHeight(row: Row): number {
     case 'inputTrack': return rowHeights.in;
     case 'curves': return rowHeights.inputGroup;
     case 'curve': return 64;
+    case 'receivedGroup': return rowHeights.inputGroup;
+    case 'received': return 28;
     case 'track': return rowHeights[row.trackKind];
   }
 }
@@ -407,6 +412,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     : segments.find(segment => segment.documentId === params.focus) ?? (segments.length === 1 ? segments[0] : null);
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
+  const receivedSource = useMemo(() => runId !== null && inputObservation.kind === 'ready' ? {
+    jobId: runId, actorId: inputObservation.input.actorId, metadata: inputObservation.metadata, keys: inputObservation.declarations.keys,
+  } : null, [runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
+    inputObservation.kind === 'ready' ? inputObservation.metadata : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
+  const received = useReceivedInput(receivedSource);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
   const observations = useMemo(() => {
@@ -494,6 +504,16 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
       const tracks = segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
       result.push(...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
+      if (input && received) {
+        result.push({ kind: 'receivedGroup', id: 'received', received });
+        if (received.kind === 'ready' && !collapsed.has('received')) {
+          const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
+          if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
+          for (const line of lines)
+            if (!filter || line.name.toLowerCase().includes(filter))
+              result.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
+        }
+      }
       addCurves();
       return result;
     }
@@ -514,7 +534,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     }
     addCurves();
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, params.filter, params.collapsed]);
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
@@ -1008,6 +1028,9 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} />;
           case 'curves': return <CurveGroupLine key={row.id} open={!collapsedSet.has(row.id)} toggle={toggle} />;
           case 'curve': return <CurveLine key={row.id} row={row} />;
+          case 'receivedGroup':
+            return <ReceivedGroupLine key={row.id} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+          case 'received': return <ReceivedLine key={row.id} row={row} />;
         }
       })}
       <div style={{ height: total - offsets[last] }} />
@@ -1589,6 +1612,35 @@ function CurveLine({ row }: { row: CurveRow }) {
       </svg>
       {samples.length > 0 && <span className={styles.curveScale}>{max.toPrecision(4)} / {min.toPrecision(4)} {row.curve.unit}</span>}
     </>}
+  </Line>;
+}
+
+// 回看：档案输入通道中目标角色每帧实际收到的输入，按键各一行；修订不一致时整组不出现，由工具条说明过期。
+function ReceivedGroupLine({ received, open, toggle }: { received: ReceivedInput; open: boolean; toggle(id: string): void }) {
+  const notice = received.kind === 'loading' ? '正在读取档案输入' : received.kind === 'failed' ? received.reason
+    : !received.keys.length && !received.missing.length ? '档案中该角色没有收到非中性输入' : null;
+  return <Line id="received" height={rowHeights.inputGroup} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
+    <button className={styles.fold} onClick={() => toggle('received')} aria-expanded={open} aria-label={open ? '折叠实际输入' : '展开实际输入'}>
+      <Triangle open={open} />
+    </button>
+    <span className={styles.segmentTitle}>实际收到的输入</span>
+  </>}>
+    {notice && <span className={styles.curveNotice} title={notice}>{notice}</span>}
+  </Line>;
+}
+
+function ReceivedLine({ row }: { row: ReceivedRow }) {
+  const { range } = useTimelineContext();
+  const visible = (span: ReceivedSpan) => span.end >= range.start && span.start <= range.end;
+  return <Line id={row.id} height={28} headClass={styles.trackHead} head={<span className={styles.name}>{row.name}</span>}>
+    {row.spans.filter(visible).map(span => (
+      <Positioned key={`s${span.start}`} start={span.start} end={span.end} title={`${span.label} · ${span.start.toFixed(3)}—${span.end.toFixed(3)} s`}
+        className={row.missing ? styles.receivedMissing : styles.receivedSpan} />
+    ))}
+    {row.requests.filter(visible).map(span => (
+      <Positioned key={`r${span.start}`} start={span.start} end={span.end} title={`请求 ${span.label} · ${span.start.toFixed(3)} s`}
+        className={styles.receivedRequest} />
+    ))}
   </Line>;
 }
 
