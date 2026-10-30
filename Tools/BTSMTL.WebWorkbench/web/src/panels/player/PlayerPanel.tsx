@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
-import { usePanelAnimationFrame, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
+import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
+import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { session } from '../../state/session';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
@@ -112,6 +113,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameNa
   const video = useRef<HTMLCanvasElement>(null);
   const layer = useRef<HTMLCanvasElement>(null);
   const panelWindow = usePanelWindow();
+  const panelId = usePanelId();
   const visible = usePanelVisible();
   const view = useWorkbench(useShallow(state => ({
     liveId: state.liveId, runId: state.runId, archiveImage: state.archiveImage, hostFrame: state.hostFrame,
@@ -142,6 +144,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameNa
       const canvas = video.current;
       if (!canvas) return;
       if (!frame) {
+        clearRendered(panelId);
         canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
         const overlayCanvas = layer.current;
         if (overlayCanvas) overlayCanvas.getContext('2d')!.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -164,6 +167,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameNa
         image.close();
         frameSize.current = { width: frame.width, height: frame.height };
         overlayDraw.current(frame);
+        const state = getState();
+        if (state.runId && state.frameKey) reportRendered(panelId, state.frameKey);
       } catch (error) {
         consoleActions.error('player', error);
       } finally {
@@ -173,8 +178,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameNa
     };
     void draw();
     const unsubscribe = playerService.subscribeVideo(() => void draw());
-    return () => { alive = false; unsubscribe(); };
-  }, [visible, panelWindow, view.liveId, view.runId, view.archiveImage]);
+    return () => { alive = false; unsubscribe(); clearRendered(panelId); };
+  }, [visible, panelWindow, panelId, view.liveId, view.runId, view.archiveImage]);
 
   const overlayRef = useRef(overlay);
   overlayRef.current = overlay;

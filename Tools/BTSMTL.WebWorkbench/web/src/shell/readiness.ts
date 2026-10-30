@@ -7,7 +7,7 @@ import { panelTypeOf, type PanelType } from './panelTypes';
 
 const rendered = new Map<string, { key: string; detail?: string }>();
 // 按当前帧绘制、会报告已绘制的面板类型。
-const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'viewport']);
+const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'viewport', 'player']);
 let addressPanel: PanelType | null = null;
 let currentKey: string | null = null;
 let scheduled = false;
@@ -42,6 +42,7 @@ export function schedule() {
 function evaluate() {
   const state = getState();
   const key = frameKey(state.runId, state.frameIndex);
+  delete root().previewImageReady;
   if (key !== currentKey) {
     currentKey = key;
     delete root().previewImageReady;
@@ -67,13 +68,21 @@ function evaluate() {
   data.previewFrameIndex = String(state.frameIndex);
   data.previewConsistency = state.frame?.consistency?.value ?? state.archiveFrame?.logic?.checksum ?? '';
   data.previewContent = state.summary.contentRevision;
+  data.previewPlayerBuild = state.summary.playerBuildId;
+  data.previewSceneRevision = state.summary.sceneRevision;
+  data.previewInputSource = state.summary.inputSource;
+  data.previewInputRevision = state.summary.inputRevision;
+  if (state.archiveMetadata) data.previewArchiveJob = state.archiveMetadata.jobId;
+  else delete data.previewArchiveJob;
   if (viewport?.detail) data.previewRendered = viewport.detail;
   else delete data.previewRendered;
   data.previewImageReady = 'true';
 }
 
 useWorkbench.subscribe((state, previous) => {
+  if (state.generation !== previous.generation) rendered.clear();
   if (state.runId !== previous.runId || state.frameIndex !== previous.frameIndex || state.frameKey !== previous.frameKey ||
+    state.generation !== previous.generation || state.archiveFrame !== previous.archiveFrame ||
     state.openPanels !== previous.openPanels || state.activePanel !== previous.activePanel) schedule();
 });
 

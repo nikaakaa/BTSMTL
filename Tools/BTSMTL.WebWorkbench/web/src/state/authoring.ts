@@ -11,7 +11,7 @@ import {
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectionActions, useWorkbench } from './store';
 import { findGraphEdge, findGraphNode } from './graphModel';
-import { findTimelineClip, findTimelineMarker, findTimelineTrack } from './timelineModel';
+import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session } from './session';
 
@@ -211,7 +211,7 @@ function reconcileSelection() {
   if (!selection || selection.kind === 'actor' || selection.id.startsWith('input/')) return;
   const { kind, id } = selection;
   const exists = kind === 'node' ? findGraphNode(graphs, id) : kind === 'edge' ? findGraphEdge(graphs, id)
-    : kind === 'track' ? findTimelineTrack(timelines, id) : findTimelineClip(timelines, id) ?? findTimelineMarker(timelines, id);
+    : kind === 'track' ? findTimelineTrack(timelines, id) : findTimelineClipInViews(timelines, id) ?? findTimelineMarker(timelines, id);
   if (!exists) selectionActions.select(null);
 }
 
