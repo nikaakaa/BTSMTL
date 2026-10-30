@@ -28,7 +28,9 @@ function LogicView() {
   const panelWindow = usePanelWindow();
   const visible = usePanelVisible();
   const panelId = usePanelId();
-  const geometryAvailable = useWorkbench(state => state.summary?.geometryAvailable ?? null);
+  const frame = useWorkbench(state => state.frame);
+  const contacts = frame?.availability.find(item => item.channel === 'physics-contacts');
+  const unknownContacts = frame?.geometry.contacts.some(hit => hit.kind == null);
   const [failure, setFailure] = useState<number | null>(null);
   const camera = useRef(params.camera);
   camera.current = params.camera;
@@ -81,7 +83,14 @@ function LogicView() {
       <PanelBar>
         <Button variant="ghost" onClick={() => scene.current?.fit()}>适配角色</Button>
         <BarSeparator />
-        <BarLabel>{geometryAvailable ? 'Player 档案 · 世界 · 逻辑根 · 表现骨架' : 'Player 档案 · 逻辑根 · 表现骨架'}</BarLabel>
+        {frame && <>
+          <span className={styles.legend} data-kind="kcc-contact"><i aria-hidden="true" />实际接触</span>
+          <span className={styles.legend} data-kind="query-candidate"><i aria-hidden="true" />查询候选</span>
+          {unknownContacts && <span className={styles.legend}><i aria-hidden="true" />来源未记录</span>}
+          {!contacts?.available && <span title={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}>
+            <BarLabel>{contacts ? '实际接触不可用' : '实际接触未声明'}</BarLabel>
+          </span>}
+        </>}
       </PanelBar>
       {failure !== null && <ErrorLine text="逻辑视图绘制失败" entryId={failure} />}
       <div ref={host} className={styles.canvas} />

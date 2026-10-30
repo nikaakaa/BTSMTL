@@ -34,6 +34,11 @@ export interface CameraView {
 }
 
 type Role = 'start' | 'end' | 'target';
+const contactStyles = [
+  { color: 'contact', wireframe: false },
+  { color: 'target', wireframe: true },
+  { color: 'world', wireframe: true },
+];
 
 export class LogicScene {
   private renderer: THREE.WebGLRenderer;
@@ -51,11 +56,10 @@ export class LogicScene {
   private pools = new Map<string, THREE.Object3D[]>();
   private actorRoots = new Map<string, THREE.Group>();
   private sweepLines: THREE.LineSegments;
-  private contactLines: THREE.LineSegments;
+  private contactLines: THREE.LineSegments[];
   private skeletonLines: THREE.LineSegments;
   private contactMarkers: THREE.Mesh[] = [];
   private contactGeometry = new THREE.SphereGeometry(0.045, 10, 8);
-  private contactMaterial: THREE.Material | null = null;
   private geometry: Geometry | null = null;
   private scheduled = 0;
   onRendered: (() => void) | null = null;
@@ -76,9 +80,10 @@ export class LogicScene {
     this.controls.addEventListener('end', () => this.onCameraChanged?.(this.cameraView()));
     this.grid = new THREE.GridHelper(40, 40, this.colors.grid, this.colors['grid-minor']);
     this.sweepLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors['sweep-end'] }));
-    this.contactLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors.contact }));
+    this.contactLines = contactStyles.map(style => new THREE.LineSegments(new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: this.colors[style.color] })));
     this.skeletonLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors.receiver }));
-    this.queries.add(this.sweepLines, this.contactLines, this.skeletonLines);
+    this.queries.add(this.sweepLines, ...this.contactLines, this.skeletonLines);
     this.scene.add(this.grid, this.world, this.actors, this.queries);
     const Observer = (view as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
     this.resize = new Observer(() => {
@@ -92,12 +97,12 @@ export class LogicScene {
     this.resize.observe(host);
   }
 
-  private material(color: string, opacity: number): THREE.Material {
-    const key = `${color}:${opacity}`;
+  private material(color: string, opacity: number, wireframe: boolean): THREE.Material {
+    const key = `${color}:${opacity}:${wireframe}`;
     let material = this.materials.get(key);
     if (!material) {
       material = new THREE.MeshBasicMaterial({
-        color: this.colors[color], transparent: opacity < 1, opacity, wireframe: true, depthWrite: false, side: THREE.DoubleSide,
+        color: this.colors[color], transparent: opacity < 1, opacity, wireframe, depthWrite: false, side: THREE.DoubleSide,
       });
       this.materials.set(key, material);
     }
@@ -120,7 +125,7 @@ export class LogicScene {
     for (const collider of geometry.world) {
       if (collider.kind === 'Mesh' || collider.kind === 'Terrain') continue;
       const object = new THREE.Mesh(primitive(collider.kind, collider.radius, collider.halfLength, collider.halfExtents),
-        this.material(collider.isTrigger ? 'trigger' : 'world', 0.45));
+        this.material(collider.isTrigger ? 'trigger' : 'world', 0.45, true));
       pose(object, collider.pose);
       object.userData.identity = collider.identity;
       this.world.add(object);
@@ -129,7 +134,7 @@ export class LogicScene {
       const vertices = geometry.worldTriangles.flatMap(triangle => [...triangle.a, ...triangle.b, ...triangle.c]);
       const surface = new THREE.BufferGeometry();
       surface.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      this.world.add(new THREE.Mesh(surface, this.material('world', 0.45)));
+      this.world.add(new THREE.Mesh(surface, this.material('world', 0.45, true)));
     }
   }
 
@@ -155,7 +160,7 @@ export class LogicScene {
       }
       return group;
     }
-    return new THREE.Mesh(this.shapeGeometry(index), this.material(color, opacity));
+    return new THREE.Mesh(this.shapeGeometry(index), this.material(color, opacity, true));
   }
 
   // 对象池：同一形状、同一用途的查询对象跨帧复用，只改变换与可见性。
@@ -180,7 +185,7 @@ export class LogicScene {
       root.add(new THREE.AxesHelper(0.7));
       const receiver = this.geometry?.actors.find(item => item.actorId === id);
       if (receiver) {
-        const collider = new THREE.Mesh(primitive('Capsule', receiver.radius, receiver.halfLength, []), this.material('receiver', 0.8));
+        const collider = new THREE.Mesh(primitive('Capsule', receiver.radius, receiver.halfLength, []), this.material('receiver', 0.8, true));
         collider.position.copy(vector(receiver.centerOffset));
         root.add(collider);
       }
@@ -220,21 +225,25 @@ export class LogicScene {
     }
     this.setLines(this.sweepLines, sweepPoints);
 
-    const contactPoints: number[] = [];
+    const contactPoints = contactStyles.map((): number[] => []);
     frame.geometry.contacts.forEach((hit, index) => {
+      const category = hit.kind === 'kcc-contact' ? 0 : hit.kind === 'query-candidate' ? 1 : 2;
+      const style = contactStyles[category];
+      const material = this.material(style.color, 1, style.wireframe);
       let marker = this.contactMarkers[index];
       if (!marker) {
-        this.contactMaterial ??= new THREE.MeshBasicMaterial({ color: this.colors.contact });
-        marker = new THREE.Mesh(this.contactGeometry, this.contactMaterial);
+        marker = new THREE.Mesh(this.contactGeometry, material);
         this.contactMarkers.push(marker);
         this.queries.add(marker);
       }
+      marker.material = material;
       marker.position.set(hit.point[0], hit.point[1], hit.point[2]);
       marker.visible = true;
-      contactPoints.push(...hit.point, hit.point[0] + hit.normal[0] * 0.4, hit.point[1] + hit.normal[1] * 0.4, hit.point[2] + hit.normal[2] * 0.4);
+      contactPoints[category].push(...hit.point,
+        hit.point[0] + hit.normal[0] * 0.4, hit.point[1] + hit.normal[1] * 0.4, hit.point[2] + hit.normal[2] * 0.4);
     });
     for (let index = frame.geometry.contacts.length; index < this.contactMarkers.length; index++) this.contactMarkers[index].visible = false;
-    this.setLines(this.contactLines, contactPoints);
+    contactPoints.forEach((points, index) => this.setLines(this.contactLines[index], points));
     this.requestRender();
   }
 
@@ -281,7 +290,8 @@ export class LogicScene {
   fit() {
     const bounds = new THREE.Box3();
     for (const root of this.actorRoots.values()) if (root.visible) bounds.expandByObject(root);
-    for (const object of this.queries.children) if (object.visible && object !== this.sweepLines && object !== this.contactLines) bounds.expandByObject(object);
+    for (const object of this.queries.children)
+      if (object.visible && object !== this.sweepLines && !this.contactLines.some(lines => lines === object)) bounds.expandByObject(object);
     if (bounds.isEmpty()) return;
     const center = bounds.getCenter(new THREE.Vector3());
     const size = Math.max(2, bounds.getSize(new THREE.Vector3()).length());
@@ -319,8 +329,7 @@ export class LogicScene {
 
   private disposeGroup(group: THREE.Object3D) {
     group.traverse(object => {
-      const mesh = object as THREE.Mesh;
-      if (mesh.geometry && !this.isShared(mesh.geometry)) mesh.geometry.dispose();
+      if ((object instanceof THREE.Mesh || object instanceof THREE.Line) && !this.isShared(object.geometry)) object.geometry.dispose();
     });
     group.clear();
   }
@@ -333,16 +342,17 @@ export class LogicScene {
     if (this.scheduled) this.view.cancelAnimationFrame(this.scheduled);
     this.resize.disconnect();
     this.controls.dispose();
+    const geometries = new Set(this.shapeGeometries.values());
+    geometries.add(this.contactGeometry);
+    const materials = new Set(this.materials.values());
     this.scene.traverse(object => {
-      const item = object as THREE.Mesh;
-      item.geometry?.dispose();
-      const material = item.material;
-      if (Array.isArray(material)) material.forEach(entry => entry.dispose());
-      else material?.dispose();
+      if (!(object instanceof THREE.Mesh || object instanceof THREE.Line)) return;
+      geometries.add(object.geometry);
+      if (Array.isArray(object.material)) object.material.forEach(material => materials.add(material));
+      else materials.add(object.material);
     });
-    this.materials.forEach(material => material.dispose());
-    this.shapeGeometries.forEach(geometry => geometry.dispose());
-    this.contactGeometry.dispose();
+    geometries.forEach(geometry => geometry.dispose());
+    materials.forEach(material => material.dispose());
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

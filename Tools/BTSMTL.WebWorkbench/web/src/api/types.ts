@@ -115,10 +115,7 @@ export interface SweepSegment {
   end: Pose;
 }
 
-export interface FrameGeometry {
-  sweeps: { segments: SweepSegment[]; targets: SweepSegment[] }[];
-  contacts: { point: Vec3; normal: Vec3 }[];
-}
+export type FrameGeometry = import('./playerRecords').PlayerFramesPage['items'][number]['geometry'];
 
 export interface Frame {
   hostFrame: string;

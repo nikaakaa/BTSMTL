@@ -28,7 +28,10 @@ export function FrameSections({ frame }: { frame: Frame }) {
       {frame.sections.map((section, index) => (
         <Fold key={index} title={section.displayName} kind="var(--node-flow)" defaultOpen={index === 0}>
           {section.records.length ? section.records.map((record, recordIndex) => (
-            <Fold key={recordIndex} title={record.displayName}><Facts fields={record.fields} /></Fold>
+            <Fold key={recordIndex} title={record.displayName}>
+              <Facts fields={record.fields} />
+              <Fold title="原始记录"><JsonLines text={record.rawJson} /></Fold>
+            </Fold>
           )) : <div className={styles.note}>{section.emptyMessage}</div>}
         </Fold>
       ))}
@@ -37,6 +40,7 @@ export function FrameSections({ frame }: { frame: Frame }) {
 }
 
 export function FrameFull({ frame }: { frame: Frame }) {
+  const contacts = frame.availability.find(item => item.channel === 'physics-contacts');
   return (
     <>
       <Fold title="本帧" kind="var(--value)" defaultOpen>
@@ -54,7 +58,11 @@ export function FrameFull({ frame }: { frame: Frame }) {
       <Fold title="几何" kind="var(--logic-sweep-end)">
         <Facts fields={[
           { displayName: '扫掠', value: String(frame.geometry.sweeps.length) },
-          { displayName: '接触', value: String(frame.geometry.contacts.length) },
+          { displayName: '实际KCC接触', value: contacts?.available
+            ? String(frame.geometry.contacts.filter(hit => hit.kind === 'kcc-contact').length)
+            : contacts?.reason ?? '当前响应未声明实际KCC接触可用性' },
+          { displayName: '查询候选', value: String(frame.geometry.contacts.filter(hit => hit.kind === 'query-candidate').length) },
+          { displayName: '来源未记录', value: String(frame.geometry.contacts.filter(hit => hit.kind == null).length) },
         ]} />
       </Fold>
       <FrameSections frame={frame} />

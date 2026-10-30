@@ -18,3 +18,30 @@
   inset: 0;
   display: block;
 }
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--logic-world);
+  white-space: nowrap;
+}
+
+.legend > i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.legend[data-kind="kcc-contact"] {
+  color: var(--logic-contact);
+}
+
+.legend[data-kind="kcc-contact"] > i {
+  background: currentColor;
+}
+
+.legend[data-kind="query-candidate"] {
+  color: var(--logic-target);
+}

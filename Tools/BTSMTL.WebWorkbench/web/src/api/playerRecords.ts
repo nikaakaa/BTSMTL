@@ -190,7 +190,9 @@ const frame = object({
   channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
   sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
   geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment) })),
-    contacts: array(object({ point: vector3, normal: vector3 })) }), rawJson: text, route: nullable(routeFrame),
+    contacts: array(object({ point: vector3, normal: vector3,
+      kind: optional(nullable(choice('kcc-contact', 'query-candidate'))),
+      actorId: optional(nullable(text)), purpose: optional(nullable(text)) })) }), rawJson: text, route: nullable(routeFrame),
 });
 export const readPlayerFrames = page(frame);
 export const readPlayerObservations = object({
