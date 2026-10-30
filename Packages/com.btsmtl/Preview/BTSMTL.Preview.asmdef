@@ -1,0 +1,14 @@
+{
+    "name": "BTSMTL.Preview",
+    "rootNamespace": "BTSMTL.Preview",
+    "references": ["BTSMTL.Foundation"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["System.Runtime.CompilerServices.Unsafe.dll"],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
