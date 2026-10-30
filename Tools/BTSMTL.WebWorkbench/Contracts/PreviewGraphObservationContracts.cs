@@ -10,7 +10,10 @@ public sealed record PreviewExecutionCall(string ActorId, string ProgramId, stri
     string InvocationPath, string? ParentInvocationPath, string ActionId, string ExecutionGeneration,
     string InvocationGeneration, string? ParentInvocationGeneration, string PlaybackId);
 public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, string NodeId,
-    string Kind, string Generation, string? Result, PreviewExecutionCall? Call);
+    string Kind, string Generation, string? Result, PreviewExecutionCall? Call)
+{
+    public int? LoopIteration { get; init; }
+}
 public sealed record PreviewEdgeOccurrence(string Sequence, string GraphId, string EdgeId,
     bool Selected, bool Passed, PreviewExecutionCall? Call);
 public sealed record PreviewPortSample(string Sequence, string GraphId, string NodeId, string PortId,
