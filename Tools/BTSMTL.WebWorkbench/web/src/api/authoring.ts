@@ -17,6 +17,9 @@ export interface SkillSnapshot {
   files: SkillFile[];
 }
 
+export type AuthoringTarget = { kind: 'skill'; name: string } | { kind: 'scenario'; name: string };
+export const authoringTargetKey = (target: AuthoringTarget) => `${target.kind}/${target.name}`;
+
 export interface SkillChanges {
   skill: string;
   revision: string;
@@ -261,30 +264,30 @@ export interface SkillDocument {
   graphs: GraphDefinition[];
 }
 
-const base = '/api/authoring/skills';
-const skillPath = (skill: string) => `${base}/${encodeURIComponent(skill)}`;
+const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
+const targetPath = (target: AuthoringTarget) => `${folderPath(target.kind)}/${encodeURIComponent(target.name)}`;
 
 export const authoringApi = {
-  list: (signal?: AbortSignal) => getJson<string[]>(base, signal),
-  read: (skill: string, signal?: AbortSignal) => getJson<SkillSnapshot>(skillPath(skill), signal),
-  changes: (skill: string, revision: string, signal?: AbortSignal) =>
-    getJson<SkillChanges>(`${skillPath(skill)}/changes?revision=${encodeURIComponent(revision)}`, signal),
-  document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${skillPath(skill)}/document`, signal),
-  save: (skill: string, request: SkillSaveRequest) => putJson<SkillSaveResult>(skillPath(skill), request),
+  list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
+  read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
+  changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
+    getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
+  document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, signal),
+  save: (target: AuthoringTarget, request: SkillSaveRequest) => putJson<SkillSaveResult>(targetPath(target), request),
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal),
-  types: (skill: string, offset: number, signal?: AbortSignal) =>
-    getJson<TypePage>(`${skillPath(skill)}/queries/types${query({ offset, limit: 128 })}`, signal),
+  types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
+    getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
-  describeType: async (skill: string, type: string, graphId: string, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${skillPath(skill)}/queries/type`, { type, graphId, offset: 0, limit: 128 }, signal)) as unknown as TypeDescription,
+  describeType: async (target: AuthoringTarget, type: string, graphId: string, signal?: AbortSignal) =>
+    parseSkillJson(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128 }, signal)) as unknown as TypeDescription,
   // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
-  describeNode: async (skill: string, type: string, configuration: JsonObject, graphId: string, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${skillPath(skill)}/queries/type`,
+  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, signal?: AbortSignal) =>
+    parseSkillJson(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
-  identities: (skill: string, signal?: AbortSignal) => allPages<IdentityItem>(`${skillPath(skill)}/queries/references`, signal),
-  blackboards: (skill: string, signal?: AbortSignal) => allPages<BlackboardItem>(`${skillPath(skill)}/queries/blackboards`, signal),
-  elements: async (skill: string, signal?: AbortSignal) =>
-    parseSkillJson(await getText(`${skillPath(skill)}/queries/elements`, signal)) as unknown as SkillElements,
+  identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
+  blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
+  elements: async (target: AuthoringTarget, signal?: AbortSignal) =>
+    parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements,
 };
 
 async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {

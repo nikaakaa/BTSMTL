@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type ElementTemplate, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt } from '../api/playerRecords';
@@ -26,7 +26,7 @@ export interface AuthoringState {
   // 作者模式：Timeline、节点图可编辑；运行观察时只读。
   author: boolean;
   programId: string | null;
-  skill: string | null;
+  target: AuthoringTarget | null;
   revision: string | null;
   sourceRevision: string | null;
   files: Record<string, string>;
@@ -48,6 +48,7 @@ export interface AuthoringState {
   lastSave: SaveOutcome | null;
   // 技能文件夹；null 为尚未读取。
   skills: string[] | null;
+  scenarios: string[] | null;
   // 不经运行从 JSON 展开的全部图实例（未叠加网页修改）；严格读取被拒时为空并给出原因。
   documentGraphs: GraphDefinition[] | null;
   documentError: string | null;
@@ -75,10 +76,10 @@ export interface AddedPort {
 }
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null, sourceRevision: null,
+  available: null, unavailableReason: null, author: false, programId: null, target: null, revision: null, sourceRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  skills: null, documentGraphs: null, documentError: null, tickRate: null,
+  skills: null, scenarios: null, documentGraphs: null, documentError: null, tickRate: null,
 }));
 
 const get = useAuthoring.getState;
@@ -95,7 +96,7 @@ let loadController: AbortController | null = null;
 let previewController: AbortController | null = null;
 
 useAuthoring.subscribe((state, previous) => {
-  if (state.skill !== previous.skill) previewController?.abort();
+  if (state.target !== previous.target) previewController?.abort();
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
@@ -172,6 +173,31 @@ export function documentTimelines(files: Record<string, string>, sourceRevision:
     .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject, sourceRevision));
 }
 
+export interface AuthorInputScheme {
+  path: string;
+  planId: string;
+  schemeIndex: number;
+  name: string;
+  documentId: string;
+  scene: string;
+  actorId: string;
+  rangeEndSeconds: number;
+}
+
+export function useInputSchemes(): AuthorInputScheme[] {
+  const { files, edited, removed } = useAuthoring(useShallow(state => ({ files: state.files, edited: state.edited, removed: state.removed })));
+  return useMemo(() => [...new Set([...Object.keys(files), ...Object.keys(edited)])]
+    .filter(path => path.startsWith('inputs/') && path.endsWith('.json') && !removed.includes(path))
+    .flatMap(path => {
+      const plan = (edited[path] ?? parseSkillJson(files[path])) as JsonObject;
+      return (plan.Schemes as JsonObject[]).map((scheme, schemeIndex) => ({
+        path, planId: path.slice('inputs/'.length, -'.json'.length), schemeIndex, name: scheme.Name as string,
+        documentId: scheme.InputTimeline as string, scene: plan.Scene as string, actorId: plan.Actor as string,
+        rangeEndSeconds: numberOf(scheme.RangeEnd),
+      }));
+    }), [files, edited, removed]);
+}
+
 function timelineOf(documentId: string, document: JsonObject, sourceRevision: string | null): AuthorTimeline {
   return {
     documentId, contentIdentity: documentId, contentRevision: sourceRevision, displayName: document.m_Name as string,
@@ -192,9 +218,10 @@ function timelineOf(documentId: string, document: JsonObject, sourceRevision: st
 
 // 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
-  const { documentGraphs, files, skill, sourceRevision } = get();
+  const { documentGraphs, files, target, sourceRevision } = get();
   useWorkbench.setState({
-    graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files, sourceRevision) : [],
+    graphs: target?.kind === 'skill' ? documentGraphs : null, graphAvailability: [],
+    timelines: target ? documentTimelines(files, sourceRevision) : [],
   });
   reconcileSelection();
 }
@@ -203,16 +230,20 @@ useWorkbench.subscribe((state, previous) => {
   if (state.generation !== previous.generation) publishDocument();
 });
 
-async function readDocument(skill: string, signal?: AbortSignal) {
+async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
   const revision = get().revision;
+  if (target.kind === 'scenario') {
+    set({ documentGraphs: [], sourceRevision: null, documentError: null, programId: null, tickRate: null });
+    return;
+  }
   try {
-    const document = await authoringApi.document(skill, signal);
-    if (get().skill !== skill || get().revision !== revision) return;
+    const document = await authoringApi.document(target.name, signal);
+    if (get().target !== target || get().revision !== revision) return;
     set({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId });
   } catch (error) {
     if (isAbort(error)) throw error;
-    if (get().skill !== skill || get().revision !== revision) return;
+    if (get().target !== target || get().revision !== revision) return;
     set({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) });
     consoleActions.error('作者', error);
   }
@@ -239,16 +270,17 @@ function reconcileSelection() {
 
 // 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
 async function reloadDocument() {
-  const skill = get().skill;
-  if (!skill) return;
-  await readDocument(skill);
-  if (get().skill === skill) publishDocument();
+  const target = get().target;
+  if (!target) return;
+  await readDocument(target);
+  if (get().target === target) publishDocument();
 }
 
 export const authoringActions = {
   async listSkills() {
     try {
-      set({ skills: await authoringApi.list(), available: true, unavailableReason: null });
+      const [skills, scenarios] = await Promise.all([authoringApi.list('skill'), authoringApi.list('scenario')]);
+      set({ skills, scenarios, available: true, unavailableReason: null });
     } catch (error) {
       set({ skills: [], available: false, unavailableReason: error instanceof ApiError && error.status === 404
         ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
@@ -256,23 +288,24 @@ export const authoringActions = {
   },
 
   // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
-  async openSkill(skill: string) {
-    if (get().skill === skill && get().documentGraphs) return;
+  async open(target: AuthoringTarget) {
+    const current = get().target;
+    if (current && authoringTargetKey(current) === authoringTargetKey(target) && get().documentGraphs) return;
     if (hasChanges()) {
-      consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${skill}`);
+      consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${target.name}`);
       return;
     }
     loadController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
-    set({ skill: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
+    set({ target: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
-      const snapshot = await authoringApi.read(skill, controller.signal);
+      const snapshot = await authoringApi.read(target, controller.signal);
       controller.signal.throwIfAborted();
-      set({ skill: snapshot.skill, revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
-      await readDocument(skill, controller.signal);
+      set({ target, revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
+      await readDocument(target, controller.signal);
       controller.signal.throwIfAborted();
       set({ loading: false, author: true });
       publishDocument();
@@ -283,9 +316,19 @@ export const authoringActions = {
     }
   },
 
+  async openInput(target: AuthoringTarget, path: string, schemeIndex: number) {
+    await authoringActions.open(target);
+    const current = get().target;
+    if (current === null || authoringTargetKey(current) !== authoringTargetKey(target)) return;
+    const plan = currentDocument(path) as JsonObject;
+    const scheme = (plan.Schemes as JsonObject[])[schemeIndex];
+    selectionActions.select(null);
+    selectionActions.showTimeline(scheme.InputTimeline as string);
+  },
+
   async probe() {
     try {
-      await authoringApi.list();
+      await authoringApi.list('skill');
       set({ available: true, unavailableReason: null });
     } catch (error) {
       set({ available: false, unavailableReason: error instanceof ApiError && error.status === 404
@@ -303,7 +346,7 @@ export const authoringActions = {
     const document = state.removed.includes(path) ? null
       : state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
     if (document === null) {
-      consoleActions.log('error', '作者', `技能 ${state.skill ?? '—'} 中没有文件 ${path}`);
+      consoleActions.log('error', '作者', `${state.target?.name ?? '—'} 中没有文件 ${path}`);
       return;
     }
     record();
@@ -355,13 +398,13 @@ export const authoringActions = {
 
   // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。
   async save() {
-    const { skill, saving, removed } = get();
+    const { target, saving, removed } = get();
     const files = authoringActions.changedFiles();
-    if (!skill || saving || (!files.length && !removed.length)) return;
+    if (!target || saving || (!files.length && !removed.length)) return;
     previewController?.abort();
     set({ saving: true });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
-      if (get().skill !== skill) {
+      if (get().target !== target) {
         set({ saving: false });
         return false;
       }
@@ -375,7 +418,7 @@ export const authoringActions = {
     };
     try {
       const selection = await selectedPreview();
-      const result = await authoringApi.save(skill, {
+      const result = await authoringApi.save(target, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
       });
       if (result.compilationState === 'not-required') {
@@ -396,7 +439,7 @@ export const authoringActions = {
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
       const currentSkill = accept(result.content, outcome);
-      consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
+      consoleActions.log('info', '作者', `${target.name} 已保存并编译：${result.compilation.sourceRevision}`);
       if (currentSkill && result.preview !== null) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
         const controller = previewController = new AbortController();
@@ -426,14 +469,14 @@ export const authoringActions = {
 
   // 外部修改检测：无本地修改时直接重读，有修改时标出冲突。
   async checkExternal() {
-    const { skill, revision } = get();
-    if (!skill || !revision) return;
+    const { target, revision } = get();
+    if (!target || !revision) return;
     try {
-      const changes = await authoringApi.changes(skill, revision);
+      const changes = await authoringApi.changes(target, revision);
       if (!changes.changed) return;
       if (hasChanges()) set({ externalChange: true });
       else {
-        const snapshot = await authoringApi.read(skill);
+        const snapshot = await authoringApi.read(target);
         set({ revision: snapshot.revision, sourceRevision: null, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
         await reloadDocument();
       }
@@ -928,7 +971,7 @@ export const inputAuthoring = {
     authoringActions.edit(path, document => {
       const plan = document as JsonObject;
       const schemes = plan.Schemes as JsonObject[];
-      const source = schemes[numberOf(plan.Selected)] ?? schemes[0];
+      const source = schemes[numberOf(plan.Selected)];
       schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
       plan.Selected = schemes.length - 1;
     });
@@ -948,28 +991,30 @@ export const inputAuthoring = {
 };
 
 // 新建元素用的锚点与默认值：每个技能读一次。
-let elementCache: { skill: string; items: Promise<SkillElements> } | null = null;
+let elementCache: { key: string; items: Promise<SkillElements> } | null = null;
 export function skillElements(): Promise<SkillElements> {
-  const skill = get().skill;
-  if (!skill) return Promise.reject(new Error('没有打开的技能'));
-  if (elementCache?.skill !== skill) {
-    const items = authoringApi.elements(skill);
-    elementCache = { skill, items };
+  const target = get().target;
+  if (!target) return Promise.reject(new Error('没有打开的作者目录'));
+  const key = authoringTargetKey(target);
+  if (elementCache?.key !== key) {
+    const items = authoringApi.elements(target);
+    elementCache = { key, items };
     items.catch(() => { elementCache = null; });
   }
   return elementCache.items;
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {
-  const skill = useAuthoring(state => state.skill);
-  const [elements, setElements] = useState<{ skill: string; items: SkillElements } | null>(null);
+  const target = useAuthoring(state => state.target);
+  const key = target === null ? null : authoringTargetKey(target);
+  const [elements, setElements] = useState<{ key: string; items: SkillElements } | null>(null);
   useEffect(() => {
-    if (!enabled || !skill) return;
+    if (!enabled || key === null) return;
     let live = true;
-    skillElements().then(items => { if (live) setElements({ skill, items }); }, (error: unknown) => consoleActions.error('作者', error));
+    skillElements().then(items => { if (live) setElements({ key, items }); }, (error: unknown) => consoleActions.error('作者', error));
     return () => { live = false; };
-  }, [enabled, skill]);
-  return enabled && elements?.skill === skill ? elements.items : null;
+  }, [enabled, key]);
+  return enabled && elements?.key === key ? elements.items : null;
 }
 
 // 新建一张专属图（状态体、转移条件、Timeline 片段图）：带角色的系统锚点，锚点按默认坐标写入布局。

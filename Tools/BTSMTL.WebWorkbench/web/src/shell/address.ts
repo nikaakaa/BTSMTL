@@ -32,13 +32,14 @@ export function applyPanelAddress() {
 export function applyStateAddress() {
   const run = initial.get('run');
   const skill = initial.get('skill');
+  const scenario = initial.get('scenario');
   if (run) {
     const frame = Number(initial.get('frame') ?? '0');
     session.selectRun(run, Number.isSafeInteger(frame) && frame >= 0 ? frame : 0);
     selectionActions.select(parseSelection(initial.get('select')));
   }
-  if (skill) {
-    void authoringActions.openSkill(skill);
+  if (scenario || skill) {
+    void authoringActions.open(scenario ? { kind: 'scenario', name: scenario } : { kind: 'skill', name: skill! });
     selectionActions.select(parseSelection(initial.get('select')));
   }
   const resource = initial.get('resource');
@@ -57,12 +58,12 @@ function write() {
   timer = null;
   const state = getState();
   const params = new URLSearchParams();
-  const skill = useAuthoring.getState().skill;
+  const target = useAuthoring.getState().target;
   if (state.runId) {
     params.set('run', state.runId);
     params.set('frame', String(state.frameIndex));
   }
-  if (skill) params.set('skill', skill);
+  if (target) params.set(target.kind, target.name);
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);
@@ -83,5 +84,5 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 useAuthoring.subscribe((state, previous) => {
-  if (writing && state.skill !== previous.skill) timer ??= setTimeout(write, writeDelay);
+  if (writing && state.target !== previous.target) timer ??= setTimeout(write, writeDelay);
 });

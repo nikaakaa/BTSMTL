@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, type BlackboardItem, type ComputedField, type DescribedPort, type FieldMetadata, type IdentityItem,
+  authoringApi, authoringTargetKey, type AuthoringTarget, type BlackboardItem, type ComputedField, type DescribedPort, type FieldMetadata, type IdentityItem,
   type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
@@ -34,12 +34,12 @@ const memberLabel = (member: string) => member.replace(/^m_|^_/, '');
 const identityCache = new Map<string, Promise<IdentityItem[]>>();
 const blackboardCache = new Map<string, Promise<BlackboardItem[]>>();
 
-function useCached<T>(cache: Map<string, Promise<T[]>>, load: (skill: string) => Promise<T[]>, enabled: boolean): T[] {
-  const { skill, revision } = useAuthoring(useShallow(state => ({ skill: state.skill, revision: state.revision })));
+function useCached<T>(cache: Map<string, Promise<T[]>>, load: (target: AuthoringTarget) => Promise<T[]>, enabled: boolean): T[] {
+  const { skill, revision } = useAuthoring(useShallow(state => ({ skill: state.target, revision: state.revision })));
   const [items, setItems] = useState<T[]>([]);
   useEffect(() => {
     if (!skill || !enabled) return;
-    const key = `${skill}@${revision}`;
+    const key = `${authoringTargetKey(skill)}@${revision}`;
     if (!cache.has(key)) cache.set(key, load(skill).catch(error => { cache.delete(key); throw error; }));
     let live = true;
     cache.get(key)!.then(result => { if (live) setItems(result); }, () => undefined);
@@ -48,7 +48,10 @@ function useCached<T>(cache: Map<string, Promise<T[]>>, load: (skill: string) =>
   return items;
 }
 
-const useIdentities = () => useCached(identityCache, authoringApi.identities, true);
+function useIdentities() {
+  const skill = useAuthoring(state => state.target?.kind === 'skill');
+  return useCached(identityCache, authoringApi.identities, skill);
+}
 
 function IdentityList({ id }: { id: string }) {
   const identities = useIdentities();
@@ -209,7 +212,7 @@ interface DescribeIssue {
 const configurationOf = (node: JsonObject): JsonObject =>
   Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
 
-function useDescription(skill: string | null, graphId: string, node: JsonObject | null) {
+function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
@@ -257,7 +260,7 @@ function shapeAt(item: StoredField, path: string[]): StorageShape | null {
 }
 
 export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: string }) {
-  const skill = useAuthoring(state => state.skill);
+  const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
   const { description, issues } = useDescription(skill, graphId, node);
@@ -314,7 +317,7 @@ export const isState = (node: JsonObject) => typeof node.type === 'string' && /^
 // ── 转移：Payload 按原 C# 存储形状编辑；条件图由检查器单独新建与移除 ──
 
 export function TransitionFields({ graphId, connectionId, shape }: { graphId: string; connectionId: string; shape: StorageShape }) {
-  const skill = useAuthoring(state => state.skill);
+  const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
     .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === connectionId) ?? null;
@@ -334,7 +337,7 @@ export function TransitionFields({ graphId, connectionId, shape }: { graphId: st
 // ── 黑板：每个变量一组，原生变量（名称、类型、默认值）与 BTSMTL 声明（作用域、生命周期、分类、输入投影）一起编辑 ──
 
 export function BlackboardFields({ graphId, shape, editable }: { graphId: string; shape: StorageShape | null; editable: boolean }) {
-  const skill = useAuthoring(state => state.skill);
+  const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const [draft, setDraft] = useState({ name: '', varType: 'Single' });
   const graph = document as JsonObject | null;
@@ -444,7 +447,7 @@ function useElementShape(kind: 'tracks' | 'clips', contract: JsonValue | undefin
 const memberShape = (shape: StorageShape | null, member: string) => shape?.members?.find(item => item.member === member) ?? null;
 
 export function TrackFields({ documentId, trackId }: { documentId: string; trackId: string }) {
-  const skill = useAuthoring(state => state.skill);
+  const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
   const shape = useElementShape('tracks', track?.ContractKind);
@@ -550,7 +553,7 @@ const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_St
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
 export function ClipFields({ documentId, clipId }: { documentId: string; clipId: string }) {
-  const skill = useAuthoring(state => state.skill);
+  const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;

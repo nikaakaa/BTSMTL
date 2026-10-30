@@ -1,11 +1,9 @@
 import { NumberField } from '@base-ui/react/number-field';
-import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, getState, inputRootKey, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
 import { Button, MenuButton, NumberInput, Select, Tip, type MenuEntry } from '../ui/controls';
-import { ErrorLine } from '../ui/ErrorLine';
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
 
@@ -17,7 +15,6 @@ export function Toolbar() {
         <ContentChoice />
         <PreviewModeChoice />
         <InputChoice />
-        <LocalInputs />
         <ArchiveInputChoice />
         <RunChoice />
         <RunMenu />
@@ -59,54 +56,6 @@ function PreviewModeChoice() {
     options={modes.map(mode => ({ value: mode.id, label: <span title={mode.reason}>{mode.displayName}</span>, disabled: !mode.available }))}
     tip={modes.map(mode => `${mode.displayName}：${mode.reason}`).join('\n')}
     onChange={mode => contentActions.selectPreviewMode(mode)} />;
-}
-
-function LocalInputs() {
-  const local = useWorkbench(state => state.inputSource?.kind === 'local');
-  return local ? <LocalInputChoices /> : null;
-}
-
-function LocalInputChoices() {
-  const { scene, catalog, choices, lastSdkFrame } = useWorkbench(useShallow(state => ({
-    scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
-    choices: state.inputChoices, lastSdkFrame: state.localLastSdkFrame,
-  })));
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<number | null>(null);
-  useEffect(() => {
-    if (!scene) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    void session.loadInputs(controller.signal).then(entryId => {
-      if (controller.signal.aborted) return;
-      setError(entryId);
-      setLoading(false);
-    });
-    return () => controller.abort();
-  }, [scene?.path, scene?.revision]);
-  if (!scene) return <Button disabled tip="先选择内容">本地输入</Button>;
-  if (error !== null) return <ErrorLine text="输入方案读取失败" entryId={error} />;
-  if (!catalog) return <Button disabled tip={loading ? '正在读取当前场景的角色与正式输入方案' : '尚未取得输入方案'}>读取输入</Button>;
-  return <>
-    {catalog.players.map(player => {
-      const selected = choices.find(choice => choice.actorId === player.actorId);
-      const options = player.localPlans.flatMap(plan => plan.schemes.map(scheme => ({
-        value: JSON.stringify([plan.path, scheme.index]), label: `${plan.name} / ${scheme.name}`,
-        choice: { actorId: player.actorId, inputPlanRoot: plan.path, inputPlanRevision: plan.revision, schemeIndex: scheme.index },
-        duration: scheme.rangeEndSeconds,
-      })));
-      const current = selected ? options.find(option => option.choice.inputPlanRoot === selected.inputPlanRoot &&
-        option.choice.schemeIndex === selected.schemeIndex) : null;
-      return <Select key={player.actorId} label={`${player.actorId} 输入方案`} placeholder={`${player.actorId} 输入方案`}
-        value={current?.value ?? null} options={options} disabled={!options.length}
-        tip={current ? `${player.actorId} · 方案范围 ${current.duration} 秒；${catalog.localPlanRangeBasis}`
-          : options.length ? player.actorId : `${player.actorId} 没有可用方案`}
-        onChange={value => contentActions.selectInputPlan(options.find(option => option.value === value)!.choice)} />;
-    })}
-    <Tip content={catalog.localPlanRangeBasis}><span>结束 SDK</span></Tip>
-    <NumberInput label="结束 SDK 帧" value={lastSdkFrame} min={1} step={1} onChange={contentActions.setLocalLastSdkFrame} />
-  </>;
 }
 
 function ArchiveInputChoice() {

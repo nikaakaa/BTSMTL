@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
@@ -99,8 +99,9 @@ type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
 export function GraphPanel() {
   const graphs = useWorkbench(state => state.graphs);
-  const opened = useAuthoring(useShallow(state => ({ skill: state.skill, loading: state.loading, error: state.documentError })));
-  if (!opened.skill) return <ReportEmpty text="在 Timeline 选择一个技能" />;
+  const opened = useAuthoring(useShallow(state => ({ target: state.target, loading: state.loading, error: state.documentError })));
+  if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
+  if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
   if (opened.loading || !graphs) return <Empty text="读取中" />;
   if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   return <GraphView graphs={graphs} />;
@@ -235,9 +236,10 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
 }
 
 // 添加节点的类型选择：照 NodeCanvas 的右键节点浏览器，搜索宿主按实际 C# 类型发现的全部可创建类型。
-let typeCatalog: { skill: string; items: Promise<NodeTypeInfo[]> } | null = null;
-function loadTypes(skill: string) {
-  if (typeCatalog?.skill !== skill) {
+let typeCatalog: { key: string; items: Promise<NodeTypeInfo[]> } | null = null;
+function loadTypes(skill: AuthoringTarget) {
+  const key = authoringTargetKey(skill);
+  if (typeCatalog?.key !== key) {
     const items = (async () => {
       const result: NodeTypeInfo[] = [];
       for (let offset = 0; ; offset += 128) {
@@ -247,7 +249,7 @@ function loadTypes(skill: string) {
         if (!page.hasMore) return result;
       }
     })();
-    typeCatalog = { skill, items };
+    typeCatalog = { key, items };
     items.catch(() => { typeCatalog = null; });
   }
   return typeCatalog.items;
@@ -256,7 +258,7 @@ function loadTypes(skill: string) {
 function NodeTypePicker({ graph, at, onClose }: {
   graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onClose(): void;
 }) {
-  const skill = useAuthoring(state => state.skill)!;
+  const skill = useAuthoring(state => state.target)!;
   const [types, setTypes] = useState<NodeTypeInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -313,7 +315,7 @@ function NodeTypePicker({ graph, at, onClose }: {
 
 // 黑板浮层：读打开技能里这张图的文件；作者模式可增删、改名、改默认值与声明。
 function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose(): void }) {
-  const author = useAuthoring(useShallow(state => ({ own: !!state.skill && state.programId === graph.programId, editable: state.author })));
+  const author = useAuthoring(useShallow(state => ({ own: state.target?.kind === 'skill' && state.programId === graph.programId, editable: state.author })));
   const elements = useSkillElements(author.own && author.editable);
   return (
     <div className={styles.blackboard}>
@@ -358,8 +360,8 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
   const { graph, path } = props;
   const author = useAuthoring(useShallow(state => ({
-    on: state.author && !!state.skill && state.programId === graph.programId, edited: state.edited, ports: state.addedPorts,
-    own: !!state.skill && state.programId === graph.programId,
+    on: state.author && state.target?.kind === 'skill' && state.programId === graph.programId, edited: state.edited, ports: state.addedPorts,
+    own: state.target?.kind === 'skill' && state.programId === graph.programId,
   })));
   const editable = author.on;
   const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,
@@ -587,7 +589,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   // 添加状态：默认配置取宿主对状态类型的描述。
   const addState = async (position: { x: number; y: number }) => {
     try {
-      const skill = useAuthoring.getState().skill!;
+      const skill = useAuthoring.getState().target!;
       const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
       const elementsNow = elements ?? await skillElements();

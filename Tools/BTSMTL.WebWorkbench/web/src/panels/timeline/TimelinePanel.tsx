@@ -15,7 +15,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
@@ -119,21 +119,21 @@ export function TimelinePanel() {
 
 // 未打开技能时只有技能选择；打开后与运行视图同一窗口，固定为单个 Timeline。
 function DocumentTimeline() {
-  const { skills, skill, loading, available, reason, error } = useAuthoring(useShallow(state => ({
-    skills: state.skills, skill: state.skill, loading: state.loading, available: state.available,
+  const { skills, target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
+    skills: state.skills, target: state.target, loading: state.loading, available: state.available,
     reason: state.unavailableReason, error: state.documentError,
   })));
   const count = useWorkbench(state => state.timelines.length);
   useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
   if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
-  if (!skill || loading || !count) {
+  if (!target || loading || !count) {
     return (
       <div className={styles.window}>
         <PanelBar wrap>
           <SkillPicker />
         </PanelBar>
-        {loading ? <Empty text="正在读取技能" />
-          : <ReportEmpty text={error ?? (skill ? '此技能没有 Timeline' : '选择要编辑的技能')} />}
+        {loading ? <Empty text="正在读取内容" />
+          : <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '选择要编辑的内容')} />}
       </div>
     );
   }
@@ -146,11 +146,12 @@ function ReportEmpty({ text }: { text: string }) {
 }
 
 function SkillPicker() {
-  const { skills, skill } = useAuthoring(useShallow(state => ({ skills: state.skills, skill: state.skill })));
+  const { skills, target } = useAuthoring(useShallow(state => ({ skills: state.skills, target: state.target })));
+  if (target?.kind === 'scenario') return <span className={styles.subject}>{target.name}</span>;
   return (
     <span className={styles.subject}>
-      <Select label="技能" placeholder="选择技能" value={skill} options={(skills ?? []).map(item => ({ value: item, label: item }))}
-        disabled={!skills?.length} tip="技能文件夹；不需要先运行" onChange={value => void authoringActions.openSkill(value)} />
+      <Select label="技能" placeholder="选择技能" value={target?.name ?? null} options={(skills ?? []).map(item => ({ value: item, label: item }))}
+        disabled={!skills?.length} tip="技能文件夹；不需要先运行" onChange={value => void authoringActions.open({ kind: 'skill', name: value })} />
     </span>
   );
 }
@@ -163,14 +164,22 @@ function fitRange(bounds: Range): Range {
 // frames 为 null 时显示打开的技能文档：范围为所看 Timeline 的长度，按编译帧率取整。
 function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
+  const schemes = useInputSchemes();
   const documentLength = useWorkbench(state => {
     if (frames) return 0;
     const timeline = state.timelines.find(item => item.documentId === params.focus) ?? state.timelines[0];
-    return timeline ? timelineLength(timeline) : 0;
+    return timeline ? Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0) : 0;
   });
   const tickRate = useAuthoring(state => state.tickRate);
+  const scenario = useAuthoring(state => state.target?.kind === 'scenario');
+  const inputRate = useWorkbench(state => {
+    const timelineId = params.focus ?? (state.timelines.length === 1 ? state.timelines[0].documentId : null);
+    const scheme = schemes.find(item => item.documentId === timelineId);
+    return scheme?.scene === state.scenePath && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
+      ? state.inputCatalog.tickRate : null;
+  });
   const sdkTickRate = useWorkbench(state => state.archiveMetadata?.sdkTickRate ?? null);
-  const rate = frames ? sdkTickRate : tickRate;
+  const rate = frames ? sdkTickRate : scenario ? inputRate : tickRate;
   const frameStep = rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
@@ -223,7 +232,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
 // 拖动框选中的片段时，框选的同一 Timeline 片段整体平移。
 function ClipEditing({ step }: { step: number }) {
   const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
-  const elements = useSkillElements(useAuthoring(state => state.author && !!state.skill));
+  const elements = useSkillElements(useAuthoring(state => state.author && state.target !== null));
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
@@ -334,6 +343,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { timelines: runTimelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
@@ -341,7 +351,10 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => state.edited);
   const timelines = useMemo(() => applyTimelineEdits(runTimelines, edited), [runTimelines, edited]);
-  const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines), [frames, timelines, graphs]);
+  const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines).map(segment => {
+    const scheme = schemes.find(item => item.documentId === segment.documentId);
+    return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds) } : segment;
+  }), [frames, timelines, graphs, schemes]);
   const graphNames = useMemo(() => new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
     .map(graph => [graph.id, graph.displayName!])), [graphs]);
 
@@ -371,7 +384,8 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       }
     return [...result.values()];
   }, [playbacks, focused?.documentId, binding]);
-  const observed = observations.find(observation => observationKey(observation) === params.call) ?? observations[0] ?? null;
+  const observed = observations.find(observation => observationKey(observation) === params.call)
+    ?? (observations.length === 1 ? observations[0] : null);
   const selectCall = (value: string) => {
     setParams({ call: value });
     const selection = getState().selection;
@@ -394,7 +408,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
   const request = useWorkbench(state => state.timelineRequest);
-  const handled = useRef(request?.sequence ?? 0);
+  const handled = useRef(0);
   useEffect(() => {
     if (!request || request.sequence === handled.current) return;
     handled.current = request.sequence;
@@ -483,7 +497,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back, timelines: null,
   } : {
     options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,
-    timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({ value: segment.documentId, label: segmentTitle(segment) })), select: enter },
+    timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({
+      value: segment.documentId, label: schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segmentTitle(segment),
+    })), select: enter },
   };
   const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
     : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed }, [frames, focused?.documentId, observed]);
@@ -534,17 +550,17 @@ interface Subject {
 // 编辑行右侧：照 Timeline Editor 的未保存提示与保存（只在有未保存修改时出现），作者／运行观察切换。
 function AuthoringControls() {
   const state = useAuthoring(useShallow(current => ({
-    available: current.available, reason: current.unavailableReason, author: current.author, skill: current.skill,
+    available: current.available, reason: current.unavailableReason, author: current.author, target: current.target,
     loading: current.loading, edited: current.edited, removed: current.removed, externalChange: current.externalChange,
     saving: current.saving, lastSave: current.lastSave, undoDepth: current.undoDepth, redoDepth: current.redoDepth,
   })));
   const dirty = Object.keys(state.edited).length + state.removed.length;
   // 作者模式下定时检查技能文件是否在别处（Unity、AI、编辑器）被修改。
   useEffect(() => {
-    if (!state.author || !state.skill) return;
+    if (!state.author || !state.target) return;
     const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
     return () => clearInterval(timer);
-  }, [state.author, state.skill]);
+  }, [state.author, state.target]);
   const enter = async () => {
     if (state.available === null) await authoringActions.probe();
     if (!useAuthoring.getState().available) {
@@ -555,7 +571,7 @@ function AuthoringControls() {
   };
   return (
     <>
-      {state.author && state.skill && (
+      {state.author && state.target && (
         <>
           <Button variant="ghost" aria-label="撤销" disabled={!state.undoDepth} tip="撤销（Ctrl+Z）" onClick={() => authoringActions.undo()}>↶</Button>
           <Button variant="ghost" aria-label="重做" disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）" onClick={() => authoringActions.redo()}>↷</Button>
@@ -578,7 +594,7 @@ function AuthoringControls() {
       )}
       <Button variant="ghost" pressed={state.author} disabled={state.available === false}
         tip={state.available === false ? state.reason ?? '作者接口不可用'
-          : state.author ? (state.loading ? '正在读取技能文件' : `编辑技能 ${state.skill ?? '—'}：拖动片段改时间，拖两端改起止`)
+          : state.author ? (state.loading ? '正在读取内容' : `编辑 ${state.target?.name ?? '—'}：拖动片段改时间，拖两端改起止`)
             : '进入作者模式，编辑当前技能'}
         onClick={() => void enter()}>作者</Button>
       <Button variant="ghost" pressed={!state.author} tip="只观察已确认的运行记录" onClick={() => authoringActions.setAuthor(false)}>运行观察</Button>
@@ -589,7 +605,7 @@ function AuthoringControls() {
 // 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行播放、全局秒数与结论；下行逐帧、适配与设置。
 // 作者模式在所看的单个 Timeline 上添加轨道：种类与默认值取原 C# 轨道类型。
 function AddTrack({ documentId }: { documentId: string | null }) {
-  const author = useAuthoring(state => state.author && !!state.skill);
+  const author = useAuthoring(state => state.author && state.target !== null);
   const elements = useSkillElements(author && documentId !== null);
   if (!author || !documentId) return null;
   // 每种轨道按可用执行域各列一项。
@@ -1026,7 +1042,7 @@ function pasteAfterSelection() {
 // 作者模式右键轨道（照 Timeline Editor 轨道与片段菜单）：在点击处添加片段、标记或粘贴，
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
 function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void): MenuEntry[] {
-  const author = useAuthoring(state => state.author && !!state.skill);
+  const author = useAuthoring(state => state.author && state.target !== null);
   const version = useAuthoring(state => state.version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
@@ -1094,7 +1110,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
   const { range, getValueFromScreenX } = useTimelineContext();
   const at = useRef(0);
   const [naming, setNaming] = useState(false);
-  const author = useAuthoring(state => state.author && !!state.skill);
+  const author = useAuthoring(state => state.author && state.target !== null);
   const menu = useTrackMenu(row, at, () => setNaming(true));
   const documentId = row.timeline.documentId;
   const step = useContext(SnapContext) ?? 1 / 60;
@@ -1188,7 +1204,7 @@ function Positioned({ start, end, className, children, style, title }: {
 const Clip = memo(function Clip({ clip, kind, next, documentId, trackId }: {
   clip: ClipInstance; kind: TrackKind; next: number; documentId: string; trackId: string;
 }) {
-  const author = useAuthoring(state => state.author && !!state.skill);
+  const author = useAuthoring(state => state.author && state.target !== null);
   const edit = useMemo<ClipEdit>(() => ({ documentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, trackId, clip]);
   const changed = useAuthoring(state => author && !!state.edited[timelinePath(documentId)]);

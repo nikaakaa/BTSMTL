@@ -34,10 +34,10 @@ const kindNames: Record<Selection['kind'], string> = { node: '节点', edge: '�
 export function InspectorPanel() {
   const [params, setParams] = usePanelParams<Params>({ locked: null });
   const selection = useWorkbench(state => state.selection);
-  const skill = useAuthoring(state => state.skill);
+  const target = useAuthoring(state => state.target);
   const shown = params.locked ?? selection;
-  const content = !skill ? <Empty text="选择一个技能" />
-      : shown ? <Content key={`${skill}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} /> : <SkillSummary />;
+  const content = !target ? <Empty text="选择要编辑的内容" />
+      : shown ? <Content key={`${target.kind}/${target.name}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} /> : <SkillSummary />;
   return (
     <div className={styles.root}>
       <PanelBar>
@@ -206,7 +206,7 @@ function RunSummary() {
 // 打开技能、没有选中对象时：技能的预览输入方案（作者模式可编辑）。
 function SkillSummary() {
   const { skill, plans, editable } = useAuthoring(useShallow(state => ({
-    skill: state.skill, editable: state.author,
+    skill: state.target?.name ?? null, editable: state.author,
     plans: [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])]
       .filter(path => path.startsWith('inputs/') && !state.removed.includes(path)).sort().join('\n'),
   })));
@@ -243,7 +243,7 @@ function PlayerStatus() {
 // 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
 function useAuthorGraphs() {
   return useAuthoring(useShallow(state => ({
-    program: state.author && state.skill ? state.programId : null, edited: state.edited, ports: state.addedPorts,
+    program: state.author && state.target?.kind === 'skill' ? state.programId : null, edited: state.edited, ports: state.addedPorts,
   })));
 }
 
@@ -445,7 +445,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
-  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
+  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const instances = useMemo(() => {
@@ -561,7 +561,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
 function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
-  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
+  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;
