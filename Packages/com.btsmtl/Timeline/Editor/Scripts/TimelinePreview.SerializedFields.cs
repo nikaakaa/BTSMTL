@@ -39,6 +39,9 @@ namespace BTSMTL.Timeline.Editor
         public Vector3 TargetPosition;
         [GraphAuthoringField(nameof(TargetEuler), GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 TargetEuler;
+        // 打开时播放器在开局前把目标角色放到起始位置与朝向；关闭时沿用场景原出生位姿。
+        [GraphAuthoringField(nameof(HasStart), GraphAuthoringFieldValueKind.Boolean)]
+        public bool HasStart;
         [GraphAuthoringField(nameof(StartPosition), GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 StartPosition;
         [GraphAuthoringField(nameof(StartYaw), GraphAuthoringFieldValueKind.Float)]
