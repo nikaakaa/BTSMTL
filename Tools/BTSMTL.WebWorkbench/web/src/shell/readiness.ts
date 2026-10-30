@@ -9,7 +9,6 @@ const rendered = new Map<string, { key: string; detail?: string }>();
 // 按当前帧绘制、会报告已绘制的面板类型。
 const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'viewport', 'player']);
 let addressPanel: PanelType | null = null;
-let currentKey: string | null = null;
 let scheduled = false;
 
 const root = () => document.documentElement.dataset;
@@ -43,10 +42,6 @@ function evaluate() {
   const state = getState();
   const key = frameKey(state.runId, state.frameIndex);
   delete root().previewImageReady;
-  if (key !== currentKey) {
-    currentKey = key;
-    delete root().previewImageReady;
-  }
   if (!key || !state.summary || state.frameKey !== key || !state.archiveFrame) return;
   const visible = visiblePanels();
   const required = visible.filter(id => {
