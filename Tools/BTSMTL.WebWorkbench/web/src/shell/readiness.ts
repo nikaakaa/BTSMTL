@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { getState, useWorkbench } from '../state/store';
 import { visiblePanels } from './layout';
+import { usePanelId, usePanelVisible, usePanelWindow } from './panel';
 import { panelTypeOf, type PanelType } from './panelTypes';
 
 // 截图就绪标记（D8）：Timeline、节点图与地址指定的面板都按当前帧实际绘制完成后一次写入；
@@ -32,6 +34,30 @@ export function frameKey(runId: string | null, frameIndex: number): string | nul
   return runId ? `${runId}:${frameIndex}` : null;
 }
 
+export function useFrameReport(dependency: unknown) {
+  const panelId = usePanelId();
+  const visible = usePanelVisible();
+  const panelWindow = usePanelWindow();
+  useEffect(() => {
+    if (!visible) return;
+    let handle = 0;
+    const report = () => {
+      panelWindow.cancelAnimationFrame(handle);
+      handle = panelWindow.requestAnimationFrame(() => {
+        const state = getState();
+        const key = frameKey(state.runId, state.frameIndex);
+        if (key) reportRendered(panelId, key);
+      });
+    };
+    report();
+    const unsubscribe = useWorkbench.subscribe((state, previous) => {
+      if (state.frame !== previous.frame || state.frameKey !== previous.frameKey || state.frameIndex !== previous.frameIndex) report();
+    });
+    return () => { unsubscribe(); panelWindow.cancelAnimationFrame(handle); };
+  }, [visible, panelWindow, panelId, dependency]);
+  useEffect(() => () => clearRendered(panelId), [panelId]);
+}
+
 export function schedule() {
   if (scheduled) return;
   scheduled = true;
@@ -41,8 +67,9 @@ export function schedule() {
 function evaluate() {
   const state = getState();
   const key = frameKey(state.runId, state.frameIndex);
-  delete root().previewImageReady;
-  if (!key || !state.summary || state.frameKey !== key || !state.archiveFrame) return;
+  const data = root();
+  for (const name of Object.keys(data)) if (name.startsWith('preview')) delete data[name];
+  if (!key || !state.summary || state.frameKey !== key || !state.frame || !state.archiveFrame || !state.archiveMetadata) return;
   const visible = visiblePanels();
   const required = visible.filter(id => {
     const type = panelTypeOf(id);
@@ -57,29 +84,24 @@ function evaluate() {
   if (required.some(id => rendered.get(id)?.key !== key)) return;
   const viewport = visible.map(id => panelTypeOf(id) === 'viewport' ? rendered.get(id) : undefined)
     .find(entry => entry?.key === key && entry.detail);
-  const data = root();
   data.previewRun = state.summary.runId;
-  data.previewFrame = state.frame?.hostFrame ?? state.hostFrame ?? '';
+  data.previewFrame = state.archiveFrame.logic.source.sdkFrame;
   data.previewFrameIndex = String(state.frameIndex);
-  data.previewConsistency = state.frame?.consistency?.value ?? state.archiveFrame?.logic?.checksum ?? '';
+  data.previewConsistency = state.archiveFrame.logic.checksum;
   data.previewContent = state.summary.contentRevision;
   data.previewPlayerBuild = state.summary.playerBuildId;
   data.previewSceneRevision = state.summary.sceneRevision;
   data.previewInputSource = state.summary.inputSource;
-  if (state.summary.inputRevision === null) delete data.previewInputRevision;
-  else data.previewInputRevision = state.summary.inputRevision;
-  if (state.archiveMetadata) data.previewInputMode = state.archiveMetadata.inputMode;
-  else delete data.previewInputMode;
-  if (state.archiveMetadata) data.previewArchiveJob = state.archiveMetadata.jobId;
-  else delete data.previewArchiveJob;
+  if (state.summary.inputRevision !== null) data.previewInputRevision = state.summary.inputRevision;
+  data.previewInputMode = state.archiveMetadata.inputMode;
+  data.previewArchiveJob = state.archiveMetadata.jobId;
   if (viewport?.detail) data.previewRendered = viewport.detail;
-  else delete data.previewRendered;
   data.previewImageReady = 'true';
 }
 
 useWorkbench.subscribe((state, previous) => {
   if (state.generation !== previous.generation) rendered.clear();
-  if (state.runId !== previous.runId || state.frameIndex !== previous.frameIndex || state.frameKey !== previous.frameKey ||
+  if (state.runId !== previous.runId || state.frameIndex !== previous.frameIndex || state.frameKey !== previous.frameKey || state.frame !== previous.frame ||
     state.generation !== previous.generation || state.archiveFrame !== previous.archiveFrame ||
     state.openPanels !== previous.openPanels || state.activePanel !== previous.activePanel) schedule();
 });

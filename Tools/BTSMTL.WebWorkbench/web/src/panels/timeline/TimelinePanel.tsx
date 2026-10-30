@@ -10,7 +10,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
-import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
+import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
@@ -114,18 +114,24 @@ function DocumentTimeline() {
   })));
   const count = useWorkbench(state => state.timelines.length);
   useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
-  if (available === false) return <Empty text={reason ?? '作者接口不可用'} />;
+  if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
   if (!skill || loading || !count) {
     return (
       <div className={styles.window}>
         <PanelBar wrap>
           <SkillPicker />
         </PanelBar>
-        <Empty text={loading ? '正在读取技能' : error ?? (skill ? '此技能没有 Timeline' : '选择一个技能，直接编辑它的 JSON')} />
+        {loading ? <Empty text="正在读取技能" />
+          : <ReportEmpty text={error ?? (skill ? '此技能没有 Timeline' : '选择一个技能，直接编辑它的 JSON')} />}
       </div>
     );
   }
   return <TimelineWindow frames={null} />;
+}
+
+function ReportEmpty({ text }: { text: string }) {
+  useFrameReport(text);
+  return <Empty text={text} />;
 }
 
 function SkillPicker() {

@@ -17,8 +17,8 @@ import {
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { openPanel } from '../../shell/layout';
-import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
-import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
+import { usePanelParams } from '../../shell/panel';
+import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
   isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
@@ -101,34 +101,9 @@ export function GraphPanel() {
   const graphs = useWorkbench(state => state.graphs);
   const opened = useAuthoring(useShallow(state => ({ skill: state.skill, loading: state.loading, error: state.documentError })));
   if (!opened.skill) return <ReportEmpty text="在 Timeline 选择一个技能" />;
-  if (opened.loading || !graphs) return <ReportEmpty text="读取中" />;
+  if (opened.loading || !graphs) return <Empty text="读取中" />;
   if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   return <GraphView graphs={graphs} />;
-}
-
-// 当前帧绘制后报告就绪；空状态也算已按当前帧绘制。
-function useFrameReport(dependency: unknown) {
-  const panelId = usePanelId();
-  const visible = usePanelVisible();
-  const panelWindow = usePanelWindow();
-  useEffect(() => {
-    if (!visible) return;
-    let handle = 0;
-    const report = () => {
-      panelWindow.cancelAnimationFrame(handle);
-      handle = panelWindow.requestAnimationFrame(() => {
-        const state = getState();
-        const key = frameKey(state.runId, state.frameIndex);
-        if (key) reportRendered(panelId, key);
-      });
-    };
-    report();
-    const unsubscribe = useWorkbench.subscribe((state, previous) => {
-      if (state.frameKey !== previous.frameKey || state.frameIndex !== previous.frameIndex) report();
-    });
-    return () => { unsubscribe(); panelWindow.cancelAnimationFrame(handle); };
-  }, [visible, panelWindow, panelId, dependency]);
-  useEffect(() => () => clearRendered(panelId), [panelId]);
 }
 
 function ReportEmpty({ text }: { text: string }) {
