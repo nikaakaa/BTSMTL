@@ -243,7 +243,6 @@ export const authoringActions = {
       return;
     }
     loadController?.abort();
-    previewController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
@@ -283,7 +282,6 @@ export const authoringActions = {
       return;
     }
     loadController?.abort();
-    previewController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
     set({ programId, skill: null, revision: null, files: {}, edited: {}, removed: [], loading: true, externalChange: false });

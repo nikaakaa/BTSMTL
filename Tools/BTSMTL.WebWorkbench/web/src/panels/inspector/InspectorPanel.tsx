@@ -458,7 +458,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
           onOpen={() => openTimeline(timeline.documentId)} />
         {graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-          : <Value label="节点图" mono={false} value={clip.graphId ? '本次运行没有这张图' : '无'} />}
+          : <Value label="节点图" mono={false} value={clip.graphId ? '当前技能没有这张图' : '无'} />}
         <Value label="合同" value={clip.contract} />
         {!editable && <Value label="起点" value={clip.startSeconds.toFixed(3)} />}
         {!editable && <Value label="终点" value={clip.endSeconds.toFixed(3)} />}
@@ -604,7 +604,7 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
       <Fold title={clip ? '按住段' : '输入标记'} kind={kind} defaultOpen>
         {graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-          : <Value label="节点图" mono={false} value="本次运行没有这张图" />}
+          : <Value label="节点图" mono={false} value="当前技能没有这张图" />}
         <Link label="跳到" text={`${at.toFixed(3)} s`} kind={kind} tip="游标跳到这里"
           onOpen={() => void transport.seekTime(at)} />
         {clip ? (
