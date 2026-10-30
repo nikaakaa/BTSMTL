@@ -14,6 +14,11 @@ namespace BTSMTL.Timeline.Editor
     {
         [GraphAuthoringField(nameof(Owner), GraphAuthoringFieldValueKind.String)]
         public string Owner;
+        // 场景方案不属于技能或独立 Timeline（Owner、Timeline 为空），由场景包与其中的目标角色确定运行对象。
+        [GraphAuthoringField(nameof(Scene), GraphAuthoringFieldValueKind.String)]
+        public string Scene;
+        [GraphAuthoringField(nameof(Actor), GraphAuthoringFieldValueKind.String)]
+        public string Actor;
         [GraphAuthoringField(nameof(Timeline), GraphAuthoringFieldValueKind.String)]
         public string Timeline;
         [GraphAuthoringField(nameof(Schemes), GraphAuthoringFieldValueKind.Object)]
