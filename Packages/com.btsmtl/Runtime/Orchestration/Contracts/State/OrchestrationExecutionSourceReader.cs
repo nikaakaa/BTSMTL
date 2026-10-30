@@ -11,8 +11,8 @@ namespace BTSMTL.Orchestration
         readonly int m_CandidateRootFrameSlot;
         readonly int m_CandidateProgramIndex;
         readonly int m_SourceProgramIndex;
-        readonly OrchestrationProgramStorageLayout m_CandidateStorage;
-        readonly OrchestrationProgramStorageLayout m_SourceStorage;
+        readonly OrchestrationProgramStorageView m_CandidateStorage;
+        readonly OrchestrationProgramStorageView m_SourceStorage;
 
         internal OrchestrationExecutionSourceReader(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
             int frameSlot, int programIndex, bool hasSource, OrchestrationExecutionSource<TValue> source)
@@ -23,11 +23,11 @@ namespace BTSMTL.Orchestration
             m_Source = source;
             m_CandidateRootFrameSlot = frameSlot;
             m_CandidateProgramIndex = programIndex;
-            m_CandidateStorage = frames.Plan.Programs.Span[programIndex].Storage;
+            m_CandidateStorage = frames.Plan.ProgramStorage(programIndex);
             m_SourceProgramIndex = hasSource
                 ? source.Frames.Plan.ProgramIndex(source.Header.SkillContentId) : -1;
             m_SourceStorage = hasSource
-                ? source.Frames.Plan.Programs.Span[m_SourceProgramIndex].Storage : null;
+                ? source.Frames.Plan.ProgramStorage(m_SourceProgramIndex) : default;
         }
 
         internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
@@ -61,7 +61,7 @@ namespace BTSMTL.Orchestration
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             return ref frames.Payload<OrchestrationBlackboardMetadata>(owner.Index,
                 OrchestrationStateSegmentRole.PrivateMetadata, ProgramIndex(owner))[
-                Storage(owner).Values.Span[valueSlot].MetadataIndex];
+                Storage(owner).Values[valueSlot].MetadataIndex];
         }
 
         public ref readonly OrchestrationOperationState ReadOperation(int operationIndex, int ownerOperationIndex)
@@ -69,7 +69,7 @@ namespace BTSMTL.Orchestration
             FrameAddress address = Owner(ownerOperationIndex);
             return ref Frames(address).Payload<OrchestrationOperationState>(address.Index,
                 OrchestrationStateSegmentRole.Operations, ProgramIndex(address))[
-                Storage(address).OperationIndices.Span[operationIndex]];
+                Storage(address).OperationIndices[operationIndex]];
         }
 
         public ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int ownerOperationIndex)
@@ -83,7 +83,7 @@ namespace BTSMTL.Orchestration
             FrameAddress owner = Owner(ownerOperationIndex);
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             return ref frames.Payload<TValue>(owner.Index, OrchestrationStateSegmentRole.SavedOutputs,
-                ProgramIndex(owner))[Storage(owner).Values.Span[valueSlot].SavedOutputIndex];
+                ProgramIndex(owner))[Storage(owner).Values[valueSlot].SavedOutputIndex];
         }
 
         public int OwnerFrameIndex(int ownerOperationIndex) => Owner(ownerOperationIndex).Index;
@@ -109,7 +109,7 @@ namespace BTSMTL.Orchestration
         int ProgramIndex(FrameAddress address) =>
             address.Source ? m_SourceProgramIndex : m_CandidateProgramIndex;
 
-        OrchestrationProgramStorageLayout Storage(FrameAddress address) =>
+        OrchestrationProgramStorageView Storage(FrameAddress address) =>
             address.Source ? m_SourceStorage : m_CandidateStorage;
 
         FrameAddress Owner(int ownerOperationIndex)

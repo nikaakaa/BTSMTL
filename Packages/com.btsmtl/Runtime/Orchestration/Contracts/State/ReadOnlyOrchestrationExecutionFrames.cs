@@ -9,7 +9,7 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationExecutionRosterState> m_Roster;
         readonly ReadOnlySpan<byte> m_Memory;
 
-        internal ReadOnlyOrchestrationExecutionFrames(OrchestrationPreparedStateLayout<TValue> plan,
+        internal ReadOnlyOrchestrationExecutionFrames(OrchestrationStateLayoutView plan,
             ReadOnlySpan<byte> memory)
         {
             Plan = plan;
@@ -22,7 +22,7 @@ namespace BTSMTL.Orchestration
                 memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
-        public OrchestrationPreparedStateLayout<TValue> Plan { get; }
+        public OrchestrationStateLayoutView Plan { get; }
         public ReadOnlySpan<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
@@ -35,7 +35,7 @@ namespace BTSMTL.Orchestration
         {
             int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
             return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
-                programIndex)[Plan.Programs.Span[programIndex].Storage.OperationIndices.Span[operationIndex]];
+                programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
         }
         public ReadOnlySpan<TValue> SavedOutputs(int frameSlot) =>
             Payload<TValue>(frameSlot, OrchestrationStateSegmentRole.SavedOutputs,

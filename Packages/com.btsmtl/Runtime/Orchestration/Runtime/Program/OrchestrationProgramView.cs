@@ -69,19 +69,6 @@ namespace BTSMTL.Orchestration
         public int BooleanSlot => ValueSlotCount + InputBindingCount;
     }
 
-    public readonly ref struct OrchestrationProgramStorageView
-    {
-        internal OrchestrationProgramStorageView(ReadOnlySpan<ushort> operationIndices,
-            ReadOnlySpan<OrchestrationValueStorageSlot> values)
-        {
-            OperationIndices = operationIndices;
-            Values = values;
-        }
-
-        public ReadOnlySpan<ushort> OperationIndices { get; }
-        public ReadOnlySpan<OrchestrationValueStorageSlot> Values { get; }
-    }
-
     // 推进只经此视图读取程序；视图只持有镜像字节，访问时按段表头切片。
     public readonly ref struct OrchestrationProgramView<TValue> where TValue : unmanaged
     {

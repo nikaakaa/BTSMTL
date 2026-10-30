@@ -15,7 +15,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
             OrchestrationExecutionCapacity.Prepare(programs, admissions, calls);
 
-        internal OrchestrationExecutionFrames(OrchestrationPreparedStateLayout<TValue> plan,
+        internal OrchestrationExecutionFrames(OrchestrationStateLayoutView plan,
             Span<byte> memory)
         {
             Plan = plan;
@@ -28,7 +28,7 @@ namespace BTSMTL.Orchestration
                 memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
-        public OrchestrationPreparedStateLayout<TValue> Plan { get; }
+        public OrchestrationStateLayoutView Plan { get; }
         public Span<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
@@ -50,7 +50,7 @@ namespace BTSMTL.Orchestration
         {
             int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
             return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
-                programIndex)[Plan.Programs.Span[programIndex].Storage.OperationIndices.Span[operationIndex]];
+                programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
         }
 
         public Span<TValue> SavedOutputs(int frameSlot) =>
@@ -126,11 +126,11 @@ namespace BTSMTL.Orchestration
             m_Frames[slot] = frame;
             int programIndex = Plan.ProgramIndex(frame.SkillContentId);
             ClearPayloads(slot, programIndex);
-            OrchestrationPreparedProgramStorage<TValue> program = Plan.Programs.Span[programIndex];
+            ReadOnlySpan<OrchestrationValueStorageSlot> values = Plan.ProgramStorage(programIndex).Values;
             Span<TValue> outputs = Payload<TValue>(slot, OrchestrationStateSegmentRole.SavedOutputs, programIndex);
-            for (int valueSlot = 0; valueSlot < program.Storage.Values.Length; valueSlot++)
+            for (int valueSlot = 0; valueSlot < values.Length; valueSlot++)
             {
-                OrchestrationValueStorageSlot storage = program.Storage.Values.Span[valueSlot];
+                OrchestrationValueStorageSlot storage = values[valueSlot];
                 if (storage.OwnerOperationIndex != frame.OwnerOperationIndex)
                     continue;
                 if (storage.ValueIndex >= 0)
@@ -154,7 +154,7 @@ namespace BTSMTL.Orchestration
 
         void ClearPayloads(int frameSlot, int program)
         {
-            foreach (OrchestrationStateSegment segment in Plan.Segments.Span)
+            foreach (OrchestrationStateSegment segment in Plan.Segments)
             {
                 if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                     continue;

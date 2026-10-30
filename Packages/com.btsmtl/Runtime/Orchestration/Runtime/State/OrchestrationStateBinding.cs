@@ -28,25 +28,25 @@ namespace BTSMTL.Orchestration
 
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, Span<byte> memory) where TValue : unmanaged =>
-            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory),
+            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan.View, memory),
                 plan.TimelineLayout.BindCandidate(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
-            new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory),
+            new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, memory),
                 plan.TimelineLayout.BindCommitted(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
-            new OrchestrationStateValidRanges<TValue>(plan, memory);
+            new OrchestrationStateValidRanges<TValue>(plan.View, memory);
 
         public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
-            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, source);
-            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, destination);
+            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, source);
+            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, destination);
             OrchestrationStateValidRanges<TValue>.Enumerator previous = ValidRanges(plan, destination).GetEnumerator();
             while (previous.MoveNext())
                 if (previous.IsPayload)
@@ -110,10 +110,10 @@ namespace BTSMTL.Orchestration
 
     public readonly ref struct OrchestrationStateValidRanges<TValue> where TValue : unmanaged
     {
-        readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+        readonly OrchestrationStateLayoutView m_Plan;
         readonly ReadOnlySpan<byte> m_Memory;
 
-        internal OrchestrationStateValidRanges(OrchestrationPreparedStateLayout<TValue> plan,
+        internal OrchestrationStateValidRanges(OrchestrationStateLayoutView plan,
             ReadOnlySpan<byte> memory)
         {
             m_Plan = plan;
@@ -124,17 +124,17 @@ namespace BTSMTL.Orchestration
 
         public ref struct Enumerator
         {
-            readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+            readonly OrchestrationStateLayoutView m_Plan;
             readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
             readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_Frames;
             int m_SegmentIndex;
             int m_FrameSlot;
             int m_ProgramIndex;
 
-            internal Enumerator(OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory)
+            internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory)
             {
                 m_Plan = plan;
-                m_Segments = plan.Segments.Span;
+                m_Segments = plan.Segments;
                 OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
                 m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                     memory.Slice(frames.OffsetBytes, frames.SizeBytes));

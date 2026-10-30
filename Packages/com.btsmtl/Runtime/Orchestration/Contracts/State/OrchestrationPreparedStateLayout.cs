@@ -21,26 +21,9 @@ namespace BTSMTL.Orchestration
 
     public sealed class OrchestrationPreparedStateLayout<TValue> where TValue : unmanaged
     {
-        const int KindCount = (int)OrchestrationValueKind.SpatialIdentity + 1;
+        const int KindCount = OrchestrationStateLayoutView.KindCount;
         readonly OrchestrationStateSegment[] m_Segments;
-        readonly int[] m_Indices;
-        readonly OrchestrationValueAddress[] m_CharacterAddresses;
-        readonly FrameValueAddress[][] m_PrivateAddresses;
-
-        readonly struct FrameValueAddress
-        {
-            internal FrameValueAddress(OrchestrationValueAddress address, int stride)
-            {
-                Address = address;
-                Stride = stride;
-            }
-
-            internal OrchestrationValueAddress Address { get; }
-            internal int Stride { get; }
-            internal OrchestrationValueAddress AtFrame(int frame) =>
-                new OrchestrationValueAddress(Address.Kind,
-                    Address.OffsetBytes + frame * Stride, Address.SizeBytes, Address.BitIndex);
-        }
+        readonly byte[] m_Image;
 
         public OrchestrationPreparedStateLayout(OrchestrationStateLayout layout,
             ReadOnlyMemory<OrchestrationStateSegment> segments, int frameCapacity,
@@ -55,8 +38,8 @@ namespace BTSMTL.Orchestration
             TimelineRegion = timelineRegion;
             TimelineLayout = timelineLayout;
             m_Segments = segments.ToArray();
-            m_Indices = new int[Enum.GetValues(typeof(OrchestrationStateSegmentRole)).Length * KindCount];
-            Array.Fill(m_Indices, -1);
+            var indices = new int[Enum.GetValues(typeof(OrchestrationStateSegmentRole)).Length * KindCount];
+            Array.Fill(indices, -1);
             for (int i = 0; i < m_Segments.Length; i++)
             {
                 OrchestrationStateSegment segment = m_Segments[i];
@@ -64,36 +47,53 @@ namespace BTSMTL.Orchestration
                 if ((segment.Role == OrchestrationStateSegmentRole.CharacterValues ||
                     segment.Role == OrchestrationStateSegmentRole.PrivateValues) && segment.ValueKind == 0)
                     for (int kind = 1; kind < KindCount; kind++)
-                        m_Indices[start + kind] = i;
-                m_Indices[start + (int)segment.ValueKind] = i;
+                        indices[start + kind] = i;
+                indices[start + (int)segment.ValueKind] = i;
             }
-            m_CharacterAddresses = new OrchestrationValueAddress[characterTypes.Length];
-            for (int slot = 0; slot < m_CharacterAddresses.Length; slot++)
+            var characterAddresses = new OrchestrationValueAddress[characterTypes.Length];
+            for (int slot = 0; slot < characterAddresses.Length; slot++)
             {
                 OrchestrationValueSlotType type = characterTypes.Span[slot];
-                OrchestrationStateSegment segment = Segment(OrchestrationStateSegmentRole.CharacterValues, type.ValueKind);
-                m_CharacterAddresses[slot] = Address(in segment, type.ValueKind,
+                OrchestrationStateSegment segment = Segment(indices, OrchestrationStateSegmentRole.CharacterValues, type.ValueKind);
+                characterAddresses[slot] = Address(in segment, type.ValueKind,
                     segment.ValueKind == 0 ? slot : type.TypeIndex);
             }
-            m_PrivateAddresses = new FrameValueAddress[programs.Length][];
-            if (frameCapacity == 0)
-                return;
+            var writer = new OrchestrationMemoryImageWriter(
+                OrchestrationMemoryImageWriter.SizeOf<OrchestrationStateLayoutImageHeader>());
+            var header = new OrchestrationStateLayoutImageHeader { FrameCapacity = frameCapacity };
+            header.Segments = writer.Add<OrchestrationStateSegment>(m_Segments);
+            header.Indices = writer.Add<int>(indices);
+            header.CharacterAddresses = writer.Add<OrchestrationValueAddress>(characterAddresses);
+            var records = new OrchestrationStateProgramRecord[programs.Length];
             for (int program = 0; program < programs.Length; program++)
             {
                 OrchestrationPreparedProgramStorage<TValue> prepared = programs.Span[program];
-                var addresses = new FrameValueAddress[prepared.Storage.Values.Length];
+                OrchestrationProgramStorageLayout storage = prepared.Storage;
+                var owners = new OrchestrationStateOwnerRecord[storage.Owners.Length];
+                for (int owner = 0; owner < owners.Length; owner++)
+                {
+                    OrchestrationExecutionOwnerStorage source = storage.Owners.Span[owner];
+                    owners[owner] = new OrchestrationStateOwnerRecord(source.OperationCount,
+                        source.SavedOutputCount, source.BlackboardCount, writer.Add(source.ValueKindCounts.Span));
+                }
+                var addresses = new OrchestrationFrameValueAddress[frameCapacity == 0 ? 0 : storage.Values.Length];
                 for (int slot = 0; slot < addresses.Length; slot++)
                 {
-                    OrchestrationValueStorageSlot storage = prepared.Storage.Values.Span[slot];
-                    if (storage.ValueIndex < 0)
+                    OrchestrationValueStorageSlot value = storage.Values.Span[slot];
+                    if (value.ValueIndex < 0)
                         continue;
                     OrchestrationValueKind kind = prepared.ValueTypes.Span[slot].ValueKind;
-                    OrchestrationStateSegment segment = Segment(OrchestrationStateSegmentRole.PrivateValues, kind);
-                    addresses[slot] = new FrameValueAddress(Address(in segment, kind,
-                        segment.ValueKind == 0 ? storage.ValueIndex : storage.TypeIndex), segment.SizeBytes / frameCapacity);
+                    OrchestrationStateSegment segment = Segment(indices, OrchestrationStateSegmentRole.PrivateValues, kind);
+                    addresses[slot] = new OrchestrationFrameValueAddress(Address(in segment, kind,
+                        segment.ValueKind == 0 ? value.ValueIndex : value.TypeIndex), segment.SizeBytes / frameCapacity);
                 }
-                m_PrivateAddresses[program] = addresses;
+                records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
+                    writer.Add(storage.OperationIndices.Span), writer.Add(storage.Values.Span),
+                    writer.Add<OrchestrationStateOwnerRecord>(owners),
+                    writer.Add<OrchestrationFrameValueAddress>(addresses));
             }
+            header.Programs = writer.Add<OrchestrationStateProgramRecord>(records);
+            m_Image = writer.Finish(in header);
         }
 
         public OrchestrationStateLayout Layout { get; }
@@ -103,45 +103,8 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationValueSlotType> CharacterTypes { get; }
         public OrchestrationStateRegion<byte> TimelineRegion { get; }
         public OrchestrationStateLayout TimelineLayout { get; }
-
-        public int ProgramIndex(int skillContentId)
-        {
-            ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> programs = Programs.Span;
-            int index = 0;
-            while (programs[index].SkillContentId != skillContentId)
-                index++;
-            return index;
-        }
-
-        public OrchestrationStateSegment Segment(OrchestrationStateSegmentRole role,
-            OrchestrationValueKind valueKind = 0) => m_Segments[m_Indices[(int)role * KindCount + (int)valueKind]];
-
-        public OrchestrationValueAddress CharacterAddress(int slot) => m_CharacterAddresses[slot];
-        public OrchestrationValueAddress PrivateAddress(int program, int frame, int valueSlot) =>
-            m_PrivateAddresses[program][valueSlot].AtFrame(frame);
-
-        public int PayloadCount(in OrchestrationStateSegment segment, int program, int owner)
-        {
-            OrchestrationPreparedProgramStorage<TValue> prepared = Programs.Span[program];
-            OrchestrationExecutionOwnerStorage storage = prepared.Storage.Owners.Span[owner];
-            switch (segment.Role)
-            {
-                case OrchestrationStateSegmentRole.Operations: return storage.OperationCount;
-                case OrchestrationStateSegmentRole.SavedOutputs: return storage.SavedOutputCount;
-                case OrchestrationStateSegmentRole.PrivateMetadata: return storage.BlackboardCount;
-                case OrchestrationStateSegmentRole.PrivateValues:
-                    if (segment.ValueKind == 0)
-                        return storage.BlackboardCount;
-                    int count = storage.ValueKindCounts.Span[(int)segment.ValueKind];
-                    return segment.ValueKind == OrchestrationValueKind.Boolean ? (count + 63) / 64 : count;
-                default: throw new InvalidOperationException($"区段'{segment.Role}'不是执行帧载荷。");
-            }
-        }
-
-        public OrchestrationStateRegion<byte> PayloadRegion(in OrchestrationStateSegment segment,
-            int frame, int program, int owner) =>
-            new OrchestrationStateRegion<byte>(segment.OffsetBytes + frame * (segment.SizeBytes / FrameCapacity),
-                PayloadCount(in segment, program, owner) * segment.ElementSizeBytes);
+        public ReadOnlyMemory<byte> Image => m_Image;
+        public OrchestrationStateLayoutView View => new OrchestrationStateLayoutView(m_Image);
 
         public OrchestrationPreparedStateLayout<TValue> PrepareSource(int frameCapacity)
         {
@@ -165,6 +128,9 @@ namespace BTSMTL.Orchestration
             return new OrchestrationPreparedStateLayout<TValue>(layout, segments.ToArray(), frameCapacity,
                 Programs, CharacterTypes, new OrchestrationStateRegion<byte>(size, 0), default);
         }
+
+        OrchestrationStateSegment Segment(int[] indices, OrchestrationStateSegmentRole role,
+            OrchestrationValueKind valueKind) => m_Segments[indices[(int)role * KindCount + (int)valueKind]];
 
         static OrchestrationValueAddress Address(in OrchestrationStateSegment segment,
             OrchestrationValueKind kind, int index) =>

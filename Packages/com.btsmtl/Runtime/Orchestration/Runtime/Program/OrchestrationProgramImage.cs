@@ -4,18 +4,6 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public readonly struct OrchestrationMemorySection
-    {
-        public OrchestrationMemorySection(int offsetBytes, int count)
-        {
-            OffsetBytes = offsetBytes;
-            Count = count;
-        }
-
-        public int OffsetBytes { get; }
-        public int Count { get; }
-    }
-
     public readonly struct OrchestrationGraphCallRecord
     {
         public OrchestrationGraphCallRecord(int ownerOperationIndex, int entryOperationIndex,
@@ -85,11 +73,9 @@ namespace BTSMTL.Orchestration
     // 托管宿主直接持有该数组；Burst 宿主把同一份字节放进原生内存，两者共用同一布局。
     public static class OrchestrationProgramImage
     {
-        const int Alignment = 16;
-
         public static byte[] Build<TValue>(OrchestrationProgramContent<TValue> content) where TValue : unmanaged
         {
-            var writer = new Writer(Unsafe.SizeOf<OrchestrationProgramImageHeader>());
+            var writer = new OrchestrationMemoryImageWriter(Unsafe.SizeOf<OrchestrationProgramImageHeader>());
             var header = new OrchestrationProgramImageHeader();
             OrchestrationProgramStructure structure = content.Structure;
             OrchestrationValueSchedule schedule = content.ValueSchedule;
@@ -140,7 +126,7 @@ namespace BTSMTL.Orchestration
             return writer.Finish(in header);
         }
 
-        static void AddGraphCalls(Writer writer, ReadOnlySpan<OrchestrationGraphCall> calls,
+        static void AddGraphCalls(OrchestrationMemoryImageWriter writer,ReadOnlySpan<OrchestrationGraphCall> calls,
             ref OrchestrationProgramImageHeader header)
         {
             var records = new OrchestrationGraphCallRecord[calls.Length];
@@ -163,46 +149,6 @@ namespace BTSMTL.Orchestration
             }
             header.GraphCalls = writer.Add<OrchestrationGraphCallRecord>(records);
             header.GraphParameters = writer.Add<OrchestrationGraphParameter>(parameters);
-        }
-
-        static int Align(int value) => (value + Alignment - 1) & ~(Alignment - 1);
-
-        sealed class Writer
-        {
-            byte[] m_Buffer;
-            int m_Length;
-
-            public Writer(int headerSize)
-            {
-                m_Length = Align(headerSize);
-                m_Buffer = new byte[Math.Max(m_Length * 4, 256)];
-            }
-
-            public OrchestrationMemorySection Add<T>(ReadOnlySpan<T> values) where T : unmanaged
-            {
-                int offset = Align(m_Length);
-                int bytes = checked(values.Length * Unsafe.SizeOf<T>());
-                Ensure(offset + bytes);
-                SpanReinterpret.AsBytes(values).CopyTo(m_Buffer.AsSpan(offset));
-                m_Length = offset + bytes;
-                return new OrchestrationMemorySection(offset, values.Length);
-            }
-
-            public byte[] Finish(in OrchestrationProgramImageHeader header)
-            {
-                var image = new byte[Align(m_Length)];
-                m_Buffer.AsSpan(0, m_Length).CopyTo(image);
-                SpanReinterpret.Cast<byte, OrchestrationProgramImageHeader>(
-                    image.AsSpan(0, Unsafe.SizeOf<OrchestrationProgramImageHeader>()))[0] = header;
-                return image;
-            }
-
-            void Ensure(int length)
-            {
-                if (length <= m_Buffer.Length)
-                    return;
-                Array.Resize(ref m_Buffer, Math.Max(length, m_Buffer.Length * 2));
-            }
         }
     }
 }
