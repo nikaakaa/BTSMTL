@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
+#if UNITY_5_3_OR_NEWER
 using Unity.Profiling;
+#endif
 
 namespace BTSMTL.Diagnostics
 {
@@ -17,8 +19,10 @@ namespace BTSMTL.Diagnostics
         const int ReadChunkSize = 128;
         const int PageIndexSize = 60;
         enum ReadResult { Found, NotFound, Cancelled }
+#if UNITY_5_3_OR_NEWER
         static readonly ProfilerMarker s_Write = new("Workbench.EventHistory.WritePage");
         static readonly ProfilerMarker s_Read = new("Workbench.EventHistory.ReadWindow");
+#endif
         readonly object m_Gate = new();
         readonly RuntimeTraceEvent[][] m_Pages = new RuntimeTraceEvent[PageCount][];
         readonly int[] m_Counts = new int[PageCount];
@@ -227,7 +231,9 @@ namespace BTSMTL.Diagnostics
 
         void Run()
         {
+#if UNITY_5_3_OR_NEWER
             UnityEngine.Profiling.Profiler.BeginThreadProfiling("Workbench", "Event History");
+#endif
             try
             {
                 RunFiles();
@@ -246,7 +252,9 @@ namespace BTSMTL.Diagnostics
                 m_Result.Clear();
                 m_Metadata.Reset();
                 lock (m_Gate) { m_Finished = true; m_Wake.Dispose(); }
+#if UNITY_5_3_OR_NEWER
                 UnityEngine.Profiling.Profiler.EndThreadProfiling();
+#endif
             }
         }
 
@@ -316,7 +324,9 @@ namespace BTSMTL.Diagnostics
                     }
                     else if (request != 0)
                     {
+#if UNITY_5_3_OR_NEWER
                         using var profile = s_Read.Auto();
+#endif
                         long started = Stopwatch.GetTimestamp();
                         ReadResult result = ReadQuery(snapshot, in query, request, stateVersion);
                         LastReadMilliseconds = (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
@@ -379,7 +389,9 @@ namespace BTSMTL.Diagnostics
 
         void WritePage(int pageId)
         {
+#if UNITY_5_3_OR_NEWER
             using var profile = s_Write.Auto();
+#endif
             CachePageState(m_WrittenPages, m_Written, m_State, 0);
             if (m_WrittenPages % CheckpointPageInterval == 0)
                 WriteCheckpoint();

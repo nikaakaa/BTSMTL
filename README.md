@@ -60,7 +60,7 @@ Timeline 窗口是唯一预览入口，提供快速／真实两档。输入轨�
 
 ## 普通 .NET 接入
 
-`BTSMTL.sln` 装配 Foundation、Shared、编排合同、运行时与通用编译层、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
+`BTSMTL.sln` 装配 Foundation、Shared、编排合同、运行时、诊断与通用编译层、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
 
 ```powershell
 try {
@@ -71,6 +71,8 @@ try {
 ```
 
 需要编排的宿主引用 `Projects/BTSMTL.Orchestration.Runtime`，需要整数 Timeline 再引用 `Projects/ThirdPersonSimulation.Timeline`（程序集名 `BTSMTL.Timeline.Runtime`）。Quantum 宿主另引用数值策略和所需独立领域算法，并通过 `QuantumDeterministicPath` 提供官方 DLL。
+
+运行档案查询引用 `Projects/BTSMTL.Diagnostics/BTSMTL.Diagnostics.csproj`。它编译原诊断合同、存储、归档、`RuntimeCaptureFileReader` 与 `RuntimeTraceBinaryCodec`，与 Unity 使用同一 `btsmtl.runtime-trace/12` 文件格式；Unity Profiler 标记只在 Unity 中编译。宿主直接读取真实事件，不复制二进制解析器。定点诊断值经 `DebugValueSnapshot.FromFP*` 保存原始 `long`，由对应 `ReadFP*` 取回；向网页投影时将这些原始整数写为十进制字符串，显示文本由原快照生成。
 
 作者工具引用 `Projects/BTSMTL.Compilation`，将通用语义操作、常量、连线和状态声明编译为 `OrchestrationGraphContent`。该程序集不引用 Unity、Gameplay、Quantum 或 MemoryPack。宿主经 `BtsmtlOrchestrationCompilationDomain` 提供领域状态规则、扩展内容编码与 ActionInstance 黑板扩展，数值转换经 `IBtsmtlOrchestrationNumericLowering` 提供。Unity 资产读取、技能根和参数重编计划仍由宿主作者前端负责。
 
