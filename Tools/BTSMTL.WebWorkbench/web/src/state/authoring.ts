@@ -11,7 +11,6 @@ import {
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectionActions, useWorkbench } from './store';
-import { findGraphEdge, findGraphNode } from './graphModel';
 import type { DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
@@ -193,6 +192,7 @@ function publishDocument() {
   useWorkbench.setState({
     graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files, sourceRevision) : [],
   });
+  reconcileSelection();
 }
 
 useWorkbench.subscribe((state, previous) => {
@@ -217,9 +217,19 @@ async function readDocument(skill: string, signal?: AbortSignal) {
 function reconcileSelection() {
   const { selection, graphs, timelines } = useWorkbench.getState();
   if (!selection || selection.kind === 'actor' || selection.id.startsWith('input/')) return;
+  const { edited, removed, addedPorts } = get();
   const { kind, id } = selection;
-  const exists = kind === 'node' ? findGraphNode(graphs, id) : kind === 'edge' ? findGraphEdge(graphs, id)
-    : kind === 'track' ? findTimelineTrack(timelines, id) : findTimelineClipInViews(timelines, id) ?? findTimelineMarker(timelines, id);
+  let exists: boolean;
+  if (kind === 'node' || kind === 'edge') {
+    const found = findEditedGraph(graphs, id, edited, addedPorts);
+    exists = found !== null && !removed.includes(graphPath(found.graph.id)) && (kind === 'node'
+      ? found.graph.nodes.some(node => node.id === found.id && node.invocationPath === found.path)
+      : found.graph.edges.some(edge => edge.id === found.id && edge.invocationPath === found.path));
+  } else {
+    const current = applyTimelineEdits(timelines, edited).filter(timeline => !removed.includes(timelinePath(timeline.documentId)));
+    exists = kind === 'track' ? findTimelineTrack(current, id) !== null
+      : (findTimelineClipInViews(current, id) ?? findTimelineMarker(current, id)) !== null;
+  }
   if (!exists) selectionActions.select(null);
 }
 
@@ -262,7 +272,6 @@ export const authoringActions = {
       controller.signal.throwIfAborted();
       set({ loading: false, author: true });
       publishDocument();
-      reconcileSelection();
     } catch (error) {
       if (isAbort(error)) return;
       set({ loading: false });
@@ -325,6 +334,7 @@ export const authoringActions = {
   revert() {
     clearHistory();
     set({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
+    reconcileSelection();
   },
 
   undo() { step(undoStack, redoStack); },
@@ -699,7 +709,7 @@ const snapshot = (): Snapshot => {
 function record() {
   if (recording) return;
   recording = true;
-  queueMicrotask(() => { recording = false; });
+  queueMicrotask(() => { recording = false; reconcileSelection(); });
   undoStack.push(snapshot());
   if (undoStack.length > historyLimit) undoStack.shift();
   redoStack.length = 0;
@@ -711,6 +721,7 @@ function step(from: Snapshot[], to: Snapshot[]) {
   if (!target) return;
   to.push(snapshot());
   set({ ...target, version: get().version + 1, undoDepth: undoStack.length, redoDepth: redoStack.length });
+  reconcileSelection();
 }
 
 function clearHistory() {
