@@ -30,7 +30,7 @@ public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
 public sealed record PreviewFrameSource(string PlayerBuildId, string ContentRevision, string SceneRevision,
-    string InputSource, string InputRevision, string SdkFrame, string GameplayTick);
+    string InputSource, string? InputRevision, string SdkFrame, string GameplayTick);
 public sealed record PreviewSummary(string RunId, string ContentRevision, string FrameDisplayName,
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
     PreviewField[] Fields, string RawJson)
@@ -38,7 +38,7 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     public string PlayerBuildId { get; init; } = string.Empty;
     public string SceneRevision { get; init; } = string.Empty;
     public string InputSource { get; init; } = string.Empty;
-    public string InputRevision { get; init; } = string.Empty;
+    public string? InputRevision { get; init; }
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
