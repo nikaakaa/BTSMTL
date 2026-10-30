@@ -179,7 +179,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
 
   const selectCall = (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
-    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), path: null, pin: null, viewport: null });
+    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), path: null, pin: null });
   };
 
   useEffect(() => {
