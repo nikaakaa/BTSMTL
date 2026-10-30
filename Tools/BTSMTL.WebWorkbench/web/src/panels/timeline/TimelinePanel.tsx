@@ -438,6 +438,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const enter = useCallback((documentId: string) => {
     const segment = playbackAt(segments, documentId, getState().frameIndex);
     if (!segment) return;
+    const selection = getState().selection;
+    if ((selection?.kind === 'clip' || selection?.kind === 'track') && !selection.id.startsWith(`${documentId}/`))
+      selectionActions.select(null);
     if (!frames) {
       setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null, caller: null });
       return;
