@@ -17,27 +17,27 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationTimelineEntryTickCapacity
     {
-        public OrchestrationTimelineEntryTickCapacity(int operationIndex, int advanceInvocations, int stopInvocations)
+        public OrchestrationTimelineEntryTickCapacity(int programIndex, int operationIndex, int advanceInvocations, int stopInvocations)
         {
+            ProgramIndex = programIndex;
             OperationIndex = operationIndex;
             AdvanceInvocations = advanceInvocations;
             StopInvocations = stopInvocations;
         }
 
+        public int ProgramIndex { get; }
         public int OperationIndex { get; }
         public int AdvanceInvocations { get; }
         public int StopInvocations { get; }
     }
 
-    public readonly struct OrchestrationTimelineTickContentCapacity
+    public readonly struct OrchestrationTimelineContentTickCapacity
     {
-        public OrchestrationTimelineTickContentCapacity(int programIndex, int operationIndex,
+        public OrchestrationTimelineContentTickCapacity(
             int graphInvocationsPerAdvance, int graphInvocationsPerStop,
             int logicSampleInvocationsPerAdvance, int logicSampleRowsPerAdvance,
             ReadOnlyMemory<OrchestrationTimelineEntryTickCapacity> graphEntries)
         {
-            ProgramIndex = programIndex;
-            OperationIndex = operationIndex;
             GraphInvocationsPerAdvance = graphInvocationsPerAdvance;
             GraphInvocationsPerStop = graphInvocationsPerStop;
             LogicSampleInvocationsPerAdvance = logicSampleInvocationsPerAdvance;
@@ -45,13 +45,26 @@ namespace BTSMTL.Orchestration
             GraphEntries = graphEntries;
         }
 
-        public int ProgramIndex { get; }
-        public int OperationIndex { get; }
         public int GraphInvocationsPerAdvance { get; }
         public int GraphInvocationsPerStop { get; }
         public int LogicSampleInvocationsPerAdvance { get; }
         public int LogicSampleRowsPerAdvance { get; }
         public ReadOnlyMemory<OrchestrationTimelineEntryTickCapacity> GraphEntries { get; }
+    }
+
+    public readonly struct OrchestrationTimelineTickContentCapacity
+    {
+        public OrchestrationTimelineTickContentCapacity(int programIndex, int operationIndex,
+            in OrchestrationTimelineContentTickCapacity content)
+        {
+            ProgramIndex = programIndex;
+            OperationIndex = operationIndex;
+            Content = content;
+        }
+
+        public int ProgramIndex { get; }
+        public int OperationIndex { get; }
+        public OrchestrationTimelineContentTickCapacity Content { get; }
     }
 
     public readonly struct OrchestrationOperationTickCapacity
@@ -185,8 +198,8 @@ namespace BTSMTL.Orchestration
                 if ((uint)content.ProgramIndex >= (uint)programs.Length ||
                     (uint)content.OperationIndex >= (uint)programs[content.ProgramIndex].OperationCount ||
                     programs[content.ProgramIndex].Operation(content.OperationIndex).Code != OrchestrationOperationCode.Timeline ||
-                    content.GraphInvocationsPerAdvance < 0 || content.GraphInvocationsPerStop < 0 ||
-                    content.LogicSampleInvocationsPerAdvance < 0 || content.LogicSampleRowsPerAdvance < 0)
+                    content.Content.GraphInvocationsPerAdvance < 0 || content.Content.GraphInvocationsPerStop < 0 ||
+                    content.Content.LogicSampleInvocationsPerAdvance < 0 || content.Content.LogicSampleRowsPerAdvance < 0)
                     throw new ArgumentException("A Timeline Tick capacity does not describe a prepared Timeline operation.");
                 timelines.Add((content.ProgramIndex, content.OperationIndex), content);
             }
@@ -244,12 +257,12 @@ namespace BTSMTL.Orchestration
                         analysis.ExecuteVisits[operationIndex]);
                     long identities = checked(owners[operation.ExecutionFrameOwnerOperationIndex] + timelineExecutions);
                     long timelineStops = budget.OuterInvocationCount == 0 ? 0 : identities;
-                    long graphInvocations = checked(timelineExecutions * content.GraphInvocationsPerAdvance +
-                        timelineStops * content.GraphInvocationsPerStop);
+                    long graphInvocations = checked(timelineExecutions * content.Content.GraphInvocationsPerAdvance +
+                        timelineStops * content.Content.GraphInvocationsPerStop);
                     timelineResults[operationIndex] = new OrchestrationTimelineTickCapacity(timelineExecutions,
                         timelineStops, timelineExecutions, identities, graphInvocations,
-                        checked(timelineExecutions * content.LogicSampleInvocationsPerAdvance),
-                        checked(timelineExecutions * content.LogicSampleRowsPerAdvance));
+                        checked(timelineExecutions * content.Content.LogicSampleInvocationsPerAdvance),
+                        checked(timelineExecutions * content.Content.LogicSampleRowsPerAdvance));
                 }
                 var cursorOutputs = new OrchestrationProgramOutputCapacity(outputRequests, outputValues);
                 result[programIndex] = new OrchestrationProgramTickCapacity(in budget, evaluations,
@@ -449,7 +462,7 @@ namespace BTSMTL.Orchestration
                 {
                     if (!m_Timelines.TryGetValue((m_ProgramIndex, index), out OrchestrationTimelineTickContentCapacity timeline))
                         throw new InvalidOperationException($"Program '{m_ProgramIndex}' Timeline '{index}' lacks its prepared invocation bound.");
-                    foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.GraphEntries.Span)
+                    foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.Content.GraphEntries.Span)
                     {
                         long graph = checked(BoundedVisits(entry.OperationIndex, false) +
                             BoundedVisits(entry.OperationIndex, true));

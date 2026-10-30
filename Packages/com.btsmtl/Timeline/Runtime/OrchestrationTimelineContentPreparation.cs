@@ -7,11 +7,12 @@ namespace BTSMTL.Timeline.Runtime
 {
     public readonly struct OrchestrationTimelineInvocationMetadata
     {
-        internal OrchestrationTimelineInvocationMetadata(int ordinal, bool marker,
+        internal OrchestrationTimelineInvocationMetadata(int programIndex, int ordinal, bool marker,
             OrchestrationTimelineHook hook, OrchestrationExecutionEntry entry,
             int executionFrameOwnerOperationIndex, int graphOwnerOperationIndex,
-            int callerOperationIndex, int graphIdentityId, int sourceIdentityId)
+            int? callerOperationIndex, int graphIdentityId, int sourceIdentityId)
         {
+            ProgramIndex = programIndex;
             Ordinal = ordinal;
             Marker = marker;
             Hook = hook;
@@ -23,13 +24,14 @@ namespace BTSMTL.Timeline.Runtime
             SourceIdentityId = sourceIdentityId;
         }
 
+        public int ProgramIndex { get; }
         public int Ordinal { get; }
         public bool Marker { get; }
         public OrchestrationTimelineHook Hook { get; }
         public OrchestrationExecutionEntry Entry { get; }
         public int ExecutionFrameOwnerOperationIndex { get; }
         public int GraphOwnerOperationIndex { get; }
-        public int CallerOperationIndex { get; }
+        public int? CallerOperationIndex { get; }
         public int GraphIdentityId { get; }
         public int SourceIdentityId { get; }
     }
@@ -38,15 +40,20 @@ namespace BTSMTL.Timeline.Runtime
     {
         internal OrchestrationTimelinePreparedEntries(
             OrchestrationTimelineEntryBinding[] clips, OrchestrationExecutionEntry[] markers,
+            int[] clipPrograms, int[] markerPrograms,
             OrchestrationTimelineInvocationMetadata[] metadata)
         {
             ClipEntries = clips;
             MarkerEntries = markers;
+            ClipPrograms = clipPrograms;
+            MarkerPrograms = markerPrograms;
             Invocations = metadata;
         }
 
         public ReadOnlyMemory<OrchestrationTimelineEntryBinding> ClipEntries { get; }
         public ReadOnlyMemory<OrchestrationExecutionEntry> MarkerEntries { get; }
+        public ReadOnlyMemory<int> ClipPrograms { get; }
+        public ReadOnlyMemory<int> MarkerPrograms { get; }
         public ReadOnlyMemory<OrchestrationTimelineInvocationMetadata> Invocations { get; }
 
         public OrchestrationTimelineInvocationFacts CreatePresentationInvocation(
@@ -80,6 +87,86 @@ namespace BTSMTL.Timeline.Runtime
         }
     }
 
+    public readonly struct OrchestrationTimelineGraphBinding
+    {
+        public OrchestrationTimelineGraphBinding(int programIndex, int graphIdentityId,
+            int sourceIdentityId, int graphOwnerOperationIndex,
+            in OrchestrationTimelineEntryBinding entries)
+        {
+            ProgramIndex = programIndex;
+            GraphIdentityId = graphIdentityId;
+            SourceIdentityId = sourceIdentityId;
+            GraphOwnerOperationIndex = graphOwnerOperationIndex;
+            Entries = entries;
+        }
+
+        public int ProgramIndex { get; }
+        public int GraphIdentityId { get; }
+        public int SourceIdentityId { get; }
+        public int GraphOwnerOperationIndex { get; }
+        public OrchestrationTimelineEntryBinding Entries { get; }
+    }
+
+    public sealed class OrchestrationTimelinePreparedDomainRoot
+    {
+        internal OrchestrationTimelinePreparedDomainRoot(
+            OrchestrationTimelinePreparedContent<OrchestrationTime> content, int programCount)
+        {
+            Content = content;
+            var admissions = new OrchestrationRootAdmission[content.Occurrences.Length];
+            for (int index = 0; index < admissions.Length; index++)
+            {
+                ref readonly OrchestrationOccurrenceCapacity occurrence = ref content.Occurrences.Span[index];
+                admissions[index] = new OrchestrationRootAdmission(new[] {
+                    new OrchestrationExecutionRoot(occurrence.ProgramIndex, occurrence.OwnerOperationIndex)
+                }, occurrence.MaximumInstances);
+            }
+            Admissions = admissions;
+            var invocations = new int[programCount];
+            foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in content.TickCapacity.GraphEntries.Span)
+                invocations[entry.ProgramIndex] = checked(invocations[entry.ProgramIndex] +
+                    entry.AdvanceInvocations + entry.StopInvocations);
+            var budgets = new OrchestrationProgramTickBudget[programCount];
+            for (int programIndex = 0; programIndex < budgets.Length; programIndex++)
+                budgets[programIndex] = new OrchestrationProgramTickBudget(invocations[programIndex], 0);
+            TickBudgets = budgets;
+        }
+
+        public OrchestrationTimelinePreparedContent<OrchestrationTime> Content { get; }
+        public ReadOnlyMemory<OrchestrationRootAdmission> Admissions { get; }
+        public ReadOnlyMemory<OrchestrationProgramTickBudget> TickBudgets { get; }
+
+        public OrchestrationTimelinePreparedCapacity PrepareTimelineCapacity(
+            OrchestrationExecutionCapacity executionCapacity,
+            ReadOnlySpan<OrchestrationTimelinePreparedContent<OrchestrationTime>> nestedContents)
+        {
+            var contents = new OrchestrationTimelinePreparedContent<OrchestrationTime>[nestedContents.Length + 1];
+            contents[0] = Content;
+            nestedContents.CopyTo(contents.AsSpan(1));
+            return OrchestrationTimelinePreparedCapacity.Prepare<OrchestrationTime>(contents, executionCapacity, 1);
+        }
+    }
+
+    public sealed class OrchestrationTimelinePreparedRoot
+    {
+        internal OrchestrationTimelinePreparedRoot(TimelinePreviewRootIdentity identity,
+            TimelineRuntimePreparedContent prepared, OrchestrationTimelinePreparedEntries entries,
+            OrchestrationTimelinePreparedDomainRoot logic, OrchestrationTimelinePreparedDomainRoot presentation)
+        {
+            Identity = identity;
+            Prepared = prepared;
+            Entries = entries;
+            Logic = logic;
+            Presentation = presentation;
+        }
+
+        public TimelinePreviewRootIdentity Identity { get; }
+        public TimelineRuntimePreparedContent Prepared { get; }
+        public OrchestrationTimelinePreparedEntries Entries { get; }
+        public OrchestrationTimelinePreparedDomainRoot Logic { get; }
+        public OrchestrationTimelinePreparedDomainRoot Presentation { get; }
+    }
+
     public enum OrchestrationTimelineCapacityIssueKind : byte
     {
         DecisionExitLifetimeUnresolved = 1,
@@ -89,14 +176,18 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct OrchestrationTimelineCapacityIssue
     {
-        internal OrchestrationTimelineCapacityIssue(int clipOrdinal,
-            OrchestrationTimelineCapacityIssueKind kind, int operationIndex)
+        internal OrchestrationTimelineCapacityIssue(TimelineExecutionDomain domain, int? programIndex,
+            int clipOrdinal, OrchestrationTimelineCapacityIssueKind kind, int operationIndex)
         {
+            Domain = domain;
+            ProgramIndex = programIndex;
             ClipOrdinal = clipOrdinal;
             Kind = kind;
             OperationIndex = operationIndex;
         }
 
+        public TimelineExecutionDomain Domain { get; }
+        public int? ProgramIndex { get; }
         public int ClipOrdinal { get; }
         public OrchestrationTimelineCapacityIssueKind Kind { get; }
         public int OperationIndex { get; }
@@ -104,10 +195,76 @@ namespace BTSMTL.Timeline.Runtime
 
     public static class OrchestrationTimelineContentPreparation
     {
+        public static OrchestrationTimelinePreparedEntries PrepareRootEntries<TValue>(
+            TimelineRuntimePreparedContent prepared,
+            IReadOnlyDictionary<string, OrchestrationTimelineGraphBinding> graphs,
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs) where TValue : unmanaged
+        {
+            TimelineContentUnit content = prepared.Content;
+            var clips = new OrchestrationTimelineEntryBinding[content.Clips.Count];
+            var markers = new OrchestrationExecutionEntry[content.Markers.Count];
+            var clipPrograms = new int[clips.Length];
+            var markerPrograms = new int[markers.Length];
+            var metadata = new List<OrchestrationTimelineInvocationMetadata>();
+            for (int domainIndex = 0; domainIndex < 2; domainIndex++)
+            {
+                TimelineRuntimeDomainIndex domain = domainIndex == 0 ? prepared.Index.Logic : prepared.Index.Presentation;
+                foreach (TimelineRuntimeIndexedClip indexed in domain.Trees)
+                {
+                    int ordinal = indexed.ContentIndex;
+                    TimelineContentClip clip = content.Clips[ordinal];
+                    OrchestrationTimelineGraphBinding graph = graphs[TimelineGraphBinding.GraphAuthoringId(clip.GraphBinding.GraphId)];
+                    clips[ordinal] = graph.Entries;
+                    clipPrograms[ordinal] = graph.ProgramIndex;
+                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Enable, in graph, programs[graph.ProgramIndex], metadata);
+                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Root, in graph, programs[graph.ProgramIndex], metadata);
+                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Disable, in graph, programs[graph.ProgramIndex], metadata);
+                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Destroy, in graph, programs[graph.ProgramIndex], metadata);
+                }
+                for (int markerIndex = 0; markerIndex < domain.Markers.Count; markerIndex++)
+                {
+                    int ordinal = domain.Markers.ContentIndexAt(markerIndex);
+                    TimelineContentMarker marker = content.Markers[ordinal];
+                    OrchestrationTimelineGraphBinding graph = graphs[TimelineGraphBinding.GraphAuthoringId(marker.GraphId)];
+                    markers[ordinal] = graph.Entries.Enable;
+                    markerPrograms[ordinal] = graph.ProgramIndex;
+                    BindRootEntry(ordinal, true, OrchestrationTimelineHook.Enable, in graph, programs[graph.ProgramIndex], metadata);
+                }
+            }
+            return new OrchestrationTimelinePreparedEntries(clips, markers, clipPrograms, markerPrograms, metadata.ToArray());
+        }
+
+        public static bool TryPrepareRoot<TValue, TScalar>(TimelinePreviewRootIdentity identity,
+            TimelineRuntimePreparedContent prepared, OrchestrationTimelinePlaybackMode mode,
+            OrchestrationTimelinePreparedEntries entries,
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<ReadOnlyMemory<OrchestrationExtensionReference>> extensions,
+            IOrchestrationScalarValueAccess<TValue, TScalar> values, IScalarMath<TScalar> math,
+            IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar> projection, int tickRate,
+            out OrchestrationTimelinePreparedRoot root,
+            out ReadOnlyMemory<OrchestrationTimelineCapacityIssue> unresolved)
+            where TValue : unmanaged
+            where TScalar : unmanaged
+        {
+            if (!string.Equals(identity.Timeline, prepared.Content.AuthoringId, StringComparison.Ordinal))
+                throw new ArgumentException("独立 Timeline 根必须指向本次准备内容的作者身份。", nameof(identity));
+            root = null;
+            if (!TryCalculateCapacity(prepared, mode, TimelineExecutionDomain.Logic, entries, programs, extensions,
+                values, math, projection, tickRate, out var logic, out unresolved))
+                return false;
+            if (!TryCalculateCapacity(prepared, mode, TimelineExecutionDomain.Presentation, entries, programs, extensions,
+                values, math, projection, tickRate, out var presentation, out unresolved))
+                return false;
+            root = new OrchestrationTimelinePreparedRoot(identity, prepared, entries,
+                new OrchestrationTimelinePreparedDomainRoot(logic, programs.Length),
+                new OrchestrationTimelinePreparedDomainRoot(presentation, programs.Length));
+            return true;
+        }
+
         public static OrchestrationTimelinePreparedEntries PrepareEntries<TValue>(
             TimelineRuntimePreparedContent prepared, OrchestrationGraphContent<TValue> graph,
             OrchestrationProgram<TValue> program, ReadOnlySpan<int> localToShared,
-            int operationIndex) where TValue : unmanaged
+            int programIndex, int operationIndex) where TValue : unmanaged
         {
             var sources = new Dictionary<(string Clip, string Graph, string Hook), OrchestrationGraphSource>();
             foreach (OrchestrationGraphSource source in graph.Sources.Span)
@@ -121,6 +278,10 @@ namespace BTSMTL.Timeline.Runtime
             TimelineContentUnit content = prepared.Content;
             var clips = new OrchestrationTimelineEntryBinding[content.Clips.Count];
             var markers = new OrchestrationExecutionEntry[content.Markers.Count];
+            var clipPrograms = new int[clips.Length];
+            var markerPrograms = new int[markers.Length];
+            Array.Fill(clipPrograms, programIndex);
+            Array.Fill(markerPrograms, programIndex);
             var metadata = new List<OrchestrationTimelineInvocationMetadata>();
             for (int domainIndex = 0; domainIndex < 2; domainIndex++)
             {
@@ -130,13 +291,13 @@ namespace BTSMTL.Timeline.Runtime
                     int ordinal = indexed.ContentIndex;
                     TimelineContentClip clip = content.Clips[ordinal];
                     string graphId = TimelineGraphBinding.GraphAuthoringId(clip.GraphBinding.GraphId);
-                    OrchestrationExecutionEntry enable = BindEntry(ordinal, false, OrchestrationTimelineHook.Enable,
+                    OrchestrationExecutionEntry enable = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Enable,
                         sources[(clip.AuthoringId, graphId, "OnEnable")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry root = BindEntry(ordinal, false, OrchestrationTimelineHook.Root,
+                    OrchestrationExecutionEntry root = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Root,
                         sources[(clip.AuthoringId, graphId, "Root")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry disable = BindEntry(ordinal, false, OrchestrationTimelineHook.Disable,
+                    OrchestrationExecutionEntry disable = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Disable,
                         sources[(clip.AuthoringId, graphId, "OnDisable")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry destroy = BindEntry(ordinal, false, OrchestrationTimelineHook.Destroy,
+                    OrchestrationExecutionEntry destroy = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Destroy,
                         sources[(clip.AuthoringId, graphId, "OnDestroy")], graph, program, localToShared, metadata);
                     clips[ordinal] = new OrchestrationTimelineEntryBinding(enable, root, disable, destroy);
                 }
@@ -144,18 +305,19 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     int ordinal = domain.Markers.ContentIndexAt(markerIndex);
                     TimelineContentMarker marker = content.Markers[ordinal];
-                    markers[ordinal] = BindEntry(ordinal, true, OrchestrationTimelineHook.Enable,
+                    markers[ordinal] = BindEntry(programIndex, ordinal, true, OrchestrationTimelineHook.Enable,
                         sources[(marker.MarkerId, TimelineGraphBinding.GraphAuthoringId(marker.GraphId), "OnEnable")], graph, program, localToShared, metadata);
                 }
             }
-            return new OrchestrationTimelinePreparedEntries(clips, markers, metadata.ToArray());
+            return new OrchestrationTimelinePreparedEntries(clips, markers, clipPrograms, markerPrograms, metadata.ToArray());
         }
 
-        public static bool TryCalculateCapacity<TValue, TScalar>(int programIndex, int operationIndex,
-            OrchestrationProgram<TValue> program, TimelineRuntimePreparedContent prepared,
+        public static bool TryCalculateCapacity<TValue, TScalar>(
+            TimelineRuntimePreparedContent prepared, OrchestrationTimelinePlaybackMode mode,
             TimelineExecutionDomain domain,
             OrchestrationTimelinePreparedEntries entries,
-            ReadOnlyMemory<OrchestrationExtensionReference> extensions,
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<ReadOnlyMemory<OrchestrationExtensionReference>> extensions,
             IOrchestrationScalarValueAccess<TValue, TScalar> values, IScalarMath<TScalar> math,
             IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar> projection, int tickRate,
             out OrchestrationTimelinePreparedContent<OrchestrationTime> content,
@@ -164,17 +326,15 @@ namespace BTSMTL.Timeline.Runtime
             where TScalar : unmanaged
         {
             TimelineRuntimeSchedulingContent scheduling = prepared.Scheduling(domain);
-            OrchestrationTimelinePlaybackMode mode =
-                (OrchestrationTimelinePlaybackMode)program.Payload<OrchestrationTimelinePayload>(operationIndex).Mode;
             if (mode == OrchestrationTimelinePlaybackMode.Loop && prepared.Content.Duration <= OrchestrationTime.Zero)
             {
                 content = null;
-                unresolved = new[] { new OrchestrationTimelineCapacityIssue(-1,
-                    OrchestrationTimelineCapacityIssueKind.LoopDurationNotPositive, operationIndex) };
+                unresolved = new[] { new OrchestrationTimelineCapacityIssue(domain, null, -1,
+                    OrchestrationTimelineCapacityIssueKind.LoopDurationNotPositive, -1) };
                 return false;
             }
             var issues = new List<OrchestrationTimelineCapacityIssue>();
-            var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
+            var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>[programs.Length];
             var occurrences = new List<OrchestrationOccurrenceCapacity>();
             var clipInstances = new int[scheduling.Clips.Length];
             foreach (int ordinal in scheduling.Boundaries.Decisions.Span)
@@ -189,14 +349,19 @@ namespace BTSMTL.Timeline.Runtime
                 if (!clip.Enabled || !clip.Tree || prepared.Content.Duration == OrchestrationTime.Zero)
                     continue;
                 int instances = 1;
+                int programIndex = entries.ClipPrograms.Span[ordinal];
+                OrchestrationProgram<TValue> program = programs[programIndex];
                 if (mode == OrchestrationTimelinePlaybackMode.Loop)
                 {
                     if (clip.TreeDecision)
                     {
                         OrchestrationExecutionEntry root = entries.ClipEntries.Span[ordinal].Root;
-                        if (!exits.TryProve(in root, in clip, out OrchestrationTime exitTime, out int blocked))
+                        OrchestrationTimelineExitAnalysis<TValue, TScalar> exit = exits[programIndex] ??
+                            (exits[programIndex] = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(
+                                program, extensions[programIndex], values, math, projection));
+                        if (!exit.TryProve(in root, in clip, out OrchestrationTime exitTime, out int blocked))
                         {
-                            issues.Add(new OrchestrationTimelineCapacityIssue(ordinal,
+                            issues.Add(new OrchestrationTimelineCapacityIssue(domain, programIndex, ordinal,
                                 OrchestrationTimelineCapacityIssueKind.DecisionExitLifetimeUnresolved, blocked));
                             continue;
                         }
@@ -205,8 +370,9 @@ namespace BTSMTL.Timeline.Runtime
                         instances = checked((int)lifetimeCycles + 1 + traversals);
                     }
                     else if (clip.End > prepared.Content.Duration)
-                        issues.Add(new OrchestrationTimelineCapacityIssue(ordinal,
-                            OrchestrationTimelineCapacityIssueKind.FrameBoundaryOutsideCycle, operationIndex));
+                        issues.Add(new OrchestrationTimelineCapacityIssue(domain, programIndex, ordinal,
+                            OrchestrationTimelineCapacityIssueKind.FrameBoundaryOutsideCycle,
+                            entries.ClipEntries.Span[ordinal].Root.OperationIndex));
                 }
                 activeTrees = checked(activeTrees + instances);
                 clipInstances[ordinal] = instances;
@@ -215,6 +381,7 @@ namespace BTSMTL.Timeline.Runtime
                     decisionInstances = checked(decisionInstances + instances);
                 }
                 occurrences.Add(new OrchestrationOccurrenceCapacity(
+                    programIndex,
                     program.Operation(entries.ClipEntries.Span[ordinal].Root.OperationIndex).ExecutionFrameOwnerOperationIndex,
                     instances));
             }
@@ -225,11 +392,11 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             }
             foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in scheduling.Markers.Span)
+            {
+                int programIndex = entries.MarkerPrograms.Span[marker.Ordinal];
                 occurrences.Add(new OrchestrationOccurrenceCapacity(
-                    program.Operation(entries.MarkerEntries.Span[marker.Ordinal].OperationIndex).ExecutionFrameOwnerOperationIndex, 1));
-            var call = new OrchestrationTimelineCallCapacity(programIndex, operationIndex,
-                prepared.Content.Duration == OrchestrationTime.Zero
-                    ? ReadOnlyMemory<OrchestrationOccurrenceCapacity>.Empty : occurrences.ToArray());
+                    programIndex, programs[programIndex].Operation(entries.MarkerEntries.Span[marker.Ordinal].OperationIndex).ExecutionFrameOwnerOperationIndex, 1));
+            }
             int trees = 0;
             foreach (ref readonly TimelineSchedulingClip<OrchestrationTime> clip in scheduling.Clips.Span)
                 if (clip.Enabled && clip.Tree)
@@ -244,37 +411,49 @@ namespace BTSMTL.Timeline.Runtime
                 if (prepared.Content.Duration == OrchestrationTime.Zero)
                     continue;
                 OrchestrationTimelineEntryBinding entry = entries.ClipEntries.Span[ordinal];
+                int programIndex = entries.ClipPrograms.Span[ordinal];
                 ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref scheduling.Clips.Span[ordinal];
                 int instances = clipInstances[ordinal];
                 int retained = clip.TreeDecision ? instances : 0;
-                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Enable.OperationIndex, traversals, 0));
-                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Root.OperationIndex,
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(programIndex, entry.Enable.OperationIndex, traversals, 0));
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(programIndex, entry.Root.OperationIndex,
                     checked(traversals + retained), 0));
-                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Disable.OperationIndex,
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(programIndex, entry.Disable.OperationIndex,
                     checked(traversals + retained), 0));
-                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Destroy.OperationIndex,
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(programIndex, entry.Destroy.OperationIndex,
                     mode == OrchestrationTimelinePlaybackMode.Loop ? 0 : instances, instances));
             }
             foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in scheduling.Markers.Span)
                 graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(
-                    entries.MarkerEntries.Span[marker.Ordinal].OperationIndex, traversals, 0));
-            var tickCapacity = new OrchestrationTimelineTickContentCapacity(programIndex, operationIndex,
+                    entries.MarkerPrograms.Span[marker.Ordinal], entries.MarkerEntries.Span[marker.Ordinal].OperationIndex, traversals, 0));
+            var tickCapacity = new OrchestrationTimelineContentTickCapacity(
                 checked((scheduling.Markers.Length + 3 * trees) * traversals +
                     (mode == OrchestrationTimelinePlaybackMode.Loop ? 2 * decisionInstances : decisionInstances)), activeTrees,
                 sampledClips, checked(sampledClips * traversals), graphEntries.ToArray());
             ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> cycleWindows =
                 scheduling.Boundaries.PrepareCycleWindows(clipInstances, out int exitWords);
             content = new OrchestrationTimelinePreparedContent<OrchestrationTime>(
-                program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
+                prepared.ContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
                 tickRate,
                 mode, domain, scheduling.Clips, scheduling.Boundaries, scheduling.Lifetimes, scheduling.TreeOrdinals,
                 scheduling.Markers,
                 entries.ClipEntries, entries.MarkerEntries, activeTrees, decisionInstances, cycleWindows, exitWords,
-                call, in tickCapacity);
+                prepared.Content.Duration == OrchestrationTime.Zero
+                    ? ReadOnlyMemory<OrchestrationOccurrenceCapacity>.Empty : occurrences.ToArray(), in tickCapacity);
             return true;
         }
 
-        static OrchestrationExecutionEntry BindEntry<TValue>(int ordinal, bool marker,
+        static void BindRootEntry<TValue>(int ordinal, bool marker, OrchestrationTimelineHook hook,
+            in OrchestrationTimelineGraphBinding graph, OrchestrationProgram<TValue> program,
+            List<OrchestrationTimelineInvocationMetadata> metadata) where TValue : unmanaged
+        {
+            OrchestrationExecutionEntry entry = graph.Entries.Entry(hook);
+            metadata.Add(new OrchestrationTimelineInvocationMetadata(graph.ProgramIndex, ordinal, marker, hook, entry,
+                program.Operation(entry.OperationIndex).ExecutionFrameOwnerOperationIndex,
+                graph.GraphOwnerOperationIndex, null, graph.GraphIdentityId, graph.SourceIdentityId));
+        }
+
+        static OrchestrationExecutionEntry BindEntry<TValue>(int programIndex, int ordinal, bool marker,
             OrchestrationTimelineHook hook, OrchestrationGraphSource source,
             OrchestrationGraphContent<TValue> graph, OrchestrationProgram<TValue> program,
             ReadOnlySpan<int> localToShared, List<OrchestrationTimelineInvocationMetadata> metadata)
@@ -286,7 +465,7 @@ namespace BTSMTL.Timeline.Runtime
                 localToShared[original.InputPortId]);
             int graphIdentityId = localToShared[graph.Identities.Bind(invocation.GraphId)];
             int sourceIdentityId = localToShared[invocation.SourceIdentityId];
-            metadata.Add(new OrchestrationTimelineInvocationMetadata(ordinal, marker, hook, entry,
+            metadata.Add(new OrchestrationTimelineInvocationMetadata(programIndex, ordinal, marker, hook, entry,
                 program.Operation(entry.OperationIndex).ExecutionFrameOwnerOperationIndex,
                 invocation.TargetIndex, invocation.InvocationCallerOperationIndex,
                 graphIdentityId, sourceIdentityId));

@@ -29,12 +29,14 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationOccurrenceCapacity
     {
-        public OrchestrationOccurrenceCapacity(int ownerOperationIndex, int maximumInstances)
+        public OrchestrationOccurrenceCapacity(int programIndex, int ownerOperationIndex, int maximumInstances)
         {
+            ProgramIndex = programIndex;
             OwnerOperationIndex = ownerOperationIndex;
             MaximumInstances = maximumInstances;
         }
 
+        public int ProgramIndex { get; }
         public int OwnerOperationIndex { get; }
         public int MaximumInstances { get; }
     }

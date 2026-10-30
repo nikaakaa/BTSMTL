@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public static OrchestrationTimelinePreparedCapacity Prepare<TTime>(
             ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents,
-            OrchestrationExecutionCapacity executionCapacity)
+            OrchestrationExecutionCapacity executionCapacity, int rootPlaybackCount)
             where TTime : unmanaged, IEquatable<TTime>
         {
             int activeTrees = 0;
@@ -39,7 +39,7 @@ namespace BTSMTL.Timeline.Runtime
                 windows = Math.Max(windows, content.RequiredTreeExitWindows);
                 words = Math.Max(words, content.RequiredTreeExitWords);
             }
-            return new OrchestrationTimelinePreparedCapacity(executionCapacity.PlaybackCount,
+            return new OrchestrationTimelinePreparedCapacity(checked(executionCapacity.PlaybackCount + rootPlaybackCount),
                 activeTrees, exitRequests, windows, words);
         }
 
@@ -122,8 +122,8 @@ namespace BTSMTL.Timeline.Runtime
             int requiredActiveTrees, int requiredTreeExitRequests,
             ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> treeCycleWindows,
             int requiredTreeExitWords,
-            OrchestrationTimelineCallCapacity callCapacity,
-            in OrchestrationTimelineTickContentCapacity tickCapacity)
+            ReadOnlyMemory<OrchestrationOccurrenceCapacity> occurrences,
+            in OrchestrationTimelineContentTickCapacity tickCapacity)
         {
             ContentIdentityId = contentIdentityId;
             ContentRevisionId = contentRevisionId;
@@ -143,7 +143,7 @@ namespace BTSMTL.Timeline.Runtime
             TreeCycleWindows = treeCycleWindows;
             RequiredTreeExitWindows = boundaries.Decisions.Length;
             RequiredTreeExitWords = requiredTreeExitWords;
-            CallCapacity = callCapacity;
+            Occurrences = occurrences;
             TickCapacity = tickCapacity;
             m_Image = BuildImage();
         }
@@ -166,8 +166,8 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> TreeCycleWindows { get; }
         public int RequiredTreeExitWindows { get; }
         public int RequiredTreeExitWords { get; }
-        public OrchestrationTimelineCallCapacity CallCapacity { get; }
-        public OrchestrationTimelineTickContentCapacity TickCapacity { get; }
+        public ReadOnlyMemory<OrchestrationOccurrenceCapacity> Occurrences { get; }
+        public OrchestrationTimelineContentTickCapacity TickCapacity { get; }
         // 一次推进的遍历段数：循环按可跨圈数，否则一段。
         public int Traversals => Mode == OrchestrationTimelinePlaybackMode.Loop
             ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
