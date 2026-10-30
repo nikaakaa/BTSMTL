@@ -231,7 +231,7 @@ export const archive = {
       runActions.setData(generation, { frame, archiveFrame, frameKey, routeAvailability: frame.route?.availability ?? [] });
       void loadImage(context, archiveFrame.hostFrame, request);
     };
-    Promise.all([cache.has(frameKey) ? Promise.resolve() : loadPage(context, page), readFrame(frameIndex)])
+    Promise.all([cache.has(frameKey) ? Promise.resolve() : loadPage(context, page), readFrame(frameIndex, { kind: 'cursor' })])
       .then(([, frame]) => show(frame), error => {
       if (isCurrent(generation)) consoleActions.error(source, error);
     });

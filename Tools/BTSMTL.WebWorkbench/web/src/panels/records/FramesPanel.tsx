@@ -28,9 +28,11 @@ export function FramesPanel() {
   useEffect(() => {
     setPinnedFrame(null);
     if (pinned === null || !runId) return;
-    let alive = true;
-    readFrame(pinned).then(frame => { if (alive) setPinnedFrame(frame); }, error => consoleActions.error('frames', error));
-    return () => { alive = false; };
+    const controller = new AbortController();
+    readFrame(pinned, { kind: 'pinned', signal: controller.signal }).then(frame => {
+      if (!controller.signal.aborted) setPinnedFrame(frame);
+    }, error => consoleActions.error('frames', error));
+    return () => controller.abort();
   }, [pinned, runId]);
 
   const frame = pinned === null ? current : pinnedFrame;

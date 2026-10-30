@@ -38,41 +38,50 @@ function publishRoutes(runId: PlayerJobId, generation: number) {
   runActions.setData(generation, { routeFrames });
 }
 
-function loadPage(runId: PlayerJobId, page: number, generation: number): Promise<void> {
+function loadPage(runId: PlayerJobId, page: number, generation: number, signal: AbortSignal): Promise<void> {
+  return queryService.framesPage(runId, page * framePageSize, framePageSize, signal).then(result => {
+    if (!result || !isCurrent(generation)) return;
+    result.items.forEach((frame, offset) => remember(runId, page * framePageSize + offset, frame));
+    publishRoutes(runId, generation);
+  });
+}
+
+function loadCursorPage(runId: PlayerJobId, page: number, generation: number): Promise<void> {
   const id = pageKey(runId, page, generation);
   const existing = pending.get(id);
   if (existing) return existing.request;
   const controller = new AbortController();
-  const request = queryService.framesPage(runId, page * framePageSize, framePageSize, controller.signal).then(result => {
-    if (!result || !isCurrent(generation)) return;
-    result.items.forEach((frame, offset) => remember(runId, page * framePageSize + offset, frame));
-    publishRoutes(runId, generation);
-  }).finally(() => {
+  const request = loadPage(runId, page, generation, controller.signal).finally(() => {
     if (pending.get(id)?.request === request) pending.delete(id);
   });
   pending.set(id, { controller, request });
   return request;
 }
 
-// 读取当前运行的一帧；同时预取前后各一页。运行已切换时返回 null。
-export async function readFrame(index: number): Promise<Frame | null> {
+export async function readFrame(index: number, scope: { kind: 'cursor' } | { kind: 'pinned'; signal: AbortSignal }): Promise<Frame | null> {
   const { runId, generation, summary } = getState();
   if (!runId) return null;
   const page = Math.floor(index / framePageSize);
-  const allowed = new Set([page - 1, page, page + 1].map(value => pageKey(runId, value, generation)));
-  for (const [id, entry] of pending) if (!allowed.has(id)) {
-    entry.controller.abort();
-    pending.delete(id);
+  if (scope.kind === 'cursor') {
+    const allowed = new Set([page - 1, page, page + 1].map(value => pageKey(runId, value, generation)));
+    for (const [id, entry] of pending) if (!allowed.has(id)) {
+      entry.controller.abort();
+      pending.delete(id);
+    }
   }
   const hit = cachedFrame(runId, index);
   if (hit) publishRoutes(runId, generation);
-  else await loadPage(runId, page, generation);
+  else if (scope.kind === 'cursor') await loadCursorPage(runId, page, generation);
+  else await loadPage(runId, page, generation, scope.signal);
   if (!isCurrent(generation)) return null;
-  const count = summary?.frameCount ?? 0;
-  for (const neighbour of [page - 1, page + 1])
-    if (neighbour >= 0 && neighbour * framePageSize < count && !cache.has(key(runId, neighbour * framePageSize)))
-      void loadPage(runId, neighbour, generation).catch(error => {
-        if (!isAbort(error) && isCurrent(generation)) consoleActions.error('archive', error);
-      });
+  if (scope.kind === 'cursor') {
+    if (getState().frameIndex !== index) return null;
+    const count = summary?.frameCount ?? 0;
+    for (const neighbour of [page - 1, page + 1])
+      if (neighbour >= 0 && neighbour * framePageSize < count && !cache.has(key(runId, neighbour * framePageSize)))
+        void loadCursorPage(runId, neighbour, generation).catch(error => {
+          if (!isAbort(error) && isCurrent(generation)) consoleActions.error('archive', error);
+        });
+  }
   return hit ?? cachedFrame(runId, index) ?? null;
 }
