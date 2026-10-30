@@ -60,7 +60,11 @@ namespace BTSMTL.Orchestration
             }
             var writer = new OrchestrationMemoryImageWriter(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationStateLayoutImageHeader>());
-            var header = new OrchestrationStateLayoutImageHeader { FrameCapacity = frameCapacity };
+            var header = new OrchestrationStateLayoutImageHeader
+            {
+                FrameCapacity = frameCapacity,
+                TimelineRegion = timelineRegion
+            };
             header.Segments = writer.Add<OrchestrationStateSegment>(m_Segments);
             header.Indices = writer.Add<int>(indices);
             header.CharacterAddresses = writer.Add<OrchestrationValueAddress>(characterAddresses);

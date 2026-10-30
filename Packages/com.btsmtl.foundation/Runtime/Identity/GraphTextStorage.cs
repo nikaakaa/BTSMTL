@@ -34,14 +34,14 @@ namespace BTSMTL.Graphs
             m_FreeIndices = new int[referenceCapacity];
             m_References = new OrchestrationIdentityValue[referenceSlotCount];
             m_ReferenceRanks = referenceSlotCount == 0 ? m_RuntimeRanks : new int[referenceSlotCount + 1];
-            Ordinals = new OrchestrationIdentityOrdinalView(m_ContentRanks, m_RosterRanks, m_ReferenceRanks);
             Reset();
         }
 
         public FrozenOrchestrationIdentities Frozen => m_Frozen;
         public int Capacity => m_Texts.Length;
         public int ReferenceSlotCount => m_References.Length;
-        public OrchestrationIdentityOrdinalView Ordinals { get; }
+        public OrchestrationIdentityOrdinalView Ordinals =>
+            new OrchestrationIdentityOrdinalView(m_ContentRanks, m_RosterRanks, m_ReferenceRanks);
 
         public OrchestrationIdentityValue Capture(string text)
         {
@@ -161,7 +161,7 @@ namespace BTSMTL.Graphs
                 else
                     m_RuntimeRanks[m_SortedRuntimeIndices[runtime++]] = rank++;
             }
-            ReadOnlySpan<int> roster = m_Frozen.Ordinals.RosterRanks.Span;
+            ReadOnlySpan<int> roster = m_Frozen.Ordinals.RosterRanks;
             for (int i = 0; i < roster.Length; i++)
                 m_RosterRanks[i] = m_ContentRanks[roster[i]];
             for (int i = 0; i < m_References.Length; i++)
@@ -234,8 +234,8 @@ namespace BTSMTL.Graphs
                 m_FreeIndices[i] = m_FreeIndices.Length - i - 1;
             m_Count = 0;
             m_FreeCount = m_Texts.Length;
-            m_Frozen.Ordinals.ContentRanks.Span.CopyTo(m_ContentRanks);
-            m_Frozen.Ordinals.RosterRanks.Span.CopyTo(m_RosterRanks);
+            m_Frozen.Ordinals.ContentRanks.CopyTo(m_ContentRanks);
+            m_Frozen.Ordinals.RosterRanks.CopyTo(m_RosterRanks);
             Array.Clear(m_RuntimeRanks, 0, m_RuntimeRanks.Length);
             if (m_References.Length != 0)
                 Array.Clear(m_ReferenceRanks, 0, m_ReferenceRanks.Length);

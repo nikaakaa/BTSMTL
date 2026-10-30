@@ -28,14 +28,23 @@ namespace BTSMTL.Orchestration
 
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, Span<byte> memory) where TValue : unmanaged =>
-            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan.View, memory),
-                plan.TimelineLayout.BindCandidate(memory.Slice(plan.TimelineRegion.OffsetBytes,
+            BindCandidate<TValue>(plan.View, memory);
+
+        // 纯数据宿主只持有布局镜像字节时使用的绑定入口。
+        public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
+            OrchestrationStateLayoutView plan, Span<byte> memory) where TValue : unmanaged =>
+            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory),
+                new OrchestrationStateView(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
-            new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, memory),
-                plan.TimelineLayout.BindCommitted(memory.Slice(plan.TimelineRegion.OffsetBytes,
+            BindCommitted<TValue>(plan.View, memory);
+
+        public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
+            OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory),
+                new ReadOnlyOrchestrationStateView(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(

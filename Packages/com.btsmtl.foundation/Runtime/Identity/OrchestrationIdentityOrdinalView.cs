@@ -2,27 +2,27 @@ using System;
 
 namespace BTSMTL.Orchestration
 {
-    public readonly struct OrchestrationIdentityOrdinalView
+    public readonly ref struct OrchestrationIdentityOrdinalView
     {
-        public OrchestrationIdentityOrdinalView(ReadOnlyMemory<int> contentRanks,
-            ReadOnlyMemory<int> rosterRanks, ReadOnlyMemory<int> runtimeTextRanks)
+        public OrchestrationIdentityOrdinalView(ReadOnlySpan<int> contentRanks,
+            ReadOnlySpan<int> rosterRanks, ReadOnlySpan<int> runtimeTextRanks)
         {
             ContentRanks = contentRanks;
             RosterRanks = rosterRanks;
             RuntimeTextRanks = runtimeTextRanks;
         }
 
-        public ReadOnlyMemory<int> ContentRanks { get; }
-        public ReadOnlyMemory<int> RosterRanks { get; }
-        public ReadOnlyMemory<int> RuntimeTextRanks { get; }
+        public ReadOnlySpan<int> ContentRanks { get; }
+        public ReadOnlySpan<int> RosterRanks { get; }
+        public ReadOnlySpan<int> RuntimeTextRanks { get; }
 
         public int Ordinal(in OrchestrationIdentityValue value) =>
             value.Space switch
             {
                 OrchestrationIdentitySpace.Null => -1,
-                OrchestrationIdentitySpace.Content => ContentRanks.Span[value.Index],
-                OrchestrationIdentitySpace.Roster => RosterRanks.Span[value.Index],
-                OrchestrationIdentitySpace.RuntimeText => RuntimeTextRanks.Span[value.Index],
+                OrchestrationIdentitySpace.Content => ContentRanks[value.Index],
+                OrchestrationIdentitySpace.Roster => RosterRanks[value.Index],
+                OrchestrationIdentitySpace.RuntimeText => RuntimeTextRanks[value.Index],
                 _ => throw new ArgumentOutOfRangeException(nameof(value))
             };
 

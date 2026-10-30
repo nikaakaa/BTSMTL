@@ -7,18 +7,23 @@ namespace BTSMTL.Orchestration
     public sealed class FrozenOrchestrationIdentities
     {
         private readonly ReadOnlyMemory<int>[] m_LocalToShared;
+        private readonly int[] m_ContentRanks;
+        private readonly int[] m_RosterRanks;
+        private readonly int[] m_RuntimeTextRanks = new int[1];
 
         private FrozenOrchestrationIdentities(OrchestrationIdentityTable table,
             ReadOnlyMemory<int>[] localToShared, int[] contentRanks, int[] rosterRanks, StableHash identity)
         {
             Table = table;
             m_LocalToShared = localToShared;
-            Ordinals = new OrchestrationIdentityOrdinalView(contentRanks, rosterRanks, new int[1]);
+            m_ContentRanks = contentRanks;
+            m_RosterRanks = rosterRanks;
             Identity = identity;
         }
 
         public OrchestrationIdentityTable Table { get; }
-        public OrchestrationIdentityOrdinalView Ordinals { get; }
+        public OrchestrationIdentityOrdinalView Ordinals =>
+            new OrchestrationIdentityOrdinalView(m_ContentRanks, m_RosterRanks, m_RuntimeTextRanks);
         public StableHash Identity { get; }
         public int ContentTableCount => m_LocalToShared.Length;
 

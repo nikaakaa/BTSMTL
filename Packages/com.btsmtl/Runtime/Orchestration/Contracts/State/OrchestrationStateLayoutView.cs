@@ -5,6 +5,7 @@ namespace BTSMTL.Orchestration
     internal struct OrchestrationStateLayoutImageHeader
     {
         public int FrameCapacity;
+        public OrchestrationStateRegion<byte> TimelineRegion;
         public OrchestrationMemorySection Segments;
         public OrchestrationMemorySection Indices;
         public OrchestrationMemorySection CharacterAddresses;
@@ -69,7 +70,7 @@ namespace BTSMTL.Orchestration
         internal const int KindCount = (int)OrchestrationValueKind.SpatialIdentity + 1;
         readonly ReadOnlySpan<byte> m_Memory;
 
-        internal OrchestrationStateLayoutView(ReadOnlySpan<byte> image) => m_Memory = image;
+        public OrchestrationStateLayoutView(ReadOnlySpan<byte> image) => m_Memory = image;
 
         ref readonly OrchestrationStateLayoutImageHeader Header =>
             ref OrchestrationMemoryImageWriter.Header<OrchestrationStateLayoutImageHeader>(m_Memory);
@@ -81,6 +82,7 @@ namespace BTSMTL.Orchestration
             ref Section<OrchestrationStateProgramRecord>(Header.Programs)[program];
 
         public int FrameCapacity => Header.FrameCapacity;
+        public OrchestrationStateRegion<byte> TimelineRegion => Header.TimelineRegion;
         public ReadOnlySpan<OrchestrationStateSegment> Segments =>
             Section<OrchestrationStateSegment>(Header.Segments);
 
