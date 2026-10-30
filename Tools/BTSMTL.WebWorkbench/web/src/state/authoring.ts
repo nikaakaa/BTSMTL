@@ -28,10 +28,8 @@ export interface AuthoringState {
   programId: string | null;
   target: AuthoringTarget | null;
   inputActorId: string | null;
-  inputSave: {
-    revisions: InputRevision[];
-    job: { kind: 'none' } | { kind: 'waiting' | 'terminal'; receipt: PlayerJobReceipt };
-  } | null;
+  inputRevision: { kind: 'catalog' } | { kind: 'saved'; items: InputRevision[] } | { kind: 'rejected'; reason: string };
+  saveRun: { kind: 'waiting' | 'terminal'; receipt: PlayerJobReceipt } | null;
   revision: string | null;
   sourceRevision: string | null;
   files: Record<string, string>;
@@ -81,7 +79,8 @@ export interface AddedPort {
 }
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null, inputSave: null, revision: null, sourceRevision: null,
+  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null,
+  inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
   skills: null, scenarios: null, documentGraphs: null, documentError: null, tickRate: null,
@@ -144,13 +143,17 @@ function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt
   };
 }
 
-async function trackPreview(input: { save: SavedCompilation; receipt: PlayerSkillRefreshReceipt; controller: AbortController }) {
+async function trackPreview(input: {
+  save: SavedCompilation; receipt: PlayerSkillRefreshReceipt; controller: AbortController;
+  viewport: { width: number; height: number } | null;
+}) {
   let receipt = input.receipt;
   try {
     while (receipt.stage === 'accepted') {
       await new Promise(resolve => setTimeout(resolve, 1000));
       input.controller.signal.throwIfAborted();
       const next = await authoringApi.refreshStatus(receipt.statusPath, input.controller.signal);
+      input.controller.signal.throwIfAborted();
       if (next.stage !== receipt.stage) {
         const outcome = savedOutcome(input.save, next, '');
         set({ lastSave: outcome });
@@ -158,15 +161,36 @@ async function trackPreview(input: { save: SavedCompilation; receipt: PlayerSkil
       }
       receipt = next;
     }
-    if (receipt.stage === 'adopted' && useWorkbench.getState().liveId === receipt.liveId) {
+    input.controller.signal.throwIfAborted();
+    if (receipt.stage !== 'adopted') return;
+    const live = await playerApi.live(receipt.liveId, input.controller.signal);
+    input.controller.signal.throwIfAborted();
+    const target = live.previewTarget;
+    if (target === null || target.sceneRevision !== receipt.package.sceneRevision)
+      throw new Error('Player 当前确认内容与本次采用回执不一致，未提交封存作业');
+    if (input.viewport === null || target.channels === null || target.source.kind === 'device') {
+      const reason = input.viewport === null ? '没有本次画面尺寸' : target.channels === null ? 'Player 未声明录制通道'
+        : '设备输入没有固定修订';
+      set({ lastSave: { ...savedOutcome(input.save, receipt, ''), message: `已保存、编译并采用；${reason}，未提交封存作业` } });
       session.selectRun(null);
-      await Promise.all([playerService.refresh(), session.refresh()]);
+      await playerService.refresh();
+      return;
     }
+    const request = await session.prepareRun({ kind: 'adopted',
+      target: { ...target, channels: target.channels, source: target.source }, viewport: input.viewport,
+    }, input.controller.signal);
+    input.controller.signal.throwIfAborted();
+    const job = await playerApi.startJob(request, input.controller.signal);
+    input.controller.signal.throwIfAborted();
+    set({ saveRun: { kind: 'waiting', receipt: job }, lastSave: {
+      ...savedOutcome(input.save, receipt, ''), message: '已保存、编译并采用；本次封存作业已受理，等待完成',
+    } });
+    await Promise.all([playerService.refresh(), session.refresh()]);
   } catch (error) {
     if (isAbort(error)) return;
     set({ lastSave: {
       ...savedOutcome(input.save, receipt, ''), ok: false,
-      message: `已保存，编译通过；预览状态读取失败：${error instanceof Error ? error.message : String(error)}`,
+      message: `已保存，编译通过；${receipt.stage === 'adopted' ? '采用后封存' : '预览状态读取'}失败：${error instanceof Error ? error.message : String(error)}`,
     } });
     consoleActions.error('预览', error);
   }
@@ -249,22 +273,26 @@ function publishDocument() {
 }
 
 useWorkbench.subscribe((state, previous) => {
+  if (state.liveId !== previous.liveId) {
+    previewController?.abort();
+    set({ saveRun: null });
+  }
   if (state.generation !== previous.generation) publishDocument();
   if (state.archiveJobs === previous.archiveJobs) return;
-  const saved = get().inputSave;
-  if (saved?.job.kind !== 'waiting') return;
-  const jobId = saved.job.receipt.jobId;
+  const saved = get().saveRun;
+  if (saved?.kind !== 'waiting') return;
+  const jobId = saved.receipt.jobId;
   const receipt = state.archiveJobs.find(job => job.jobId === jobId);
   if (!receipt) return;
   if (receipt.stage === 'queued' || receipt.stage === 'running') {
-    if (receipt.stage !== saved.job.receipt.stage) set({ inputSave: { ...saved, job: { kind: 'waiting', receipt } } });
+    if (receipt.stage !== saved.receipt.stage) set({ saveRun: { kind: 'waiting', receipt } });
     return;
   }
-  set({ inputSave: { ...saved, job: { kind: 'terminal', receipt } } });
+  set({ saveRun: { kind: 'terminal', receipt } });
   const lastSave = get().lastSave;
-  if (lastSave?.compilationState === 'not-required') set({ lastSave: { ...lastSave,
-    ok: receipt.stage === 'completed', message: receipt.stage === 'completed' ? '输入方案已保存，新输入档案已封存'
-      : `输入方案已保存；封存作业 ${receipt.stage}：${receipt.error ?? '未完成'}`,
+  if (lastSave) set({ lastSave: { ...lastSave,
+    ok: receipt.stage === 'completed', message: receipt.stage === 'completed' ? '本次保存的新档案已封存'
+      : `内容已保存；封存作业 ${receipt.stage}：${receipt.error ?? '未完成'}`,
   } });
   if (receipt.stage === 'completed') session.selectRun(receipt.jobId);
 });
@@ -348,7 +376,7 @@ export const authoringActions = {
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
-    set({ target: null, inputActorId: null, inputSave: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
+    set({ target: null, inputActorId: null, inputRevision: { kind: 'catalog' }, saveRun: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(target, controller.signal);
@@ -452,7 +480,9 @@ export const authoringActions = {
     const files = authoringActions.changedFiles();
     if (!target || saving || (!files.length && !removed.length)) return;
     previewController?.abort();
-    set({ saving: true, inputSave: null });
+    const controller = previewController = new AbortController();
+    const viewport = useWorkbench.getState().playerViewport;
+    set({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
       if (get().target !== target) {
         set({ saving: false });
@@ -467,9 +497,10 @@ export const authoringActions = {
       return true;
     };
     try {
-      const selection = await selectedPreview();
       const jobBlocked = session.canStart();
-      const job = jobBlocked === null ? await session.prepareRun() : undefined;
+      const [selection, job] = await Promise.all([
+        selectedPreview(), jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
+      ]);
       const result = await authoringApi.save(target, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
         job,
@@ -483,21 +514,19 @@ export const authoringActions = {
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
           ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
         consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
-        if (currentSkill) set({ inputSave: { revisions: result.inputs,
-          job: result.job === null ? { kind: 'none' } : { kind: 'waiting', receipt: result.job } } });
+        if (currentSkill) set({ inputRevision: { kind: 'saved', items: result.inputs },
+          saveRun: result.job === null || controller.signal.aborted ? null : { kind: 'waiting', receipt: result.job } });
         if (currentSkill && stage === 'applied') await playerService.refresh();
         if (currentSkill) await session.loadInputs();
         if (currentSkill && result.job !== null) await session.refresh();
         return;
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
-      if (result.jobError !== null) outcome.message += `；${result.jobError}`;
       const currentSkill = accept(result.content, outcome);
       consoleActions.log('info', '作者', `${target.name} 已保存并编译：${result.compilation.sourceRevision}`);
-      if (currentSkill && result.preview !== null) {
+      if (currentSkill && result.preview !== null && !controller.signal.aborted) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
-        const controller = previewController = new AbortController();
-        void trackPreview({ save: result, receipt: result.preview, controller });
+        void trackPreview({ save: result, receipt: result.preview, controller, viewport });
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 422) {
@@ -509,6 +538,7 @@ export const authoringActions = {
         accept(rejection.content, {
           ok: false, message, errors, saved: rejection.saved, compilationState: rejection.compilationState, preview: null,
         });
+        if (rejection.compilationState === 'not-required') set({ inputRevision: { kind: 'rejected', reason: message } });
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           rejection.error ?? ''].filter(Boolean).join('\n'));
         return;

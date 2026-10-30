@@ -3,7 +3,7 @@ import { playerApi } from '../api/player';
 import { previewApi } from '../api/preview';
 import {
   newPlayerJobId, readPlayerJobId, readPlayerJobRequest,
-  type PlayerJobId, type PlayerJobReceipt, type PlayerJobStage,
+  type PlayerJobId, type PlayerJobReceipt, type PlayerJobStage, type PlayerPreviewTarget,
 } from '../api/playerRecords';
 import { archive } from './archive';
 import {
@@ -15,6 +15,15 @@ const source = 'run';
 const pendingRequestKey = 'btsmtl.preview.pending-player-job';
 const heartbeatMilliseconds = 3000;
 const pollMilliseconds = 500;
+
+export type ArchivePreviewTarget = Omit<PlayerPreviewTarget, 'channels' | 'source'> & {
+  channels: NonNullable<PlayerPreviewTarget['channels']>;
+  source: Exclude<PlayerPreviewTarget['source'], { kind: 'device' }>;
+};
+
+type RunPreparation = { kind: 'selection' } | {
+  kind: 'adopted'; target: ArchivePreviewTarget; viewport: { width: number; height: number };
+};
 
 export const stageNames: Record<PlayerJobStage, string> = {
   queued: '排队中', running: '运行中', completed: '已封存', failed: '执行失败',
@@ -113,16 +122,21 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 export const session = {
-  async prepareRun() {
-    const selected = selectedStart();
+  async prepareRun(input: RunPreparation, signal?: AbortSignal) {
+    const selected = input.kind === 'selection' ? selectedStart() : {
+      kind: 'selected' as const, liveId: input.target.liveId, source: input.target.source, viewport: input.viewport,
+      scene: { path: input.target.scene, revision: input.target.sceneRevision },
+    };
     if (selected.kind === 'unavailable') throw new Error(selected.reason);
-    const [options, live] = await Promise.all([
-      playerApi.creationOptions({ requestId: newPlayerJobId(), source: selected.source, ...selected.viewport }),
-      playerApi.live(selected.liveId),
+    const [options, playerBuildId] = await Promise.all([
+      playerApi.creationOptions({ requestId: newPlayerJobId(), source: selected.source, ...selected.viewport }, signal),
+      input.kind === 'adopted' ? Promise.resolve(input.target.playerBuildId)
+        : playerApi.live(selected.liveId, signal).then(live => live.buildId),
     ]);
     const { frameRangeBasis, ...parameters } = options;
     consoleActions.log('info', source, frameRangeBasis);
-    return readPlayerJobRequest({ ...parameters, playerBuildId: live.buildId,
+    return readPlayerJobRequest({ ...parameters, playerBuildId,
+      channels: input.kind === 'adopted' ? input.target.channels : parameters.channels,
       scene: selected.scene.path, sceneRevision: selected.scene.revision, source: selected.source });
   },
 
@@ -180,7 +194,7 @@ export const session = {
     let pending = sessionStorage.getItem(pendingRequestKey);
     try {
       if (!pending) {
-        pending = JSON.stringify(await session.prepareRun());
+        pending = JSON.stringify(await session.prepareRun({ kind: 'selection' }));
         sessionStorage.setItem(pendingRequestKey, pending);
       }
       const request = readPlayerJobRequest(JSON.parse(pending), 'pending-player-job');

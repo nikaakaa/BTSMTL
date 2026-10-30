@@ -8,7 +8,7 @@ export function useInputObservation(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
   const author = useAuthoring(useShallow(state => ({
-    target: state.target, actorId: state.inputActorId, saved: state.inputSave,
+    target: state.target, actorId: state.inputActorId, revision: state.inputRevision,
     edited: state.edited, files: state.files, removed: state.removed,
   })));
   const state = useWorkbench(useShallow(current => ({
@@ -37,7 +37,8 @@ export function useInputObservation(documentId: string | null) {
   const target = author.target;
   const plan = actor.localPlans.find(item => item.id === scheme.planId && item.name === target.name &&
     (target.kind === 'scenario' ? item.kind === 'scene' : item.kind !== 'scene'));
-  const revision = author.saved === null ? plan : author.saved.revisions.find(item => item.planId === scheme.planId);
+  if (author.revision.kind === 'rejected') return { kind: 'stale', reason: author.revision.reason } as const;
+  const revision = author.revision.kind === 'catalog' ? plan : author.revision.items.find(item => item.planId === scheme.planId);
   if (!revision) return { kind: 'unavailable', reason: '尚未取得本方案的正式输入修订' } as const;
   const metadata = state.metadata, frame = state.frame;
   if (!metadata || !frame || frame.hostFrame !== state.hostFrame)
@@ -49,8 +50,6 @@ export function useInputObservation(documentId: string | null) {
   if (!recorded) return { kind: 'stale', reason: '当前档案没有采用此角色的输入方案' } as const;
   if (recorded.planRevision !== revision.revision)
     return { kind: 'stale', reason: '输入修订不一致，旧观察层已过期' } as const;
-  if (state.catalog?.revision !== metadata.sceneRevision)
-    return { kind: 'stale', reason: '场景修订不一致，旧观察层已过期' } as const;
   const input = frame.input?.actors.find(item => item.actorId === actorId);
   if (!input) return { kind: 'unavailable', reason: frame.availability.find(item => item.channel === 'input' && !item.available)?.reason
     ?? '当前帧没有该角色的原生输入记录' } as const;
