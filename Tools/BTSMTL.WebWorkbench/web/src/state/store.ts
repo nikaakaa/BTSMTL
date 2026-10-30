@@ -158,6 +158,7 @@ export interface CanvasSelection {
 export interface SelectionSlice {
   selection: Selection | null;
   canvasSelections: Record<string, CanvasSelection>;
+  timelineSelections: Record<string, readonly { box: string; id: string }[]>;
   // 其它面板请求节点图面板显示的图（graphKey）；sequence 让同一张图可重复请求。
   graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
   // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
@@ -214,7 +215,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   identity: null, time: 0, playing: false,
 
-  selection: null, canvasSelections: {}, graphRequest: null, timelineRequest: null,
+  selection: null, canvasSelections: {}, timelineSelections: {}, graphRequest: null, timelineRequest: null,
 
   entries: [], unread: 0, nextEntryId: 1, focusedEntry: null,
 
@@ -343,6 +344,9 @@ export const selectionActions = {
   },
   selectCanvas(panelId: string, selection: CanvasSelection) {
     set({ canvasSelections: { ...getState().canvasSelections, [panelId]: selection } });
+  },
+  selectTimelineClips(panelId: string, selection: SelectionSlice['timelineSelections'][string]) {
+    set({ timelineSelections: { ...getState().timelineSelections, [panelId]: selection } });
   },
   showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
     set({ graphRequest: { key, observation, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });

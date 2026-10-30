@@ -235,6 +235,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
 // 再减去本段零点得到 Timeline 本地秒数。拖到同一 Timeline 的另一条轨道时换轨（目标轨道须能放该种片段）；
 // 拖动框选中的片段时，框选的同一 Timeline 片段整体平移。
 function ClipEditing({ step }: { step: number }) {
+  const panelId = usePanelId();
   const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
   const elements = useSkillElements(useAuthoring(state => state.author && state.target !== null));
   // 像素位移换成秒数：可见范围除以时间区宽度。
@@ -260,7 +261,7 @@ function ClipEditing({ step }: { step: number }) {
       if (!data || !edit) return;
       const delta = pixelsToValue(event.delta.x);
       const local = snapTo(data.span.start + delta - edit.origin, step) - (data.span.start - edit.origin);
-      const boxed = boxedClips.filter(id => id.startsWith(`${edit.documentId}/`));
+      const boxed = (getState().timelineSelections[panelId] ?? []).map(item => item.id).filter(id => id.startsWith(`${edit.documentId}/`));
       if (boxed.length > 1 && boxed.includes(`${edit.documentId}/${edit.clipId}`)) {
         if (local) authoringActions.moveClips(edit.documentId, boxed.map(id => id.split('/')[1]), local, null);
         return;
@@ -288,9 +289,6 @@ function ClipEditing({ step }: { step: number }) {
   });
   return null;
 }
-
-// 框选中的片段（选中身份），拖动其中一个时整体平移。
-let boxedClips: string[] = [];
 
 // 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；中键拖动横移。
 const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
@@ -830,17 +828,18 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
   const clock = useContext(PreviewClockContext);
+  const panelId = usePanelId();
   const scroller = useRef<HTMLDivElement>(null);
-  const [boxed, setBoxed] = useState<ReadonlySet<string>>(() => new Set());
+  const selectedClips = useWorkbench(state => state.timelineSelections[panelId]);
+  const boxed = useMemo(() => new Set(selectedClips?.map(item => item.box)), [selectedClips]);
   const [box, setBox] = useState<Box | null>(null);
   const boxStart = useRef<{ x: number; y: number } | null>(null);
   // 框选后选中的是第一个片段；其它面板或单击换了选中时，框选结果作废。
-  const boxedSelect = useRef<string | null>(null);
   const selection = useWorkbench(state => state.selection);
   useEffect(() => {
-    if (boxed.size && !(selection?.kind === 'clip' && selection.id === boxedSelect.current)) setBoxed(new Set());
-    if (!boxed.size) boxedClips = [];
-  }, [selection, boxed]);
+    if (selectedClips?.length && !(selection?.kind === 'clip' && selection.id === selectedClips[0].id))
+      selectionActions.selectTimelineClips(panelId, []);
+  }, [selection, selectedClips, panelId]);
 
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -862,7 +861,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
     const top = Math.min(start.y, event.clientY), bottom = Math.max(start.y, event.clientY);
     // 单击空白：取消选中。
     if (right - left < 3 && bottom - top < 3) {
-      setBoxed(new Set());
+      selectionActions.selectTimelineClips(panelId, []);
       selectionActions.select(null);
       return;
     }
@@ -870,9 +869,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
       const rect = element.getBoundingClientRect();
       return rect.right >= left && rect.left <= right && rect.bottom >= top && rect.top <= bottom;
     });
-    boxedSelect.current = hits[0]?.dataset.select ?? null;
-    setBoxed(new Set(hits.map(element => element.dataset.box!)));
-    boxedClips = hits.map(element => element.dataset.select!);
+    selectionActions.selectTimelineClips(panelId, hits.map(element => ({ box: element.dataset.box!, id: element.dataset.select! })));
     if (hits.length) selectTimelineObject(clock, 'clip', hits[0].dataset.select!);
     else selectionActions.select(null);
   };
@@ -913,9 +910,8 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
         if (event.key !== 'Delete') return;
         event.preventDefault();
         if (!boxed.size) { deleteSelection(); return; }
-        deleteClips([...event.currentTarget.querySelectorAll<HTMLElement>('[data-box]')]
-          .filter(element => boxed.has(element.dataset.box!)).map(element => element.dataset.select!));
-        setBoxed(new Set());
+        deleteClips((selectedClips ?? []).map(item => item.id));
+        selectionActions.selectTimelineClips(panelId, []);
       }}
       onPointerCancel={() => { boxStart.current = null; setBox(null); }}
       onScroll={event => {
