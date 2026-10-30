@@ -225,16 +225,20 @@ export const archive = {
       pages.delete(id);
       pending.delete(id);
     }
-    const show = (frame: Awaited<ReturnType<typeof readFrame>>) => {
+    const failed = (error: unknown) => {
+      if (request === frameRequest && isCurrent(generation)) consoleActions.error(source, error);
+    };
+    const show = () => {
       const archiveFrame = cache.get(frameKey);
-      if (request !== frameRequest || !frame || !archiveFrame || !isCurrent(generation)) return;
-      runActions.setData(generation, { frame, archiveFrame, frameKey, routeAvailability: frame.route?.availability ?? [] });
+      if (request !== frameRequest || !archiveFrame || !isCurrent(generation)) return;
+      runActions.setData(generation, { archiveFrame, frameKey });
       void loadImage(context, archiveFrame.hostFrame, request);
     };
-    Promise.all([cache.has(frameKey) ? Promise.resolve() : loadPage(context, page), readFrame(frameIndex, { kind: 'cursor' })])
-      .then(([, frame]) => show(frame), error => {
-      if (isCurrent(generation)) consoleActions.error(source, error);
-    });
+    (cache.has(frameKey) ? Promise.resolve() : loadPage(context, page)).then(show, failed);
+    readFrame(frameIndex, { kind: 'cursor' }).then(frame => {
+      if (request !== frameRequest || !frame || !isCurrent(generation)) return;
+      runActions.setData(generation, { frame, routeAvailability: frame.route?.availability ?? [] });
+    }, failed);
     for (const neighbour of [page - 1, page + 1])
       if (neighbour >= 0 && neighbour * pageFrames < summary.frameCount && !cache.has(key(runId, neighbour * pageFrames)))
         void loadPage(context, neighbour).catch(error => {
