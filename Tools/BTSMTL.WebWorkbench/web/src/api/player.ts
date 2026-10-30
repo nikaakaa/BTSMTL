@@ -1,25 +1,41 @@
-import { getBlob, getJson, postJson } from './http';
+import { getBlob, getJson, postJson, query } from './http';
+import {
+  readPlayerCamera, readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
+  readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
+  type PlayerArchiveRange, type PlayerJobId, type StartPlayerJobRequest,
+} from './playerRecords';
 import type {
-  ImageMetadata, ImageSourceAvailability, LiveCommand, LiveCommandResult, LivePlayer, PlayerBuild,
-  PlayerCodeUpdate, PlayerJob, PlayerJobReceipt, StartLivePlayerRequest, StartPlayerJobRequest, VideoFrame,
+  ImageSourceAvailability, LiveCommand, LiveCommandResult, LivePlayer, PlayerBuild,
+  PlayerCodeUpdate, StartLivePlayerRequest, VideoFrame,
   ViewerMessage,
 } from './types';
 
 const live = (id: string) => `/api/preview/live/${encodeURIComponent(id)}`;
-const job = (runId: string, jobId: string) =>
-  `/api/preview/runs/${encodeURIComponent(runId)}/player/${encodeURIComponent(jobId)}`;
+const job = (id: PlayerJobId) => `/api/preview/player-jobs/${encodeURIComponent(id)}`;
+const decoded = <T>(path: string, read: (value: unknown, path?: string) => T, signal?: AbortSignal) =>
+  getJson<unknown>(path, signal).then(value => read(value, path));
 
 export const playerApi = {
   images: (signal?: AbortSignal) => getJson<ImageSourceAvailability>('/api/preview/images', signal),
   builds: (signal?: AbortSignal) => getJson<{ items: PlayerBuild[] }>('/api/preview/players', signal),
-  frameImage: (runId: string, sourceId: string, hostFrame: string, signal?: AbortSignal) =>
-    getBlob(`${job(runId, sourceId)}/frames/${encodeURIComponent(hostFrame)}`, signal).then(response => response.blob()),
-  frameMetadata: (runId: string, sourceId: string, hostFrame: string, signal?: AbortSignal) =>
-    getJson<ImageMetadata>(`${job(runId, sourceId)}/frames/${encodeURIComponent(hostFrame)}/metadata`, signal),
-
+  jobs: (signal?: AbortSignal) => decoded('/api/preview/player-jobs', readPlayerJobs, signal),
   startJob: (request: StartPlayerJobRequest, signal?: AbortSignal) =>
-    postJson<PlayerJobReceipt>(`/api/preview/runs/${encodeURIComponent(request.runId)}/player`, request, signal),
-  job: (runId: string, jobId: string, signal?: AbortSignal) => getJson<PlayerJob>(job(runId, jobId), signal),
+    postJson<unknown>('/api/preview/player-jobs', request, signal).then(value => readPlayerJobReceipt(value)),
+  job: (id: PlayerJobId, signal?: AbortSignal) => decoded(job(id), readPlayerJob, signal),
+  summary: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/summary`, readPlayerSummary, signal),
+  archive: (id: PlayerJobId, signal?: AbortSignal) => getJson<unknown>(`${job(id)}/archive`, signal),
+  archiveFile: (id: PlayerJobId, path: string, signal?: AbortSignal) =>
+    getBlob(`${job(id)}/files/${path.split('/').map(encodeURIComponent).join('/')}`, signal),
+  logic: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
+    decoded(`${job(id)}/logic${query({ ...range })}`, readPlayerLogic, signal),
+  poseLayout: (id: PlayerJobId, signal?: AbortSignal) =>
+    decoded(`${job(id)}/pose-layout`, readPlayerPoseLayout, signal),
+  presentation: (id: PlayerJobId, range: PlayerArchiveRange & { rosterIndex?: number }, signal?: AbortSignal) =>
+    decoded(`${job(id)}/presentation${query({ ...range })}`, readPlayerPresentation, signal),
+  camera: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
+    decoded(`${job(id)}/camera${query({ ...range })}`, readPlayerCamera, signal),
+  unavailable: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
+    decoded(`${job(id)}/unavailable${query({ ...range })}`, readPlayerUnavailable, signal),
   updateCode: (requestId: string, playerBuildId: string, signal?: AbortSignal) =>
     postJson<PlayerCodeUpdate>('/api/preview/players/code-updates', { requestId, playerBuildId }, signal),
 

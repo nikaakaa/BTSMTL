@@ -527,15 +527,6 @@ export interface PlayerBuild {
   rawJson: string;
 }
 
-export interface ImageMetadata {
-  runId: string;
-  hostFrame: string;
-  contentRevision: string | null;
-  alignment: string;
-  fields: Field[];
-  rawJson: string;
-}
-
 export type AlignmentState = 'matched' | 'mismatch' | 'pending' | 'no-dotnet-record' | 'live-input' | 'not-loaded';
 
 export interface Alignment {
@@ -692,31 +683,7 @@ export interface VideoFrame {
   image: Blob;
 }
 
-export interface StartPlayerJobRequest {
-  requestId: string;
-  runId: string;
-  playerBuildId: string;
-  captureFrames: number[];
-  width?: number;
-  height?: number;
-}
-
-export interface PlayerJobReceipt {
-  jobId: string;
-  runId: string;
-  playerBuildId: string;
-  stage: string;
-  acceptedAt: string;
-  finishedAt: string | null;
-  exitCode: number | null;
-  error: string | null;
-}
-
-export interface PlayerJob {
-  receipt: PlayerJobReceipt;
-  player: unknown;
-  alignment: { state: string; changeKind: string | null; reason: string | null } & Record<string, unknown>;
-}
+export type { PlayerJob, PlayerJobReceipt, StartPlayerJobRequest } from './playerRecords';
 
 export interface PlayerCodeUpdate {
   state: 'created' | 'unchanged' | 'rejected';
@@ -751,4 +718,95 @@ export interface AnimationLibrary {
   sha256: string;
   sourceSha256: string;
   clips: AnimationClip[];
+}
+
+// ── 播放器运行档案（/api/preview/player-jobs） ──
+
+export interface PlayerArchiveRequest {
+  requestId: string;
+  playerBuildId: string;
+  scene: string;
+  sceneRevision: string;
+  source: { kind: string } & Record<string, unknown>;
+  firstSdkFrame: number;
+  lastSdkFrame: number;
+  captureFrames: number[];
+  outputDirectory: string;
+}
+
+export interface PlayerArchiveJob {
+  request: PlayerArchiveRequest;
+  stage: 'queued' | 'running' | 'completed' | 'failed' | 'unavailable' | 'rejected' | 'cancelled';
+  acceptedAt: string;
+  finishedAt: string | null;
+  archivePath: string | null;
+  error: string | null;
+  cachedFrom: string | null;
+}
+
+export interface PlayerArchiveJobs {
+  capacity: number;
+  queued: number;
+  items: PlayerArchiveJob[];
+}
+
+export interface ArchiveSummary extends Summary {
+  playerBuildId: string;
+  sceneRevision: string;
+  inputSource: string;
+  inputRevision: string;
+  availability: Availability[];
+}
+
+export interface ArchiveFrameSource {
+  sdkFrame: string;
+  gameplayTick: string;
+}
+
+export interface ArchiveLogicRecord {
+  source: ArchiveFrameSource;
+  checksum: string;
+  bodies: number[][];
+}
+
+export interface ArchiveLogicPage {
+  bodyColumns: string[];
+  page: { items: ArchiveLogicRecord[]; total: number; nextOffset: number | null };
+}
+
+export interface ArchiveRig {
+  actorId: string;
+  rosterIndex: number;
+  rigId: string;
+  bones: string[];
+  parents: number[];
+}
+
+export interface ArchivePoseLayout {
+  coordinates: string;
+  units: string;
+  actors: ArchiveRig[];
+}
+
+export interface ArchivePose extends Pose {
+  scale: Vec3;
+}
+
+export interface ArchiveActorPose {
+  actorId: string;
+  rosterIndex: number;
+  worldRoot: ArchivePose;
+  localPoseRoot: ArchivePose;
+  localBones: ArchivePose[];
+}
+
+export interface ArchivePresentationRecord {
+  source: ArchiveFrameSource;
+  verifiedSdkFrame: string;
+  interpolationFactor: number;
+  actors: ArchiveActorPose[];
+}
+
+export interface ArchivePage<T> {
+  page: { items: T[]; total: number; nextOffset: number | null };
 }
