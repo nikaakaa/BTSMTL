@@ -19,9 +19,8 @@ namespace BTSMTL.Timeline.Runtime
     {
         readonly struct WeightCurves
         {
-            public WeightCurves(TimelineRuntimeCurve<TScalar, TMath, TLowering> weight,
-                TimelineRuntimeCurve<TScalar, TMath, TLowering> easeIn,
-                TimelineRuntimeCurve<TScalar, TMath, TLowering> easeOut, TScalar normalizationDurationMinimum,
+            public WeightCurves(TimelineRuntimeCurve<TScalar> weight, TimelineRuntimeCurve<TScalar> easeIn,
+                TimelineRuntimeCurve<TScalar> easeOut, TScalar normalizationDurationMinimum,
                 TScalar sourceStart, TScalar sourceEnd)
             {
                 Weight = weight;
@@ -32,15 +31,16 @@ namespace BTSMTL.Timeline.Runtime
                 SourceEnd = sourceEnd;
             }
 
-            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> Weight;
-            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> EaseIn;
-            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> EaseOut;
+            public readonly TimelineRuntimeCurve<TScalar> Weight;
+            public readonly TimelineRuntimeCurve<TScalar> EaseIn;
+            public readonly TimelineRuntimeCurve<TScalar> EaseOut;
             public readonly TScalar NormalizationDurationMinimum;
             public readonly TScalar SourceStart;
             public readonly TScalar SourceEnd;
         }
 
         readonly WeightCurves[] m_Weights;
+        readonly GameplayAbilityCurveKey<TScalar>[] m_CurveKeys;
         readonly int[] m_KindIndices;
         readonly string[] m_Kinds;
         readonly Dictionary<string, int> m_KindsByName;
@@ -55,6 +55,7 @@ namespace BTSMTL.Timeline.Runtime
             m_KindIndices = new int[content.Clips.Count];
             m_KindsByName = new Dictionary<string, int>(StringComparer.Ordinal);
             var kinds = new List<string>();
+            var curves = new TimelineRuntimeCurveBuilder<TScalar, TLowering>();
             for (int index = 0; index < content.Clips.Count; index++)
             {
                 TimelineContentClip clip = content.Clips[index];
@@ -71,12 +72,13 @@ namespace BTSMTL.Timeline.Runtime
                     continue;
                 TimelineContentSampling sampling = clip.Sampling;
                 m_Weights[index] = new WeightCurves(
-                    PrepareCurve(in clip, sampling.WeightCurveIndex, math.One),
-                    PrepareCurve(in clip, sampling.EaseInCurveIndex, math.One),
-                    PrepareCurve(in clip, sampling.EaseOutCurveIndex, math.Zero),
+                    PrepareCurve(curves, in clip, sampling.WeightCurveIndex, math.One),
+                    PrepareCurve(curves, in clip, sampling.EaseInCurveIndex, math.One),
+                    PrepareCurve(curves, in clip, sampling.EaseOutCurveIndex, math.Zero),
                     lowering.FromSingle(sampling.NormalizationDurationMinimum),
                     lowering.FromSingle(clip.TimeRange.SourceStart), lowering.FromSingle(clip.TimeRange.SourceEnd));
             }
+            m_CurveKeys = curves.ToKeyArray();
             m_Kinds = kinds.ToArray();
         }
 
@@ -85,6 +87,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_Domain = source.m_Domain;
             m_Weights = (WeightCurves[])source.m_Weights.Clone();
+            m_CurveKeys = source.m_CurveKeys;
             m_KindIndices = source.m_KindIndices;
             m_Kinds = source.m_Kinds;
             m_KindsByName = source.m_KindsByName;
@@ -107,11 +110,11 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        static TimelineRuntimeCurve<TScalar, TMath, TLowering> PrepareCurve(
+        static TimelineRuntimeCurve<TScalar> PrepareCurve(TimelineRuntimeCurveBuilder<TScalar, TLowering> curves,
             in TimelineContentClip clip, int curveIndex, TScalar emptyValue) =>
             curveIndex == -1
-                ? TimelineRuntimeCurve<TScalar, TMath, TLowering>.Constant(emptyValue)
-                : TimelineRuntimeCurve<TScalar, TMath, TLowering>.PrepareOptional(clip.Curves[curveIndex], emptyValue);
+                ? curves.Constant(emptyValue)
+                : curves.PrepareOptional(clip.Curves[curveIndex], emptyValue);
 
         public int SampleKindCount => m_Kinds.Length;
         public string SampleKindAt(int kindIndex) => m_Kinds[kindIndex];
@@ -143,7 +146,7 @@ namespace BTSMTL.Timeline.Runtime
             TScalar remaining = projection.Project(OrchestrationTime.Max(OrchestrationTime.Zero, clip.EndTime - time));
             TScalar duration = math.Max(curves.NormalizationDurationMinimum, projection.Project(clip.DurationTime));
             TScalar normalized = math.Clamp(math.Divide(local, duration), math.Zero, math.One);
-            TScalar weight = Weight(in curves, in clip, local, remaining, normalized, hold);
+            TScalar weight = Weight(in curves, m_CurveKeys, in clip, local, remaining, normalized, hold);
             if (!clip.Sampling.EmitZeroWeight && math.LessThanOrEqual(weight, math.Zero))
             {
                 sample = default;
@@ -174,22 +177,24 @@ namespace BTSMTL.Timeline.Runtime
                 : math.Clamp(math.Add(sourceStart, local), sourceStart, sourceEnd);
         }
 
-        static TScalar Weight(in WeightCurves curves, in TimelineContentClip clip,
-            TScalar local, TScalar remaining, TScalar normalized, bool hold)
+        static TScalar Weight(in WeightCurves curves, ReadOnlySpan<GameplayAbilityCurveKey<TScalar>> keys,
+            in TimelineContentClip clip, TScalar local, TScalar remaining, TScalar normalized, bool hold)
         {
             TMath math = default;
             TProjection projection = default;
+            TimelineRuntimeCurveEvaluator<TScalar, TMath> evaluator = default;
             TScalar fadeIn = math.One;
             TScalar fadeOut = math.One;
             TScalar easeIn = projection.Project(clip.EaseInTime);
             TScalar easeOut = projection.Project(clip.EaseOutTime);
             if (!hold && math.GreaterThan(easeIn, math.Zero) && math.GreaterThan(easeIn, local))
-                fadeIn = curves.EaseIn.Evaluate(math.Clamp(math.Divide(local, easeIn), math.Zero, math.One));
+                fadeIn = evaluator.Evaluate(in curves.EaseIn, keys,
+                    math.Clamp(math.Divide(local, easeIn), math.Zero, math.One));
             if (!hold && math.GreaterThan(easeOut, math.Zero) && math.GreaterThan(easeOut, remaining))
-                fadeOut = math.Subtract(math.One, curves.EaseOut.Evaluate(math.Clamp(
+                fadeOut = math.Subtract(math.One, evaluator.Evaluate(in curves.EaseOut, keys, math.Clamp(
                     math.Subtract(math.One, math.Divide(remaining, easeOut)), math.Zero, math.One)));
-            return math.Clamp(math.Multiply(math.Multiply(curves.Weight.Evaluate(normalized), fadeIn), fadeOut),
-                math.Zero, math.One);
+            return math.Clamp(math.Multiply(math.Multiply(evaluator.Evaluate(in curves.Weight, keys, normalized),
+                fadeIn), fadeOut), math.Zero, math.One);
         }
     }
 
