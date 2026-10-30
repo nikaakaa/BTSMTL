@@ -15,4 +15,10 @@
     </PropertyGroup>
     <Exec Command="dotnet &quot;@(DependencyGuardTargetPath)&quot; $(DependencyGuardArguments)" />
   </Target>
+  <!-- 宿主提供 Unity 工程与 Editor 路径时执行 Burst 兼容检查（Float32 数值目标）。 -->
+  <Target Name="BurstCheck" AfterTargets="Build" Condition="'$(BurstCheckClientRoot)' != ''">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Tools/BurstCheck/BTSMTL.BurstCheck.csproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);UseSharedCompilation=false;BurstCheckClientRoot=$(BurstCheckClientRoot);UnityEditorDataPath=$(UnityEditorDataPath);BurstCheckOutput=$(BurstCheckOutput);BurstCheckTemp=$(BurstCheckTemp)" />
+  </Target>
 </Project>

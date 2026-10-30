@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -21,10 +20,11 @@ namespace BTSMTL.Orchestration
 
         public void Capture(OrchestrationExecutionSource<TValue> source)
         {
+            OrchestrationStateLayoutView plan = m_Plan.View;
             OrchestrationStateBinding.ClearPayloads(m_Plan, m_Memory);
-            OrchestrationStateSegment frameSegment = m_Plan.Segment(OrchestrationStateSegmentRole.Frames);
+            OrchestrationStateSegment frameSegment = plan.Segment(OrchestrationStateSegmentRole.Frames);
             m_Memory.AsSpan(frameSegment.OffsetBytes, frameSegment.SizeBytes).Clear();
-            var frames = new OrchestrationExecutionFrames<TValue>(m_Plan, m_Memory);
+            var frames = new OrchestrationExecutionFrames<TValue>(plan, m_Memory);
             int count = 0;
             for (int sourceSlot = source.FrameSlot; sourceSlot >= 0; count++)
             {
@@ -32,25 +32,25 @@ namespace BTSMTL.Orchestration
                 frames.Header(count) = header;
                 frames.Header(count).ParentFrameIndex = header.ParentFrameIndex < 0 ? -1 : count + 1;
                 int sourceProgram = source.Frames.Plan.ProgramIndex(header.SkillContentId);
-                int destinationProgram = m_Plan.ProgramIndex(header.SkillContentId);
-                foreach (OrchestrationStateSegment segment in m_Plan.Segments.Span)
+                int destinationProgram = plan.ProgramIndex(header.SkillContentId);
+                foreach (OrchestrationStateSegment segment in plan.Segments)
                 {
                     if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                         continue;
                     OrchestrationStateSegment sourceSegment = source.Frames.Plan.Segment(segment.Role, segment.ValueKind);
                     OrchestrationStateRegion<byte> sourceRegion = source.Frames.Plan.PayloadRegion(in sourceSegment,
                         sourceSlot, sourceProgram, header.OwnerOperationIndex);
-                    OrchestrationStateRegion<byte> destinationRegion = m_Plan.PayloadRegion(in segment,
+                    OrchestrationStateRegion<byte> destinationRegion = plan.PayloadRegion(in segment,
                         count, destinationProgram, header.OwnerOperationIndex);
                     source.Frames.Memory.Slice(sourceRegion.OffsetBytes, sourceRegion.SizeBytes)
                         .CopyTo(m_Memory.AsSpan(destinationRegion.OffsetBytes, destinationRegion.SizeBytes));
                 }
                 sourceSlot = header.ParentFrameIndex;
             }
-            OrchestrationStateSegment roster = m_Plan.Segment(OrchestrationStateSegmentRole.Roster);
-            MemoryMarshal.Cast<byte, OrchestrationExecutionRosterState>(
+            OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
+            SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(
                 m_Memory.AsSpan(roster.OffsetBytes, roster.SizeBytes))[0].Count = count;
-            foreach (OrchestrationStateSegment segment in m_Plan.Segments.Span)
+            foreach (OrchestrationStateSegment segment in plan.Segments)
             {
                 if (segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames ||
                     segment.Role == OrchestrationStateSegmentRole.Roster)
@@ -65,7 +65,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExecutionSource<TValue> Borrow()
         {
-            var frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan, m_Memory);
+            var frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan.View, m_Memory);
             return new OrchestrationExecutionSource<TValue>(frames, 0, m_Tick, in m_StopContext);
         }
 

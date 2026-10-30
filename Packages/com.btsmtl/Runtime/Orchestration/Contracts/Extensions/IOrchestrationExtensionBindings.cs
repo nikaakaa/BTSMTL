@@ -5,7 +5,7 @@ namespace BTSMTL.Orchestration
         where TContext : struct
     {
         int Count { get; }
-        ref readonly OrchestrationExtensionContract Contract(int bindingIndex);
+        OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex);
 
         bool ShouldExecute(int bindingIndex, in TContext context);
 

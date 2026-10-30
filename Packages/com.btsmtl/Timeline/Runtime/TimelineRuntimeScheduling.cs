@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -107,12 +108,10 @@ namespace BTSMTL.Timeline.Runtime
         public int Cycle { get; }
     }
 
-    public sealed class TimelineRuntimeScheduling<TTime, TClock>
+    public static class TimelineRuntimeScheduling<TTime, TClock>
         where TTime : unmanaged
         where TClock : struct, IOrchestrationTimelineClock<TTime>
     {
-        readonly Comparison<TimelineScheduledInvocation<TTime>> m_InvocationComparison = CompareInvocations;
-
         public static TTime Target(TTime cursor, int cycle, int carry, TTime duration,
             int tickRate, int tickCount, TTime rate, bool paused, out int nextCarry)
         {
@@ -147,7 +146,7 @@ namespace BTSMTL.Timeline.Runtime
             return clock.FromRaw(targetRaw);
         }
 
-        public int Boundaries(TimelineRuntimeBoundaryIndex<TTime> index,
+        public static int Boundaries(TimelineRuntimeBoundaryIndexView<TTime> index,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool loop, bool initialBoundary,
             TimelineTreeExitView exited,
@@ -158,7 +157,7 @@ namespace BTSMTL.Timeline.Runtime
             TClock clock = default;
             if (!clock.GreaterThan(duration, clock.Zero))
                 return 0;
-            ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = index.Clips.Span;
+            ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = index.Clips;
             TTime previousAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(previousCycle)), previousTime);
             TTime nextAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(nextCycle)), nextTime);
             bool advances = clock.GreaterThan(nextAbsolute, previousAbsolute);
@@ -168,7 +167,7 @@ namespace BTSMTL.Timeline.Runtime
                 int position = index.FindNext<TClock>(0, previousTime, true);
                 while (position >= 0)
                 {
-                    int ordinal = index.StableOrder.Span[position];
+                    int ordinal = index.StableOrder[position];
                     ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
                     if (clock.GreaterThan(previousTime, clip.Start))
                         synthetic[initialCount++] = new TimelineSchedulingBoundary<TTime>(ordinal,
@@ -221,7 +220,7 @@ namespace BTSMTL.Timeline.Runtime
 
         ref struct BoundaryCursor
         {
-            readonly TimelineRuntimeBoundaryIndex<TTime> m_Index;
+            readonly TimelineRuntimeBoundaryIndexView<TTime> m_Index;
             readonly TTime m_Previous;
             readonly TTime m_Next;
             readonly TTime m_Duration;
@@ -235,7 +234,7 @@ namespace BTSMTL.Timeline.Runtime
             int m_End;
             public TimelineSchedulingBoundary<TTime> Current;
 
-            internal BoundaryCursor(TimelineRuntimeBoundaryIndex<TTime> index,
+            internal BoundaryCursor(TimelineRuntimeBoundaryIndexView<TTime> index,
                 TTime previous, int previousCycle, TTime next, int nextCycle, TTime duration,
                 bool loop, bool initial, bool advances, TimelineTreeExitView exits)
             {
@@ -265,13 +264,13 @@ namespace BTSMTL.Timeline.Runtime
             internal bool MoveNext()
             {
                 TClock clock = default;
-                ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Index.Clips.Span;
+                ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Index.Clips;
                 while (m_Cycle <= m_LastCycle)
                 {
                     TTime to = m_Cycle == m_NextCycle ? m_Next : m_Duration;
                     while (m_Start < m_Index.Starts.Length)
                     {
-                        int ordinal = m_Index.Starts.Span[m_Start];
+                        int ordinal = m_Index.Starts[m_Start];
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
                         if (clock.GreaterThan(clip.Start, to))
                             break;
@@ -280,20 +279,20 @@ namespace BTSMTL.Timeline.Runtime
                         m_Start++;
                     }
                     bool start = m_Start < m_Index.Starts.Length &&
-                        clock.LessThanOrEqual(clips[m_Index.Starts.Span[m_Start]].Start, to);
+                        clock.LessThanOrEqual(clips[m_Index.Starts[m_Start]].Start, to);
                     bool end = m_End < m_Index.Ends.Length &&
-                        clock.LessThanOrEqual(clips[m_Index.Ends.Span[m_End]].End, to);
-                    if (end && (!start || clock.LessThanOrEqual(clips[m_Index.Ends.Span[m_End]].End,
-                            clips[m_Index.Starts.Span[m_Start]].Start)))
+                        clock.LessThanOrEqual(clips[m_Index.Ends[m_End]].End, to);
+                    if (end && (!start || clock.LessThanOrEqual(clips[m_Index.Ends[m_End]].End,
+                            clips[m_Index.Starts[m_Start]].Start)))
                     {
-                        int ordinal = m_Index.Ends.Span[m_End++];
+                        int ordinal = m_Index.Ends[m_End++];
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
                         Current = new TimelineSchedulingBoundary<TTime>(ordinal, clip.SortOrdinal, clip.End, (int)m_Cycle, false);
                         return true;
                     }
                     if (start)
                     {
-                        int ordinal = m_Index.Starts.Span[m_Start++];
+                        int ordinal = m_Index.Starts[m_Start++];
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
                         Current = new TimelineSchedulingBoundary<TTime>(ordinal, clip.SortOrdinal, clip.Start, (int)m_Cycle, true);
                         return true;
@@ -306,7 +305,7 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        public int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,
+        public static int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool includeStart,
             Span<TimelineScheduledInvocation<TTime>> output)
@@ -334,14 +333,14 @@ namespace BTSMTL.Timeline.Runtime
             return count;
         }
 
-        public int Trees(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
+        public static int Trees(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
             ReadOnlySpan<TimelineSchedulingBoundary<TTime>> boundaries,
             ReadOnlySpan<TimelineSchedulingBoundary<TTime>> previousActive,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool loop,
             TimelineTreeExitView exited,
             Span<bool> selected, Span<int> selectedOrdinals, ref int selectedCount,
-            TimelineScheduledInvocation<TTime>[] output, int offset)
+            Span<TimelineScheduledInvocation<TTime>> result)
         {
             TClock clock = default;
             int count = 0;
@@ -351,7 +350,6 @@ namespace BTSMTL.Timeline.Runtime
             foreach (ref readonly TimelineSchedulingBoundary<TTime> occurrence in previousActive)
                 if (occurrence.Cycle == previousCycle)
                     SelectTree(occurrence.ClipOrdinal, selected, selectedOrdinals, ref selectedCount);
-            Span<TimelineScheduledInvocation<TTime>> result = output.AsSpan(offset);
             for (int i = 0; i < boundaries.Length; i++)
             {
                 ref readonly TimelineSchedulingBoundary<TTime> boundary = ref boundaries[i];
@@ -400,7 +398,7 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        internal int ContinueTrees(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
+        internal static int ContinueTrees(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
             ReadOnlySpan<TimelineSchedulingBoundary<TTime>> previousActive,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle, TTime duration,
             TimelineTreeExitView exited,
@@ -427,8 +425,8 @@ namespace BTSMTL.Timeline.Runtime
             return count;
         }
 
-        public void SortTrees(TimelineScheduledInvocation<TTime>[] output, int offset, int count) =>
-            SimulationArraySort.Sort(output.AsSpan(offset, count), m_InvocationComparison);
+        public static void SortTrees(Span<TimelineScheduledInvocation<TTime>> output) =>
+            SimulationArraySort.Sort(output, default(InvocationComparer));
 
         public static bool IsActive(int ordinal, int cycle, TTime time, OrchestrationTimelineHook hook,
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> requests,
@@ -510,14 +508,17 @@ namespace BTSMTL.Timeline.Runtime
             return result == 0 ? left.SortOrdinal.CompareTo(right.SortOrdinal) : result;
         }
 
-        static int CompareInvocations(TimelineScheduledInvocation<TTime> left, TimelineScheduledInvocation<TTime> right)
+        readonly struct InvocationComparer : IComparer<TimelineScheduledInvocation<TTime>>
         {
-            int result = left.Cycle.CompareTo(right.Cycle);
-            if (result == 0)
-                result = default(TClock).Raw(left.Time).CompareTo(default(TClock).Raw(right.Time));
-            if (result == 0)
-                result = Order(left.Hook).CompareTo(Order(right.Hook));
-            return result == 0 ? left.SortOrdinal.CompareTo(right.SortOrdinal) : result;
+            public int Compare(TimelineScheduledInvocation<TTime> left, TimelineScheduledInvocation<TTime> right)
+            {
+                int result = left.Cycle.CompareTo(right.Cycle);
+                if (result == 0)
+                    result = default(TClock).Raw(left.Time).CompareTo(default(TClock).Raw(right.Time));
+                if (result == 0)
+                    result = Order(left.Hook).CompareTo(Order(right.Hook));
+                return result == 0 ? left.SortOrdinal.CompareTo(right.SortOrdinal) : result;
+            }
         }
     }
 }

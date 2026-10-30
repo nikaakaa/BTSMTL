@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,8 +14,9 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         OrchestrationOperationResult TickLoop(int operationIndex)
         {

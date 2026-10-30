@@ -52,11 +52,63 @@ namespace BTSMTL.Timeline.Runtime
                 checked(PlaybackCount * TreeExitWordsPerPlayback),
                 checked(PlaybackCount * TreeExitWindowsPerPlayback),
                 checked(PlaybackCount * TreeExitRequestsPerPlayback));
+
+        // 准备期核对内容所需区段不超过已准备容量；推进期不再检查。
+        public void Require<TTime>(OrchestrationTimelinePreparedContent<TTime> content)
+            where TTime : unmanaged, IEquatable<TTime>
+        {
+            Require(content.ContentIdentityId, "ActiveTrees scratch", content.RequiredActiveTrees, ActiveTreesPerPlayback);
+            Require(content.ContentIdentityId, "TreeExitRequests", content.RequiredTreeExitRequests, TreeExitRequestsPerPlayback);
+            Require(content.ContentIdentityId, "TreeExitFirstCycles", content.RequiredTreeExitWindows, TreeExitWindowsPerPlayback);
+            Require(content.ContentIdentityId, "TreeExitBits", content.RequiredTreeExitWords, TreeExitWordsPerPlayback);
+        }
+
+        static void Require(int content, string region, int required, int available)
+        {
+            if (required > available)
+                throw new InvalidOperationException($"Timeline '{content}' region '{region}' requires '{required}' elements; prepared capacity is '{available}'.");
+        }
+    }
+
+    internal struct OrchestrationTimelineBoundarySections
+    {
+        internal OrchestrationMemorySection Starts;
+        internal OrchestrationMemorySection Ends;
+        internal OrchestrationMemorySection StableOrder;
+        internal OrchestrationMemorySection Decisions;
+        internal OrchestrationMemorySection MinStarts;
+        internal OrchestrationMemorySection MaxEnds;
+        internal OrchestrationMemorySection MaxLifetimeEnds;
+        internal OrchestrationMemorySection StartMaxLifetimeEnds;
+    }
+
+    internal struct OrchestrationTimelineContentHeader<TTime> where TTime : unmanaged
+    {
+        internal int ContentIdentityId;
+        internal int ContentRevisionId;
+        internal TTime Duration;
+        internal int TickRate;
+        internal OrchestrationTimelinePlaybackMode Mode;
+        internal TimelineExecutionDomain Domain;
+        internal int RequiredActiveTrees;
+        internal int RequiredTreeExitRequests;
+        internal int RequiredTreeExitWindows;
+        internal int RequiredTreeExitWords;
+        internal OrchestrationMemorySection Clips;
+        internal OrchestrationMemorySection TreeOrdinals;
+        internal OrchestrationMemorySection Markers;
+        internal OrchestrationMemorySection ClipEntries;
+        internal OrchestrationMemorySection MarkerEntries;
+        internal OrchestrationMemorySection TreeCycleWindows;
+        internal OrchestrationTimelineBoundarySections Boundaries;
+        internal OrchestrationTimelineBoundarySections Lifetimes;
     }
 
     public sealed class OrchestrationTimelinePreparedContent<TTime>
         where TTime : unmanaged, IEquatable<TTime>
     {
+        readonly byte[] m_Image;
+
         internal OrchestrationTimelinePreparedContent(int contentIdentityId, int contentRevisionId,
             TTime duration, int tickRate, OrchestrationTimelinePlaybackMode mode,
             TimelineExecutionDomain domain,
@@ -93,6 +145,7 @@ namespace BTSMTL.Timeline.Runtime
             RequiredTreeExitWords = requiredTreeExitWords;
             CallCapacity = callCapacity;
             TickCapacity = tickCapacity;
+            m_Image = BuildImage();
         }
 
         public int ContentIdentityId { get; }
@@ -118,26 +171,151 @@ namespace BTSMTL.Timeline.Runtime
         // 一次推进的遍历段数：循环按可跨圈数，否则一段。
         public int Traversals => Mode == OrchestrationTimelinePlaybackMode.Loop
             ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
+        // 推进只经此镜像读取内容；Burst 宿主把同一份字节放进原生内存。
+        public ReadOnlyMemory<byte> Image => m_Image;
+        public OrchestrationTimelineContentView<TTime> View => new OrchestrationTimelineContentView<TTime>(m_Image);
+
+        byte[] BuildImage()
+        {
+            var writer = new OrchestrationMemoryImageWriter(
+                OrchestrationMemoryImageWriter.SizeOf<OrchestrationTimelineContentHeader<TTime>>());
+            var header = new OrchestrationTimelineContentHeader<TTime>
+            {
+                ContentIdentityId = ContentIdentityId,
+                ContentRevisionId = ContentRevisionId,
+                Duration = Duration,
+                TickRate = TickRate,
+                Mode = Mode,
+                Domain = Domain,
+                RequiredActiveTrees = RequiredActiveTrees,
+                RequiredTreeExitRequests = RequiredTreeExitRequests,
+                RequiredTreeExitWindows = RequiredTreeExitWindows,
+                RequiredTreeExitWords = RequiredTreeExitWords
+            };
+            header.Clips = writer.Add(Clips.Span);
+            header.TreeOrdinals = writer.Add(TreeOrdinals.Span);
+            header.Markers = writer.Add(Markers.Span);
+            header.ClipEntries = writer.Add(ClipEntries.Span);
+            header.MarkerEntries = writer.Add(MarkerEntries.Span);
+            header.TreeCycleWindows = writer.Add(TreeCycleWindows.Span);
+            header.Boundaries = AddBoundaries(writer, Boundaries);
+            header.Lifetimes = AddBoundaries(writer, Lifetimes);
+            return writer.Finish(in header);
+        }
+
+        static OrchestrationTimelineBoundarySections AddBoundaries(OrchestrationMemoryImageWriter writer,
+            TimelineRuntimeBoundaryIndex<TTime> index) => new OrchestrationTimelineBoundarySections
+        {
+            Starts = writer.Add(index.Starts.Span),
+            Ends = writer.Add(index.Ends.Span),
+            StableOrder = writer.Add(index.StableOrder.Span),
+            Decisions = writer.Add(index.Decisions.Span),
+            MinStarts = writer.Add<TTime>(index.MinStarts),
+            MaxEnds = writer.Add<TTime>(index.MaxEnds),
+            MaxLifetimeEnds = writer.Add<TTime>(index.MaxLifetimeEnds),
+            StartMaxLifetimeEnds = writer.Add<TTime>(index.StartMaxLifetimeEnds)
+        };
     }
 
+    public readonly ref struct OrchestrationTimelineContentView<TTime> where TTime : unmanaged, IEquatable<TTime>
+    {
+        readonly ReadOnlySpan<byte> m_Memory;
+
+        public OrchestrationTimelineContentView(ReadOnlySpan<byte> image) => m_Memory = image;
+
+        ref readonly OrchestrationTimelineContentHeader<TTime> Header =>
+            ref OrchestrationMemoryImageWriter.Header<OrchestrationTimelineContentHeader<TTime>>(m_Memory);
+
+        ReadOnlySpan<T> Section<T>(OrchestrationMemorySection section) where T : unmanaged =>
+            OrchestrationMemoryImageWriter.Section<T>(m_Memory, section);
+
+        public int ContentIdentityId => Header.ContentIdentityId;
+        public int ContentRevisionId => Header.ContentRevisionId;
+        public TTime Duration => Header.Duration;
+        public int TickRate => Header.TickRate;
+        public OrchestrationTimelinePlaybackMode Mode => Header.Mode;
+        public TimelineExecutionDomain Domain => Header.Domain;
+        public int RequiredActiveTrees => Header.RequiredActiveTrees;
+        public int RequiredTreeExitRequests => Header.RequiredTreeExitRequests;
+        public int RequiredTreeExitWindows => Header.RequiredTreeExitWindows;
+        public int RequiredTreeExitWords => Header.RequiredTreeExitWords;
+        public ReadOnlySpan<TimelineSchedulingClip<TTime>> Clips => Section<TimelineSchedulingClip<TTime>>(Header.Clips);
+        public ReadOnlySpan<int> TreeOrdinals => Section<int>(Header.TreeOrdinals);
+        public ReadOnlySpan<TimelineSchedulingMarker<TTime>> Markers => Section<TimelineSchedulingMarker<TTime>>(Header.Markers);
+        public ReadOnlySpan<OrchestrationTimelineEntryBinding> ClipEntries =>
+            Section<OrchestrationTimelineEntryBinding>(Header.ClipEntries);
+        public ReadOnlySpan<OrchestrationExecutionEntry> MarkerEntries =>
+            Section<OrchestrationExecutionEntry>(Header.MarkerEntries);
+        public ReadOnlySpan<OrchestrationTimelineTreeCycleWindow> TreeCycleWindows =>
+            Section<OrchestrationTimelineTreeCycleWindow>(Header.TreeCycleWindows);
+        public TimelineRuntimeBoundaryIndexView<TTime> Boundaries => Index(in Header.Boundaries);
+        public TimelineRuntimeBoundaryIndexView<TTime> Lifetimes => Index(in Header.Lifetimes);
+
+        public bool Matches(in OrchestrationTimelineStart<TTime> start) =>
+            ContentIdentityId == start.ContentIdentityId &&
+            ContentRevisionId == start.ContentRevisionId && Mode == start.Mode;
+
+        TimelineRuntimeBoundaryIndexView<TTime> Index(in OrchestrationTimelineBoundarySections sections) =>
+            new TimelineRuntimeBoundaryIndexView<TTime>(Clips, Section<int>(sections.Starts),
+                Section<int>(sections.Ends), Section<int>(sections.StableOrder), Section<int>(sections.Decisions),
+                Section<TTime>(sections.MinStarts), Section<TTime>(sections.MaxEnds),
+                Section<TTime>(sections.MaxLifetimeEnds), Section<TTime>(sections.StartMaxLifetimeEnds));
+    }
+
+    internal struct OrchestrationTimelineOperationWork<TTime> where TTime : unmanaged, IEquatable<TTime>
+    {
+        internal OrchestrationTimelinePlaybackState<TTime> Proposed;
+        internal ulong BatchSequence;
+        internal ulong Tick;
+        internal int SourceIdentityId;
+        internal bool Stop;
+        internal bool Paused;
+        internal int InvocationCount;
+        internal int MarkerCount;
+        internal int InjectedExitCount;
+        internal int ProducedExitCount;
+        internal int ScheduledTreeOffset;
+        internal int ScheduledTreeCount;
+        internal TTime PreviousTime;
+        internal int PreviousCycle;
+        internal TTime RequestedAdvance;
+    }
+
+    internal struct OrchestrationTimelineInvocationFrame
+    {
+        internal int PlaybackSlot;
+        internal int InvocationIndex;
+    }
+
+    internal struct OrchestrationTimelineWorkspaceHeader
+    {
+        internal OrchestrationTimelinePreparedCapacity Capacity;
+        internal int ClipCapacity;
+        internal int BoundaryCapacity;
+        internal int SyntheticBoundaryCapacity;
+        internal int InvocationCapacity;
+        internal int InvocationDepth;
+        internal ulong BatchSequence;
+        internal OrchestrationMemorySection Operations;
+        internal OrchestrationMemorySection Invocations;
+        internal OrchestrationMemorySection Scheduled;
+        internal OrchestrationMemorySection Boundaries;
+        internal OrchestrationMemorySection SyntheticBoundaries;
+        internal OrchestrationMemorySection ActiveTrees;
+        internal OrchestrationMemorySection EvaluationFirstCycles;
+        internal OrchestrationMemorySection EvaluationExitBits;
+        internal OrchestrationMemorySection ProducedExits;
+        internal OrchestrationMemorySection SelectedTrees;
+        internal OrchestrationMemorySection SelectedTreeOrdinals;
+        internal OrchestrationMemorySection SelectedTreeCounts;
+        internal OrchestrationMemorySection InvocationFrames;
+    }
+
+    // Timeline 推进草稿：准备期按内容与容量算好布局；托管宿主持有数组，Burst 宿主可用同一布局的原生内存。
     public sealed class OrchestrationTimelineWorkspace<TTime>
         where TTime : unmanaged, IEquatable<TTime>
     {
-        internal readonly Operation[] Operations;
-        internal readonly OrchestrationTimelineInvocation<TTime>[] Invocations;
-        internal readonly TimelineScheduledInvocation<TTime>[] Scheduled;
-        internal readonly TimelineSchedulingBoundary<TTime>[] Boundaries;
-        internal readonly TimelineSchedulingBoundary<TTime>[] SyntheticBoundaries;
-        internal readonly TimelineSchedulingBoundary<TTime>[] ActiveTrees;
-        internal readonly long[] EvaluationFirstCycles;
-        internal readonly ulong[] EvaluationExitBits;
-        internal readonly OrchestrationTimelineClipOccurrence[] ProducedExits;
-        internal readonly bool[] SelectedTrees;
-        internal readonly int[] SelectedTreeOrdinals;
-        internal readonly int[] SelectedTreeCounts;
-        readonly InvocationFrame[] m_InvocationFrames;
-        int m_InvocationDepth;
-        ulong m_BatchSequence;
+        readonly byte[] m_Memory;
 
         public OrchestrationTimelineWorkspace(
             ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents,
@@ -158,42 +336,91 @@ namespace BTSMTL.Timeline.Runtime
                 syntheticBoundaries = Math.Max(syntheticBoundaries, checked(2 * content.TreeOrdinals.Length));
                 invocations = Math.Max(invocations, content.TickCapacity.GraphInvocationsPerAdvance);
             }
-            ClipCapacity = clips;
-            BoundaryCapacity = boundaries;
-            SyntheticBoundaryCapacity = syntheticBoundaries;
-            InvocationCapacity = invocations;
-            Operations = new Operation[capacity.PlaybackCount];
-            Invocations = new OrchestrationTimelineInvocation<TTime>[checked(capacity.PlaybackCount * invocations)];
-            Scheduled = new TimelineScheduledInvocation<TTime>[checked(capacity.PlaybackCount * invocations)];
-            Boundaries = new TimelineSchedulingBoundary<TTime>[checked(capacity.PlaybackCount * boundaries)];
-            SyntheticBoundaries = new TimelineSchedulingBoundary<TTime>[checked(capacity.PlaybackCount * syntheticBoundaries)];
-            ActiveTrees = new TimelineSchedulingBoundary<TTime>[checked(capacity.PlaybackCount * capacity.ActiveTreesPerPlayback)];
-            EvaluationFirstCycles = new long[checked(capacity.PlaybackCount * capacity.TreeExitWindowsPerPlayback)];
-            EvaluationExitBits = new ulong[checked(capacity.PlaybackCount * capacity.TreeExitWordsPerPlayback)];
-            ProducedExits = new OrchestrationTimelineClipOccurrence[checked(capacity.PlaybackCount * capacity.TreeExitRequestsPerPlayback)];
-            SelectedTrees = new bool[checked(capacity.PlaybackCount * clips)];
-            SelectedTreeOrdinals = new int[checked(capacity.PlaybackCount * clips)];
-            SelectedTreeCounts = new int[capacity.PlaybackCount];
-            m_InvocationFrames = new InvocationFrame[checked(capacity.PlaybackCount + 1)];
+            int playbacks = capacity.PlaybackCount;
+            var builder = new OrchestrationMemoryLayoutBuilder(
+                OrchestrationMemoryImageWriter.SizeOf<OrchestrationTimelineWorkspaceHeader>());
+            var header = new OrchestrationTimelineWorkspaceHeader
+            {
+                Capacity = capacity,
+                ClipCapacity = clips,
+                BoundaryCapacity = boundaries,
+                SyntheticBoundaryCapacity = syntheticBoundaries,
+                InvocationCapacity = invocations,
+                Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
+                Invocations = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks * invocations)),
+                Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(playbacks * invocations)),
+                Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * boundaries)),
+                SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * syntheticBoundaries)),
+                ActiveTrees = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * capacity.ActiveTreesPerPlayback)),
+                EvaluationFirstCycles = builder.Add<long>(checked(playbacks * capacity.TreeExitWindowsPerPlayback)),
+                EvaluationExitBits = builder.Add<ulong>(checked(playbacks * capacity.TreeExitWordsPerPlayback)),
+                ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(playbacks * capacity.TreeExitRequestsPerPlayback)),
+                SelectedTrees = builder.Add<bool>(checked(playbacks * clips)),
+                SelectedTreeOrdinals = builder.Add<int>(checked(playbacks * clips)),
+                SelectedTreeCounts = builder.Add<int>(playbacks),
+                InvocationFrames = builder.Add<OrchestrationTimelineInvocationFrame>(checked(playbacks + 1))
+            };
+            m_Memory = new byte[builder.SizeBytes];
+            OrchestrationMemoryImageWriter.Header<OrchestrationTimelineWorkspaceHeader>(m_Memory) = header;
         }
 
         public OrchestrationTimelinePreparedCapacity Capacity { get; }
-        internal int ClipCapacity { get; }
-        internal int BoundaryCapacity { get; }
-        internal int SyntheticBoundaryCapacity { get; }
-        internal int InvocationCapacity { get; }
-        internal ulong NextBatchSequence() => checked(++m_BatchSequence);
+        public Span<byte> Memory => m_Memory;
+        public OrchestrationTimelineWorkspaceView<TTime> View => new OrchestrationTimelineWorkspaceView<TTime>(m_Memory);
+        public bool HasCurrentInvocation => View.HasCurrentInvocation;
+    }
 
-        public bool HasCurrentInvocation => m_InvocationDepth > 0;
+    public readonly ref struct OrchestrationTimelineWorkspaceView<TTime>
+        where TTime : unmanaged, IEquatable<TTime>
+    {
+        readonly Span<byte> m_Memory;
 
-        public int InvocationDepth => m_InvocationDepth;
+        public OrchestrationTimelineWorkspaceView(Span<byte> memory) => m_Memory = memory;
+
+        ref OrchestrationTimelineWorkspaceHeader Header =>
+            ref OrchestrationMemoryImageWriter.Header<OrchestrationTimelineWorkspaceHeader>(m_Memory);
+
+        Span<T> Section<T>(OrchestrationMemorySection section) where T : unmanaged =>
+            OrchestrationMemoryImageWriter.Section<T>(m_Memory, section);
+
+        public OrchestrationTimelinePreparedCapacity Capacity => Header.Capacity;
+        internal int ClipCapacity => Header.ClipCapacity;
+        internal int BoundaryCapacity => Header.BoundaryCapacity;
+        internal int SyntheticBoundaryCapacity => Header.SyntheticBoundaryCapacity;
+        internal int InvocationCapacity => Header.InvocationCapacity;
+        internal Span<OrchestrationTimelineOperationWork<TTime>> Operations =>
+            Section<OrchestrationTimelineOperationWork<TTime>>(Header.Operations);
+        internal Span<OrchestrationTimelineInvocation<TTime>> Invocations =>
+            Section<OrchestrationTimelineInvocation<TTime>>(Header.Invocations);
+        internal Span<TimelineScheduledInvocation<TTime>> Scheduled =>
+            Section<TimelineScheduledInvocation<TTime>>(Header.Scheduled);
+        internal Span<TimelineSchedulingBoundary<TTime>> Boundaries =>
+            Section<TimelineSchedulingBoundary<TTime>>(Header.Boundaries);
+        internal Span<TimelineSchedulingBoundary<TTime>> SyntheticBoundaries =>
+            Section<TimelineSchedulingBoundary<TTime>>(Header.SyntheticBoundaries);
+        internal Span<TimelineSchedulingBoundary<TTime>> ActiveTrees =>
+            Section<TimelineSchedulingBoundary<TTime>>(Header.ActiveTrees);
+        internal Span<long> EvaluationFirstCycles => Section<long>(Header.EvaluationFirstCycles);
+        internal Span<ulong> EvaluationExitBits => Section<ulong>(Header.EvaluationExitBits);
+        internal Span<OrchestrationTimelineClipOccurrence> ProducedExits =>
+            Section<OrchestrationTimelineClipOccurrence>(Header.ProducedExits);
+        internal Span<bool> SelectedTrees => Section<bool>(Header.SelectedTrees);
+        internal Span<int> SelectedTreeOrdinals => Section<int>(Header.SelectedTreeOrdinals);
+        internal Span<int> SelectedTreeCounts => Section<int>(Header.SelectedTreeCounts);
+
+        internal ulong NextBatchSequence() => checked(++Header.BatchSequence);
+
+        public bool HasCurrentInvocation => Header.InvocationDepth > 0;
+
+        public int InvocationDepth => Header.InvocationDepth;
 
         public ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation =>
-            ref InvocationAt(m_InvocationDepth - 1);
+            ref InvocationAt(Header.InvocationDepth - 1);
 
         public ref readonly OrchestrationTimelineInvocation<TTime> InvocationAt(int stackIndex)
         {
-            InvocationFrame frame = m_InvocationFrames[stackIndex];
+            OrchestrationTimelineInvocationFrame frame =
+                Section<OrchestrationTimelineInvocationFrame>(Header.InvocationFrames)[stackIndex];
             return ref Invocations[checked(frame.PlaybackSlot * InvocationCapacity + frame.InvocationIndex)];
         }
 
@@ -206,38 +433,15 @@ namespace BTSMTL.Timeline.Runtime
 
         internal void EnterInvocation(int playbackSlot, int invocationIndex)
         {
-            m_InvocationFrames[m_InvocationDepth++] = new InvocationFrame
-            {
-                PlaybackSlot = playbackSlot,
-                InvocationIndex = invocationIndex
-            };
+            ref OrchestrationTimelineWorkspaceHeader header = ref Header;
+            Section<OrchestrationTimelineInvocationFrame>(header.InvocationFrames)[header.InvocationDepth++] =
+                new OrchestrationTimelineInvocationFrame
+                {
+                    PlaybackSlot = playbackSlot,
+                    InvocationIndex = invocationIndex
+                };
         }
 
-        internal void LeaveInvocation() => m_InvocationDepth--;
-
-        internal struct Operation
-        {
-            internal OrchestrationTimelinePlaybackState<TTime> Proposed;
-            internal ulong BatchSequence;
-            internal ulong Tick;
-            internal int SourceIdentityId;
-            internal bool Stop;
-            internal bool Paused;
-            internal int InvocationCount;
-            internal int MarkerCount;
-            internal int InjectedExitCount;
-            internal int ProducedExitCount;
-            internal int ScheduledTreeOffset;
-            internal int ScheduledTreeCount;
-            internal TTime PreviousTime;
-            internal int PreviousCycle;
-            internal TTime RequestedAdvance;
-        }
-
-        struct InvocationFrame
-        {
-            internal int PlaybackSlot;
-            internal int InvocationIndex;
-        }
+        internal void LeaveInvocation() => Header.InvocationDepth--;
     }
 }

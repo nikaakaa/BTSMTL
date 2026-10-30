@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -29,25 +28,38 @@ namespace BTSMTL.Orchestration
 
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, Span<byte> memory) where TValue : unmanaged =>
+            BindCandidate<TValue>(plan.View, memory);
+
+        // 纯数据宿主只持有布局镜像字节时使用的绑定入口。
+        public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
+            OrchestrationStateLayoutView plan, Span<byte> memory) where TValue : unmanaged =>
             new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory),
-                plan.TimelineLayout.BindCandidate(memory.Slice(plan.TimelineRegion.OffsetBytes,
+                new OrchestrationStateView(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            BindCommitted<TValue>(plan.View, memory);
+
+        public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
+            OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
             new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory),
-                plan.TimelineLayout.BindCommitted(memory.Slice(plan.TimelineRegion.OffsetBytes,
+                new ReadOnlyOrchestrationStateView(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            new OrchestrationStateValidRanges<TValue>(plan.View, memory);
+
+        public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(
+            OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
             new OrchestrationStateValidRanges<TValue>(plan, memory);
 
         public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
-            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, source);
-            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, destination);
+            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, source);
+            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, destination);
             OrchestrationStateValidRanges<TValue>.Enumerator previous = ValidRanges(plan, destination).GetEnumerator();
             while (previous.MoveNext())
                 if (previous.IsPayload)
@@ -111,10 +123,10 @@ namespace BTSMTL.Orchestration
 
     public readonly ref struct OrchestrationStateValidRanges<TValue> where TValue : unmanaged
     {
-        readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+        readonly OrchestrationStateLayoutView m_Plan;
         readonly ReadOnlySpan<byte> m_Memory;
 
-        internal OrchestrationStateValidRanges(OrchestrationPreparedStateLayout<TValue> plan,
+        internal OrchestrationStateValidRanges(OrchestrationStateLayoutView plan,
             ReadOnlySpan<byte> memory)
         {
             m_Plan = plan;
@@ -125,19 +137,19 @@ namespace BTSMTL.Orchestration
 
         public ref struct Enumerator
         {
-            readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+            readonly OrchestrationStateLayoutView m_Plan;
             readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
             readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_Frames;
             int m_SegmentIndex;
             int m_FrameSlot;
             int m_ProgramIndex;
 
-            internal Enumerator(OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory)
+            internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory)
             {
                 m_Plan = plan;
-                m_Segments = plan.Segments.Span;
+                m_Segments = plan.Segments;
                 OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
-                m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+                m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                     memory.Slice(frames.OffsetBytes, frames.SizeBytes));
                 m_SegmentIndex = -1;
                 m_FrameSlot = -1;
@@ -208,52 +220,43 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(OrchestrationProgram<TValue> program,
-            OrchestrationExecutionWorkspace<TValue> workspace,
-            IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
-            ReadOnlySpan<int> characterSlots,
-            IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
-            IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>(OrchestrationProgramView<TValue> program,
+            OrchestrationExecutionScratch<TValue> scratch, int frameSlot, ReadOnlySpan<int> characterSlots,
             in OrchestrationFrameInput<TValue> input, OrchestrationIdentityOrdinalView identities,
-            in TContext context)
+            in TContext context, THost host, TDiagnostics diagnostics)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TContext : struct
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
-            where TStorage : struct, IOrchestrationValueStorage<TValue> =>
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(program, workspace, bindings, Frames, frameSlot,
-                characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, identities, in context, null, default);
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>(program, scratch, Frames, frameSlot,
+                characterSlots, Timeline, in input, identities, in context, default, default, host, diagnostics);
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
-            OrchestrationExecutionWorkspace<TValue> workspace,
-            IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>(OrchestrationProgramView<TValue> program,
+            OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionScratch<TValue> scratch, int frameSlot,
             OrchestrationExecutionSource<TValue> source, ReadOnlySpan<int> characterSlots,
-            IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
-            IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
             in OrchestrationFrameInput<TValue> input, OrchestrationIdentityOrdinalView identities,
-            in TContext context)
+            in TContext context, THost host, TDiagnostics diagnostics)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TContext : struct
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
-            where TStorage : struct, IOrchestrationValueStorage<TValue> =>
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
-                characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, identities, in context, preparedSource, source);
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>(program, scratch, Frames, frameSlot,
+                characterSlots, Timeline, in input, identities, in context, sourceBinding, source, host, diagnostics);
     }
 
     public readonly ref struct OrchestrationCommittedState<TValue> where TValue : unmanaged

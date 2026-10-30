@@ -41,6 +41,19 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> ValueKindCounts { get; }
     }
 
+    public readonly ref struct OrchestrationProgramStorageView
+    {
+        internal OrchestrationProgramStorageView(ReadOnlySpan<ushort> operationIndices,
+            ReadOnlySpan<OrchestrationValueStorageSlot> values)
+        {
+            OperationIndices = operationIndices;
+            Values = values;
+        }
+
+        public ReadOnlySpan<ushort> OperationIndices { get; }
+        public ReadOnlySpan<OrchestrationValueStorageSlot> Values { get; }
+    }
+
     [ValueStorage(UseConstructor = true)]
     public sealed partial class OrchestrationProgramStorageLayout
     {

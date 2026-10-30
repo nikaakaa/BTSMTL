@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -59,7 +58,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<byte> OperationPayloads { get; }
         public ReadOnlyMemory<OrchestrationOperationColdData> ColdOperations { get; }
         public T ReadOperationPayload<T>(int operationIndex) where T : unmanaged =>
-            MemoryMarshal.Read<T>(OperationPayloads.Span.Slice(Operations.Span[operationIndex].PayloadOffset));
+            SpanReinterpret.Read<T>(OperationPayloads.Span.Slice(Operations.Span[operationIndex].PayloadOffset));
         public ReadOnlyMemory<OrchestrationFlowEdge> Edges { get; }
         public OrchestrationProgramStructure Structure { get; }
         public OrchestrationValueSchedule ValueSchedule { get; }

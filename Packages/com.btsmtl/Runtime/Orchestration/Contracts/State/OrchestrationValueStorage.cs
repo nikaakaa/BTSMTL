@@ -1,5 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
@@ -13,9 +13,9 @@ namespace BTSMTL.Orchestration
         where TValue : unmanaged
     {
         public void Read(ReadOnlySpan<byte> memory, in OrchestrationValueAddress address, ref TValue destination) =>
-            destination = MemoryMarshal.Read<TValue>(memory.Slice(address.OffsetBytes));
+            destination = SpanReinterpret.Read<TValue>(memory.Slice(address.OffsetBytes));
 
         public void Write(Span<byte> memory, in OrchestrationValueAddress address, in TValue value) =>
-            MemoryMarshal.Cast<byte, TValue>(memory.Slice(address.OffsetBytes))[0] = value;
+            SpanReinterpret.Cast<byte, TValue>(memory.Slice(address.OffsetBytes))[0] = value;
     }
 }

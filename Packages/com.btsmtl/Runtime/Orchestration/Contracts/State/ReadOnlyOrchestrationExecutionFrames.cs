@@ -1,5 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
@@ -9,20 +9,20 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationExecutionRosterState> m_Roster;
         readonly ReadOnlySpan<byte> m_Memory;
 
-        internal ReadOnlyOrchestrationExecutionFrames(OrchestrationPreparedStateLayout<TValue> plan,
+        internal ReadOnlyOrchestrationExecutionFrames(OrchestrationStateLayoutView plan,
             ReadOnlySpan<byte> memory)
         {
             Plan = plan;
             m_Memory = memory;
             OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
-            m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+            m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                 memory.Slice(frames.OffsetBytes, frames.SizeBytes));
             OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
-            m_Roster = MemoryMarshal.Cast<byte, OrchestrationExecutionRosterState>(
+            m_Roster = SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(
                 memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
-        public OrchestrationPreparedStateLayout<TValue> Plan { get; }
+        public OrchestrationStateLayoutView Plan { get; }
         public ReadOnlySpan<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
@@ -35,7 +35,7 @@ namespace BTSMTL.Orchestration
         {
             int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
             return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
-                programIndex)[Plan.Programs.Span[programIndex].Storage.OperationIndices.Span[operationIndex]];
+                programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
         }
         public ReadOnlySpan<TValue> SavedOutputs(int frameSlot) =>
             Payload<TValue>(frameSlot, OrchestrationStateSegmentRole.SavedOutputs,
@@ -49,7 +49,7 @@ namespace BTSMTL.Orchestration
             get
             {
                 OrchestrationStateSegment segment = Plan.Segment(OrchestrationStateSegmentRole.CharacterMetadata);
-                return MemoryMarshal.Cast<byte, OrchestrationBlackboardMetadata>(
+                return SpanReinterpret.Cast<byte, OrchestrationBlackboardMetadata>(
                     m_Memory.Slice(segment.OffsetBytes, segment.SizeBytes));
             }
         }
@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
             OrchestrationStateSegment segment = Plan.Segment(role);
             OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
                 programIndex, m_Frames[frameSlot].OwnerOperationIndex);
-            return MemoryMarshal.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
+            return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
         public int OwnerFrame(int frameSlot, int ownerOperationIndex)

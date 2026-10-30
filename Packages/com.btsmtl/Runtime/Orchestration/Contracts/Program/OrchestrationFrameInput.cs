@@ -7,8 +7,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationFrameInput(ulong tick, ulong instanceGeneration, ReadOnlySpan<TValue> hostInputs,
             ReadOnlySpan<int> requestIdentityIds, bool captureTrace = false,
             bool captureValues = false,
-            Span<OrchestrationValueOverride<TValue>> overrides = default,
-            IOrchestrationValueObservationSink<TValue> observations = null)
+            Span<OrchestrationValueOverride<TValue>> overrides = default)
         {
             Tick = tick;
             InstanceGeneration = instanceGeneration;
@@ -17,7 +16,6 @@ namespace BTSMTL.Orchestration
             CaptureTrace = captureTrace;
             CaptureValues = captureValues;
             Overrides = overrides;
-            Observations = observations;
         }
 
         public ulong Tick { get; }
@@ -27,8 +25,7 @@ namespace BTSMTL.Orchestration
         public bool CaptureTrace { get; }
         public bool CaptureValues { get; }
         public Span<OrchestrationValueOverride<TValue>> Overrides { get; }
-        public IOrchestrationValueObservationSink<TValue> Observations { get; }
-        public bool HasDiagnostics => CaptureTrace || CaptureValues || Observations != null || !Overrides.IsEmpty;
+        public bool HasDiagnostics => CaptureTrace || CaptureValues || !Overrides.IsEmpty;
     }
 
     public interface IOrchestrationValueObservationSink<TValue> where TValue : unmanaged

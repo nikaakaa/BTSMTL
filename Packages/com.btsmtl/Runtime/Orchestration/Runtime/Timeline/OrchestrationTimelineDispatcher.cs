@@ -15,19 +15,23 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
     {
-        OrchestrationOperationResult Tick<TDiagnostics, TStorage>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
+        OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
-            ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
-            where TStorage : struct, IOrchestrationValueStorage<TValue>;
+            ulong tick, ref TContext context)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>;
 
-        OrchestrationStopStatus Stop<TDiagnostics, TStorage>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
+        OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext,
-            bool force, ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
-            where TStorage : struct, IOrchestrationValueStorage<TValue>;
+            bool force, ulong tick, ref TContext context)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>;
 
         TValue ReadTime();
 

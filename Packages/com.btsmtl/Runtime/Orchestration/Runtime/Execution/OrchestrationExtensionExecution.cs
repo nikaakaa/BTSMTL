@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,8 +14,9 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         void InvokeHooks(int operationIndex, OrchestrationLifecycleHook phase,
             int machineOperationIndex = -1, int stateOperationIndex = -1,
@@ -29,7 +30,7 @@ namespace BTSMTL.Orchestration
                 ReadOnlySpan<OrchestrationHookInput> inputs = m_Program.HookInputs(in hook);
                 try
                 {
-                    Span<TValue> arguments = m_Workspace.BorrowInputs(operationIndex, depth, inputs.Length);
+                    Span<TValue> arguments = BorrowInputs(operationIndex, depth, inputs.Length);
                     for (int i = 0; i < inputs.Length; i++)
                         ReadHookInput(in inputs[i], operationIndex, phase,
                             machineOperationIndex, stateOperationIndex, exitingStateOperationIndex, targetStateOperationIndex,
@@ -43,10 +44,11 @@ namespace BTSMTL.Orchestration
                         ReadExecutionFrame(operationIndex),
                         arguments, Span<TValue>.Empty, in m_TimelineInvocation);
                     m_CurrentOperationIndex = operationIndex;
-                    OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(
+                    OrchestrationExtensionResult result = m_Host.InvokeCandidate(
                         hook.ExtensionBindingIndex, ref m_Context, in invocation);
                     if (result != OrchestrationExtensionResult.Success)
-                        throw new InvalidOperationException($"Lifecycle hook '{phase}' at operation '{operationIndex}' returned '{result}'.");
+                        Fail(OrchestrationExecutionErrorCode.HookFailed, operationIndex, hook.ExtensionBindingIndex,
+                            (int)phase, (int)result);
                 }
                 finally
                 {
@@ -97,7 +99,8 @@ namespace BTSMTL.Orchestration
                     value = values.FromUInt64(checked(ReadGeneration(targetStateOperationIndex) + 1));
                     return;
                 default:
-                    throw new InvalidOperationException($"Lifecycle hook at operation '{operationIndex}' has unsupported input '{input.Source}'.");
+                    Fail(OrchestrationExecutionErrorCode.HookInput, operationIndex, detail: (int)input.Source);
+                    return;
             }
         }
 
@@ -106,7 +109,7 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.Code == OrchestrationOperationCode.Extension &&
-                (m_Bindings.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                     OrchestrationExtensionInvocationKind.RequestStop) != 0)
             {
                 status = InvokeExtensionStop(operationIndex, context, OrchestrationExtensionInvocationKind.RequestStop);
@@ -129,13 +132,13 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationStopStatus status = StopTimeline(operationIndex, context, true);
                 if (status != OrchestrationStopStatus.Completed)
-                    throw new InvalidOperationException($"Timeline operation '{operationIndex}' force stop returned '{status}'.");
+                    Fail(OrchestrationExecutionErrorCode.TimelineForceStop, operationIndex, detail: (int)status);
                 return;
             }
             OrchestrationStopStatus result = InvokeExtensionStop(operationIndex, context,
                 OrchestrationExtensionInvocationKind.ForceStop);
             if (result != OrchestrationStopStatus.Completed)
-                throw new InvalidOperationException($"Action operation '{operationIndex}' force stop returned '{result}'.");
+                Fail(OrchestrationExecutionErrorCode.ActionForceStop, operationIndex, detail: (int)result);
         }
 
         OrchestrationStopStatus InvokeExtensionStop(int operationIndex, OrchestrationStopContext context,
@@ -148,22 +151,24 @@ namespace BTSMTL.Orchestration
                 outputs = SavedOutputs(in operation);
             else
             {
-                m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, m_InputDepth + 1, m_Workspace.Outputs.Length);
-                outputs = m_Workspace.BorrowOutputs(operationIndex, m_InputDepth, operation.OutputCount);
+                RequireRowDepth(operationIndex, m_InputDepth + 1);
+                outputs = BorrowOutputs(operationIndex, m_InputDepth, operation.OutputCount);
             }
             var invocation = new OrchestrationExtensionArguments<TValue>(kind,
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
-            OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex,
+            OrchestrationExtensionResult result = m_Host.InvokeCandidate(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex,
                 ref m_Context, in invocation);
-            return result switch
+            switch (result)
             {
-                OrchestrationExtensionResult.Running => OrchestrationStopStatus.Running,
-                OrchestrationExtensionResult.Success => OrchestrationStopStatus.Completed,
-                OrchestrationExtensionResult.Failure => OrchestrationStopStatus.Failed,
-                _ => throw new InvalidOperationException($"Action operation '{operationIndex}' returned an invalid stop result.")
-            };
+                case OrchestrationExtensionResult.Running: return OrchestrationStopStatus.Running;
+                case OrchestrationExtensionResult.Success: return OrchestrationStopStatus.Completed;
+                case OrchestrationExtensionResult.Failure: return OrchestrationStopStatus.Failed;
+                default:
+                    Fail(OrchestrationExecutionErrorCode.ActionStopResult, operationIndex, detail: (int)result);
+                    return OrchestrationStopStatus.Failed;
+            }
         }
 
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors(int operationIndex,
@@ -171,7 +176,7 @@ namespace BTSMTL.Orchestration
         {
             if (stateOperationIndex < 0)
                 stateOperationIndex = m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.State
-                    ? operationIndex : m_StateDepth > 0 ? m_Workspace.States[m_StateDepth - 1].OperationIndex
+                    ? operationIndex : m_StateDepth > 0 ? m_States[m_StateDepth - 1].OperationIndex
                     : m_Program.Operation(operationIndex).ParentStateOperationIndex;
             int count = 0;
             for (int state = stateOperationIndex; state >= 0; state = m_Program.Operation(state).ParentStateOperationIndex)
@@ -182,9 +187,9 @@ namespace BTSMTL.Orchestration
                 ulong generation = ReadGeneration(state);
                 if (entering && state == stateOperationIndex)
                     generation = checked(generation + 1);
-                m_Workspace.StateAncestors[--index] = new OrchestrationStateAncestor(state, generation);
+                m_StateAncestors[--index] = new OrchestrationStateAncestor(state, generation);
             }
-            return m_Workspace.StateAncestors.AsSpan(0, count);
+            return m_StateAncestors.Slice(0, count);
         }
     }
 }
