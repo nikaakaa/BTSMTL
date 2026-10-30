@@ -51,6 +51,8 @@ const jobId = identity<'job'>();
 const liveId = identity<'live'>();
 const buildId = identity<'build'>();
 const jobStage = choice('queued', 'running', 'completed', 'failed', 'cancelled', 'rejected', 'unavailable');
+const observationChannel = choice('logic', 'bones', 'camera', 'physics', 'graph', 'stateMachine', 'timeline',
+  'blackboard', 'ports', 'input', 'images');
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
 const source = object({
@@ -88,26 +90,35 @@ const runSource = (value: unknown, path = 'Player.source') => {
 };
 const previewTarget = object({
   liveId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
+  channels: nullable(array(observationChannel)),
+});
+const liveIdentity = object({
+  liveId, playerBuildId: buildId, width: number, height: number, running: boolean,
+  observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),
+  channels: array(observationChannel),
 });
 export const readLivePlayer = object({
   liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
   width: nullable(number), height: nullable(number), hello: opaque, player: opaque,
+  identity: liveIdentity,
   previewTarget: nullable(previewTarget), viewers: number, latestVideoFrame: nullable(number),
 });
 export const readLivePlayers = array(readLivePlayer);
 export const readPlayerCreationOptions = object({
   requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
-  quality: number,
+  quality: number, channels: array(observationChannel),
 });
 
-export const readPlayerJobRequest = object({
+const playerJobRequest = {
   requestId: jobId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
   firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number), outputDirectory: text,
   width: number, height: number, quality: number,
-});
+};
+export const readPlayerJobRequest = object({ ...playerJobRequest, channels: array(observationChannel) });
+const readArchivedPlayerJobRequest = object({ ...playerJobRequest, channels: nullable(array(observationChannel)) });
 export const readPlayerJobReceipt = object({
-  request: readPlayerJobRequest,
+  request: readArchivedPlayerJobRequest,
   stage: jobStage,
   acceptedAt: text, finishedAt: nullable(text), liveId: nullable(liveId), archivePath: nullable(text),
   load: opaque, result: opaque, error: nullable(text), cachedFrom: nullable(jobId),
@@ -243,11 +254,13 @@ export const readPlayerArchive = object({
 });
 
 export type PlayerJobId = ReturnType<typeof jobId>;
+export type PlayerObservationChannel = ReturnType<typeof observationChannel>;
 export type LivePlayer = ReturnType<typeof readLivePlayer>;
 export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
-export type PlayerLoadRequest = Omit<PlayerPreviewTarget, 'liveId' | 'playerBuildId'> & {
+export type PlayerLoadRequest = Omit<PlayerPreviewTarget, 'liveId' | 'playerBuildId' | 'channels'> & {
   commandId: string;
   executionMode: 'interactive';
+  channels: PlayerObservationChannel[];
 };
 export type PlayerBuildId = ReturnType<typeof buildId>;
 export type StartPlayerJobRequest = ReturnType<typeof readPlayerJobRequest>;

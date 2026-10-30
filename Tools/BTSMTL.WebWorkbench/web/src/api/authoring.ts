@@ -194,7 +194,10 @@ export interface InputSaveResult {
 
 export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
-export type PlayerSkillRefreshTarget = Omit<PlayerPreviewTarget, 'playerBuildId'> & { requestId: string };
+export type PlayerSkillRefreshTarget = Omit<PlayerPreviewTarget, 'playerBuildId' | 'channels'> & {
+  requestId: string;
+  channels: NonNullable<PlayerPreviewTarget['channels']>;
+};
 
 export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };

@@ -109,8 +109,10 @@ async function selectedPreview(): Promise<PreviewSelection> {
     const live = await playerApi.live(liveId);
     if (live.previewTarget === null)
       return { kind: 'unavailable', reason: '所选 Player 尚无已确认载入的内容，预览未刷新' };
-    const { liveId: targetLiveId, scene, sceneRevision, source } = live.previewTarget;
-    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId, scene, sceneRevision, source } };
+    const { liveId: targetLiveId, scene, sceneRevision, source, channels } = live.previewTarget;
+    if (channels === null)
+      return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
+    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId, scene, sceneRevision, source, channels } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };

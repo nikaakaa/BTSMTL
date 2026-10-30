@@ -159,8 +159,11 @@ export const playerService = {
   },
 
   loadScene: (scene: string, sceneRevision: string) =>
-    command('load', liveId => playerApi.load(liveId, { commandId: crypto.randomUUID(), scene, sceneRevision,
-      source: { kind: 'device', lastSdkFrame: 0 }, executionMode: 'interactive' })),
+    command('load', async liveId => {
+      const live = await playerApi.live(liveId);
+      return playerApi.load(liveId, { commandId: crypto.randomUUID(), scene, sceneRevision,
+        source: { kind: 'device', lastSdkFrame: 0 }, executionMode: 'interactive', channels: live.identity.channels });
+    }),
   async capture() {
     const liveId = getState().liveId;
     const commandId = crypto.randomUUID();
