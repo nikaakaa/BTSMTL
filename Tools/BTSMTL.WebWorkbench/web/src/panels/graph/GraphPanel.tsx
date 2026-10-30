@@ -256,11 +256,11 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
               </span>
             ))}
           </span>
-          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
-            options={callOptions} placeholder="选择实际调用" disabled={callOptions.length < 2}
+          {callOptions.length > 1 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
+            options={callOptions} placeholder="选择实际调用"
             tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
           {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
-            tip={pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}
+            tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(observedCall)}`}
             onClick={togglePin}>固定调用</Button>}
           {observedCall === null && paths.length > 1 && <Select label="图实例" value={path}
             options={paths.map((value, index) => ({ value, label: `图实例 ${index + 1}` }))}

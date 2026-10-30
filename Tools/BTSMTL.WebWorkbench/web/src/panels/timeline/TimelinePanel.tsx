@@ -772,12 +772,12 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
         )}
         <span className={styles.grow} />
         <AuthoringControls />
-        {observations.length > 0 && <Select label="实际调用" value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
+        {observations.length > 1 && <Select label="实际调用" value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
           options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))}
-          disabled={observations.length < 2} placeholder="选择实际调用" onChange={selectCall} />}
+          placeholder="选择实际调用" onChange={selectCall} />}
         {clock.kind === 'document' && clock.observation !== null && <>
           <Button variant="ghost" pressed={pinned} disabled={togglePin === undefined} onClick={togglePin}
-            tip={pinned ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}>固定调用</Button>
+            tip={`${pinned ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(clock.observation.call)} · ${clock.observation.domain}`}>固定调用</Button>
           {clock.observation.call.parentInvocationPath && (parents.length > 1 && openParent
             ? <MenuButton label="选择父调用" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
               onSelect: () => openParent(item) }))}>上层调用</MenuButton>
