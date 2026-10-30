@@ -1,5 +1,5 @@
 import type {
-  EdgeOccurrence, ExecutionCall, Frame, GraphDefinition, GraphEdge, GraphNode, GraphPort, NodeOccurrence, PortSample,
+  EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, NodeOccurrence, PortSample, RouteFrame,
 } from '../api/types';
 
 // 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
@@ -12,9 +12,11 @@ export interface DocumentObservationBinding {
   sourceRevision: string | null;
   dirty: boolean;
 }
-export const belongsTo = (call: ExecutionCall, graph: GraphDefinition, binding: DocumentObservationBinding) =>
-  !binding.dirty && binding.sourceRevision !== null && graph.programId === binding.programId &&
+export const matchesDocumentCall = (call: ExecutionCall, binding: DocumentObservationBinding) =>
+  !binding.dirty && binding.sourceRevision !== null &&
   call.programId === binding.programId && call.programRevision === binding.sourceRevision;
+export const belongsTo = (call: ExecutionCall, graph: GraphDefinition, binding: DocumentObservationBinding) =>
+  graph.programId === binding.programId && matchesDocumentCall(call, binding);
 export const compareSequence = (left: { sequence: string }, right: { sequence: string }) => {
   const a = BigInt(left.sequence), b = BigInt(right.sequence);
   return a < b ? -1 : a > b ? 1 : 0;
@@ -42,23 +44,22 @@ export function findGraphNode(graphs: GraphDefinition[] | null, selectId: string
   return null;
 }
 
-export type RouteRecord = NodeOccurrence | EdgeOccurrence | PortSample;
+export type RouteRecord = (NodeOccurrence | EdgeOccurrence | PortSample) & { call: ExecutionCall };
 
 export function singleCall(records: RouteRecord[]): ExecutionCall | null {
   const calls = new Set(records.map(record => callKey(record.call)));
   return calls.size === 1 ? records[0].call : null;
 }
 
-export function graphRecords(frame: Frame | null, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
-  const route = frame?.route;
+export function graphRecords(route: RouteFrame | null | undefined, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
   if (!route) return [];
   return [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)]
-    .filter(item => item.graphId === graph.id && belongsTo(item.call, graph, binding));
+    .filter((item): item is RouteRecord => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding));
 }
 
-export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence => 'kind' in item && 'nodeId' in item;
-export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence => 'edgeId' in item;
-export const isPortSample = (item: RouteRecord): item is PortSample => 'portId' in item;
+export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence & { call: ExecutionCall } => 'kind' in item && 'nodeId' in item;
+export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence & { call: ExecutionCall } => 'edgeId' in item;
+export const isPortSample = (item: RouteRecord): item is PortSample & { call: ExecutionCall } => 'portId' in item;
 
 export interface LaidNode {
   node: GraphNode;

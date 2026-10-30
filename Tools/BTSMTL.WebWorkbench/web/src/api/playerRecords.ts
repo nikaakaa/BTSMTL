@@ -154,19 +154,19 @@ export const readPlayerSummary = object({
 });
 const vector3 = tuple(number, number, number);
 const quaternion = tuple(number, number, number, number);
-const location = object({ displayName: text, documentId: text, elementId: text });
-const record = object({ displayName: text, fields: array(field), rawJson: text, locations: array(location) });
 const call = object({
-  actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: text,
-  actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: text, playbackId: text,
+  actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
+  actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: nullable(text), playbackId: text,
 });
+const location = object({ displayName: text, documentId: text, elementId: text, call: nullable(call) });
+const record = object({ displayName: text, fields: array(field), rawJson: text, locations: array(location) });
 const routeFrame = object({
   hostFrame: text, seconds: number,
-  playbacks: array(object({ documentId: text, cursorSeconds: number, status: text })), active: array(location),
-  nodes: array(object({ sequence: text, graphId: text, nodeId: text, kind: text, generation: text, result: text, call })),
-  edges: array(object({ sequence: text, graphId: text, edgeId: text, selected: boolean, passed: boolean, call })),
+  playbacks: array(object({ documentId: text, cursorSeconds: number, status: text, call: nullable(call), domain: nullable(text) })), active: array(location),
+  nodes: array(object({ sequence: text, graphId: text, nodeId: text, kind: text, generation: text, result: nullable(text), call: nullable(call) })),
+  edges: array(object({ sequence: text, graphId: text, edgeId: text, selected: boolean, passed: boolean, call: nullable(call) })),
   ports: array(object({ sequence: text, graphId: text, nodeId: text, portId: text, direction: text, valueType: text,
-    value: text, rawJson: text, call, sourceAvailable: boolean, reason: text })),
+    value: text, rawJson: text, call: nullable(call), sourceAvailable: boolean, reason: text })),
   availability: array(availability),
 });
 const logicPose = object({ position: vector3, rotation: quaternion });

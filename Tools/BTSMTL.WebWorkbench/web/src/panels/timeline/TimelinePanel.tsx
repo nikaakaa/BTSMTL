@@ -8,13 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
+import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
@@ -23,7 +23,7 @@ import {
   clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { graphKey, nodeSelectId } from '../../state/graphModel';
+import { callKey, graphKey, matchesDocumentCall, nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { Empty } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
@@ -58,20 +58,31 @@ interface Params {
   routeRange: Range | null;
   // 编辑吸附（照 Timeline Editor 时间网格）：逻辑 tick、秒间隔或关闭。
   snap: Snap;
+  call: string | null;
 }
 type Snap = 'tick' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick',
+  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null,
 };
 
 // 吸附步长（秒）；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
 const snapStep = (snap: Snap | undefined, frameStep: number | null) =>
   snap === 'none' ? 1 / 65536 : snap && snap !== 'tick' ? Number(snap) : frameStep;
 const SnapContext = createContext<number | null>(null);
-type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null };
-const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null });
+type TimelineObservation = { call: ExecutionCall; domain: string };
+const observationKey = (observation: TimelineObservation) => JSON.stringify([callKey(observation.call), observation.domain]);
+type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null };
+const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
+function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
+  if (clock.kind !== 'document' || clock.observation === null) return undefined;
+  const { documentId, observation } = clock;
+  return state.frame?.route?.playbacks.find(playback => playback.documentId === documentId &&
+    playback.domain === observation.domain && playback.call !== null && callKey(playback.call) === callKey(observation.call));
+}
 const previewSeconds = (state: WorkbenchState, clock: PreviewClock): number | null => clock.kind === 'archive'
-  ? state.seconds : state.frame?.route?.playbacks.find(playback => playback.documentId === clock.documentId)?.cursorSeconds ?? null;
+  ? state.seconds : documentPlayback(state, clock)?.cursorSeconds ?? null;
+const selectTimelineObject = (clock: PreviewClock, kind: 'clip' | 'track', id: string) =>
+  selectionActions.select({ kind, id, call: clock.kind === 'document' ? clock.observation?.call : undefined });
 const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * step;
 
 // 一次 Timeline 播放：在显示的段里取游标所在的那次，否则第一次。
@@ -305,6 +316,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   frames: RouteFrame[] | null;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
+  const binding = useDocumentObservationBinding();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { timelines: runTimelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
@@ -332,6 +344,23 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   // 技能文档固定看单个 Timeline：所选的那条，否则第一条。
   const focused = frames ? (focusId ? segments.find(segment => segment.id === focusId) ?? null : null)
     : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
+  const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
+  const observations = useMemo(() => {
+    const result = new Map<string, TimelineObservation>();
+    for (const playback of playbacks ?? [])
+      if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding)) {
+        const observation = { call: playback.call, domain: playback.domain };
+        result.set(observationKey(observation), observation);
+      }
+    return [...result.values()];
+  }, [playbacks, focused?.documentId, binding]);
+  const observed = observations.find(observation => observationKey(observation) === params.call) ?? observations[0] ?? null;
+  const selectCall = (value: string) => {
+    setParams({ call: value });
+    const selection = getState().selection;
+    if ((selection?.kind === 'clip' || selection?.kind === 'track') && selection.id.startsWith(`${focused?.documentId}/`))
+      selectionActions.select({ ...selection, call: observations.find(observation => observationKey(observation) === value)?.call });
+  };
 
   const enter = useCallback((documentId: string) => {
     const segment = playbackAt(segments, documentId, getState().frameIndex);
@@ -427,12 +456,13 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({ value: segment.documentId, label: segmentTitle(segment) })), select: enter },
   };
   const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
-    : { kind: 'document', documentId: focused?.documentId ?? null }, [frames, focused?.documentId]);
+    : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed }, [frames, focused?.documentId, observed]);
 
   return (
     <PreviewClockContext.Provider value={clock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} documentId={focused?.timeline ? focused.documentId : null}
+        observations={observations} selectCall={selectCall}
         fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
@@ -543,17 +573,22 @@ function AddTrack({ documentId }: { documentId: string | null }) {
   return <MenuButton label="添加轨道" caret entries={entries}>添加轨道</MenuButton>;
 }
 
-function TimelineToolbar({ settings, fit, subject, documentId }: { settings: MenuEntry[]; fit(): void; subject: Subject; documentId: string | null }) {
+function TimelineToolbar({ settings, fit, subject, documentId, observations, selectCall }: {
+  settings: MenuEntry[]; fit(): void; subject: Subject; documentId: string | null;
+  observations: TimelineObservation[]; selectCall(value: string): void;
+}) {
+  const binding = useDocumentObservationBinding();
   const { playing, blocked, previous, next } = useTransportState();
   const clock = useContext(PreviewClockContext);
   const seconds = useWorkbench(state => previewSeconds(state, clock));
   const segment = useWorkbench(state => {
+    if (binding.dirty) return '当前内容未保存，旧档案叠加已停用';
     const route = state.frame?.route;
     if (!route) return state.runId ? '档案播放记录尚未提供' : '';
-    const playback = route.playbacks.find(item => item.documentId === documentId);
-    if (!playback) return '当前帧没有本 Timeline 播放记录';
+    const playback = documentPlayback(state, clock);
+    if (!playback) return '当前帧没有匹配来源修订与调用的 Timeline 播放记录';
     const name = state.timelines.find(item => item.documentId === playback.documentId)?.displayName ?? playback.documentId.slice(0, 8);
-    return `${name} · 本地 ${playback.cursorSeconds.toFixed(3)} 秒`;
+    return `${playback.call!.actorId} · ${playback.domain} · ${name} · 本地 ${playback.cursorSeconds.toFixed(3)} 秒`;
   });
   const root = subject.options.find(item => item.value === subject.program)?.label ?? '技能根';
   return (
@@ -582,6 +617,9 @@ function TimelineToolbar({ settings, fit, subject, documentId }: { settings: Men
         )}
         <span className={styles.grow} />
         <AuthoringControls />
+        {observations.length > 1 && <Select label="实际调用" value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
+          options={observations.map((observation, index) => ({ value: observationKey(observation), label: `${observation.call.actorId} · ${observation.domain} · 调用 ${index + 1}` }))}
+          onChange={selectCall} />}
       </div>
       <div className={styles.toolbar}>
         <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
@@ -700,6 +738,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   enter(documentId: string): void;
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
+  const clock = useContext(PreviewClockContext);
   const scroller = useRef<HTMLDivElement>(null);
   const [boxed, setBoxed] = useState<ReadonlySet<string>>(() => new Set());
   const [box, setBox] = useState<Box | null>(null);
@@ -743,7 +782,8 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
     boxedSelect.current = hits[0]?.dataset.select ?? null;
     setBoxed(new Set(hits.map(element => element.dataset.box!)));
     boxedClips = hits.map(element => element.dataset.select!);
-    selectionActions.select(hits.length ? { kind: 'clip', id: hits[0].dataset.select! } : null);
+    if (hits.length) selectTimelineObject(clock, 'clip', hits[0].dataset.select!);
+    else selectionActions.select(null);
   };
   const panelWindow = usePanelWindow();
   const [view, setView] = useState({ top: 0, height: 600 });
@@ -1021,6 +1061,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
 }
 
 const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
+  const clock = useContext(PreviewClockContext);
   const selected = useSelected(row.selectId, 'track');
   const { range, getValueFromScreenX } = useTimelineContext();
   const at = useRef(0);
@@ -1045,8 +1086,8 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。
       const item = (event.target as HTMLElement).closest<HTMLElement>('[data-select]');
-      if (item?.dataset.select) selectionActions.select({ kind: 'clip', id: item.dataset.select });
-      else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) selectionActions.select({ kind: 'track', id: row.selectId });
+      if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select);
+      else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) selectTimelineObject(clock, 'track', row.selectId);
     }}>
     <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} track={`${documentId}/${row.track.id}`} head={naming ? (
       <span className={styles.headButton} style={{ ['--tc' as string]: trackColors[row.trackKind] }}>
@@ -1067,7 +1108,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       <button className={styles.headButton} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors[row.trackKind] }}
         title={author ? '单击选中 · 双击改名 · 右键轨道菜单' : undefined}
-        onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}
+        onClick={() => selectTimelineObject(clock, 'track', row.selectId)}
         onDoubleClick={() => { if (author) setNaming(true); }}>
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
@@ -1215,7 +1256,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
           data-selected={selected || undefined} data-dim={dimmed || undefined} data-editable={edit ? true : undefined}
           data-changed={changed || undefined}
           title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
-          onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}
+          onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           {inside && <span className={styles.clipLabel}>{label}</span>}
           {band && (ease ? <EaseHandles ease={ease} start={start} end={end} /> : <><i className={styles.easeIn} /><i className={styles.easeOut} /></>)}
@@ -1285,7 +1326,7 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
         setDragging(null);
       }}
       onPointerCancel={() => setDragging(null)}
-      onClick={() => { if (selectId) selectionActions.select({ kind: 'clip', id: selectId }); }}
+      onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)} />
   );
 }

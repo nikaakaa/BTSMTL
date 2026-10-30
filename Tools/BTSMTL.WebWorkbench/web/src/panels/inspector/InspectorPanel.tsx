@@ -1,11 +1,11 @@
 import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord } from '../../api/types';
+import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, playedTimeline, portColor, compareSequence, callKey, singleCall,
+  isPortSample, nodeName, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
   applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements, useDocumentObservationBinding,
@@ -14,7 +14,7 @@ import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, playSegments, trackColors, trackKind,
+  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
@@ -60,9 +60,9 @@ function Content({ shown, locked }: { shown: Selection | null; locked: boolean }
   switch (shown.kind) {
     case 'node': return <NodeInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'clip': return shown.id.startsWith('input/') ? <InputItemInspector id={shown.id} missing={missing} />
-      : <ClipInspector id={shown.id} missing={missing} />;
+      : <ClipInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'track': return shown.id.startsWith('input/') ? <InputTrackInspector id={shown.id} missing={missing} />
-      : <TrackInspector id={shown.id} missing={missing} />;
+      : <TrackInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
     case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
   }
@@ -133,10 +133,12 @@ function HostRecords({ records }: { records: HostRecord[] }) {
   );
 }
 
-function locatedRecords(frame: Frame | null, match: (documentId: string, elementId: string) => boolean): HostRecord[] {
-  if (!frame) return [];
+function locatedRecords(frame: Frame | null, binding: DocumentObservationBinding, call: ExecutionCall | null,
+  match: (documentId: string, elementId: string) => boolean): HostRecord[] {
+  if (!frame || call === null) return [];
   return frame.sections.flatMap(section => section.records)
-    .filter(record => record.locations.some(location => match(location.documentId, location.elementId)));
+    .filter(record => record.locations.some(location => location.call !== null && matchesDocumentCall(location.call, binding) &&
+      callKey(location.call) === callKey(call) && match(location.documentId, location.elementId)));
 }
 
 const gap = (item: Availability) => !item.available || !item.complete;
@@ -258,7 +260,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   if (!found) return missing;
   const { graph, node } = found;
   const editable = author.program !== null && author.program === graph.programId;
-  const candidates = graphRecords(frame, graph, binding);
+  const candidates = graphRecords(frame?.route, graph, binding);
   const observedCall = call ?? singleCall(candidates);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
     'nodeId' in item && item.nodeId === node.id && item.call.invocationPath === node.invocationPath);
@@ -303,7 +305,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           </div>
         ) : <div className={styles.note}>没有端口</div>}
       </Fold>
-      <HostRecords records={locatedRecords(frame, (_, elementId) => elementId === node.id)} />
+      <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
       {records.length > 0 && <Fold title="原始记录" kind="var(--node-flow)"><Raw value={records} /></Fold>}
       <Identity extra={[
         { displayName: '节点', value: node.id }, { displayName: '图', value: graph.id },
@@ -436,24 +438,40 @@ const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kin
 
 // ── Timeline 片段与轨道 ──
 
-function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
-  const { timelines: shownTimelines, routeFrames, seconds, frame, graphs, runId } = useWorkbench(useShallow(state => ({
-    timelines: state.timelines, routeFrames: state.routeFrames, seconds: state.seconds, frame: state.frame, graphs: state.graphs,
+function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
+  const binding = useDocumentObservationBinding();
+  const { timelines: shownTimelines, routeFrames, frame, graphs, runId } = useWorkbench(useShallow(state => ({
+    timelines: state.timelines, routeFrames: state.routeFrames, frame: state.frame, graphs: state.graphs,
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
   const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
-  const segments = useMemo(() => found ? playSegments(routeFrames).get(found.timeline.documentId) ?? [] : [], [found, routeFrames]);
+  const instances = useMemo(() => {
+    const result = new Map<string, { call: ExecutionCall; first: RouteFrame; last: RouteFrame; count: number }>();
+    if (!found) return [];
+    for (const recorded of routeFrames) {
+      const calls = new Map<string, ExecutionCall>();
+      for (const location of recorded.active)
+        if (location.call !== null && matchesDocumentCall(location.call, binding) &&
+          location.documentId === found.timeline.documentId && location.elementId === found.clip.id &&
+          (call === undefined || callKey(location.call) === callKey(call)))
+          calls.set(callKey(location.call), location.call);
+      for (const [key, actualCall] of calls) {
+        const previous = result.get(key);
+        if (previous) { previous.last = recorded; previous.count++; }
+        else result.set(key, { call: actualCall, first: recorded, last: recorded, count: 1 });
+      }
+    }
+    return [...result.values()];
+  }, [found, routeFrames, binding, call]);
   const marker = useMemo(() => found ? null : findTimelineMarker(timelines, id), [found, timelines, id]);
   if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
   const kind = trackColors[clipKind(clip)];
   const graph = clipGraph(graphs, clip.graphId);
-  const instances = segments.map(segment => ({
-    segment, start: segment.origin + clip.startSeconds, end: Math.min(segment.origin + clip.endSeconds, segment.end),
-  })).filter(item => item.start <= item.segment.end);
+  const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
   return (
     <>
       <Head kind={kind} name={clip.displayName ?? clip.contract} sub={`${timeline.displayName} · ${track.displayName}`} />
@@ -475,26 +493,28 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
             onClick={() => { authoringActions.deleteClips(timeline.documentId, [clip.id]); selectionActions.select(null); }}>删除片段</Button>
         </div>
       )}
-      {runId && <Fold title="本次运行" kind="var(--value)" defaultOpen>
+      {runId && <Fold title="已读取的活动记录" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
-              const active = seconds !== null && item.start <= seconds && seconds <= item.end;
+              const active = frame?.route?.active.some(location => location.call !== null &&
+                callKey(location.call) === callKey(item.call) && location.documentId === timeline.documentId && location.elementId === clip.id);
               return (
-                <div key={item.segment.index} className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
-                  title="跳到这次播放的片段起点"
-                  onClick={() => void transport.seekTime(item.start)}
-                  onKeyDown={event => { if (event.key === 'Enter') void transport.seekTime(item.start); }}>
-                  <span className={styles.listText}>第 {item.segment.index + 1} 次播放{active ? ' · 游标所在' : ''}</span>
-                  <span className={styles.listValue} data-sampled={active || undefined}>{item.start.toFixed(3)} — {item.end.toFixed(3)} s</span>
+                <div key={callKey(item.call)} className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
+                  title="跳到已读取的首条活动记录"
+                  onClick={() => void transport.seekTime(item.first.seconds)}
+                  onKeyDown={event => { if (event.key === 'Enter') void transport.seekTime(item.first.seconds); }}>
+                  <span className={styles.listText}>{item.call.actorId} · {item.count} 帧记录{active ? ' · 当前帧活动' : ''}</span>
+                  <span className={styles.listValue} data-sampled={active || undefined}>{item.first.seconds.toFixed(3)} — {item.last.seconds.toFixed(3)} s</span>
                 </div>
               );
             })}
           </div>
         ) : <div className={styles.note}>{frame === null ? '正在读取当前帧'
-          : frame.route === null ? '档案播放记录尚未提供' : '本次运行没有播放到这个片段'}</div>}
+          : frame.route === null ? '档案播放记录尚未提供' : binding.dirty ? '当前内容未保存，旧档案叠加已停用'
+            : '已读取记录中没有匹配来源修订与调用的活动记录'}</div>}
       </Fold>}
-      <HostRecords records={locatedRecords(frame, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />
+      <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),
@@ -538,7 +558,8 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
   );
 }
 
-function TrackInspector({ id, missing }: { id: string; missing: ReactNode }) {
+function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
+  const binding = useDocumentObservationBinding();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
   const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
@@ -571,7 +592,7 @@ function TrackInspector({ id, missing }: { id: string; missing: ReactNode }) {
           ))}
         </div>
       </Fold>
-      <HostRecords records={locatedRecords(frame, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />
+      <HostRecords records={locatedRecords(frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />
       <Identity extra={[{ displayName: '轨道', value: track.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
     </>
   );

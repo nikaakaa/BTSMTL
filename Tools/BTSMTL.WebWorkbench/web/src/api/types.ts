@@ -100,6 +100,7 @@ export interface AuthoringLocation {
   displayName: string;
   documentId: string;
   elementId: string;
+  call: ExecutionCall | null;
 }
 
 export interface HostRecord {
@@ -206,11 +207,11 @@ export interface ExecutionCall {
   programId: string;
   programRevision: string;
   invocationPath: string;
-  parentInvocationPath: string;
+  parentInvocationPath: string | null;
   actionId: string;
   executionGeneration: string;
   invocationGeneration: string;
-  parentInvocationGeneration: string;
+  parentInvocationGeneration: string | null;
   playbackId: string;
 }
 
@@ -220,8 +221,8 @@ export interface NodeOccurrence {
   nodeId: string;
   kind: string;
   generation: string;
-  result: string;
-  call: ExecutionCall;
+  result: string | null;
+  call: ExecutionCall | null;
 }
 
 export interface EdgeOccurrence {
@@ -230,7 +231,7 @@ export interface EdgeOccurrence {
   edgeId: string;
   selected: boolean;
   passed: boolean;
-  call: ExecutionCall;
+  call: ExecutionCall | null;
 }
 
 export interface PortSample {
@@ -242,7 +243,7 @@ export interface PortSample {
   valueType: string;
   value: string;
   rawJson: string;
-  call: ExecutionCall;
+  call: ExecutionCall | null;
   sourceAvailable: boolean;
   reason: string;
 }
@@ -251,6 +252,8 @@ export interface RoutePlayback {
   documentId: string;
   cursorSeconds: number;
   status: string;
+  call: ExecutionCall | null;
+  domain: string | null;
 }
 
 export interface RouteFrame {

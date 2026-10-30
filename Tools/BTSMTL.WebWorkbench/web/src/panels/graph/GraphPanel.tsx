@@ -162,7 +162,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     const route = state.frame?.route;
     if (!route) return null;
     const items = [...route.nodes, ...route.edges];
-    const active = graphs.filter(graph => items.some(item => item.graphId === graph.id && belongsTo(item.call, graph, binding)));
+    const active = graphs.filter(graph => items.some(item => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding)));
     const graph = active.find(isStateMachine) ?? active[0];
     return graph ? graphKey(graph) : null;
   });
@@ -172,7 +172,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   // 本帧的实际调用；没有记录时按图实例列出。
   const calls = useWorkbench(useShallow(state => {
     const result = new Map<string, ExecutionCall>();
-    for (const item of graphRecords(state.frame, graph, binding)) {
+    for (const item of graphRecords(state.frame?.route, graph, binding)) {
       result.set(callKey(item.call), item.call);
     }
     return [...result.values()];
@@ -481,12 +481,12 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   useEffect(() => {
     const apply = () => {
       const state = getState();
-      const records = graphRecords(state.frame, graph, binding).filter(item => call !== null && callKey(item.call) === callKey(call));
+      const records = graphRecords(state.frame?.route, graph, binding).filter(item => call !== null && callKey(item.call) === callKey(call));
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
       if (machine) {
         for (let index = 0; index <= state.frameIndex && index < state.routeFrames.length; index++) {
           const frame = state.routeFrames[index];
-          const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.graphId === graph.id &&
+          const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
             belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
           for (const edge of frame.edges) if (edge.passed && matches(edge)) history.traveled.add(edge.edgeId);
