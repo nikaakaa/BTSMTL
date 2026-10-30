@@ -4,6 +4,9 @@ import { currentDocument, timelinePath, useAuthoring, useInputSchemes } from './
 import type { JsonObject } from './skillJson';
 import { useWorkbench } from './store';
 
+// 方案时间零点：Player 在玩家加入帧（scheduleStartFrame）设置日程，日程第 0 tick 落在其下一帧（Quantum3InputSchedule.Apply）。
+export const scheduleZeroFrame = (metadata: { scheduleStartFrame: number }) => metadata.scheduleStartFrame + 1;
+
 export function useInputObservation(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
@@ -54,7 +57,7 @@ export function useInputObservation(documentId: string | null) {
   if (!input) return { kind: 'unavailable', reason: frame.availability.find(item => item.channel === 'input' && !item.available)?.reason
     ?? '当前帧没有该角色的原生输入记录' } as const;
   return { kind: 'ready', metadata, frame, input, plan: recorded, declarations: actor,
-    seconds: Number(BigInt(frame.hostFrame) - BigInt(metadata.scheduleStartFrame)) / metadata.sdkTickRate,
+    seconds: Number(BigInt(frame.hostFrame) - BigInt(scheduleZeroFrame(metadata))) / metadata.sdkTickRate,
     valueEncoding: context.valueEncoding,
   } as const;
 }

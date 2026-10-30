@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { playerApi } from '../api/player';
 import type { PlayerArchive, PlayerJobId, readPlayerInput, readPlayerInputCatalog } from '../api/playerRecords';
+import { scheduleZeroFrame } from './inputModel';
 
 type InputPage = ReturnType<typeof readPlayerInput>;
 type ActorInput = InputPage['page']['items'][number]['actors'][number];
@@ -62,9 +63,9 @@ function neutral(value: InputValue) {
 const shown = (value: InputValue) => value.runtimeValue?.kind === 'boolean' || (value.value?.length === 1 && value.value[0] === 1)
   ? value.inputId : `${value.inputId} ${JSON.stringify(value.value ?? value.runtimeValue)}`;
 
-function spans(records: FrameInput[], keys: KeyDeclaration[], metadata: PlayerArchive, scheduleStartFrame: number) {
+function spans(records: FrameInput[], keys: KeyDeclaration[], metadata: PlayerArchive, zeroFrame: number) {
   const tick = 1 / metadata.sdkTickRate;
-  const at = (frame: number) => (frame - scheduleStartFrame) / metadata.sdkTickRate;
+  const at = (frame: number) => (frame - zeroFrame) / metadata.sdkTickRate;
   const extend = (list: ReceivedSpan[], start: number, label: string) => {
     const last = list.at(-1);
     if (last && last.label === label && Math.abs(last.end - start) < tick / 2) last.end = start + tick;
@@ -99,7 +100,7 @@ export function useReceivedInput(source: { jobId: PlayerJobId; actorId: string; 
     setState({ id, value: { kind: 'loading' } });
     frames(source.jobId, source.actorId, source.metadata).then(records => {
       if (live) setState({ id, value: { kind: 'ready',
-        ...spans(records, source.keys, source.metadata, source.metadata.scheduleStartFrame) } });
+        ...spans(records, source.keys, source.metadata, scheduleZeroFrame(source.metadata)) } });
     }, (error: unknown) => {
       if (live) setState({ id, value: { kind: 'failed', reason: error instanceof Error ? error.message : String(error) } });
     });
