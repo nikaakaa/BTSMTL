@@ -5,12 +5,13 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
+    // 准备期建好边界序与区间树；推进与编辑器查询都经 View。
     public sealed class TimelineRuntimeBoundaryIndex<TTime> where TTime : unmanaged
     {
-        readonly TTime[] m_MinStarts;
-        readonly TTime[] m_MaxEnds;
-        readonly TTime[] m_MaxLifetimeEnds;
-        readonly TTime[] m_StartMaxLifetimeEnds;
+        internal readonly TTime[] MinStarts;
+        internal readonly TTime[] MaxEnds;
+        internal readonly TTime[] MaxLifetimeEnds;
+        internal readonly TTime[] StartMaxLifetimeEnds;
 
         TimelineRuntimeBoundaryIndex(ReadOnlyMemory<TimelineSchedulingClip<TTime>> clips,
             int[] starts, int[] ends, int[] stableOrder, int[] decisions)
@@ -20,10 +21,10 @@ namespace BTSMTL.Timeline.Runtime
             Ends = ends;
             StableOrder = stableOrder;
             Decisions = decisions;
-            m_MinStarts = new TTime[stableOrder.Length];
-            m_MaxEnds = new TTime[stableOrder.Length];
-            m_MaxLifetimeEnds = new TTime[stableOrder.Length];
-            m_StartMaxLifetimeEnds = new TTime[starts.Length];
+            MinStarts = new TTime[stableOrder.Length];
+            MaxEnds = new TTime[stableOrder.Length];
+            MaxLifetimeEnds = new TTime[stableOrder.Length];
+            StartMaxLifetimeEnds = new TTime[starts.Length];
         }
 
         public ReadOnlyMemory<TimelineSchedulingClip<TTime>> Clips { get; }
@@ -31,6 +32,10 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<int> Ends { get; }
         public ReadOnlyMemory<int> StableOrder { get; }
         public ReadOnlyMemory<int> Decisions { get; }
+
+        public TimelineRuntimeBoundaryIndexView<TTime> View => new TimelineRuntimeBoundaryIndexView<TTime>(
+            Clips.Span, Starts.Span, Ends.Span, StableOrder.Span, Decisions.Span,
+            MinStarts, MaxEnds, MaxLifetimeEnds, StartMaxLifetimeEnds);
 
         public ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> PrepareCycleWindows(
             ReadOnlySpan<int> instances, out int wordCount)
@@ -106,25 +111,69 @@ namespace BTSMTL.Timeline.Runtime
                 Include<TClock>(lower + (middle - lower) / 2, ref start, ref end, ref lifetimeEnd);
             if (middle + 1 < upper)
                 Include<TClock>(middle + 1 + (upper - middle - 1) / 2, ref start, ref end, ref lifetimeEnd);
-            m_MinStarts[middle] = start;
-            m_MaxEnds[middle] = end;
-            m_MaxLifetimeEnds[middle] = lifetimeEnd;
+            MinStarts[middle] = start;
+            MaxEnds[middle] = end;
+            MaxLifetimeEnds[middle] = lifetimeEnd;
         }
 
         void Include<TClock>(int middle, ref TTime start, ref TTime end, ref TTime lifetimeEnd)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             TClock clock = default;
-            start = clock.Min(start, m_MinStarts[middle]);
-            end = clock.Max(end, m_MaxEnds[middle]);
-            lifetimeEnd = clock.Max(lifetimeEnd, m_MaxLifetimeEnds[middle]);
+            start = clock.Min(start, MinStarts[middle]);
+            end = clock.Max(end, MaxEnds[middle]);
+            lifetimeEnd = clock.Max(lifetimeEnd, MaxLifetimeEnds[middle]);
         }
 
+        TTime BuildStartEnds<TClock>(int lower, int upper)
+            where TClock : struct, IOrchestrationTimelineClock<TTime>
+        {
+            TClock clock = default;
+            if (lower == upper)
+                return clock.FromRaw(long.MinValue);
+            int middle = lower + (upper - lower) / 2;
+            ref readonly TimelineSchedulingClip<TTime> clip = ref Clips.Span[Starts.Span[middle]];
+            TTime end = clip.TreeDecision ? clock.FromRaw(long.MaxValue) : clip.End;
+            end = clock.Max(end, BuildStartEnds<TClock>(lower, middle));
+            end = clock.Max(end, BuildStartEnds<TClock>(middle + 1, upper));
+            return StartMaxLifetimeEnds[middle] = end;
+        }
+    }
+
+    public readonly ref struct TimelineRuntimeBoundaryIndexView<TTime> where TTime : unmanaged
+    {
+        readonly ReadOnlySpan<TTime> m_MinStarts;
+        readonly ReadOnlySpan<TTime> m_MaxEnds;
+        readonly ReadOnlySpan<TTime> m_MaxLifetimeEnds;
+        readonly ReadOnlySpan<TTime> m_StartMaxLifetimeEnds;
+
+        public TimelineRuntimeBoundaryIndexView(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
+            ReadOnlySpan<int> starts, ReadOnlySpan<int> ends, ReadOnlySpan<int> stableOrder,
+            ReadOnlySpan<int> decisions, ReadOnlySpan<TTime> minStarts, ReadOnlySpan<TTime> maxEnds,
+            ReadOnlySpan<TTime> maxLifetimeEnds, ReadOnlySpan<TTime> startMaxLifetimeEnds)
+        {
+            Clips = clips;
+            Starts = starts;
+            Ends = ends;
+            StableOrder = stableOrder;
+            Decisions = decisions;
+            m_MinStarts = minStarts;
+            m_MaxEnds = maxEnds;
+            m_MaxLifetimeEnds = maxLifetimeEnds;
+            m_StartMaxLifetimeEnds = startMaxLifetimeEnds;
+        }
+
+        public ReadOnlySpan<TimelineSchedulingClip<TTime>> Clips { get; }
+        public ReadOnlySpan<int> Starts { get; }
+        public ReadOnlySpan<int> Ends { get; }
+        public ReadOnlySpan<int> StableOrder { get; }
+        public ReadOnlySpan<int> Decisions { get; }
+
         internal int FindStart<TClock>(TTime time, bool includeEqual)
-            where TClock : struct, IOrchestrationTimelineClock<TTime> => Find<TClock>(Starts.Span, time, includeEqual, true);
+            where TClock : struct, IOrchestrationTimelineClock<TTime> => Find<TClock>(Starts, time, includeEqual, true);
 
         internal int FindEnd<TClock>(TTime time, bool includeEqual)
-            where TClock : struct, IOrchestrationTimelineClock<TTime> => Find<TClock>(Ends.Span, time, includeEqual, false);
+            where TClock : struct, IOrchestrationTimelineClock<TTime> => Find<TClock>(Ends, time, includeEqual, false);
 
         int Find<TClock>(ReadOnlySpan<int> order, TTime time, bool includeEqual, bool start)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
@@ -135,7 +184,7 @@ namespace BTSMTL.Timeline.Runtime
             while (lower < upper)
             {
                 int middle = lower + (upper - lower) / 2;
-                ref readonly TimelineSchedulingClip<TTime> clip = ref Clips.Span[order[middle]];
+                ref readonly TimelineSchedulingClip<TTime> clip = ref Clips[order[middle]];
                 TTime position = start ? clip.Start : clip.End;
                 if (clock.GreaterThan(time, position) || !includeEqual && clock.Equal(position, time))
                     lower = middle + 1;
@@ -164,26 +213,12 @@ namespace BTSMTL.Timeline.Runtime
                 return found;
             if (middle >= after)
             {
-                ref readonly TimelineSchedulingClip<TTime> clip = ref Clips.Span[StableOrder.Span[middle]];
+                ref readonly TimelineSchedulingClip<TTime> clip = ref Clips[StableOrder[middle]];
                 if (clock.LessThanOrEqual(clip.Start, time) &&
                     (lifetime && clip.TreeDecision || clock.GreaterThan(clip.End, time)))
                     return middle;
             }
             return FindNext<TClock>(middle + 1, upper, after, time, lifetime);
-        }
-
-        TTime BuildStartEnds<TClock>(int lower, int upper)
-            where TClock : struct, IOrchestrationTimelineClock<TTime>
-        {
-            TClock clock = default;
-            if (lower == upper)
-                return clock.FromRaw(long.MinValue);
-            int middle = lower + (upper - lower) / 2;
-            ref readonly TimelineSchedulingClip<TTime> clip = ref Clips.Span[Starts.Span[middle]];
-            TTime end = clip.TreeDecision ? clock.FromRaw(long.MaxValue) : clip.End;
-            end = clock.Max(end, BuildStartEnds<TClock>(lower, middle));
-            end = clock.Max(end, BuildStartEnds<TClock>(middle + 1, upper));
-            return m_StartMaxLifetimeEnds[middle] = end;
         }
 
         internal int FindNextStart<TClock>(int after, TTime time)
@@ -202,7 +237,7 @@ namespace BTSMTL.Timeline.Runtime
             int found = FindNextStart<TClock>(lower, middle, after, time);
             if (found >= 0)
                 return found;
-            ref readonly TimelineSchedulingClip<TTime> clip = ref Clips.Span[Starts.Span[middle]];
+            ref readonly TimelineSchedulingClip<TTime> clip = ref Clips[Starts[middle]];
             if (clock.GreaterThan(clip.Start, time))
                 return -1;
             if (middle >= after && (clip.TreeDecision || clock.GreaterThan(clip.End, time)))

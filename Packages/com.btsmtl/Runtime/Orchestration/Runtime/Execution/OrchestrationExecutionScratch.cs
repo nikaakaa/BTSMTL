@@ -1,13 +1,10 @@
 using System;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
     // 一次推进的草稿区布局，准备期按程序与容量算出；宿主按 SizeBytes 提供内存并调用 Initialize。
     public readonly struct OrchestrationExecutionScratchLayout
     {
-        const int Alignment = 16;
-
         OrchestrationExecutionScratchLayout(int sizeBytes, OrchestrationMemorySection inputValues,
             OrchestrationMemorySection outputValues, OrchestrationMemorySection scheduledValues,
             OrchestrationMemorySection scheduledPredictions, OrchestrationMemorySection graphCalls,
@@ -45,23 +42,24 @@ namespace BTSMTL.Orchestration
         public static OrchestrationExecutionScratchLayout Prepare<TValue>(in OrchestrationProgramView<TValue> program,
             int frameCapacity, in OrchestrationProgramOutputCapacity outputs) where TValue : unmanaged
         {
-            int offset = OrchestrationMemoryImageWriter.SizeOf<OrchestrationExecutionScratchHeader>();
+            var builder = new OrchestrationMemoryLayoutBuilder(
+                OrchestrationMemoryImageWriter.SizeOf<OrchestrationExecutionScratchHeader>());
             int forceStopWords = (int)((checked((long)frameCapacity * program.OperationCount) + 63L) / 64);
-            OrchestrationMemorySection inputValues = Add<TValue>(ref offset, program.WorkspaceInputValueCount);
-            OrchestrationMemorySection outputValues = Add<TValue>(ref offset, program.WorkspaceOutputValueCount);
-            OrchestrationMemorySection scheduledValues = Add<TValue>(ref offset, program.ScheduleScratchSlotCount);
-            OrchestrationMemorySection scheduledPredictions = Add<OrchestrationScheduledPrediction>(ref offset,
+            OrchestrationMemorySection inputValues = builder.Add<TValue>(program.WorkspaceInputValueCount);
+            OrchestrationMemorySection outputValues = builder.Add<TValue>(program.WorkspaceOutputValueCount);
+            OrchestrationMemorySection scheduledValues = builder.Add<TValue>(program.ScheduleScratchSlotCount);
+            OrchestrationMemorySection scheduledPredictions = builder.Add<OrchestrationScheduledPrediction>(
                 program.SchedulePredictionDepth);
-            OrchestrationMemorySection graphCalls = Add<OrchestrationGraphCallContext>(ref offset,
+            OrchestrationMemorySection graphCalls = builder.Add<OrchestrationGraphCallContext>(
                 program.WorkspaceGraphCallDepth);
-            OrchestrationMemorySection states = Add<OrchestrationStateContext>(ref offset, program.WorkspaceStateDepth);
-            OrchestrationMemorySection stateAncestors = Add<OrchestrationStateAncestor>(ref offset,
+            OrchestrationMemorySection states = builder.Add<OrchestrationStateContext>(program.WorkspaceStateDepth);
+            OrchestrationMemorySection stateAncestors = builder.Add<OrchestrationStateAncestor>(
                 program.WorkspaceStateAncestorCount);
-            OrchestrationMemorySection forceStopVisited = Add<ulong>(ref offset, forceStopWords);
-            OrchestrationMemorySection forceStopNext = Add<int>(ref offset, forceStopWords);
-            OrchestrationMemorySection outputRequests = Add<OrchestrationOutputRequest>(ref offset, outputs.RequestCount);
-            OrchestrationMemorySection emittedValues = Add<TValue>(ref offset, outputs.ValueCount);
-            return new OrchestrationExecutionScratchLayout(Align(offset), inputValues, outputValues, scheduledValues,
+            OrchestrationMemorySection forceStopVisited = builder.Add<ulong>(forceStopWords);
+            OrchestrationMemorySection forceStopNext = builder.Add<int>(forceStopWords);
+            OrchestrationMemorySection outputRequests = builder.Add<OrchestrationOutputRequest>(outputs.RequestCount);
+            OrchestrationMemorySection emittedValues = builder.Add<TValue>(outputs.ValueCount);
+            return new OrchestrationExecutionScratchLayout(builder.SizeBytes, inputValues, outputValues, scheduledValues,
                 scheduledPredictions, graphCalls, states, stateAncestors, forceStopVisited, forceStopNext,
                 outputRequests, emittedValues);
         }
@@ -72,19 +70,9 @@ namespace BTSMTL.Orchestration
             if (memory.Length < SizeBytes)
                 throw new ArgumentException("编排草稿内存小于准备布局。", nameof(memory));
             memory.Slice(0, SizeBytes).Clear();
-            SpanReinterpret.Cast<byte, OrchestrationExecutionScratchHeader>(memory.Slice(0,
-                OrchestrationMemoryImageWriter.SizeOf<OrchestrationExecutionScratchHeader>()))[0] =
+            OrchestrationMemoryImageWriter.Header<OrchestrationExecutionScratchHeader>(memory) =
                 new OrchestrationExecutionScratchHeader { Layout = this };
         }
-
-        static OrchestrationMemorySection Add<T>(ref int offset, int count) where T : unmanaged
-        {
-            int start = Align(offset);
-            offset = checked(start + count * OrchestrationMemoryImageWriter.SizeOf<T>());
-            return new OrchestrationMemorySection(start, count);
-        }
-
-        static int Align(int value) => checked(value + Alignment - 1) & ~(Alignment - 1);
     }
 
     internal struct OrchestrationExecutionScratchHeader
@@ -126,12 +114,10 @@ namespace BTSMTL.Orchestration
         public OrchestrationExecutionScratch(Span<byte> memory) => m_Memory = memory;
 
         internal ref OrchestrationExecutionScratchHeader Header =>
-            ref SpanReinterpret.Cast<byte, OrchestrationExecutionScratchHeader>(m_Memory.Slice(0,
-                OrchestrationMemoryImageWriter.SizeOf<OrchestrationExecutionScratchHeader>()))[0];
+            ref OrchestrationMemoryImageWriter.Header<OrchestrationExecutionScratchHeader>(m_Memory);
 
         internal Span<T> Section<T>(OrchestrationMemorySection section) where T : unmanaged =>
-            SpanReinterpret.Cast<byte, T>(m_Memory.Slice(section.OffsetBytes,
-                section.Count * OrchestrationMemoryImageWriter.SizeOf<T>()));
+            OrchestrationMemoryImageWriter.Section<T>(m_Memory, section);
 
         public ref readonly OrchestrationExecutionError Error => ref Header.Error;
         public int OutputRequestCapacity => Header.Layout.OutputRequests.Count;

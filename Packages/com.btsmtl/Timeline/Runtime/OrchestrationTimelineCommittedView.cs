@@ -71,7 +71,7 @@ namespace BTSMTL.Timeline.Runtime
                 if (playback.Start.ContentIdentityId == contentIdentityId)
                 {
                     OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
-                    if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content,
+                    if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content.View,
                         in playback, TreeExits(i, content), clipOrdinal))
                         return true;
                 }
@@ -86,14 +86,15 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
             TimelineTreeExitView exits = TreeExits(slot, content);
             int count = 0;
-            int position = content.Lifetimes.FindNext<TClock>(0, playback.Progress.CursorTime, true);
+            TimelineRuntimeBoundaryIndexView<TTime> lifetimes = content.View.Lifetimes;
+            int position = lifetimes.FindNext<TClock>(0, playback.Progress.CursorTime, true);
             while (position >= 0)
             {
-                int ordinal = content.Lifetimes.StableOrder.Span[position];
-                if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content,
+                int ordinal = lifetimes.StableOrder[position];
+                if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content.View,
                     in playback, exits, ordinal))
                     destination[count++] = ordinal;
-                position = content.Lifetimes.FindNext<TClock>(position + 1, playback.Progress.CursorTime, true);
+                position = lifetimes.FindNext<TClock>(position + 1, playback.Progress.CursorTime, true);
             }
             return count;
         }
@@ -103,7 +104,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
             OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
-            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content,
+            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content.View,
                 in playback, TreeExits(slot, content), destination);
         }
 

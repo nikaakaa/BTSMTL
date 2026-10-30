@@ -142,7 +142,6 @@ namespace BTSMTL.Timeline.Runtime
         int m_MaximumRecordedPlaybackTextReferences;
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
         readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
-        readonly TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock> m_Scheduler = new();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_Boundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_SyntheticBoundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineScheduledInvocation<OrchestrationTime>[] m_Scheduled = Array.Empty<TimelineScheduledInvocation<OrchestrationTime>>();
@@ -728,7 +727,7 @@ namespace BTSMTL.Timeline.Runtime
             bool includeStartBoundary,
             TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> events)
         {
-            int count = m_Scheduler.Markers(state.ExecutionContent.Markers.Span,
+            int count = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Markers(state.ExecutionContent.Markers.Span,
                 previousTime, previousCycle, currentTime, currentCycle, content.Content.Duration,
                 includeStartBoundary, m_Scheduled);
             for (int index = 0; index < count; index++)
@@ -784,7 +783,7 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlySpan<TimelineSchedulingClip<OrchestrationTime>> clips = native.Clips.Span;
             TimelineTreeExitView exits = state.Graphs.Exits;
             int activeCount = OrchestrationTimelineStateQueries<OrchestrationTime>.CopyActiveTrees<OrchestrationTimeClock>(
-                native, in playback, exits, m_ActiveTrees);
+                native.View, in playback, exits, m_ActiveTrees);
             ReadOnlySpan<TimelineSchedulingBoundary<OrchestrationTime>> active = m_ActiveTrees.AsSpan(0, activeCount);
             state.Graphs.TreeExitFirstCycles.CopyTo(state.Graphs.PendingTreeExitFirstCycles, 0);
             state.Graphs.TreeExitBits.CopyTo(state.Graphs.PendingTreeExitBits, 0);
@@ -814,38 +813,39 @@ namespace BTSMTL.Timeline.Runtime
             if (align)
             {
                 int boundaryCount = 0;
-                int position = native.Boundaries.FindNext<OrchestrationTimeClock>(0, sample.Time, true);
+                TimelineRuntimeBoundaryIndexView<OrchestrationTime> boundaries = native.View.Boundaries;
+                int position = boundaries.FindNext<OrchestrationTimeClock>(0, sample.Time, true);
                 while (position >= 0)
                 {
-                    int ordinal = native.Boundaries.StableOrder.Span[position];
+                    int ordinal = boundaries.StableOrder[position];
                     if (TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Active(
                             in clips[ordinal], ordinal, sample.Time, sample.Cycle, pendingExits))
                         m_Boundaries[boundaryCount++] = new TimelineSchedulingBoundary<OrchestrationTime>(
                             ordinal, clips[ordinal].SortOrdinal, sample.Time, sample.Cycle, true);
-                    position = native.Boundaries.FindNext<OrchestrationTimeClock>(position + 1, sample.Time, true);
+                    position = boundaries.FindNext<OrchestrationTimeClock>(position + 1, sample.Time, true);
                 }
-                scheduledCount = m_Scheduler.Trees(clips,
+                scheduledCount = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Trees(clips,
                     m_Boundaries.AsSpan(0, boundaryCount), ReadOnlySpan<TimelineSchedulingBoundary<OrchestrationTime>>.Empty,
                     sample.Time, sample.Cycle, sample.Time, sample.Cycle, native.Duration,
                     false, pendingExits, m_SelectedTrees, m_SelectedTreeOrdinals,
-                    ref m_SelectedTreeCount, m_Scheduled, 0);
+                    ref m_SelectedTreeCount, m_Scheduled);
             }
             else if (traverse)
             {
-                int boundaryCount = m_Scheduler.Boundaries(native.Boundaries, state.CursorTime, state.Cycle,
+                int boundaryCount = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Boundaries(native.View.Boundaries, state.CursorTime, state.Cycle,
                     sample.Time, sample.Cycle, native.Duration, start.Mode == OrchestrationTimelinePlaybackMode.Loop,
                     state.Graphs.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits,
                     ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries, m_SyntheticBoundaries);
-                scheduledCount = m_Scheduler.Trees(clips,
+                scheduledCount = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Trees(clips,
                     m_Boundaries.AsSpan(0, boundaryCount), active,
                     state.CursorTime, state.Cycle, sample.Time, sample.Cycle, native.Duration,
                     start.Mode == OrchestrationTimelinePlaybackMode.Loop, exits,
-                    m_SelectedTrees, m_SelectedTreeOrdinals, ref m_SelectedTreeCount, m_Scheduled, 0);
-                scheduledCount += m_Scheduler.ContinueTrees(clips, active,
+                    m_SelectedTrees, m_SelectedTreeOrdinals, ref m_SelectedTreeCount, m_Scheduled);
+                scheduledCount += TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.ContinueTrees(clips, active,
                     state.CursorTime, state.Cycle, sample.Time, sample.Cycle, native.Duration,
                     exits, m_Scheduled.AsSpan(scheduledCount));
             }
-            m_Scheduler.SortTrees(m_Scheduled, 0, scheduledCount);
+            TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.SortTrees(m_Scheduled.AsSpan(0, scheduledCount));
             ReadOnlySpan<TimelineScheduledInvocation<OrchestrationTime>> scheduled = m_Scheduled.AsSpan(0, scheduledCount);
             foreach (ref readonly TimelineScheduledInvocation<OrchestrationTime> request in scheduled)
             {
@@ -870,7 +870,7 @@ namespace BTSMTL.Timeline.Runtime
             playback.Progress.InitialBoundaryState = state.Graphs.PendingTreeInitialBoundaryState;
             playback.Progress.State = OrchestrationTimelinePlaybackStatus.Running;
             activeCount = OrchestrationTimelineStateQueries<OrchestrationTime>.CopyActiveTrees<OrchestrationTimeClock>(
-                native, in playback, pendingExits, m_Boundaries);
+                native.View, in playback, pendingExits, m_Boundaries);
             for (int index = 0; index < activeCount; index++)
             {
                 TimelineSchedulingBoundary<OrchestrationTime> occurrence = m_Boundaries[index];
