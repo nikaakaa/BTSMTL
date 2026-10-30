@@ -1,5 +1,5 @@
-import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition } from '../api/types';
-import { inputRootKey, type RouteFrameSpan } from './store';
+import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition, RouteFrame } from '../api/types';
+import { inputRootKey } from './store';
 
 // Timeline 面板与检查器共用：把路线帧中的播放记录换算成运行秒数上的片段实例。
 // 运行秒数 = 段起点（该段首帧 frame.seconds − cursorSeconds）+ 片段在 Timeline 内的秒数。
@@ -81,7 +81,7 @@ export function clipKind(clip: AuthorClip): TrackKind {
   return clipKinds[clip.contract] ?? 'other';
 }
 
-export function playSegments(frames: RouteFrameSpan[]): Map<string, PlaySegment[]> {
+export function playSegments(frames: RouteFrame[]): Map<string, PlaySegment[]> {
   const result = new Map<string, PlaySegment[]>();
   frames.forEach((frame, index) => {
     for (const playback of frame.playbacks) {
@@ -130,7 +130,7 @@ export const stateMachineIds = (graphs: GraphDefinition[] | null) =>
   new Set((graphs ?? []).filter(graph => graph.edges.some(edge => edge.kind === 'Transition')).map(graph => graph.id));
 
 // 按播放先后排列的路线段；段名取段首帧进入的状态机状态。
-export function routeSegments(frames: RouteFrameSpan[], timelines: AuthorTimeline[], graphs: GraphDefinition[] | null): RouteSegment[] {
+export function routeSegments(frames: RouteFrame[], timelines: AuthorTimeline[], graphs: GraphDefinition[] | null): RouteSegment[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
   const machines = stateMachineIds(graphs);
   const names = new Map<string, string>();
@@ -141,7 +141,8 @@ export function routeSegments(frames: RouteFrameSpan[], timelines: AuthorTimelin
   for (const [documentId, segments] of playSegments(frames)) {
     const timeline = byId.get(documentId) ?? null;
     for (const segment of segments) {
-      const entered = frames[segment.firstIndex].enters.find(key => names.has(key));
+      const enteredNode = frames[segment.firstIndex].nodes.find(node => node.kind === 'Enter' && names.has(`${node.graphId}/${node.nodeId}`));
+      const entered = enteredNode ? `${enteredNode.graphId}/${enteredNode.nodeId}` : null;
       const split = entered?.indexOf('/') ?? -1;
       result.push({
         ...segment, id: `${documentId}#${segment.index}`, timeline,

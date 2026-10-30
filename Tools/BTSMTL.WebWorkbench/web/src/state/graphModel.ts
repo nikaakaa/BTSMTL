@@ -7,8 +7,18 @@ import type {
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
-export const belongsTo = (call: ExecutionCall, graph: GraphDefinition) =>
-  call.actorId === graph.actorId && call.programId === graph.programId && call.programRevision === graph.programRevision;
+export interface DocumentObservationBinding {
+  programId: string | null;
+  sourceRevision: string | null;
+  dirty: boolean;
+}
+export const belongsTo = (call: ExecutionCall, graph: GraphDefinition, binding: DocumentObservationBinding) =>
+  !binding.dirty && binding.sourceRevision !== null && graph.programId === binding.programId &&
+  call.programId === binding.programId && call.programRevision === binding.sourceRevision;
+export const compareSequence = (left: { sequence: string }, right: { sequence: string }) => {
+  const a = BigInt(left.sequence), b = BigInt(right.sequence);
+  return a < b ? -1 : a > b ? 1 : 0;
+};
 export const graphName = (graph: GraphDefinition) =>
   graph.displayName === null ? '未命名图' : graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
 export const nodeName = (node: GraphNode) => node.displayName ?? '未命名节点';
@@ -34,11 +44,11 @@ export function findGraphNode(graphs: GraphDefinition[] | null, selectId: string
 
 export type RouteRecord = NodeOccurrence | EdgeOccurrence | PortSample;
 
-export function graphRecords(frame: Frame | null, graph: GraphDefinition): RouteRecord[] {
+export function graphRecords(frame: Frame | null, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
   const route = frame?.route;
   if (!route) return [];
   return [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)]
-    .filter(item => item.graphId === graph.id && belongsTo(item.call, graph));
+    .filter(item => item.graphId === graph.id && belongsTo(item.call, graph, binding));
 }
 
 export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence => 'kind' in item && 'nodeId' in item;

@@ -30,12 +30,9 @@ export interface ContentSlice {
 }
 
 // ── run ──
-// enters／passed 为本帧进入的节点与通过的连线（`图身份/元素身份`），供 Timeline 按状态划分路线段。
-export type RouteFrameSpan = Pick<RouteFrame, 'hostFrame' | 'seconds' | 'playbacks'> & { enters: string[]; passed: string[] };
-
 export interface RunData {
   // 帧序号对应的宿主帧、秒数与 Timeline 播放状态。
-  routeFrames: RouteFrameSpan[];
+  routeFrames: RouteFrame[];
   routeProtocol: string | null;
   routeAvailability: Availability[];
   graphs: GraphDefinition[] | null;

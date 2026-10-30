@@ -5,10 +5,10 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, playedTimeline, portColor,
+  isPortSample, nodeName, playedTimeline, portColor, compareSequence,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements,
+  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
@@ -246,6 +246,7 @@ function useAuthorGraphs() {
 }
 
 function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
+  const binding = useDocumentObservationBinding();
   const { graphs, frame } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame })));
   const author = useAuthorGraphs();
   const found = useMemo(() => {
@@ -257,9 +258,9 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (!found) return missing;
   const { graph, node } = found;
   const editable = author.program !== null && author.program === graph.programId;
-  const records = graphRecords(frame, graph).filter(item => 'nodeId' in item && item.nodeId === node.id &&
+  const records = graphRecords(frame, graph, binding).filter(item => 'nodeId' in item && item.nodeId === node.id &&
     item.call.invocationPath === node.invocationPath);
-  const events = records.filter(isNodeOccurrence).sort((left, right) => Number(left.sequence) - Number(right.sequence));
+  const events = records.filter(isNodeOccurrence).sort(compareSequence);
   const samples = records.filter(isPortSample);
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
   const entry = !graph.edges.some(edge => edge.target?.nodeId === node.id && edge.invocationPath === node.invocationPath);

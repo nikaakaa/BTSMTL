@@ -1,5 +1,5 @@
 import type { GraphEdge } from '../../api/types';
-import { isEdgeOccurrence, isNodeOccurrence, isPortSample, type LaidNode, type RouteRecord } from '../../state/graphModel';
+import { compareSequence, isEdgeOccurrence, isNodeOccurrence, isPortSample, type LaidNode, type RouteRecord } from '../../state/graphModel';
 
 // 每个节点图实例一份：按节点、连线保存本帧路线状态，只通知状态真正变了的节点与连线（D9）。
 
@@ -69,7 +69,7 @@ export class RouteStore {
   update(nodes: LaidNode[], edges: GraphEdge[], records: RouteRecord[], history: RouteHistory) {
     for (const { node } of nodes) {
       const events = records.filter((item): item is Extract<RouteRecord, { kind: string }> => isNodeOccurrence(item) && item.nodeId === node.id)
-        .sort((left, right) => Number(left.sequence) - Number(right.sequence));
+        .sort(compareSequence);
       const ports: Record<string, PortValue> = {};
       for (const sample of records)
         if (isPortSample(sample) && sample.nodeId === node.id)

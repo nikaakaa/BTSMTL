@@ -13,7 +13,7 @@ import { authoringApi, type NodeTypeInfo, type SkillElements } from '../../api/a
 import type { GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
-  type CanvasGroup,
+  useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { openPanel } from '../../shell/layout';
@@ -139,6 +139,7 @@ function ReportEmpty({ text }: { text: string }) {
 const programOf = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision]);
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
+  const binding = useDocumentObservationBinding();
   const [params, setParams] = usePanelParams<Params>(defaults);
   const hierarchy = useMemo(() => graphHierarchy(graphs), [graphs]);
   const programs = useMemo(() => {
@@ -161,7 +162,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     const route = state.frame?.route;
     if (!route) return null;
     const items = [...route.nodes, ...route.edges];
-    const active = graphs.filter(graph => items.some(item => item.graphId === graph.id && belongsTo(item.call, graph)));
+    const active = graphs.filter(graph => items.some(item => item.graphId === graph.id && belongsTo(item.call, graph, binding)));
     const graph = active.find(isStateMachine) ?? active[0];
     return graph ? graphKey(graph) : null;
   });
@@ -171,7 +172,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   // 本帧的实际调用；没有记录时按图实例列出。
   const calls = useWorkbench(useShallow(state => {
     const result: string[] = [];
-    for (const item of graphRecords(state.frame, graph)) {
+    for (const item of graphRecords(state.frame, graph, binding)) {
       const id = callKey(item.call);
       if (!result.includes(id)) result.push(id);
     }
@@ -179,7 +180,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   }));
   const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
   const callOptions = calls.length
-    ? calls.map((id, index) => ({ value: id, label: `调用 ${index + 1}` }))
+    ? calls.map((id, index) => ({ value: id, label: `${(JSON.parse(id) as string[])[0]} · 调用 ${index + 1}` }))
     : paths.map((path, index) => ({ value: path, label: `图实例 ${index + 1}` }));
   const call = callOptions.some(option => option.value === params.call) ? params.call! : callOptions[0]?.value ?? null;
   const path = call === null ? null : calls.includes(call) ? (JSON.parse(call) as string[])[3] : call;
@@ -229,7 +230,9 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
             ))}
           </span>
           <Select label="实际调用" value={call} options={callOptions} disabled={callOptions.length < 2}
-            tip={callOptions.length ? undefined : '此图没有节点'} onChange={value => setParams({ call: value })} />
+            tip={binding.dirty ? '当前作者内容未保存，旧档案叠加已停用'
+              : binding.sourceRevision === null ? '尚未读取当前内容来源修订'
+                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={value => setParams({ call: value })} />
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
@@ -400,6 +403,7 @@ interface GraphCanvasProps {
 }
 
 function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+  const binding = useDocumentObservationBinding();
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
@@ -469,14 +473,15 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   useEffect(() => {
     const apply = () => {
       const state = getState();
-      const records = graphRecords(state.frame, graph).filter(item => !call || callKey(item.call) === call);
+      const records = graphRecords(state.frame, graph, binding).filter(item => !call || callKey(item.call) === call);
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
       if (machine) {
-        const prefix = `${graph.id}/`;
         for (let index = 0; index <= state.frameIndex && index < state.routeFrames.length; index++) {
           const frame = state.routeFrames[index];
-          for (const key of frame.enters) if (key.startsWith(prefix)) history.visited.add(key.slice(prefix.length));
-          for (const key of frame.passed) if (key.startsWith(prefix)) history.traveled.add(key.slice(prefix.length));
+          const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.graphId === graph.id &&
+            belongsTo(item.call, graph, binding) && callKey(item.call) === call;
+          for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
+          for (const edge of frame.edges) if (edge.passed && matches(edge)) history.traveled.add(edge.edgeId);
         }
       }
       store.update(layout.nodes, layout.edges, records, history);
@@ -485,7 +490,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     return useWorkbench.subscribe((state, previous) => {
       if (state.frame !== previous.frame || state.frameIndex !== previous.frameIndex) apply();
     });
-  }, [store, graph, layout, call, machine]);
+  }, [store, graph, layout, call, machine, binding]);
   useFrameReport(`${graphKey(graph)}|${path}|${call}`);
 
   const selectedNode = useWorkbench(state => state.selection?.kind === 'node' ? state.selection.id : null);

@@ -12,6 +12,7 @@ import {
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectionActions, useWorkbench } from './store';
 import { findGraphEdge, findGraphNode } from './graphModel';
+import type { DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session } from './session';
@@ -83,6 +84,11 @@ export const useAuthoring = create<AuthoringState>()(() => ({
 
 const get = useAuthoring.getState;
 const set = useAuthoring.setState;
+
+export const useDocumentObservationBinding = (): DocumentObservationBinding => useAuthoring(useShallow(state => ({
+  programId: state.programId, sourceRevision: state.sourceRevision,
+  dirty: Object.keys(state.edited).length > 0 || state.removed.length > 0,
+})));
 
 const abilityOf = (programId: string) => programId.slice(programId.indexOf(':') + 1);
 

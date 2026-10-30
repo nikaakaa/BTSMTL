@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { FrozenInputTimeline, InputWrite } from '../../api/types';
+import type { FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
@@ -17,7 +17,7 @@ import {
   applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements,
 } from '../../state/authoring';
 import {
-  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan, type WorkbenchState,
+  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
   clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
@@ -133,7 +133,7 @@ function fitRange(bounds: Range): Range {
 }
 
 // frames 为 null 时显示打开的技能文档：范围为所看 Timeline 的长度，按编译帧率取整。
-function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
+function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
   const documentLength = useWorkbench(state => {
     if (frames) return 0;
@@ -302,7 +302,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   params: Params;
   setParams(patch: Partial<Params>): void;
   bounds: Range;
-  frames: RouteFrameSpan[] | null;
+  frames: RouteFrame[] | null;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
