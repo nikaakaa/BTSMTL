@@ -1,6 +1,10 @@
 namespace BTSMTL.WebWorkbench;
 
-public sealed record PreviewModeAvailability(string Id, string DisplayName, bool Available, string Reason);
+public sealed record PreviewModeAvailability(string Id, string DisplayName, bool Available, string Reason)
+{
+    public bool CreatesRun { get; init; }
+    public string[] DefaultChannels { get; init; } = [];
+}
 public sealed record PreviewObservationAvailability(string Channel, bool Available, bool Complete, string Reason);
 public sealed record PreviewExecutionCall(string ActorId, string ProgramId, string ProgramRevision,
     string InvocationPath, string? ParentInvocationPath, string ActionId, string ExecutionGeneration,
