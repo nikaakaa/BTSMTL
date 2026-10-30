@@ -879,15 +879,6 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   };
   const panelWindow = usePanelWindow();
   const [view, setView] = useState({ top: 0, height: 600 });
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const Observer = (panelWindow as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
-    const observer = new Observer(() => setView(previous => ({ ...previous, height: element.clientHeight })));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [panelWindow]);
-
   const offsets = useMemo(() => {
     const result: number[] = [];
     let total = 0;
@@ -896,6 +887,15 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
     return result;
   }, [rows]);
   const total = offsets[offsets.length - 1];
+  useLayoutEffect(() => {
+    const element = scroller.current!;
+    const measure = () => setView({ top: element.scrollTop, height: element.clientHeight });
+    const Observer = (panelWindow as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
+    const observer = new Observer(measure);
+    measure();
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [panelWindow, total]);
   let first = 0;
   while (first < rows.length && offsets[first + 1] < view.top - overscan) first++;
   let last = first;
