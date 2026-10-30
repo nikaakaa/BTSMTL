@@ -30,6 +30,8 @@ function LogicView() {
   const panelId = usePanelId();
   const frame = useWorkbench(state => state.frame);
   const contacts = frame?.availability.find(item => item.channel === 'physics-contacts');
+  const actualContacts = frame?.geometry.contacts.some(hit => hit.kind === 'kcc-contact');
+  const queryCandidates = frame?.geometry.contacts.some(hit => hit.kind === 'query-candidate');
   const unknownContacts = frame?.geometry.contacts.some(hit => hit.kind == null);
   const [failure, setFailure] = useState<number | null>(null);
   const camera = useRef(params.camera);
@@ -80,16 +82,16 @@ function LogicView() {
 
   return (
     <div className={styles.root}>
-      <PanelBar>
+      <PanelBar wrap>
         <Button variant="ghost" onClick={() => scene.current?.fit()}>适配角色</Button>
         <BarSeparator />
         {frame && <>
-          <span className={styles.legend} data-kind="kcc-contact"><i aria-hidden="true" />实际接触</span>
-          <span className={styles.legend} data-kind="query-candidate"><i aria-hidden="true" />查询候选</span>
-          {unknownContacts && <span className={styles.legend}><i aria-hidden="true" />来源未记录</span>}
           {!contacts?.available && <span title={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}>
             <BarLabel>{contacts ? '实际接触不可用' : '实际接触未声明'}</BarLabel>
           </span>}
+          {actualContacts && <span className={styles.legend} data-kind="kcc-contact"><i aria-hidden="true" />实际接触</span>}
+          {queryCandidates && <span className={styles.legend} data-kind="query-candidate"><i aria-hidden="true" />查询候选</span>}
+          {unknownContacts && <span className={styles.legend}><i aria-hidden="true" />来源未记录</span>}
         </>}
       </PanelBar>
       {failure !== null && <ErrorLine text="逻辑视图绘制失败" entryId={failure} />}
