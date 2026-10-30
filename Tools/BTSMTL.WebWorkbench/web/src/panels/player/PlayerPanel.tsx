@@ -60,7 +60,7 @@ function PlayerView({ frameName }: { frameName: string }) {
 
   return (
     <div className={styles.root}>
-      <PanelBar>
+      {!state.runId && <PanelBar wrap>
         <Select label="播放器构建" placeholder="播放器构建" value={build?.buildId ?? null} disabled={!state.builds?.length}
           tip={state.builds && !state.builds.length ? '画面来源尚未提供可用构建' : build?.fields.map(field => `${field.displayName} ${field.value}`).join('\n')}
           options={(state.builds ?? []).map(item => ({ value: item.buildId, label: item.displayName }))}
@@ -78,18 +78,19 @@ function PlayerView({ frameName }: { frameName: string }) {
             const result = await playerService.loadScene(scene!.path, scene!.revision);
             if (result?.stage === 'applied') session.selectRun(null);
           }}>离线包试玩</Button>
-      </PanelBar>
-      {/* 照 Unity Game 视图工具条：相机与输入在左，Stats、Gizmos 在右 */}
-      <PanelBar>
-        <Button variant="ghost" pressed={orbit} disabled={!ready} onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>
-        <Button variant="ghost" disabled={!ready || !orbit} onClick={() => playerService.camera({ mode: 'orbit', reset: true })}>重置</Button>
-        <Button variant="ghost" disabled={!ready || !focusActor} tip={focusActor ? '环绕所选角色' : '点选画面中的角色'}
-          onClick={() => playerService.camera({ mode: 'orbit', focusActorId: focusActor! })}>环绕所选</Button>
-        <BarSeparator />
-        <Button variant="ghost" pressed={captureEnabled} disabled={!ready || player?.inputMode !== 'device'}
-          tip={player?.inputMode === 'device' ? '点击画面接管键鼠，Esc 释放' : '离线包试玩时可接管'}
-          onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>
-        <Button variant="ghost" disabled={!ready} onClick={() => void playerService.capture()}>截图</Button>
+      </PanelBar>}
+      <PanelBar wrap>
+        {state.runId ? <Button variant="ghost" onClick={() => session.selectRun(null)}>退出回看</Button> : <>
+          <Button variant="ghost" pressed={orbit} disabled={!ready} onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>
+          <Button variant="ghost" disabled={!ready || !orbit} onClick={() => playerService.camera({ mode: 'orbit', reset: true })}>重置</Button>
+          <Button variant="ghost" disabled={!ready || !focusActor} tip={focusActor ? '环绕所选角色' : '点选画面中的角色'}
+            onClick={() => playerService.camera({ mode: 'orbit', focusActorId: focusActor! })}>环绕所选</Button>
+          <BarSeparator />
+          <Button variant="ghost" pressed={captureEnabled} disabled={!ready || player?.inputMode !== 'device'}
+            tip={player?.inputMode === 'device' ? '点击画面接管键鼠，Esc 释放' : '离线包试玩时可接管'}
+            onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>
+          <Button variant="ghost" disabled={!ready} onClick={() => void playerService.capture()}>截图</Button>
+        </>}
         <span className={styles.grow} />
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
         <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
