@@ -75,7 +75,7 @@ JPEG 保留 GPU 读回的像素行和 `PreviewEncodedFrame.FlipY`，显示端沿
 
 只有实际比较通过，项目才能在该内容、代码、输入、布局、时钟和容差条件下，由 `GetRestoreSupport(slot)` 为被比较的具体槽声明 `Verified`；不得同时开放其它未比较槽。槽被重新采集覆盖，或上述证明条件改变时，原证明失效。失败或尚未执行时保留原因和限制，续跑请求沿正式入口从头重跑，档案回看继续直接读原记录。没有通用自检命令时由项目把上述过程接入自己的正式入口，不在文档中虚构 CLI 或成功回执。
 
-项目创建 `PreviewCheckpointStore`，在正式提交帧调用 `CaptureCommittedFrame`，Timeline 关键位置传 `keyPosition=true`。同一 SDK 帧已占槽时，普通采集跳过，关键位置重存复用该槽，不再占一个新槽。续跑调用 `RestoreAtOrBefore`，原 Store 按选中槽查询恢复资格；只有 `Restored` 的返回帧才能交 `PreviewPlaybackController.RestoreCompleted(frame, endFrame)` 更新恢复游标，再按原时钟快进，不伪造一次新 Load。`RestartOnly`、`SelfCheckRequired`、`NoCheckpoint`、`ContentChanged` 交宿主明确说明并从头运行，不能标记为已经恢复。内容或布局变更沿项目正式兼容规则处理，不放宽后端身份校验。
+项目创建 `PreviewCheckpointStore`，在正式提交帧调用 `CaptureCommittedFrame`，Timeline 关键位置传 `keyPosition=true`。同一 SDK 帧已占槽时，普通采集跳过，关键位置重存复用该槽，不再占一个新槽。续跑调用 `RestoreAtOrBefore`，原 Store 先选不晚于目标帧的最近槽，再查询该槽的恢复资格。选中槽为 `RestartOnly` 或 `SelfCheckRequired` 时，返回对应状态和所选帧，不调用 `Restore`，也不改选更早的槽。只有 `Verified` 才执行恢复；只有 `Restored` 的返回帧才能交 `PreviewPlaybackController.RestoreCompleted(frame, endFrame)` 更新恢复游标，再按原时钟快进，不伪造一次新 Load。`RestartOnly`、`SelfCheckRequired`、`NoCheckpoint`、`ContentChanged` 交宿主明确说明并从头运行，不能标记为已经恢复。内容或布局变更沿项目正式兼容规则处理，不放宽后端身份校验。
 
 ## 构建和采用
 
