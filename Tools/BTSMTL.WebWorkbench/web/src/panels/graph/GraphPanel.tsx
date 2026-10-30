@@ -22,7 +22,8 @@ import { usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentGraphCalls, playedTimeline, portColor,
+  recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -121,7 +122,9 @@ const callLabel = (call: ExecutionCall) => `${call.actorId} · 动作 ${call.act
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const binding = useDocumentObservationBinding();
+  const author = useAuthoring(state => state.author);
   const runId = useWorkbench(state => state.runId);
+  const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const [params, setParams] = usePanelParams<Params>(defaults);
   const hierarchy = useMemo(() => graphHierarchy(graphs), [graphs]);
   const programs = useMemo(() => {
@@ -165,6 +168,21 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const path = observedCall?.invocationPath ?? (params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null);
   const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
+  const recorded = useMemo(() => recordedGraphCalls(observation.frames, observation.current, graphs, binding), [observation, graphs, binding]);
+  const callCrumbs = useMemo(() => {
+    if (observedCall === null) return null;
+    const items: RecordedGraphCall[] = [{ graph, call: observedCall }];
+    let current = observedCall;
+    let parents = parentGraphCalls(current, recorded);
+    while (parents.length === 1) {
+      items.unshift(parents[0]);
+      current = parents[0].call;
+      parents = parentGraphCalls(current, recorded);
+    }
+    return { items, parent: current.parentInvocationPath ? current : null, choices: parents };
+  }, [graph, observedCall, recorded]);
+  const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
+    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, viewport: null });
 
   const selectCall = (value: string) => {
     setParams({ call: value, pin: null });
@@ -214,8 +232,24 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         <PanelBar wrap>
           {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
             onChange={value => enter(programs.get(value)!.root)} />}
-          <span className={styles.crumbs}>
-            {crumbs.map((crumb, index) => (
+          <span className={styles.crumbs} title={author || callCrumbs === null ? '作者层级' : '档案实际调用路径'}>
+            {!author && callCrumbs !== null ? <>
+              {callCrumbs.parent && <span className={styles.crumb}>
+                {callCrumbs.choices.length > 1 && enterCall ? <MenuButton label="选择父调用" entries={callCrumbs.choices.map(item => ({
+                  label: `${graphName(item.graph)} · ${callLabel(item.call)}`, onSelect: () => enterCall(item),
+                }))}>选择父调用</MenuButton>
+                  : <span title={`路径：${callCrumbs.parent.parentInvocationPath}\n代次：${callCrumbs.parent.parentInvocationGeneration ?? '未记录'}`}>
+                    {callCrumbs.parent.parentInvocationGeneration === null ? '父调用代次未记录' : '已加载记录中没有父调用'}
+                  </span>}
+                <i className={styles.crumbArrow} />
+              </span>}
+              {callCrumbs.items.map((item, index) => <span key={callKey(item.call)} className={styles.crumb} title={callLabel(item.call)}>
+                {index > 0 && <i className={styles.crumbArrow} />}
+                {index < callCrumbs.items.length - 1 && enterCall
+                  ? <button className={styles.crumbLink} onClick={() => enterCall(item)}>{graphName(item.graph)}</button>
+                  : <span data-current>{graphName(item.graph)}</span>}
+              </span>)}
+            </> : crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}
                 {crumb.graph && crumb.graph !== graph

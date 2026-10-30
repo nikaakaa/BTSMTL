@@ -57,6 +57,38 @@ export function graphRecords(route: RouteFrame | null | undefined, graph: GraphD
     .filter((item): item is RouteRecord => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding));
 }
 
+export interface RecordedGraphCall {
+  graph: GraphDefinition;
+  call: ExecutionCall;
+}
+
+export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | null, graphs: GraphDefinition[], binding: DocumentObservationBinding): RecordedGraphCall[] {
+  if (current === null) return [];
+  const calls = new Map<string, RecordedGraphCall>();
+  const byId = new Map<string, GraphDefinition[]>();
+  for (const graph of graphs.filter(item => item.programId === binding.programId)) {
+    const matches = byId.get(graph.id) ?? [];
+    matches.push(graph);
+    byId.set(graph.id, matches);
+  }
+  for (const frame of [...frames, current]) {
+    if (BigInt(frame.hostFrame) > BigInt(current.hostFrame)) continue;
+    for (const record of [...frame.nodes, ...frame.edges, ...frame.ports.filter(item => item.sourceAvailable)]) {
+      if (record.call === null || !matchesDocumentCall(record.call, binding)) continue;
+      for (const graph of byId.get(record.graphId) ?? [])
+        calls.set(`${graphKey(graph)}:${callKey(record.call)}`, { graph, call: record.call });
+    }
+  }
+  return [...calls.values()];
+}
+
+export const parentGraphCalls = (call: ExecutionCall, calls: RecordedGraphCall[]) =>
+  call.parentInvocationPath === null || call.parentInvocationPath === '' || call.parentInvocationGeneration === null ? []
+    : calls.filter(({ call: parent }) => parent.actorId === call.actorId && parent.programId === call.programId &&
+      parent.programRevision === call.programRevision && parent.actionId === call.actionId &&
+      parent.executionGeneration === call.executionGeneration && parent.invocationPath === call.parentInvocationPath &&
+      parent.invocationGeneration === call.parentInvocationGeneration);
+
 export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence & { call: ExecutionCall } => 'kind' in item && 'nodeId' in item;
 export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence & { call: ExecutionCall } => 'edgeId' in item;
 export const isPortSample = (item: RouteRecord): item is PortSample & { call: ExecutionCall } => 'portId' in item;
