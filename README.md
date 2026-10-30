@@ -34,6 +34,8 @@
 
 Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
+`com.btsmtl/Preview` 提供 Unity 预览的连接、播放控制、按面板尺寸采集画面和检查点框架。项目通过 `IPreviewProjectAdapter` 提供载入、单步、输入、提交帧与存读档，沿原游戏执行器输出实际观察。默认组件状态与可选 Animancer8 模块的恢复能力、限制和自检步骤见[预览播放器接入 skill](.agents/skills/btsmtl-preview/SKILL.md)。源码接入不代替项目实际构建、采用和恢复自检。
+
 `com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。预览事件文件为 Version 12、每条 600 字节，播放来源包含调用方播放 ID 与调用元素身份。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。包级依赖解除与全部作者外围通过依赖守护分别检查。
 
 ## 通用图子图与分组
