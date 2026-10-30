@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Burst 兼容检查：按 Unity 运行时的 netstandard2.1 编译推进核心与检查入口，再调用宿主 Unity 工程包内的 bcl。
+    数值目标为 BTSMTL 自身的 Float32；宿主数值（如 FP）的 Burst 兼容由宿主检查。
+    必需属性：BurstCheckClientRoot（已导入 com.unity.burst 的 Unity 工程根目录）、UnityEditorDataPath（Editor/Data）。
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AssemblyName>BTSMTL.BurstCheck</AssemblyName>
+    <RootNamespace>BTSMTL.BurstCheck</RootNamespace>
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <PackagesRoot>$(MSBuildThisFileDirectory)..\..\Packages</PackagesRoot>
+    <BurstCheckOutput Condition="'$(BurstCheckOutput)' == ''">$(MSBuildThisFileDirectory)obj\burst\</BurstCheckOutput>
+    <BurstCheckTemp Condition="'$(BurstCheckTemp)' == ''">$(TEMP)</BurstCheckTemp>
+    <BurstCheckTarget Condition="'$(BurstCheckTarget)' == ''">X64_SSE4</BurstCheckTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ValueGeneration.Generator\ValueGeneration.Generator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Compile Include="*.cs" />
+    <Compile Include="$(PackagesRoot)\com.btsmtl.foundation\Runtime\**\*.cs" LinkBase="Foundation" />
+    <Compile Include="$(PackagesRoot)\com.btsmtl\Runtime\Orchestration\Contracts\**\*.cs" LinkBase="Contracts" />
+    <Compile Include="$(PackagesRoot)\com.btsmtl\Runtime\Orchestration\Runtime\**\*.cs" LinkBase="Runtime" />
+    <Compile Include="$(PackagesRoot)\com.btsmtl\Timeline\Runtime\**\*.cs" LinkBase="Timeline" />
+    <Compile Include="$(PackagesRoot)\com.btsmtl\Timeline\Scripts\ActionContextSlot.cs" LinkBase="Timeline" />
+    <Reference Include="System.Runtime.CompilerServices.Unsafe">
+      <HintPath>$(UnityEditorDataPath)\MonoBleedingEdge\lib\mono\4.5\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Unity.Burst">
+      <HintPath>$(BurstCheckClientRoot)\Library\ScriptAssemblies\Unity.Burst.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="RequireBurstCheckPaths" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(UnityEditorDataPath)\MonoBleedingEdge\lib\mono\unityaot-win32')" Text="请通过 UnityEditorDataPath 指定 Unity Editor 的 Data 目录。" />
+    <Error Condition="!Exists('$(BurstCheckClientRoot)\Library\ScriptAssemblies\Unity.Burst.dll')" Text="请通过 BurstCheckClientRoot 指定已导入 com.unity.burst 的 Unity 工程根目录。" />
+  </Target>
+
+  <!-- 编译成功后调用 bcl；bcl 报错时检查失败，编译方法清单与日志写入输出目录。 -->
+  <Target Name="BurstCompileCheck" AfterTargets="Build">
+    <ItemGroup>
+      <BurstCompiler Include="$(BurstCheckClientRoot)\Library\PackageCache\com.unity.burst@*\.Runtime\bcl.exe" />
+    </ItemGroup>
+    <Error Condition="'@(BurstCompiler)' == ''" Text="Unity 工程 PackageCache 中没有 com.unity.burst 的 bcl.exe。" />
+    <PropertyGroup>
+      <BurstCheckAssembly>$([System.IO.Path]::GetFullPath('$(TargetPath)'))</BurstCheckAssembly>
+      <BurstCheckAssemblyFolder>$([System.IO.Path]::GetDirectoryName('$(BurstCheckAssembly)'))</BurstCheckAssemblyFolder>
+      <BurstCheckArguments>--platform=Windows --target=$(BurstCheckTarget) --include-root-assembly-references=false --dump=Function</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--root-assembly=$(BurstCheckAssembly)&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--output=$(BurstCheckOutput)$(AssemblyName)&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--temp-folder=$(BurstCheckTemp)&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(BurstCheckAssemblyFolder)&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(BurstCheckClientRoot)\Library\ScriptAssemblies&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(UnityEditorDataPath)\Managed&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(UnityEditorDataPath)\Managed\UnityEngine&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(UnityEditorDataPath)\MonoBleedingEdge\lib\mono\unityaot-win32&quot;</BurstCheckArguments>
+      <BurstCheckArguments>$(BurstCheckArguments) &quot;--assembly-folder=$(UnityEditorDataPath)\MonoBleedingEdge\lib\mono\unityaot-win32\Facades&quot;</BurstCheckArguments>
+    </PropertyGroup>
+    <MakeDir Directories="$(BurstCheckOutput)" />
+    <Exec Command="&quot;@(BurstCompiler)&quot; $(BurstCheckArguments)" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          EnvironmentVariables="TEMP=$(BurstCheckTemp);TMP=$(BurstCheckTemp)">
+      <Output TaskParameter="ConsoleOutput" ItemName="BurstCheckLog" />
+      <Output TaskParameter="ExitCode" PropertyName="BurstCheckExitCode" />
+    </Exec>
+    <WriteLinesToFile File="$(BurstCheckOutput)$(AssemblyName).log" Lines="@(BurstCheckLog)" Overwrite="true" />
+    <Error Condition="'$(BurstCheckExitCode)' != '0'" Text="Burst 兼容检查失败，退出码 $(BurstCheckExitCode)，详情见 $(BurstCheckOutput)$(AssemblyName).log。" />
+    <Message Importance="high" Text="Burst 兼容检查通过；编译方法清单：$(BurstCheckOutput)$(AssemblyName).txt" />
+  </Target>
+</Project>
