@@ -103,6 +103,16 @@
   text-overflow: ellipsis;
 }
 
+.triggerValue[data-placeholder] {
+  color: var(--text-dim);
+}
+
+/* 平铺下拉：文字后紧跟小三角，不占固定宽度 */
+.trigger.ghost {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
 /* 下拉小三角 */
 .caret {
   width: 0;

@@ -70,12 +70,14 @@ export interface SelectProps<T extends string> {
   disabled?: boolean;
   label: string;
   tip?: ReactNode;
+  // ghost：工具栏与面包屑里的平铺下拉，平时无底色。
+  variant?: 'default' | 'ghost';
 }
 
-export function Select<T extends string>({ value, options, onChange, placeholder, disabled, label, tip }: SelectProps<T>) {
+export function Select<T extends string>({ value, options, onChange, placeholder, disabled, label, tip, variant = 'default' }: SelectProps<T>) {
   const container = usePortalContainer();
   const trigger = (
-    <BaseSelect.Trigger className={styles.trigger} aria-label={label}>
+    <BaseSelect.Trigger className={join(styles.trigger, variant === 'ghost' && styles.ghost)} aria-label={label}>
       <BaseSelect.Value className={styles.triggerValue} placeholder={placeholder} />
       <span className={styles.caret} aria-hidden />
     </BaseSelect.Trigger>
@@ -111,6 +113,8 @@ export function Select<T extends string>({ value, options, onChange, placeholder
 export type MenuEntry =
   | { kind?: 'item'; label: ReactNode; onSelect(): void; disabled?: boolean; tip?: ReactNode }
   | { kind: 'check'; label: ReactNode; checked: boolean; onChange(checked: boolean): void; disabled?: boolean }
+  // 单选：点击即选中并关闭菜单，当前项带对勾。
+  | { kind: 'radio'; label: ReactNode; checked: boolean; onSelect(): void; disabled?: boolean; tip?: ReactNode }
   | { kind: 'separator' }
   | { kind: 'label'; label: ReactNode };
 
@@ -134,6 +138,7 @@ function MenuEntries({ parts, entries }: { parts: MenuParts; entries: MenuEntry[
       default: {
         const item = (
           <parts.Item key={index} className={styles.item} onClick={entry.onSelect} disabled={entry.disabled}>
+            {entry.kind === 'radio' && entry.checked && <span className={styles.indicator}>✓</span>}
             {entry.label}
           </parts.Item>
         );

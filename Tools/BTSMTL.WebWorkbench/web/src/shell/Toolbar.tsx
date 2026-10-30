@@ -1,22 +1,23 @@
 import { NumberField } from '@base-ui/react/number-field';
+import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import type { PlayerJobReceipt } from '../api/playerRecords';
+import { authoringActions, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
-import { contentActions, getState, inputRootKey, runActions, useWorkbench } from '../state/store';
+import { contentActions, inputRootKey, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
-import { Button, MenuButton, NumberInput, Select, Tip, type MenuEntry } from '../ui/controls';
+import { Button, MenuButton, Select, Tip, type MenuEntry } from '../ui/controls';
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
 
-// 顶部工具栏（D7）：左侧内容、输入方案与运行；正中播放、暂停、下一帧和帧号；右侧布局与连接状态。
+// 顶部工具栏（D7，只有一行）：左侧内容（场景 › 技能）与运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
+// 右侧预览档位、布局与连接圆点。面板不再各自放播放按钮。
 export function Toolbar() {
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
-        <ContentChoice />
-        <PreviewModeChoice />
-        <InputChoice />
-        <ArchiveInputChoice />
-        <RunChoice />
+        <SceneChoice />
+        <SkillChoice />
         <RunMenu />
       </div>
       <div className={styles.center}>
@@ -24,82 +25,94 @@ export function Toolbar() {
         <FrameField />
       </div>
       <div className={styles.right}>
-        <MenuButton label="布局" entries={panelMenu()} caret>Layout</MenuButton>
+        <PreviewModeChoice />
+        <MenuButton label="布局" variant="ghost" entries={panelMenu()} caret>布局</MenuButton>
         <Connection />
       </div>
     </header>
   );
 }
 
-function ContentChoice() {
+const sceneName = (path: string) => path.replace(/\/scene\.json$/, '');
+
+function SceneChoice() {
   const { scenes, scenePath } = useWorkbench(useShallow(state => ({ scenes: state.sources?.scenes, scenePath: state.scenePath })));
   if (!scenes) return null;
   return (
-    <Select label="内容" placeholder="选择内容" value={scenePath} disabled={!scenes.length}
-      tip={scenes.length ? undefined : '宿主尚未提供正式内容'}
-      options={scenes.map(scene => ({ value: scene.path, label: scene.path }))}
+    <Select variant="ghost" label="场景" placeholder="选择场景" value={scenePath} disabled={!scenes.length}
+      tip={scenes.length ? '新建运行使用的场景' : '宿主尚未提供场景'}
+      options={scenes.map(scene => ({ value: scene.path, label: sceneName(scene.path) }))}
       onChange={path => contentActions.selectScene(path)} />
   );
 }
 
-function InputChoice() {
-  const { choices, source } = useWorkbench(useShallow(state => ({ choices: state.sources?.replays, source: state.inputSource })));
-  return <Select label="输入来源" placeholder="选择输入来源" value={source?.kind === 'local' ? 'local' : source?.id ?? null}
-    options={[{ value: 'local', label: '本地输入方案' }, ...(choices ?? []).map(choice => ({ value: choice.id, label: choice.displayName }))]}
-    onChange={id => contentActions.selectInputSource(id === 'local' ? { kind: 'local' } : { kind: 'recorded', id })} />;
-}
-
-function PreviewModeChoice() {
-  const { modes, selected } = useWorkbench(useShallow(state => ({ modes: state.host?.modes, selected: state.previewMode })));
-  if (!modes) return null;
-  return <Select label="预览档位" placeholder="选择预览档位" value={selected}
-    options={modes.map(mode => ({ value: mode.id, label: <span title={mode.reason}>{mode.displayName}</span>, disabled: !mode.available }))}
-    tip={modes.map(mode => `${mode.displayName}：${mode.reason}`).join('\n')}
-    onChange={mode => contentActions.selectPreviewMode(mode)} />;
-}
-
-function ArchiveInputChoice() {
-  const { roots, inputRoot, runId } = useWorkbench(useShallow(state => ({
-    roots: state.inputTimeline?.roots, inputRoot: state.inputRoot, runId: state.runId,
+// 技能是节点图、Timeline 与检查器共同打开的内容，属于全局选择。
+function SkillChoice() {
+  const { skills, target, available } = useAuthoring(useShallow(state => ({
+    skills: state.skills, target: state.target, available: state.available,
   })));
-  if (!runId || !roots?.length) return null;
-  const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: `输入方案：${root.displayName}` }));
+  useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
+  if (available === false) return null;
   return (
-    <Select label="输入方案" placeholder="输入方案" value={inputRoot} options={options}
-      disabled={options.length < 2} tip={!roots ? '读取中' : !options.length ? '本次运行没有预览输入' : undefined}
-      onChange={key => runActions.selectInputRoot(key)} />
+    <>
+      <span className={styles.crumbSeparator} aria-hidden>›</span>
+      {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.name}</span> : (
+        <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.name ?? null} disabled={!skills?.length}
+          options={(skills ?? []).map(item => ({ value: item, label: item }))}
+          onChange={value => void authoringActions.open({ kind: 'skill', name: value })} />
+      )}
+    </>
   );
 }
 
-function RunChoice() {
-  const { jobs, runId } = useWorkbench(useShallow(state => ({ jobs: state.archiveJobs, runId: state.runId })));
-  const options = jobs.map(job => ({ value: job.jobId, label: runLabel(job) }));
-  return (
-    <Select label="运行" placeholder="选择运行" value={runId} disabled={!options.length}
-      tip={options.length ? undefined : '还没有运行'}
-      options={options}
-      onChange={id => session.selectRun(id)} />
-  );
-}
+const shortTime = (job: PlayerJobReceipt) => new Date(job.acceptedAt).toLocaleString(undefined, {
+  month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+});
 
+// 运行：在看的运行、新建运行的输入来源、本次运行的输入方案和新建／取消合成一个菜单。
 function RunMenu() {
-  const { runId, receipt } = useWorkbench(useShallow(state => ({ liveId: state.liveId, sources: state.sources,
-    scenePath: state.scenePath, inputSource: state.inputSource, inputCatalog: state.inputCatalog,
-    inputChoices: state.inputChoices, localLastSdkFrame: state.localLastSdkFrame,
-    hostAvailable: state.hostAvailable, host: state.host, previewMode: state.previewMode,
-    playerViewport: state.playerViewport, runId: state.runId, receipt: state.receipt })));
-  const startBlocked = session.canStart();
-  const cancellable = receipt?.stage === 'queued' || receipt?.stage === 'running';
+  const { jobs, runId, receipt, inputSource, replays, roots, inputRoot } = useWorkbench(useShallow(state => ({
+    jobs: state.archiveJobs, runId: state.runId, receipt: state.receipt, inputSource: state.inputSource,
+    replays: state.sources?.replays, roots: state.inputTimeline?.roots, inputRoot: state.inputRoot,
+  })));
+  const startBlocked = useWorkbench(() => session.canStart());
+  const current = jobs.find(job => job.jobId === runId);
+  const cancellable = runId !== null && (receipt?.stage === 'queued' || receipt?.stage === 'running');
   const entries: MenuEntry[] = [
-    { label: '新建运行', onSelect: () => void session.startRun(), disabled: !!startBlocked, tip: startBlocked },
-    { label: '取消运行', onSelect: () => void session.cancelRun(runId!), disabled: !cancellable,
-      tip: cancellable ? '请求取消，最终状态以同一作业回执为准' : '仅排队或运行中的作业可以取消' },
+    { kind: 'label', label: '运行' },
+    ...(jobs.length ? jobs.map((job): MenuEntry => ({
+      kind: 'radio', label: runLabel(job), checked: job.jobId === runId, onSelect: () => session.selectRun(job.jobId),
+    })) : [{ label: '还没有运行', disabled: true, onSelect: () => {} }]),
+    { kind: 'separator' },
+    { kind: 'label', label: '输入来源' },
+    {
+      kind: 'radio', label: '本地输入方案', checked: inputSource?.kind === 'local',
+      onSelect: () => contentActions.selectInputSource({ kind: 'local' }),
+    },
+    ...(replays ?? []).map((replay): MenuEntry => ({
+      kind: 'radio', label: replay.displayName, checked: inputSource?.kind === 'recorded' && inputSource.id === replay.id,
+      onSelect: () => contentActions.selectInputSource({ kind: 'recorded', id: replay.id }),
+    })),
   ];
-  entries.push({ kind: 'separator' }, { label: '刷新列表', onSelect: () => void session.refresh() });
-  return <MenuButton label="运行菜单" entries={entries} caret>运行</MenuButton>;
+  if (runId && roots && roots.length > 1)
+    entries.push({ kind: 'separator' }, { kind: 'label', label: '本次运行的输入方案' }, ...roots.map((root): MenuEntry => ({
+      kind: 'radio', label: root.displayName, checked: inputRootKey(root) === inputRoot,
+      onSelect: () => runActions.selectInputRoot(inputRootKey(root)),
+    })));
+  entries.push({ kind: 'separator' },
+    { label: '新建运行', onSelect: () => void session.startRun(), disabled: !!startBlocked, tip: startBlocked });
+  if (cancellable)
+    entries.push({ label: '取消运行', onSelect: () => void session.cancelRun(runId), tip: '请求取消，最终状态以同一作业回执为准' });
+  entries.push({ label: '刷新列表', onSelect: () => void session.refresh() });
+  return (
+    <MenuButton label="运行" variant="ghost" entries={entries} caret>
+      <span className={styles.dim}>运行</span>
+      {current ? <span>{shortTime(current)} · {stageNames[receipt?.stage ?? current.stage]}</span> : <span className={styles.dim}>无</span>}
+    </MenuButton>
+  );
 }
 
-// 播放控制可用性：主工具栏与 Timeline 工具条共用，不可用时给出原因。
+// 播放控制可用性：不可用时给出原因。
 export function useTransportState() {
   return useWorkbench(useShallow(state => {
     const source = transport.source();
@@ -125,16 +138,16 @@ export function useTransportState() {
 }
 
 function Transport() {
-  const { playing, blocked, next } = useTransportState();
+  const { playing, blocked, previous, next } = useTransportState();
   return (
     <div className={styles.play} role="group" aria-label="运行播放">
-      <Button aria-label="播放" pressed={playing} className={styles.playButton} data-on={playing || undefined}
-        tip={blocked ?? '播放（空格）'} disabled={!!blocked} onClick={() => playing ? transport.pause() : transport.play()}>
-        <i className={styles.triangle} />
+      <Button aria-label="上一帧" className={styles.playButton} tip={previous ?? '上一帧（←）'} disabled={!!previous}
+        onClick={() => transport.step(-1)}>
+        <span className={styles.stepGlyph}><i /><i className={styles.triangleBack} /></span>
       </Button>
-      <Button aria-label="暂停" className={styles.playButton} tip={blocked ?? (playing ? '暂停（空格）' : '没有在播放')}
-        disabled={!!blocked || !playing} onClick={() => transport.pause()}>
-        <span className={styles.bars}><i /><i /></span>
+      <Button aria-label={playing ? '暂停' : '播放'} pressed={playing} className={styles.playButton} data-on={playing || undefined}
+        tip={blocked ?? (playing ? '暂停（空格）' : '播放（空格）')} disabled={!!blocked} onClick={() => transport.toggle()}>
+        {playing ? <span className={styles.bars}><i /><i /></span> : <i className={styles.triangle} />}
       </Button>
       <Button aria-label="下一帧" className={styles.playButton} tip={next ?? '下一帧（→）'} disabled={!!next}
         onClick={() => transport.step(1)}>
@@ -158,18 +171,30 @@ export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
     };
   }));
   if (!view) return null;
-  const commit = (value: number | null) => {
-    if (value === null) return;
-    if (transport.source() === 'player-live') { transport.seek(value); return; }
-    transport.seek(value);
-  };
+  const live = transport.source() === 'player-live';
   return (
     <div className={styles.frame}>
-      <NumberField.Root value={view.frame} onValueCommitted={commit} step={1}>
-        <NumberField.Input className={styles.frameInput} aria-label={transport.source() === 'player-live' ? 'SDK 帧' : '记录序号'} />
+      <NumberField.Root value={view.frame} onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
+        <NumberField.Input className={styles.frameInput} aria-label={live ? 'SDK 帧' : '记录序号'} title={live ? 'SDK 帧' : '记录序号'} />
       </NumberField.Root>
-      <span>/ {view.last} {transport.source() === 'player-live' ? '帧' : '记录'}</span>
+      <span className={styles.frameLast}>/ {view.last}</span>
       {showSeconds && view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
+    </div>
+  );
+}
+
+// 预览档位：只列宿主声明可用的档位。
+function PreviewModeChoice() {
+  const { modes, selected } = useWorkbench(useShallow(state => ({ modes: state.host?.modes, selected: state.previewMode })));
+  const available = modes?.filter(mode => mode.available) ?? [];
+  if (!available.length) return null;
+  return (
+    <div className={styles.modes} role="group" aria-label="预览档位">
+      <span className={styles.dim}>预览</span>
+      {available.map(mode => (
+        <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason}
+          onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
+      ))}
     </div>
   );
 }
@@ -179,12 +204,12 @@ function Connection() {
     hostAvailable: state.hostAvailable, connected: state.connected, lastError: state.lastError, host: state.host,
   })));
   const status = hostAvailable === null && !lastError ? 'pending' : connected && hostAvailable ? 'ok' : 'down';
-  const text = status === 'pending' ? '宿主 连接中' : status === 'ok' ? '宿主 已连接'
-    : hostAvailable === false ? '宿主 未接入' : '宿主 已断开';
-  const tip = status === 'ok' ? host?.displayName : status === 'down' ? lastError ?? undefined : undefined;
+  const text = status === 'pending' ? '宿主连接中' : status === 'ok' ? '宿主已连接'
+    : hostAvailable === false ? '宿主未接入' : '宿主已断开';
+  const detail = status === 'ok' ? host?.displayName : status === 'down' ? lastError : null;
   return (
-    <Tip content={tip}>
-      <span className={styles.connection} data-status={status} role="status" tabIndex={0}><i />{text}</span>
+    <Tip content={detail ? `${text}\n${detail}` : text}>
+      <span className={styles.connection} data-status={status} role="status" aria-label={text} tabIndex={0}><i /></span>
     </Tip>
   );
 }
