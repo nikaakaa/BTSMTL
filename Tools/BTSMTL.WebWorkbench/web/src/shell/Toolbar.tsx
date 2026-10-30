@@ -39,7 +39,7 @@ function ContentChoice() {
   return (
     <Select label="内容" placeholder="选择内容" value={scenePath} disabled={!scenes.length}
       tip={scenes.length ? undefined : '宿主尚未提供正式内容'}
-      options={scenes.map(scene => ({ value: scene.path, label: scene.path.split('/')[0] }))}
+      options={scenes.map(scene => ({ value: scene.path, label: scene.path }))}
       onChange={path => contentActions.selectScene(path)} />
   );
 }
