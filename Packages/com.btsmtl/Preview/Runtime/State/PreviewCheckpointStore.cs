@@ -7,6 +7,7 @@ namespace BTSMTL.Preview
         string ContentIdentity { get; }
         PreviewRestoreSupport RestoreSupport { get; }
         string RestoreLimitation { get; }
+        PreviewRestoreSupport GetRestoreSupport(int slot);
         void Capture(int slot, int frame);
         void Restore(int slot);
     }
@@ -68,8 +69,6 @@ namespace BTSMTL.Preview
         {
             if (m_Adapter.RestoreSupport == PreviewRestoreSupport.RestartOnly)
                 return new PreviewResumeResult(PreviewResumeStatus.RestartOnly, -1);
-            if (m_Adapter.RestoreSupport == PreviewRestoreSupport.SelfCheckRequired)
-                return new PreviewResumeResult(PreviewResumeStatus.SelfCheckRequired, -1);
             if (m_ContentIdentity != m_Adapter.ContentIdentity)
                 return new PreviewResumeResult(PreviewResumeStatus.ContentChanged, -1);
             int selected = -1;
@@ -82,6 +81,8 @@ namespace BTSMTL.Preview
                 }
             if (selected < 0)
                 return new PreviewResumeResult(PreviewResumeStatus.NoCheckpoint, -1);
+            if (m_Adapter.GetRestoreSupport(selected) == PreviewRestoreSupport.SelfCheckRequired)
+                return new PreviewResumeResult(PreviewResumeStatus.SelfCheckRequired, closest);
             m_Adapter.Restore(selected);
             return new PreviewResumeResult(PreviewResumeStatus.Restored, closest);
         }

@@ -67,6 +67,16 @@ namespace BTSMTL.Preview
             SetState(PreviewPlaybackState.Paused);
         }
 
+        public void RestoreCompleted(int frame, int? endFrame)
+        {
+            RequireLoaded();
+            Frame = frame;
+            EndFrame = endFrame;
+            SeekTarget = -1;
+            m_RemainingSteps = 0;
+            SetState(PreviewPlaybackState.Paused);
+        }
+
         public void Play()
         {
             RequireLoaded();
