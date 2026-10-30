@@ -98,7 +98,7 @@ function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNo
 }
 
 function openGraph(graph: GraphDefinition) {
-  selectionActions.showGraph(graphKey(graph));
+  selectionActions.showGraph(graphKey(graph), null);
   openPanel('graph');
 }
 

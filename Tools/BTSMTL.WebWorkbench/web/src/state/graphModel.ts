@@ -7,6 +7,8 @@ import type {
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
+export const callLabel = (call: ExecutionCall) => `${call.actorId} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
+  (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {
   programId: string | null;
   sourceRevision: string | null;

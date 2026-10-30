@@ -21,7 +21,7 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  belongsTo, callKey, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
+  belongsTo, callKey, callLabel, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
   isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentGraphCalls, playedTimeline, portColor,
   recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
@@ -117,8 +117,6 @@ function ReportEmpty({ text }: { text: string }) {
 }
 
 const programOf = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision]);
-const callLabel = (call: ExecutionCall) => `${call.actorId} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
-  (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const binding = useDocumentObservationBinding();
@@ -206,7 +204,9 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   useEffect(() => {
     if (!request || request.sequence === handled.current) return;
     handled.current = request.sequence;
-    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key, call: null, path: null, pin: null, viewport: null });
+    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key,
+      call: request.observation ? callKey(request.observation.call) : null, path: null,
+      pin: request.observation ? { ...request.observation, graph: request.key } : null, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const [blackboard, setBlackboard] = useState(false);
