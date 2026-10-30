@@ -224,7 +224,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     // 视图状态随所看的图与图实例重建，保存的视图位置才能生效。
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
-        <PanelBar>
+        <PanelBar wrap>
           {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
             onChange={value => enter(programs.get(value)!.root)} />}
           <span className={styles.crumbs}>

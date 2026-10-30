@@ -165,6 +165,14 @@
   overflow: hidden;
 }
 
+.panelBar[data-wrap='true'] {
+  flex-wrap: wrap;
+  min-height: var(--panel-bar);
+  height: auto;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
 .barSeparator {
   width: 1px;
   height: 14px;

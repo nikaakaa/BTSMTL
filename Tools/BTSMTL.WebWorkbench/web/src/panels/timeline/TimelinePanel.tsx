@@ -25,7 +25,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, graphKey, matchesDocumentCall, nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { Empty } from '../../ui/blocks';
+import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import styles from './timeline.module.css';
 
@@ -118,9 +118,9 @@ function DocumentTimeline() {
   if (!skill || loading || !count) {
     return (
       <div className={styles.window}>
-        <div className={styles.toolbar}>
+        <PanelBar wrap>
           <SkillPicker />
-        </div>
+        </PanelBar>
         <Empty text={loading ? '正在读取技能' : error ?? (skill ? '此技能没有 Timeline' : '选择一个技能，直接编辑它的 JSON')} />
       </div>
     );
@@ -593,7 +593,7 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
   const root = subject.options.find(item => item.value === subject.program)?.label ?? '技能根';
   return (
     <>
-      <div className={styles.toolbar}>
+      <PanelBar wrap>
         {subject.timelines ? (
           <>
             <SkillPicker />
@@ -620,8 +620,8 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
         {observations.length > 1 && <Select label="实际调用" value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
           options={observations.map((observation, index) => ({ value: observationKey(observation), label: `${observation.call.actorId} · ${observation.domain} · 调用 ${index + 1}` }))}
           onChange={selectCall} />}
-      </div>
-      <div className={styles.toolbar}>
+      </PanelBar>
+      <PanelBar wrap>
         <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
           disabled={!!blocked} onClick={() => transport.toggle()}>
           <i className={playing ? styles.pauseGlyph : styles.playGlyph} />
@@ -630,15 +630,15 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
         <span className={styles.hint}>{segment}</span>
         <span className={styles.grow} />
         <FrameField showSeconds={false} />
-      </div>
-      <div className={styles.toolbar}>
+      </PanelBar>
+      <PanelBar wrap>
         <Button aria-label="上一帧" tip={previous ?? '上一帧（←）'} disabled={!!previous} onClick={() => transport.step(-1)}>‹</Button>
         <Button aria-label="下一帧" tip={next ?? '下一帧（→）'} disabled={!!next} onClick={() => transport.step(1)}>›</Button>
         <Button tip="显示整条运行" onClick={fit}>适配</Button>
         <span className={styles.grow} />
         <AddTrack documentId={documentId} />
         <MenuButton label="Timeline 设置" caret entries={settings}>显示设置</MenuButton>
-      </div>
+      </PanelBar>
     </>
   );
 }

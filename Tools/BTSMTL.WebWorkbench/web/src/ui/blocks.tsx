@@ -29,8 +29,8 @@ export function Fold({ title, kind, defaultOpen = false, children }: {
   );
 }
 
-export function PanelBar({ children }: { children: ReactNode }) {
-  return <div className={styles.panelBar}>{children}</div>;
+export function PanelBar({ children, wrap }: { children: ReactNode; wrap?: boolean }) {
+  return <div className={styles.panelBar} data-wrap={wrap}>{children}</div>;
 }
 
 export function BarSeparator() {
