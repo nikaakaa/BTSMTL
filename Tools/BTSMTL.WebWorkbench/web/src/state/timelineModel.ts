@@ -215,14 +215,3 @@ export function findTimelineTrack(timelines: AuthorTimeline[], selectId: string)
       if (trackSelectId(timeline.documentId, track.id) === selectId) return { timeline, track };
   return null;
 }
-
-// 帧序号：取秒数最接近的帧。
-export function nearestFrame(frames: RouteFrameSpan[], seconds: number): number {
-  let first = 0, last = frames.length - 1;
-  while (first < last) {
-    const middle = (first + last) >> 1;
-    if (frames[middle].seconds < seconds) first = middle + 1;
-    else last = middle;
-  }
-  return first > 0 && seconds - frames[first - 1].seconds < frames[first].seconds - seconds ? first - 1 : first;
-}

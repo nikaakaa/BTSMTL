@@ -14,7 +14,7 @@ import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
+  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, playSegments, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
@@ -479,8 +479,8 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
               return (
                 <div key={item.segment.index} className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
                   title="跳到这次播放的片段起点"
-                  onClick={() => transport.seek(nearestFrame(getState().routeFrames, item.start))}
-                  onKeyDown={event => { if (event.key === 'Enter') transport.seek(nearestFrame(getState().routeFrames, item.start)); }}>
+                  onClick={() => void transport.seekTime(item.start)}
+                  onKeyDown={event => { if (event.key === 'Enter') void transport.seekTime(item.start); }}>
                   <span className={styles.listText}>第 {item.segment.index + 1} 次播放{active ? ' · 游标所在' : ''}</span>
                   <span className={styles.listValue} data-sampled={active || undefined}>{item.start.toFixed(3)} — {item.end.toFixed(3)} s</span>
                 </div>
@@ -605,7 +605,7 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value="本次运行没有这张图" />}
         <Link label="跳到" text={`${at.toFixed(3)} s`} kind={kind} tip="游标跳到这里"
-          onOpen={() => transport.seek(nearestFrame(getState().routeFrames, at))} />
+          onOpen={() => void transport.seekTime(at)} />
         {clip ? (
           <>
             <Value label="开始" value={`${clip.startSeconds.toFixed(3)} s`} />

@@ -1,4 +1,6 @@
 import { playerApi } from '../api/player';
+import { isAbort } from '../api/http';
+import type { PlayerJobId } from '../api/playerRecords';
 import type { LiveCommand, LiveCommandResult } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
@@ -6,13 +8,13 @@ export type TransportSource = 'sealed' | 'player-live';
 
 const source = 'transport';
 
-// 帧序号对应的宿主帧与秒数，由读取运行路线的服务提供。
 export type ArchiveTimebase = Map<number, { hostFrame: string; seconds: number }>;
 interface Timebase {
-  runId: string;
+  runId: PlayerJobId;
   frames: ArchiveTimebase;
 }
 let timebase: Timebase | null = null;
+let timeSeek: AbortController | null = null;
 let review: { generation: number; origin: number; started: number; handle: number } | null = null;
 
 export function transportSource(): TransportSource | null {
@@ -40,6 +42,42 @@ function moveCursor(frameIndex: number) {
   if (!count) return;
   const index = Math.max(0, Math.min(count - 1, Math.trunc(frameIndex)));
   if (index !== getState().frameIndex || getState().hostFrame === null) writeCursor(index);
+}
+
+async function seekTime(seconds: number) {
+  const { runId, generation, summary } = getState();
+  const context = timebase;
+  if (!runId || !summary?.frameCount || !context || context.runId !== runId) {
+    consoleActions.log('warn', source, '尚无可定位的 Player 档案时钟');
+    return;
+  }
+  stopReview();
+  timeSeek?.abort();
+  const controller = timeSeek = new AbortController();
+  const at = async (index: number) => {
+    const known = context.frames.get(index);
+    if (known) return known;
+    const page = await playerApi.frames(runId, index, 1, controller.signal);
+    controller.signal.throwIfAborted();
+    const frame = page.items[0];
+    const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
+    context.frames.set(index, entry);
+    return entry;
+  };
+  try {
+    let first = 0, last = summary.frameCount - 1;
+    while (first < last) {
+      const middle = (first + last) >> 1;
+      if ((await at(middle)).seconds < seconds) first = middle + 1;
+      else last = middle;
+    }
+    const after = await at(first);
+    const before = first > 0 ? await at(first - 1) : null;
+    controller.signal.throwIfAborted();
+    if (isCurrent(generation)) moveCursor(before && seconds - before.seconds < after.seconds - seconds ? first - 1 : first);
+  } catch (error) {
+    if (!isAbort(error)) consoleActions.error(source, error);
+  }
 }
 
 // ── 已封存运行：按宿主帧秒数回看（按真实流逝时间找到最后一个不晚于目标秒数的帧） ──
@@ -130,9 +168,19 @@ async function sendSeek(frame: number) {
 
 export const transport = {
   source: transportSource,
+  seekTime,
+
+  secondsAt(index: number): number | null {
+    return timebase?.runId === getState().runId ? timebase.frames.get(index)?.seconds ?? null : null;
+  },
+
+  duration(): number | null {
+    const metadata = getState().archiveMetadata;
+    return metadata ? (metadata.lastRecordedSdkFrame - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate : null;
+  },
 
   // 读取路线后由运行服务登记帧序号与宿主帧、秒数的对应；cursor 同步补齐。
-  setTimebase(runId: string, frames: ArchiveTimebase) {
+  setTimebase(runId: PlayerJobId, frames: ArchiveTimebase) {
     timebase = { runId, frames };
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
@@ -145,6 +193,7 @@ export const transport = {
   // 切换运行后由运行服务调用：停止回看，清空播放器目标。
   reset() {
     stopReview();
+    timeSeek?.abort();
     timebase = null;
     useWorkbench.setState({ targetFrame: null, pendingSeek: null });
   },

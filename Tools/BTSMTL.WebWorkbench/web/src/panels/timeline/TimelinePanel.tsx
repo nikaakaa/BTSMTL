@@ -17,10 +17,10 @@ import {
   applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements,
 } from '../../state/authoring';
 import {
-  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
+  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan, type WorkbenchState,
 } from '../../state/store';
 import {
-  clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, nearestFrame, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { graphKey, nodeSelectId } from '../../state/graphModel';
@@ -68,6 +68,10 @@ const defaults: Params = {
 const snapStep = (snap: Snap | undefined, frameStep: number | null) =>
   snap === 'none' ? 1 / 65536 : snap && snap !== 'tick' ? Number(snap) : frameStep;
 const SnapContext = createContext<number | null>(null);
+type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null };
+const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null });
+const previewSeconds = (state: WorkbenchState, clock: PreviewClock): number | null => clock.kind === 'archive'
+  ? state.seconds : state.frame?.route?.playbacks.find(playback => playback.documentId === clock.documentId)?.cursorSeconds ?? null;
 const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * step;
 
 // 一次 Timeline 播放：在显示的段里取游标所在的那次，否则第一次。
@@ -137,7 +141,9 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
     return timeline ? timelineLength(timeline) : 0;
   });
   const tickRate = useAuthoring(state => state.tickRate);
-  const frameStep = frames ? (frames.length > 1 ? frames[1].seconds - frames[0].seconds : 1 / 60) : tickRate ? 1 / tickRate : null;
+  const sdkTickRate = useWorkbench(state => state.archiveMetadata?.sdkTickRate ?? null);
+  const rate = frames ? sdkTickRate : tickRate;
+  const frameStep = rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
     : { start: 0, end: Math.max(minSpan, documentLength) }, [frames, documentLength]);
@@ -392,9 +398,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }, [params.collapsed, setParams]);
 
   const seekAt = useCallback((clientX: number) => {
-    if (!getState().routeFrames.length) return;
-    transport.seek(nearestFrame(getState().routeFrames, getValueFromScreenX(clientX)));
-  }, [getValueFromScreenX]);
+    if (frames) void transport.seekTime(getValueFromScreenX(clientX));
+    else consoleActions.log('warn', 'Timeline', '当前显示作者本地时间；档案未提供可定位的本 Timeline 播放记录');
+  }, [frames, getValueFromScreenX]);
 
   const snap = params.snap ?? 'tick';
   const settings: MenuEntry[] = [
@@ -420,8 +426,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,
     timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({ value: segment.documentId, label: segmentTitle(segment) })), select: enter },
   };
+  const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
+    : { kind: 'document', documentId: focused?.documentId ?? null }, [frames, focused?.documentId]);
 
   return (
+    <PreviewClockContext.Provider value={clock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} documentId={focused?.timeline ? focused.documentId : null}
         fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
@@ -445,6 +454,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
         <Overlay bounds={bounds} origin={origin} seekAt={seekAt} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
+    </PreviewClockContext.Provider>
   );
 }
 
@@ -536,11 +546,13 @@ function AddTrack({ documentId }: { documentId: string | null }) {
 
 function TimelineToolbar({ settings, fit, subject, documentId }: { settings: MenuEntry[]; fit(): void; subject: Subject; documentId: string | null }) {
   const { playing, blocked, previous, next } = useTransportState();
-  const seconds = useWorkbench(state => state.seconds);
+  const clock = useContext(PreviewClockContext);
+  const seconds = useWorkbench(state => previewSeconds(state, clock));
   const segment = useWorkbench(state => {
-    const frame = state.routeFrames[state.frameIndex];
-    const playback = frame?.playbacks[0];
-    if (!playback) return '路线未开始';
+    const route = state.frame?.route;
+    if (!route) return state.runId ? '档案播放记录尚未提供' : '';
+    const playback = route.playbacks.find(item => item.documentId === documentId);
+    if (!playback) return '当前帧没有本 Timeline 播放记录';
     const name = state.timelines.find(item => item.documentId === playback.documentId)?.displayName ?? playback.documentId.slice(0, 8);
     return `${name} · 本地 ${playback.cursorSeconds.toFixed(3)} 秒`;
   });
@@ -1184,7 +1196,11 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
     id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 6,
   });
   const { valueToPixels } = useTimelineContext();
-  const active = useWorkbench(state => state.seconds !== null && start <= state.seconds && state.seconds < Math.min(end, exit));
+  const clock = useContext(PreviewClockContext);
+  const active = useWorkbench(state => {
+    const seconds = previewSeconds(state, clock);
+    return seconds !== null && start <= seconds && seconds < Math.min(end, exit);
+  });
   const boxed = useContext(BoxedContext).has(boxKey);
   const selected = useSelected(selectId, 'clip') || boxed;
   const width = valueToPixels(end - start);
@@ -1243,10 +1259,11 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const [dragging, setDragging] = useState<{ x: number; seconds: number } | null>(null);
   const seconds = dragging?.seconds ?? shown;
+  const clock = useContext(PreviewClockContext);
   const active = useWorkbench(state => {
-    const current = state.routeFrames[state.frameIndex]?.seconds;
-    const previous = state.frameIndex > 0 ? state.routeFrames[state.frameIndex - 1].seconds : -Infinity;
-    return current !== undefined && seconds > previous && seconds <= current;
+    const current = previewSeconds(state, clock);
+    const previous = clock.kind === 'archive' ? transport.secondsAt(state.frameIndex - 1) : null;
+    return current !== null && (seconds === current || previous !== null && seconds > previous && seconds <= current);
   });
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   return (
@@ -1308,13 +1325,14 @@ const inputLabel = (writes: InputWrite[], hold: boolean) =>
 // 预览输入轨与作者轨同一外观：轨道头、片段框、标记；路线结束后的部分压暗。
 const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRow }) {
   const selected = useSelected(row.selectId, 'track');
-  const routeEnd = useWorkbench(state => state.routeFrames.at(-1)?.seconds ?? Infinity);
+  const routeEnd = useWorkbench(() => transport.duration());
   const { range } = useTimelineContext();
   const clips = row.track.clips;
   const nextStarts = useMemo(() => {
     const starts = clips.map(clip => clip.startSeconds).sort((left, right) => left - right);
     return new Map(clips.map(clip => [clip.id, starts.find(start => start > clip.startSeconds) ?? Infinity]));
   }, [clips]);
+  if (routeEnd === null) return null;
   return (
     <Line id={row.id} height={rowHeights.in} headClass={styles.trackHead} head={
       <button className={styles.headButton} data-selected={selected || undefined}
@@ -1352,23 +1370,25 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
   const visible = usePanelVisible();
   const panelWindow = usePanelWindow();
   const pending = useRef(false);
+  const clock = useContext(PreviewClockContext);
 
   const apply = useCallback(() => {
     const state = getState();
     const lineElement = line.current, tagElement = tag.current;
     if (!lineElement || !tagElement) return;
-    if (state.seconds === null) {
+    const seconds = previewSeconds(state, clock);
+    if (seconds === null) {
       lineElement.hidden = tagElement.hidden = true;
-      return;
+    } else {
+      if (follow && transport.isPlaying() && (seconds > range.end || seconds < range.start)) {
+        const span = range.end - range.start;
+        onRangeChanged(() => ({ start: seconds - span * 0.1, end: seconds + span * 0.9 }));
+      }
+      const x = valueToPixels(seconds - range.start);
+      lineElement.hidden = tagElement.hidden = false;
+      lineElement.style.transform = tagElement.style.transform = `translateX(${x}px)`;
+      tagElement.textContent = `${(seconds - origin).toFixed(6)} s`;
     }
-    if (follow && transport.isPlaying() && (state.seconds > range.end || state.seconds < range.start)) {
-      const span = range.end - range.start;
-      onRangeChanged(() => ({ start: state.seconds! - span * 0.1, end: state.seconds! + span * 0.9 }));
-    }
-    const x = valueToPixels(state.seconds - range.start);
-    lineElement.hidden = tagElement.hidden = false;
-    lineElement.style.transform = tagElement.style.transform = `translateX(${x}px)`;
-    tagElement.textContent = `${(state.seconds - origin).toFixed(6)} s`;
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
     if (visible && !pending.current) {
       pending.current = true;
@@ -1379,7 +1399,7 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
         if (key) reportRendered(panelId, key);
       });
     }
-  }, [range, origin, valueToPixels, follow, onRangeChanged, visible, panelWindow, panelId]);
+  }, [range, origin, valueToPixels, follow, onRangeChanged, visible, panelWindow, panelId, clock]);
 
   useLayoutEffect(() => {
     apply();

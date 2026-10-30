@@ -701,7 +701,7 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const running = state.occurred > 0;
   const local = useWorkbench(current => {
     if (!running || !timeline) return null;
-    return current.routeFrames[current.frameIndex]?.playbacks.find(item => item.documentId === timeline)?.cursorSeconds ?? null;
+    return current.frame?.route?.playbacks.find(item => item.documentId === timeline)?.cursorSeconds ?? null;
   });
   const timelineName = useWorkbench(current => timeline ? current.timelines.find(item => item.documentId === timeline)?.displayName ?? null : null);
   const faded = related !== null && !related.has(laid.node.id);
