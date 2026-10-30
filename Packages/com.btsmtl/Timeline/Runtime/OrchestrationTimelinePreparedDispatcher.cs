@@ -48,12 +48,13 @@ namespace BTSMTL.Timeline.Runtime
                 m_SampleInputs = Array.Empty<TValue>();
         }
 
-        public OrchestrationOperationResult Tick<TDiagnostics, TStorage>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
+        public OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
-            ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
             where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
         {
             int slot;
             if (playbackIdentity == 0)
@@ -91,12 +92,13 @@ namespace BTSMTL.Timeline.Runtime
             return Result(batch.Status);
         }
 
-        public OrchestrationStopStatus Stop<TDiagnostics, TStorage>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
+        public OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
             where TStorage : struct, IOrchestrationValueStorage<TValue>
+            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
         {
             int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);

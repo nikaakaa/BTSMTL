@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,8 +14,9 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         readonly struct ScheduledSelection
         {
@@ -30,7 +31,7 @@ namespace BTSMTL.Orchestration
         }
 
         int CurrentStateOperationIndex => m_StateDepth == 0 ? m_Blackboards.BorrowedStateOperationIndex :
-            m_Workspace.States[m_StateDepth - 1].OperationIndex;
+            m_States[m_StateDepth - 1].OperationIndex;
 
         int ScheduleStateContext() => m_StateContexts[CurrentStateOperationIndex + 1];
 
@@ -42,16 +43,16 @@ namespace BTSMTL.Orchestration
 
         int CopyScheduledArguments(ReadOnlySpan<int> slots, int depth, int operationIndex)
         {
-            Span<TValue> inputs = m_Workspace.BorrowInputs(operationIndex, depth, slots.Length);
+            Span<TValue> inputs = BorrowInputs(operationIndex, depth, slots.Length);
             for (int i = 0; i < slots.Length; i++)
-                inputs[i] = m_Workspace.ScheduledValues[slots[i]];
+                inputs[i] = m_ScheduledValues[slots[i]];
             return slots.Length;
         }
 
         ScheduledSelection RunValueSchedule(in OrchestrationValueScheduleEntry entry, int excludedTarget = -1)
         {
-            int pc = default(TDiagnostics).ScheduleEntry(in entry);
-            TValue[] values = m_Workspace.ScheduledValues;
+            int pc = m_Diagnostics.ScheduleEntry(in entry);
+            Span<TValue> values = m_ScheduledValues;
             int depth = m_InputDepth++;
             while (true)
             {
@@ -93,7 +94,7 @@ namespace BTSMTL.Orchestration
                     case OrchestrationValueScheduleCode.OverrideInput:
                     case OrchestrationValueScheduleCode.OverrideOutput:
                     {
-                        int supplied = default(TDiagnostics).FindOverride(ref this, instruction.Operation, instruction.Operand,
+                        int supplied = m_Diagnostics.FindOverride(ref this, instruction.Operation, instruction.Operand,
                             instruction.Code == OrchestrationValueScheduleCode.OverrideInput
                                 ? OrchestrationValueOverrideKind.Input : OrchestrationValueOverrideKind.Output, default);
                         if (supplied >= 0)
@@ -132,7 +133,9 @@ namespace BTSMTL.Orchestration
                             ? -1 : m_Program.Edge(instruction.Operand).TargetOperationIndex);
                         break;
                     default:
-                        throw new InvalidOperationException($"未知的值调度指令 '{instruction.Code}'。");
+                        Fail(OrchestrationExecutionErrorCode.ValueScheduleInstruction, instruction.Operation,
+                            detail: (int)instruction.Code);
+                        break;
                 }
                 pc = instruction.Next;
             }
@@ -142,24 +145,24 @@ namespace BTSMTL.Orchestration
         {
             int previousFrame = m_FrameSlot;
             bool selectFrame = m_StateDepth != 0 && !m_Blackboards.IsBorrowedOperation(state) &&
-                m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex != previousFrame;
-            m_Workspace.ScheduledPredictions[m_ScheduledPredictionDepth++] =
-                new OrchestrationExecutionWorkspace<TValue>.ScheduledPrediction
+                m_States[m_StateDepth - 1].ExecutionFrameIndex != previousFrame;
+            m_ScheduledPredictions[m_ScheduledPredictionDepth++] =
+                new OrchestrationScheduledPrediction
                 {
                     PreviousFrame = previousFrame,
                     PreviousOperation = m_CurrentOperationIndex,
                     SelectedFrame = selectFrame
                 };
             if (selectFrame)
-                SelectExecutionFrame(m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex);
+                SelectExecutionFrame(m_States[m_StateDepth - 1].ExecutionFrameIndex);
             PushState(state, -1, true, true);
         }
 
         void LeaveScheduledPrediction()
         {
             PopState();
-            ref readonly OrchestrationExecutionWorkspace<TValue>.ScheduledPrediction previous =
-                ref m_Workspace.ScheduledPredictions[--m_ScheduledPredictionDepth];
+            ref readonly OrchestrationScheduledPrediction previous =
+                ref m_ScheduledPredictions[--m_ScheduledPredictionDepth];
             if (previous.SelectedFrame)
             {
                 SelectExecutionFrame(previous.PreviousFrame);

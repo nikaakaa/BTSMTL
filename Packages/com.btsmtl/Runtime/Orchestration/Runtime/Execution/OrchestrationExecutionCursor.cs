@@ -5,7 +5,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,11 +15,23 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         readonly OrchestrationProgramView<TValue> m_Program;
-        readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
+        readonly OrchestrationExecutionScratch<TValue> m_Scratch;
+        readonly Span<TValue> m_InputValues;
+        readonly Span<TValue> m_OutputValues;
+        readonly ReadOnlySpan<OrchestrationRange> m_InputRows;
+        readonly ReadOnlySpan<OrchestrationRange> m_OutputRows;
+        readonly Span<TValue> m_ScheduledValues;
+        readonly Span<OrchestrationScheduledPrediction> m_ScheduledPredictions;
+        readonly Span<OrchestrationGraphCallContext> m_GraphCalls;
+        readonly Span<OrchestrationStateContext> m_States;
+        readonly Span<OrchestrationStateAncestor> m_StateAncestors;
+        readonly Span<ulong> m_ForceStopVisited;
+        readonly Span<int> m_ForceStopNext;
         readonly ReadOnlySpan<OrchestrationValueScheduleInstruction> m_ValueInstructions;
         readonly ReadOnlySpan<int> m_ValueArgumentSlots;
         readonly ReadOnlySpan<OrchestrationRange> m_ValueArgumentLists;
@@ -33,7 +45,6 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<int> m_StateContexts;
         readonly ReadOnlySpan<ushort> m_OperationIndices;
         readonly ReadOnlySpan<OrchestrationValueStorageSlot> m_ValueStorage;
-        readonly IOrchestrationExtensionBindings<TValue, TContext> m_Bindings;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         Span<OrchestrationOperationState> m_Operations;
         Span<TValue> m_SavedOutputs;
@@ -42,19 +53,15 @@ namespace BTSMTL.Orchestration
         readonly OrchestrationFrameInput<TValue> m_Input;
         readonly OrchestrationIdentityOrdinalView m_Identities;
         TContext m_Context;
-        readonly IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
-            TVector3, TYaw, TQuaternion, TMath, TValues, TContext> m_TimelineDispatcher;
-        readonly IOrchestrationTimelineClipExitDispatcher<TContext> m_ClipExitDispatcher;
+        THost m_Host;
+        TDiagnostics m_Diagnostics;
         readonly OrchestrationStateView m_TimelineState;
         OrchestrationExecutionContract m_Contract;
         int m_EntryDepth;
         int m_InputDepth;
         int m_StateDepth;
         int m_ForceStopDepth;
-        int m_TraceCount;
-        int m_StateFrameCount;
-        int m_TraceContextCount;
-        int m_TraceEntryDepth;
+        int m_ForceStopVisitedWord;
         int m_CurrentOperationIndex;
         int m_GraphCallDepth;
         int m_ScheduledPredictionDepth;
@@ -62,21 +69,31 @@ namespace BTSMTL.Orchestration
         TValue m_TimelineTime;
 
         internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
-            OrchestrationExecutionWorkspace<TValue> workspace,
-            IOrchestrationExtensionBindings<TValue, TContext> bindings,
+            OrchestrationExecutionScratch<TValue> scratch,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot,
             ReadOnlySpan<int> characterSlots,
-            IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
-                TVector3, TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
-            IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
             OrchestrationStateView timelineState,
             in OrchestrationFrameInput<TValue> input,
             OrchestrationIdentityOrdinalView identities,
             in TContext context, OrchestrationExecutionSourceBindingView sourceBinding,
-            OrchestrationExecutionSource<TValue> source)
+            OrchestrationExecutionSource<TValue> source, THost host, TDiagnostics diagnostics)
         {
             m_Program = program;
-            m_Workspace = workspace;
+            m_Scratch = scratch;
+            ref OrchestrationExecutionScratchHeader header = ref scratch.Header;
+            header.Error = default;
+            OrchestrationExecutionScratchLayout layout = header.Layout;
+            m_InputValues = scratch.Section<TValue>(layout.InputValues);
+            m_OutputValues = scratch.Section<TValue>(layout.OutputValues);
+            m_InputRows = program.WorkspaceInputRows;
+            m_OutputRows = program.WorkspaceOutputRows;
+            m_ScheduledValues = scratch.Section<TValue>(layout.ScheduledValues);
+            m_ScheduledPredictions = scratch.Section<OrchestrationScheduledPrediction>(layout.ScheduledPredictions);
+            m_GraphCalls = scratch.Section<OrchestrationGraphCallContext>(layout.GraphCalls);
+            m_States = scratch.Section<OrchestrationStateContext>(layout.States);
+            m_StateAncestors = scratch.Section<OrchestrationStateAncestor>(layout.StateAncestors);
+            m_ForceStopVisited = scratch.Section<ulong>(layout.ForceStopVisited);
+            m_ForceStopNext = scratch.Section<int>(layout.ForceStopNext);
             OrchestrationValueScheduleView schedule = program.ValueSchedule;
             m_ValueInstructions = schedule.Instructions;
             m_ValueArgumentSlots = schedule.ArgumentSlots;
@@ -92,7 +109,6 @@ namespace BTSMTL.Orchestration
             OrchestrationProgramStorageView storage = program.ExecutionStorage;
             m_OperationIndices = storage.OperationIndices;
             m_ValueStorage = storage.Values;
-            m_Bindings = bindings;
             m_Frames = frames;
             m_FrameSlot = frameSlot;
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, TStorage>(program, frames, frameSlot,
@@ -104,52 +120,42 @@ namespace BTSMTL.Orchestration
             m_Input = input;
             m_Identities = identities;
             m_Context = context;
-            m_TimelineDispatcher = timelineDispatcher;
-            m_ClipExitDispatcher = clipExitDispatcher;
+            m_Host = host;
+            m_Diagnostics = diagnostics;
             m_TimelineState = timelineState;
             m_Contract = OrchestrationExecutionContract.Resumable;
             m_EntryDepth = 0;
             m_InputDepth = 0;
             m_StateDepth = 0;
             m_ForceStopDepth = 0;
-            m_TraceCount = 0;
-            m_StateFrameCount = 0;
-            m_TraceContextCount = 0;
-            m_TraceEntryDepth = 0;
+            m_ForceStopVisitedWord = -1;
             m_CurrentOperationIndex = -1;
             m_GraphCallDepth = 0;
             m_ScheduledPredictionDepth = 0;
             m_TimelineInvocation = default;
             m_TimelineTime = default;
-            default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.Initialize, -1, frameSlot);
+            m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.Initialize, -1, frameSlot);
         }
 
-        internal void DiagnosticLifecycle(OrchestrationDiagnosticLifecycle lifecycle, int operation, int frame)
+        internal void DiagnosticLifecycle(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            OrchestrationDiagnosticLifecycle lifecycle, int operation, int frame)
         {
             switch (lifecycle)
             {
                 case OrchestrationDiagnosticLifecycle.Initialize:
-                    if (m_Input.CaptureValues)
-                    {
-                        Array.Clear(m_Workspace.InputObservationWritten, 0, m_Workspace.InputObservationWritten.Length);
-                        Array.Clear(m_Workspace.OutputObservationWritten, 0, m_Workspace.OutputObservationWritten.Length);
-                    }
-                    m_Workspace.TraceFrameEntries.AsSpan().Fill(-1);
-                    m_Workspace.TraceBorrowedFrameEntries.AsSpan().Fill(-1);
+                    storage.Initialize(m_Input.CaptureValues);
                     break;
                 case OrchestrationDiagnosticLifecycle.BeginInvocation:
-                    m_TraceCount = 0;
-                    m_StateFrameCount = 0;
-                    m_TraceContextCount = 0;
+                    storage.BeginInvocation();
                     break;
                 case OrchestrationDiagnosticLifecycle.EnterEntry:
-                    m_Workspace.TraceFrameEntries[frame] = operation;
-                    m_Workspace.TraceEntryScopes[m_TraceEntryDepth++] =
-                        new OrchestrationExecutionWorkspace<TValue>.TraceEntryScope(frame, operation);
+                    storage.TraceFrameEntries[frame] = operation;
+                    storage.TraceEntryScopes[storage.TraceEntryDepth++] =
+                        new OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceEntryScope(frame, operation);
                     break;
                 case OrchestrationDiagnosticLifecycle.LeaveEntry:
-                    m_TraceEntryDepth--;
-                    m_Workspace.TraceFrameEntries[frame] = operation;
+                    storage.TraceEntryDepth--;
+                    storage.TraceFrameEntries[frame] = operation;
                     break;
                 case OrchestrationDiagnosticLifecycle.RetireOperation:
                     RetireDiagnosticOperationOverrides(operation);
@@ -162,23 +168,22 @@ namespace BTSMTL.Orchestration
 
         public int CurrentOperationIndex => m_CurrentOperationIndex;
         public int ExecutionFrameIndex => m_FrameSlot;
-        public ReadOnlySpan<OrchestrationTraceEvent<TValue>> Trace => m_Workspace.TraceEvents.AsSpan(0, m_TraceCount);
-        public ReadOnlySpan<OrchestrationStateTraceFrame> StateTraceFrames => m_Workspace.StateFrames.AsSpan(0, m_StateFrameCount);
-        public ReadOnlySpan<OrchestrationTraceContext> TraceContexts => m_Workspace.TraceContexts.AsSpan(0, m_TraceContextCount);
 
-        public void BindTraceInvocationScope(int operationIndex, OrchestrationExecutionEntry entry)
+        public void BindTraceInvocationScope(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, OrchestrationExecutionEntry entry)
         {
             int frame = OperationFrame(operationIndex);
             int[] entries = m_Blackboards.IsBorrowedOperation(operationIndex)
-                ? m_Workspace.TraceBorrowedFrameEntries : m_Workspace.TraceFrameEntries;
+                ? storage.TraceBorrowedFrameEntries : storage.TraceFrameEntries;
             entries[frame] = entry.OperationIndex;
         }
+
         public bool IsPredictiveEvaluation
         {
             get
             {
                 for (int i = m_StateDepth - 1; i >= 0; i--)
-                    if (m_Workspace.States[i].HasRootCompletedOverride)
+                    if (m_States[i].HasRootCompletedOverride)
                         return true;
                 return false;
             }
@@ -188,8 +193,10 @@ namespace BTSMTL.Orchestration
         {
             if (m_EntryDepth == 0)
             {
-                m_Workspace.ResetOutputs();
-                default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.BeginInvocation, -1, m_FrameSlot);
+                ref OrchestrationExecutionScratchHeader header = ref m_Scratch.Header;
+                header.OutputRequestCount = 0;
+                header.OutputValueCount = 0;
+                m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.BeginInvocation, -1, m_FrameSlot);
             }
             m_EntryDepth++;
         }
@@ -199,19 +206,19 @@ namespace BTSMTL.Orchestration
             OrchestrationExecutionContract previous = m_Contract;
             m_Contract = entry.Contract;
             int traceFrame = m_FrameSlot;
-            default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.EnterEntry,
+            m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.EnterEntry,
                 entry.OperationIndex, traceFrame);
             BeginInvocation();
             try
             {
                 OrchestrationOperationResult result = Tick(entry.OperationIndex, entry.InputPortId);
                 if (entry.Contract == OrchestrationExecutionContract.Complete && result == OrchestrationOperationResult.Running)
-                    throw new InvalidOperationException("同次完成的图入口不能返回跨次等待。");
+                    Fail(OrchestrationExecutionErrorCode.CompleteEntryWaiting, entry.OperationIndex);
                 return result;
             }
             finally
             {
-                default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.LeaveEntry,
+                m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.LeaveEntry,
                     entry.OperationIndex, traceFrame);
                 m_Contract = previous;
                 m_EntryDepth--;
@@ -228,7 +235,7 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationOperationResult result = TickOutput(operationIndex, outputPortId);
                 if (contract == OrchestrationExecutionContract.Complete && result == OrchestrationOperationResult.Running)
-                    throw new InvalidOperationException("同次完成的图输出不能返回跨次等待。");
+                    Fail(OrchestrationExecutionErrorCode.CompleteOutputWaiting, operationIndex);
                 return result;
             }
             finally
@@ -264,24 +271,26 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExecutionSourceReader<TValue> ReadExecutionSource() => m_Blackboards.Reader;
 
-        public OrchestrationExecutionOwnerToken ReadExecutionOwner(int operationIndex)
+        public OrchestrationExecutionOwnerToken ReadExecutionOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex)
         {
-            int invocationIndex = ResolveTraceInvocation(
-                m_Workspace.TraceBindings[operationIndex].InvocationGroupIndex, operationIndex, false);
-            int invocationOperation = m_Workspace.TraceInvocations[invocationIndex].OwnerOperationIndex;
+            int invocationIndex = ResolveTraceInvocation(storage,
+                storage.TraceBindings[operationIndex].InvocationGroupIndex, operationIndex, false);
+            int invocationOperation = storage.TraceInvocations[invocationIndex].OwnerOperationIndex;
             int stateOperation = m_Program.Operation(operationIndex).ParentStateOperationIndex;
-            ulong generation = ReadInvocationGeneration(invocationIndex, operationIndex, out int generationOwner);
+            ulong generation = ReadInvocationGeneration(storage, invocationIndex, operationIndex, out int generationOwner);
             return OrchestrationExecutionOwnerToken.Create(in ReadExecutionFrame(operationIndex)[0],
                 invocationOperation, generation, stateOperation,
                 stateOperation < 0 ? 0 : ReadGeneration(stateOperation), generationOwner);
         }
 
-        ulong ReadInvocationGeneration(int invocationIndex, int operationIndex, out int generationOwner)
+        ulong ReadInvocationGeneration(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int invocationIndex, int operationIndex, out int generationOwner)
         {
             while (true)
             {
-                ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
-                    ref m_Workspace.TraceInvocations[invocationIndex];
+                ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceInvocation invocation =
+                    ref storage.TraceInvocations[invocationIndex];
                 if (m_Program.Operation(invocation.OwnerOperationIndex).IsRunnable)
                 {
                     generationOwner = invocation.OwnerOperationIndex;
@@ -292,31 +301,33 @@ namespace BTSMTL.Orchestration
                     generationOwner = -1;
                     return ReadExecutionFrame(operationIndex)[0].Generation;
                 }
-                invocationIndex = ResolveTraceInvocation(invocation.ParentGroupIndex,
+                invocationIndex = ResolveTraceInvocation(storage, invocation.ParentGroupIndex,
                     invocation.OwnerOperationIndex, false);
             }
         }
 
-        public OrchestrationValueOverrideAddress ReadPortOverrideAddress(int operationIndex,
+        public OrchestrationValueOverrideAddress ReadPortOverrideAddress(
+            OrchestrationWorkbenchDiagnosticStorage<TValue> storage, int operationIndex,
             int slot, bool input) => new OrchestrationValueOverrideAddress
         {
             Kind = input ? OrchestrationValueOverrideKind.Input : OrchestrationValueOverrideKind.Output,
             Slot = slot,
-            Owner = ReadExecutionOwner(operationIndex)
+            Owner = ReadExecutionOwner(storage, operationIndex)
         };
 
-        public bool TrySelectExecutionOwner(int operationIndex, in OrchestrationExecutionOwnerToken owner)
+        public bool TrySelectExecutionOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, in OrchestrationExecutionOwnerToken owner)
         {
-            OrchestrationRange group = m_Workspace.TraceInvocationGroups[
-                m_Workspace.TraceBindings[operationIndex].InvocationGroupIndex];
+            OrchestrationRange group = storage.TraceInvocationGroups[
+                storage.TraceBindings[operationIndex].InvocationGroupIndex];
             int invocationIndex = -1;
             for (int index = group.Offset; index < group.Offset + group.Count; index++)
-                if (m_Workspace.TraceInvocations[index].OwnerOperationIndex == owner.InvocationOperationIndex)
+                if (storage.TraceInvocations[index].OwnerOperationIndex == owner.InvocationOperationIndex)
                 {
                     invocationIndex = index;
                     break;
                 }
-            if (invocationIndex < 0 || !IsInvocationGenerationOwner(invocationIndex, owner.GenerationOwnerOperationIndex))
+            if (invocationIndex < 0 || !IsInvocationGenerationOwner(storage, invocationIndex, owner.GenerationOwnerOperationIndex))
                 return false;
             int stateOperation = m_Program.Operation(operationIndex).ParentStateOperationIndex;
             if (stateOperation != owner.StateOperationIndex)
@@ -327,8 +338,8 @@ namespace BTSMTL.Orchestration
                     continue;
                 if (frame != m_FrameSlot)
                     SelectExecutionFrame(frame);
-                m_Workspace.TraceFrameEntries[frame] =
-                    m_Workspace.TraceInvocations[invocationIndex].EntryOperationIndex;
+                storage.TraceFrameEntries[frame] =
+                    storage.TraceInvocations[invocationIndex].EntryOperationIndex;
                 ulong generation = owner.GenerationOwnerOperationIndex < 0
                     ? ReadExecutionFrame(operationIndex)[0].Generation : ReadGeneration(owner.GenerationOwnerOperationIndex);
                 if (generation != owner.InvocationGeneration ||
@@ -339,17 +350,18 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        bool IsInvocationGenerationOwner(int invocationIndex, int generationOwner)
+        bool IsInvocationGenerationOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int invocationIndex, int generationOwner)
         {
-            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
-                ref m_Workspace.TraceInvocations[invocationIndex];
+            ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceInvocation invocation =
+                ref storage.TraceInvocations[invocationIndex];
             if (m_Program.Operation(invocation.OwnerOperationIndex).IsRunnable)
                 return invocation.OwnerOperationIndex == generationOwner;
             if (invocation.ParentGroupIndex < 0)
                 return generationOwner < 0;
-            OrchestrationRange parents = m_Workspace.TraceInvocationGroups[invocation.ParentGroupIndex];
+            OrchestrationRange parents = storage.TraceInvocationGroups[invocation.ParentGroupIndex];
             for (int index = parents.Offset; index < parents.Offset + parents.Count; index++)
-                if (IsInvocationGenerationOwner(index, generationOwner))
+                if (IsInvocationGenerationOwner(storage, index, generationOwner))
                     return true;
             return false;
         }
@@ -375,7 +387,7 @@ namespace BTSMTL.Orchestration
             m_SavedOutputs = m_Frames.Payload<TValue>(frameSlot,
                 OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
             m_Blackboards.SelectFrame(frameSlot);
-            m_TimelineDispatcher.SelectExecutionFrame(frameSlot, ref m_Context);
+            m_Host.SelectExecutionFrame(frameSlot, ref m_Context);
         }
 
         OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)
@@ -485,7 +497,7 @@ namespace BTSMTL.Orchestration
                         status = ContinueLeafStop(operationIndex, context);
                         break;
                     case OrchestrationOperationCode.Extension:
-                        status = (m_Bindings.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                        status = (m_Host.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                             OrchestrationExtensionInvocationKind.ContinueStop) != 0
                             ? ContinueLeafStop(operationIndex, context)
                             : ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
@@ -525,15 +537,63 @@ namespace BTSMTL.Orchestration
                 m_EntryDepth--;
                 m_ForceStopDepth--;
                 if (ownsVisited)
-                    m_Workspace.ClearForceStopVisits();
+                    ClearForceStopVisits();
             }
+        }
+
+        // 访问位按字记账；链表值存 next + 2，零表示未入链，使草稿初值全零即可。
+        const int ForceStopListEnd = 1;
+
+        bool VisitForceStop(int frameSlot, int operationIndex)
+        {
+            int index = checked(frameSlot * m_Program.OperationCount + operationIndex);
+            int word = index >> 6;
+            ulong mask = 1UL << (index & 63);
+            if ((m_ForceStopVisited[word] & mask) != 0)
+                return false;
+            if (m_ForceStopNext[word] == 0)
+            {
+                m_ForceStopNext[word] = m_ForceStopVisitedWord < 0 ? ForceStopListEnd : m_ForceStopVisitedWord + 2;
+                m_ForceStopVisitedWord = word;
+            }
+            m_ForceStopVisited[word] |= mask;
+            return true;
+        }
+
+        void ClearForceStopVisits()
+        {
+            while (m_ForceStopVisitedWord >= 0)
+            {
+                int word = m_ForceStopVisitedWord;
+                int next = m_ForceStopNext[word];
+                m_ForceStopVisitedWord = next == ForceStopListEnd ? -1 : next - 2;
+                m_ForceStopNext[word] = 0;
+                m_ForceStopVisited[word] = 0;
+            }
+        }
+
+        void ClearForceStopFrame(int frameSlot)
+        {
+            int index = checked(frameSlot * m_Program.OperationCount);
+            int remaining = m_Program.OperationCount;
+            int word = index >> 6;
+            int offset = index & 63;
+            while (remaining > 0)
+            {
+                int count = Math.Min(64 - offset, remaining);
+                ulong mask = (ulong.MaxValue >> (64 - count)) << offset;
+                m_ForceStopVisited[word++] &= ~mask;
+                remaining -= count;
+                offset = 0;
+            }
+            // 帧复用只清访问位，块的链表归属保留到最外层停止结束，避免同一块重复入链。
         }
 
         void ForceStopCore(int operationIndex, OrchestrationStopContext context)
         {
             if (operationIndex < 0)
                 return;
-            if (!m_Workspace.VisitForceStop(m_FrameSlot, operationIndex))
+            if (!VisitForceStop(m_FrameSlot, operationIndex))
                 return;
             m_CurrentOperationIndex = operationIndex;
             bool active = IsActive(operationIndex);
@@ -545,7 +605,7 @@ namespace BTSMTL.Orchestration
                         ForceStopLeaf(operationIndex, context);
                     break;
                 case OrchestrationOperationCode.Extension:
-                    if (active && (m_Bindings.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                    if (active && (m_Host.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                          OrchestrationExtensionInvocationKind.ForceStop) != 0)
                         ForceStopLeaf(operationIndex, context);
                     ForceStopChildren(operationIndex, context);
@@ -601,7 +661,7 @@ namespace BTSMTL.Orchestration
             RetireOperationOverrides(operationIndex);
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.TimelineRuntimeHandle != 0)
-                m_TimelineDispatcher.ReleasePlayback(m_TimelineState, operationIndex,
+                m_Host.ReleasePlayback(m_TimelineState, operationIndex,
                     ref state.TimelineRuntimeHandle, in m_Context);
             ulong generation = state.Generation;
             state = default;
@@ -632,7 +692,7 @@ namespace BTSMTL.Orchestration
         }
 
         void RetireOperationOverrides(int operationIndex)
-            => default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireOperation,
+            => m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireOperation,
                 operationIndex, m_FrameSlot);
 
         void RetireDiagnosticOperationOverrides(int operationIndex)
@@ -762,7 +822,7 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult TickBranch(int operationIndex)
         {
             int depth = ReadInputs(operationIndex, out int count);
-            bool condition = default(TValues).Boolean(in m_Workspace.Inputs[depth][0]);
+            bool condition = default(TValues).Boolean(in InputRow(depth)[0]);
             ReleaseInputs();
             OrchestrationOperationResult result = TickOutput(operationIndex,
                 condition ? m_Program.Ports.BranchTrue : m_Program.Ports.BranchFalse);
@@ -818,19 +878,114 @@ namespace BTSMTL.Orchestration
             return OrchestrationOperationResult.Running;
         }
 
+        // 工作区值行：深度来自编译期容量，宽度超出发布容量时写错误记录。
+        Span<TValue> InputRow(int depth)
+        {
+            OrchestrationRange row = m_InputRows[depth];
+            return m_InputValues.Slice(row.Offset, row.Count);
+        }
+
+        void RequireRowDepth(int operationIndex, int required)
+        {
+            if (required > m_InputRows.Length)
+                Fail(OrchestrationExecutionErrorCode.WorkspaceRowDepth, operationIndex,
+                    required: required, capacity: m_InputRows.Length);
+        }
+
+        Span<TValue> BorrowInputs(int operationIndex, int depth, int count)
+        {
+            OrchestrationRange row = m_InputRows[depth];
+            if (count > row.Count)
+                Fail(OrchestrationExecutionErrorCode.WorkspaceInputWidth, operationIndex, depth,
+                    aux: m_InputRows.Length, required: count, capacity: row.Count);
+            return m_InputValues.Slice(row.Offset, count);
+        }
+
+        Span<TValue> BorrowOutputs(int operationIndex, int depth, int count)
+        {
+            OrchestrationRange row = m_OutputRows[depth];
+            if (count > row.Count)
+                Fail(OrchestrationExecutionErrorCode.WorkspaceOutputWidth, operationIndex, depth,
+                    aux: m_OutputRows.Length, required: count, capacity: row.Count);
+            return m_OutputValues.Slice(row.Offset, count);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Fail(OrchestrationExecutionErrorCode code, int operationIndex, int slot = 0, int detail = 0,
+            int aux = 0, long required = 0, long capacity = 0, ulong identity = 0)
+        {
+            m_Scratch.Header.Error = new OrchestrationExecutionError
+            {
+                Code = code,
+                OperationIndex = operationIndex,
+                Slot = slot,
+                Detail = detail,
+                Aux = aux,
+                Required = required,
+                Capacity = capacity,
+                Identity = identity
+            };
+            ThrowError(code);
+        }
+
+        // Burst 只接受字面量异常文字；完整信息由宿主读取错误记录后组织。
+        static void ThrowError(OrchestrationExecutionErrorCode code)
+        {
+            switch (code)
+            {
+                case OrchestrationExecutionErrorCode.WorkspaceRowDepth:
+                case OrchestrationExecutionErrorCode.WorkspaceInputWidth:
+                case OrchestrationExecutionErrorCode.WorkspaceOutputWidth:
+                case OrchestrationExecutionErrorCode.WorkspaceStateDepth:
+                case OrchestrationExecutionErrorCode.WorkspaceGraphCallDepth:
+                    throw new InvalidOperationException("编排工作区容量不足。");
+                case OrchestrationExecutionErrorCode.CompleteEntryWaiting:
+                    throw new InvalidOperationException("同次完成的图入口不能返回跨次等待。");
+                case OrchestrationExecutionErrorCode.CompleteOutputWaiting:
+                    throw new InvalidOperationException("同次完成的图输出不能返回跨次等待。");
+                case OrchestrationExecutionErrorCode.BlackboardReadOnly:
+                    throw new InvalidOperationException("黑板槽是只读配置。");
+                case OrchestrationExecutionErrorCode.BlackboardScope:
+                    throw new InvalidOperationException("黑板槽声明了不支持的作用域。");
+                case OrchestrationExecutionErrorCode.HookFailed:
+                    throw new InvalidOperationException("生命周期钩子返回失败。");
+                case OrchestrationExecutionErrorCode.HookInput:
+                    throw new InvalidOperationException("生命周期钩子输入来源不受支持。");
+                case OrchestrationExecutionErrorCode.TimelineForceStop:
+                    throw new InvalidOperationException("Timeline 强制停止未完成。");
+                case OrchestrationExecutionErrorCode.ActionForceStop:
+                    throw new InvalidOperationException("动作强制停止未完成。");
+                case OrchestrationExecutionErrorCode.ActionStopResult:
+                    throw new InvalidOperationException("动作返回了无效的停止结果。");
+                case OrchestrationExecutionErrorCode.OutputBudget:
+                    throw new InvalidOperationException("编排输出超出发布预算。");
+                case OrchestrationExecutionErrorCode.TimelineInvocation:
+                    throw new InvalidOperationException("Timeline 调用失败。");
+                case OrchestrationExecutionErrorCode.OperationNotExecutable:
+                    throw new InvalidOperationException("操作不可执行。");
+                case OrchestrationExecutionErrorCode.ReadOnlyExtension:
+                    throw new InvalidOperationException("只读扩展返回失败。");
+                case OrchestrationExecutionErrorCode.ValueScheduleInstruction:
+                    throw new InvalidOperationException("未知的值调度指令。");
+                default:
+                    throw new InvalidOperationException("编排推进失败。");
+            }
+        }
+
         void TraceOperation(OrchestrationTraceKind kind, int operationIndex,
             OrchestrationOperationResult result = default, uint stopCause = 0,
             OrchestrationWaitReason waitReason = default, int valueSlot = -1)
-            => default(TDiagnostics).Trace(ref this, kind, operationIndex, -1, result,
+            => m_Diagnostics.Trace(ref this, kind, operationIndex, -1, result,
                 stopCause, waitReason, valueSlot, false, false, default);
 
-        internal void TraceDiagnosticOperation(OrchestrationTraceKind kind, int operationIndex,
+        internal void TraceDiagnosticOperation(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            OrchestrationTraceKind kind, int operationIndex,
             OrchestrationOperationResult result, uint stopCause,
             OrchestrationWaitReason waitReason, int valueSlot, in OrchestrationBlackboardSourceContext blackboardSource)
         {
             if (!m_Input.CaptureTrace || IsPredictiveEvaluation)
                 return;
-            ref OrchestrationTraceEvent<TValue> item = ref m_Workspace.TraceEvents[m_TraceCount++];
+            ref OrchestrationTraceEvent<TValue> item = ref storage.TraceEvents[storage.TraceCount++];
             item = default;
             item.Kind = kind;
             item.OperationIndex = operationIndex;
@@ -839,10 +994,10 @@ namespace BTSMTL.Orchestration
             bool lifecycleOwner = kind is OrchestrationTraceKind.Enter or OrchestrationTraceKind.Running or
                 OrchestrationTraceKind.Complete or OrchestrationTraceKind.StopRequested or
                 OrchestrationTraceKind.Stopped or OrchestrationTraceKind.ForceStopped;
-            item.ContextIndex = CaptureTraceContext(operationIndex, lifecycleOwner);
+            item.ContextIndex = CaptureTraceContext(storage, operationIndex, lifecycleOwner);
             item.StateFrameIndex = m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.State
-                ? CaptureStatePath(operationIndex, lifecycleOwner)
-                : m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].TraceFrameIndex;
+                ? CaptureStatePath(storage, operationIndex, lifecycleOwner)
+                : m_StateDepth == 0 ? -1 : m_States[m_StateDepth - 1].TraceFrameIndex;
             item.Result = result;
             item.StopCause = stopCause;
             item.WaitReason = waitReason;
@@ -868,52 +1023,54 @@ namespace BTSMTL.Orchestration
         }
 
         void TraceEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation = -1)
-            => default(TDiagnostics).Trace(ref this, OrchestrationTraceKind.Edge, sourceStateOperation,
+            => m_Diagnostics.Trace(ref this, OrchestrationTraceKind.Edge, sourceStateOperation,
                 edgeIndex, default, 0, default, -1, selected, passed, default);
 
-        internal void TraceDiagnosticEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation)
+        internal void TraceDiagnosticEdge(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int edgeIndex, bool selected, bool passed, int sourceStateOperation)
         {
             if (!m_Input.CaptureTrace || IsPredictiveEvaluation)
                 return;
             int operationIndex = sourceStateOperation >= 0 ? sourceStateOperation : m_Program.Edge(edgeIndex).SourceOperationIndex;
-            ref OrchestrationTraceEvent<TValue> item = ref m_Workspace.TraceEvents[m_TraceCount++];
+            ref OrchestrationTraceEvent<TValue> item = ref storage.TraceEvents[storage.TraceCount++];
             item = default;
             item.Kind = OrchestrationTraceKind.Edge;
             item.OperationIndex = operationIndex;
             item.EdgeIndex = edgeIndex;
             item.Generation = ReadGeneration(operationIndex);
-            item.ContextIndex = CaptureTraceContext(operationIndex);
-            item.StateFrameIndex = m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].TraceFrameIndex;
+            item.ContextIndex = CaptureTraceContext(storage, operationIndex);
+            item.StateFrameIndex = m_StateDepth == 0 ? -1 : m_States[m_StateDepth - 1].TraceFrameIndex;
             item.Selected = selected;
             item.Passed = passed;
             item.ValueSlot = -1;
         }
 
-        int CaptureTraceContext(int operationIndex, bool lifecycleOwner = false)
+        int CaptureTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, bool lifecycleOwner = false)
         {
-            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceBinding binding =
-                ref m_Workspace.TraceBindings[operationIndex];
-            int invocationIndex = ResolveTraceInvocation(binding.InvocationGroupIndex, operationIndex, lifecycleOwner);
-            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
-                ref m_Workspace.TraceInvocations[invocationIndex];
+            ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceBinding binding =
+                ref storage.TraceBindings[operationIndex];
+            int invocationIndex = ResolveTraceInvocation(storage, binding.InvocationGroupIndex, operationIndex, lifecycleOwner);
+            ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceInvocation invocation =
+                ref storage.TraceInvocations[invocationIndex];
             int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
-                ResolveTraceInvocation(invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
+                ResolveTraceInvocation(storage, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref ReadExecutionFrame(operationIndex)[0];
-            int index = m_TraceContextCount++;
-            ref OrchestrationTraceContext context = ref m_Workspace.TraceContexts[index];
+            int index = storage.TraceContextCount++;
+            ref OrchestrationTraceContext context = ref storage.TraceContexts[index];
             context.SourceIndex = binding.SourceIndex;
             context.InvocationSourceIndex = invocation.SourceIndex;
             context.ParentInvocationSourceIndex = parentIndex < 0 ? -1 :
-                m_Workspace.TraceInvocations[parentIndex].SourceIndex;
+                storage.TraceInvocations[parentIndex].SourceIndex;
             context.InvocationOperationIndex = invocation.OwnerOperationIndex;
             context.ParentInvocationOperationIndex = parentIndex < 0 ? -1 :
-                m_Workspace.TraceInvocations[parentIndex].OwnerOperationIndex;
+                storage.TraceInvocations[parentIndex].OwnerOperationIndex;
             context.ExecutionFrameOwnerOperationIndex = frame.OwnerOperationIndex;
             context.ActionInstanceId = frame.ActionInstanceId;
             context.SkillExecutionGeneration = frame.Generation;
             context.GraphInvocationGeneration = ReadGeneration(invocation.OwnerOperationIndex);
             context.ParentInvocationGeneration = parentIndex < 0 ? 0 :
-                ReadGeneration(m_Workspace.TraceInvocations[parentIndex].OwnerOperationIndex);
+                ReadGeneration(storage.TraceInvocations[parentIndex].OwnerOperationIndex);
             context.TimelineStart = frame.TimelineStart;
             context.ClipOrdinal = frame.ClipOrdinal;
             context.Cycle = frame.Cycle;
@@ -921,16 +1078,17 @@ namespace BTSMTL.Orchestration
             return index;
         }
 
-        int ResolveTraceInvocation(int groupIndex, int operationIndex, bool lifecycleOwner)
+        int ResolveTraceInvocation(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int groupIndex, int operationIndex, bool lifecycleOwner)
         {
-            OrchestrationRange group = m_Workspace.TraceInvocationGroups[groupIndex];
+            OrchestrationRange group = storage.TraceInvocationGroups[groupIndex];
             if (group.Count == 1)
                 return group.Offset;
             if (lifecycleOwner)
             {
                 int owner = -1;
                 for (int index = group.Offset; index < group.Offset + group.Count; index++)
-                    if (m_Workspace.TraceInvocations[index].OwnerOperationIndex == operationIndex)
+                    if (storage.TraceInvocations[index].OwnerOperationIndex == operationIndex)
                     {
                         if (owner >= 0)
                         {
@@ -942,32 +1100,33 @@ namespace BTSMTL.Orchestration
                 if (owner >= 0)
                     return owner;
             }
-            int frameOwner = m_Workspace.TraceInvocationFrameOwners[groupIndex];
+            int frameOwner = storage.TraceInvocationFrameOwners[groupIndex];
             bool borrowed = m_Blackboards.IsBorrowedOperation(frameOwner);
             int frame = OperationFrame(frameOwner);
             if (!borrowed)
-                for (int index = m_TraceEntryDepth - 1; index >= 0; index--)
+                for (int index = storage.TraceEntryDepth - 1; index >= 0; index--)
                 {
-                    ref readonly OrchestrationExecutionWorkspace<TValue>.TraceEntryScope scope =
-                        ref m_Workspace.TraceEntryScopes[index];
+                    ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceEntryScope scope =
+                        ref storage.TraceEntryScopes[index];
                     if (scope.FrameIndex != frame)
                         continue;
-                    int selected = FindTraceInvocation(in group, scope.EntryOperationIndex);
+                    int selected = FindTraceInvocation(storage, in group, scope.EntryOperationIndex);
                     if (selected >= 0)
                         return selected;
                 }
-            int entry = (borrowed ? m_Workspace.TraceBorrowedFrameEntries :
-                m_Workspace.TraceFrameEntries)[frame];
-            int invocation = FindTraceInvocation(in group, entry);
+            int entry = (borrowed ? storage.TraceBorrowedFrameEntries :
+                storage.TraceFrameEntries)[frame];
+            int invocation = FindTraceInvocation(storage, in group, entry);
             if (invocation < 0)
                 throw new InvalidOperationException($"Trace operation '{operationIndex}' requires its actual invocation entry scope for execution frame '{frame}'.");
             return invocation;
         }
 
-        int FindTraceInvocation(in OrchestrationRange group, int entryOperationIndex)
+        static int FindTraceInvocation(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            in OrchestrationRange group, int entryOperationIndex)
         {
             for (int index = group.Offset; index < group.Offset + group.Count; index++)
-                if (m_Workspace.TraceInvocations[index].EntryOperationIndex == entryOperationIndex)
+                if (storage.TraceInvocations[index].EntryOperationIndex == entryOperationIndex)
                     return index;
             return -1;
         }

@@ -79,14 +79,12 @@ namespace BTSMTL.Orchestration
         ref readonly OrchestrationProgramImageHeader Header
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref SpanReinterpret.Cast<byte, OrchestrationProgramImageHeader>(
-                m_Memory.Slice(0, Unsafe.SizeOf<OrchestrationProgramImageHeader>()))[0];
+            get => ref OrchestrationMemoryImageWriter.Header<OrchestrationProgramImageHeader>(m_Memory);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         ReadOnlySpan<T> Section<T>(in OrchestrationMemorySection section) where T : unmanaged =>
-            SpanReinterpret.Cast<byte, T>(m_Memory.Slice(section.OffsetBytes,
-                section.Count * Unsafe.SizeOf<T>()));
+            OrchestrationMemoryImageWriter.Section<T>(m_Memory, section);
 
         public bool IsEmpty => m_Memory.IsEmpty;
         public ReadOnlySpan<byte> Image => m_Memory;
@@ -199,6 +197,19 @@ namespace BTSMTL.Orchestration
                     header.ScheduleScratchSlotCount, header.SchedulePredictionDepth);
             }
         }
+
+        public ReadOnlySpan<OrchestrationRange> WorkspaceInputRows =>
+            Section<OrchestrationRange>(in Header.WorkspaceInputRows);
+        public ReadOnlySpan<OrchestrationRange> WorkspaceOutputRows =>
+            Section<OrchestrationRange>(in Header.WorkspaceOutputRows);
+        public int WorkspaceInputValueCount => Header.WorkspaceInputValueCount;
+        public int WorkspaceOutputValueCount => Header.WorkspaceOutputValueCount;
+        public int WorkspaceStateDepth => Header.WorkspaceStateDepth;
+        public int WorkspaceGraphCallDepth => Header.WorkspaceGraphCallDepth;
+        public int WorkspaceEntryDepth => Header.WorkspaceEntryDepth;
+        public int WorkspaceStateAncestorCount => Header.WorkspaceStateAncestorCount;
+        public int SchedulePredictionDepth => Header.SchedulePredictionDepth;
+        public int ScheduleScratchSlotCount => Header.ScheduleScratchSlotCount;
 
         public OrchestrationProgramStorageView ExecutionStorage =>
             new OrchestrationProgramStorageView(Section<ushort>(in Header.StorageOperationIndices),

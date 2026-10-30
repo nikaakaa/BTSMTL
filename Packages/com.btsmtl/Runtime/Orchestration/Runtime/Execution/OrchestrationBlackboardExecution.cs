@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,15 +14,16 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         public void ReadBlackboard(int operationIndex, int valueSlot, ref TValue destination)
         {
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out _);
-            int overrideIndex = default(TDiagnostics).FindOverride(ref this, operationIndex, valueSlot,
+            int overrideIndex = m_Diagnostics.FindOverride(ref this, operationIndex, valueSlot,
                 OrchestrationValueOverrideKind.Blackboard, in expected);
             if (overrideIndex >= 0)
                 destination = m_Input.Overrides[overrideIndex].Value;
@@ -51,7 +52,7 @@ namespace BTSMTL.Orchestration
                 m_Blackboards.ReadValue(valueSlot, ref current);
             else
                 current = m_Program.DefaultValue(valueSlot);
-            int overrideIndex = default(TDiagnostics).FindOverride(ref this, operationIndex, valueSlot,
+            int overrideIndex = m_Diagnostics.FindOverride(ref this, operationIndex, valueSlot,
                 OrchestrationValueOverrideKind.Blackboard, in expected);
             if (overrideIndex >= 0)
                 current = m_Input.Overrides[overrideIndex].Value;
@@ -62,7 +63,7 @@ namespace BTSMTL.Orchestration
             ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
             metadata.Revision = checked(metadata.Revision + 1);
             metadata.Owner = expected;
-            default(TDiagnostics).Trace(ref this, OrchestrationTraceKind.Blackboard, operationIndex,
+            m_Diagnostics.Trace(ref this, OrchestrationTraceKind.Blackboard, operationIndex,
                 -1, default, 0, default, valueSlot, false, false, in source);
         }
 
@@ -93,7 +94,7 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
-                throw new InvalidOperationException($"Blackboard slot '{valueSlot}' is read-only configuration.");
+                Fail(OrchestrationExecutionErrorCode.BlackboardReadOnly, operationIndex, valueSlot);
             if (slot.ScopeKind != OrchestrationScopeKind.Character &&
                 !address.Owner.MatchesFrame(in ReadExecutionFrame(slot.ExecutionFrameOwnerOperationIndex)[0]))
                 return false;
@@ -157,7 +158,9 @@ namespace BTSMTL.Orchestration
                     generation = m_Blackboards.FrameTick(valueSlot, m_Input.Tick);
                     break;
                 default:
-                    throw new InvalidOperationException($"Blackboard slot '{valueSlot}' declares unsupported scope '{slot.ScopeKind}'.");
+                    Fail(OrchestrationExecutionErrorCode.BlackboardScope, operationIndex, valueSlot, (int)slot.ScopeKind);
+                    generation = 0;
+                    break;
             }
             return new OrchestrationBlackboardOwnerToken
             {
@@ -172,9 +175,9 @@ namespace BTSMTL.Orchestration
             int bindingIndex = m_Program.Operation(operationIndex).BlackboardFactsBindingIndex;
             int depth = EnterInputRow(operationIndex);
             TValues values = default;
-            Span<TValue> inputs = m_Workspace.BorrowInputs(operationIndex, depth, 1);
+            Span<TValue> inputs = BorrowInputs(operationIndex, depth, 1);
             inputs[0] = values.FromUInt64(currentOwnerGeneration);
-            Span<TValue> outputs = m_Workspace.BorrowOutputs(operationIndex, depth, 4);
+            Span<TValue> outputs = BorrowOutputs(operationIndex, depth, 4);
             try
             {
                 var invocation = new OrchestrationExtensionArguments<TValue>(
@@ -183,7 +186,7 @@ namespace BTSMTL.Orchestration
                     ReadExecutionFrame(operationIndex),
                     inputs, outputs, in m_TimelineInvocation);
                 RequireSynchronousValueResult(operationIndex, bindingIndex,
-                    m_Bindings.InvokeReadOnly(bindingIndex, in m_Context, in invocation));
+                    m_Host.InvokeReadOnly(bindingIndex, in m_Context, in invocation));
                 return new OrchestrationBlackboardSourceContext
                 {
                     InstanceId = values.UInt64(in outputs[0]),

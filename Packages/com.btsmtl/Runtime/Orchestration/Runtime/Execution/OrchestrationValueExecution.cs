@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,8 +14,9 @@ namespace BTSMTL.Orchestration
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         where TStorage : struct, IOrchestrationValueStorage<TValue>
+        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
     {
         public void Evaluate(int operationIndex, ref TValue value, int outputPortIndex = -1)
         {
@@ -24,7 +25,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationValueScheduleEntry entry = ref m_ValueEntries[
                 ScheduleStateContext() * m_Program.ScheduleValueSlotCount + slot];
             RunValueSchedule(in entry);
-            value = m_Workspace.ScheduledValues[slot];
+            value = m_ScheduledValues[slot];
         }
 
         public bool EvaluateBoolean(int operationIndex)
@@ -32,7 +33,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationValueScheduleEntry entry = ref m_BooleanEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             RunValueSchedule(in entry);
-            return default(TValues).Boolean(in m_Workspace.ScheduledValues[m_Program.ScheduleBooleanSlot]);
+            return default(TValues).Boolean(in m_ScheduledValues[m_Program.ScheduleBooleanSlot]);
         }
 
         void EvaluateCoreValue(int operationIndex, int valueOperation, ReadOnlySpan<int> arguments,
@@ -45,7 +46,7 @@ namespace BTSMTL.Orchestration
             switch (typed.Code)
             {
                 case OrchestrationValueOpcode.Copy:
-                    value = m_Workspace.ScheduledValues[arguments[typed.Argument]];
+                    value = m_ScheduledValues[arguments[typed.Argument]];
                     return;
                 case OrchestrationValueOpcode.Constant:
                     value = m_Program.Constant(typed.Argument);
@@ -84,22 +85,22 @@ namespace BTSMTL.Orchestration
                 {
                     ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
-                    m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, depth + 1, m_Workspace.Inputs.Length);
+                    RequireRowDepth(operationIndex, depth + 1);
                     int count = CopyScheduledArguments(arguments, depth, operationIndex);
-                    ReadOnlySpan<TValue> inputs = m_Workspace.Inputs[depth].AsSpan(0, count);
-                    Span<TValue> outputs = m_Workspace.BorrowOutputs(operationIndex, depth, operation.OutputCount);
+                    ReadOnlySpan<TValue> inputs = InputRow(depth).Slice(0, count);
+                    Span<TValue> outputs = BorrowOutputs(operationIndex, depth, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                         inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, binding,
-                        m_Bindings.InvokeReadOnly(binding, in m_Context, in invocation));
+                        m_Host.InvokeReadOnly(binding, in m_Context, in invocation));
                     value = outputs[typed.Argument];
                     return;
                 }
                 default:
                     OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion,
-                        TMath, TValues>.Compute(typed.Code, m_Workspace.ScheduledValues, arguments,
+                        TMath, TValues>.Compute(typed.Code, m_ScheduledValues, arguments,
                             in m_Identities, ref value);
                     return;
             }
@@ -118,7 +119,7 @@ namespace BTSMTL.Orchestration
         int EnterInputRow(int operationIndex)
         {
             int depth = m_InputDepth;
-            m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, depth + 1, m_Workspace.Inputs.Length);
+            RequireRowDepth(operationIndex, depth + 1);
             m_InputDepth++;
             return depth;
         }
@@ -133,7 +134,8 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        internal int FindDiagnosticOverride(int operationIndex, int slot, OrchestrationValueOverrideKind kind,
+        internal int FindDiagnosticOverride(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, int slot, OrchestrationValueOverrideKind kind,
             in OrchestrationBlackboardOwnerToken blackboardOwner)
         {
             if (kind == OrchestrationValueOverrideKind.Blackboard)
@@ -148,7 +150,7 @@ namespace BTSMTL.Orchestration
                 if (supplied.Mode == OrchestrationValueOverrideMode.None || supplied.Address.Kind != kind ||
                     supplied.Address.Slot != slot || supplied.Status == OrchestrationValueOverrideStatus.OwnerRetired)
                     continue;
-                OrchestrationExecutionOwnerToken owner = ReadExecutionOwner(operationIndex);
+                OrchestrationExecutionOwnerToken owner = ReadExecutionOwner(storage, operationIndex);
                 if (!supplied.Address.Owner.Equals(in owner))
                     continue;
                 if (!IsPredictiveEvaluation)
@@ -172,28 +174,30 @@ namespace BTSMTL.Orchestration
         void ObserveInput(int operationIndex, int inputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            default(TDiagnostics).Observe(ref this, operationIndex, inputSlot, true, in value);
+            m_Diagnostics.Observe(ref this, operationIndex, inputSlot, true, in value);
         }
 
         void ObserveOutput(int operationIndex, int outputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            default(TDiagnostics).Observe(ref this, operationIndex, outputSlot, false, in value);
+            m_Diagnostics.Observe(ref this, operationIndex, outputSlot, false, in value);
         }
 
-        internal void ObserveDiagnosticPort(int operationIndex, int slot, bool input, in TValue value)
+        internal void ObserveDiagnosticPort(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, int slot, bool input, in TValue value)
         {
-            if (!m_Input.CaptureValues && m_Input.Observations == null || IsPredictiveEvaluation)
+            IOrchestrationValueObservationSink<TValue> observations = storage.Observations;
+            if (!m_Input.CaptureValues && observations == null || IsPredictiveEvaluation)
                 return;
             if (m_Input.CaptureValues)
             {
-                (input ? m_Workspace.InputObservations : m_Workspace.OutputObservations)[slot] = value;
-                (input ? m_Workspace.InputObservationWritten : m_Workspace.OutputObservationWritten)[slot] = true;
+                (input ? storage.InputObservations : storage.OutputObservations)[slot] = value;
+                (input ? storage.InputObservationWritten : storage.OutputObservationWritten)[slot] = true;
             }
-            if (m_Input.Observations != null)
+            if (observations != null)
             {
-                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, slot, input);
-                m_Input.Observations.Observe(in address, in value);
+                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(storage, operationIndex, slot, input);
+                observations.Observe(in address, in value);
             }
         }
 
@@ -214,7 +218,7 @@ namespace BTSMTL.Orchestration
                 ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs;
                 for (int i = 0; i < parameters.Length; i++)
                 {
-                    m_Blackboards.WriteValue(parameters[i].ValueSlot, in m_Workspace.Inputs[depth][i]);
+                    m_Blackboards.WriteValue(parameters[i].ValueSlot, in InputRow(depth)[i]);
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameters[i].ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -264,9 +268,9 @@ namespace BTSMTL.Orchestration
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
-                    if (m_Bindings.Contract(binding).Kind != OrchestrationExtensionKind.Action)
+                    if (m_Host.Contract(binding).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
-                    if (!m_Bindings.ShouldExecute(binding, in m_Context))
+                    if (!m_Host.ShouldExecute(binding, in m_Context))
                         return OrchestrationOperationResult.Success;
                     break;
             }
@@ -277,32 +281,32 @@ namespace BTSMTL.Orchestration
                 switch (operation.Code)
                 {
                     case OrchestrationOperationCode.EmitOutput:
-                        EmitOutput(operationIndex, m_Workspace.Inputs[depth].AsSpan(0, count));
+                        EmitOutput(operationIndex, InputRow(depth).Slice(0, count));
                         return OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.BlackboardSet:
                     {
                         OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(operationIndex);
                         WriteBlackboard(operationIndex, set.Slot,
-                            in m_Workspace.Inputs[depth][0], set.Assignment);
+                            in InputRow(depth)[0], set.Assignment);
                         return OrchestrationOperationResult.Success;
                     }
                     case OrchestrationOperationCode.Timeline:
                         return TickTimeline(operationIndex, depth, count);
                     case OrchestrationOperationCode.TimelineClipExitRequest:
-                        return default(TValues).Boolean(in m_Workspace.Inputs[depth][0])
+                        return default(TValues).Boolean(in InputRow(depth)[0])
                             ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
                         ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? SavedOutputs(in operation)
-                            : m_Workspace.BorrowOutputs(operationIndex, depth, operation.OutputCount);
+                            : BorrowOutputs(operationIndex, depth, operation.OutputCount);
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                             m_Input.Tick, 0, StateAncestors(operationIndex),
                             ReadExecutionFrame(operationIndex),
-                            m_Workspace.Inputs[depth].AsSpan(0, count), outputs, in m_TimelineInvocation);
-                        OrchestrationOperationResult result = (OrchestrationOperationResult)m_Bindings.InvokeCandidate(
+                            InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
+                        OrchestrationOperationResult result = (OrchestrationOperationResult)m_Host.InvokeCandidate(
                             binding, ref m_Context, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,
@@ -310,7 +314,9 @@ namespace BTSMTL.Orchestration
                         return result;
                     }
                     default:
-                        throw new InvalidOperationException($"Operation '{operationIndex}' ({operation.Code}) is not executable.");
+                        Fail(OrchestrationExecutionErrorCode.OperationNotExecutable, operationIndex,
+                            detail: (int)operation.Code);
+                        return OrchestrationOperationResult.Failure;
                 }
             }
             finally
@@ -324,11 +330,11 @@ namespace BTSMTL.Orchestration
             return EvaluateBoolean(operationIndex) ? OrchestrationOperationResult.Success : OrchestrationOperationResult.Failure;
         }
 
-        static void RequireSynchronousValueResult(int operationIndex, int bindingIndex,
+        void RequireSynchronousValueResult(int operationIndex, int bindingIndex,
             OrchestrationExtensionResult result)
         {
             if (result != OrchestrationExtensionResult.Success)
-                throw new InvalidOperationException($"Read-only extension '{bindingIndex}' at operation '{operationIndex}' returned '{result}'.");
+                Fail(OrchestrationExecutionErrorCode.ReadOnlyExtension, operationIndex, bindingIndex, (int)result);
         }
     }
 }

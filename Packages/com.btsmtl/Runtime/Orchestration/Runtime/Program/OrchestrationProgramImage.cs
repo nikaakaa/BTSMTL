@@ -60,6 +60,14 @@ namespace BTSMTL.Orchestration
         public OrchestrationMemorySection ScheduleStateContexts;
         public OrchestrationMemorySection StorageOperationIndices;
         public OrchestrationMemorySection StorageValues;
+        public OrchestrationMemorySection WorkspaceInputRows;
+        public OrchestrationMemorySection WorkspaceOutputRows;
+        public int WorkspaceInputValueCount;
+        public int WorkspaceOutputValueCount;
+        public int WorkspaceStateDepth;
+        public int WorkspaceGraphCallDepth;
+        public int WorkspaceEntryDepth;
+        public int WorkspaceStateAncestorCount;
         public OrchestrationCorePorts Ports;
         public int RootOperationIndex;
         public int MaximumOperationEvaluations;
@@ -75,7 +83,8 @@ namespace BTSMTL.Orchestration
     {
         public static byte[] Build<TValue>(OrchestrationProgramContent<TValue> content) where TValue : unmanaged
         {
-            var writer = new OrchestrationMemoryImageWriter(Unsafe.SizeOf<OrchestrationProgramImageHeader>());
+            var writer = new OrchestrationMemoryImageWriter(
+                OrchestrationMemoryImageWriter.SizeOf<OrchestrationProgramImageHeader>());
             var header = new OrchestrationProgramImageHeader();
             OrchestrationProgramStructure structure = content.Structure;
             OrchestrationValueSchedule schedule = content.ValueSchedule;
@@ -116,6 +125,7 @@ namespace BTSMTL.Orchestration
             header.ScheduleStateContexts = writer.Add(schedule.StateContexts.Span);
             header.StorageOperationIndices = writer.Add(storage.OperationIndices.Span);
             header.StorageValues = writer.Add(storage.Values.Span);
+            AddWorkspaceRows(writer, content.WorkspaceCapacity, ref header);
             header.Ports = content.CorePorts;
             header.RootOperationIndex = content.RootOperationIndex;
             header.MaximumOperationEvaluations = content.MaximumOperationEvaluations;
@@ -124,6 +134,32 @@ namespace BTSMTL.Orchestration
             header.ScheduleScratchSlotCount = schedule.ScratchSlotCount;
             header.SchedulePredictionDepth = schedule.PredictionDepth;
             return writer.Finish(in header);
+        }
+
+        static void AddWorkspaceRows(OrchestrationMemoryImageWriter writer,
+            OrchestrationWorkspaceCapacity workspace, ref OrchestrationProgramImageHeader header)
+        {
+            ReadOnlySpan<int> inputs = workspace.InputCounts.Span;
+            ReadOnlySpan<int> outputs = workspace.OutputCounts.Span;
+            var inputRows = new OrchestrationRange[inputs.Length];
+            var outputRows = new OrchestrationRange[outputs.Length];
+            int inputOffset = 0;
+            int outputOffset = 0;
+            for (int i = 0; i < inputRows.Length; i++)
+            {
+                inputRows[i] = new OrchestrationRange(inputOffset, inputs[i]);
+                inputOffset = checked(inputOffset + inputs[i]);
+                outputRows[i] = new OrchestrationRange(outputOffset, outputs[i]);
+                outputOffset = checked(outputOffset + outputs[i]);
+            }
+            header.WorkspaceInputRows = writer.Add<OrchestrationRange>(inputRows);
+            header.WorkspaceOutputRows = writer.Add<OrchestrationRange>(outputRows);
+            header.WorkspaceInputValueCount = inputOffset;
+            header.WorkspaceOutputValueCount = outputOffset;
+            header.WorkspaceStateDepth = workspace.StateDepth;
+            header.WorkspaceGraphCallDepth = workspace.GraphCallDepth;
+            header.WorkspaceEntryDepth = workspace.EntryDepth;
+            header.WorkspaceStateAncestorCount = workspace.StateAncestorCount;
         }
 
         static void AddGraphCalls(OrchestrationMemoryImageWriter writer,ReadOnlySpan<OrchestrationGraphCall> calls,
