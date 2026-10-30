@@ -68,14 +68,14 @@ JPEG 保留 GPU 读回的像素行和 `PreviewEncodedFrame.FlipY`，显示端沿
 自检直接调用项目 `IPreviewCheckpointAdapter` 的存读档入口，检查尚未获准续跑的实现。不要经只接受 `Verified` 的 `PreviewCheckpointStore.RestoreAtOrBefore` 伪造通过结果。
 
 1. 固定内容、代码版本、对象布局、原输入日程、时钟、种子和比较容差。
-2. 在实际已提交的第 N 帧调用 `Capture(slot, N)`，沿原入口运行到 N+30，保存第一份实际观察。
+2. 在实际已提交的第 N 帧，经项目唯一存档入口取得并固定实际 slot，暂停自动覆盖；由 `PreviewCheckpointStore` 选择时使用 `CaptureCommittedFrame(N, true)` 返回值，不另算槽号。沿原入口运行到 N+30，保存第一份实际观察。
 3. 调用 `Restore(slot)`，保留原输入位置，再沿相同入口运行到 N+30，保存第二份观察。使用 Unity 生命周期的项目仍等待真实引擎帧。
 4. 按实际帧和稳定对象身份比较两份骨骼、物理与相机结果。确定性字段精确比较，其它字段使用预先声明的容差。缺失通道报告不可用，不补默认值。
 5. 报告首个差异帧、对象、骨骼或组件、字段、两次实际值与容差，再沿该字段的生产和恢复链找漏存状态。
 
-只有实际比较通过，项目才能在该内容、布局和代码条件下声明 `Verified`。失败或尚未执行时保留原因和限制，续跑请求沿正式入口从头重跑，档案回看继续直接读原记录。没有通用自检命令时由项目把上述过程接入自己的正式入口，不在文档中虚构 CLI 或成功回执。
+只有实际比较通过，项目才能在该内容、代码、输入、布局、时钟和容差条件下，由 `GetRestoreSupport(slot)` 为被比较的具体槽声明 `Verified`；不得同时开放其它未比较槽。槽被重新采集覆盖，或上述证明条件改变时，原证明失效。失败或尚未执行时保留原因和限制，续跑请求沿正式入口从头重跑，档案回看继续直接读原记录。没有通用自检命令时由项目把上述过程接入自己的正式入口，不在文档中虚构 CLI 或成功回执。
 
-项目创建 `PreviewCheckpointStore`，在正式提交帧调用 `CaptureCommittedFrame`，Timeline 关键位置传 `keyPosition=true`。续跑请求调用 `RestoreAtOrBefore`；只有 `Restored` 的返回帧能交播放控制器继续快进。`RestartOnly`、`SelfCheckRequired`、`NoCheckpoint`、`ContentChanged` 交宿主明确说明并从头运行，不能标记为已经恢复。内容或布局变更沿项目正式兼容规则处理，不放宽后端身份校验。
+项目创建 `PreviewCheckpointStore`，在正式提交帧调用 `CaptureCommittedFrame`，Timeline 关键位置传 `keyPosition=true`。同一 SDK 帧已占槽时，普通采集跳过，关键位置重存复用该槽，不再占一个新槽。续跑调用 `RestoreAtOrBefore`，原 Store 按选中槽查询恢复资格；只有 `Restored` 的返回帧才能交 `PreviewPlaybackController.RestoreCompleted(frame, endFrame)` 更新恢复游标，再按原时钟快进，不伪造一次新 Load。`RestartOnly`、`SelfCheckRequired`、`NoCheckpoint`、`ContentChanged` 交宿主明确说明并从头运行，不能标记为已经恢复。内容或布局变更沿项目正式兼容规则处理，不放宽后端身份校验。
 
 ## 构建和采用
 
