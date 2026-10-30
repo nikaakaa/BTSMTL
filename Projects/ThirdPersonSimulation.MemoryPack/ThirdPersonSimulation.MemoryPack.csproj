@@ -7,7 +7,6 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.MemoryPack</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.Serialization</RootNamespace>
-    <QuantumDeterministicPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</QuantumDeterministicPath>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ThirdPerson.Shared.Contracts/ThirdPerson.Shared.Contracts.csproj" />
@@ -27,5 +26,8 @@
   </ItemGroup>
   <Target Name="RequireMemoryPack" BeforeTargets="ResolveReferences" Condition="!Exists('$(MemoryPackCorePath)')">
     <Error Text="请通过 MemoryPackCorePath 指定宿主现有的 MemoryPack.Core.dll。" />
+  </Target>
+  <Target Name="RequireQuantumDeterministic" BeforeTargets="ResolveReferences" Condition="!Exists('$(QuantumDeterministicPath)')">
+    <Error Text="请通过 QuantumDeterministicPath 指定宿主现有的 Quantum.Deterministic.dll。" />
   </Target>
 </Project>
