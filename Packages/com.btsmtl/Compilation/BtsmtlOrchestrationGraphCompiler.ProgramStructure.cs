@@ -43,14 +43,11 @@ namespace BTSMTL.Compilation
                 var onEnter = EmptyIndexes(count);
                 var roots = EmptyIndexes(count);
                 var onExit = EmptyIndexes(count);
-                m_EvaluationOffsets = new int[count + 1];
-                int maximumStateIdentity = 0;
+                var evaluationOffsets = new int[count + 1];
                 for (int i = 0; i < count; i++)
                 {
                     ref readonly OperationDraft operation = ref operations[i];
-                    m_EvaluationOffsets[i + 1] = checked(m_EvaluationOffsets[i] + operation.OutputCount + 1);
-                    if (operation.Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit)
-                        maximumStateIdentity = Math.Max(maximumStateIdentity, operation.StateIdentityId);
+                    evaluationOffsets[i + 1] = checked(evaluationOffsets[i] + operation.OutputCount + 1);
                     if (operation.Code == OrchestrationOperationCode.Parallel)
                     {
                         int segment = i * kinds + (int)OrchestrationFlowKind.Child - 1;
@@ -118,12 +115,9 @@ namespace BTSMTL.Compilation
                             StateEdge(onExit, i, index, "OnExit");
                     }
                 }
-                var states = EmptyIndexes(maximumStateIdentity + 1);
                 for (int i = 0; i < count; i++)
                 {
                     ref readonly OperationDraft operation = ref operations[i];
-                    if (operation.Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit)
-                        states[operation.StateIdentityId] = i;
                     var ancestors = new HashSet<int>();
                     for (int parent = operation.ParentStateOperationIndex; parent >= 0;
                          parent = operations[parent].ParentStateOperationIndex)
@@ -158,7 +152,26 @@ namespace BTSMTL.Compilation
                         ValidateParameterFrame(owner, parameter, frameOwner);
                 }
                 return new OrchestrationProgramStructure(edgeIndexes, offsets, initial, any, onEnter, roots, onExit,
-                    m_EvaluationOffsets, states);
+                    evaluationOffsets, BuildStateOperationIndexes(operations));
+            }
+
+            OrchestrationProgramStructure BindProgramStructure(BtsmtlOrchestrationGraphLayout<TValue> layout,
+                OperationDraft[] operations) => new OrchestrationProgramStructure(
+                layout.OutgoingEdgeIndexes, layout.OutgoingOffsets, layout.InitialStateEntries,
+                layout.AnyStateEntries, layout.StateOnEnterEdges, layout.StateRootEdges,
+                layout.StateOnExitEdges, layout.ValueEvaluationOffsets, BuildStateOperationIndexes(operations));
+
+            static int[] BuildStateOperationIndexes(OperationDraft[] operations)
+            {
+                int maximumIdentity = 0;
+                for (int i = 0; i < operations.Length; i++)
+                    if (operations[i].Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit)
+                        maximumIdentity = Math.Max(maximumIdentity, operations[i].StateIdentityId);
+                var states = EmptyIndexes(maximumIdentity + 1);
+                for (int i = 0; i < operations.Length; i++)
+                    if (operations[i].Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit)
+                        states[operations[i].StateIdentityId] = i;
+                return states;
             }
 
             void StateEdge(int[] entries, int operation, int edge, string port)

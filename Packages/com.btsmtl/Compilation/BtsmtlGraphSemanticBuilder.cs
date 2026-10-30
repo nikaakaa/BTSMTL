@@ -97,7 +97,8 @@ namespace BTSMTL.Compilation
                 new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(
                     m_StateSchema, contentEncoder, null),
                 m_Report,
-                entryContracts);
+                null,
+                entryContracts).Content;
         }
 
         public bool TryGetCatalogEntry(ProgramIdentityDependency dependency, out int index)

@@ -93,6 +93,58 @@ namespace BTSMTL.Compilation
         public Float32Quaternion QuaternionIdentity => Float32Quaternion.Identity;
     }
 
+    public sealed class BtsmtlOrchestrationGraphLayout<TValue> where TValue : unmanaged
+    {
+        internal BtsmtlOrchestrationGraphLayout(OrchestrationProgramStructure structure,
+            OrchestrationAssignmentOpcode[] assignments, OrchestrationValueSlotType[] valueSlotTypes,
+            int[] valueKindSlotCounts, OrchestrationValueSchedule valueSchedule,
+            OrchestrationWorkspaceCapacity workspaceCapacity, OrchestrationProgramStorageLayout executionStorage)
+        {
+            OutgoingEdgeIndexes = structure.OutgoingEdgeIndexes;
+            OutgoingOffsets = structure.OutgoingOffsets;
+            InitialStateEntries = structure.InitialStateEntries;
+            AnyStateEntries = structure.AnyStateEntries;
+            StateOnEnterEdges = structure.StateOnEnterEdges;
+            StateRootEdges = structure.StateRootEdges;
+            StateOnExitEdges = structure.StateOnExitEdges;
+            ValueEvaluationOffsets = structure.ValueEvaluationOffsets;
+            Assignments = assignments;
+            ValueSlotTypes = valueSlotTypes;
+            ValueKindSlotCounts = valueKindSlotCounts;
+            ValueSchedule = valueSchedule;
+            WorkspaceCapacity = workspaceCapacity;
+            ExecutionStorage = executionStorage;
+        }
+
+        internal readonly ReadOnlyMemory<int> OutgoingEdgeIndexes;
+        internal readonly ReadOnlyMemory<int> OutgoingOffsets;
+        internal readonly ReadOnlyMemory<int> InitialStateEntries;
+        internal readonly ReadOnlyMemory<int> AnyStateEntries;
+        internal readonly ReadOnlyMemory<int> StateOnEnterEdges;
+        internal readonly ReadOnlyMemory<int> StateRootEdges;
+        internal readonly ReadOnlyMemory<int> StateOnExitEdges;
+        internal readonly ReadOnlyMemory<int> ValueEvaluationOffsets;
+        internal readonly OrchestrationAssignmentOpcode[] Assignments;
+        internal readonly OrchestrationValueSlotType[] ValueSlotTypes;
+        internal readonly int[] ValueKindSlotCounts;
+        internal readonly OrchestrationValueSchedule ValueSchedule;
+        internal readonly OrchestrationWorkspaceCapacity WorkspaceCapacity;
+        internal readonly OrchestrationProgramStorageLayout ExecutionStorage;
+    }
+
+    public readonly struct BtsmtlOrchestrationCompilation<TValue> where TValue : unmanaged
+    {
+        internal BtsmtlOrchestrationCompilation(OrchestrationGraphContent<TValue> content,
+            BtsmtlOrchestrationGraphLayout<TValue> layout)
+        {
+            Content = content;
+            Layout = layout;
+        }
+
+        public OrchestrationGraphContent<TValue> Content { get; }
+        public BtsmtlOrchestrationGraphLayout<TValue> Layout { get; }
+    }
+
     public static partial class BtsmtlOrchestrationGraphCompiler
     {
         internal sealed class IdentityCache
@@ -116,7 +168,7 @@ namespace BTSMTL.Compilation
             internal readonly OrchestrationIdentityTable Table;
         }
 
-        public static OrchestrationGraphContent<TValue>
+        public static BtsmtlOrchestrationCompilation<TValue>
             Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
                 IReadOnlyList<SemanticConstantInputBinding> constantInputs,
@@ -129,6 +181,7 @@ namespace BTSMTL.Compilation
                 TLowering lowering,
                 BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
                 SimulationCompileReport report,
+                BtsmtlOrchestrationGraphLayout<TValue> layout,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts = null)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
@@ -141,7 +194,7 @@ namespace BTSMTL.Compilation
             new Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 operations, literals, constantInputs, controlFlow, references, graphCalls, stateSlots,
                 scopes, catalog, sourceMap, entry, identity, contract, stateTransitionHooks, lowering,
-                domain, report, entryContracts).Build();
+                domain, report, entryContracts).Build(layout);
 
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
             where TValue : unmanaged
@@ -247,7 +300,7 @@ namespace BTSMTL.Compilation
             int[] m_BlackboardFactsIndexes;
             int[] m_OutputOffsets;
             int m_RuntimeOperationCount;
-            int[] m_EvaluationOffsets;
+            ReadOnlyMemory<int> m_EvaluationOffsets;
             OrchestrationRange[] m_InputRanges;
             OrchestrationRange[] m_OutputAssignmentRanges;
             OrchestrationRange[] m_LifecycleHookRanges;
@@ -286,7 +339,7 @@ namespace BTSMTL.Compilation
                 m_PreviousIdentities = Volatile.Read(ref domain.Identities);
             }
 
-            internal OrchestrationGraphContent<TValue> Build()
+            internal BtsmtlOrchestrationCompilation<TValue> Build(BtsmtlOrchestrationGraphLayout<TValue> layout)
             {
                 BuildExecutionIdentities();
                 ValidateDomain();
@@ -311,26 +364,35 @@ namespace BTSMTL.Compilation
                 OrchestrationFlowEdge[] controlFlow = BuildControlFlow();
                 var corePorts = new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
                     Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset"));
-                OrchestrationProgramStructure structure = BuildProgramStructure(operations, controlFlow, corePorts);
-                ValidateValueDependencies(operations, controlFlow, structure);
-                BuildTypedValues(operations, controlFlow, structure);
-                OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
-                OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
-                OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
                 OrchestrationGraphEntry[] entries = BuildEntries();
-                OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
-                    structure, valueSchedule, entries);
-                BuildOperationTables(operations, assignments, out OrchestrationOperation[] hotOperations,
+                OrchestrationProgramStructure structure;
+                if (layout == null)
+                {
+                    structure = BuildProgramStructure(operations, controlFlow, corePorts);
+                    ValidateValueDependencies(operations, controlFlow, structure);
+                    BuildTypedValues(operations, controlFlow, structure);
+                    OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
+                    if (!m_Report.IsValid)
+                        throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                    OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
+                    OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
+                    OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
+                        structure, valueSchedule, entries);
+                    layout = new BtsmtlOrchestrationGraphLayout<TValue>(structure, assignments, valueSlotTypes,
+                        valueKindSlotCounts, valueSchedule, workspaceCapacity,
+                        BuildExecutionStorage(operations, valueSlotTypes));
+                }
+                else
+                    structure = BindProgramStructure(layout, operations);
+                m_EvaluationOffsets = structure.ValueEvaluationOffsets;
+                BuildOperationTables(operations, layout.Assignments, out OrchestrationOperation[] hotOperations,
                     out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
-                OrchestrationProgramStorageLayout executionStorage = BuildExecutionStorage(operations, valueSlotTypes);
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
                 var program = new OrchestrationProgramContent<TValue>(
-                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, valueSchedule,
-                    workspaceCapacity, executionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
-                    valueSlotTypes, valueKindSlotCounts,
+                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, layout.ValueSchedule,
+                    layout.WorkspaceCapacity, layout.ExecutionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                    layout.ValueSlotTypes, layout.ValueKindSlotCounts,
                     BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
@@ -339,7 +401,7 @@ namespace BTSMTL.Compilation
                     BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources());
                 Volatile.Write(ref m_Domain.Identities,
                     new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities));
-                return content;
+                return new BtsmtlOrchestrationCompilation<TValue>(content, layout);
             }
 
             string SourceLocation(ProgramSourceTargetKind kind, int index, string portId = null,
@@ -1418,7 +1480,7 @@ namespace BTSMTL.Compilation
                                     valueIndex = i;
                         }
                         else
-                            valueIndex = m_EvaluationOffsets[port.OperationIndex] + port.Index + 1;
+                            valueIndex = m_EvaluationOffsets.Span[port.OperationIndex] + port.Index + 1;
                     }
                     result.Add(new OrchestrationGraphPort(Bind(source.GraphId), Bind(source.NodeId), Bind(source.PortId),
                         !trigger && !input ? m_Ports[source.TargetIndex].Output(compiledPort).OperationIndex : source.TargetIndex,
