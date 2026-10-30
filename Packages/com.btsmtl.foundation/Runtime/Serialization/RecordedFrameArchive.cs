@@ -29,12 +29,12 @@ namespace ThirdPersonSimulation
         readonly int[] m_PageLengths;
         readonly Queue<int> m_Available;
         readonly Queue<int> m_Pending;
-        readonly List<long> m_StoredOffsets = new();
         readonly byte[] m_ReadBuffer;
         readonly byte[] m_ReadHeader = new byte[8];
         readonly byte[] m_EncodedPage;
         readonly FileStream m_Writer;
         readonly FileStream m_Reader;
+        readonly FileStream m_IndexReader;
         readonly BinaryWriter m_Index;
         readonly bool m_KeepFiles;
         readonly Thread m_Worker;
@@ -72,13 +72,14 @@ namespace ThirdPersonSimulation
                 FileShare.ReadWrite, 1, FileOptions.SequentialScan);
             m_Reader = new FileStream(m_Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
                 64 * 1024, FileOptions.RandomAccess);
-            if (keepFiles)
-            {
-                m_Index = new BinaryWriter(new FileStream(Path.Combine(m_Directory, "pages.idx"),
-                    FileMode.CreateNew, FileAccess.Write, FileShare.Read));
-                m_Index.Write(1);
-                m_Index.Write(pageCapacity);
-            }
+            string indexPath = Path.Combine(m_Directory, "pages.idx");
+            m_Index = new BinaryWriter(new FileStream(indexPath,
+                FileMode.CreateNew, FileAccess.Write, FileShare.Read));
+            m_Index.Write(1);
+            m_Index.Write(pageCapacity);
+            m_Index.Flush();
+            m_IndexReader = new FileStream(indexPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite, 64 * 1024, FileOptions.RandomAccess);
             m_Worker = new Thread(WritePages) { IsBackground = true, Name = "Recorded Frame Archive" };
             m_Worker.Start();
         }
@@ -132,9 +133,9 @@ namespace ThirdPersonSimulation
                     return m_Pages[i].AsSpan(checked((int)(slice.Offset - pageOffset)), length);
             if (m_ReadPageOffset != pageOffset)
             {
-                long storedOffset;
-                lock (m_Gate)
-                    storedOffset = m_StoredOffsets[checked((int)(pageOffset / m_PageCapacity))];
+                m_IndexReader.Position = 8 + pageOffset / m_PageCapacity * sizeof(long);
+                ReadBytes(m_IndexReader, m_ReadHeader, 0, sizeof(long));
+                long storedOffset = BinaryPrimitives.ReadInt64LittleEndian(m_ReadHeader);
                 m_Reader.Position = storedOffset;
                 ReadPage(m_Reader, m_ReadBuffer, m_ReadHeader);
                 m_ReadPageOffset = pageOffset;
@@ -235,14 +236,10 @@ namespace ThirdPersonSimulation
                     long offset = m_Writer.Position;
                     m_Writer.Write(m_EncodedPage, 0, length);
                     m_Writer.Flush();
-                    if (m_KeepFiles)
-                    {
-                        m_Index.Write(offset);
-                        m_Index.Flush();
-                    }
+                    m_Index.Write(offset);
+                    m_Index.Flush();
                     lock (m_Gate)
                     {
-                        m_StoredOffsets.Add(offset);
                         m_Available.Enqueue(page);
                         Monitor.PulseAll(m_Gate);
                     }
@@ -271,11 +268,13 @@ namespace ThirdPersonSimulation
             m_Worker.Join();
             m_Reader.Dispose();
             m_Writer.Dispose();
-            m_Index?.Dispose();
+            m_IndexReader.Dispose();
+            m_Index.Dispose();
             m_Failure?.Throw();
             if (!m_KeepFiles)
             {
                 File.Delete(m_Path);
+                File.Delete(Path.Combine(m_Directory, "pages.idx"));
                 Directory.Delete(m_Directory);
             }
         }
