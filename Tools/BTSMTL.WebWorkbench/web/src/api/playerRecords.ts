@@ -109,7 +109,7 @@ export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: op
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
   frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
-  playerBuildId: buildId, sceneRevision: text, inputSource: text, inputRevision: text,
+  playerBuildId: buildId, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   availability: array(availability),
 });
 const vector3 = tuple(number, number, number);
@@ -194,7 +194,7 @@ export const readPlayerInput = object({
 });
 export const readPlayerArchiveImage = object({
   jobId, archiveJobId: identity<'archive'>(), playerBuildId: buildId, contentRevision: text, sceneRevision: text,
-  inputSource: text, inputRevision: text, hostFrame: text, sourceHostFrame: text, presentationSequence: text,
+  inputSource: text, inputRevision: nullable(text), hostFrame: text, sourceHostFrame: text, presentationSequence: text,
   width: number, height: number, available: boolean, presentationPrepared: boolean,
   relativePath: nullable(text), mediaType: text, reason: text,
 });
@@ -208,7 +208,7 @@ const frameImage = object({
 export const readPlayerFrameImages = observationPage(frameImage);
 export const readPlayerArchive = object({
   protocol: choice('q3-preview-observation/1'), jobId: identity<'archive'>(), status: text,
-  playerBuildId: buildId, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: text,
+  playerBuildId: buildId, contentRevision: text, sceneRevision: text, inputMode: text, inputSource: text, inputRevision: nullable(text),
   firstRecordedSdkFrame: number, lastRecordedSdkFrame: number, sdkTickRate: number, scheduleStartFrame: number,
   captures: array(object({ sdkFrame: number })), availability: array(availability),
 });

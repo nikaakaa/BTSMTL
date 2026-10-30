@@ -71,7 +71,10 @@ function evaluate() {
   data.previewPlayerBuild = state.summary.playerBuildId;
   data.previewSceneRevision = state.summary.sceneRevision;
   data.previewInputSource = state.summary.inputSource;
-  data.previewInputRevision = state.summary.inputRevision;
+  if (state.summary.inputRevision === null) delete data.previewInputRevision;
+  else data.previewInputRevision = state.summary.inputRevision;
+  if (state.archiveMetadata) data.previewInputMode = state.archiveMetadata.inputMode;
+  else delete data.previewInputMode;
   if (state.archiveMetadata) data.previewArchiveJob = state.archiveMetadata.jobId;
   else delete data.previewArchiveJob;
   if (viewport?.detail) data.previewRendered = viewport.detail;
