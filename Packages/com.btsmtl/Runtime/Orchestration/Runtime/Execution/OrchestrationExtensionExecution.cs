@@ -109,7 +109,7 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.Code == OrchestrationOperationCode.Extension &&
-                (m_Host.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                     OrchestrationExtensionInvocationKind.RequestStop) != 0)
             {
                 status = InvokeExtensionStop(operationIndex, context, OrchestrationExtensionInvocationKind.RequestStop);

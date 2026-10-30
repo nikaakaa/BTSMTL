@@ -47,8 +47,8 @@ namespace BTSMTL.Orchestration
 
         public int Count => m_Extensions.Count;
 
-        public ref readonly OrchestrationExtensionContract Contract(int bindingIndex) =>
-            ref m_Extensions.Contract(bindingIndex);
+        public OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex) =>
+            m_Extensions.ExecutionContract(bindingIndex);
 
         public bool ShouldExecute(int bindingIndex, in TContext context) =>
             m_Extensions.ShouldExecute(bindingIndex, in context);

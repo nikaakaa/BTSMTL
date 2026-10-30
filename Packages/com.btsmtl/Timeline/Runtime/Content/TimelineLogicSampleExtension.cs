@@ -5,22 +5,38 @@ namespace BTSMTL.Timeline
 {
     public readonly struct TimelineLogicSampleExtension
     {
-        public static class InputSchema
+        // 推进路径只读这组纯值序号，端口声明由同一序号构造。
+        public static class InputIndex
         {
-            public static readonly OrchestrationExtensionPort Weight = new("weight", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 0);
-            public static readonly OrchestrationExtensionPort PreviousSourceTime = new("previous-source-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 1);
-            public static readonly OrchestrationExtensionPort SourceTime = new("source-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 2);
-            public static readonly OrchestrationExtensionPort NormalizedTime = new("normalized-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 3);
-            public static readonly OrchestrationExtensionPort Cycle = new("cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, 4);
-            public static readonly OrchestrationExtensionPort PlaybackIdentity = new("playback-identity", OrchestrationValueKind.UInt64, OrchestrationExtensionPortDirection.Input, 5);
-            public static readonly OrchestrationExtensionPort PlaybackSlot = new("playback-slot", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, 6);
-            public static readonly OrchestrationExtensionPort AdvancePreviousTime = new("advance-previous-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 7);
-            public static readonly OrchestrationExtensionPort AdvancePreviousCycle = new("advance-previous-cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, 8);
-            public static readonly OrchestrationExtensionPort AdvanceTime = new("advance-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, 9);
-            public static readonly OrchestrationExtensionPort AdvanceCycle = new("advance-cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, 10);
+            public const int Weight = 0;
+            public const int PreviousSourceTime = 1;
+            public const int SourceTime = 2;
+            public const int NormalizedTime = 3;
+            public const int Cycle = 4;
+            public const int PlaybackIdentity = 5;
+            public const int PlaybackSlot = 6;
+            public const int AdvancePreviousTime = 7;
+            public const int AdvancePreviousCycle = 8;
+            public const int AdvanceTime = 9;
+            public const int AdvanceCycle = 10;
         }
 
-        public static int InputCount => Contract.Ports.Length;
+        public static class InputSchema
+        {
+            public static readonly OrchestrationExtensionPort Weight = new("weight", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.Weight);
+            public static readonly OrchestrationExtensionPort PreviousSourceTime = new("previous-source-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.PreviousSourceTime);
+            public static readonly OrchestrationExtensionPort SourceTime = new("source-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.SourceTime);
+            public static readonly OrchestrationExtensionPort NormalizedTime = new("normalized-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.NormalizedTime);
+            public static readonly OrchestrationExtensionPort Cycle = new("cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, InputIndex.Cycle);
+            public static readonly OrchestrationExtensionPort PlaybackIdentity = new("playback-identity", OrchestrationValueKind.UInt64, OrchestrationExtensionPortDirection.Input, InputIndex.PlaybackIdentity);
+            public static readonly OrchestrationExtensionPort PlaybackSlot = new("playback-slot", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, InputIndex.PlaybackSlot);
+            public static readonly OrchestrationExtensionPort AdvancePreviousTime = new("advance-previous-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.AdvancePreviousTime);
+            public static readonly OrchestrationExtensionPort AdvancePreviousCycle = new("advance-previous-cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, InputIndex.AdvancePreviousCycle);
+            public static readonly OrchestrationExtensionPort AdvanceTime = new("advance-time", OrchestrationValueKind.Scalar, OrchestrationExtensionPortDirection.Input, InputIndex.AdvanceTime);
+            public static readonly OrchestrationExtensionPort AdvanceCycle = new("advance-cycle", OrchestrationValueKind.Int32, OrchestrationExtensionPortDirection.Input, InputIndex.AdvanceCycle);
+        }
+
+        public const int InputCount = InputIndex.AdvanceCycle + 1;
 
         public TimelineLogicSampleExtension(OrchestrationExtensionIdentity identity, uint semanticVersion)
         {

@@ -10,12 +10,12 @@ namespace BTSMTL.Timeline.Runtime
         where TClock : struct, IOrchestrationTimelineClock<TTime>
     {
         readonly OrchestrationTimelineContentView<TTime> m_Content;
-        readonly OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<TTime>> m_Layout;
+        readonly OrchestrationTimelineStateRegions<OrchestrationTimelinePlaybackState<TTime>> m_Layout;
         readonly OrchestrationTimelinePreparedCapacity m_Capacity;
         readonly OrchestrationTimelineWorkspaceView<TTime> m_Workspace;
 
         public OrchestrationTimelineRuntime(OrchestrationTimelineContentView<TTime> content,
-            in OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<TTime>> layout,
+            OrchestrationTimelineStateRegions<OrchestrationTimelinePlaybackState<TTime>> layout,
             in OrchestrationTimelinePreparedCapacity capacity, OrchestrationTimelineWorkspaceView<TTime> workspace)
         {
             m_Content = content;

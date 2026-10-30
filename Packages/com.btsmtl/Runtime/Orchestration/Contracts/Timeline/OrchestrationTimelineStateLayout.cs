@@ -17,5 +17,9 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<long> TreeExitFirstCycles { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.TimelineTreeExitRequests)]
         public OrchestrationStateRegion<OrchestrationTimelineClipOccurrence> TreeExitRequests { get; }
+
+        public OrchestrationTimelineStateRegions<TPlayback> Regions =>
+            new OrchestrationTimelineStateRegions<TPlayback>(Playbacks, Sequences, TreeExitBits,
+                TreeExitFirstCycles, TreeExitRequests);
     }
 }

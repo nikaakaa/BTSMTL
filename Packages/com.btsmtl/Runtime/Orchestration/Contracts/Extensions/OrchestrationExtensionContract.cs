@@ -123,5 +123,27 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionCompletion Completion { get; }
         public ReadOnlyMemory<OrchestrationExtensionPort> Ports { get; }
         public ReadOnlyMemory<OrchestrationExtensionContentField> Fields { get; }
+
+        public OrchestrationExtensionExecutionContract Execution =>
+            new OrchestrationExtensionExecutionContract(Kind, Access, Invocations, Completion);
+    }
+
+    // 推进只读取的扩展执行约定，纯值，可进入 Burst。
+    public readonly struct OrchestrationExtensionExecutionContract
+    {
+        public OrchestrationExtensionExecutionContract(OrchestrationExtensionKind kind,
+            OrchestrationExtensionAccess access, OrchestrationExtensionInvocationKind invocations,
+            OrchestrationExtensionCompletion completion)
+        {
+            Kind = kind;
+            Access = access;
+            Invocations = invocations;
+            Completion = completion;
+        }
+
+        public OrchestrationExtensionKind Kind { get; }
+        public OrchestrationExtensionAccess Access { get; }
+        public OrchestrationExtensionInvocationKind Invocations { get; }
+        public OrchestrationExtensionCompletion Completion { get; }
     }
 }

@@ -268,7 +268,7 @@ namespace BTSMTL.Orchestration
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
-                    if (m_Host.Contract(binding).Kind != OrchestrationExtensionKind.Action)
+                    if (m_Host.ExecutionContract(binding).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
                     if (!m_Host.ShouldExecute(binding, in m_Context))
                         return OrchestrationOperationResult.Success;

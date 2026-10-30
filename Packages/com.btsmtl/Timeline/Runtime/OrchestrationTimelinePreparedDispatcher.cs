@@ -228,7 +228,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         OrchestrationTimelineRuntime<TTime, TClock> Runtime =>
-            new OrchestrationTimelineRuntime<TTime, TClock>(m_Content.View, in m_Layout, in m_Capacity, m_Workspace.View);
+            new OrchestrationTimelineRuntime<TTime, TClock>(m_Content.View, m_Layout.Regions, in m_Capacity, m_Workspace.View);
 
         public OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
             ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,

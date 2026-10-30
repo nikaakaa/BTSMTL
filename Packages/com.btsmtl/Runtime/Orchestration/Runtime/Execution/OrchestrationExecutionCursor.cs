@@ -497,7 +497,7 @@ namespace BTSMTL.Orchestration
                         status = ContinueLeafStop(operationIndex, context);
                         break;
                     case OrchestrationOperationCode.Extension:
-                        status = (m_Host.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                        status = (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                             OrchestrationExtensionInvocationKind.ContinueStop) != 0
                             ? ContinueLeafStop(operationIndex, context)
                             : ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
@@ -605,7 +605,7 @@ namespace BTSMTL.Orchestration
                         ForceStopLeaf(operationIndex, context);
                     break;
                 case OrchestrationOperationCode.Extension:
-                    if (active && (m_Host.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                    if (active && (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                          OrchestrationExtensionInvocationKind.ForceStop) != 0)
                         ForceStopLeaf(operationIndex, context);
                     ForceStopChildren(operationIndex, context);
