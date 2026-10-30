@@ -122,7 +122,6 @@ const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([gra
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const binding = useDocumentObservationBinding();
-  const author = useAuthoring(state => state.author);
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const [params, setParams] = usePanelParams<Params>(defaults);
@@ -158,7 +157,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
-  const path = observedCall?.invocationPath ?? (params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null);
+  const path = params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null;
   const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
   const recorded = useMemo(() => recordedGraphCalls(observation.frames, observation.current, graphs, binding), [observation, graphs, binding]);
@@ -193,8 +192,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   }, [graph, observedCall]);
 
   const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, path: null, pin: null,
-    caller: !author && observedCall !== null && runId !== null ? { runId, call: observedCall } : null, viewport: null }),
-  [setParams, author, observedCall, runId]);
+    caller: observedCall !== null && runId !== null ? { runId, call: observedCall } : null, viewport: null }),
+  [setParams, observedCall, runId]);
 
   // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
   const request = useWorkbench(state => state.graphRequest);
@@ -230,8 +229,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         <PanelBar wrap>
           {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
             onChange={value => enter(programs.get(value)!.root)} />}
-          <span className={styles.crumbs} title={author || callCrumbs === null ? '作者层级' : '档案实际调用路径'}>
-            {!author && callCrumbs !== null ? <>
+          <span className={styles.crumbs} title={callCrumbs === null ? '作者层级' : '档案实际调用路径'}>
+            {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>
                 {callCrumbs.choices.length > 1 && enterCall ? <MenuButton label="选择父调用" entries={callCrumbs.choices.map(item => ({
                   label: `${graphName(item.graph)} · ${callLabel(item.call)}`, onSelect: () => enterCall(item),
@@ -262,7 +261,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
           {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
             tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(observedCall)}`}
             onClick={togglePin}>固定调用</Button>}
-          {observedCall === null && paths.length > 1 && <Select label="图实例" value={path}
+          {paths.length > 1 && <Select label="图实例" value={path}
             options={paths.map((value, index) => ({ value, label: `图实例 ${index + 1}` }))}
             placeholder="选择图实例" onChange={path => setParams({ path })} />}
           <FitButton />
@@ -272,11 +271,11 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
         <div className={styles.title}>
           {graphName(graph)}
-          {!author && caller !== null && calls.length === 0 && pin === null
+          {caller !== null && calls.length === 0 && pin === null
             ? <em>此帧没有精确匹配的子调用记录</em> : <SelectedSummary graph={graph} />}
         </div>
         {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
-          : path === null ? <ReportEmpty text="此调用未保留可显示的节点来源" />
+          : path === null ? <ReportEmpty text="选择要显示的图实例" />
             : <AuthoredCanvas graph={graph} path={path} call={observedCall}
               hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
       </ReactFlowProvider>
@@ -565,8 +564,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
     if (node.data.children.length) enter(node.data.children[0]);
-    else if (node.data.timeline) showTimeline(node.data.timeline, !editable && call !== null && runId !== null ? { runId, call } : null);
-  }, [enter, editable, call, runId]);
+    else if (node.data.timeline) showTimeline(node.data.timeline, call !== null && runId !== null ? { runId, call } : null);
+  }, [enter, call, runId]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
     if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
   }, [enter]);

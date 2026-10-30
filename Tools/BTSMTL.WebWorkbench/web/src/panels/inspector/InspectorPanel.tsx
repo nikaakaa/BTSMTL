@@ -266,7 +266,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const candidates = graphRecords(frame?.route, graph, binding);
   const observedCall = call ?? singleCall(candidates);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
-    'nodeId' in item && item.nodeId === node.id && item.call.invocationPath === node.invocationPath);
+    'nodeId' in item && item.nodeId === node.id);
   const events = records.filter(isNodeOccurrence).sort(compareSequence);
   const samples = records.filter(isPortSample);
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
