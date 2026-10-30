@@ -7,6 +7,7 @@ import {
   createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent,
   type ReactNode,
 } from 'react';
+import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
@@ -79,8 +80,18 @@ function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   return state.frame?.route?.playbacks.find(playback => playback.documentId === documentId &&
     playback.domain === observation.domain && playback.call !== null && callKey(playback.call) === callKey(observation.call));
 }
-const previewSeconds = (state: WorkbenchState, clock: PreviewClock): number | null => clock.kind === 'archive'
-  ? state.seconds : documentPlayback(state, clock)?.cursorSeconds ?? null;
+// 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
+const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
+const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, clock: PreviewClock) =>
+  clock.kind === 'document' && clock.observation === null && clock.documentId !== null
+    ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
+const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'archive'
+  ? state.seconds : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
+// 游标秒数：运行档案、运行观察或编辑游标。
+function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
+  const author = useAuthorCursor(cursor => authorCursorOf(cursor, clock));
+  return useWorkbench(state => pick(previewSeconds(state, clock, author), state));
+}
 const selectTimelineObject = (clock: PreviewClock, kind: 'clip' | 'track', id: string) =>
   selectionActions.select({ kind, id, call: clock.kind === 'document' ? clock.observation?.call : undefined });
 const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * step;
@@ -432,10 +443,15 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     setParams({ collapsed: [...collapsed] });
   }, [params.collapsed, setParams]);
 
+  const step = useContext(SnapContext);
   const seekAt = useCallback((clientX: number) => {
     if (frames) void transport.seekTime(getValueFromScreenX(clientX));
-    else consoleActions.log('warn', 'Timeline', '当前显示作者本地时间；档案未提供可定位的本 Timeline 播放记录');
-  }, [frames, getValueFromScreenX]);
+    else if (observed) consoleActions.log('warn', 'Timeline', '游标跟随运行中的播放；停止观察后可拖动编辑游标');
+    else if (focused) {
+      const seconds = Math.max(0, Math.min(focused.length, getValueFromScreenX(clientX)));
+      useAuthorCursor.setState({ documentId: focused.documentId, seconds: step ? Math.min(focused.length, snapTo(seconds, step)) : seconds });
+    }
+  }, [frames, observed, focused, step, getValueFromScreenX]);
 
   const snap = params.snap ?? 'tick';
   const settings: MenuEntry[] = [
@@ -586,7 +602,7 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
   const binding = useDocumentObservationBinding();
   const { playing, blocked, previous, next } = useTransportState();
   const clock = useContext(PreviewClockContext);
-  const seconds = useWorkbench(state => previewSeconds(state, clock));
+  const seconds = usePreviewSelect(clock, current => current);
   const segment = useWorkbench(state => {
     if (binding.dirty) return '当前内容未保存，旧档案叠加已停用';
     const route = state.frame?.route;
@@ -1241,10 +1257,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
   });
   const { valueToPixels } = useTimelineContext();
   const clock = useContext(PreviewClockContext);
-  const active = useWorkbench(state => {
-    const seconds = previewSeconds(state, clock);
-    return seconds !== null && start <= seconds && seconds < Math.min(end, exit);
-  });
+  const active = usePreviewSelect(clock, seconds => seconds !== null && start <= seconds && seconds < Math.min(end, exit));
   const boxed = useContext(BoxedContext).has(boxKey);
   const selected = useSelected(selectId, 'clip') || boxed;
   const width = valueToPixels(end - start);
@@ -1304,8 +1317,7 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
   const [dragging, setDragging] = useState<{ x: number; seconds: number } | null>(null);
   const seconds = dragging?.seconds ?? shown;
   const clock = useContext(PreviewClockContext);
-  const active = useWorkbench(state => {
-    const current = previewSeconds(state, clock);
+  const active = usePreviewSelect(clock, (current, state) => {
     const previous = clock.kind === 'archive' ? transport.secondsAt(state.frameIndex - 1) : null;
     return current !== null && (seconds === current || previous !== null && seconds > previous && seconds <= current);
   });
@@ -1420,7 +1432,7 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
     const state = getState();
     const lineElement = line.current, tagElement = tag.current;
     if (!lineElement || !tagElement) return;
-    const seconds = previewSeconds(state, clock);
+    const seconds = previewSeconds(state, clock, authorCursorOf(useAuthorCursor.getState(), clock));
     if (seconds === null) {
       lineElement.hidden = tagElement.hidden = true;
     } else {
@@ -1447,9 +1459,11 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
 
   useLayoutEffect(() => {
     apply();
-    return useWorkbench.subscribe((state, previous) => {
+    const stopRun = useWorkbench.subscribe((state, previous) => {
       if (state.seconds !== previous.seconds || state.hostFrame !== previous.hostFrame || state.frameKey !== previous.frameKey) apply();
     });
+    const stopAuthor = useAuthorCursor.subscribe(apply);
+    return () => { stopRun(); stopAuthor(); };
   }, [apply]);
 
   useEffect(() => () => clearRendered(panelId), [panelId]);
