@@ -74,7 +74,8 @@ namespace BTSMTL.Compilation
         public OrchestrationGraphContent<TValue>
             BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 OperationHandle entry, GraphExecutionIdentity identity, TLowering lowering,
-                IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
+                BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
+                OrchestrationExecutionContract contract,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
@@ -91,11 +92,10 @@ namespace BTSMTL.Compilation
             return BtsmtlOrchestrationGraphCompiler.Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 m_Operations, m_Literals, m_ConstantInputBindings, m_ControlFlow, m_References,
                 m_GraphCallFrames, m_StateSlots, m_Scopes, m_CatalogEntries, m_SourceMap, entry, identity,
-                OrchestrationExecutionContract.Complete,
+                contract,
                 Array.Empty<OrchestrationExtensionReference>(),
                 lowering,
-                new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(
-                    m_StateSchema, contentEncoder, null),
+                domain,
                 m_Report,
                 null,
                 entryContracts).Content;

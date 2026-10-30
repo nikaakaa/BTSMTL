@@ -58,7 +58,7 @@ namespace BTSMTL.Graphs.Editor
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/2", sourceIdentity, loweringType, valueAccessType, contentContract,
+                "btsmtl-graph-compiler/3", sourceIdentity, loweringType, valueAccessType, contentContract,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
             foreach (GraphHostInputDescriptor input in contract.Inputs)
@@ -145,7 +145,9 @@ namespace BTSMTL.Graphs.Editor
                 m_Builder.DeclareGraphInvocation(owner, owner, GraphSource(m_Root, m_Root.AuthoringId, m_Route),
                     ProgramInvocationCallerKind.None, string.Empty, string.Empty, -1);
                 return m_Builder.BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                    owner, identity, lowering, contentEncoder, entryContracts);
+                    owner, identity, lowering,
+                    new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(ProgramStateSchema.Core, contentEncoder, null),
+                    OrchestrationExecutionContract.Complete, entryContracts);
             }
 
             // 图根与每个子图出现共用：叶子、变量绑定、子图调用与连接按所属出现路径发射。

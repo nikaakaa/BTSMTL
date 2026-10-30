@@ -398,7 +398,7 @@ namespace BTSMTL.Compilation
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
                 var content = new OrchestrationGraphContent<TValue>(
                     m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), entries,
-                    BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources());
+                    BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources(entries));
                 Volatile.Write(ref m_Domain.Identities,
                     new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities));
                 return new BtsmtlOrchestrationCompilation<TValue>(content, layout);
@@ -1489,7 +1489,7 @@ namespace BTSMTL.Compilation
                 return result.ToArray();
             }
 
-            OrchestrationGraphSource[] BuildSources()
+            OrchestrationGraphSource[] BuildSources(ReadOnlySpan<OrchestrationGraphEntry> entries)
             {
                 var result = new List<OrchestrationGraphSource>();
                 var names = new Dictionary<(ProgramValuePortDirection, ProgramInvocationCallerKind),
@@ -1522,7 +1522,7 @@ namespace BTSMTL.Compilation
                             targetKind = OrchestrationGraphSourceTargetKind.AuthorConstant;
                     }
                     OrchestrationExecutionEntry invocationEntry = source.TargetKind == ProgramSourceTargetKind.GraphInvocation
-                        ? new OrchestrationExecutionEntry(source.InvocationEntryOperationIndex, m_Contract)
+                        ? InvocationEntry(source.InvocationEntryOperationIndex, entries)
                         : default;
                     int sourceIdentityId = source.TargetKind switch
                     {
@@ -1550,6 +1550,14 @@ namespace BTSMTL.Compilation
                                     Bind(ConstantOutputIdentity(source.TargetIndex, port.Identity))), entry.SourceType, path));
                 }
                 return result.ToArray();
+            }
+
+            OrchestrationExecutionEntry InvocationEntry(int operationIndex, ReadOnlySpan<OrchestrationGraphEntry> entries)
+            {
+                foreach (ref readonly OrchestrationGraphEntry entry in entries)
+                    if (entry.Execution.OperationIndex == operationIndex)
+                        return entry.Execution;
+                return new OrchestrationExecutionEntry(operationIndex, m_Contract);
             }
 
             OrchestrationGraphSourceTargetKind SourceTargetKind(ProgramExecutionSource source) => source.TargetKind switch
