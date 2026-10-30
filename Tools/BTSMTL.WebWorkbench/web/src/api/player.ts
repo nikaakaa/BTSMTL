@@ -3,6 +3,7 @@ import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
   readPlayerCommandResult,
+  readPlayerCancellation,
   readPlayerArchive, readPlayerArchiveImage, readPlayerCamera, readPlayerInput,
   readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
   readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
@@ -28,6 +29,8 @@ export const playerApi = {
       .then(value => readPlayerCreationOptions(value)),
   startJob: (request: StartPlayerJobRequest, signal?: AbortSignal) =>
     postJson<unknown>('/api/preview/player-jobs', request, signal).then(value => readPlayerJobReceipt(value)),
+  cancelJob: (id: PlayerJobId, signal?: AbortSignal) =>
+    postJson<unknown>(`${job(id)}/cancel`, {}, signal).then(value => readPlayerCancellation(value)),
   job: (id: PlayerJobId, signal?: AbortSignal) => decoded(job(id), readPlayerJob, signal),
   summary: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/summary`, readPlayerSummary, signal),
   archive: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/archive`, readPlayerArchive, signal),

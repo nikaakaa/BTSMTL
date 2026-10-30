@@ -150,6 +150,16 @@ export const session = {
     return selected.kind === 'unavailable' ? selected.reason : null;
   },
 
+  async cancelRun(jobId: PlayerJobId) {
+    try {
+      const result = await playerApi.cancelJob(jobId);
+      consoleActions.log(result.cancellationRequested ? 'info' : 'warn', source, result.reason, JSON.stringify(result));
+      await refresh();
+    } catch (error) {
+      consoleActions.error(source, error);
+    }
+  },
+
   async startRun() {
     let pending = sessionStorage.getItem(pendingRequestKey);
     try {

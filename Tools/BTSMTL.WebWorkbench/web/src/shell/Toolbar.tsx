@@ -124,13 +124,16 @@ function RunChoice() {
 }
 
 function RunMenu() {
-  useWorkbench(useShallow(state => ({ liveId: state.liveId, sources: state.sources,
+  const { runId, receipt } = useWorkbench(useShallow(state => ({ liveId: state.liveId, sources: state.sources,
     scenePath: state.scenePath, inputSource: state.inputSource, inputCatalog: state.inputCatalog,
     inputChoices: state.inputChoices, localLastSdkFrame: state.localLastSdkFrame,
-    hostAvailable: state.hostAvailable, playerViewport: state.playerViewport })));
+    hostAvailable: state.hostAvailable, playerViewport: state.playerViewport, runId: state.runId, receipt: state.receipt })));
   const startBlocked = session.canStart();
+  const cancellable = receipt?.stage === 'queued' || receipt?.stage === 'running';
   const entries: MenuEntry[] = [
     { label: '新建运行', onSelect: () => void session.startRun(), disabled: !!startBlocked, tip: startBlocked },
+    { label: '取消运行', onSelect: () => void session.cancelRun(runId!), disabled: !cancellable,
+      tip: cancellable ? '请求取消，最终状态以同一作业回执为准' : '仅排队或运行中的作业可以取消' },
   ];
   entries.push({ kind: 'separator' }, { label: '刷新列表', onSelect: () => void session.refresh() });
   return <MenuButton label="运行菜单" entries={entries} caret>运行</MenuButton>;

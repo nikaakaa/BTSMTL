@@ -50,6 +50,7 @@ function object<Shape extends Record<string, Decoder<unknown>>>(shape: Shape) {
 const jobId = identity<'job'>();
 const liveId = identity<'live'>();
 const buildId = identity<'build'>();
+const jobStage = choice('queued', 'running', 'completed', 'failed', 'cancelled', 'rejected', 'unavailable');
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
 const source = object({
@@ -107,7 +108,7 @@ export const readPlayerJobRequest = object({
 });
 export const readPlayerJobReceipt = object({
   request: readPlayerJobRequest,
-  stage: choice('queued', 'running', 'completed', 'failed', 'cancelled', 'rejected', 'unavailable'),
+  stage: jobStage,
   acceptedAt: text, finishedAt: nullable(text), liveId: nullable(liveId), archivePath: nullable(text),
   load: opaque, result: opaque, error: nullable(text), cachedFrom: nullable(jobId),
   jobId, playerBuildId: buildId, statusPath: text,
@@ -133,6 +134,7 @@ export const readPlayerJobs = object({
   items: array(readPlayerJobReceipt),
 });
 export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: opaque });
+export const readPlayerCancellation = object({ jobId, cancellationRequested: boolean, jobStage, reason: text });
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
   frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
