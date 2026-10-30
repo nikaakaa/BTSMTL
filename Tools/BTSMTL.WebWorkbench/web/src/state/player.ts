@@ -23,11 +23,11 @@ function setVideo(frame: VideoFrame | null) {
 function onMessage(message: ViewerMessage) {
   switch (message.type) {
     case 'status':
-      useWorkbench.setState({ live: message.live, alignment: message.live.alignment });
+      useWorkbench.setState({ live: message.live });
       break;
     case 'frames': {
       const last = message.items.at(-1);
-      useWorkbench.setState({ alignment: message.alignment, ...(last ? { actualFrame: last.hostFrame } : {}) });
+      if (last) useWorkbench.setState({ actualFrame: last.hostFrame });
       break;
     }
     case 'ack':
@@ -102,7 +102,7 @@ export const playerService = {
   attach(liveId: string | null) {
     if (getState().liveId === liveId && socket) return;
     close();
-    useWorkbench.setState({ liveId, live: null, alignment: null, viewerOpen: false, ...initialPlayerTarget });
+    useWorkbench.setState({ liveId, live: null, viewerOpen: false, ...initialPlayerTarget });
     if (!liveId) return;
     const opened = openViewer(liveId, {
       open: () => { if (socket === opened) useWorkbench.setState({ viewerOpen: true }); },
@@ -154,7 +154,6 @@ export const playerService = {
     await playerService.refresh();
   },
 
-  loadRun: (runId: string) => command({ type: 'load', commandId: crypto.randomUUID(), runId }),
   loadScene: (scene: string, sceneRevision: string) =>
     command({ type: 'load', commandId: crypto.randomUUID(), scene, sceneRevision, inputMode: 'device' }),
   async capture() {

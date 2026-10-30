@@ -87,10 +87,7 @@ function rowHeight(row: Row): number {
   }
 }
 
-// 选了运行：沿运行路线显示；没选运行：直接打开技能 JSON 中的 Timeline，运行只是叠加层。
 export function TimelinePanel() {
-  const { runId, frames } = useWorkbench(useShallow(state => ({ runId: state.runId, frames: state.routeFrames })));
-  if (runId) return frames.length ? <TimelineWindow frames={frames} /> : <Empty text="还没有确认帧" />;
   return <DocumentTimeline />;
 }
 

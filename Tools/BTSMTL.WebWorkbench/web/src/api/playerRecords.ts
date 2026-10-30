@@ -20,6 +20,13 @@ const array = <T>(decode: Decoder<T>): Decoder<T[]> => (value, path = 'Player') 
   if (!Array.isArray(value)) throw new Error(`${path} 需要数组`);
   return value.map((item: unknown, index) => decode(item, `${path}[${index}]`));
 };
+const tuple = <const Shape extends readonly Decoder<unknown>[]>(...shape: Shape) =>
+  (value: unknown, path = 'Player'): { -readonly [Key in keyof Shape]: ReturnType<Shape[Key]> } => {
+    if (!Array.isArray(value) || value.length !== shape.length) throw new Error(`${path} 需要 ${shape.length} 项`);
+    return shape.map((decode, index) => decode(value[index], `${path}[${index}]`)) as {
+      -readonly [Key in keyof Shape]: ReturnType<Shape[Key]>
+    };
+  };
 const identity = <Kind extends string>(): Decoder<Identity<Kind>> =>
   (value, path) => text(value, path) as Identity<Kind>;
 const choice = <const Values extends readonly string[]>(...values: Values): Decoder<Values[number]> =>
@@ -64,11 +71,25 @@ const runSource = (value: unknown, path = 'Player.source') => {
     default: throw new Error(`${path} 的 kind 不受支持`);
   }
 };
+const previewTarget = object({
+  liveId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
+});
+export const readLivePlayer = object({
+  liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
+  width: nullable(number), height: nullable(number), hello: opaque, player: opaque,
+  previewTarget: nullable(previewTarget), viewers: number, latestVideoFrame: nullable(number),
+});
+export const readLivePlayers = array(readLivePlayer);
+export const readPlayerCreationOptions = object({
+  requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
+  outputDirectory: text, width: number, height: number, frameRangeBasis: text,
+  quality: number,
+});
 
 export const readPlayerJobRequest = object({
   requestId: jobId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
   firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number), outputDirectory: text,
-  width: number, height: number,
+  width: number, height: number, quality: number,
 });
 export const readPlayerJobReceipt = object({
   request: readPlayerJobRequest,
@@ -88,7 +109,49 @@ export const readPlayerSummary = object({
   playerBuildId: buildId, sceneRevision: text, inputSource: text, inputRevision: text,
   availability: array(availability),
 });
-const pose = object({ position: array(number), rotation: array(number), scale: array(number) });
+const vector3 = tuple(number, number, number);
+const quaternion = tuple(number, number, number, number);
+const location = object({ displayName: text, documentId: text, elementId: text });
+const record = object({ displayName: text, fields: array(field), rawJson: text, locations: array(location) });
+const call = object({
+  actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: text,
+  actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: text, playbackId: text,
+});
+const routeFrame = object({
+  hostFrame: text, seconds: number,
+  playbacks: array(object({ documentId: text, cursorSeconds: number, status: text })), active: array(location),
+  nodes: array(object({ sequence: text, graphId: text, nodeId: text, kind: text, generation: text, result: text, call })),
+  edges: array(object({ sequence: text, graphId: text, edgeId: text, selected: boolean, passed: boolean, call })),
+  ports: array(object({ sequence: text, graphId: text, nodeId: text, portId: text, direction: text, valueType: text,
+    value: text, rawJson: text, call, sourceAvailable: boolean, reason: text })),
+  availability: array(availability),
+});
+const logicPose = object({ position: vector3, rotation: quaternion });
+const segment = object({ shapeIndex: number, start: logicPose, end: logicPose });
+const frame = object({
+  hostFrame: text, seconds: number, source, availability: array(availability),
+  actors: array(object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text })),
+  channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
+  sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
+  geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment) })),
+    contacts: array(object({ point: vector3, normal: vector3 })) }), rawJson: text, route: nullable(routeFrame),
+});
+export const readPlayerFrames = page(frame);
+export const readPlayerObservations = object({
+  runId: jobId, contentRevision: text, channels: array(text), firstFrame: text, lastFrame: text,
+  offset: number, total: number, nextOffset: nullable(number), items: array(frame),
+});
+export const readPlayerGeometry = object({
+  runId: jobId, contentRevision: text, rawJson: text,
+  world: array(object({ identity: text, kind: text, pose: logicPose, radius: number, halfLength: number,
+    halfExtents: vector3, isTrigger: boolean })),
+  worldTriangles: array(object({ a: vector3, b: vector3, c: vector3 })),
+  actors: array(object({ actorId: text, radius: number, halfLength: number, centerOffset: vector3 })),
+  shapes: array(object({ identity: text, kind: text, radius: number, halfLength: number, halfExtents: vector3,
+    vertices: array(vector3), parts: array(object({ shapeIndex: number, localPose: logicPose })) })),
+});
+export const readPlayerSourceMap = page(record);
+const pose = object({ position: vector3, rotation: quaternion, scale: vector3 });
 const actorPose = object({
   actorId: text, rosterIndex: number, sourceSequence: text, completionIdentity: text,
   worldRoot: pose, localPoseRoot: pose, localBones: array(pose),
@@ -109,25 +172,66 @@ export const readPlayerPresentation = observationPage(object({
 }));
 export const readPlayerCamera = observationPage(object({
   source, presentationSequence: text, verifiedSdkFrame: text, cameraInstanceId: number, width: number, height: number,
-  presentationTick: number, interpolationFactor: number, worldPosition: array(number), worldRotation: array(number),
+  presentationTick: number, interpolationFactor: number, worldPosition: vector3, worldRotation: quaternion,
   worldToCamera: array(number), projection: array(number),
 }));
 export const readPlayerUnavailable = observationPage(object({
   source, presentationSequence: text, channel: text, reason: text, actorRosterIndex: number, boneIndex: number,
 }));
+export const readPlayerInput = object({
+  page: page(object({
+    source, actors: array(object({
+      actorId: text, rosterIndex: number, received: boolean, inputSequence: text, sourceTick: text,
+      values: array(object({ inputId: text, kind: text, value: array(number) })),
+      requests: array(object({ requestId: text, sequence: text, sourceTick: text, expireTick: text, priority: number })),
+    })),
+  })),
+  plans: array(object({ actorId: text, plan: text, planRevision: text, schemeIndex: number })),
+  availability: array(availability),
+});
+export const readPlayerArchiveImage = object({
+  jobId, archiveJobId: identity<'archive'>(), playerBuildId: buildId, contentRevision: text, sceneRevision: text,
+  inputSource: text, inputRevision: text, hostFrame: text, sourceHostFrame: text, presentationSequence: text,
+  width: number, height: number, available: boolean, presentationPrepared: boolean,
+  relativePath: nullable(text), mediaType: text, reason: text,
+});
+const frameImage = object({
+  jobId, archiveJobId: identity<'archive'>(), imageIndex: number, source,
+  sourceHostFrame: text, verifiedHostFrame: text, previousHostFrame: text, previousGameplayTick: text,
+  presentationSequence: text, unityFrame: number, cameraInstanceId: number, width: number, height: number,
+  flipY: boolean, presentationAvailable: boolean, presentationTick: number, elapsedSeconds: number,
+  interpolationFactor: number, mediaType: text, encodedLength: number,
+});
+export const readPlayerFrameImages = observationPage(frameImage);
+export const readPlayerArchive = object({
+  protocol: choice('q3-preview-observation/1'), jobId: identity<'archive'>(), status: text,
+  playerBuildId: buildId, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: text,
+  firstRecordedSdkFrame: number, lastRecordedSdkFrame: number, sdkTickRate: number, scheduleStartFrame: number,
+  captures: array(object({ sdkFrame: number })), availability: array(availability),
+});
 
 export type PlayerJobId = ReturnType<typeof jobId>;
+export type LivePlayer = ReturnType<typeof readLivePlayer>;
+export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
 export type PlayerBuildId = ReturnType<typeof buildId>;
 export type StartPlayerJobRequest = ReturnType<typeof readPlayerJobRequest>;
+export type PlayerCreationRequest = Pick<StartPlayerJobRequest, 'requestId' | 'source' | 'width' | 'height'>;
 export type PlayerJobReceipt = ReturnType<typeof readPlayerJobReceipt>;
 export type PlayerJobStage = PlayerJobReceipt['stage'];
 export type PlayerJob = ReturnType<typeof readPlayerJob>;
 export type PlayerSummary = ReturnType<typeof readPlayerSummary>;
+export type PlayerFramesPage = ReturnType<typeof readPlayerFrames>;
+export type PlayerObservationPage = ReturnType<typeof readPlayerObservations>;
 export type PlayerPoseLayout = ReturnType<typeof readPlayerPoseLayout>;
 export type PlayerLogicPage = ReturnType<typeof readPlayerLogic>;
 export type PlayerPresentationPage = ReturnType<typeof readPlayerPresentation>;
 export type PlayerCameraPage = ReturnType<typeof readPlayerCamera>;
 export type PlayerUnavailablePage = ReturnType<typeof readPlayerUnavailable>;
+export type PlayerInputPage = ReturnType<typeof readPlayerInput>;
+export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
+export type PlayerFrameImage = ReturnType<typeof frameImage>;
+export type PlayerArchive = ReturnType<typeof readPlayerArchive>;
 export type PlayerArchiveRange = { firstSdkFrame: number; lastSdkFrame: number; offset: number; limit: number };
 
 export const newPlayerJobId = (): PlayerJobId => crypto.randomUUID() as PlayerJobId;
+export const readPlayerJobId = jobId;

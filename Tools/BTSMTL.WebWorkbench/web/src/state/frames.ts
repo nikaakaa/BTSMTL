@@ -1,6 +1,8 @@
-import { previewApi } from '../api/preview';
+import { isAbort } from '../api/http';
+import { playerApi } from '../api/player';
+import type { PlayerJobId } from '../api/playerRecords';
 import type { Frame } from '../api/types';
-import { getState, isCurrent } from './store';
+import { consoleActions, getState, isCurrent, useWorkbench } from './store';
 
 export const frameCacheLimit = 512;
 export const framePageSize = 64;
@@ -8,6 +10,7 @@ export const framePageSize = 64;
 // 帧记录 LRU：键为"运行身份 + 帧序号"，Map 插入顺序即最近使用顺序。
 const cache = new Map<string, Frame>();
 const pending = new Map<string, Promise<void>>();
+const controllers = new Map<string, AbortController>();
 const key = (runId: string, index: number) => `${runId}:${index}`;
 
 function remember(runId: string, index: number, frame: Frame) {
@@ -27,14 +30,16 @@ export function cachedFrame(runId: string, index: number): Frame | undefined {
   return frame;
 }
 
-function loadPage(runId: string, page: number, generation: number): Promise<void> {
-  const id = key(runId, page * framePageSize);
+function loadPage(runId: PlayerJobId, page: number, generation: number): Promise<void> {
+  const id = `${generation}:${key(runId, page * framePageSize)}`;
   let request = pending.get(id);
   if (!request) {
-    request = previewApi.frames(runId, page * framePageSize, framePageSize).then(result => {
+    const controller = new AbortController();
+    controllers.set(id, controller);
+    request = playerApi.frames(runId, page * framePageSize, framePageSize, controller.signal).then(result => {
       if (!isCurrent(generation)) return;
       result.items.forEach((frame, offset) => remember(runId, page * framePageSize + offset, frame));
-    }).finally(() => pending.delete(id));
+    }).finally(() => { pending.delete(id); controllers.delete(id); });
     pending.set(id, request);
   }
   return request;
@@ -51,12 +56,13 @@ export async function readFrame(index: number): Promise<Frame | null> {
   const count = summary?.frameCount ?? 0;
   for (const neighbour of [page - 1, page + 1])
     if (neighbour >= 0 && neighbour * framePageSize < count && !cache.has(key(runId, neighbour * framePageSize)))
-      void loadPage(runId, neighbour, generation).catch(() => undefined);
+      void loadPage(runId, neighbour, generation).catch(error => {
+        if (!isAbort(error) && isCurrent(generation)) consoleActions.error('archive', error);
+      });
   return hit ?? cachedFrame(runId, index) ?? null;
 }
 
-// 运行中会话的帧会增长，已缓存页的末尾可能不完整；只清掉该运行最后一页。
-export function invalidateTail(runId: string, frameCount: number) {
-  const start = Math.floor(Math.max(0, frameCount - 1) / framePageSize) * framePageSize;
-  for (let index = start; index < start + framePageSize; index++) cache.delete(key(runId, index));
-}
+useWorkbench.subscribe((next, previous) => {
+  if (next.generation === previous.generation) return;
+  for (const controller of controllers.values()) controller.abort();
+});

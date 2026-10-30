@@ -234,6 +234,8 @@ export interface Frame {
   geometry: FrameGeometry;
   rawJson: string;
   route: RouteFrame | null;
+  source: import('./playerRecords').PlayerFramesPage['items'][number]['source'];
+  availability: Availability[];
 }
 
 export interface ObservationPage extends RangePage<Frame> {
@@ -516,44 +518,9 @@ export interface PlayerBuild {
   rawJson: string;
 }
 
-export type AlignmentState = 'matched' | 'mismatch' | 'pending' | 'no-dotnet-record' | 'live-input' | 'not-loaded';
-
-export interface Alignment {
-  state: AlignmentState;
-  comparedFrames: number;
-  firstMismatchFrame: number | null;
-  lastPlayerFrame: number;
-  changeKind: string | null;
-  reason: string | null;
-}
-
 export type LiveProcessState = 'starting' | 'running' | 'exited' | (string & {});
 
-export interface PlayerPreviewTarget {
-  liveId: string;
-  playerBuildId: string;
-  scene: string;
-  sceneRevision: string;
-  source: RunSource | { kind: 'device'; lastSdkFrame?: number };
-}
-
-// `/api/preview/live` 的进程描述；hello 与 player 为播放器原样回报。
-export interface LivePlayer {
-  liveId: string;
-  buildId: string;
-  startedAt: string;
-  state: LiveProcessState;
-  exitCode: number | null;
-  width: number;
-  height: number;
-  runId: string | null;
-  hello: unknown;
-  player: unknown;
-  alignment: Alignment;
-  previewTarget: PlayerPreviewTarget | null;
-  viewers: number;
-  latestVideoFrame: number | null;
-}
+export type { LivePlayer, PlayerPreviewTarget } from './playerRecords';
 
 export interface StartLivePlayerRequest {
   requestId: string;
@@ -599,7 +566,6 @@ export interface InputCommand {
 }
 
 export type LiveCommand =
-  | { type: 'load'; commandId: string; runId: string }
   | { type: 'load'; commandId: string; scene: string; sceneRevision: string; inputMode: 'device' }
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
   | { type: 'step'; commandId: string; count: number }
@@ -627,8 +593,6 @@ export interface ViewerLive {
   buildId: string;
   state: LiveProcessState;
   exitCode: number | null;
-  runId: string | null;
-  alignment: Alignment;
   player: ViewerPlayer | null;
   rawJson: string;
 }
@@ -656,7 +620,7 @@ export interface PlayerPick {
 
 export type ViewerMessage =
   | { type: 'status'; live: ViewerLive }
-  | { type: 'frames'; alignment: Alignment; items: { hostFrame: string; consistency: Consistency }[]; rawJson: string }
+  | { type: 'frames'; items: { hostFrame: string }[]; rawJson: string }
   | PlayerAck
   | PlayerPick
   | { type: 'error'; error: string; displayName?: string; rawJson?: string }
@@ -709,93 +673,7 @@ export interface AnimationLibrary {
   clips: AnimationClip[];
 }
 
-// ── 播放器运行档案（/api/preview/player-jobs） ──
-
-export interface PlayerArchiveRequest {
-  requestId: string;
-  playerBuildId: string;
-  scene: string;
-  sceneRevision: string;
-  source: { kind: string } & Record<string, unknown>;
-  firstSdkFrame: number;
-  lastSdkFrame: number;
-  captureFrames: number[];
-  outputDirectory: string;
-}
-
-export interface PlayerArchiveJob {
-  request: PlayerArchiveRequest;
-  stage: 'queued' | 'running' | 'completed' | 'failed' | 'unavailable' | 'rejected' | 'cancelled';
-  acceptedAt: string;
-  finishedAt: string | null;
-  archivePath: string | null;
-  error: string | null;
-  cachedFrom: string | null;
-}
-
-export interface PlayerArchiveJobs {
-  capacity: number;
-  queued: number;
-  items: PlayerArchiveJob[];
-}
-
-export interface ArchiveSummary extends Summary {
-  playerBuildId: string;
-  sceneRevision: string;
-  inputSource: string;
-  inputRevision: string;
-  availability: Availability[];
-}
-
-export interface ArchiveFrameSource {
-  sdkFrame: string;
-  gameplayTick: string;
-}
-
-export interface ArchiveLogicRecord {
-  source: ArchiveFrameSource;
-  checksum: string;
-  bodies: number[][];
-}
-
-export interface ArchiveLogicPage {
-  bodyColumns: string[];
-  page: { items: ArchiveLogicRecord[]; total: number; nextOffset: number | null };
-}
-
-export interface ArchiveRig {
-  actorId: string;
-  rosterIndex: number;
-  rigId: string;
-  bones: string[];
-  parents: number[];
-}
-
-export interface ArchivePoseLayout {
-  coordinates: string;
-  units: string;
-  actors: ArchiveRig[];
-}
-
-export interface ArchivePose extends Pose {
-  scale: Vec3;
-}
-
-export interface ArchiveActorPose {
-  actorId: string;
-  rosterIndex: number;
-  worldRoot: ArchivePose;
-  localPoseRoot: ArchivePose;
-  localBones: ArchivePose[];
-}
-
-export interface ArchivePresentationRecord {
-  source: ArchiveFrameSource;
-  verifiedSdkFrame: string;
-  interpolationFactor: number;
-  actors: ArchiveActorPose[];
-}
-
-export interface ArchivePage<T> {
-  page: { items: T[]; total: number; nextOffset: number | null };
-}
+export type { PlayerPoseLayout as ArchivePoseLayout } from './playerRecords';
+export type ArchivePose = import('./playerRecords').PlayerPresentationPage['page']['items'][number]['actors'][number]['worldRoot'];
+export type ArchiveLogicRecord = import('./playerRecords').PlayerLogicPage['page']['items'][number];
+export type ArchivePresentationRecord = import('./playerRecords').PlayerPresentationPage['page']['items'][number];

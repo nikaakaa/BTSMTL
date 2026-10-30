@@ -55,8 +55,9 @@ function LogicView() {
       const state = getState();
       try {
         created.setGeometry(state.geometry);
-        if (!state.frame || !state.frameKey) return;
+        if (!state.archiveFrame || !state.frame || !state.frameKey) { created.clearFrame(); drawnKey = null; return; }
         created.draw(state.frame);
+        created.drawArchive(state.archiveLayout, state.archiveFrame);
         drawnKey = state.frameKey;
         if (!fitted) { fitted = true; created.fit(); }
       } catch (error) {
@@ -65,7 +66,7 @@ function LogicView() {
     };
     apply();
     const unsubscribe = useWorkbench.subscribe((state, previous) => {
-      if (state.frame !== previous.frame || state.geometry !== previous.geometry) apply();
+      if (state.frame !== previous.frame || state.archiveFrame !== previous.archiveFrame || state.geometry !== previous.geometry) apply();
     });
     return () => {
       unsubscribe();
@@ -80,7 +81,7 @@ function LogicView() {
       <PanelBar>
         <Button variant="ghost" onClick={() => scene.current?.fit()}>适配角色</Button>
         <BarSeparator />
-        <BarLabel>{geometryAvailable === null ? '' : geometryAvailable ? '世界 · 接收体 · 扫掠 · 接触' : '根坐标轴'}</BarLabel>
+        <BarLabel>{geometryAvailable ? 'Player 档案 · 世界 · 逻辑根 · 表现骨架' : 'Player 档案 · 逻辑根 · 表现骨架'}</BarLabel>
       </PanelBar>
       {failure !== null && <ErrorLine text="逻辑视图绘制失败" entryId={failure} />}
       <div ref={host} className={styles.canvas} />

@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  Alignment, AuthorTimeline, Availability, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
-  InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlaybackState, PlayerBuild, PlayerInputChoice, RouteFrame,
-  RunReceipt, Sources,
-  Summary, ViewerLive,
+  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
+  InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
+  Sources, ViewerLive,
 } from '../api/types';
+import type {
+  PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
+  PlayerJobReceipt, PlayerSummary, PlayerUnavailablePage,
+} from '../api/playerRecords';
 
 // ── connection ──
 export interface ConnectionSlice {
@@ -23,7 +26,6 @@ export interface ContentSlice {
   replayId: string | null;
   inputCatalog: InputCatalog | null;
   inputChoices: PlayerInputChoice[];
-  interactive: boolean;
 }
 
 // ── run ──
@@ -48,16 +50,40 @@ export interface RunData {
   frameKey: string | null;
   // 运行失败或未启动时的原因与控制台记录。
   failure: { reason: string; entryId: number } | null;
+  // 播放器档案：骨架布局与游标所在 SDK 帧的逻辑、骨骼记录；读取中保留上一帧。
+  archiveLayout: ArchivePoseLayout | null;
+  archiveFrame: ArchiveFrame | null;
+  archiveMetadata: PlayerArchive | null;
+  archiveImage: ArchiveImage | null;
 }
 
+export interface ArchiveFrame {
+  hostFrame: string;
+  logic: ArchiveLogicRecord | null;
+  presentations: ArchivePresentationRecord[];
+  cameras: PlayerCameraPage['page']['items'];
+  input: PlayerInputPage['page']['items'][number] | null;
+  unavailable: PlayerUnavailablePage['page']['items'];
+  availability: Availability[];
+}
+
+interface ArchiveImageObservation {
+  presentation: ArchivePresentationRecord | null;
+  camera: PlayerCameraPage['page']['items'][number] | null;
+  overlayReason: string | null;
+}
+
+export type ArchiveImage = (
+  | { kind: 'capture'; metadata: PlayerArchiveImage; image: Blob }
+  | { kind: 'frame'; metadata: PlayerFrameImage; image: Blob }
+) & ArchiveImageObservation | { kind: 'unavailable'; hostFrame: string; reason: string };
+
 export interface RunSlice extends RunData {
-  runs: RunReceipt[];
-  runId: string | null;
-  receipt: RunReceipt | null;
-  summary: Summary | null;
+  archiveJobs: PlayerJobReceipt[];
+  runId: PlayerJobId | null;
+  receipt: PlayerJobReceipt | null;
+  summary: PlayerSummary | null;
   sealed: boolean;
-  // 运行中 .NET 会话的宿主播放状态；已封存运行为 null。
-  hostPlayback: PlaybackState | null;
   // 已封存运行在本页回看播放。
   reviewing: boolean;
   generation: number;
@@ -66,6 +92,7 @@ export interface RunSlice extends RunData {
 export const emptyRunData: RunData = {
   routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
   timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
+  archiveLayout: null, archiveFrame: null, archiveMetadata: null, archiveImage: null,
 };
 
 // ── cursor：只能由 transport 写入 ──
@@ -73,7 +100,6 @@ export interface CursorSlice {
   frameIndex: number;
   hostFrame: string | null;
   seconds: number | null;
-  followLive: boolean;
 }
 
 // ── player ──
@@ -90,7 +116,7 @@ export interface PlayerSlice {
   liveId: string | null;
   live: ViewerLive | null;
   viewerOpen: boolean;
-  alignment: Alignment | null;
+  playerViewport: { width: number; height: number } | null;
   targetFrame: number | null;
   actualFrame: string | null;
   pendingSeek: { commandId: string; frame: number } | null;
@@ -150,7 +176,7 @@ export type WorkbenchState = ConnectionSlice & ContentSlice & RunSlice & CursorS
 
 export const consoleLimit = 500;
 
-export const initialCursor: CursorSlice = { frameIndex: 0, hostFrame: null, seconds: null, followLive: false };
+export const initialCursor: CursorSlice = { frameIndex: 0, hostFrame: null, seconds: null };
 
 export const initialPlayerTarget = {
   targetFrame: null, actualFrame: null, pendingSeek: null, lastCommand: null,
@@ -160,14 +186,13 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
   sources: null, scenePath: null, replayId: null, inputCatalog: null, inputChoices: [],
-  interactive: false,
 
-  runs: [], runId: null, receipt: null, summary: null, sealed: false, hostPlayback: null, reviewing: false,
+  archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,
 
   ...initialCursor,
 
-  playerBuilds: null, lives: [], liveId: null, live: null, viewerOpen: false, alignment: null, ...initialPlayerTarget, capturing: false,
+  playerBuilds: null, lives: [], liveId: null, live: null, viewerOpen: false, playerViewport: null, ...initialPlayerTarget, capturing: false,
 
   identity: null, time: 0, playing: false,
 
@@ -230,32 +255,26 @@ export const contentActions = {
   setInputChoices(inputChoices: PlayerInputChoice[]) {
     set({ inputChoices });
   },
-  setInteractive(interactive: boolean) {
-    set({ interactive });
-  },
 };
 
 export const runActions = {
-  setRuns(runs: RunReceipt[]) {
-    set({ runs });
+  setArchiveJobs(archiveJobs: PlayerJobReceipt[]) {
+    set({ archiveJobs });
   },
   // 切换运行：递增代次，清空依赖旧运行的状态；cursor 由 transport.reset 归零。
-  selectRun(runId: string | null): number {
-    const generation = bumpGeneration();
+  selectRun(runId: PlayerJobId | null): number {
+    const generation = getState().generation + 1;
     set({
-      runId, receipt: null, summary: null, sealed: false, hostPlayback: null, reviewing: false,
+      generation, runId, receipt: null, summary: null, sealed: false, reviewing: false,
       selection: null, ...initialCursor, ...emptyRunData,
     });
     return generation;
   },
-  setReceipt(generation: number, receipt: RunReceipt) {
-    if (isCurrent(generation)) set({ receipt });
+  setReceipt(generation: number, receipt: PlayerJobReceipt) {
+    if (isCurrent(generation)) set({ receipt, runId: receipt.jobId });
   },
-  setSummary(generation: number, summary: Summary, sealed: boolean) {
+  setSummary(generation: number, summary: PlayerSummary, sealed: boolean) {
     if (isCurrent(generation)) set({ summary, sealed });
-  },
-  setHostPlayback(generation: number, hostPlayback: PlaybackState | null) {
-    if (isCurrent(generation)) set({ hostPlayback });
   },
   setData(generation: number, data: Partial<RunData>) {
     if (isCurrent(generation)) set(data);

@@ -14,6 +14,7 @@ export function Toolbar() {
       <div className={styles.left}>
         <ContentChoice />
         <InputChoice />
+        <ArchiveInputChoice />
         <RunChoice />
         <RunMenu />
       </div>
@@ -41,10 +42,18 @@ function ContentChoice() {
 }
 
 function InputChoice() {
+  const { choices, replayId } = useWorkbench(useShallow(state => ({ choices: state.sources?.replays, replayId: state.replayId })));
+  return <Select label="输入来源" placeholder="选择输入来源" value={replayId}
+    options={(choices ?? []).map(choice => ({ value: choice.id, label: choice.displayName }))}
+    disabled={!choices?.length} tip={choices?.length ? undefined : '宿主尚未提供输入来源'}
+    onChange={id => contentActions.selectReplay(id)} />;
+}
+
+function ArchiveInputChoice() {
   const { roots, inputRoot, runId } = useWorkbench(useShallow(state => ({
     roots: state.inputTimeline?.roots, inputRoot: state.inputRoot, runId: state.runId,
   })));
-  if (!runId) return null;
+  if (!runId || !roots?.length) return null;
   const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: `输入方案：${root.displayName}` }));
   return (
     <Select label="输入方案" placeholder="输入方案" value={inputRoot} options={options}
@@ -54,31 +63,23 @@ function InputChoice() {
 }
 
 function RunChoice() {
-  const { runs, runId } = useWorkbench(useShallow(state => ({ runs: state.runs, runId: state.runId })));
+  const { jobs, runId } = useWorkbench(useShallow(state => ({ jobs: state.archiveJobs, runId: state.runId })));
+  const options = jobs.map(job => ({ value: job.jobId, label: runLabel(job) }));
   return (
-    <Select label="运行" placeholder="选择运行" value={runId} disabled={!runs.length}
-      tip={runs.length ? undefined : '还没有运行'}
-      options={runs.map(run => ({ value: run.jobId, label: runLabel(run) }))}
+    <Select label="运行" placeholder="选择运行" value={runId} disabled={!options.length}
+      tip={options.length ? undefined : '还没有运行'}
+      options={options}
       onChange={id => session.selectRun(id)} />
   );
 }
 
 function RunMenu() {
-  const state = useWorkbench(useShallow(state => ({
-    interactive: state.interactive, followLive: state.followLive, receipt: state.receipt,
-    sources: state.sources, scenePath: state.scenePath, replayId: state.replayId, hostAvailable: state.hostAvailable,
-  })));
+  useWorkbench(useShallow(state => ({ liveId: state.liveId, sources: state.sources,
+    scenePath: state.scenePath, replayId: state.replayId, hostAvailable: state.hostAvailable, playerViewport: state.playerViewport })));
   const startBlocked = session.canStart();
-  const running = state.receipt?.stage === 'accepted' || state.receipt?.stage === 'running';
   const entries: MenuEntry[] = [
     { label: '新建运行', onSelect: () => void session.startRun(), disabled: !!startBlocked, tip: startBlocked },
-    { kind: 'check', label: '启动后暂停', checked: state.interactive, onChange: checked => contentActions.setInteractive(checked) },
   ];
-  if (running) {
-    entries.push({ kind: 'separator' });
-    entries.push({ kind: 'check', label: '跟随实时帧', checked: state.followLive, onChange: checked => transport.setFollowLive(checked) });
-    entries.push({ label: '取消运行', onSelect: () => transport.cancelRun() });
-  }
   entries.push({ kind: 'separator' }, { label: '刷新列表', onSelect: () => void session.refresh() });
   return <MenuButton label="运行菜单" entries={entries} caret>运行</MenuButton>;
 }
@@ -100,7 +101,7 @@ export function useTransportState() {
         next = state.live?.player?.state === 'paused' ? null : '需要先暂停';
       } else {
         if (state.frameIndex <= 0) previous = '已是第一帧';
-        if (state.frameIndex >= count - 1 && !(source === 'dotnet-session' && state.hostPlayback === 'paused'))
+        if (state.frameIndex >= count - 1)
           next = '已是最后一帧';
       }
     }
@@ -128,17 +129,16 @@ function Transport() {
   );
 }
 
-// 帧号框显示 SDK 帧；输入后换算成帧序号经 transport 跳转。
 export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
   const view = useWorkbench(useShallow(state => {
     if (transport.source() === 'player-live') {
       const player = state.live?.player;
       return player ? { frame: Number(player.hostFrame), last: Number(player.lastFrame ?? player.hostFrame), seconds: null } : null;
     }
-    if (state.hostFrame === null || !state.routeFrames.length) return null;
+    if (!state.summary?.frameCount) return null;
     return {
-      frame: Number(state.hostFrame),
-      last: Number(state.routeFrames[state.routeFrames.length - 1].hostFrame),
+      frame: state.frameIndex,
+      last: state.summary.frameCount - 1,
       seconds: state.seconds,
     };
   }));
@@ -146,17 +146,14 @@ export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
   const commit = (value: number | null) => {
     if (value === null) return;
     if (transport.source() === 'player-live') { transport.seek(value); return; }
-    const frames = getState().routeFrames;
-    let index = 0;
-    while (index + 1 < frames.length && Number(frames[index + 1].hostFrame) <= value) index++;
-    transport.seek(index);
+    transport.seek(value);
   };
   return (
     <div className={styles.frame}>
       <NumberField.Root value={view.frame} onValueCommitted={commit} step={1}>
-        <NumberField.Input className={styles.frameInput} aria-label="帧号" />
+        <NumberField.Input className={styles.frameInput} aria-label={transport.source() === 'player-live' ? 'SDK 帧' : '记录序号'} />
       </NumberField.Root>
-      <span>/ {view.last} 帧</span>
+      <span>/ {view.last} {transport.source() === 'player-live' ? '帧' : '记录'}</span>
       {showSeconds && view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
   );

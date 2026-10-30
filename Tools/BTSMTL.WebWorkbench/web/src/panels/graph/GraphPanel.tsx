@@ -98,19 +98,11 @@ interface EdgeData extends Record<string, unknown> {
 type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
 export function GraphPanel() {
-  const { runId, graphs, availability } = useWorkbench(useShallow(state => ({
-    runId: state.runId, graphs: state.graphs, availability: state.graphAvailability,
-  })));
-  // 没选运行时显示打开的技能（在 Timeline 面板选技能）。
+  const graphs = useWorkbench(state => state.graphs);
   const opened = useAuthoring(useShallow(state => ({ skill: state.skill, loading: state.loading, error: state.documentError })));
-  if (!runId) {
-    if (!opened.skill) return <ReportEmpty text="在 Timeline 选择一个技能，或选择一个运行" />;
-    if (opened.loading || !graphs) return <ReportEmpty text="读取中" />;
-    if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
-    return <GraphView graphs={graphs} />;
-  }
-  if (!graphs) return <ReportEmpty text="读取中" />;
-  if (!graphs.length) return <ReportEmpty text={availability.find(item => item.channel === 'graph-definitions')?.reason || '本次运行没有节点图'} />;
+  if (!opened.skill) return <ReportEmpty text="在 Timeline 选择一个技能" />;
+  if (opened.loading || !graphs) return <ReportEmpty text="读取中" />;
+  if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   return <GraphView graphs={graphs} />;
 }
 

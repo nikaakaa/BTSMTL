@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-import type { Frame, Geometry, Pose, SweepSegment, Vec3 } from '../../api/types';
+import type { ArchivePose, ArchivePoseLayout, Frame, Geometry, Pose, SweepSegment, Vec3 } from '../../api/types';
+import type { ArchiveFrame } from '../../state/store';
 
 // 逻辑视图的 three 场景。
 // 世界几何只在几何数据变化时建一次；按帧只改角色与查询对象的变换，查询对象从对象池取用。
@@ -11,6 +12,11 @@ const vector = (value: Vec3) => new THREE.Vector3(value[0], value[1], value[2]);
 function pose(object: THREE.Object3D, value: Pose) {
   object.position.set(value.position[0], value.position[1], value.position[2]);
   object.quaternion.set(value.rotation[0], value.rotation[1], value.rotation[2], value.rotation[3]);
+}
+
+function matrix(value: ArchivePose): THREE.Matrix4 {
+  return new THREE.Matrix4().compose(vector(value.position),
+    new THREE.Quaternion(value.rotation[0], value.rotation[1], value.rotation[2], value.rotation[3]), vector(value.scale));
 }
 
 function primitive(kind: string, radius: number, halfLength: number, extents: Vec3 | []): THREE.BufferGeometry {
@@ -46,6 +52,7 @@ export class LogicScene {
   private actorRoots = new Map<string, THREE.Group>();
   private sweepLines: THREE.LineSegments;
   private contactLines: THREE.LineSegments;
+  private skeletonLines: THREE.LineSegments;
   private contactMarkers: THREE.Mesh[] = [];
   private contactGeometry = new THREE.SphereGeometry(0.045, 10, 8);
   private contactMaterial: THREE.Material | null = null;
@@ -70,7 +77,8 @@ export class LogicScene {
     this.grid = new THREE.GridHelper(40, 40, this.colors.grid, this.colors['grid-minor']);
     this.sweepLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors['sweep-end'] }));
     this.contactLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors.contact }));
-    this.queries.add(this.sweepLines, this.contactLines);
+    this.skeletonLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: this.colors.receiver }));
+    this.queries.add(this.sweepLines, this.contactLines, this.skeletonLines);
     this.scene.add(this.grid, this.world, this.actors, this.queries);
     const Observer = (view as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
     this.resize = new Observer(() => {
@@ -183,6 +191,7 @@ export class LogicScene {
   }
 
   draw(frame: Frame) {
+    this.actors.visible = this.queries.visible = true;
     const present = new Set<string>();
     for (const actor of frame.actors) {
       const root = this.actorRoot(actor.id);
@@ -226,6 +235,32 @@ export class LogicScene {
     });
     for (let index = frame.geometry.contacts.length; index < this.contactMarkers.length; index++) this.contactMarkers[index].visible = false;
     this.setLines(this.contactLines, contactPoints);
+    this.requestRender();
+  }
+
+  clearFrame() {
+    this.actors.visible = this.queries.visible = this.skeletonLines.visible = false;
+    this.requestRender();
+  }
+
+  drawArchive(layout: ArchivePoseLayout | null, frame: ArchiveFrame) {
+    const actors = frame.presentations.at(-1)?.actors ?? [];
+    const points: number[] = [];
+    for (const actor of actors) {
+      const rig = layout?.actors.find(item => item.actorId === actor.actorId && item.rosterIndex === actor.rosterIndex);
+      if (!rig) continue;
+      const base = matrix(actor.worldRoot).multiply(matrix(actor.localPoseRoot));
+      const world: THREE.Matrix4[] = [];
+      actor.localBones.forEach((bone, index) => {
+        const parent = rig.parents[index];
+        world[index] = (parent >= 0 ? world[parent] : base).clone().multiply(matrix(bone));
+        if (parent < 0) return;
+        const from = new THREE.Vector3().setFromMatrixPosition(world[parent]);
+        const to = new THREE.Vector3().setFromMatrixPosition(world[index]);
+        points.push(from.x, from.y, -from.z, to.x, to.y, -to.z);
+      });
+    }
+    this.setLines(this.skeletonLines, points);
     this.requestRender();
   }
 

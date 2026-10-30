@@ -1,36 +1,25 @@
 import { playerApi } from '../api/player';
-import { previewApi } from '../api/preview';
-import type { LiveCommand, LiveCommandResult, PlaybackCommand } from '../api/types';
+import type { LiveCommand, LiveCommandResult } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
-// 唯一控制入口：工具栏、Timeline、快捷键都调用这里；cursor 只在这里写入。
-//
-// 来源                         play / pause            step                 seek
-// sealed                       本页按帧秒数回看        移动 cursor          移动 cursor
-// sealed-with-player           同上，并向播放器跳帧    同上                 同上
-// dotnet-session               发往 /controls          +1 发 Step           只移动 cursor
-// player-live（离线包试玩）    发给播放器              +1 发 step           发给播放器
-export type TransportSource = 'sealed' | 'sealed-with-player' | 'dotnet-session' | 'player-live';
+export type TransportSource = 'sealed' | 'player-live';
 
 const source = 'transport';
-const pollMilliseconds = 500;
 
 // 帧序号对应的宿主帧与秒数，由读取运行路线的服务提供。
+export type ArchiveTimebase = Map<number, { hostFrame: string; seconds: number }>;
 interface Timebase {
   runId: string;
-  hostFrames: string[];
-  seconds: number[];
+  frames: ArchiveTimebase;
 }
 let timebase: Timebase | null = null;
 let review: { generation: number; origin: number; started: number; handle: number } | null = null;
 
 export function transportSource(): TransportSource | null {
-  const { liveId, live, runId, receipt, sealed } = getState();
+  const { liveId, live, runId, sealed } = getState();
+  if (runId) return sealed ? 'sealed' : null;
   if (liveId && live?.player?.inputMode === 'device') return 'player-live';
-  if (!runId) return null;
-  if (receipt && (receipt.stage === 'accepted' || receipt.stage === 'running')) return 'dotnet-session';
-  if (!sealed) return null;
-  return liveId && live?.runId === runId ? 'sealed-with-player' : 'sealed';
+  return null;
 }
 
 function frameCount(): number {
@@ -41,8 +30,8 @@ function writeCursor(frameIndex: number) {
   const tb = timebase && timebase.runId === getState().runId ? timebase : null;
   useWorkbench.setState({
     frameIndex,
-    hostFrame: tb?.hostFrames[frameIndex] ?? null,
-    seconds: tb?.seconds[frameIndex] ?? null,
+    hostFrame: tb?.frames.get(frameIndex)?.hostFrame ?? null,
+    seconds: tb?.frames.get(frameIndex)?.seconds ?? null,
   });
 }
 
@@ -51,10 +40,6 @@ function moveCursor(frameIndex: number) {
   if (!count) return;
   const index = Math.max(0, Math.min(count - 1, Math.trunc(frameIndex)));
   if (index !== getState().frameIndex || getState().hostFrame === null) writeCursor(index);
-  if (transportSource() === 'sealed-with-player') {
-    const hostFrame = getState().hostFrame;
-    if (hostFrame !== null) seekPlayer(Number(hostFrame));
-  }
 }
 
 // ── 已封存运行：按宿主帧秒数回看（按真实流逝时间找到最后一个不晚于目标秒数的帧） ──
@@ -75,14 +60,16 @@ function startReview() {
     return;
   }
   if (getState().frameIndex >= count - 1) moveCursor(0);
-  const state = { generation, origin: tb.seconds[getState().frameIndex] ?? 0, started: performance.now(), handle: 0 };
+  const current = tb.frames.get(getState().frameIndex);
+  if (!current) { consoleActions.log('warn', source, '当前帧时间尚未读取，无法回看'); return; }
+  const state = { generation, origin: current.seconds, started: performance.now(), handle: 0 };
   const advance = (now: number) => {
     if (review !== state) return;
     if (!isCurrent(state.generation)) { stopReview(); return; }
     const target = state.origin + (now - state.started) / 1000;
     const last = frameCount() - 1;
     let index = getState().frameIndex;
-    while (index < last && (tb.seconds[index + 1] ?? Infinity) <= target) index++;
+    while (index < last && (tb.frames.get(index + 1)?.seconds ?? Infinity) <= target) index++;
     if (index !== getState().frameIndex) moveCursor(index);
     if (index >= last) { stopReview(); return; }
     state.handle = requestAnimationFrame(advance);
@@ -90,25 +77,6 @@ function startReview() {
   review = state;
   useWorkbench.setState({ reviewing: true });
   state.handle = requestAnimationFrame(advance);
-}
-
-// ── 运行中 .NET 会话：/controls，submitted 时按命令身份重查 ──
-
-async function control(command: PlaybackCommand) {
-  const { runId, generation } = getState();
-  if (!runId) return;
-  const commandId = crypto.randomUUID();
-  try {
-    let result = await previewApi.control(runId, { commandId, command });
-    while (result.stage === 'submitted' && isCurrent(generation)) {
-      await new Promise(resolve => setTimeout(resolve, pollMilliseconds));
-      if (!isCurrent(generation)) return;
-      result = await previewApi.readControl(runId, commandId);
-    }
-    if (result.stage === 'rejected') consoleActions.log('error', source, result.error ?? `${command} 被拒绝`, JSON.stringify(result));
-  } catch (error) {
-    consoleActions.error(source, error);
-  }
 }
 
 // ── 播放器命令：记录 sent / submitted / applied / rejected ──
@@ -164,8 +132,8 @@ export const transport = {
   source: transportSource,
 
   // 读取路线后由运行服务登记帧序号与宿主帧、秒数的对应；cursor 同步补齐。
-  setTimebase(runId: string, hostFrames: string[], seconds: number[]) {
-    timebase = { runId, hostFrames, seconds };
+  setTimebase(runId: string, frames: ArchiveTimebase) {
+    timebase = { runId, frames };
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 
@@ -181,21 +149,10 @@ export const transport = {
     useWorkbench.setState({ targetFrame: null, pendingSeek: null });
   },
 
-  // 运行中会话帧数增长时调用；跟随实时帧时 cursor 移到最新帧。
-  framesGrown() {
-    if (getState().followLive) moveCursor(frameCount() - 1);
-  },
-
-  setFollowLive(followLive: boolean) {
-    useWorkbench.setState({ followLive });
-    if (followLive) moveCursor(frameCount() - 1);
-  },
-
   isPlaying(): boolean {
     const state = getState();
     switch (transportSource()) {
-      case 'sealed': case 'sealed-with-player': return state.reviewing;
-      case 'dotnet-session': return state.hostPlayback === 'playing';
+      case 'sealed': return state.reviewing;
       case 'player-live': return state.live?.player?.state === 'playing';
       default: return false;
     }
@@ -203,16 +160,14 @@ export const transport = {
 
   play() {
     switch (transportSource()) {
-      case 'sealed': case 'sealed-with-player': startReview(); break;
-      case 'dotnet-session': void control('Play'); break;
+      case 'sealed': startReview(); break;
       case 'player-live': void playerCommand({ type: 'play', commandId: crypto.randomUUID() }); break;
     }
   },
 
   pause() {
     switch (transportSource()) {
-      case 'sealed': case 'sealed-with-player': stopReview(); break;
-      case 'dotnet-session': void control('Pause'); break;
+      case 'sealed': stopReview(); break;
       case 'player-live': void playerCommand({ type: 'pause', commandId: crypto.randomUUID() }); break;
     }
   },
@@ -224,14 +179,9 @@ export const transport = {
 
   step(delta: 1 | -1) {
     switch (transportSource()) {
-      case 'sealed': case 'sealed-with-player':
+      case 'sealed':
         stopReview();
         moveCursor(getState().frameIndex + delta);
-        break;
-      case 'dotnet-session':
-        useWorkbench.setState({ followLive: false });
-        if (delta > 0 && getState().hostPlayback === 'paused' && getState().frameIndex >= frameCount() - 1) void control('Step');
-        else moveCursor(getState().frameIndex + delta);
         break;
       case 'player-live':
         if (delta > 0) void playerCommand({ type: 'step', commandId: crypto.randomUUID(), count: 1 });
@@ -239,15 +189,11 @@ export const transport = {
     }
   },
 
-  // .NET 来源按帧序号；离线包试玩按播放器 SDK 帧。
+  // 档案按记录序号；实时试玩按播放器 SDK 帧。
   seek(frame: number) {
     switch (transportSource()) {
-      case 'sealed': case 'sealed-with-player':
+      case 'sealed':
         stopReview();
-        moveCursor(frame);
-        break;
-      case 'dotnet-session':
-        useWorkbench.setState({ followLive: false });
         moveCursor(frame);
         break;
       case 'player-live':
@@ -259,13 +205,6 @@ export const transport = {
   home() { transport.seek(0); },
   end() { transport.seek(transportSource() === 'player-live' ? Number(getState().live?.player?.lastFrame ?? 0) : frameCount() - 1); },
 
-  cancelRun() {
-    const { runId } = getState();
-    if (!runId) return;
-    void previewApi.cancel(runId).then(result => {
-      if (!result.cancellationRequested) consoleActions.log('warn', source, '宿主没有仍在执行的对应进程');
-    }, error => consoleActions.error(source, error));
-  },
 };
 
 // 运行或场景切换时停止回看。

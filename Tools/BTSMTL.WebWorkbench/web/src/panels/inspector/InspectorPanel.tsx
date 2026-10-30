@@ -33,12 +33,10 @@ const kindNames: Record<Selection['kind'], string> = { node: '节点', edge: '�
 
 export function InspectorPanel() {
   const [params, setParams] = usePanelParams<Params>({ locked: null });
-  const { selection, runId } = useWorkbench(useShallow(state => ({ selection: state.selection, runId: state.runId })));
+  const selection = useWorkbench(state => state.selection);
   const skill = useAuthoring(state => state.skill);
   const shown = params.locked ?? selection;
-  // 没选运行时检查打开的技能文档；没有选中对象时提示从节点图或 Timeline 选。
-  const content = runId ? <Content shown={shown} locked={!!params.locked} />
-    : !skill ? <Empty text="选择一个技能或运行" />
+  const content = !skill ? <Empty text="选择一个技能" />
       : shown ? <Content shown={shown} locked={!!params.locked} /> : <SkillSummary />;
   return (
     <div className={styles.root}>
@@ -184,7 +182,7 @@ function RunSummary() {
           <Values fields={frame.fields} />
         </Fold>
       )}
-      <PlayerAlignment />
+      <PlayerStatus />
       {frame?.actors.map(actor => (
         <Fold key={actor.id} title={actor.displayName} kind="var(--track-anim)">
           <Value label="根位置" value={actor.root.position.map(value => value.toFixed(3)).join(', ')} />
@@ -222,27 +220,16 @@ function SkillSummary() {
   );
 }
 
-// 画面面板的逐帧对照明细。
-function PlayerAlignment() {
-  const { live, alignment, targetFrame, actualFrame, lastCommand } = useWorkbench(useShallow(state => ({
-    live: state.live, alignment: state.alignment, targetFrame: state.targetFrame, actualFrame: state.actualFrame,
+function PlayerStatus() {
+  const { live, targetFrame, actualFrame, lastCommand } = useWorkbench(useShallow(state => ({
+    live: state.live, targetFrame: state.targetFrame, actualFrame: state.actualFrame,
     lastCommand: state.lastCommand,
   })));
   if (!live) return null;
   return (
-    <Fold title="画面对照" kind="var(--track-cam)" defaultOpen>
+    <Fold title="播放器" kind="var(--track-cam)" defaultOpen>
       <Value label="播放器进程" mono={false} value={live.state} />
       {live.player && <Values fields={live.player.fields} />}
-      {alignment && (
-        <>
-          <Value label="结论" mono={false} value={alignment.state} />
-          <Value label="已对照帧" value={String(alignment.comparedFrames)} />
-          {alignment.firstMismatchFrame !== null && <Value label="首个不一致" value={String(alignment.firstMismatchFrame)} />}
-          <Value label="播放器最新帧" value={String(alignment.lastPlayerFrame)} />
-          {alignment.changeKind && <Value label="需要的更新" mono={false} value={alignment.changeKind} />}
-          {alignment.reason && <Value label="说明" mono={false} value={alignment.reason} />}
-        </>
-      )}
       {targetFrame !== null && <Value label="目标帧 / 实际帧" value={`${targetFrame} / ${actualFrame ?? '—'}`} />}
       {lastCommand && <Value label="最后命令" value={`${lastCommand.type} · ${lastCommand.stage}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
     </Fold>

@@ -100,8 +100,8 @@ async function selectedPreview(): Promise<PreviewSelection> {
     const live = await playerApi.live(liveId);
     if (live.previewTarget === null)
       return { kind: 'unavailable', reason: '所选 Player 尚无已确认载入的内容，预览未刷新' };
-    const { scene, sceneRevision, source } = live.previewTarget;
-    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId, scene, sceneRevision, source } };
+    const { liveId: targetLiveId, scene, sceneRevision, source } = live.previewTarget;
+    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId, scene, sceneRevision, source } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -176,9 +176,8 @@ function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
   };
 }
 
-// 没有选运行时，各面板直接显示打开的技能：图与 Timeline 取自 JSON，运行结果只在选了运行后叠加。
+// 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
-  if (useWorkbench.getState().runId !== null) return;
   const { documentGraphs, files, skill } = get();
   useWorkbench.setState({
     graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files) : [],
@@ -186,7 +185,7 @@ function publishDocument() {
 }
 
 useWorkbench.subscribe((state, previous) => {
-  if (previous.runId !== null && state.runId === null) publishDocument();
+  if (state.generation !== previous.generation) publishDocument();
 });
 
 async function readDocument(skill: string, signal?: AbortSignal) {

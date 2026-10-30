@@ -46,7 +46,7 @@ function evaluate() {
     currentKey = key;
     delete root().previewImageReady;
   }
-  if (!key || !state.summary || state.frameKey !== key || !state.frame) return;
+  if (!key || !state.summary || state.frameKey !== key || !state.archiveFrame) return;
   const visible = visiblePanels();
   const required = visible.filter(id => {
     const type = panelTypeOf(id);
@@ -63,9 +63,9 @@ function evaluate() {
     .find(entry => entry?.key === key && entry.detail);
   const data = root();
   data.previewRun = state.summary.runId;
-  data.previewFrame = state.frame.hostFrame;
+  data.previewFrame = state.frame?.hostFrame ?? state.hostFrame ?? '';
   data.previewFrameIndex = String(state.frameIndex);
-  data.previewConsistency = state.frame.consistency?.value ?? '';
+  data.previewConsistency = state.frame?.consistency?.value ?? state.archiveFrame?.logic?.checksum ?? '';
   data.previewContent = state.summary.contentRevision;
   if (viewport?.detail) data.previewRendered = viewport.detail;
   else delete data.previewRendered;
