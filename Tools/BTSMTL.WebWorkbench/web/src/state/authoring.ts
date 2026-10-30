@@ -8,6 +8,7 @@ import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../a
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
+import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, useWorkbench } from './store';
 import { playerService } from './player';
 import { session } from './session';
@@ -166,6 +167,7 @@ function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
         id: clip.m_AuthoringId as string, contract: clip.ContractKind as string, displayName: null,
         startSeconds: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(clip.m_EndTimeFPRawValue)),
         graphId: (clip.m_AssetTree as string | undefined) ?? null,
+        easeInSeconds: fpSeconds(numberOf(clip.m_SelfEaseInTimeFPRawValue ?? 0)), easeOutSeconds: fpSeconds(numberOf(clip.m_SelfEaseOutTimeFPRawValue ?? 0)),
       })),
       markers: ((track.m_Markers as JsonObject[] | undefined) ?? []).map(marker => ({
         id: marker.m_AuthoringId as string, seconds: fpSeconds(numberOf(marker.m_TimeFPRawValue)), graphId: marker.m_Graph as string,
@@ -526,6 +528,80 @@ export const authoringActions = {
       }));
     });
     return id;
+  },
+
+  // 切分（照 Unity SplitClip）：原片段止于切点、去掉淡出，副本从切点开始、去掉淡入，权重与淡入淡出曲线按切点拆分；
+  // 动画片段副本的起始偏移后移，位移曲线片段的素材区间在切点分开。tree 等片段没有正式切分。
+  splitClip(documentId: string, clipId: string, seconds: number): string | null {
+    const document = currentDocument(timelinePath(documentId));
+    const source = document ? findTimelineClip(document as JsonObject, clipId) : null;
+    if (!source) throw new Error(`Timeline ${documentId} 中没有片段 ${clipId}`);
+    const kind = source.ContractKind as string;
+    if (kind !== 'animation.clip' && kind !== 'motion-curve.clip') {
+      consoleActions.log('warn', 'Timeline', `片段种类 ${kind} 没有正式切分`);
+      return null;
+    }
+    const start = numberOf(source.m_StartTimeFPRawValue), end = numberOf(source.m_EndTimeFPRawValue), split = fpRaw(seconds);
+    if (split <= start || split >= end) return null;
+    const curves = ['WeightCurve', 'EaseInCurve', 'EaseOutCurve'].filter(key => source[key] && typeof source[key] === 'object');
+    if (curves.some(key => isWeighted(source[key] as JsonObject))) {
+      consoleActions.log('warn', 'Timeline', '片段含权重切线曲线，网页无法与 Unity 一致地拆分，请在 Unity 中切分');
+      return null;
+    }
+    const ratio = (split - start) / (end - start);
+    const id = crypto.randomUUID();
+    authoringActions.edit(timelinePath(documentId), target => {
+      const track = tracksOf(target).find(item => (item.m_Clips as JsonObject[]).some(clip => clip.m_AuthoringId === clipId))!;
+      const first = (track.m_Clips as JsonObject[]).find(clip => clip.m_AuthoringId === clipId)!;
+      const second: JsonObject = { ...cloneJson(first), m_AuthoringId: id, m_StartTimeFPRawValue: split, m_SelfEaseInTimeFPRawValue: 0 };
+      if (kind === 'animation.clip') second.m_ClipInTimeFPRawValue = numberOf(first.m_ClipInTimeFPRawValue) + (split - start);
+      else {
+        const sourceSplit = numberOf(first.m_SourceStartTime) + fpSeconds(split - start);
+        second.m_SourceStartTime = new JsonFloat(sourceSplit);
+        first.m_SourceEndTime = new JsonFloat(sourceSplit);
+      }
+      for (const key of curves) {
+        second[key] = splitCurve(first[key] as JsonObject, ratio, 1);
+        first[key] = splitCurve(first[key] as JsonObject, 0, ratio);
+      }
+      first.m_EndTimeFPRawValue = split;
+      first.m_SelfEaseOutTimeFPRawValue = 0;
+      (track.m_Clips as JsonObject[]).push(sortedObject(second));
+    });
+    return id;
+  },
+
+  // 片段平移与换轨：多选时整体移动同一位移（按帧步长取整后不小于 0）；换轨只移到同一 Timeline 的另一轨道。
+  moveClips(documentId: string, clipIds: string[], deltaSeconds: number, targetTrackId: string | null) {
+    const ids = new Set(clipIds);
+    const delta = fpRaw(deltaSeconds);
+    authoringActions.edit(timelinePath(documentId), document => {
+      const tracks = tracksOf(document);
+      const moving = tracks.flatMap(track => (track.m_Clips as JsonObject[]).filter(clip => ids.has(clip.m_AuthoringId as string))
+        .map(clip => ({ track, clip })));
+      const shift = Math.max(delta, -Math.min(...moving.map(item => numberOf(item.clip.m_StartTimeFPRawValue))));
+      const target = targetTrackId === null ? null : tracks.find(track => track.m_AuthoringId === targetTrackId);
+      if (targetTrackId !== null && !target) throw new Error(`Timeline ${documentId} 中没有轨道 ${targetTrackId}`);
+      for (const { track, clip } of moving) {
+        clip.m_StartTimeFPRawValue = numberOf(clip.m_StartTimeFPRawValue) + shift;
+        clip.m_EndTimeFPRawValue = numberOf(clip.m_EndTimeFPRawValue) + shift;
+        if (target && target !== track) {
+          track.m_Clips = (track.m_Clips as JsonObject[]).filter(item => item !== clip);
+          (target.m_Clips as JsonObject[]).push(clip);
+        }
+      }
+    });
+  },
+
+  // 淡入淡出（自身）时长，秒；不超过片段时长。
+  setClipEase(documentId: string, clipId: string, easeIn: number | null, easeOut: number | null) {
+    authoringActions.edit(timelinePath(documentId), document => {
+      const clip = findTimelineClip(document as JsonObject, clipId);
+      if (!clip) throw new Error(`Timeline ${documentId} 中没有片段 ${clipId}`);
+      const length = numberOf(clip.m_EndTimeFPRawValue) - numberOf(clip.m_StartTimeFPRawValue);
+      if (easeIn !== null) clip.m_SelfEaseInTimeFPRawValue = Math.max(0, Math.min(length - numberOf(clip.m_SelfEaseOutTimeFPRawValue), fpRaw(easeIn)));
+      if (easeOut !== null) clip.m_SelfEaseOutTimeFPRawValue = Math.max(0, Math.min(length - numberOf(clip.m_SelfEaseInTimeFPRawValue), fpRaw(easeOut)));
+    });
   },
 
   setMarkerTime(documentId: string, markerId: string, seconds: number) {

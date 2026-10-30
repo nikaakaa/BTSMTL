@@ -436,6 +436,9 @@ export interface AuthorClip {
   startSeconds: number;
   endSeconds: number;
   graphId: string | null;
+  // 自身淡入淡出时长；只在打开的技能 JSON 中给出，运行回执没有。
+  easeInSeconds?: number;
+  easeOutSeconds?: number;
 }
 
 export interface AuthorTrack {

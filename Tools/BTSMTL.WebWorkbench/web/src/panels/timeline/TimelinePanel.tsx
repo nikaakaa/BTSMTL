@@ -1,10 +1,10 @@
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import {
   TimelineContext, useItem, useRow, useTimelineContext, useTimelineMonitor, type DragItemData, type Range,
-  type ResizeEndEvent, type ResizeItemData, type TimelineContextProps, type UsePanStrategy,
+  type ResizeEndEvent, type ResizeItemData, type UsePanStrategy,
 } from 'dnd-timeline';
 import {
-  createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent,
+  createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent,
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -56,8 +56,19 @@ interface Params {
   focus: string | null;
   // 进入单个 Timeline 前的路线视图范围，返回时恢复。
   routeRange: Range | null;
+  // 编辑吸附（照 Timeline Editor 时间网格）：逻辑 tick、秒间隔或关闭。
+  snap: Snap;
 }
-const defaults: Params = { range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null };
+type Snap = 'tick' | '0.1' | '0.01' | '0.001' | 'none';
+const defaults: Params = {
+  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick',
+};
+
+// 吸附步长（秒）；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
+const snapStep = (snap: Snap | undefined, frameStep: number | null) =>
+  snap === 'none' ? 1 / 65536 : snap && snap !== 'tick' ? Number(snap) : frameStep;
+const SnapContext = createContext<number | null>(null);
+const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * step;
 
 // 一次 Timeline 播放：在显示的段里取游标所在的那次，否则第一次。
 function playbackAt(segments: RouteSegment[], documentId: string, frameIndex: number) {
@@ -130,6 +141,7 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
   });
   const tickRate = useAuthoring(state => state.tickRate);
   const frameStep = frames ? (frames.length > 1 ? frames[1].seconds - frames[0].seconds : 1 / 60) : tickRate ? 1 / tickRate : null;
+  const step = snapStep(params.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
     : { start: 0, end: Math.max(minSpan, documentLength) }, [frames, documentLength]);
   const range = params.range && params.range.end > bounds.start && params.range.start < bounds.end ? params.range : fitRange(bounds);
@@ -164,19 +176,23 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
 
   return (
     <div ref={frame} className={styles.frame}>
-      <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} modifiers={horizontalOnly} sensors={sensors}
+      <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} sensors={sensors}
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
-        {frameStep !== null && <ClipEditing frameStep={frameStep} />}
-        <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
+        <SnapContext.Provider value={step}>
+          {step !== null && <ClipEditing step={step} />}
+          <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
+        </SnapContext.Provider>
       </TimelineContext>
     </div>
   );
 }
 
-// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按帧步长取整，
-// 再减去本段零点得到 Timeline 本地秒数。
-function ClipEditing({ frameStep }: { frameStep: number }) {
+// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按吸附步长取整，
+// 再减去本段零点得到 Timeline 本地秒数。拖到同一 Timeline 的另一条轨道时换轨（目标轨道须能放该种片段）；
+// 拖动框选中的片段时，框选的同一 Timeline 片段整体平移。
+function ClipEditing({ step }: { step: number }) {
   const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
+  const elements = useSkillElements(useAuthoring(state => state.author && !!state.skill));
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
@@ -184,16 +200,41 @@ function ClipEditing({ frameStep }: { frameStep: number }) {
   };
   const write = (edit: ClipEdit | undefined, span: Range, deltaStart: number, deltaEnd: number) => {
     if (!edit) return;
-    const local = (value: number) => Math.round((value - edit.origin) / frameStep) * frameStep;
+    const local = (value: number) => snapTo(value - edit.origin, step);
     const start = Math.max(0, local(span.start + deltaStart));
-    const end = Math.max(start + frameStep, local(span.end + deltaEnd));
+    const end = Math.max(start + step, local(span.end + deltaEnd));
     authoringActions.setClipTime(edit.documentId, edit.clipId, start, end);
   };
+  // 松手处所在的作者轨道（`Timeline/轨道`）。
+  const trackAt = (x: number, y: number) =>
+    (timelineRef.current?.ownerDocument ?? document).elementsFromPoint(x, y)
+      .map(element => element.closest<HTMLElement>('[data-track]')?.dataset.track).find(Boolean) ?? null;
   useTimelineMonitor({
     onDragEnd(event) {
       const data = event.active.data.current as (DragItemData & { edit?: ClipEdit }) | undefined;
+      const edit = data?.edit;
+      if (!data || !edit) return;
       const delta = pixelsToValue(event.delta.x);
-      if (data && delta) write(data.edit, data.span, delta, delta);
+      const local = snapTo(data.span.start + delta - edit.origin, step) - (data.span.start - edit.origin);
+      const boxed = boxedClips.filter(id => id.startsWith(`${edit.documentId}/`));
+      if (boxed.length > 1 && boxed.includes(`${edit.documentId}/${edit.clipId}`)) {
+        if (local) authoringActions.moveClips(edit.documentId, boxed.map(id => id.split('/')[1]), local, null);
+        return;
+      }
+      const pointer = event.activatorEvent as PointerEvent | MouseEvent | null;
+      const target = pointer ? trackAt(pointer.clientX + event.delta.x, pointer.clientY + event.delta.y) : null;
+      const [targetDocument, targetTrack] = target?.split('/') ?? [];
+      if (targetDocument === edit.documentId && targetTrack !== edit.trackId) {
+        const kind = currentClip(edit.documentId, edit.clipId)?.clip.contract;
+        const allowed = !!elements && clipTemplatesFor(elements, trackContract(edit.documentId, targetTrack)).some(template => template.kind === kind);
+        if (allowed) {
+          authoringActions.moveClips(edit.documentId, [edit.clipId], local, targetTrack);
+          return;
+        }
+        consoleActions.log('warn', 'Timeline', `目标轨道不能放 ${kind ?? '该'} 片段，只按时间平移`);
+      }
+      // 平移只按起点吸附，保持时长。
+      if (local) authoringActions.moveClips(edit.documentId, [edit.clipId], local, null);
     },
     onResizeEnd(event: ResizeEndEvent) {
       const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
@@ -204,8 +245,8 @@ function ClipEditing({ frameStep }: { frameStep: number }) {
   return null;
 }
 
-// 片段只在本轨内左右拖动。
-const horizontalOnly: NonNullable<TimelineContextProps['modifiers']> = [({ transform }) => ({ ...transform, y: 0 })];
+// 框选中的片段（选中身份），拖动其中一个时整体平移。
+let boxedClips: string[] = [];
 
 // 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；中键拖动横移。
 const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
@@ -358,8 +399,13 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     transport.seek(nearestFrame(getState().routeFrames, getValueFromScreenX(clientX)));
   }, [getValueFromScreenX]);
 
+  const snap = params.snap ?? 'tick';
   const settings: MenuEntry[] = [
     { kind: 'check', label: '游标离开视图时跟随', checked: params.follow, onChange: follow => setParams({ follow }) },
+    { kind: 'separator' },
+    { kind: 'label', label: '编辑吸附' },
+    ...([['tick', '逻辑 tick'], ['0.1', '0.1 秒'], ['0.01', '0.01 秒'], ['0.001', '0.001 秒'], ['none', '关闭吸附']] as const)
+      .map(([value, label]): MenuEntry => ({ kind: 'check', label, checked: snap === value, onChange: () => setParams({ snap: value }) })),
     { kind: 'separator' },
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
     {
@@ -654,6 +700,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   const selection = useWorkbench(state => state.selection);
   useEffect(() => {
     if (boxed.size && !(selection?.kind === 'clip' && selection.id === boxedSelect.current)) setBoxed(new Set());
+    if (!boxed.size) boxedClips = [];
   }, [selection, boxed]);
 
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -686,6 +733,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
     });
     boxedSelect.current = hits[0]?.dataset.select ?? null;
     setBoxed(new Set(hits.map(element => element.dataset.box!)));
+    boxedClips = hits.map(element => element.dataset.select!);
     selectionActions.select(hits.length ? { kind: 'clip', id: hits[0].dataset.select! } : null);
   };
   const panelWindow = usePanelWindow();
@@ -757,19 +805,21 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   );
 }
 
-function Line({ id, height, head, headClass, children, laneClass }: {
+function Line({ id, height, head, headClass, children, laneClass, track }: {
   id: string;
   height: number;
   head: ReactNode;
   headClass?: string;
   children?: ReactNode;
   laneClass?: string;
+  // 作者轨道（`Timeline/轨道`），拖片段换轨时按松手处查找。
+  track?: string;
 }) {
   const { setNodeRef, rowWrapperStyle, rowStyle, rowSidebarStyle } = useRow({ id, disabled: true });
   return (
     <div className={styles.line} style={{ ...rowWrapperStyle, height }}>
       <div className={headClass} style={rowSidebarStyle}>{head}</div>
-      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane>
+      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane data-track={track}>
         {children}
       </div>
     </div>
@@ -901,7 +951,9 @@ function pasteAfterSelection() {
 function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void): MenuEntry[] {
   const author = useAuthoring(state => state.author && !!state.skill);
   const version = useAuthoring(state => state.version);
-  const tickRate = useAuthoring(state => state.tickRate);
+  // 右键片段时先选中它，菜单随选中重新给出复制与切分。
+  useWorkbench(state => state.selection);
+  const step = useContext(SnapContext) ?? 1 / 60;
   const elements = useSkillElements(author);
   const documentId = row.timeline.documentId;
   const templates = useMemo(() => elements ? clipTemplatesFor(elements, trackContract(documentId, row.track.id)) : [],
@@ -909,11 +961,21 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
     [elements, documentId, row.track.id, version]);
   if (!author) return [{ label: '进入作者模式后可编辑', disabled: true, onSelect: () => {} }];
   if (!elements) return [{ label: '读取中', disabled: true, onSelect: () => {} }];
-  const step = tickRate ? 1 / tickRate : 1 / 60;
-  const local = () => Math.max(0, Math.round((at.current - row.segment.origin) / step) * step);
+  const local = () => Math.max(0, snapTo(at.current - row.segment.origin, step));
   const select = (id: string) => selectionActions.select({ kind: 'clip', id: clipSelectId(documentId, id) });
   const index = row.timeline.tracks.findIndex(track => track.id === row.track.id);
   const picked = selectedClip();
+  // 切分：在点击处切开本轨道上选中的片段（点击位置在打开菜单时才知道，执行时判断）。
+  const splitTarget = picked?.documentId === documentId ? row.track.clips.find(clip => clip.id === picked.clipId) : undefined;
+  const split = () => {
+    const at = local();
+    if (!splitTarget || at <= splitTarget.startSeconds || at >= splitTarget.endSeconds) {
+      consoleActions.log('warn', 'Timeline', '切分位置要在选中片段内部');
+      return;
+    }
+    const id = authoringActions.splitClip(documentId, splitTarget.id, at);
+    if (id) select(id);
+  };
   return [
     { kind: 'label', label: '在此处添加' },
     ...templates.map((template): MenuEntry => ({
@@ -929,6 +991,9 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
       onSelect: () => { const id = authoringActions.pasteClip(documentId, row.track.id, local()); if (id) select(id); },
     },
     { kind: 'separator' },
+    {
+      label: '在此处切分', disabled: !splitTarget, tip: '右键点在选中片段内；动画与位移曲线片段可切分', onSelect: split,
+    },
     { label: '复制所选片段（Ctrl+C）', disabled: !picked, onSelect: copySelection },
     { label: '删除所选（Delete）', onSelect: deleteSelection },
     { kind: 'separator' },
@@ -954,12 +1019,9 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
   const author = useAuthoring(state => state.author && !!state.skill);
   const menu = useTrackMenu(row, at, () => setNaming(true));
   const documentId = row.timeline.documentId;
-  const tickRate = useAuthoring(state => state.tickRate);
-  // 运行秒数换成本 Timeline 的本地秒数，按帧步长取整。
-  const snapLocal = (seconds: number) => {
-    const step = tickRate ? 1 / tickRate : 1 / 60;
-    return Math.max(0, Math.round((seconds - row.segment.origin) / step) * step);
-  };
+  const step = useContext(SnapContext) ?? 1 / 60;
+  // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
+  const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const blends = useMemo(() => blendRegions(row.clips), [row.clips]);
   const segment = row.segment;
@@ -977,7 +1039,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       if (item?.dataset.select) selectionActions.select({ kind: 'clip', id: item.dataset.select });
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) selectionActions.select({ kind: 'track', id: row.selectId });
     }}>
-    <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} head={naming ? (
+    <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} track={`${documentId}/${row.track.id}`} head={naming ? (
       <span className={styles.headButton} style={{ ['--tc' as string]: trackColors[row.trackKind] }}>
         <span className={styles.slot} />
         <TextInput autoFocus defaultValue={row.track.displayName} aria-label="轨道名称" className={styles.nameInput}
@@ -1007,7 +1069,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
       <Positioned start={segment.start} end={segment.end} className={styles.playedRange} />
       {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} next={nextStarts.get(clip.key)!}
-        documentId={row.timeline.documentId} />)}
+        documentId={row.timeline.documentId} trackId={row.track.id} />)}
       {blends.filter(blend => blend.end >= range.start && blend.start <= range.end).map(blend => (
         <Blend key={blend.key} start={blend.start} end={blend.end} />
       ))}
@@ -1045,28 +1107,80 @@ function Positioned({ start, end, className, children, style, title }: {
   );
 }
 
-const Clip = memo(function Clip({ clip, kind, next, documentId }: {
-  clip: ClipInstance; kind: TrackKind; next: number; documentId: string;
+const Clip = memo(function Clip({ clip, kind, next, documentId, trackId }: {
+  clip: ClipInstance; kind: TrackKind; next: number; documentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && !!state.skill);
-  const edit = useMemo<ClipEdit>(() => ({ documentId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
-    [documentId, clip]);
+  const edit = useMemo<ClipEdit>(() => ({ documentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
+    [documentId, trackId, clip]);
   const changed = useAuthoring(state => author && !!state.edited[timelinePath(documentId)]);
+  // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
+  const ease = useMemo(() => author && clip.clip.easeInSeconds !== undefined ? {
+    in: clip.clip.easeInSeconds, out: clip.clip.easeOutSeconds ?? 0,
+    set: (easeIn: number | null, easeOut: number | null) => authoringActions.setClipEase(documentId, clip.clip.id, easeIn, easeOut),
+  } : undefined, [author, clip, documentId]);
   return (
     <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
-      exit={clip.exit} next={next} graphId={clip.clip.graphId} edit={author ? edit : undefined} changed={changed} />
+      exit={clip.exit} next={next} graphId={clip.clip.graphId} edit={author ? edit : undefined} changed={changed} ease={ease} />
   );
 });
 
-// 片段拖动写回作者 JSON 所需的位置：所属 Timeline、片段身份，以及本段的运行秒数零点。
-interface ClipEdit { documentId: string; clipId: string; origin: number }
+// 片段拖动写回作者 JSON 所需的位置：所属 Timeline、轨道、片段身份，以及本段的运行秒数零点。
+interface ClipEdit { documentId: string; trackId: string; clipId: string; origin: number }
+
+interface ClipEase { in: number; out: number; set(easeIn: number | null, easeOut: number | null): void }
+
+// 淡入淡出（照 Timeline Editor）：片段内画出淡入淡出斜线，顶边两端的小方块左右拖动改时长，按吸附步长取整。
+function EaseHandles({ ease, start, end }: { ease: ClipEase; start: number; end: number }) {
+  const { valueToPixels, getValueFromScreenX } = useTimelineContext();
+  const step = useContext(SnapContext) ?? 1 / 60;
+  const [draft, setDraft] = useState<{ side: 'in' | 'out'; seconds: number } | null>(null);
+  const easeIn = draft?.side === 'in' ? draft.seconds : ease.in;
+  const easeOut = draft?.side === 'out' ? draft.seconds : ease.out;
+  const width = valueToPixels(end - start);
+  const inPx = valueToPixels(easeIn), outPx = valueToPixels(easeOut);
+  const handle = (side: 'in' | 'out') => ({
+    onPointerDown: (event: PointerEvent<HTMLSpanElement>) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDraft({ side, seconds: side === 'in' ? ease.in : ease.out });
+    },
+    onPointerMove: (event: PointerEvent<HTMLSpanElement>) => {
+      if (draft?.side !== side) return;
+      const at = getValueFromScreenX(event.clientX);
+      const other = side === 'in' ? ease.out : ease.in;
+      const seconds = snapTo(side === 'in' ? at - start : end - at, step);
+      setDraft({ side, seconds: Math.max(0, Math.min(end - start - other, seconds)) });
+    },
+    onPointerUp: () => {
+      if (draft?.side === side && draft.seconds !== (side === 'in' ? ease.in : ease.out))
+        ease.set(side === 'in' ? draft.seconds : null, side === 'out' ? draft.seconds : null);
+      setDraft(null);
+    },
+    onClick: (event: ReactMouseEvent) => event.stopPropagation(),
+  });
+  return (
+    <>
+      <svg className={styles.easeShape} viewBox={`0 0 ${Math.max(1, width)} 10`} preserveAspectRatio="none" aria-hidden>
+        {inPx > 0 && <polygon points={`0,10 ${inPx},0 0,0`} />}
+        {outPx > 0 && <polygon points={`${width},10 ${width - outPx},0 ${width},0`} />}
+      </svg>
+      {/* 方块中心对准淡入终点、淡出起点，贴边时收在片段内 */}
+      <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, inPx - 3.5)) }}
+        title={`淡入 ${easeIn.toFixed(3)} s · 左右拖动`} {...handle('in')} />
+      <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, width - outPx - 3.5)) }}
+        title={`淡出 ${easeOut.toFixed(3)} s · 左右拖动`} {...handle('out')} />
+    </>
+  );
+}
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // exit 之后的部分压暗；next 为同轨下一个片段的起点，窄片段的名字画在两者之间。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止（照 Timeline Editor）。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId, edit, changed }: {
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId, edit, changed, ease }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number; next: number;
-  graphId: string | null; edit?: ClipEdit; changed?: boolean;
+  graphId: string | null; edit?: ClipEdit; changed?: boolean; ease?: ClipEase;
 }) {
   const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
     id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 6,
@@ -1091,7 +1205,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
           onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           {inside && <span className={styles.clipLabel}>{label}</span>}
-          {band && <><i className={styles.easeIn} /><i className={styles.easeOut} /></>}
+          {band && (ease ? <EaseHandles ease={ease} start={start} end={end} /> : <><i className={styles.easeIn} /><i className={styles.easeOut} /></>)}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
         </button>
         {!inside && outsideWidth > 12 && (

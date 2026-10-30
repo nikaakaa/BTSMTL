@@ -543,6 +543,9 @@ function FieldEditor({ field, item, node, blackboards, identities, onSet }: {
 
 const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_StartTimeFPRawValue', 'm_EndTimeFPRawValue']);
 
+// 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
+const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
+
 export function ClipFields({ documentId, clipId }: { documentId: string; clipId: string }) {
   const skill = useAuthoring(state => state.skill);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
@@ -556,13 +559,13 @@ export function ClipFields({ documentId, clipId }: { documentId: string; clipId:
   return (
     <Fold title="字段" kind="var(--port-enum)" defaultOpen>
       <IdentityList id={listId} />
-      <Row label="起点（秒）"><NumberInput wide label="起点" value={start} min={0}
+      <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
-      <Row label="终点（秒）"><NumberInput wide label="终点" value={end}
+      <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
       {Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key).replace(/FPRawValue$/, '')}（秒）`}>
-          <NumberInput wide label={key} value={fpSeconds(numberOf(clip[key]))} min={0}
+          <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
       ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />)}
