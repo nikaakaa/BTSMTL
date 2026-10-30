@@ -82,7 +82,7 @@ export const readPlayerInputCatalog = object({
       schemes: array(object({ index: number, name: text, rangeEndSeconds: number })),
     })),
     values: array(object({ inputId: text, kind: text, encoding: text })),
-    requests: array(object({ inputId: text, bufferTicks: number, priority: number, timingClass: number })),
+    requests: array(object({ inputId: text, bufferTicks: text, priority: number, timingClass: number })),
   })),
 });
 const replay = object({ kind: choice('replay'), path: text, revision: text });
