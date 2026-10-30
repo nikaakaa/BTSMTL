@@ -51,16 +51,17 @@ namespace BTSMTL.Preview
             m_ContentIdentity = adapter.ContentIdentity;
         }
 
-        public void CaptureCommittedFrame(int frame, bool keyPosition = false)
+        public int CaptureCommittedFrame(int frame, bool keyPosition = false)
         {
             if (m_Adapter.RestoreSupport == PreviewRestoreSupport.RestartOnly ||
                 !keyPosition && frame % m_Interval != 0)
-                return;
+                return -1;
             int slot = m_NextSlot;
             m_Frames[slot] = -1;
             m_Adapter.Capture(slot, frame);
             m_Frames[slot] = frame;
             m_NextSlot = (slot + 1) % m_Frames.Length;
+            return slot;
         }
 
         public PreviewResumeResult RestoreAtOrBefore(int frame)
