@@ -1001,7 +1001,8 @@ namespace BTSMTL.Orchestration
             item.Result = result;
             item.StopCause = stopCause;
             item.WaitReason = waitReason;
-            item.ValueSlot = valueSlot;
+            item.DetailIndex = kind is OrchestrationTraceKind.LoopIterationEnter or OrchestrationTraceKind.LoopIterationComplete
+                ? OperationState(operationIndex).ChildCursor : valueSlot;
             if (kind == OrchestrationTraceKind.Blackboard)
             {
                 m_Blackboards.ReadValue(valueSlot, ref item.Value);
@@ -1042,7 +1043,7 @@ namespace BTSMTL.Orchestration
             item.StateFrameIndex = m_StateDepth == 0 ? -1 : m_States[m_StateDepth - 1].TraceFrameIndex;
             item.Selected = selected;
             item.Passed = passed;
-            item.ValueSlot = -1;
+            item.DetailIndex = -1;
         }
 
         int CaptureTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,

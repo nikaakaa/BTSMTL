@@ -28,7 +28,7 @@ namespace BTSMTL.Orchestration
         public uint StopCause;
         public bool Selected;
         public bool Passed;
-        public int ValueSlot;
+        public int DetailIndex;
         public TValue Value;
         public OrchestrationBlackboardMetadata Blackboard;
         public OrchestrationBlackboardLifetime BlackboardLifetime;

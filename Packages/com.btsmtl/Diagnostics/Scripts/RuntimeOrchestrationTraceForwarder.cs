@@ -205,11 +205,15 @@ namespace BTSMTL.Diagnostics
                             source = m_Edges[item.EdgeIndex];
                         payload.Status = item.Selected ? "Selected" : "Evaluated";
                         break;
+                    case OrchestrationTraceKind.LoopIterationEnter:
+                    case OrchestrationTraceKind.LoopIterationComplete:
+                        payload.LoopIteration = item.DetailIndex;
+                        break;
                     case OrchestrationTraceKind.Blackboard:
-                        if (m_Blackboards.TryGetValue(item.ValueSlot, out RuntimeSourceElementHandle declaration))
+                        if (m_Blackboards.TryGetValue(item.DetailIndex, out RuntimeSourceElementHandle declaration))
                             source = declaration;
                         payload.Value = m_Capture(in item.Value);
-                        payload.BlackboardStateSlot = item.ValueSlot;
+                        payload.BlackboardStateSlot = item.DetailIndex;
                         payload.BlackboardScope = (int)item.Blackboard.Owner.ScopeKind;
                         payload.BlackboardOwnerIndex = item.Blackboard.Owner.CompiledOwnerIndex;
                         payload.BlackboardOwnerGeneration = item.Blackboard.Owner.Generation;
