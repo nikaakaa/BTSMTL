@@ -41,7 +41,6 @@ namespace BTSMTL.Preview
         readonly RenderTexture m_Screen;
         readonly RenderTexture m_Target;
         NativeArray<byte> m_Pixels;
-        readonly int m_Quality;
         readonly int m_Width;
         readonly int m_Height;
         readonly PreviewImageEncoding m_Encoding;
@@ -62,7 +61,7 @@ namespace BTSMTL.Preview
             m_Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
             m_Pixels = new NativeArray<byte>(checked(width * height * 4),
                 Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-            m_Quality = quality;
+            Quality = quality;
             m_Width = width;
             m_Height = height;
             m_Encoding = encoding;
@@ -71,6 +70,7 @@ namespace BTSMTL.Preview
         }
 
         public Exception Failure { get; private set; }
+        public int Quality { get; set; }
         public bool IsBusy => Volatile.Read(ref m_Busy) != 0;
 
         public bool TryCaptureAtFrameEnd(int frame, Camera camera)
@@ -99,7 +99,7 @@ namespace BTSMTL.Preview
             {
                 NativeArray<byte> bytes = m_Encoding == PreviewImageEncoding.Jpeg
                     ? ImageConversion.EncodeNativeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Width, (uint)m_Height, 0, m_Quality)
+                        (uint)m_Width, (uint)m_Height, 0, Quality)
                     : ImageConversion.EncodeNativeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height);
                 frame = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,

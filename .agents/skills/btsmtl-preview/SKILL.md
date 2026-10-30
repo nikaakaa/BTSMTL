@@ -25,7 +25,7 @@ description: 接入或修改 BTSMTL 的 Unity 预览播放器项目适配、组�
 
 使用 `PreviewPlaybackController` 管理交互和批量状态。只有项目确认的新帧才能传给 `ObserveFrame`，命令接收和调用一次单步都不代表帧已提交。交互按实时推进；批量使用固定帧时长、不限帧率、不推流，任务结束后等待下一任务。Unity `Update` 项目不能用紧循环调用 `Update` 来代替引擎帧。手动 Animator、Animancer、Playables 和物理推进只能由原项目时钟统一持有。
 
-画面在对应表现提交后的帧末交 `PreviewFrameCapture.TryCaptureAtFrameEnd`。构造时传入实际画面面板尺寸、编码和质量。批量任务在采集忙或上次画面尚未取出时保留当前帧，不能跳过该帧后继续标记成功。在 Unity 主线程调用 `TryTakeCompleted`，它使用 `EncodeNativeArrayToJPG` 或 `EncodeNativeArrayToPNG` 编码，返回的 `PreviewEncodedFrame.Bytes` 是本次结果独占的持久 `NativeArray<byte>`。消费者写完或复制完后调用一次 `Dispose`，不把它转为逐帧新建的托管数组。
+画面在对应表现提交后的帧末交 `PreviewFrameCapture.TryCaptureAtFrameEnd`。构造时传入实际画面面板尺寸、编码和质量。运行中的画质命令在主线程写 `Quality` 属性，下一次 `TryTakeCompleted` 编码读取当前质量，无需重建采图器；合法取值由原命令接收边界确认一次。批量任务在采集忙或上次画面尚未取出时保留当前帧，不能跳过该帧后继续标记成功。在 Unity 主线程调用 `TryTakeCompleted`，它使用 `EncodeNativeArrayToJPG` 或 `EncodeNativeArrayToPNG` 编码，返回的 `PreviewEncodedFrame.Bytes` 是本次结果独占的持久 `NativeArray<byte>`。消费者写完或复制完后调用一次 `Dispose`，不把它转为逐帧新建的托管数组。
 
 逐帧 JPEG 及来源头、索引交项目同一运行档案写入器，读取方沿同一档案 reader 取画面，不另建 JPEG 目录与路径协议。`PreviewPngImageArchive.Write` 只用于明确的独立 PNG 截图。运行清单和通道布局仍由项目归档器持有。采集或编码失败按 `Failure` 报错，不生成占位图片。原生编码的主线程和持久内存约束见 [Unity 2022.3 JPG 接口](https://docs.unity3d.com/2022.3/Documentation/ScriptReference/ImageConversion.EncodeNativeArrayToJPG.html)。
 
