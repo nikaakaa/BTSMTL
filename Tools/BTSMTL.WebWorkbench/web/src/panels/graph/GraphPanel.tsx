@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
+import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
@@ -21,7 +22,7 @@ import { usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -37,6 +38,8 @@ import styles from './graph.module.css';
 interface Params {
   graph: string | null;
   call: string | null;
+  path: string | null;
+  pin: { runId: PlayerJobId; graph: string; call: ExecutionCall } | null;
   // 视图位置按所看的图与图实例保存。
   viewport: (Viewport & { view: string }) | null;
   values: boolean;
@@ -46,7 +49,7 @@ interface Params {
   labels: 'brief' | 'all' | 'none';
 }
 const defaults: Params = {
-  graph: null, call: null, viewport: null, values: true, dim: false, relations: false, minimap: true, labels: 'brief',
+  graph: null, call: null, path: null, pin: null, viewport: null, values: true, dim: false, relations: false, minimap: true, labels: 'brief',
 };
 
 interface ViewOptions {
@@ -113,9 +116,12 @@ function ReportEmpty({ text }: { text: string }) {
 }
 
 const programOf = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision]);
+const callLabel = (call: ExecutionCall) => `${call.actorId} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
+  (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const binding = useDocumentObservationBinding();
+  const runId = useWorkbench(state => state.runId);
   const [params, setParams] = usePanelParams<Params>(defaults);
   const hierarchy = useMemo(() => graphHierarchy(graphs), [graphs]);
   const programs = useMemo(() => {
@@ -132,20 +138,17 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return result;
   }, [graphs, hierarchy]);
 
-  // 未选图时跟随本帧：优先有路线记录的状态机，其次第一张有记录的图。
   const followed = useWorkbench(state => {
     if (params.graph) return null;
     const route = state.frame?.route;
     if (!route) return null;
     const items = [...route.nodes, ...route.edges];
     const active = graphs.filter(graph => items.some(item => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding)));
-    const graph = active.find(isStateMachine) ?? active[0];
-    return graph ? graphKey(graph) : null;
+    return active.length === 1 ? graphKey(active[0]) : null;
   });
   const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? programs.values().next().value!.root;
   const key = graphKey(graph);
 
-  // 本帧的实际调用；没有记录时按图实例列出。
   const calls = useWorkbench(useShallow(state => {
     const result = new Map<string, ExecutionCall>();
     for (const item of graphRecords(state.frame?.route, graph, binding)) {
@@ -154,37 +157,45 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return [...result.values()];
   }));
   const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
-  const callOptions = calls.length
-    ? calls.map((item, index) => ({ value: callKey(item), label: `${item.actorId} · 调用 ${index + 1}` }))
-    : paths.map((path, index) => ({ value: path, label: `图实例 ${index + 1}` }));
-  const call = callOptions.some(option => option.value === params.call) ? params.call! : callOptions[0]?.value ?? null;
-  const observedCall = calls.find(item => callKey(item) === call) ?? null;
-  const path = observedCall?.invocationPath ?? call;
+  const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
+    ? params.pin : null;
+  const observedCall = pin?.call ?? calls.find(item => callKey(item) === params.call) ?? (calls.length === 1 ? calls[0] : null);
+  const choices = pin && !calls.some(item => callKey(item) === callKey(pin.call)) ? [pin.call, ...calls] : calls;
+  const callOptions = choices.map(item => ({ value: callKey(item), label: callLabel(item) }));
+  const path = observedCall?.invocationPath ?? (params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null);
+  const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
+    : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
 
   const selectCall = (value: string) => {
-    setParams({ call: value });
-    const selection = getState().selection;
-    if (selection?.kind === 'node' && graph.nodes.some(node => nodeSelectId(graph, node) === selection.id) ||
-      selection?.kind === 'edge' && graph.edges.some(edge => edgeSelectId(graph, edge) === selection.id))
-      selectionActions.select({ ...selection, call: calls.find(item => callKey(item) === value) });
+    setParams({ call: value, pin: null });
   };
 
-  const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, viewport: null }), [setParams]);
+  useEffect(() => {
+    const selection = getState().selection;
+    if (selection?.kind === 'node' && graph.nodes.some(node => nodeSelectId(graph, node) === selection.id) ||
+      selection?.kind === 'edge' && graph.edges.some(edge => edgeSelectId(graph, edge) === selection.id)) {
+      const previous = selection.call ? callKey(selection.call) : null;
+      const next = observedCall ? callKey(observedCall) : null;
+      if (previous !== next) selectionActions.select({ ...selection, call: observedCall ?? undefined });
+    }
+  }, [graph, observedCall]);
+
+  const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, path: null, pin: null, viewport: null }), [setParams]);
 
   // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
   const request = useWorkbench(state => state.graphRequest);
-  const handled = useRef(request?.sequence ?? 0);
+  const handled = useRef(0);
   useEffect(() => {
     if (!request || request.sequence === handled.current) return;
     handled.current = request.sequence;
-    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key, call: null, viewport: null });
+    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key, call: null, path: null, pin: null, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const [blackboard, setBlackboard] = useState(false);
   const programOptions = [...programs].map(([value, item]) => ({ value, label: item.label }));
 
   const settings: MenuEntry[] = [
-    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null }) },
+    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null }) },
     { kind: 'separator' },
     { kind: 'check', label: '连线标签：简写', checked: params.labels === 'brief', onChange: () => setParams({ labels: 'brief' }) },
     { kind: 'check', label: '连线标签：全文', checked: params.labels === 'all', onChange: () => setParams({ labels: 'all' }) },
@@ -213,10 +224,15 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
               </span>
             ))}
           </span>
-          {(calls.length > 0 || callOptions.length > 1) && <Select label={calls.length ? '实际调用' : '图实例'} value={call} options={callOptions} disabled={callOptions.length < 2}
-            tip={binding.dirty ? '当前作者内容未保存，旧档案叠加已停用'
-              : binding.sourceRevision === null ? '尚未读取当前内容来源修订'
-                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={selectCall} />}
+          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? callKey(observedCall) : null}
+            options={callOptions} placeholder="选择实际调用" disabled={callOptions.length < 2}
+            tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
+          {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
+            tip={pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}
+            onClick={togglePin}>固定调用</Button>}
+          {observedCall === null && paths.length > 1 && <Select label="图实例" value={path}
+            options={paths.map((value, index) => ({ value, label: `图实例 ${index + 1}` }))}
+            placeholder="选择图实例" onChange={path => setParams({ path })} />}
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
