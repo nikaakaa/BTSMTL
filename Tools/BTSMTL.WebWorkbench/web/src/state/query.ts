@@ -170,8 +170,13 @@ export const queryService = {
   },
 
   // 帧记录大页在后台解析。
-  framesPage(jobId: PlayerJobId, offset: number, limit: number) {
-    return enqueue(pending.frames, { type: 'frames', id: nextId++, jobId, offset, limit });
+  framesPage(jobId: PlayerJobId, offset: number, limit: number, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const id = nextId++;
+    const request = enqueue(pending.frames, { type: 'frames', id, jobId, offset, limit });
+    const abort = () => cancel(id);
+    signal.addEventListener('abort', abort, { once: true });
+    return request.finally(() => signal.removeEventListener('abort', abort));
   },
 };
 

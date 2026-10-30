@@ -228,7 +228,7 @@ export const archive = {
     const show = (frame: Awaited<ReturnType<typeof readFrame>>) => {
       const archiveFrame = cache.get(frameKey);
       if (request !== frameRequest || !frame || !archiveFrame || !isCurrent(generation)) return;
-      runActions.setData(generation, { frame, archiveFrame, frameKey });
+      runActions.setData(generation, { frame, archiveFrame, frameKey, routeAvailability: frame.route?.availability ?? [] });
       void loadImage(context, archiveFrame.hostFrame, request);
     };
     Promise.all([cache.has(frameKey) ? Promise.resolve() : loadPage(context, page), readFrame(frameIndex)])

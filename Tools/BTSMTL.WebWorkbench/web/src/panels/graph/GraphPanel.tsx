@@ -483,9 +483,9 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const state = getState();
       const records = graphRecords(state.frame?.route, graph, binding).filter(item => call !== null && callKey(item.call) === callKey(call));
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
-      if (machine) {
-        for (let index = 0; index <= state.frameIndex && index < state.routeFrames.length; index++) {
-          const frame = state.routeFrames[index];
+      if (machine && state.frame !== null) {
+        for (const frame of state.routeFrames) {
+          if (BigInt(frame.hostFrame) > BigInt(state.frame.hostFrame)) continue;
           const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
             belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
@@ -496,10 +496,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     };
     apply();
     return useWorkbench.subscribe((state, previous) => {
-      if (state.frame !== previous.frame || state.frameIndex !== previous.frameIndex) apply();
+      if (state.frame !== previous.frame || state.frameIndex !== previous.frameIndex || state.routeFrames !== previous.routeFrames) apply();
     });
   }, [store, graph, layout, call, machine, binding]);
-  useFrameReport(`${graphKey(graph)}|${path}|${call}`);
+  useFrameReport(`${graphKey(graph)}|${path}|${call === null ? '' : callKey(call)}`);
 
   const selectedNode = useWorkbench(state => state.selection?.kind === 'node' ? state.selection.id : null);
   const related = useMemo(() => {
