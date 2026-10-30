@@ -72,7 +72,3 @@ public sealed record PreviewHostDescription(string DisplayName, string FrameDisp
 {
     public PreviewModeAvailability[] Modes { get; init; } = [];
 }
-public sealed record PreviewPlaybackObservation(PreviewSummary Summary);
-public sealed record PreviewPlaybackState(string State, Guid? LastCommandId, PreviewPlaybackObservation Observation);
-public sealed record PreviewPlaybackView(bool Ready, object Receipt, PreviewPlaybackState? Snapshot);
-public sealed record PreviewStreamEvent(string Event, string? Id, object Data);
