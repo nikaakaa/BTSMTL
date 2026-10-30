@@ -26,10 +26,9 @@ const companions: Record<PanelType, PanelType[]> = {
   inspector: ['inspector', 'frames'],
   'wall-contact': ['inspector', 'frames'],
   frames: ['inspector', 'frames'],
-  timeline: ['timeline', 'query', 'compare', 'console'],
-  query: ['timeline', 'query', 'compare', 'console'],
-  compare: ['timeline', 'query', 'compare', 'console'],
-  console: ['timeline', 'query', 'compare', 'console'],
+  timeline: ['timeline', 'query', 'console'],
+  query: ['timeline', 'query', 'console'],
+  console: ['timeline', 'query', 'console'],
   content: ['content'],
 };
 
@@ -65,7 +64,7 @@ function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
   }
   switch (type) {
     case 'inspector': case 'frames': return { direction: 'right' };
-    case 'timeline': case 'query': case 'compare': case 'console': return { direction: 'below' };
+    case 'timeline': case 'query': case 'console': return { direction: 'below' };
     case 'content': return { direction: 'left' };
     default: return undefined;
   }
@@ -80,7 +79,7 @@ function buildDefault() {
   addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
   addInstance('resources', 1, { referencePanel: player, direction: 'within' }, true);
   const timeline = addInstance('timeline', 1, { referencePanel: player, direction: 'below' });
-  for (const type of ['query', 'compare', 'console'] as const)
+  for (const type of ['query', 'console'] as const)
     addInstance(type, 1, { referencePanel: timeline, direction: 'within' }, true);
   const graph = addInstance('graph', 1, { referencePanel: player, direction: 'right' });
   const inspector = addInstance('inspector', 1, { direction: 'right' });
@@ -103,6 +102,73 @@ function buildDefault() {
 
 // ── 保存与恢复 ──
 
+function removeRetiredComparison(layout: SerializedDockview) {
+  const removed = new Set(Object.values(layout.panels)
+    .filter(panel => panel.contentComponent === 'compare' && panel.id.slice(0, panel.id.lastIndexOf('-')) === 'compare')
+    .map(panel => panel.id));
+  if (!removed.size) return;
+  for (const id of removed) delete layout.panels[id];
+  type Grid = SerializedDockview['grid'] & { maximizedNode?: { location: number[] } };
+  type Node = Grid['root'];
+  type Group = Exclude<Node['data'], Node[]>;
+  const removedGroups = new Set<string>();
+  const group = (value: Group): Group | null => {
+    const views = value.views.filter(id => !removed.has(id));
+    if (!views.length) { removedGroups.add(value.id); return null; }
+    const result = { ...value, views };
+    if (result.activeView && removed.has(result.activeView)) delete result.activeView;
+    if (result.tabGroups) result.tabGroups = result.tabGroups
+      .map(item => ({ ...item, panelIds: item.panelIds.filter(id => !removed.has(id)) }))
+      .filter(item => item.panelIds.length);
+    return result;
+  };
+  const node = (value: Node): Node | null => {
+    if (Array.isArray(value.data)) {
+      const data = value.data.flatMap(item => { const retained = node(item); return retained ? [retained] : []; });
+      return data.length ? { ...value, data } : null;
+    }
+    const data = group(value.data);
+    return data ? { ...value, data } : null;
+  };
+  const grid = (value: Grid): Grid | null => {
+    let maximized = value.maximizedNode ? value.root : null;
+    for (const index of value.maximizedNode?.location ?? [])
+      maximized = maximized && Array.isArray(maximized.data) ? maximized.data[index] : null;
+    const maximizedGroup = maximized && !Array.isArray(maximized.data) ? maximized.data.id : null;
+    const root = node(value.root);
+    if (!root) return null;
+    const result = { ...value, root };
+    if (maximizedGroup) {
+      const find = (entry: Node, location: number[]): number[] | null => {
+        if (!Array.isArray(entry.data)) return entry.data.id === maximizedGroup ? location : null;
+        for (let index = 0; index < entry.data.length; index++) {
+          const found = find(entry.data[index], [...location, index]);
+          if (found) return found;
+        }
+        return null;
+      };
+      const location = find(root, []);
+      if (location) result.maximizedNode = { location };
+      else delete result.maximizedNode;
+    }
+    return result;
+  };
+  const main = grid(layout.grid);
+  layout.grid = main ?? { ...layout.grid, root: { ...layout.grid.root, type: 'branch', data: [] } };
+  const windows = <Window extends { data?: Group; grid?: Grid }>(items: Window[]): Window[] =>
+    items.flatMap(item => {
+      if (item.grid) { const retained = grid(item.grid); return retained ? [{ ...item, grid: retained }] : []; }
+      if (item.data) { const retained = group(item.data); return retained ? [{ ...item, data: retained }] : []; }
+      return [item];
+    });
+  if (layout.floatingGroups) layout.floatingGroups = windows(layout.floatingGroups);
+  if (layout.popoutGroups) layout.popoutGroups = windows(layout.popoutGroups).map(item => {
+    if (item.gridReferenceGroup && removedGroups.has(item.gridReferenceGroup)) delete item.gridReferenceGroup;
+    return item;
+  });
+  if (layout.activeGroup && removedGroups.has(layout.activeGroup)) delete layout.activeGroup;
+}
+
 function readSaved(): { layout: SerializedDockview } | { reason: string } | null {
   const text = localStorage.getItem(storageKey);
   if (!text) return null;
@@ -113,6 +179,7 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
     return { reason: '保存的布局无法解析' };
   }
   if (!saved.layout?.panels) return { reason: '保存的布局缺少面板数据' };
+  removeRetiredComparison(saved.layout);
   const counts = new Map<PanelType, number>();
   for (const panel of Object.values(saved.layout.panels)) {
     const type = panelTypeOf(panel.id);

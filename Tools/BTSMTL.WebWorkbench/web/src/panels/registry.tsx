@@ -7,7 +7,6 @@ import { ContentPanel } from './ContentPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
 import { PlayerPanel } from './player/PlayerPanel';
-import { ComparePanel } from './records/ComparePanel';
 import { FramesPanel } from './records/FramesPanel';
 import { QueryPanel } from './records/QueryPanel';
 import { ResourcesPanel } from './resources/ResourcesPanel';
@@ -25,7 +24,6 @@ const contents: Record<PanelType, FunctionComponent> = {
   frames: FramesPanel,
   timeline: TimelinePanel,
   query: QueryPanel,
-  compare: ComparePanel,
   console: ConsolePanel,
   content: ContentPanel,
 };

@@ -1,6 +1,6 @@
 import { ApiError, query } from '../api/http';
 import { previewApi } from '../api/preview';
-import type { Comparison, Frame, ObservationPage, ObservationQuery, ObservationStreamEvent } from '../api/types';
+import type { Frame, ObservationPage, ObservationQuery, ObservationStreamEvent } from '../api/types';
 import type { WorkerRequest, WorkerResponse } from '../workers/protocol';
 import QueryWorker from '../workers/query.worker?worker';
 import { consoleActions, getState, useWorkbench } from './store';
@@ -181,11 +181,6 @@ export const queryService = {
   close() {
     stopActive();
     update(idle);
-  },
-
-  // 运行比较结果在后台解析。
-  compare(left: string, right: string): Promise<Comparison | null> {
-    return fetchParsed<Comparison>(`/api/preview/runs/${encodeURIComponent(left)}/compare/${encodeURIComponent(right)}`).result;
   },
 
   // 长 JSON 在后台格式化为行。

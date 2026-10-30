@@ -1,6 +1,6 @@
 import { getJson, postJson, query } from './http';
 import type {
-  CancelResult, Comparison, ControlRequest, ControlResult, Frame, Geometry, GraphPage, GraphQuery,
+  CancelResult, ControlRequest, ControlResult, Frame, Geometry, GraphPage, GraphQuery,
   HostAvailability, HostRecord, InputCatalog, InputTimeline, ObservationPage, ObservationQuery, Page,
   PlaybackView, Route, RoutePage, RunReceipt, Sources, StartRunRequest, Summary, TimelinePage,
 } from './types';
@@ -46,6 +46,4 @@ export const previewApi = {
 
   sourceMap: (id: string, offset: number, limit: number, signal?: AbortSignal) =>
     getJson<Page<HostRecord>>(`${run(id)}/source-map${query({ offset, limit })}`, signal),
-  compare: (left: string, right: string, signal?: AbortSignal) =>
-    getJson<Comparison>(`${run(left)}/compare/${encodeURIComponent(right)}`, signal),
 };

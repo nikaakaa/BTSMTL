@@ -502,17 +502,6 @@ export interface InputTimeline {
   roots: FrozenInputTimeline[];
 }
 
-// ── 比较 ──
-
-export interface Comparison {
-  comparable: boolean;
-  equal: boolean;
-  comparedFrames: number;
-  channels: string[];
-  firstDifference: { hostFrame: string; reason: string } | null;
-  rawJson: string;
-}
-
 // ── 画面来源与播放器 ──
 
 export interface ImageSourceAvailability {
