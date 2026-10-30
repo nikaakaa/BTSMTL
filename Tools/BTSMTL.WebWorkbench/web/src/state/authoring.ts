@@ -102,7 +102,11 @@ type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } |
 type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
-  const liveId = useWorkbench.getState().liveId;
+  const state = useWorkbench.getState();
+  const mode = state.host?.modes.find(item => item.id === state.previewMode);
+  if (!mode) return { kind: 'unavailable', reason: '未选择预览档位，本次只保存内容' };
+  if (!mode.available || !mode.createsRun) return { kind: 'unavailable', reason: mode.reason };
+  const liveId = state.liveId;
   if (!liveId) return { kind: 'unavailable', reason: '未选择 Player，预览未刷新' };
   try {
     const live = await playerApi.live(liveId);

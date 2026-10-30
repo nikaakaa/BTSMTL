@@ -7,7 +7,7 @@ import type {
 } from '../api/types';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
-  PlayerJobReceipt, PlayerSummary, PlayerUnavailablePage,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -22,6 +22,7 @@ export interface ConnectionSlice {
 // ── content ──
 export interface ContentSlice {
   sources: Sources | null;
+  previewMode: PlayerPreviewMode | null;
   scenePath: string | null;
   inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
   localLastSdkFrame: number | null;
@@ -184,7 +185,7 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null, inputChoices: [],
+  sources: null, previewMode: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null, inputChoices: [],
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,
@@ -237,6 +238,9 @@ export const connectionActions = {
 };
 
 export const contentActions = {
+  selectPreviewMode(previewMode: PlayerPreviewMode) {
+    set({ previewMode });
+  },
   setSources(sources: Sources) {
     const state = getState();
     const before = state.sources?.scenes.find(scene => scene.path === state.scenePath)?.revision;

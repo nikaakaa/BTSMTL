@@ -31,6 +31,9 @@ let controller: AbortController | null = null;
 function selectedStart() {
   const state = getState();
   if (!state.hostAvailable) return { kind: 'unavailable', reason: '宿主不可用' } as const;
+  const mode = state.host?.modes.find(item => item.id === state.previewMode);
+  if (!mode) return { kind: 'unavailable', reason: '先选择预览档位' } as const;
+  if (!mode.available || !mode.createsRun) return { kind: 'unavailable', reason: mode.reason } as const;
   const liveId = state.liveId;
   if (liveId === null) return { kind: 'unavailable', reason: '先选择一个 Player' } as const;
   if (!state.playerViewport) return { kind: 'unavailable', reason: '打开画面面板以确定本次画面尺寸' } as const;

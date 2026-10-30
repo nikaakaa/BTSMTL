@@ -15,6 +15,7 @@ export function Toolbar() {
     <header className={styles.toolbar}>
       <div className={styles.left}>
         <ContentChoice />
+        <PreviewModeChoice />
         <InputChoice />
         <LocalInputs />
         <ArchiveInputChoice />
@@ -49,6 +50,15 @@ function InputChoice() {
   return <Select label="输入来源" placeholder="选择输入来源" value={source?.kind === 'local' ? 'local' : source?.id ?? null}
     options={[{ value: 'local', label: '本地输入方案' }, ...(choices ?? []).map(choice => ({ value: choice.id, label: choice.displayName }))]}
     onChange={id => contentActions.selectInputSource(id === 'local' ? { kind: 'local' } : { kind: 'recorded', id })} />;
+}
+
+function PreviewModeChoice() {
+  const { modes, selected } = useWorkbench(useShallow(state => ({ modes: state.host?.modes, selected: state.previewMode })));
+  if (!modes) return null;
+  return <Select label="预览档位" placeholder="选择预览档位" value={selected}
+    options={modes.map(mode => ({ value: mode.id, label: <span title={mode.reason}>{mode.displayName}</span>, disabled: !mode.available }))}
+    tip={modes.map(mode => `${mode.displayName}：${mode.reason}`).join('\n')}
+    onChange={mode => contentActions.selectPreviewMode(mode)} />;
 }
 
 function LocalInputs() {
@@ -127,7 +137,8 @@ function RunMenu() {
   const { runId, receipt } = useWorkbench(useShallow(state => ({ liveId: state.liveId, sources: state.sources,
     scenePath: state.scenePath, inputSource: state.inputSource, inputCatalog: state.inputCatalog,
     inputChoices: state.inputChoices, localLastSdkFrame: state.localLastSdkFrame,
-    hostAvailable: state.hostAvailable, playerViewport: state.playerViewport, runId: state.runId, receipt: state.receipt })));
+    hostAvailable: state.hostAvailable, host: state.host, previewMode: state.previewMode,
+    playerViewport: state.playerViewport, runId: state.runId, receipt: state.receipt })));
   const startBlocked = session.canStart();
   const cancellable = receipt?.stage === 'queued' || receipt?.stage === 'running';
   const entries: MenuEntry[] = [

@@ -1,4 +1,5 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
+import type { readPlayerHost } from './playerRecords';
 
 export interface Field {
   displayName: string;
@@ -24,40 +25,11 @@ export interface RangePage<T> extends Page<T> {
 
 // ── 宿主声明 ──
 
-export interface PreviewMode {
-  id: string;
-  displayName: string;
-  available: boolean;
-  reason: string;
-}
-
-export interface QueryField {
-  name: string;
-  displayName: string;
-  inputType: string;
-  placeholder: string;
-}
-
-export interface NumberInput {
-  name: string;
-  displayName: string;
-  minimum: string;
-  step: string;
-  initialValue: string;
-}
-
-export interface HostDescription {
-  displayName: string;
-  frameDisplayName: string;
-  filters: QueryField[];
-  inputLimit: NumberInput;
-  modes: PreviewMode[];
-}
-
-export interface HostAvailability {
-  available: boolean;
-  description: HostDescription | null;
-}
+export type HostAvailability = ReturnType<typeof readPlayerHost>;
+export type HostDescription = NonNullable<HostAvailability['description']>;
+export type PreviewMode = HostDescription['modes'][number];
+export type QueryField = HostDescription['filters'][number];
+export type NumberInput = HostDescription['inputLimit'];
 
 // ── 来源与输入 ──
 
