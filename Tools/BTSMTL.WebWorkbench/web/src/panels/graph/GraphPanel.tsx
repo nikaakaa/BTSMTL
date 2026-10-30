@@ -272,7 +272,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
         <div className={styles.title}>
           {graphName(graph)}
-          <SelectedSummary graph={graph} />
+          {!author && caller !== null && calls.length === 0 && pin === null
+            ? <em>此帧没有精确匹配的子调用记录</em> : <SelectedSummary graph={graph} />}
         </div>
         {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
           : path === null ? <ReportEmpty text="此调用未保留可显示的节点来源" />
