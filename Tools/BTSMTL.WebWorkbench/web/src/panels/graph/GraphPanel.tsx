@@ -1,6 +1,6 @@
 import {
   Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
-  ReactFlowProvider, SelectionMode, applyNodeChanges, useConnection, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
+  ReactFlowProvider, SelectionMode, applyNodeChanges, useConnection, useInternalNode, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps, type Node, type NodeChange,
   type Connection, type NodeProps, type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
@@ -412,6 +412,7 @@ interface GraphCanvasProps {
 
 function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
   const binding = useDocumentObservationBinding();
+  const minimapWidth = useFlowStore(state => Math.min(204, state.width * 0.3, state.height * 0.3 * 204 / 104));
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
@@ -672,8 +673,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           colorMode="dark">
           <Background id="minor" variant={BackgroundVariant.Lines} gap={20} patternClassName={styles.gridMinor} />
           <Background id="major" variant={BackgroundVariant.Lines} gap={200} patternClassName={styles.gridMajor} />
-          {params.minimap && (
-            <MiniMap className={styles.minimap} style={{ width: 204, height: 104 }} pannable zoomable
+          {params.minimap && minimapWidth > 0 && (
+            <MiniMap className={styles.minimap} style={{ width: minimapWidth, height: minimapWidth * 104 / 204 }} pannable zoomable
               bgColor="#181818" maskColor="rgb(255 255 255 / 4%)"
               maskStrokeColor="#9a9a9a" nodeColor={node => node.type === 'canvasGroup' ?'rgb(255 255 255 / 6%)'
                 : (node.data as NodeData).system ? '#8a8a8a' : machine ? '#f0634f' : '#5a5a5a'}
