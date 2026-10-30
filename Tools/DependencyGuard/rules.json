@@ -90,6 +90,12 @@
         ],
         "BTSMTL.Graphs": [
           "System.Runtime.CompilerServices.Unsafe.dll"
+        ],
+        "BTSMTL.Preview": [
+          "System.Runtime.CompilerServices.Unsafe.dll"
+        ],
+        "BTSMTL.Preview.Animancer": [
+          "System.Runtime.CompilerServices.Unsafe.dll"
         ]
       }
     }
