@@ -1059,6 +1059,13 @@ namespace BTSMTL.Orchestration
             item.DetailIndex = -1;
         }
 
+        public void ReadTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, out OrchestrationTraceContext context)
+        {
+            int invocationIndex = ResolveTraceInvocation(storage, operationIndex);
+            WriteTraceContext(storage, operationIndex, invocationIndex, out context);
+        }
+
         int CaptureTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
             int operationIndex, bool lifecycleOwner = false)
         {
