@@ -22,18 +22,17 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
             ref readonly OrchestrationValueScheduleEntry entry = ref m_ValueEntries[
-                ScheduleStateContext() * m_Program.ValueSchedule.ValueSlotCount + slot];
+                ScheduleStateContext() * m_Program.ScheduleValueSlotCount + slot];
             RunValueSchedule(in entry);
             value = m_Workspace.ScheduledValues[slot];
         }
 
         public bool EvaluateBoolean(int operationIndex)
         {
-            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
             ref readonly OrchestrationValueScheduleEntry entry = ref m_BooleanEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             RunValueSchedule(in entry);
-            return default(TValues).Boolean(in m_Workspace.ScheduledValues[schedule.BooleanSlot]);
+            return default(TValues).Boolean(in m_Workspace.ScheduledValues[m_Program.ScheduleBooleanSlot]);
         }
 
         void EvaluateCoreValue(int operationIndex, int valueOperation, ReadOnlySpan<int> arguments,
@@ -200,19 +199,19 @@ namespace BTSMTL.Orchestration
 
         void PrepareGraphCall(int operationIndex)
         {
-            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
+            OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
             if (IsActive(call.EntryOperationIndex))
                 return;
             int depth = ReadInputs(operationIndex, out int count);
             try
             {
-                foreach (ref readonly OrchestrationGraphParameter output in call.Outputs.Span)
+                foreach (ref readonly OrchestrationGraphParameter output in call.Outputs)
                 {
                     m_Blackboards.WriteValue(output.ValueSlot, in m_Program.DefaultValue(output.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(output.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
-                ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs.Span;
+                ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs;
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     m_Blackboards.WriteValue(parameters[i].ValueSlot, in m_Workspace.Inputs[depth][i]);
@@ -228,8 +227,8 @@ namespace BTSMTL.Orchestration
 
         void ReadGraphCallOutput(int operationIndex, int outputPortIndex, ref TValue destination)
         {
-            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
-            int slot = call.Outputs.Span[outputPortIndex].ValueSlot;
+            OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
+            int slot = call.Outputs[outputPortIndex].ValueSlot;
             OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
                 ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
             if (status == OrchestrationOperationStatus.Success)

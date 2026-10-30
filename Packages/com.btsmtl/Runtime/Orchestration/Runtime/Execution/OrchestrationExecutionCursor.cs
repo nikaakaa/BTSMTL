@@ -18,7 +18,7 @@ namespace BTSMTL.Orchestration
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
-        readonly OrchestrationProgram<TValue> m_Program;
+        readonly OrchestrationProgramView<TValue> m_Program;
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
         readonly ReadOnlySpan<OrchestrationValueScheduleInstruction> m_ValueInstructions;
         readonly ReadOnlySpan<int> m_ValueArgumentSlots;
@@ -61,7 +61,7 @@ namespace BTSMTL.Orchestration
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
 
-        internal OrchestrationExecutionCursor(OrchestrationProgram<TValue> program,
+        internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot,
@@ -72,25 +72,26 @@ namespace BTSMTL.Orchestration
             OrchestrationStateView timelineState,
             in OrchestrationFrameInput<TValue> input,
             OrchestrationIdentityOrdinalView identities,
-            in TContext context, OrchestrationExecutionSourceBinding<TValue> sourceBinding,
+            in TContext context, OrchestrationExecutionSourceBindingView sourceBinding,
             OrchestrationExecutionSource<TValue> source)
         {
             m_Program = program;
             m_Workspace = workspace;
-            OrchestrationValueSchedule schedule = program.ValueSchedule;
-            m_ValueInstructions = schedule.Instructions.Span;
-            m_ValueArgumentSlots = schedule.ArgumentSlots.Span;
-            m_ValueArgumentLists = schedule.ArgumentLists.Span;
-            m_ValueEntries = schedule.ValueEntries.Span;
-            m_InputEntries = schedule.InputEntries.Span;
-            m_TransitionEntries = schedule.TransitionEntries.Span;
-            m_ChildSelectionEntries = schedule.ChildSelectionEntries.Span;
-            m_SelectorAbortEntries = schedule.SelectorAbortEntries.Span;
-            m_BooleanEntries = schedule.BooleanEntries.Span;
-            m_ValueOperations = schedule.ValueOperations.Span;
-            m_StateContexts = schedule.StateContexts.Span;
-            m_OperationIndices = program.ExecutionStorage.OperationIndices.Span;
-            m_ValueStorage = program.ExecutionStorage.Values.Span;
+            OrchestrationValueScheduleView schedule = program.ValueSchedule;
+            m_ValueInstructions = schedule.Instructions;
+            m_ValueArgumentSlots = schedule.ArgumentSlots;
+            m_ValueArgumentLists = schedule.ArgumentLists;
+            m_ValueEntries = schedule.ValueEntries;
+            m_InputEntries = schedule.InputEntries;
+            m_TransitionEntries = schedule.TransitionEntries;
+            m_ChildSelectionEntries = schedule.ChildSelectionEntries;
+            m_SelectorAbortEntries = schedule.SelectorAbortEntries;
+            m_BooleanEntries = schedule.BooleanEntries;
+            m_ValueOperations = schedule.ValueOperations;
+            m_StateContexts = schedule.StateContexts;
+            OrchestrationProgramStorageView storage = program.ExecutionStorage;
+            m_OperationIndices = storage.OperationIndices;
+            m_ValueStorage = storage.Values;
             m_Bindings = bindings;
             m_Frames = frames;
             m_FrameSlot = frameSlot;
@@ -561,8 +562,7 @@ namespace BTSMTL.Orchestration
             }
             if (active)
                 TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: context.Cause);
-            if (m_Program.ExecutionStorage.OperationIndices.Span[operationIndex] !=
-                OrchestrationProgramStorageLayout.NoOperationIndex)
+            if (m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex)
                 ResetOperation(operationIndex);
         }
 
@@ -611,18 +611,18 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.OutputSlotOffset >= 0)
                 for (int i = 0; i < operation.OutputCount; i++)
-                    m_SavedOutputs[m_Program.ExecutionStorage.Values.Span[operation.OutputSlotOffset + i].SavedOutputIndex] =
+                    m_SavedOutputs[m_ValueStorage[operation.OutputSlotOffset + i].SavedOutputIndex] =
                         m_Program.DefaultValue(operation.OutputSlotOffset + i);
             if (operation.Code == OrchestrationOperationCode.SubGraph)
             {
-                OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
-                foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs.Span)
+                OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
+                foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs)
                 {
                     m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
-                foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs.Span)
+                foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs)
                 {
                     m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);

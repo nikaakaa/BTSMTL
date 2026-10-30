@@ -226,9 +226,9 @@ namespace BTSMTL.Orchestration
             where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
             where TStorage : struct, IOrchestrationValueStorage<TValue> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(program, workspace, bindings, Frames, frameSlot,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(program.View, workspace, bindings, Frames, frameSlot,
                 characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, identities, in context, null, default);
+                clipExitDispatcher, Timeline, in input, identities, in context, default, default);
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
             TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
@@ -250,9 +250,9 @@ namespace BTSMTL.Orchestration
             where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
             where TStorage : struct, IOrchestrationValueStorage<TValue> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(preparedSource.Program.View, workspace, bindings, Frames, frameSlot,
                 characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, identities, in context, preparedSource, source);
+                clipExitDispatcher, Timeline, in input, identities, in context, preparedSource.View, source);
     }
 
     public readonly ref struct OrchestrationCommittedState<TValue> where TValue : unmanaged

@@ -6,17 +6,17 @@ namespace BTSMTL.Orchestration
         where TValue : unmanaged
         where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
-        readonly OrchestrationProgram<TValue> m_Program;
+        readonly OrchestrationProgramView<TValue> m_Program;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         readonly int m_ProgramIndex;
         int m_FrameSlot;
         readonly ReadOnlySpan<int> m_CharacterSlots;
-        readonly OrchestrationExecutionSourceBinding<TValue> m_SourceBinding;
+        readonly OrchestrationExecutionSourceBindingView m_SourceBinding;
         OrchestrationExecutionSourceReader<TValue> m_Reader;
 
-        internal OrchestrationBlackboardStorageView(OrchestrationProgram<TValue> program,
+        internal OrchestrationBlackboardStorageView(OrchestrationProgramView<TValue> program,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot, ReadOnlySpan<int> characterSlots,
-            OrchestrationExecutionSourceBinding<TValue> sourceBinding, OrchestrationExecutionSource<TValue> source)
+            OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source)
         {
             m_Program = program;
             m_Frames = frames;
@@ -25,7 +25,7 @@ namespace BTSMTL.Orchestration
             m_CharacterSlots = characterSlots;
             m_SourceBinding = sourceBinding;
             m_Reader = new OrchestrationExecutionSourceReader<TValue>(frames.AsReadOnly(), frameSlot,
-                m_ProgramIndex, sourceBinding != null, source);
+                m_ProgramIndex, sourceBinding.HasSource, source);
         }
 
         internal void SelectFrame(int frameSlot)
@@ -38,10 +38,10 @@ namespace BTSMTL.Orchestration
         internal int ProgramIndex => m_ProgramIndex;
         internal int CharacterSlot(int valueSlot) =>
             m_CharacterSlots.IsEmpty ? valueSlot : m_CharacterSlots[valueSlot];
-        internal int BorrowedStateOperationIndex => m_SourceBinding == null ? -1 : m_SourceBinding.SourceStateOperationIndex;
+        internal int BorrowedStateOperationIndex => m_SourceBinding.HasSource ? m_SourceBinding.SourceStateOperationIndex : -1;
         internal OrchestrationStopContext BorrowedStopContext => m_Reader.SourceStopContext;
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
-            m_SourceBinding != null && m_SourceBinding.ContainsSourceState(stateOperationIndex);
+            m_SourceBinding.HasSource && m_SourceBinding.ContainsSourceState(in m_Program, stateOperationIndex);
 
         internal void ReadValue(int valueSlot, ref TValue destination) =>
             m_Reader.ReadValue<TStorage>(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
@@ -77,7 +77,7 @@ namespace BTSMTL.Orchestration
                 m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
             return ref m_Frames.Payload<OrchestrationBlackboardMetadata>(frameSlot,
                 OrchestrationStateSegmentRole.PrivateMetadata, m_ProgramIndex)[
-                m_Program.ExecutionStorage.Values.Span[valueSlot].MetadataIndex];
+                m_Program.ExecutionStorage.Values[valueSlot].MetadataIndex];
         }
 
         internal ref readonly OrchestrationOperationState ReadOperation(int operationIndex) =>

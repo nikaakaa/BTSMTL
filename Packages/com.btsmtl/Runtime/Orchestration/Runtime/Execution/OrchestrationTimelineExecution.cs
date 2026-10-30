@@ -158,8 +158,7 @@ namespace BTSMTL.Orchestration
             int ownerOperationIndex = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
             for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
                 if (m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex == ownerOperationIndex &&
-                    m_Program.ExecutionStorage.OperationIndices.Span[operationIndex] !=
-                        OrchestrationProgramStorageLayout.NoOperationIndex &&
+                    m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex &&
                     (OperationState(operationIndex).Status == OrchestrationOperationStatus.Running ||
                      OperationState(operationIndex).Status == OrchestrationOperationStatus.Stopping ||
                      OperationState(operationIndex).TimelineRuntimeHandle != 0))

@@ -188,6 +188,9 @@ namespace BTSMTL.Orchestration
                 .Slice(range.Offset, range.Count);
         }
 
+        public int ScheduleValueSlotCount => Header.ScheduleValueSlotCount;
+        public int ScheduleBooleanSlot => Header.ScheduleValueSlotCount + Header.ScheduleInputBindingCount;
+
         public OrchestrationValueScheduleView ValueSchedule
         {
             get
