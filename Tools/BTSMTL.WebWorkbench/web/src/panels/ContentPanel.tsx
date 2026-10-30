@@ -122,7 +122,7 @@ function LocalInputChoices() {
           onClick={() => {
             const { plan, choice } = current!;
             void authoringActions.openInput({ kind: plan.kind === 'scene' ? 'scenario' : 'skill', name: plan.name },
-              `inputs/${plan.id}.json`, choice.schemeIndex).then(() => openPanel('timeline'));
+              `inputs/${plan.id}.json`, choice.schemeIndex, choice.actorId).then(() => openPanel('timeline'));
           }}>编辑所选方案</Button>
       </div>;
     })}

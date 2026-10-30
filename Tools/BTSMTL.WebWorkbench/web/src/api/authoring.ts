@@ -158,6 +158,7 @@ export interface SkillElements {
   tracks: ElementTemplate[];
   clips: ElementTemplate[];
   marker: ElementTemplate;
+  previewInput: { nodeType: string; keyPath: string[]; valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
 }
@@ -267,7 +268,27 @@ export interface SkillDocument {
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
 const targetPath = (target: AuthoringTarget) => `${folderPath(target.kind)}/${encodeURIComponent(target.name)}`;
 
+export interface InputFragmentRequest {
+  scene: string;
+  sceneRevision: string;
+  actorId: string;
+  key: string;
+  operation: 'hold' | 'press';
+  startSeconds: number;
+  endSeconds: number;
+}
+
+export interface InputFragment {
+  track: JsonObject;
+  clip: JsonObject;
+  graph: JsonObject;
+  tickRate: number;
+  sceneRevision: string;
+}
+
 export const authoringApi = {
+  inputFragment: async (request: InputFragmentRequest) =>
+    parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
   read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>

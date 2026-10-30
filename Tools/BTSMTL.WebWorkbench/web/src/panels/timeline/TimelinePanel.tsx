@@ -15,7 +15,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomains, useAuthoring, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
@@ -99,7 +99,8 @@ const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * s
 // 一次 Timeline 播放：在显示的段里取游标所在的那次，否则第一次。
 function playbackAt(segments: RouteSegment[], documentId: string, frameIndex: number) {
   const plays = segments.filter(segment => segment.documentId === documentId);
-  return plays.find(segment => segment.firstIndex <= frameIndex && frameIndex <= segment.lastIndex) ?? plays[0] ?? null;
+  return plays.find(segment => segment.firstIndex <= frameIndex && frameIndex <= segment.lastIndex)
+    ?? (plays.length === 1 ? plays[0] : null);
 }
 
 const segmentRange = (segment: RouteSegment) => fitRange({ start: segment.origin, end: segment.origin + segment.length });
@@ -167,8 +168,9 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const schemes = useInputSchemes();
   const documentLength = useWorkbench(state => {
     if (frames) return 0;
-    const timeline = state.timelines.find(item => item.documentId === params.focus) ?? state.timelines[0];
-    return timeline ? Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0) : 0;
+    const selected = state.timelines.find(item => item.documentId === params.focus);
+    return Math.max(0, ...(selected ? [selected] : state.timelines).map(timeline =>
+      Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
   });
   const tickRate = useAuthoring(state => state.tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
@@ -350,13 +352,24 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => state.edited);
+  const files = useAuthoring(state => state.files);
   const timelines = useMemo(() => applyTimelineEdits(runTimelines, edited), [runTimelines, edited]);
   const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
     return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds) } : segment;
   }), [frames, timelines, graphs, schemes]);
-  const graphNames = useMemo(() => new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
-    .map(graph => [graph.id, graph.displayName!])), [graphs]);
+  const graphNames = useMemo(() => {
+    const names = new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
+      .map(graph => [graph.id, graph.displayName!]));
+    for (const timeline of timelines.filter(item => schemes.some(scheme => scheme.documentId === item.documentId)))
+      for (const track of timeline.tracks)
+        for (const clip of track.clips)
+          if (clip.graphId) {
+            const graph = currentDocument(graphPath(clip.graphId)) as import('../../state/skillJson').JsonObject;
+            names.set(clip.graphId, graph.name as string);
+          }
+    return names;
+  }, [graphs, timelines, schemes, files, edited]);
 
   // 照 Timeline Editor 顶栏的“技能 / 技能根”：路线只显示所选技能根状态机上的播放。
   const programOf = useMemo(() => {
@@ -373,7 +386,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const focusId = useWorkbench(state => params.focus ? playbackAt(segments, params.focus, state.frameIndex)?.id ?? null : null);
   // 技能文档固定看单个 Timeline：所选的那条，否则第一条。
   const focused = frames ? (focusId ? segments.find(segment => segment.id === focusId) ?? null : null)
-    : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
+    : segments.find(segment => segment.documentId === params.focus) ?? (segments.length === 1 ? segments[0] : null);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
@@ -430,7 +443,8 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     const collapsed = new Set(params.collapsed);
     const result: Row[] = [];
     if (focused) {
-      const tracks = segmentRows(focused, graphNames);
+      const input = schemes.some(scheme => scheme.documentId === focused.documentId);
+      const tracks = segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
       return filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks;
     }
     const root = selectedInputRoot(inputTimeline?.roots, inputRoot);
@@ -449,7 +463,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       if (titleMatched || children.length) result.push(group, ...children);
     }
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, params.filter, params.collapsed]);
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, params.filter, params.collapsed]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
@@ -607,7 +621,9 @@ function AuthoringControls() {
 function AddTrack({ documentId }: { documentId: string | null }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const elements = useSkillElements(author && documentId !== null);
+  const schemes = useInputSchemes();
   if (!author || !documentId) return null;
+  if (schemes.some(scheme => scheme.documentId === documentId)) return <AddInput documentId={documentId} />;
   // 每种轨道按可用执行域各列一项。
   const entries: MenuEntry[] = elements ? elements.tracks.flatMap(template => trackDomains(template).map((domain): MenuEntry => ({
     label: `${template.kind ?? template.clrType} · ${domain}`,
@@ -617,6 +633,29 @@ function AddTrack({ documentId }: { documentId: string | null }) {
     },
   }))) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
   return <MenuButton label="添加轨道" caret entries={entries}>添加轨道</MenuButton>;
+}
+
+function AddInput({ documentId }: { documentId: string }) {
+  const context = useInputContext(documentId);
+  const [pending, setPending] = useState(false);
+  const clock = useContext(PreviewClockContext);
+  const cursor = usePreviewSelect(clock, seconds => seconds);
+  if (context.kind !== 'ready') return <Button disabled tip={context.reason}>添加输入</Button>;
+  const entries = context.actor.keys.flatMap<MenuEntry>(key => ([
+    { kind: 'label', label: key.name },
+    ...(['hold', 'press'] as const).map(operation => ({
+      label: operation === 'hold' ? '按住' : '单按', disabled: pending,
+      onSelect: () => {
+        const startSeconds = Math.max(0, cursor ?? 0);
+        setPending(true);
+        void inputAuthoring.add(documentId, {
+          scene: context.scene.path, sceneRevision: context.scene.revision, actorId: context.actor.actorId,
+          key: key.name, operation, startSeconds, endSeconds: startSeconds + 1,
+        }, null).catch(error => consoleActions.error('输入', error)).finally(() => setPending(false));
+      },
+    })),
+  ]));
+  return <MenuButton label="添加输入" caret entries={entries}>添加输入</MenuButton>;
 }
 
 function TimelineToolbar({ settings, fit, subject, documentId, observations, selectCall }: {
@@ -1046,7 +1085,10 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const version = useAuthoring(state => state.version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
-  const step = useContext(SnapContext) ?? 1 / 60;
+  const snap = useContext(SnapContext);
+  const step = snap ?? 1 / 65536;
+  const schemes = useInputSchemes();
+  const input = useInputContext(row.timeline.documentId);
   const elements = useSkillElements(author);
   const documentId = row.timeline.documentId;
   const templates = useMemo(() => elements ? clipTemplatesFor(elements, trackContract(documentId, row.track.id)) : [],
@@ -1069,6 +1111,26 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
     const id = authoringActions.splitClip(documentId, splitTarget.id, at);
     if (id) select(id);
   };
+  if (schemes.some(scheme => scheme.documentId === documentId)) {
+    const entries: MenuEntry[] = input.kind === 'ready' && snap !== null ? input.actor.keys.flatMap<MenuEntry>(key => [
+      { kind: 'label' as const, label: key.name },
+      ...(['hold', 'press'] as const).map(operation => ({
+        label: operation === 'hold' ? '按住' : '单按',
+        onSelect: () => {
+          const startSeconds = local();
+          void inputAuthoring.add(documentId, {
+            scene: input.scene.path, sceneRevision: input.scene.revision, actorId: input.actor.actorId,
+            key: key.name, operation, startSeconds, endSeconds: startSeconds + 1,
+          }, row.track.id).catch(error => consoleActions.error('输入', error));
+        },
+      })),
+    ]) : [{ label: input.kind === 'unavailable' ? input.reason : '尚无实际 Tick 频率', disabled: true, onSelect: () => {} }];
+    return [...entries, { kind: 'separator' },
+      { label: '复制所选片段', disabled: !picked, onSelect: copySelection },
+      { label: '删除所选', onSelect: deleteSelection },
+      { label: '重命名轨道', onSelect: rename },
+      { label: '删除轨道', onSelect: () => authoringActions.deleteTracks(documentId, [row.track.id]) }];
+  }
   return [
     { kind: 'label', label: '在此处添加' },
     ...templates.map((template): MenuEntry => ({

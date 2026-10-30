@@ -6,7 +6,7 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
-  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useSkillElements, variableTypes,
+  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type JsonKey,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -311,6 +311,47 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
   );
 }
 
+export function InputClipFields({ documentId, graphId }: { documentId: string; graphId: string }) {
+  const elements = useSkillElements(true);
+  const context = useInputContext(documentId);
+  const { document } = useCurrentDocument(graphPath(graphId));
+  if (!elements || !document) return <div className={styles.note}>正在读取输入字段</div>;
+  if (context.kind === 'unavailable') return <div className={styles.note}>{context.reason}</div>;
+  const graph = document as JsonObject;
+  const nodes = graph.allNodes as JsonObject[];
+  const anchor = elements.anchors[graph.Role as string]?.find(item => item.kind === '@timelineEnable');
+  const entry = nodes.find(node => node.UID === anchor?.uid);
+  const writers = ((entry?.outConnections as JsonObject[] | undefined) ?? [])
+    .map(edge => nodes.find(node => node.UID === edge.targetNode)!)
+    .filter(node => node.type === elements.previewInput.nodeType);
+  return <>
+    {writers.map(node => <InputWriterFields key={node.UID as string} graphId={graphId} node={node}
+      contract={elements.previewInput} keys={context.actor.keys} />)}
+  </>;
+}
+
+function InputWriterFields({ graphId, node, contract, keys }: {
+  graphId: string; node: JsonObject; contract: import('../../api/authoring').SkillElements['previewInput'];
+  keys: import('../../api/types').InputCatalog['players'][number]['keys'];
+}) {
+  const target = useAuthoring(state => state.target);
+  const { description, issues } = useDescription(target, graphId, node);
+  const key = getIn(node, contract.keyPath);
+  const kind = keys.find(item => item.name === key)?.kind;
+  const fields = description?.stored.map(item => ({ ...item, fields: item.fields
+    .filter(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/') ||
+      (kind !== undefined && field.fieldId === contract.valueFields[kind]))
+    .map(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
+      ? { ...field, choices: keys.map(item => item.name) } : field),
+  })).filter(item => item.fields.length) ?? [];
+  const set: SetValue = (path, value) => inputAuthoring.setNodeValue(graphId, node.UID as string, path, value, contract);
+  return <Fold title="输入" kind="var(--track-in)" defaultOpen>
+    {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
+    {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
+      blackboards={[]} identities="" onSet={set} />)}
+  </Fold>;
+}
+
 // 状态机的状态：状态体由检查器的“状态体”一栏新建、移除与进入，不按身份字符串编辑。
 export const isState = (node: JsonObject) => typeof node.type === 'string' && /^BtsmtlSkillNative\w*State$/.test(node.type);
 
@@ -552,7 +593,7 @@ const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_St
 // 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
-export function ClipFields({ documentId, clipId }: { documentId: string; clipId: string }) {
+export function ClipFields({ documentId, clipId, timeOnly = false }: { documentId: string; clipId: string; timeOnly?: boolean }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
@@ -569,7 +610,7 @@ export function ClipFields({ documentId, clipId }: { documentId: string; clipId:
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
+      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key).replace(/FPRawValue$/, '')}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />

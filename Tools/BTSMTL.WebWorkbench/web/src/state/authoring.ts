@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt } from '../api/playerRecords';
@@ -27,6 +27,7 @@ export interface AuthoringState {
   author: boolean;
   programId: string | null;
   target: AuthoringTarget | null;
+  inputActorId: string | null;
   revision: string | null;
   sourceRevision: string | null;
   files: Record<string, string>;
@@ -76,7 +77,7 @@ export interface AddedPort {
 }
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, target: null, revision: null, sourceRevision: null,
+  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null, revision: null, sourceRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
   skills: null, scenarios: null, documentGraphs: null, documentError: null, tickRate: null,
@@ -198,6 +199,23 @@ export function useInputSchemes(): AuthorInputScheme[] {
     }), [files, edited, removed]);
 }
 
+export function useInputContext(documentId: string | null) {
+  const schemes = useInputSchemes();
+  const scheme = schemes.find(item => item.documentId === documentId);
+  const actorId = useAuthoring(state => state.inputActorId);
+  const { catalog, scene } = useWorkbench(useShallow(state => ({
+    catalog: state.inputCatalog, scene: state.sources?.scenes.find(item => item.path === state.scenePath),
+  })));
+  if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;
+  if (!scene || !catalog || scene.revision !== catalog.revision)
+    return { kind: 'unavailable', reason: '先在内容面板选择场景并读取输入声明' } as const;
+  if (scheme.scene && scheme.scene !== scene.path)
+    return { kind: 'unavailable', reason: '所选场景与输入方案的 Scene 不一致' } as const;
+  const actor = catalog.players.find(player => player.actorId === (scheme.actorId || actorId));
+  if (!actor) return { kind: 'unavailable', reason: '从内容面板为具体角色打开输入方案' } as const;
+  return { kind: 'ready', scheme, scene, actor, tickRate: catalog.tickRate } as const;
+}
+
 function timelineOf(documentId: string, document: JsonObject, sourceRevision: string | null): AuthorTimeline {
   return {
     documentId, contentIdentity: documentId, contentRevision: sourceRevision, displayName: document.m_Name as string,
@@ -299,7 +317,7 @@ export const authoringActions = {
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
-    set({ target: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
+    set({ target: null, inputActorId: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(target, controller.signal);
@@ -316,12 +334,13 @@ export const authoringActions = {
     }
   },
 
-  async openInput(target: AuthoringTarget, path: string, schemeIndex: number) {
+  async openInput(target: AuthoringTarget, path: string, schemeIndex: number, actorId: string) {
     await authoringActions.open(target);
     const current = get().target;
     if (current === null || authoringTargetKey(current) !== authoringTargetKey(target)) return;
     const plan = currentDocument(path) as JsonObject;
     const scheme = (plan.Schemes as JsonObject[])[schemeIndex];
+    set({ inputActorId: actorId });
     selectionActions.select(null);
     selectionActions.showTimeline(scheme.InputTimeline as string);
   },
@@ -958,6 +977,35 @@ const declarationsOf = (document: JsonValue) => (document as JsonObject).Blackbo
 // ── 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline ──
 
 export const inputAuthoring = {
+  async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {
+    const target = get().target;
+    const fragment = await authoringApi.inputFragment(request);
+    if (get().target !== target) return;
+    authoringActions.create(graphPath(fragment.graph.AuthoringId as string), fragment.graph);
+    authoringActions.edit(timelinePath(documentId), document => {
+      const tracks = tracksOf(document);
+      const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
+      if (trackId === null) tracks.push(track);
+      (track.m_Clips as JsonObject[]).push(fragment.clip);
+    });
+    selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
+  },
+
+  setNodeValue(graphId: string, nodeId: string, keys: JsonKey[], value: JsonValue, contract: SkillElements['previewInput']) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const nodes = (document as JsonObject).allNodes as JsonObject[];
+      const node = nodes.find(item => item.UID === nodeId)!;
+      if (keys.join('/') !== contract.keyPath.join('/')) {
+        setIn(node, keys, value);
+        return;
+      }
+      const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);
+      const previous = at(node);
+      for (const writer of nodes.filter(item => item.type === contract.nodeType && at(item) === previous))
+        setIn(writer, contract.keyPath, value);
+    });
+  },
+
   setValue(path: string, keys: JsonKey[], value: JsonValue) {
     authoringActions.edit(path, document => setIn(document, keys, value));
   },

@@ -8,7 +8,7 @@ import {
   isPortSample, nodeName, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
@@ -19,7 +19,7 @@ import {
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, ObjectField } from '../../ui/controls';
-import { ClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7）：按 selection 显示所选对象在当前帧的记录；不选中时显示运行摘要。
@@ -440,6 +440,7 @@ const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kin
 
 function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const schemes = useInputSchemes();
   const { timelines: shownTimelines, routeFrames, frame, graphs, runId } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, routeFrames: state.routeFrames, frame: state.frame, graphs: state.graphs,
     runId: state.runId,
@@ -448,6 +449,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
+  const { document: inputGraph } = useCurrentDocument(found?.clip.graphId ? graphPath(found.clip.graphId) : null);
   const instances = useMemo(() => {
     const result = new Map<string, { call: ExecutionCall; first: RouteFrame; last: RouteFrame; count: number }>();
     if (!found) return [];
@@ -469,16 +471,18 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const marker = useMemo(() => found ? null : findTimelineMarker(timelines, id), [found, timelines, id]);
   if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
-  const kind = trackColors[clipKind(clip)];
+  const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
+  const kind = trackColors[input ? 'in' : clipKind(clip)];
   const graph = clipGraph(graphs, clip.graphId);
   const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
   return (
     <>
-      <Head kind={kind} name={clip.displayName ?? clip.contract} sub={`${timeline.displayName} · ${track.displayName}`} />
+      <Head kind={kind} name={input ? (inputGraph as JsonObject | null)?.name as string ?? track.displayName : clip.displayName ?? clip.contract}
+        sub={`${timeline.displayName} · ${track.displayName}`} />
       <Fold title="片段" kind={kind} defaultOpen>
         <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
           onOpen={() => openTimeline(timeline.documentId)} />
-        {graph
+        {input ? null : graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value={clip.graphId ? '当前技能没有这张图' : '无'} />}
         <Value label="合同" value={clip.contract} />
@@ -486,14 +490,15 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
         {!editable && <Value label="终点" value={clip.endSeconds.toFixed(3)} />}
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
       </Fold>
-      {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} />}
+      {editable && input && clip.graphId && <InputClipFields documentId={timeline.documentId} graphId={clip.graphId} />}
+      {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} timeOnly={input} />}
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除片段；不再被引用的片段图保存时删除"
             onClick={() => authoringActions.deleteClips(timeline.documentId, [clip.id])}>删除片段</Button>
         </div>
       )}
-      {runId && <Fold title="已读取的活动记录" kind="var(--value)" defaultOpen>
+      {runId && !input && <Fold title="已读取的活动记录" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
@@ -514,7 +519,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           : frame.route === null ? '档案播放记录尚未提供' : binding.dirty ? '当前内容未保存，旧档案叠加已停用'
             : '已读取记录中没有匹配来源修订与调用的活动记录'}</div>}
       </Fold>}
-      <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />
+      {!input && <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),

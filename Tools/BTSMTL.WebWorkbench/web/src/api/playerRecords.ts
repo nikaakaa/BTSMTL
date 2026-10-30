@@ -81,6 +81,7 @@ export const readPlayerInputCatalog = object({
       owner: nullable(text), timeline: nullable(text), path: text, revision: text,
       schemes: array(object({ index: number, name: text, rangeEndSeconds: number })),
     })),
+    keys: array(object({ name: text, kind: choice('Button', 'Scalar', 'Vector2'), valueIds: array(text), requestIds: array(text) })),
     values: array(object({ inputId: text, kind: text, encoding: text })),
     requests: array(object({ inputId: text, bufferTicks: text, priority: number, timingClass: number })),
   })),
