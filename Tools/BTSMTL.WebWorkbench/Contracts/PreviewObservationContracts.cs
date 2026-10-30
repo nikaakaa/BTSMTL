@@ -1,7 +1,10 @@
 namespace BTSMTL.WebWorkbench;
 
 public sealed record PreviewField(string DisplayName, string Value);
-public sealed record PreviewAuthoringLocation(string DisplayName, string DocumentId, string ElementId);
+public sealed record PreviewAuthoringLocation(string DisplayName, string DocumentId, string ElementId)
+{
+    public PreviewExecutionCall? Call { get; init; }
+}
 public sealed record PreviewRecord(string DisplayName, PreviewField[] Fields, string RawJson,
     PreviewAuthoringLocation[] Locations);
 public sealed record PreviewSection(string DisplayName, string EmptyMessage, PreviewRecord[] Records);
@@ -42,7 +45,10 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
-public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status);
+public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status)
+{
+    public PreviewExecutionCall? Call { get; init; }
+}
 public sealed record PreviewRouteFrame(string HostFrame, double Seconds, PreviewRoutePlayback[] Playbacks,
     PreviewAuthoringLocation[] Active)
 {
