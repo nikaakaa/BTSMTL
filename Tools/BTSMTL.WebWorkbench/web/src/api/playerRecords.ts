@@ -225,16 +225,39 @@ export const readPlayerCamera = observationPage(object({
 export const readPlayerUnavailable = observationPage(object({
   source, presentationSequence: text, channel: text, reason: text, actorRosterIndex: number, boneIndex: number,
 }));
+const inputIdentity = object({ space: text, index: number });
+function runtimeValue(value: unknown, path = 'Player.runtimeValue') {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${path} 需要对象`);
+  const record = value as Record<string, unknown>;
+  switch (record.kind) {
+    case 'none': return { kind: 'none' as const };
+    case 'boolean': return { kind: 'boolean' as const, value: boolean(record.value, `${path}.value`) };
+    case 'int32': return { kind: 'int32' as const, value: number(record.value, `${path}.value`) };
+    case 'uint64': return { kind: 'uint64' as const, value: text(record.value, `${path}.value`) };
+    case 'scalar': return { kind: 'scalar' as const, raw: text(record.raw, `${path}.raw`) };
+    case 'yaw': return { kind: 'yaw' as const, raw: text(record.raw, `${path}.raw`) };
+    case 'vector2': return { kind: 'vector2' as const, raw: tuple(text, text)(record.raw, `${path}.raw`) };
+    case 'vector3': return { kind: 'vector3' as const, raw: tuple(text, text, text)(record.raw, `${path}.raw`) };
+    case 'quaternion': return { kind: 'quaternion' as const, raw: tuple(text, text, text, text)(record.raw, `${path}.raw`) };
+    case 'identity': return { kind: 'identity' as const, value: inputIdentity(record.value, `${path}.value`) };
+    case 'enum': return { kind: 'enum' as const,
+      typeContentId: number(record.typeContentId, `${path}.typeContentId`), value: number(record.value, `${path}.value`) };
+    case 'spatialIdentity': return { kind: 'spatialIdentity' as const,
+      identity: inputIdentity(record.identity, `${path}.identity`),
+      positionRaw: tuple(text, text, text)(record.positionRaw, `${path}.positionRaw`), yawRaw: text(record.yawRaw, `${path}.yawRaw`) };
+    default: throw new Error(`${path}.kind 不受支持`);
+  }
+}
 export const readPlayerInput = object({
   page: page(object({
     source, actors: array(object({
       actorId: text, rosterIndex: number, received: boolean, inputSequence: text, sourceTick: text,
-      values: array(object({ inputId: text, kind: text, value: array(number) })),
+      values: array(object({ inputId: text, kind: text, value: nullable(array(number)), runtimeValue: nullable(runtimeValue) })),
       requests: array(object({ requestId: text, sequence: text, sourceTick: text, expireTick: text, priority: number })),
     })),
   })),
   plans: array(object({ actorId: text, plan: text, planRevision: text, schemeIndex: number })),
-  availability: array(availability),
+  valueEncoding: nullable(text), availability: array(availability),
 });
 export const readPlayerArchiveImage = object({
   jobId, archiveJobId: identity<'archive'>(), playerBuildId: buildId, contentRevision: text, sceneRevision: text,
