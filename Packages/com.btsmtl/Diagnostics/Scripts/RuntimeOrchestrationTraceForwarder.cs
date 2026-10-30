@@ -21,7 +21,6 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeSourceElementHandle[] m_Edges;
         readonly Dictionary<int, RuntimeSourceElementHandle> m_Blackboards = new();
         readonly string[] m_InvocationPaths;
-        readonly string[] m_ParentInvocationPaths;
 
         public RuntimeOrchestrationTraceForwarder(OrchestrationProgram<TValue> program,
             ReadOnlySpan<OrchestrationGraphSource> sources, OrchestrationIdentityTable identities, string programId,
@@ -34,13 +33,11 @@ namespace BTSMTL.Diagnostics
             m_Operations = new RuntimeSourceElementHandle[program.OperationCount];
             m_OperationNodeIds = new string[program.OperationCount];
             m_InvocationPaths = new string[sources.Length];
-            m_ParentInvocationPaths = new string[sources.Length];
             var edgePaths = new Dictionary<string, RuntimeSourceElementHandle>(StringComparer.Ordinal);
             for (int index = 0; index < sources.Length; index++)
             {
                 OrchestrationGraphExecutionSource source = sources[index].Source;
                 m_InvocationPaths[index] = source.GraphInvocationPath ?? string.Empty;
-                m_ParentInvocationPaths[index] = source.ParentInvocationPath ?? string.Empty;
                 switch (source.TargetKind)
                 {
                     case OrchestrationGraphSourceTargetKind.Operation:
@@ -180,7 +177,8 @@ namespace BTSMTL.Diagnostics
                 var payload = new RuntimeTracePayload
                 {
                     CallSiteId = path,
-                    ParentInvocationPath = m_ParentInvocationPaths[context.InvocationSourceIndex],
+                    ParentInvocationPath = context.ParentInvocationSourceIndex < 0 ? string.Empty :
+                        m_InvocationPaths[context.ParentInvocationSourceIndex],
                     ActionInstanceId = context.ActionInstanceId,
                     ActivationGeneration = item.Generation,
                     SkillExecutionGeneration = context.SkillExecutionGeneration,
