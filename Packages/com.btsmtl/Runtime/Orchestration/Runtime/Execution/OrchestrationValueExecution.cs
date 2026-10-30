@@ -196,8 +196,11 @@ namespace BTSMTL.Orchestration
             }
             if (observations != null)
             {
-                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(storage, operationIndex, slot, input);
-                observations.Observe(in address, in value);
+                int invocationIndex = ResolveTraceInvocation(storage, operationIndex);
+                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(storage, operationIndex, slot, input,
+                    invocationIndex);
+                WriteTraceContext(storage, operationIndex, invocationIndex, out OrchestrationTraceContext context);
+                observations.Observe(in address, in value, in context);
             }
         }
 

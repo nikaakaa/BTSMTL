@@ -30,7 +30,8 @@ namespace BTSMTL.Orchestration
 
     public interface IOrchestrationValueObservationSink<TValue> where TValue : unmanaged
     {
-        void Observe(in OrchestrationValueOverrideAddress address, in TValue value);
+        void Observe(in OrchestrationValueOverrideAddress address, in TValue value,
+            in OrchestrationTraceContext context);
     }
 
     public enum OrchestrationValueOverrideKind : byte

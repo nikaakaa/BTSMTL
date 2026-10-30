@@ -274,8 +274,13 @@ namespace BTSMTL.Orchestration
         public OrchestrationExecutionOwnerToken ReadExecutionOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
             int operationIndex)
         {
-            int invocationIndex = ResolveTraceInvocation(storage,
-                storage.TraceBindings[operationIndex].InvocationGroupIndex, operationIndex, false);
+            int invocationIndex = ResolveTraceInvocation(storage, operationIndex);
+            return ReadExecutionOwner(storage, operationIndex, invocationIndex);
+        }
+
+        OrchestrationExecutionOwnerToken ReadExecutionOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, int invocationIndex)
+        {
             int invocationOperation = storage.TraceInvocations[invocationIndex].OwnerOperationIndex;
             int stateOperation = m_Program.Operation(operationIndex).ParentStateOperationIndex;
             ulong generation = ReadInvocationGeneration(storage, invocationIndex, operationIndex, out int generationOwner);
@@ -308,11 +313,19 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationValueOverrideAddress ReadPortOverrideAddress(
             OrchestrationWorkbenchDiagnosticStorage<TValue> storage, int operationIndex,
-            int slot, bool input) => new OrchestrationValueOverrideAddress
+            int slot, bool input)
+        {
+            int invocationIndex = ResolveTraceInvocation(storage, operationIndex);
+            return ReadPortOverrideAddress(storage, operationIndex, slot, input, invocationIndex);
+        }
+
+        OrchestrationValueOverrideAddress ReadPortOverrideAddress(
+            OrchestrationWorkbenchDiagnosticStorage<TValue> storage, int operationIndex,
+            int slot, bool input, int invocationIndex) => new OrchestrationValueOverrideAddress
         {
             Kind = input ? OrchestrationValueOverrideKind.Input : OrchestrationValueOverrideKind.Output,
             Slot = slot,
-            Owner = ReadExecutionOwner(storage, operationIndex)
+            Owner = ReadExecutionOwner(storage, operationIndex, invocationIndex)
         };
 
         public bool TrySelectExecutionOwner(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
@@ -1049,16 +1062,22 @@ namespace BTSMTL.Orchestration
         int CaptureTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
             int operationIndex, bool lifecycleOwner = false)
         {
+            int invocationIndex = ResolveTraceInvocation(storage, operationIndex, lifecycleOwner);
+            int index = storage.TraceContextCount++;
+            WriteTraceContext(storage, operationIndex, invocationIndex, out storage.TraceContexts[index]);
+            return index;
+        }
+
+        void WriteTraceContext(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, int invocationIndex, out OrchestrationTraceContext context)
+        {
             ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceBinding binding =
                 ref storage.TraceBindings[operationIndex];
-            int invocationIndex = ResolveTraceInvocation(storage, binding.InvocationGroupIndex, operationIndex, lifecycleOwner);
             ref readonly OrchestrationWorkbenchDiagnosticStorage<TValue>.TraceInvocation invocation =
                 ref storage.TraceInvocations[invocationIndex];
             int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
                 ResolveTraceInvocation(storage, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref ReadExecutionFrame(operationIndex)[0];
-            int index = storage.TraceContextCount++;
-            ref OrchestrationTraceContext context = ref storage.TraceContexts[index];
             context.SourceIndex = binding.SourceIndex;
             context.InvocationSourceIndex = invocation.SourceIndex;
             context.ParentInvocationSourceIndex = parentIndex < 0 ? -1 :
@@ -1076,8 +1095,12 @@ namespace BTSMTL.Orchestration
             context.ClipOrdinal = frame.ClipOrdinal;
             context.Cycle = frame.Cycle;
             context.Marker = frame.Marker;
-            return index;
         }
+
+        int ResolveTraceInvocation(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
+            int operationIndex, bool lifecycleOwner = false) =>
+            ResolveTraceInvocation(storage, storage.TraceBindings[operationIndex].InvocationGroupIndex,
+                operationIndex, lifecycleOwner);
 
         int ResolveTraceInvocation(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
             int groupIndex, int operationIndex, bool lifecycleOwner)
