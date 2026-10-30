@@ -243,6 +243,7 @@ export const authoringActions = {
       return;
     }
     loadController?.abort();
+    previewController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
@@ -250,8 +251,10 @@ export const authoringActions = {
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(skill, controller.signal);
+      controller.signal.throwIfAborted();
       set({ skill: snapshot.skill, revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
       await readDocument(skill, controller.signal);
+      controller.signal.throwIfAborted();
       set({ loading: false, author: true });
       publishDocument();
       reconcileSelection();
@@ -280,15 +283,18 @@ export const authoringActions = {
       return;
     }
     loadController?.abort();
+    previewController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
     set({ programId, skill: null, revision: null, files: {}, edited: {}, removed: [], loading: true, externalChange: false });
     try {
       const ability = abilityOf(programId);
       const folders = await authoringApi.list(controller.signal);
+      controller.signal.throwIfAborted();
       const ordered = [...folders.filter(name => name.endsWith(ability)), ...folders.filter(name => !name.endsWith(ability))];
       for (const folder of ordered) {
         const snapshot = await authoringApi.read(folder, controller.signal);
+        controller.signal.throwIfAborted();
         const root = snapshot.files.find(file => file.path === 'skill.json');
         const declared = root ? (parseSkillJson(root.content) as JsonObject).m_AbilityId : null;
         if (declared !== ability) continue;

@@ -208,6 +208,7 @@ export const transport = {
   },
 
   play() {
+    timeSeek?.abort();
     switch (transportSource()) {
       case 'sealed': startReview(); break;
       case 'player-live': void playerCommand({ type: 'play', commandId: crypto.randomUUID() }); break;
@@ -227,6 +228,7 @@ export const transport = {
   },
 
   step(delta: 1 | -1) {
+    timeSeek?.abort();
     switch (transportSource()) {
       case 'sealed':
         stopReview();
@@ -240,6 +242,7 @@ export const transport = {
 
   // 档案按记录序号；实时试玩按播放器 SDK 帧。
   seek(frame: number) {
+    timeSeek?.abort();
     switch (transportSource()) {
       case 'sealed':
         stopReview();

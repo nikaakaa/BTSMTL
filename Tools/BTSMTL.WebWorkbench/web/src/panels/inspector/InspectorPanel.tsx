@@ -487,7 +487,8 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
               );
             })}
           </div>
-        ) : <div className={styles.note}>本次运行没有播放到这个片段</div>}
+        ) : <div className={styles.note}>{frame === null ? '正在读取当前帧'
+          : frame.route === null ? '档案播放记录尚未提供' : '本次运行没有播放到这个片段'}</div>}
       </Fold>}
       <HostRecords records={locatedRecords(frame, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />
       <Identity extra={[
