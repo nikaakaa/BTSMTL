@@ -633,17 +633,23 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     if (selectedEdges.size) graphAuthoring.disconnect(graph.id, [...selectedEdges]);
     selectCanvas(kept, []);
   };
+  const selectedFlowNodes = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
+  const copySelected = () => graphAuthoring.copy(graph.id, selectedFlowNodes.map(node => node.id),
+    Object.fromEntries(selectedFlowNodes.map(node => [node.id, node.position])), portsOf(selectedFlowNodes.map(node => node.id)));
+  const paste = () => {
+    const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
+    const [first] = pasted;
+    if (first !== undefined) {
+      selectCanvas(pasted, []);
+      selectionActions.select({ kind: 'node', id: nodeSelectId(graph, { id: first, invocationPath: path }) });
+    }
+  };
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (!editable || (event.target as HTMLElement).closest('input, textarea')) return;
-    const picked = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
     if (event.key === 'Delete') deleteSelected();
-    else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && picked.length && !machine) {
-      graphAuthoring.copy(graph.id, picked.map(node => node.id), Object.fromEntries(picked.map(node => [node.id, node.position])),
-        portsOf(picked.map(node => node.id)));
-    } else if ((event.ctrlKey || event.metaKey) && event.key === 'v' && !machine) {
-      const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
-      if (pasted.length) selectCanvas(pasted, []);
-    } else return;
+    else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && selectedFlowNodes.length && !machine) copySelected();
+    else if ((event.ctrlKey || event.metaKey) && event.key === 'v' && !machine) paste();
+    else return;
     event.preventDefault();
   };
   // 添加状态：默认配置取宿主对状态类型的描述。
@@ -676,7 +682,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     !editable ? { label: machine ? '添加状态' : '添加节点…', onSelect: () => {}, disabled: true, tip: blocked }
       : machine ? { label: '添加状态', onSelect: () => void addState(screenToFlowPosition(menuAt.current)) }
         : { label: '添加节点…', onSelect: () => setPicker({ ...menuAt.current, flow: screenToFlowPosition(menuAt.current) }) },
-    ...(machine ? [] : [{ label: '粘贴', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.paste(graph.id, { x: 40, y: 40 }) }]),
+    ...(machine ? [] : [
+      { label: '复制', disabled: !editable || !selectedFlowNodes.length, tip: editable ? undefined : blocked, onSelect: copySelected },
+      { label: '粘贴', disabled: !editable, tip: editable ? undefined : blocked, onSelect: paste },
+    ]),
     { label: '新建分组', disabled: !editable, tip: editable ? '框住选中的节点；没有选中时在此处新建' : blocked, onSelect: addGroup },
     { label: '删除所选', disabled: !editable, tip: editable ? undefined : blocked, onSelect: deleteSelected },
     { kind: 'separator' },

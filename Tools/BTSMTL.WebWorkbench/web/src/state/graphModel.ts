@@ -30,7 +30,7 @@ export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'Loop
   ? `${item.kind} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : item.kind;
 
 // 调用路径已含程序与图身份。
-export const nodeSelectId = (graph: GraphDefinition, node: GraphNode) => `${graph.actorId}/${node.invocationPath}/${node.id}`;
+export const nodeSelectId = (graph: GraphDefinition, node: Pick<GraphNode, 'invocationPath' | 'id'>) => `${graph.actorId}/${node.invocationPath}/${node.id}`;
 
 export const edgeSelectId = (graph: GraphDefinition, edge: GraphEdge) => `${graph.actorId}/${edge.invocationPath}/${edge.id}`;
 
