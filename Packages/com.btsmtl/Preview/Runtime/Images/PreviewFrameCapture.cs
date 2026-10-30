@@ -1,7 +1,8 @@
 using System;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -10,10 +11,10 @@ namespace BTSMTL.Preview
 {
     public enum PreviewImageEncoding : byte { Jpeg, Png }
 
-    public readonly struct PreviewEncodedFrame
+    public readonly struct PreviewEncodedFrame : IDisposable
     {
         public PreviewEncodedFrame(int frame, int width, int height, bool flipY,
-            Matrix4x4 viewProjection, PreviewImageEncoding encoding, byte[] bytes)
+            Matrix4x4 viewProjection, PreviewImageEncoding encoding, NativeArray<byte> bytes)
         {
             Frame = frame;
             Width = width;
@@ -30,24 +31,23 @@ namespace BTSMTL.Preview
         public bool FlipY { get; }
         public Matrix4x4 ViewProjection { get; }
         public PreviewImageEncoding Encoding { get; }
-        public byte[] Bytes { get; }
+        public NativeArray<byte> Bytes { get; }
+
+        public void Dispose() => Bytes.Dispose();
     }
 
     public sealed class PreviewFrameCapture : IDisposable
     {
         readonly RenderTexture m_Screen;
         readonly RenderTexture m_Target;
-        readonly byte[] m_Pixels;
+        NativeArray<byte> m_Pixels;
         readonly int m_Quality;
         readonly int m_Width;
         readonly int m_Height;
         readonly PreviewImageEncoding m_Encoding;
         readonly bool m_FlipY;
         readonly Action<AsyncGPUReadbackRequest> m_OnReadback;
-        readonly Action m_Encode;
         AsyncGPUReadbackRequest? m_Request;
-        Task m_EncodeTask;
-        PreviewEncodedFrame m_Completed;
         Matrix4x4 m_ViewProjection;
         int m_Frame;
         int m_Busy;
@@ -60,18 +60,18 @@ namespace BTSMTL.Preview
                 throw new ArgumentOutOfRangeException(nameof(width), "预览画面与面板尺寸必须大于零。");
             m_Screen = new RenderTexture(screenWidth, screenHeight, 0, RenderTextureFormat.ARGB32);
             m_Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
-            m_Pixels = new byte[checked(width * height * 4)];
+            m_Pixels = new NativeArray<byte>(checked(width * height * 4),
+                Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             m_Quality = quality;
             m_Width = width;
             m_Height = height;
             m_Encoding = encoding;
             m_FlipY = SystemInfo.graphicsUVStartsAtTop;
             m_OnReadback = CompleteReadback;
-            m_Encode = Encode;
         }
 
         public Exception Failure { get; private set; }
-        public bool IsBusy => Volatile.Read(ref m_Busy) != 0 || Volatile.Read(ref m_Ready) != 0;
+        public bool IsBusy => Volatile.Read(ref m_Busy) != 0;
 
         public bool TryCaptureAtFrameEnd(int frame, Camera camera)
         {
@@ -82,7 +82,8 @@ namespace BTSMTL.Preview
             m_ViewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
             ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
             Graphics.Blit(m_Screen, m_Target);
-            m_Request = AsyncGPUReadback.Request(m_Target, 0, TextureFormat.RGBA32, m_OnReadback);
+            m_Request = AsyncGPUReadback.RequestIntoNativeArray(
+                ref m_Pixels, m_Target, 0, TextureFormat.RGBA32, m_OnReadback);
             return true;
         }
 
@@ -93,10 +94,28 @@ namespace BTSMTL.Preview
                 frame = default;
                 return false;
             }
-            frame = m_Completed;
-            m_Completed = default;
             Volatile.Write(ref m_Ready, 0);
-            return true;
+            try
+            {
+                NativeArray<byte> bytes = m_Encoding == PreviewImageEncoding.Jpeg
+                    ? ImageConversion.EncodeNativeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                        (uint)m_Width, (uint)m_Height, 0, m_Quality)
+                    : ImageConversion.EncodeNativeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                        (uint)m_Width, (uint)m_Height);
+                frame = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,
+                    m_FlipY, m_ViewProjection, m_Encoding, bytes);
+                return true;
+            }
+            catch (Exception failure)
+            {
+                Failure = failure;
+                frame = default;
+                return false;
+            }
+            finally
+            {
+                Volatile.Write(ref m_Busy, 0);
+            }
         }
 
         void CompleteReadback(AsyncGPUReadbackRequest request)
@@ -107,38 +126,14 @@ namespace BTSMTL.Preview
                 Volatile.Write(ref m_Busy, 0);
                 return;
             }
-            request.GetData<byte>().CopyTo(m_Pixels);
-            m_EncodeTask = Task.Run(m_Encode);
-        }
-
-        void Encode()
-        {
-            try
-            {
-                byte[] bytes = m_Encoding == PreviewImageEncoding.Jpeg
-                    ? ImageConversion.EncodeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Width, (uint)m_Height, 0, m_Quality)
-                    : ImageConversion.EncodeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Width, (uint)m_Height);
-                m_Completed = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,
-                    m_FlipY, m_ViewProjection, m_Encoding, bytes);
-                Volatile.Write(ref m_Ready, 1);
-            }
-            catch (Exception failure)
-            {
-                Failure = failure;
-            }
-            finally
-            {
-                Volatile.Write(ref m_Busy, 0);
-            }
+            Volatile.Write(ref m_Ready, 1);
         }
 
         public void Dispose()
         {
             if (m_Request.HasValue)
                 m_Request.Value.WaitForCompletion();
-            m_EncodeTask?.GetAwaiter().GetResult();
+            m_Pixels.Dispose();
             m_Screen.Release();
             m_Target.Release();
             UnityEngine.Object.Destroy(m_Screen);
@@ -146,11 +141,11 @@ namespace BTSMTL.Preview
         }
     }
 
-    public sealed class PreviewFrameImageArchive
+    public sealed class PreviewPngImageArchive
     {
         readonly string m_Directory;
 
-        public PreviewFrameImageArchive(string directory)
+        public PreviewPngImageArchive(string directory)
         {
             if (!Path.IsPathRooted(directory))
                 throw new ArgumentException("预览帧画面归档需要绝对输出目录。", nameof(directory));
@@ -158,11 +153,14 @@ namespace BTSMTL.Preview
             Directory.CreateDirectory(directory);
         }
 
-        public string Write(in PreviewEncodedFrame frame)
+        public unsafe string Write(in PreviewEncodedFrame frame)
         {
-            string extension = frame.Encoding == PreviewImageEncoding.Jpeg ? ".jpg" : ".png";
-            string path = Path.Combine(m_Directory, "frame-" + frame.Frame.ToString("D10") + extension);
-            File.WriteAllBytes(path, frame.Bytes);
+            if (frame.Encoding != PreviewImageEncoding.Png)
+                throw new ArgumentException("独立截图归档只接收 PNG，逐帧 JPEG 交运行档案写入器。", nameof(frame));
+            string path = Path.Combine(m_Directory, "frame-" + frame.Frame.ToString("D10") + ".png");
+            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            stream.Write(new ReadOnlySpan<byte>(
+                NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(frame.Bytes), frame.Bytes.Length));
             return path;
         }
     }

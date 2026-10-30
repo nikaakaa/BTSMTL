@@ -13,7 +13,7 @@ namespace BTSMTL.Preview
         public string commandId;
         public int count;
         public int frame;
-        public string mode;
+        public string executionMode;
         public bool enabled;
         public int width;
         public int height;
