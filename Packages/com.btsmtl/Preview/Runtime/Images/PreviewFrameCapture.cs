@@ -97,13 +97,24 @@ namespace BTSMTL.Preview
             Volatile.Write(ref m_Ready, 0);
             try
             {
-                NativeArray<byte> bytes = m_Encoding == PreviewImageEncoding.Jpeg
-                    ? ImageConversion.EncodeNativeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Width, (uint)m_Height, 0, Quality)
-                    : ImageConversion.EncodeNativeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                NativeArray<byte> bytes;
+                bool flipY;
+                if (m_Encoding == PreviewImageEncoding.Jpeg)
+                {
+                    bytes = ImageConversion.EncodeNativeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                        (uint)m_Width, (uint)m_Height, 0, Quality);
+                    flipY = m_FlipY;
+                }
+                else
+                {
+                    if (m_FlipY)
+                        FlipPixelRows();
+                    bytes = ImageConversion.EncodeNativeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height);
+                    flipY = false;
+                }
                 frame = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,
-                    m_FlipY, m_ViewProjection, m_Encoding, bytes);
+                    flipY, m_ViewProjection, m_Encoding, bytes);
                 return true;
             }
             catch (Exception failure)
@@ -115,6 +126,22 @@ namespace BTSMTL.Preview
             finally
             {
                 Volatile.Write(ref m_Busy, 0);
+            }
+        }
+
+        void FlipPixelRows()
+        {
+            var rgbaView = m_Pixels.Reinterpret<uint>(sizeof(byte));
+            for (int row = 0; row < m_Height / 2; row++)
+            {
+                int topRowStart = row * m_Width;
+                int bottomRowStart = (m_Height - row - 1) * m_Width;
+                for (int column = 0; column < m_Width; column++)
+                {
+                    uint pixel = rgbaView[topRowStart + column];
+                    rgbaView[topRowStart + column] = rgbaView[bottomRowStart + column];
+                    rgbaView[bottomRowStart + column] = pixel;
+                }
             }
         }
 
