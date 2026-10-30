@@ -910,7 +910,8 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
         if (event.key !== 'Delete') return;
         event.preventDefault();
         if (!boxed.size) { deleteSelection(); return; }
-        deleteClips((selectedClips ?? []).map(item => item.id));
+        deleteClips([...event.currentTarget.querySelectorAll<HTMLElement>('[data-box]')]
+          .filter(element => boxed.has(element.dataset.box!)).map(element => element.dataset.select!));
         selectionActions.selectTimelineClips(panelId, []);
       }}
       onPointerCancel={() => { boxStart.current = null; setBox(null); }}
