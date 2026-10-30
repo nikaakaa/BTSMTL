@@ -206,7 +206,11 @@ export const readPlayerPoseLayout = object({
   })),
 });
 export const readPlayerLogic = object({
-  bodyColumns: array(text), page: page(object({ source, checksum: text, bodies: array(array(number)) })),
+  page: page(object({ source, checksum: text, bodies: array(object({
+    actorId: text, x: number, y: number, z: number, yaw: number,
+    velocityX: number, velocityY: number, velocityZ: number, grounded: number,
+    fixedPointRaw: nullable(tuple(text, text, text, text, text, text, text)),
+  })) })),
   availability: array(availability),
 });
 export const readPlayerPresentation = observationPage(object({
