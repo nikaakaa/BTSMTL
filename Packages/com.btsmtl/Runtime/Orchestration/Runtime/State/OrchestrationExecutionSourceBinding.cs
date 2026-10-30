@@ -41,6 +41,7 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExecutionSourceBinding<TValue> where TValue : unmanaged
     {
         readonly ulong[] m_GraphMembers;
+        readonly int m_SourceStateOperationIndex;
 
         OrchestrationExecutionSourceBinding(OrchestrationProgram<TValue> program,
             int candidateOwnerOperationIndex, int sourceOperationIndex)
@@ -48,7 +49,7 @@ namespace BTSMTL.Orchestration
             Program = program;
             CandidateOwnerOperationIndex = candidateOwnerOperationIndex;
             SourceOperationIndex = sourceOperationIndex;
-            SourceStateOperationIndex = program.Operation(sourceOperationIndex).ParentStateOperationIndex;
+            m_SourceStateOperationIndex = program.Operation(sourceOperationIndex).ParentStateOperationIndex;
             int operationCount = program.OperationCount;
             m_GraphMembers = new ulong[(operationCount * operationCount + 63) / 64];
             var collected = new bool[operationCount];
@@ -66,10 +67,9 @@ namespace BTSMTL.Orchestration
         public OrchestrationProgram<TValue> Program { get; }
         public int CandidateOwnerOperationIndex { get; }
         public int SourceOperationIndex { get; }
-        public int SourceStateOperationIndex { get; }
 
         public OrchestrationExecutionSourceBindingView View =>
-            new OrchestrationExecutionSourceBindingView(SourceOperationIndex, SourceStateOperationIndex,
+            new OrchestrationExecutionSourceBindingView(SourceOperationIndex, m_SourceStateOperationIndex,
                 Program.OperationCount, m_GraphMembers);
 
         public static OrchestrationExecutionSourceBinding<TValue> Prepare(OrchestrationProgram<TValue> program,
