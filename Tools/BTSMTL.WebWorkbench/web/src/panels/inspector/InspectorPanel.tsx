@@ -1,11 +1,11 @@
 import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Availability, Field, Frame, GraphDefinition, HostRecord } from '../../api/types';
+import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord } from '../../api/types';
 import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, playedTimeline, portColor, compareSequence,
+  isPortSample, nodeName, playedTimeline, portColor, compareSequence, callKey, singleCall,
 } from '../../state/graphModel';
 import {
   applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements, useDocumentObservationBinding,
@@ -58,7 +58,7 @@ function Content({ shown, locked }: { shown: Selection | null; locked: boolean }
   const missing = <Empty text={shown?.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前技能' : '所选对象不属于当前技能'} />;
   if (!shown) return <RunSummary />;
   switch (shown.kind) {
-    case 'node': return <NodeInspector id={shown.id} missing={missing} />;
+    case 'node': return <NodeInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'clip': return shown.id.startsWith('input/') ? <InputItemInspector id={shown.id} missing={missing} />
       : <ClipInspector id={shown.id} missing={missing} />;
     case 'track': return shown.id.startsWith('input/') ? <InputTrackInspector id={shown.id} missing={missing} />
@@ -245,7 +245,7 @@ function useAuthorGraphs() {
   })));
 }
 
-function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
+function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
   const { graphs, frame } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame })));
   const author = useAuthorGraphs();
@@ -258,8 +258,10 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (!found) return missing;
   const { graph, node } = found;
   const editable = author.program !== null && author.program === graph.programId;
-  const records = graphRecords(frame, graph, binding).filter(item => 'nodeId' in item && item.nodeId === node.id &&
-    item.call.invocationPath === node.invocationPath);
+  const candidates = graphRecords(frame, graph, binding);
+  const observedCall = call ?? singleCall(candidates);
+  const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
+    'nodeId' in item && item.nodeId === node.id && item.call.invocationPath === node.invocationPath);
   const events = records.filter(isNodeOccurrence).sort(compareSequence);
   const samples = records.filter(isPortSample);
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
@@ -272,7 +274,8 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
       {editable && <StateBody graph={graph} nodeId={node.id} />}
       <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
       <Fold title="本帧" kind={kind} defaultOpen>
-        <Value label="状态" mono={false} value={events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
+        <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
+        {observedCall && <Value label="角色" value={observedCall.actorId} />}
         {events.length ? (
           <div className={styles.list}>
             {events.map(item => (

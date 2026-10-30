@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
-import type { GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
+import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentObservationBinding, type CanvasGroup,
@@ -171,19 +171,27 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
 
   // 本帧的实际调用；没有记录时按图实例列出。
   const calls = useWorkbench(useShallow(state => {
-    const result: string[] = [];
+    const result = new Map<string, ExecutionCall>();
     for (const item of graphRecords(state.frame, graph, binding)) {
-      const id = callKey(item.call);
-      if (!result.includes(id)) result.push(id);
+      result.set(callKey(item.call), item.call);
     }
-    return result;
+    return [...result.values()];
   }));
   const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
   const callOptions = calls.length
-    ? calls.map((id, index) => ({ value: id, label: `${(JSON.parse(id) as string[])[0]} · 调用 ${index + 1}` }))
+    ? calls.map((item, index) => ({ value: callKey(item), label: `${item.actorId} · 调用 ${index + 1}` }))
     : paths.map((path, index) => ({ value: path, label: `图实例 ${index + 1}` }));
   const call = callOptions.some(option => option.value === params.call) ? params.call! : callOptions[0]?.value ?? null;
-  const path = call === null ? null : calls.includes(call) ? (JSON.parse(call) as string[])[3] : call;
+  const observedCall = calls.find(item => callKey(item) === call) ?? null;
+  const path = observedCall?.invocationPath ?? call;
+
+  const selectCall = (value: string) => {
+    setParams({ call: value });
+    const selection = getState().selection;
+    if (selection?.kind === 'node' && graph.nodes.some(node => nodeSelectId(graph, node) === selection.id) ||
+      selection?.kind === 'edge' && graph.edges.some(edge => edgeSelectId(graph, edge) === selection.id))
+      selectionActions.select({ ...selection, call: calls.find(item => callKey(item) === value) });
+  };
 
   const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, viewport: null }), [setParams]);
 
@@ -232,7 +240,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
           <Select label="实际调用" value={call} options={callOptions} disabled={callOptions.length < 2}
             tip={binding.dirty ? '当前作者内容未保存，旧档案叠加已停用'
               : binding.sourceRevision === null ? '尚未读取当前内容来源修订'
-                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={value => setParams({ call: value })} />
+                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={selectCall} />
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
@@ -244,7 +252,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         </div>
         {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
           : path === null ? <ReportEmpty text="此调用未保留可显示的节点来源" />
-            : <AuthoredCanvas graph={graph} path={path} call={calls.includes(call!) ? call : null}
+            : <AuthoredCanvas graph={graph} path={path} call={observedCall}
               hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
       </ReactFlowProvider>
     </div>
@@ -392,7 +400,7 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
 interface GraphCanvasProps {
   graph: GraphDefinition;
   path: string;
-  call: string | null;
+  call: ExecutionCall | null;
   hierarchy: GraphHierarchy;
   enter(graph: GraphDefinition): void;
   params: Params;
@@ -473,13 +481,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   useEffect(() => {
     const apply = () => {
       const state = getState();
-      const records = graphRecords(state.frame, graph, binding).filter(item => !call || callKey(item.call) === call);
+      const records = graphRecords(state.frame, graph, binding).filter(item => call !== null && callKey(item.call) === callKey(call));
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
       if (machine) {
         for (let index = 0; index <= state.frameIndex && index < state.routeFrames.length; index++) {
           const frame = state.routeFrames[index];
           const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.graphId === graph.id &&
-            belongsTo(item.call, graph, binding) && callKey(item.call) === call;
+            belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
           for (const edge of frame.edges) if (edge.passed && matches(edge)) history.traveled.add(edge.edgeId);
         }
@@ -511,8 +519,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => setNodes(current => applyNodeChanges(changes, current)), []);
   const onNodeClick = useCallback((_: unknown, node: CanvasNode) => {
-    if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId });
-  }, []);
+    if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call: call ?? undefined });
+  }, [call]);
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
     if (node.data.children.length) enter(node.data.children[0]);
@@ -527,8 +535,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
   const onSelectionEnd = useCallback(() => {
     const picked = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
-    if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId });
-  }, [nodes]);
+    if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId, call: call ?? undefined });
+  }, [nodes, call]);
   const { fitView, screenToFlowPosition } = useReactFlow();
 
   // ── 作者编辑（照 NodeCanvas）：右键添加节点、拖端口连线、Delete 删除、Ctrl+C／Ctrl+V 复制粘贴、拖动写布局 ──
@@ -538,14 +546,14 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
   // 单击连线选中（Ctrl／Shift 加选）；状态机的转移同时交给检查器。
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
-    if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge) });
+    if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
     if (!editable) return;
     setSelectedEdges(current => {
       const next = new Set(event.ctrlKey || event.shiftKey ? current : []);
       if (!next.delete(edge.id)) next.add(edge.id);
       return next;
     });
-  }, [editable, machine, graph]);
+  }, [editable, machine, graph, call]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;

@@ -44,6 +44,11 @@ export function findGraphNode(graphs: GraphDefinition[] | null, selectId: string
 
 export type RouteRecord = NodeOccurrence | EdgeOccurrence | PortSample;
 
+export function singleCall(records: RouteRecord[]): ExecutionCall | null {
+  const calls = new Set(records.map(record => callKey(record.call)));
+  return calls.size === 1 ? records[0].call : null;
+}
+
 export function graphRecords(frame: Frame | null, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
   const route = frame?.route;
   if (!route) return [];

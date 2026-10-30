@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
+  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
   InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
@@ -136,6 +136,7 @@ export interface Selection {
   kind: SelectionKind;
   // 稳定身份，地址 select 参数原样使用。
   id: string;
+  call?: ExecutionCall;
 }
 export interface SelectionSlice {
   selection: Selection | null;
@@ -313,8 +314,6 @@ export const resourceActions = {
 
 export const selectionActions = {
   select(selection: Selection | null) {
-    const current = getState().selection;
-    if (current?.kind === selection?.kind && current?.id === selection?.id) return;
     set({ selection });
   },
   showGraph(key: string) {
