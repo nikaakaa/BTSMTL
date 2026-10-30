@@ -31,7 +31,7 @@ export function PlayerPanel() {
 }
 
 function PlayerView({ frameName }: { frameName: string }) {
-  const [params, setParams] = usePanelParams<Params>({ build: null, overlay: false, stats: true });
+  const [params, setParams] = usePanelParams<Params>({ build: null, overlay: false, stats: false });
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
     runId: current.runId, archiveImage: current.archiveImage, scenePath: current.scenePath, sources: current.sources, selection: current.selection,
