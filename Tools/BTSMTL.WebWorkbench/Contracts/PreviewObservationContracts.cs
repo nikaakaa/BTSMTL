@@ -58,11 +58,6 @@ public sealed record PreviewRouteFrame(string HostFrame, double Seconds, Preview
     public PreviewPortSample[] Ports { get; init; } = [];
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
-public sealed record PreviewRoute(string RunId, string ContentRevision, PreviewRouteFrame[] Frames)
-{
-    public string Protocol => "btsmtl.preview-route/2";
-    public PreviewObservationAvailability[] Availability { get; init; } = [];
-}
 public sealed record PreviewObservationPage(string RunId, string ContentRevision, string[] Channels,
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);
