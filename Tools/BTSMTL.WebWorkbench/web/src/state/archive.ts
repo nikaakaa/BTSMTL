@@ -37,6 +37,14 @@ function remember(jobId: PlayerJobId, index: number, frame: ArchiveFrame) {
     for (const oldest of cache.keys()) { cache.delete(oldest); break; }
 }
 
+function publishFrame(context: OpenArchive) {
+  const state = getState();
+  if (isCurrent(context.generation) && state.runId === context.jobId) {
+    const frame = cache.get(key(context.jobId, state.frameIndex));
+    runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
+  }
+}
+
 async function readAll<T>(read: (offset: number) => Promise<{
   page: { items: T[]; nextOffset: number | null }; availability: Availability[];
 }>) {
@@ -118,6 +126,7 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
           ...input.availability, ...unavailable.availability],
       });
     });
+    publishFrame(context);
   });
 }
 
@@ -142,11 +151,7 @@ function loadCurvePage(context: OpenArchive, page: number, curveId: string): Pro
         kind: 'sampled', samples: result.items.filter(sample => sample.source.sdkFrame === frame.hostFrame), availability: result.availability,
       } } });
     }
-    const state = getState();
-    if (isCurrent(context.generation) && state.runId === context.jobId) {
-      const frame = cache.get(key(context.jobId, state.frameIndex));
-      runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
-    }
+    publishFrame(context);
   });
 }
 
@@ -171,10 +176,7 @@ function loadVisibleCurves(context: OpenArchive) {
             const id = key(context.jobId, index), frame = cache.get(id);
             if (frame) cache.set(id, { ...frame, curves: { ...frame.curves, [curveId]: { kind: 'failed', reason, entryId } } });
           }
-          if (isCurrent(context.generation)) {
-            const frame = cache.get(key(context.jobId, getState().frameIndex));
-            runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
-          }
+          publishFrame(context);
         }
       }
     })();
@@ -243,6 +245,13 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
 }
 
 export const archive = {
+  inputFrames(jobId: PlayerJobId, actorId: string) {
+    return [...cache.entries()].flatMap(([id, frame]) => {
+      const input = frame.input?.actors.find(actor => actor.actorId === actorId);
+      return id.startsWith(jobId + ':') && input ? [{ frame: frame.hostFrame, input }] : [];
+    }).sort((left, right) => BigInt(left.frame) < BigInt(right.frame) ? -1 : BigInt(left.frame) > BigInt(right.frame) ? 1 : 0);
+  },
+
   curveSamples(jobId: PlayerJobId, curveId: string): PlayerCurveSample[] {
     return [...cache.entries()].flatMap(([id, frame]) => {
       const curve = frame.curves[curveId];

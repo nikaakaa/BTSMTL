@@ -506,7 +506,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       result.push(...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
       if (input && received) {
         result.push({ kind: 'receivedGroup', id: 'received', received });
-        if (received.kind === 'ready' && !collapsed.has('received')) {
+        if (!collapsed.has('received')) {
           const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
           if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
           for (const line of lines)
@@ -1604,15 +1604,14 @@ function CurveLine({ row }: { row: CurveRow }) {
   </Line>;
 }
 
-// 回看：档案输入通道中目标角色每帧实际收到的输入，按键各一行；修订不一致时整组不出现，由工具条说明过期。
 function ReceivedGroupLine({ received, open, toggle }: { received: ReceivedInput; open: boolean; toggle(id: string): void }) {
-  const notice = received.kind === 'loading' ? '正在读取档案输入' : received.kind === 'failed' ? received.reason
-    : !received.keys.length && !received.missing.length ? '档案中该角色没有收到非中性输入' : null;
+  const notice = !received.keys.length && !received.missing.length ? '已读帧内没有非中性输入' : null;
+  const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
   return <Line id="received" height={rowHeights.inputGroup} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
     <button className={styles.fold} onClick={() => toggle('received')} aria-expanded={open} aria-label={open ? '折叠实际输入' : '展开实际输入'}>
       <Triangle open={open} />
     </button>
-    <span className={styles.segmentTitle}>实际收到的输入</span>
+    <span className={styles.segmentTitle} title={`已读 SDK ${scope}；随游标分页读取`}>实际收到的输入（已读帧）</span>
   </>}>
     {notice && <span className={styles.curveNotice} title={notice}>{notice}</span>}
   </Line>;
