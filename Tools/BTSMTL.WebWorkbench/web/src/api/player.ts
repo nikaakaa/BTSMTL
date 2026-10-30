@@ -7,7 +7,7 @@ import {
   readPlayerArchive, readPlayerArchiveImage, readPlayerCamera, readPlayerInput,
   readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
   readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
-  type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type StartPlayerJobRequest,
+  type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type PlayerLoadRequest, type StartPlayerJobRequest,
 } from './playerRecords';
 import type {
   ImageSourceAvailability, LiveCommand, LivePlayer, PlayerBuild,
@@ -73,6 +73,8 @@ export const playerApi = {
   stop: (id: string, signal?: AbortSignal) => postJson<unknown>(`${live(id)}/stop`, {}, signal).then(value => readLivePlayer(value)),
   swap: (id: string, playerBuildId: string, signal?: AbortSignal) =>
     postJson<unknown>(`${live(id)}/swap`, { playerBuildId }, signal).then(value => readLivePlayer(value)),
+  load: (id: string, request: PlayerLoadRequest, signal?: AbortSignal) =>
+    postJson<unknown>(`${live(id)}/load`, request, signal).then(value => readPlayerCommandResult(value)),
   command: (id: string, command: LiveCommand, signal?: AbortSignal) =>
     postJson<unknown>(`${live(id)}/commands`, command, signal).then(value => readPlayerCommandResult(value)),
   readCommand: (id: string, commandId: string, signal?: AbortSignal) =>

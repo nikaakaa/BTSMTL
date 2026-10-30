@@ -245,6 +245,10 @@ export const readPlayerArchive = object({
 export type PlayerJobId = ReturnType<typeof jobId>;
 export type LivePlayer = ReturnType<typeof readLivePlayer>;
 export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
+export type PlayerLoadRequest = Omit<PlayerPreviewTarget, 'liveId' | 'playerBuildId'> & {
+  commandId: string;
+  executionMode: 'interactive';
+};
 export type PlayerBuildId = ReturnType<typeof buildId>;
 export type StartPlayerJobRequest = ReturnType<typeof readPlayerJobRequest>;
 export type PlayerCreationRequest = Pick<StartPlayerJobRequest, 'requestId' | 'source' | 'width' | 'height'>;

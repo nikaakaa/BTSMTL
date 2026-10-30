@@ -476,7 +476,6 @@ export interface InputCommand {
 }
 
 export type LiveCommand =
-  | { type: 'load'; commandId: string; scene: string; sceneRevision: string; inputMode: 'device' }
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
   | { type: 'step'; commandId: string; count: number }
   | { type: 'seek'; commandId: string; frame: number }

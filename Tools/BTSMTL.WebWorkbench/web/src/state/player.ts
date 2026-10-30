@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
-import type { CameraCommand, InputCommand, LiveCommand, PlayerPick, VideoFrame, ViewerMessage } from '../api/types';
+import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerMessage } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
 
 // 播放器服务（D12）：画面 WebSocket、命令与回执由这里持有，随“载入／停止播放器”开关；
@@ -56,15 +56,16 @@ function close() {
   setVideo(null);
 }
 
-async function command(liveCommand: LiveCommand) {
+async function command(type: string, send: (liveId: string) => Promise<LiveCommandResult>) {
   const liveId = getState().liveId;
   if (!liveId) return null;
   try {
-    const result = await playerApi.command(liveId, liveCommand);
+    const result = await send(liveId);
+    if (getState().liveId !== liveId) return null;
     if (result.stage === 'rejected' || result.stage === 'not-applied')
-      consoleActions.log('error', source, `${liveCommand.type}：${result.ack?.error ?? '播放器未执行'}`, result.ack?.rawJson);
+      consoleActions.log('error', source, `${type}：${result.ack?.error ?? '播放器未执行'}`, result.ack?.rawJson);
     else if (result.stage === 'submitted')
-      consoleActions.log('warn', source, `${liveCommand.type}：等待时限内未收到播放器回执`);
+      consoleActions.log('warn', source, `${type}：等待时限内未收到播放器回执`);
     return result;
   } catch (error) {
     consoleActions.error(source, error);
@@ -158,11 +159,12 @@ export const playerService = {
   },
 
   loadScene: (scene: string, sceneRevision: string) =>
-    command({ type: 'load', commandId: crypto.randomUUID(), scene, sceneRevision, inputMode: 'device' }),
+    command('load', liveId => playerApi.load(liveId, { commandId: crypto.randomUUID(), scene, sceneRevision,
+      source: { kind: 'device', lastSdkFrame: 0 }, executionMode: 'interactive' })),
   async capture() {
     const liveId = getState().liveId;
     const commandId = crypto.randomUUID();
-    const result = await command({ type: 'capture', commandId });
+    const result = await command('capture', id => playerApi.command(id, { type: 'capture', commandId }));
     if (liveId && result?.stage === 'applied' && result.ack?.path) window.open(playerApi.capturePath(liveId, commandId), '_blank');
   },
 
