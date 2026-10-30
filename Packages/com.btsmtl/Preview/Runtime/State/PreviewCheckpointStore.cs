@@ -87,7 +87,10 @@ namespace BTSMTL.Preview
                 }
             if (selected < 0)
                 return new PreviewResumeResult(PreviewResumeStatus.NoCheckpoint, -1);
-            if (m_Adapter.GetRestoreSupport(selected) == PreviewRestoreSupport.SelfCheckRequired)
+            PreviewRestoreSupport support = m_Adapter.GetRestoreSupport(selected);
+            if (support == PreviewRestoreSupport.RestartOnly)
+                return new PreviewResumeResult(PreviewResumeStatus.RestartOnly, closest);
+            if (support == PreviewRestoreSupport.SelfCheckRequired)
                 return new PreviewResumeResult(PreviewResumeStatus.SelfCheckRequired, closest);
             m_Adapter.Restore(selected);
             return new PreviewResumeResult(PreviewResumeStatus.Restored, closest);
