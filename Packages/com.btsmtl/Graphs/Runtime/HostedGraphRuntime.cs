@@ -32,8 +32,10 @@ namespace BTSMTL.Graphs
         readonly OrchestrationPreparedStateLayout<TValue> m_Layout;
         readonly OrchestrationStateRegion<TValue> m_PrivateValues;
         readonly OrchestrationStateLayout m_MemoryLayout;
-        readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
+        readonly OrchestrationExecutionScratchMemory<TValue> m_Scratch;
+        readonly OrchestrationWorkbenchDiagnosticStorage<TValue> m_Diagnostics;
         readonly OrchestrationExtensionBindings<TValue, TContext> m_Extensions;
+        readonly ManagedOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> m_Host;
         readonly TValue[] m_Inputs;
         OrchestrationOutputRequest[] m_OutputRequests;
         TValue[] m_OutputValues;
@@ -98,14 +100,17 @@ namespace BTSMTL.Graphs
             m_SecondMemory = new byte[m_FirstMemory.Length];
             m_Inputs = new TValue[m_Bindings.InputCapacity];
             m_Output = new GraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
-            m_Workspace = new OrchestrationExecutionWorkspace<TValue>(
-                program, content, capacity, tickCapacity.Programs.Span[0]);
+            m_Scratch = new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(
+                program.View, stateCapacity.FrameCount, tickCapacity.Programs.Span[0].CursorOutputs));
+            m_Diagnostics = new OrchestrationWorkbenchDiagnosticStorage<TValue>(program, content, stateCapacity.FrameCount);
             m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
                 content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
                 extensions ?? throw new ArgumentNullException(nameof(extensions)));
+            m_Host = new ManagedOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>(
+                m_Extensions);
             // Start 与 Update 的输出按两次调用保留；编辑器排队触发时提前准备额外容量。
-            m_OutputRequests = new OrchestrationOutputRequest[checked(m_Workspace.OutputRequestCapacity * 2)];
-            m_OutputValues = new TValue[checked(m_Workspace.OutputValueCapacity * 2)];
+            m_OutputRequests = new OrchestrationOutputRequest[checked(m_Scratch.OutputRequestCapacity * 2)];
+            m_OutputValues = new TValue[checked(m_Scratch.OutputValueCapacity * 2)];
 #if UNITY_EDITOR
             PrepareRuntimeObservation();
 #endif
@@ -189,17 +194,17 @@ namespace BTSMTL.Graphs
             if (input.HasDiagnostics)
             {
                 if (input.CaptureValues)
-                    m_Workspace.PrepareValueCapture();
+                    m_Diagnostics.PrepareValueCapture();
                 else
-                    m_Workspace.PrepareInvocationBindings();
-                Compute<OrchestrationWorkbenchDiagnostics>(in context, in input);
+                    m_Diagnostics.PrepareInvocationBindings();
+                Compute(in context, in input, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics));
             }
             else
-                Compute<OrchestrationProductDiagnostics>(in context, in input);
+                Compute(in context, in input, default(OrchestrationProductDiagnostics<TValue>));
         }
 
-        void Compute<TDiagnostics>(in TContext context, in OrchestrationFrameInput<TValue> input)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        void Compute<TDiagnostics>(in TContext context, in OrchestrationFrameInput<TValue> input, TDiagnostics diagnostics)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         {
             if (m_Status == EvaluationStatus.Failed)
                 return;
@@ -207,10 +212,9 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TDiagnostics, OrchestrationArrayValueStorage<TValue>>(
-                m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
-                null, null, in input, identities, in context);
+            var cursor = m_Host.CreateCursor<TDiagnostics, OrchestrationArrayValueStorage<TValue>>(state,
+                m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities,
+                in context, diagnostics);
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             try
@@ -226,8 +230,8 @@ namespace BTSMTL.Graphs
                 CollectOutputs();
                 if (input.CaptureValues)
                 {
-                    CopyObserved(m_Workspace.ObservedInputs, m_Workspace.WrittenInputs, m_CandidateObservedInputs);
-                    CopyObserved(m_Workspace.ObservedOutputs, m_Workspace.WrittenOutputs, m_CandidateObservedOutputs);
+                    CopyObserved(m_Diagnostics.ObservedInputs, m_Diagnostics.WrittenInputs, m_CandidateObservedInputs);
+                    CopyObserved(m_Diagnostics.ObservedOutputs, m_Diagnostics.WrittenOutputs, m_CandidateObservedOutputs);
                 }
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 m_Status = EvaluationStatus.Succeeded;
@@ -235,7 +239,8 @@ namespace BTSMTL.Graphs
             catch (Exception exception)
             {
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
-                Reject(exception.Message, exception);
+                Reject(OrchestrationExecutionErrorFormatter.Describe(exception, in m_Scratch.Error,
+                    m_Bindings.Content.Identity.GraphId, m_Bindings.Content.Identity.SourceRevision), exception);
             }
         }
 
@@ -249,8 +254,8 @@ namespace BTSMTL.Graphs
 
         void CollectOutputs()
         {
-            ReadOnlySpan<OrchestrationOutputRequest> requests = m_Workspace.EmittedOutputRequests;
-            ReadOnlySpan<TValue> values = m_Workspace.EmittedOutputValues;
+            ReadOnlySpan<OrchestrationOutputRequest> requests = m_Scratch.EmittedOutputRequests;
+            ReadOnlySpan<TValue> values = m_Scratch.EmittedOutputValues;
             values.CopyTo(m_OutputValues.AsSpan(m_OutputValueCount));
             for (int i = 0; i < requests.Length; i++)
             {

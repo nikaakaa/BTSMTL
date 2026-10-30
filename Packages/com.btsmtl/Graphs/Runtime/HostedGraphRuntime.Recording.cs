@@ -93,8 +93,9 @@ namespace BTSMTL.Graphs
 
         void ExecuteTriggers<TDiagnostics>(ref OrchestrationExecutionCursor<TValue, TScalar, TVector2,
             TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics,
-            OrchestrationArrayValueStorage<TValue>> cursor)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            OrchestrationArrayValueStorage<TValue>, ManagedOrchestrationHost<TValue, TScalar, TVector2,
+                TVector3, TYaw, TQuaternion, TMath, TValues, TContext>> cursor)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
         {
             for (int i = 0; i < m_CandidateTriggers.Count; i++)
             {
@@ -204,8 +205,8 @@ namespace BTSMTL.Graphs
             var input = new OrchestrationFrameInput<TValue>(
                 m_LastInvocation.Sequence, m_ResetGeneration, default, default, overrides: m_CandidateOverrides);
             var cursor = CreateEditorCursor(in input);
-            cursor.BindTraceInvocationScope(port.Operation, m_Bindings.Update);
-            OrchestrationValueOverrideAddress address = cursor.ReadPortOverrideAddress(port.Operation,
+            cursor.BindTraceInvocationScope(m_Diagnostics, port.Operation, m_Bindings.Update);
+            OrchestrationValueOverrideAddress address = cursor.ReadPortOverrideAddress(m_Diagnostics, port.Operation,
                 port.ValueSlot, port.IsInput);
             if (operation == GraphVariableMutation.Release)
                 OrchestrationValueOverride<TValue>.Release(
@@ -238,17 +239,17 @@ namespace BTSMTL.Graphs
         }
 
         OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-            TContext, OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>
+            TContext, OrchestrationWorkbenchDiagnostics<TValue>, OrchestrationArrayValueStorage<TValue>,
+            ManagedOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>>
             CreateEditorCursor(in OrchestrationFrameInput<TValue> input)
         {
-            m_Workspace.PrepareInvocationBindings();
+            m_Diagnostics.PrepareInvocationBindings();
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
-            return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>(
-                m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
-                null, null, in input, identities, in context);
+            return m_Host.CreateCursor<OrchestrationWorkbenchDiagnostics<TValue>, OrchestrationArrayValueStorage<TValue>>(
+                state, m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities,
+                in context, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics));
         }
 
         static void RequireValue(GraphHostValue value, Type type)
@@ -303,8 +304,8 @@ namespace BTSMTL.Graphs
             m_Triggers.Capacity = Math.Max(triggerCapacity, count);
             m_CandidateTriggers.Capacity = Math.Max(candidateTriggerCapacity, count);
             int invocationCapacity = checked(count + 2);
-            int requestCapacity = checked(m_Workspace.OutputRequestCapacity * invocationCapacity);
-            int valueCapacity = checked(m_Workspace.OutputValueCapacity * invocationCapacity);
+            int requestCapacity = checked(m_Scratch.OutputRequestCapacity * invocationCapacity);
+            int valueCapacity = checked(m_Scratch.OutputValueCapacity * invocationCapacity);
             if (requestCapacity > m_OutputRequests.Length)
                 Array.Resize(ref m_OutputRequests, requestCapacity);
             if (valueCapacity > m_OutputValues.Length)
