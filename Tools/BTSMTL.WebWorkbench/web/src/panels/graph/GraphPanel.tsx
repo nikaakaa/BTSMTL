@@ -665,7 +665,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => setSelectedEdges(new Set())}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
-          panOnDrag={[1]} selectionOnDrag selectionMode={SelectionMode.Partial}
+          panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
           minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
           deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={['Control', 'Shift']} proOptions={{ hideAttribution: true }}
