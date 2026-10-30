@@ -113,6 +113,19 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 export const session = {
+  async prepareRun() {
+    const selected = selectedStart();
+    if (selected.kind === 'unavailable') throw new Error(selected.reason);
+    const [options, live] = await Promise.all([
+      playerApi.creationOptions({ requestId: newPlayerJobId(), source: selected.source, ...selected.viewport }),
+      playerApi.live(selected.liveId),
+    ]);
+    const { frameRangeBasis, ...parameters } = options;
+    consoleActions.log('info', source, frameRangeBasis);
+    return readPlayerJobRequest({ ...parameters, playerBuildId: live.buildId,
+      scene: selected.scene.path, sceneRevision: selected.scene.revision, source: selected.source });
+  },
+
   async connect() {
     try {
       const host = await previewApi.host();
@@ -167,17 +180,7 @@ export const session = {
     let pending = sessionStorage.getItem(pendingRequestKey);
     try {
       if (!pending) {
-        const selected = selectedStart();
-        if (selected.kind === 'unavailable') { consoleActions.log('warn', source, selected.reason); return; }
-        const { scene, source: inputSource } = selected;
-        const [options, live] = await Promise.all([
-          playerApi.creationOptions({ requestId: newPlayerJobId(), source: inputSource, ...selected.viewport }),
-          playerApi.live(selected.liveId),
-        ]);
-        const { frameRangeBasis, ...parameters } = options;
-        consoleActions.log('info', 'run', frameRangeBasis);
-        pending = JSON.stringify({ ...parameters, playerBuildId: live.buildId,
-          scene: scene.path, sceneRevision: scene.revision, source: inputSource });
+        pending = JSON.stringify(await session.prepareRun());
         sessionStorage.setItem(pendingRequestKey, pending);
       }
       const request = readPlayerJobRequest(JSON.parse(pending), 'pending-player-job');

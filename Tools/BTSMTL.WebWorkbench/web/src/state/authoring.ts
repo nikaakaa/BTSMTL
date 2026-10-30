@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerCommandReceipt } from '../api/playerRecords';
+import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
@@ -28,6 +28,10 @@ export interface AuthoringState {
   programId: string | null;
   target: AuthoringTarget | null;
   inputActorId: string | null;
+  inputSave: {
+    revisions: InputRevision[];
+    job: { kind: 'none' } | { kind: 'waiting' | 'terminal'; receipt: PlayerJobReceipt };
+  } | null;
   revision: string | null;
   sourceRevision: string | null;
   files: Record<string, string>;
@@ -77,7 +81,7 @@ export interface AddedPort {
 }
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null, revision: null, sourceRevision: null,
+  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null, inputSave: null, revision: null, sourceRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
   skills: null, scenarios: null, documentGraphs: null, documentError: null, tickRate: null,
@@ -246,6 +250,23 @@ function publishDocument() {
 
 useWorkbench.subscribe((state, previous) => {
   if (state.generation !== previous.generation) publishDocument();
+  if (state.archiveJobs === previous.archiveJobs) return;
+  const saved = get().inputSave;
+  if (saved?.job.kind !== 'waiting') return;
+  const jobId = saved.job.receipt.jobId;
+  const receipt = state.archiveJobs.find(job => job.jobId === jobId);
+  if (!receipt) return;
+  if (receipt.stage === 'queued' || receipt.stage === 'running') {
+    if (receipt.stage !== saved.job.receipt.stage) set({ inputSave: { ...saved, job: { kind: 'waiting', receipt } } });
+    return;
+  }
+  set({ inputSave: { ...saved, job: { kind: 'terminal', receipt } } });
+  const lastSave = get().lastSave;
+  if (lastSave?.compilationState === 'not-required') set({ lastSave: { ...lastSave,
+    ok: receipt.stage === 'completed', message: receipt.stage === 'completed' ? '输入方案已保存，新输入档案已封存'
+      : `输入方案已保存；封存作业 ${receipt.stage}：${receipt.error ?? '未完成'}`,
+  } });
+  if (receipt.stage === 'completed') session.selectRun(receipt.jobId);
 });
 
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
@@ -317,7 +338,7 @@ export const authoringActions = {
     const controller = loadController = new AbortController();
     clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
-    set({ target: null, inputActorId: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
+    set({ target: null, inputActorId: null, inputSave: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(target, controller.signal);
@@ -421,7 +442,7 @@ export const authoringActions = {
     const files = authoringActions.changedFiles();
     if (!target || saving || (!files.length && !removed.length)) return;
     previewController?.abort();
-    set({ saving: true });
+    set({ saving: true, inputSave: null });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
       if (get().target !== target) {
         set({ saving: false });
@@ -437,26 +458,30 @@ export const authoringActions = {
     };
     try {
       const selection = await selectedPreview();
+      const jobBlocked = session.canStart();
+      const job = jobBlocked === null ? await session.prepareRun() : undefined;
       const result = await authoringApi.save(target, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
+        job,
       });
       if (result.compilationState === 'not-required') {
         const preview = result.preview;
         const stage = preview?.stage;
-        const message = preview === null ? `已保存 ${result.inputs.length} 项输入方案，无需编译技能；${selection.kind === 'unavailable' ? selection.reason : '未请求重载'}`
-          : `已保存 ${result.inputs.length} 项输入方案，无需编译技能；所选 Player 来源重载：${stage}`;
+        const detail = result.job === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}`
+          : '新输入封存作业已受理，等待完成；旧观察层已过期';
+        const message = `已保存 ${result.inputs.length} 项输入方案，无需编译技能；${detail}`;
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
           ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
         consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
-        if (currentSkill && stage === 'applied') {
-          session.selectRun(null);
-          await playerService.refresh();
-        }
+        if (currentSkill) set({ inputSave: { revisions: result.inputs,
+          job: result.job === null ? { kind: 'none' } : { kind: 'waiting', receipt: result.job } } });
+        if (currentSkill && stage === 'applied') await playerService.refresh();
         if (currentSkill) await session.loadInputs();
-        if (currentSkill && result.job !== null) session.selectRun(result.job.jobId);
+        if (currentSkill && result.job !== null) await session.refresh();
         return;
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
+      if (result.jobError !== null) outcome.message += `；${result.jobError}`;
       const currentSkill = accept(result.content, outcome);
       consoleActions.log('info', '作者', `${target.name} 已保存并编译：${result.compilation.sourceRevision}`);
       if (currentSkill && result.preview !== null) {

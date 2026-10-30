@@ -17,6 +17,7 @@ import {
   clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
+import { useInputObservation } from '../../state/inputModel';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, ObjectField } from '../../ui/controls';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
@@ -492,6 +493,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       </Fold>
       {editable && input && clip.graphId && <InputClipFields documentId={timeline.documentId} graphId={clip.graphId} />}
       {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} timeOnly={input} />}
+      {input && <NativeInputInspector documentId={timeline.documentId} />}
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除片段；不再被引用的片段图保存时删除"
@@ -565,13 +567,15 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
 
 function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const schemes = useInputSchemes();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
   const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && state.target !== null })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;
   const { timeline, track } = found;
-  const kind = trackColors[trackKind(track)];
+  const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
+  const kind = trackColors[input ? 'in' : trackKind(track)];
   return (
     <>
       <Head kind={kind} name={track.displayName} sub={timeline.displayName} />
@@ -581,6 +585,7 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
         <Value label="标记数" value={String(track.markers.length)} />
       </Fold>
       {editable && <TrackFields documentId={timeline.documentId} trackId={track.id} />}
+      {input && <NativeInputInspector documentId={timeline.documentId} />}
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除轨道及其片段与标记；不再被引用的图保存时删除"
@@ -597,13 +602,38 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
           ))}
         </div>
       </Fold>
-      <HostRecords records={locatedRecords(frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />
+      {!input && <HostRecords records={locatedRecords(frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
       <Identity extra={[{ displayName: '轨道', value: track.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
     </>
   );
 }
 
 // ── 预览输入 ──
+
+function NativeInputInspector({ documentId }: { documentId: string }) {
+  const observation = useInputObservation(documentId);
+  const runId = useWorkbench(state => state.runId);
+  if (!runId) return null;
+  if (observation.kind !== 'ready') return <Fold title="实际采用输入" kind="var(--track-in)" defaultOpen>
+    <div className={styles.note}>{observation.reason}</div>
+  </Fold>;
+  const { input } = observation;
+  return <Fold title="实际采用输入" kind="var(--track-in)" defaultOpen>
+    <Value label="SDK 帧" value={observation.frame.hostFrame} />
+    <Value label="已收到" value={input.received ? '是' : '否'} />
+    {input.received && <>
+      {input.values.map(value => <Value key={value.inputId} label={value.inputId}
+        value={JSON.stringify(value.runtimeValue === null ? value.value : value.runtimeValue)} />)}
+      {input.requests.map(request => <Value key={`${request.requestId}/${request.sequence}`} label={request.requestId}
+        value={`序号 ${request.sequence} · Tick ${request.sourceTick}—${request.expireTick} · 优先级 ${request.priority}`} />)}
+      <Identity extra={[
+        { displayName: '输入序号', value: input.inputSequence }, { displayName: '来源 Tick', value: input.sourceTick },
+        { displayName: '输入修订', value: observation.plan.planRevision },
+        { displayName: '数值编码', value: observation.valueEncoding ?? '未声明' },
+      ]} />
+    </>}
+  </Fold>;
+}
 
 function useInputTrack(trackId: string) {
   const roots = useWorkbench(state => state.inputTimeline?.roots);

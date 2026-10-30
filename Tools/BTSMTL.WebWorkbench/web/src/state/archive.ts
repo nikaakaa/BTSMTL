@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerJobId } from '../api/playerRecords';
+import type { PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerInputPage, PlayerJobId } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -83,10 +83,15 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
       firstSdkFrame: Number(first.source.sdkFrame), lastSdkFrame: Number(last.source.sdkFrame),
       offset: pageOffset, limit: 128,
     });
+    let inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null = null;
     const [presentation, camera, input, unavailable] = await Promise.all([
       channel('presentation', readAll(pageOffset => playerApi.presentation(context.jobId, range(pageOffset), signal))),
       channel('camera', readAll(pageOffset => playerApi.camera(context.jobId, range(pageOffset), signal))),
-      channel('input', readAll(pageOffset => playerApi.input(context.jobId, range(pageOffset), signal))),
+      channel('input', readAll(async pageOffset => {
+        const result = await playerApi.input(context.jobId, range(pageOffset), signal);
+        if (pageOffset === 0) inputContext = { plans: result.plans, valueEncoding: result.valueEncoding };
+        return result;
+      })),
       channel('unavailable', readAll(pageOffset => playerApi.unavailable(context.jobId, range(pageOffset), signal))),
     ]);
     signal.throwIfAborted();
@@ -96,6 +101,7 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
         presentations: presentation.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
         cameras: camera.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
         input: input.items.find(item => item.source.sdkFrame === record.source.sdkFrame) ?? null,
+        inputContext,
         unavailable: unavailable.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
         availability: [...logic.availability, ...presentation.availability, ...camera.availability,
           ...input.availability, ...unavailable.availability],
@@ -170,6 +176,11 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
 }
 
 export const archive = {
+  inputFrames(jobId: PlayerJobId): ArchiveFrame[] {
+    return [...cache.entries()].filter(([id, frame]) => id.startsWith(jobId + ':') && frame.input !== null)
+      .map(([, frame]) => frame).sort((left, right) => BigInt(left.hostFrame) < BigInt(right.hostFrame) ? -1
+        : BigInt(left.hostFrame) > BigInt(right.hostFrame) ? 1 : 0);
+  },
   cancel() {
     current?.controller.abort();
     current = null;

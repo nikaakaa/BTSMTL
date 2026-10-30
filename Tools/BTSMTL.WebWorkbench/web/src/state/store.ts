@@ -62,6 +62,7 @@ export interface ArchiveFrame {
   presentations: ArchivePresentationRecord[];
   cameras: PlayerCameraPage['page']['items'];
   input: PlayerInputPage['page']['items'][number] | null;
+  inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null;
   unavailable: PlayerUnavailablePage['page']['items'];
   availability: Availability[];
 }

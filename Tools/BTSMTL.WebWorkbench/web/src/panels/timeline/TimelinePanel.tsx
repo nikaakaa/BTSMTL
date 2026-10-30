@@ -26,6 +26,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, graphKey, matchesDocumentCall, nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
+import { useInputObservation } from '../../state/inputModel';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import styles from './timeline.module.css';
@@ -72,7 +73,8 @@ const snapStep = (snap: Snap | undefined, frameStep: number | null) =>
 const SnapContext = createContext<number | null>(null);
 type TimelineObservation = { call: ExecutionCall; domain: string };
 const observationKey = (observation: TimelineObservation) => JSON.stringify([callKey(observation.call), observation.domain]);
-type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null };
+type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
+  | { kind: 'input'; documentId: string; observing: boolean };
 const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
 function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   if (clock.kind !== 'document' || clock.observation === null) return undefined;
@@ -83,10 +85,13 @@ function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
 // 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
 const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
 const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, clock: PreviewClock) =>
-  clock.kind === 'document' && clock.observation === null && clock.documentId !== null
+  ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && !clock.observing)) && clock.documentId !== null
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
 const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'archive'
-  ? state.seconds : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
+  ? state.seconds : clock.kind === 'input'
+    ? author ?? (state.hostFrame !== null && state.archiveMetadata !== null
+      ? Number(BigInt(state.hostFrame) - BigInt(state.archiveMetadata.scheduleStartFrame)) / state.archiveMetadata.sdkTickRate : null)
+    : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
 // 游标秒数：运行档案、运行观察或编辑游标。
 function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
   const author = useAuthorCursor(cursor => authorCursorOf(cursor, clock));
@@ -387,6 +392,8 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   // 技能文档固定看单个 Timeline：所选的那条，否则第一条。
   const focused = frames ? (focusId ? segments.find(segment => segment.id === focusId) ?? null : null)
     : segments.find(segment => segment.documentId === params.focus) ?? (segments.length === 1 ? segments[0] : null);
+  const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
+  const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
@@ -477,6 +484,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, getValueFromScreenX(clientX)));
     const seconds = step ? Math.min(focused.length, snapTo(raw, step)) : raw;
+    if (inputScheme && inputObservation.kind === 'ready') {
+      const metadata = inputObservation.metadata;
+      void transport.seekTime((metadata.scheduleStartFrame - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
+      return;
+    }
     if (!observed) {
       useAuthorCursor.setState({ documentId: focused.documentId, seconds });
       return;
@@ -487,7 +499,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     if (transport.source() === 'sealed' && playback && state.seconds !== null)
       void transport.seekTime(state.seconds - playback.cursorSeconds + seconds);
     else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
-  }, [frames, observed, focused, step, getValueFromScreenX]);
+  }, [frames, observed, focused, step, getValueFromScreenX, inputScheme, inputObservation]);
 
   const snap = params.snap ?? 'tick';
   const settings: MenuEntry[] = [
@@ -516,7 +528,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     })), select: enter },
   };
   const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
-    : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed }, [frames, focused?.documentId, observed]);
+    : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: inputObservation.kind === 'ready' }
+      : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
+  [frames, focused?.documentId, observed, inputScheme, inputObservation.kind]);
 
   return (
     <PreviewClockContext.Provider value={clock}>
@@ -666,7 +680,10 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
   const { playing, blocked, previous, next } = useTransportState();
   const clock = useContext(PreviewClockContext);
   const seconds = usePreviewSelect(clock, current => current);
+  const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
   const segment = useWorkbench(state => {
+    if (clock.kind === 'input') return input.kind === 'ready'
+      ? `${input.input.actorId} · ${input.input.received ? '本帧已收到输入' : '本帧未收到输入'}` : input.reason;
     if (binding.dirty) return '当前内容未保存，旧档案叠加已停用';
     const route = state.frame?.route;
     if (!route) return state.runId ? '档案播放记录尚未提供' : '';
@@ -1454,7 +1471,6 @@ function InputGroupLine({ open, toggle, roots }: {
             disabled={options.length < 2} tip={options.length ? undefined : reason || '本次运行没有预览输入'}
             onChange={key => runActions.selectInputRoot(key)} />
         </span>
-        <Button disabled tip="条件菜单按路线读到的条件生成输入片段，网页尚未接入">条件</Button>
       </>
     } />
   );

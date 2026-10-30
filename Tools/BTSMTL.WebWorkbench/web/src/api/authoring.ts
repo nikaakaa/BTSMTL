@@ -1,7 +1,7 @@
 import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
 import { getJson, getText, postText, putJson, query } from './http';
-import type { PlayerCommandReceipt, PlayerJobReceipt, StartPlayerJobRequest } from './playerRecords';
+import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -294,7 +294,13 @@ export const authoringApi = {
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
   document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, signal),
-  save: (target: AuthoringTarget, request: SkillSaveRequest) => putJson<SkillSaveResult>(targetPath(target), request),
+  save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
+    const result = await putJson<SkillSaveResult>(targetPath(target), request);
+    return result.compilationState === 'not-required' ? { ...result,
+      preview: result.preview === null ? null : readPlayerCommandReceipt(result.preview),
+      job: result.job === null ? null : readPlayerJobReceipt(result.job),
+    } : result;
+  },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal),
   types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
