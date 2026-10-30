@@ -5,14 +5,27 @@ namespace BTSMTL.WebWorkbench;
 public sealed record PreviewImageSourceDescription(string DisplayName, string FrameDisplayName);
 public sealed record PreviewImageMetadata(string RunId, string HostFrame, string? ContentRevision,
     string Alignment, PreviewField[] Fields, string RawJson);
-public sealed record PreviewImageFile(string Path, string MediaType, PreviewImageMetadata Metadata);
+public abstract record PreviewImageContent(string MediaType, PreviewImageMetadata Metadata)
+{
+    public abstract IResult Response();
+}
+public sealed record PreviewImageFile(string Path, string MediaType, PreviewImageMetadata Metadata)
+    : PreviewImageContent(MediaType, Metadata)
+{
+    public override IResult Response() => Results.File(Path, MediaType);
+}
+public sealed record PreviewImageBytes(ReadOnlyMemory<byte> Data, string MediaType, PreviewImageMetadata Metadata)
+    : PreviewImageContent(MediaType, Metadata)
+{
+    public override IResult Response() => Results.Bytes(Data, MediaType);
+}
 public sealed record PreviewImageBuild(string BuildId, string DisplayName, PreviewField[] Fields, string RawJson);
 
 public interface IPreviewImageSource
 {
     PreviewImageSourceDescription Describe();
     PreviewImageBuild[] Builds();
-    PreviewImageFile Read(Guid runId, Guid sourceId, string hostFrame);
+    PreviewImageContent Read(Guid runId, Guid sourceId, string hostFrame);
     void RequireLive(Guid id);
     Task View(Guid id, WebSocket socket);
 }
@@ -29,8 +42,8 @@ public static class PreviewImageApi
         app.MapGet("/api/preview/runs/{runId:guid}/player/{sourceId:guid}/frames/{hostFrame}",
             (Guid runId, Guid sourceId, string hostFrame) =>
             {
-                PreviewImageFile image = source.Read(runId, sourceId, hostFrame);
-                return Results.File(image.Path, image.MediaType);
+                PreviewImageContent image = source.Read(runId, sourceId, hostFrame);
+                return image.Response();
             });
         app.Map("/api/preview/live/{id:guid}/view", async (Guid id, HttpContext context) =>
         {
