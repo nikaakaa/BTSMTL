@@ -5,7 +5,7 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
   applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
@@ -285,7 +285,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           <div className={styles.list}>
             {events.map(item => (
               <div key={item.sequence} className={styles.listRow}>
-                <span className={styles.listText}>{item.kind}</span>
+                <span className={styles.listText}>{nodeOccurrenceLabel(item)}</span>
                 <span className={styles.listValue} data-failed={item.result === 'Failure' || undefined}>{item.result}</span>
               </div>
             ))}

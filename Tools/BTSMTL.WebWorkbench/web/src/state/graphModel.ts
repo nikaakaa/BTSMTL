@@ -26,6 +26,8 @@ export const compareSequence = (left: { sequence: string }, right: { sequence: s
 export const graphName = (graph: GraphDefinition) =>
   graph.displayName === null ? '未命名图' : graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
 export const nodeName = (node: GraphNode) => node.displayName ?? '未命名节点';
+export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'LoopIterationEntered' || item.kind === 'LoopIterationCompleted'
+  ? `${item.kind} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : item.kind;
 
 // 调用路径已含程序与图身份。
 export const nodeSelectId = (graph: GraphDefinition, node: GraphNode) => `${graph.actorId}/${node.invocationPath}/${node.id}`;

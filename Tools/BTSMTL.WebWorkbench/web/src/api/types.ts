@@ -193,6 +193,7 @@ export interface NodeOccurrence {
   nodeId: string;
   kind: string;
   generation: string;
+  loopIteration?: number | null;
   result: string | null;
   call: ExecutionCall | null;
 }
