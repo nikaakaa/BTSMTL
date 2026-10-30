@@ -1,5 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
@@ -10,6 +10,6 @@ namespace BTSMTL.Orchestration
         internal ReadOnlyOrchestrationStateView(ReadOnlySpan<byte> memory) => m_Memory = memory;
 
         public ReadOnlySpan<T> Get<T>(OrchestrationStateRegion<T> region) where T : unmanaged =>
-            MemoryMarshal.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
+            SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
     }
 }

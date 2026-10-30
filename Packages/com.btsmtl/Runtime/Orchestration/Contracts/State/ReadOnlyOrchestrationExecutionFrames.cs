@@ -1,5 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
@@ -15,10 +15,10 @@ namespace BTSMTL.Orchestration
             Plan = plan;
             m_Memory = memory;
             OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
-            m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+            m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                 memory.Slice(frames.OffsetBytes, frames.SizeBytes));
             OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
-            m_Roster = MemoryMarshal.Cast<byte, OrchestrationExecutionRosterState>(
+            m_Roster = SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(
                 memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
@@ -49,7 +49,7 @@ namespace BTSMTL.Orchestration
             get
             {
                 OrchestrationStateSegment segment = Plan.Segment(OrchestrationStateSegmentRole.CharacterMetadata);
-                return MemoryMarshal.Cast<byte, OrchestrationBlackboardMetadata>(
+                return SpanReinterpret.Cast<byte, OrchestrationBlackboardMetadata>(
                     m_Memory.Slice(segment.OffsetBytes, segment.SizeBytes));
             }
         }
@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
             OrchestrationStateSegment segment = Plan.Segment(role);
             OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
                 programIndex, m_Frames[frameSlot].OwnerOperationIndex);
-            return MemoryMarshal.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
+            return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
         public int OwnerFrame(int frameSlot, int ownerOperationIndex)

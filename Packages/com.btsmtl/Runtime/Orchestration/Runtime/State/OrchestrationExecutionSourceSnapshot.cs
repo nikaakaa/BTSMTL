@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -48,7 +47,7 @@ namespace BTSMTL.Orchestration
                 sourceSlot = header.ParentFrameIndex;
             }
             OrchestrationStateSegment roster = m_Plan.Segment(OrchestrationStateSegmentRole.Roster);
-            MemoryMarshal.Cast<byte, OrchestrationExecutionRosterState>(
+            SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(
                 m_Memory.AsSpan(roster.OffsetBytes, roster.SizeBytes))[0].Count = count;
             foreach (OrchestrationStateSegment segment in m_Plan.Segments.Span)
             {

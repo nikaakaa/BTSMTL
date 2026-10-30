@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -137,7 +136,7 @@ namespace BTSMTL.Orchestration
                 m_Plan = plan;
                 m_Segments = plan.Segments.Span;
                 OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
-                m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+                m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                     memory.Slice(frames.OffsetBytes, frames.SizeBytes));
                 m_SegmentIndex = -1;
                 m_FrameSlot = -1;
