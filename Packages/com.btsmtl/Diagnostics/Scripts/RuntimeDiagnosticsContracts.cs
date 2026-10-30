@@ -494,7 +494,10 @@ namespace BTSMTL.Diagnostics
         TypeOnly,
         FPVector2,
         FPVector3,
-        FPActionTargetSnapshot
+        FPActionTargetSnapshot,
+        FPScalar,
+        FPYaw,
+        FPQuaternion
     }
 
     public readonly struct DebugValueSnapshot
@@ -517,6 +520,61 @@ namespace BTSMTL.Diagnostics
         public double Number { get; }
         public string Text { get; }
         public Vector4 Vector { get; }
+
+        public static DebugValueSnapshot FromFPScalar(long raw) =>
+            new DebugValueSnapshot(DebugValueKind.FPScalar, false, raw, 0, 0, string.Empty, default);
+
+        public static DebugValueSnapshot FromFPYaw(long raw) =>
+            new DebugValueSnapshot(DebugValueKind.FPYaw, false, raw, 0, 0, string.Empty, default);
+
+        public static DebugValueSnapshot FromFPVector2(long x, long y) =>
+            new DebugValueSnapshot(DebugValueKind.FPVector2, false, x, unchecked((ulong)y), 0, string.Empty, default);
+
+        public static DebugValueSnapshot FromFPVector3(long x, long y, long z) =>
+            PackFixedPoint(DebugValueKind.FPVector3, x, y, z, 0, string.Empty);
+
+        public static DebugValueSnapshot FromFPQuaternion(long x, long y, long z, long w) =>
+            PackFixedPoint(DebugValueKind.FPQuaternion, x, y, z, w, string.Empty);
+
+        public static DebugValueSnapshot FromFPSpatialIdentity(string identity, long x, long y, long z, long yaw) =>
+            PackFixedPoint(DebugValueKind.FPActionTargetSnapshot, x, y, z, yaw, identity);
+
+        static DebugValueSnapshot PackFixedPoint(DebugValueKind kind, long x, long y, long z, long w, string text)
+        {
+            ulong rawZ = unchecked((ulong)z);
+            ulong rawW = unchecked((ulong)w);
+            const ulong mask = (1UL << 24) - 1;
+            // float 只保存 24 位片段，double 只保存 40 位片段，完整原值不会经过浮点舍入。
+            return new DebugValueSnapshot(kind, false, x, unchecked((ulong)y), rawZ >> 24, text,
+                new Vector4(rawZ & mask, rawW & mask, (rawW >> 24) & mask, rawW >> 48));
+        }
+
+        public long ReadFPScalar() => Signed;
+        public long ReadFPYaw() => Signed;
+
+        public void ReadFPVector2(out long x, out long y)
+        {
+            x = Signed;
+            y = unchecked((long)Unsigned);
+        }
+
+        public void ReadFPVector3(out long x, out long y, out long z)
+        {
+            ReadFPVector2(out x, out y);
+            z = unchecked((long)(((ulong)Number << 24) | (ulong)Vector[0]));
+        }
+
+        public void ReadFPQuaternion(out long x, out long y, out long z, out long w)
+        {
+            ReadFPVector3(out x, out y, out z);
+            w = unchecked((long)((ulong)Vector[1] | ((ulong)Vector[2] << 24) | ((ulong)Vector[3] << 48)));
+        }
+
+        public void ReadFPSpatialIdentity(out string identity, out long x, out long y, out long z, out long yaw)
+        {
+            identity = Text;
+            ReadFPQuaternion(out x, out y, out z, out yaw);
+        }
 
         public static DebugValueSnapshot Capture(object value)
         {
@@ -559,18 +617,35 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.String:
                 case DebugValueKind.Guid:
                 case DebugValueKind.TypeOnly: return Text;
-                case DebugValueKind.FPVector2:
                 case DebugValueKind.Vector2: return $"({Vector[0]:0.###}, {Vector[1]:0.###})";
-                case DebugValueKind.FPVector3:
                 case DebugValueKind.Vector3: return $"({Vector[0]:0.###}, {Vector[1]:0.###}, {Vector[2]:0.###})";
                 case DebugValueKind.Quaternion: return $"({Vector[0]:0.###}, {Vector[1]:0.###}, {Vector[2]:0.###}, {Vector[3]:0.###})";
+                case DebugValueKind.FPScalar: return FormatFixedPoint(Signed);
+                case DebugValueKind.FPYaw: return FormatFixedPoint(Signed) + "°";
+                case DebugValueKind.FPVector2:
+                    ReadFPVector2(out long x2, out long y2);
+                    return $"({FormatFixedPoint(x2)}, {FormatFixedPoint(y2)})";
+                case DebugValueKind.FPVector3:
+                    ReadFPVector3(out long x3, out long y3, out long z3);
+                    return $"({FormatFixedPoint(x3)}, {FormatFixedPoint(y3)}, {FormatFixedPoint(z3)})";
+                case DebugValueKind.FPQuaternion:
+                    ReadFPQuaternion(out long x4, out long y4, out long z4, out long w4);
+                    return $"({FormatFixedPoint(x4)}, {FormatFixedPoint(y4)}, {FormatFixedPoint(z4)}, {FormatFixedPoint(w4)})";
                 case DebugValueKind.FPActionTargetSnapshot:
-                    ulong targetZ = ((ulong)Number << 24) | (ulong)Vector[0];
-                    ulong targetYaw = (ulong)Vector[1] | ((ulong)Vector[2] << 24) | ((ulong)Vector[3] << 48);
-                    const double fpScale = 1L << 16;
-                    return $"{Text} · ({Signed / fpScale:0.###}, {unchecked((long)Unsigned) / fpScale:0.###}, {unchecked((long)targetZ) / fpScale:0.###}) · {unchecked((long)targetYaw) / fpScale:0.###}°";
+                    ReadFPSpatialIdentity(out string identity, out long targetX, out long targetY, out long targetZ, out long targetYaw);
+                    return $"{identity} · ({FormatFixedPoint(targetX)}, {FormatFixedPoint(targetY)}, {FormatFixedPoint(targetZ)}) · {FormatFixedPoint(targetYaw)}°";
                 default: return string.Empty;
             }
+        }
+
+        static string FormatFixedPoint(long raw)
+        {
+            ulong magnitude = raw < 0 ? unchecked(0UL - (ulong)raw) : (ulong)raw;
+            string sign = raw < 0 ? "-" : string.Empty;
+            string whole = (magnitude >> 16).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            ulong fraction = (magnitude & 65535) * 152587890625UL;
+            return fraction == 0 ? sign + whole : sign + whole + "." +
+                fraction.ToString("D16", System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
         }
     }
 
