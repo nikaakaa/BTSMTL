@@ -29,6 +29,8 @@ description: 接入或修改 BTSMTL 的 Unity 预览播放器项目适配、组�
 
 逐帧 JPEG 及来源头、索引交项目同一运行档案写入器，读取方沿同一档案 reader 取画面，不另建 JPEG 目录与路径协议。独立 PNG 截图调用 `PreviewPngImageArchive.Write(in frame, absoluteFilePath)`，沿原命令指定的绝对文件路径写入；路径与编码只在这个接收边界确认，项目不再复制编码和文件写入实现。运行清单和通道布局仍由项目归档器持有。采集或编码失败按 `Failure` 报错，不生成占位图片。原生编码的主线程和持久内存约束见 [Unity 2022.3 JPG 接口](https://docs.unity3d.com/2022.3/Documentation/ScriptReference/ImageConversion.EncodeNativeArrayToJPG.html)。
 
+JPEG 保留 GPU 读回的像素行和 `PreviewEncodedFrame.FlipY`，显示端沿原方向头呈现。独立 PNG 在编码前按实际 GPU 方向整理原持久像素缓冲的上下行，编码字节自身方向正确，返回 `FlipY=false`；归档和读取端直接使用该 PNG，不再翻转。两种格式沿各自原捕获实例工作，不修改相机投影来补图像方向。源码编译通过不证明既有 Player 已采用修正，仍须核对正式成品和它实际生成的新图。
+
 ## 找出必须存档的状态
 
 从项目的“提交本帧”追到“计算下一帧”，列出下一帧会读取的可变状态及其唯一所有者。重点读取移动速度与接触历史、技能和效果计时、命令队列、输入游标、随机源、动画过渡、相机平滑历史、生成对象及稳定身份映射。配置和不可变内容保存身份，不复制成另一份可写配置。
