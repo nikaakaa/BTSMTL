@@ -117,6 +117,7 @@ async function updateRun(jobId: PlayerJobId, generation: number, signal: AbortSi
 }
 
 useWorkbench.subscribe((state, previous) => {
+  if (state.selectedCurves !== previous.selectedCurves) archive.loadCurves();
   if (state.frameIndex !== previous.frameIndex || state.runId !== previous.runId ||
     state.summary?.frameCount !== previous.summary?.frameCount) archive.loadFrame();
 });

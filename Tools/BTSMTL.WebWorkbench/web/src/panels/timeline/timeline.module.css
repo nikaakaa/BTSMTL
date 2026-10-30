@@ -735,6 +735,39 @@
   background: var(--cursor);
 }
 
+.curvePlot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.curvePlot circle {
+  fill: var(--track-motion);
+  cursor: pointer;
+}
+
+.curvePlot circle[data-current] {
+  fill: var(--cursor);
+}
+
+.curveNotice {
+  display: block;
+  padding: 5px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.curveScale {
+  position: absolute;
+  right: 8px;
+  top: 2px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
 /* 游标头：照 Timeline Editor 刻度上的大号黄色时刻，可拖动 */
 .cursorTag {
   position: absolute;

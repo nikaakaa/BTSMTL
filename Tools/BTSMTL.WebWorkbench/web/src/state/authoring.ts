@@ -322,7 +322,7 @@ async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
 
 function reconcileSelection() {
   const { selection, graphs, timelines } = useWorkbench.getState();
-  if (!selection || selection.kind === 'actor' || selection.id.startsWith('input/')) return;
+  if (!selection || selection.kind === 'actor' || selection.id.startsWith('input/') || selection.id.startsWith('curve/')) return;
   const { edited, removed, addedPorts } = get();
   const { kind, id } = selection;
   let exists: boolean;

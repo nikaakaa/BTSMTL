@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerInputPage, PlayerJobId } from '../api/playerRecords';
+import type { PlayerArchive, PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerInputPage, PlayerJobId } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -12,7 +12,7 @@ const cacheLimit = 192;
 const imageCacheLimit = 32;
 const cache = new Map<string, ArchiveFrame>();
 const pending = new Map<string, Promise<void>>();
-const pages = new Map<string, AbortController>();
+const pages = new Map<string, { controller: AbortController; page: number; curveId: string | null }>();
 const images = new Map<string, ArchiveImage>();
 const key = (jobId: PlayerJobId, index: number) => `${jobId}:${index}`;
 interface OpenArchive {
@@ -20,6 +20,7 @@ interface OpenArchive {
   jobId: PlayerJobId;
   generation: number;
   metadata: PlayerArchive;
+  frameCount: number;
   timebase: ArchiveTimebase;
   controller: AbortController;
 }
@@ -57,15 +58,24 @@ async function channel<T>(name: string, work: Promise<{ items: T[]; availability
   }
 }
 
-function loadPage(context: OpenArchive, page: number): Promise<void> {
-  const id = `${context.generation}:${key(context.jobId, page)}`;
+function loadArchivePage(context: OpenArchive, page: number, curveId: string | null,
+  read: (signal: AbortSignal) => Promise<void>): Promise<void> {
+  const id = `${context.generation}:${key(context.jobId, page)}${curveId === null ? '' : `:curve:${curveId}`}`;
   const existing = pending.get(id);
   if (existing) return existing;
   const controller = new AbortController();
-  pages.set(id, controller);
+  pages.set(id, { controller, page, curveId });
   const signal = AbortSignal.any([context.controller.signal, controller.signal]);
+  const request = read(signal).finally(() => {
+    if (pending.get(id) === request) { pending.delete(id); pages.delete(id); }
+  });
+  pending.set(id, request);
+  return request;
+}
+
+function loadPage(context: OpenArchive, page: number): Promise<void> {
   const offset = page * pageFrames;
-  const request = (async () => {
+  return loadArchivePage(context, page, null, async signal => {
     const logic = await playerApi.logic(context.jobId, {
       firstSdkFrame: context.metadata.firstRecordedSdkFrame, lastSdkFrame: context.metadata.lastRecordedSdkFrame,
       offset, limit: pageFrames,
@@ -102,16 +112,73 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
         cameras: camera.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
         input: input.items.find(item => item.source.sdkFrame === record.source.sdkFrame) ?? null,
         inputContext,
+        curves: cache.get(key(context.jobId, offset + index))?.curves ?? {},
         unavailable: unavailable.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
         availability: [...logic.availability, ...presentation.availability, ...camera.availability,
           ...input.availability, ...unavailable.availability],
       });
     });
-  })().finally(() => {
-    if (pending.get(id) === request) { pending.delete(id); pages.delete(id); }
   });
-  pending.set(id, request);
-  return request;
+}
+
+function loadCurvePage(context: OpenArchive, page: number, curveId: string): Promise<void> {
+  const offset = page * pageFrames;
+  const indices = Array.from({ length: Math.min(pageFrames, context.frameCount - offset) }, (_, index) => offset + index);
+  const frames = indices.map(index => cache.get(key(context.jobId, index)));
+  if (frames.every(frame => frame !== undefined && curveId in frame.curves)) return Promise.resolve();
+  return loadArchivePage(context, page, curveId, async signal => {
+    if (frames.some(frame => frame === undefined)) await loadPage(context, page);
+    signal.throwIfAborted();
+    const first = context.timebase.get(offset), last = context.timebase.get(indices[indices.length - 1]);
+    if (!first || !last) throw new Error('当前页没有正式 SDK 时钟，曲线未读取');
+    const result = await channel('data-curves', readAll(pageOffset => playerApi.curveSamples(context.jobId, curveId, {
+      firstSdkFrame: Number(first.hostFrame), lastSdkFrame: Number(last.hostFrame), offset: pageOffset, limit: 128,
+    }, signal)));
+    signal.throwIfAborted();
+    for (const index of indices) {
+      const id = key(context.jobId, index);
+      const frame = cache.get(id)!;
+      cache.set(id, { ...frame, curves: { ...frame.curves, [curveId]: {
+        kind: 'sampled', samples: result.items.filter(sample => sample.source.sdkFrame === frame.hostFrame), availability: result.availability,
+      } } });
+    }
+    const state = getState();
+    if (isCurrent(context.generation) && state.runId === context.jobId) {
+      const frame = cache.get(key(context.jobId, state.frameIndex));
+      runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
+    }
+  });
+}
+
+function loadVisibleCurves(context: OpenArchive) {
+  const state = getState();
+  const page = Math.floor(state.frameIndex / pageFrames);
+  const selected = state.selectedCurves;
+  for (const neighbour of [page, page - 1, page + 1]) {
+    if (neighbour < 0 || neighbour * pageFrames >= context.frameCount) continue;
+    void (async () => {
+      for (const curveId of selected) {
+        const active = getState();
+        if (!isCurrent(context.generation) || !active.selectedCurves.includes(curveId) ||
+          Math.abs(Math.floor(active.frameIndex / pageFrames) - neighbour) > 1) return;
+        try {
+          await loadCurvePage(context, neighbour, curveId);
+        } catch (error) {
+          const entryId = consoleActions.error('data-curves', error);
+          if (entryId === null) return;
+          const reason = error instanceof Error ? error.message : String(error);
+          for (let index = neighbour * pageFrames; index < Math.min(context.frameCount, (neighbour + 1) * pageFrames); index++) {
+            const id = key(context.jobId, index), frame = cache.get(id);
+            if (frame) cache.set(id, { ...frame, curves: { ...frame.curves, [curveId]: { kind: 'failed', reason, entryId } } });
+          }
+          if (isCurrent(context.generation)) {
+            const frame = cache.get(key(context.jobId, getState().frameIndex));
+            runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
+          }
+        }
+      }
+    })();
+  }
 }
 
 async function imageObservations(context: OpenArchive, metadata: PlayerArchiveImage | PlayerFrameImage, signal: AbortSignal) {
@@ -176,16 +243,34 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
 }
 
 export const archive = {
-  inputFrames(jobId: PlayerJobId): ArchiveFrame[] {
-    return [...cache.entries()].filter(([id, frame]) => id.startsWith(jobId + ':') && frame.input !== null)
-      .map(([, frame]) => frame).sort((left, right) => BigInt(left.hostFrame) < BigInt(right.hostFrame) ? -1
-        : BigInt(left.hostFrame) > BigInt(right.hostFrame) ? 1 : 0);
+  curveSamples(jobId: PlayerJobId, curveId: string): PlayerCurveSample[] {
+    return [...cache.entries()].flatMap(([id, frame]) => {
+      const curve = frame.curves[curveId];
+      return id.startsWith(jobId + ':') && curve?.kind === 'sampled' ? curve.samples : [];
+    })
+      .sort((left, right) => BigInt(left.source.sdkFrame) < BigInt(right.source.sdkFrame) ? -1
+        : BigInt(left.source.sdkFrame) > BigInt(right.source.sdkFrame) ? 1
+          : left.presentationSequence !== null && right.presentationSequence !== null
+            ? BigInt(left.presentationSequence) < BigInt(right.presentationSequence) ? -1 : BigInt(left.presentationSequence) > BigInt(right.presentationSequence) ? 1 : 0
+            : 0);
+  },
+
+  loadCurves() {
+    if (current?.kind !== 'ready') return;
+    const selected = getState().selectedCurves;
+    for (const [id, request] of pages)
+      if (request.curveId !== null && !selected.includes(request.curveId)) {
+        request.controller.abort();
+        pages.delete(id);
+        pending.delete(id);
+      }
+    loadVisibleCurves(current);
   },
   cancel() {
     current?.controller.abort();
     current = null;
     imageController?.abort();
-    for (const controller of pages.values()) controller.abort();
+    for (const request of pages.values()) request.controller.abort();
     pages.clear();
     pending.clear();
     frameRequest++;
@@ -196,9 +281,10 @@ export const archive = {
     const controller = new AbortController();
     current = { kind: 'opening', jobId, generation, controller };
     try {
-      const [summary, layout, metadata, geometry] = await Promise.all([
+      const [summary, layout, metadata, geometry, curves] = await Promise.all([
         playerApi.summary(jobId, controller.signal), playerApi.poseLayout(jobId, controller.signal),
         playerApi.archive(jobId, controller.signal), playerApi.geometry(jobId, controller.signal),
+        channel('data-curves', readAll(offset => playerApi.curves(jobId, offset, 128, controller.signal))),
       ]);
       if (!isCurrent(generation)) { controller.abort(); return; }
       const timebase: ArchiveTimebase = new Map();
@@ -206,10 +292,10 @@ export const archive = {
         hostFrame: frame.hostFrame,
         seconds: (Number(frame.hostFrame) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate,
       });
-      current = { kind: 'ready', jobId, generation, metadata, timebase, controller };
+      current = { kind: 'ready', jobId, generation, metadata, frameCount: summary.frameCount, timebase, controller };
       transport.setTimebase(jobId, timebase);
       runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,
-        metadataAvailability: summary.availability });
+        metadataAvailability: summary.availability, archiveCurves: curves.items, curveAvailability: curves.availability });
       runActions.setSummary(generation, summary, true);
       if (summary.frameCount) transport.place(Math.min(requestedFrame, summary.frameCount - 1));
       archive.loadFrame();
@@ -230,9 +316,9 @@ export const archive = {
     const request = ++frameRequest;
     imageController?.abort();
     runActions.setData(generation, { frame: null, archiveFrame: null, archiveImage: null });
-    const allowed = new Set([page - 1, page, page + 1].map(index => `${generation}:${key(runId, index)}`));
-    for (const [id, controller] of pages) if (!allowed.has(id)) {
-      controller.abort();
+    const allowed = new Set([page - 1, page, page + 1]);
+    for (const [id, request] of pages) if (!allowed.has(request.page)) {
+      request.controller.abort();
       pages.delete(id);
       pending.delete(id);
     }
@@ -243,6 +329,7 @@ export const archive = {
       const archiveFrame = cache.get(frameKey);
       if (request !== frameRequest || !archiveFrame || !isCurrent(generation)) return;
       runActions.setData(generation, { archiveFrame, frameKey });
+      loadVisibleCurves(context);
       void loadImage(context, archiveFrame.hostFrame, request);
     };
     (cache.has(frameKey) ? Promise.resolve() : loadPage(context, page)).then(show, failed);

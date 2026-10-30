@@ -20,6 +20,7 @@ import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, ObjectField } from '../../ui/controls';
+import { ErrorLine } from '../../ui/ErrorLine';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
@@ -62,7 +63,8 @@ function Content({ shown, locked }: { shown: Selection | null; locked: boolean }
     case 'node': return <NodeInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'clip': return shown.id.startsWith('input/') ? <InputItemInspector id={shown.id} missing={missing} />
       : <ClipInspector id={shown.id} call={shown.call} missing={missing} />;
-    case 'track': return shown.id.startsWith('input/') ? <InputTrackInspector id={shown.id} missing={missing} />
+    case 'track': return shown.id.startsWith('curve/') ? <CurveInspector id={shown.id} missing={missing} />
+      : shown.id.startsWith('input/') ? <InputTrackInspector id={shown.id} missing={missing} />
       : <TrackInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
     case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
@@ -609,6 +611,51 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
 }
 
 // ── 预览输入 ──
+
+function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
+  const [, sourceRun, ...path] = id.split('/');
+  const curveId = path.join('/');
+  const { runId, curves, frame, hostFrame } = useWorkbench(useShallow(state => ({
+    runId: state.runId, curves: state.archiveCurves, frame: state.archiveFrame, hostFrame: state.hostFrame,
+  })));
+  if (runId !== sourceRun) return <Empty text="此曲线属于另一档案" />;
+  const curve = curves?.find(item => item.id === curveId);
+  if (!curve) return missing;
+  const record = frame?.hostFrame === hostFrame ? frame.curves[curveId] : undefined;
+  const unavailable = record?.kind === 'sampled' ? record.availability.find(item =>
+    (item.channel === curve.channel || item.channel === 'data-curves') && !item.available)?.reason : null;
+  return <>
+    <Head kind="var(--track-motion)" name={curve.displayName} />
+    <Fold title="曲线" kind="var(--track-motion)" defaultOpen>
+      <Value label="通道 / 时钟" value={`${curve.channel} / ${curve.clock}`} />
+      <Value label="坐标 / 单位" value={`${curve.coordinates} / ${curve.unit}`} />
+      <Value label="分量" value={curve.component} />
+      <Value label="编码" value={curve.encoding} />
+    </Fold>
+    <Fold title="当前 SDK 帧样本" kind="var(--value)" defaultOpen>
+      {record === undefined ? <div className={styles.note}>正在读取曲线</div>
+        : record.kind === 'failed' ? <ErrorLine text={record.reason} entryId={record.entryId} />
+          : unavailable ? <div className={styles.note}>{unavailable}</div>
+            : record.samples.length === 0 ? <div className={styles.note}>此帧没有样本</div>
+              : record.samples.map((sample, index) => <Fold key={index} title={`SDK ${sample.source.sdkFrame}`} defaultOpen>
+                <Value label="显示值" value={String(sample.value)} />
+                <Value label="原始值" value={sample.rawValue} />
+                {sample.presentationSequence !== null && <Value label="表现序号" value={sample.presentationSequence} />}
+                {sample.presentationTick !== null && <Value label="表现 Tick" value={String(sample.presentationTick)} />}
+                <Identity extra={[
+                  { displayName: '来源 Tick', value: sample.source.gameplayTick },
+                  { displayName: '场景修订', value: sample.source.sceneRevision },
+                  { displayName: '输入修订', value: sample.source.inputRevision ?? '无固定修订' },
+                ]} />
+              </Fold>)}
+    </Fold>
+    <Identity extra={[
+      { displayName: '档案', value: sourceRun }, { displayName: '曲线', value: curve.id },
+      { displayName: '角色', value: curve.actorId }, { displayName: '目标', value: curve.targetId },
+      { displayName: '档案坐标约定', value: curve.frameCoordinates },
+    ]} />
+  </>;
+}
 
 function NativeInputInspector({ documentId }: { documentId: string }) {
   const observation = useInputObservation(documentId);

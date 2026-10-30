@@ -7,6 +7,7 @@ import {
   readPlayerArchive, readPlayerArchiveImage, readPlayerCamera, readPlayerInput,
   readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
   readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
+  readPlayerCurves, readPlayerCurveSamples,
   type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type PlayerLoadRequest, type StartPlayerJobRequest,
 } from './playerRecords';
 import type {
@@ -53,6 +54,10 @@ export const playerApi = {
     decoded(`${job(id)}/camera${query({ ...range })}`, readPlayerCamera, signal),
   input: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/input${query({ ...range })}`, readPlayerInput, signal),
+  curves: (id: PlayerJobId, offset: number, limit: number, signal?: AbortSignal) =>
+    decoded(`${job(id)}/curves${query({ offset, limit })}`, readPlayerCurves, signal),
+  curveSamples: (id: PlayerJobId, curveId: string, range: PlayerArchiveRange, signal?: AbortSignal) =>
+    decoded(`${job(id)}/curves/samples${query({ curveId, ...range })}`, readPlayerCurveSamples, signal),
   unavailable: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/unavailable${query({ ...range })}`, readPlayerUnavailable, signal),
   archiveImageMetadata: (id: PlayerJobId, sdkFrame: string, signal?: AbortSignal) =>

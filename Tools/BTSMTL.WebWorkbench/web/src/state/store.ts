@@ -7,6 +7,7 @@ import type {
 } from '../api/types';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
+  PlayerDataCurve, PlayerCurveSample,
   PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage,
 } from '../api/playerRecords';
 
@@ -54,6 +55,9 @@ export interface RunData {
   archiveFrame: ArchiveFrame | null;
   archiveMetadata: PlayerArchive | null;
   archiveImage: ArchiveImage | null;
+  archiveCurves: PlayerDataCurve[] | null;
+  curveAvailability: Availability[];
+  selectedCurves: string[];
 }
 
 export interface ArchiveFrame {
@@ -63,6 +67,8 @@ export interface ArchiveFrame {
   cameras: PlayerCameraPage['page']['items'];
   input: PlayerInputPage['page']['items'][number] | null;
   inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null;
+  curves: Record<string, { kind: 'sampled'; samples: PlayerCurveSample[]; availability: Availability[] }
+    | { kind: 'failed'; reason: string; entryId: number }>;
   unavailable: PlayerUnavailablePage['page']['items'];
   availability: Availability[];
 }
@@ -93,6 +99,7 @@ export const emptyRunData: RunData = {
   routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
   timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
   archiveLayout: null, archiveFrame: null, archiveMetadata: null, archiveImage: null,
+  archiveCurves: null, curveAvailability: [], selectedCurves: [],
 };
 
 // ── cursor：只能由 transport 写入 ──
@@ -276,6 +283,9 @@ export const contentActions = {
 };
 
 export const runActions = {
+  selectCurve(id: string, selected: boolean) {
+    set({ selectedCurves: selected ? [...getState().selectedCurves, id] : getState().selectedCurves.filter(item => item !== id) });
+  },
   setArchiveJobs(archiveJobs: PlayerJobReceipt[]) {
     set({ archiveJobs });
   },

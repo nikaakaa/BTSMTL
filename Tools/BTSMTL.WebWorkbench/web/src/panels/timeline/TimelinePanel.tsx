@@ -10,6 +10,7 @@ import {
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
+import type { PlayerDataCurve } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
@@ -27,6 +28,7 @@ import {
 import { callKey, graphKey, matchesDocumentCall, nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
+import { archive } from '../../state/archive';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import styles from './timeline.module.css';
@@ -45,7 +47,9 @@ const labelInside = 46;
 
 interface InputGroupRow { kind: 'inputGroup'; id: string }
 interface InputTrackRow { kind: 'inputTrack'; id: string; selectId: string; track: FrozenInputTimeline['tracks'][number] }
-type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow;
+interface CurveGroupRow { kind: 'curves'; id: string }
+interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
+type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow;
 
 interface Params {
   range: Range | null;
@@ -76,6 +80,7 @@ const observationKey = (observation: TimelineObservation) => JSON.stringify([cal
 type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'input'; documentId: string; observing: boolean };
 const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
+const CurveClockContext = createContext<{ sourceFrame: string; seconds: number; sdkTickRate: number } | null>(null);
 function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   if (clock.kind !== 'document' || clock.observation === null) return undefined;
   const { documentId, observation } = clock;
@@ -115,6 +120,8 @@ function rowHeight(row: Row): number {
     case 'group': return rowHeights.group;
     case 'inputGroup': return rowHeights.inputGroup;
     case 'inputTrack': return rowHeights.in;
+    case 'curves': return rowHeights.inputGroup;
+    case 'curve': return 64;
     case 'track': return rowHeights[row.trackKind];
   }
 }
@@ -353,8 +360,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const binding = useDocumentObservationBinding();
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
-  const { inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
+  const { inputTimeline, inputRoot, graphs, curves, selectedCurves } = useWorkbench(useShallow(state => ({
     inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
+    curves: state.archiveCurves, selectedCurves: state.selectedCurves,
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => state.edited);
@@ -450,10 +458,20 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     const filter = params.filter.trim().toLowerCase();
     const collapsed = new Set(params.collapsed);
     const result: Row[] = [];
+    const addCurves = () => {
+      if (curves === null) return;
+      result.push({ kind: 'curves', id: 'curves' });
+      if (!collapsed.has('curves'))
+        for (const curve of curves)
+          if (selectedCurves.includes(curve.id) && (!filter || curve.displayName.toLowerCase().includes(filter)))
+            result.push({ kind: 'curve', id: `curve:${curve.id}`, curve });
+    };
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
       const tracks = segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
-      return filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks;
+      result.push(...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
+      addCurves();
+      return result;
     }
     const root = selectedInputRoot(inputTimeline?.roots, inputRoot);
     if (inputTimeline) {
@@ -470,8 +488,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
       if (titleMatched || children.length) result.push(group, ...children);
     }
+    addCurves();
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, params.filter, params.collapsed]);
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, params.filter, params.collapsed]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
@@ -513,7 +532,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
     {
       label: '折叠全部分组',
-      onSelect: () => setParams({ collapsed: rows.filter(row => row.kind === 'group' || row.kind === 'inputGroup').map(row => row.id) }),
+      onSelect: () => setParams({ collapsed: rows.filter(row => row.kind === 'group' || row.kind === 'inputGroup' || row.kind === 'curves').map(row => row.id) }),
     },
   ];
 
@@ -532,9 +551,15 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: inputObservation.kind === 'ready' }
       : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
   [frames, focused?.documentId, observed, inputScheme, inputObservation.kind]);
+  const curveClock = useWorkbench(useShallow(state => {
+    if (state.hostFrame === null || state.archiveMetadata === null || (clock.kind === 'input' && !clock.observing)) return null;
+    const seconds = previewSeconds(state, clock, null);
+    return seconds === null ? null : { sourceFrame: state.hostFrame, seconds, sdkTickRate: state.archiveMetadata.sdkTickRate };
+  }));
 
   return (
     <PreviewClockContext.Provider value={clock}>
+    <CurveClockContext.Provider value={curveClock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} documentId={focused?.timeline ? focused.documentId : null}
         observations={observations} selectCall={selectCall}
@@ -559,6 +584,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
         <Overlay bounds={bounds} origin={origin} seekAt={seekAt} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
+    </CurveClockContext.Provider>
     </PreviewClockContext.Provider>
   );
 }
@@ -943,6 +969,8 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
           case 'inputGroup':
             return <InputGroupLine key={row.id} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} />;
+          case 'curves': return <CurveGroupLine key={row.id} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+          case 'curve': return <CurveLine key={row.id} row={row} />;
         }
       })}
       <div style={{ height: total - offsets[last] }} />
@@ -1055,6 +1083,11 @@ function deleteClips(selectIds: string[]) {
 
 function deleteSelection() {
   const selection = getState().selection;
+  if (selection?.id.startsWith('curve/')) {
+    runActions.selectCurve(selection.id.split('/').slice(2).join('/'), false);
+    selectionActions.select(null);
+    return;
+  }
   if (selection?.kind === 'clip') deleteClips([selection.id]);
   else if (selection?.kind === 'track' && !selection.id.startsWith('input/')) {
     const [documentId, trackId] = selection.id.split('/');
@@ -1453,6 +1486,75 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
 
 // ── 预览输入组 ──
 
+function CurveGroupLine({ open, toggle }: { open: boolean; toggle(id: string): void }) {
+  const { curves, selected, availability } = useWorkbench(useShallow(state => ({
+    curves: state.archiveCurves, selected: state.selectedCurves, availability: state.curveAvailability,
+  })));
+  const reason = availability.find(item => item.channel === 'data-curves' && !item.available)?.reason;
+  const entries: MenuEntry[] = (curves ?? []).map(curve => ({
+    kind: 'check', label: `${curve.actorId ? `${curve.actorId} · ` : ''}${curve.displayName}`,
+    checked: selected.includes(curve.id), onChange: checked => runActions.selectCurve(curve.id, checked),
+  }));
+  return <Line id="curves" height={30} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
+    <button className={styles.fold} onClick={() => toggle('curves')} aria-expanded={open} aria-label={open ? '折叠曲线' : '展开曲线'}>
+      <Triangle open={open} />
+    </button>
+    <span className={styles.segmentTitle}>项目曲线</span>
+    {entries.length > 0 && <MenuButton label="选择项目曲线" caret entries={entries}>选择曲线</MenuButton>}
+  </>}>
+    {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span>
+      : !curves?.length ? <span className={styles.curveNotice}>此档案未声明曲线</span> : null}
+  </Line>;
+}
+
+function CurveLine({ row }: { row: CurveRow }) {
+  const clock = useContext(CurveClockContext);
+  const { range } = useTimelineContext();
+  const { runId, frame, hostFrame, image, metadata } = useWorkbench(useShallow(state => ({
+    runId: state.runId, frame: state.archiveFrame, hostFrame: state.hostFrame,
+    image: state.archiveImage, metadata: state.archiveMetadata,
+  })));
+  const selectId = runId === null ? null : `curve/${runId}/${row.curve.id}`;
+  const selected = useSelected(selectId ?? '', 'track');
+  const samples = useMemo(() => !runId || !clock ? [] : archive.curveSamples(runId, row.curve.id).map(sample => ({
+    sample, seconds: clock.seconds + Number(BigInt(sample.source.sdkFrame) - BigInt(clock.sourceFrame)) / clock.sdkTickRate,
+  })).filter(point => point.seconds >= range.start && point.seconds <= range.end), [runId, row.curve.id, frame, clock, range]);
+  const min = samples.length ? Math.min(...samples.map(point => point.sample.value)) : 0;
+  const max = samples.length ? Math.max(...samples.map(point => point.sample.value)) : 0;
+  const record = frame?.curves[row.curve.id];
+  const reason = !clock ? '没有匹配的运行时钟' : record?.kind === 'failed' ? record.reason
+    : record?.kind === 'sampled' ? record.availability.find(item =>
+      (item.channel === row.curve.channel || item.channel === 'data-curves') && !item.available)?.reason ?? null : '正在读取曲线';
+  const select = () => { if (selectId !== null) selectionActions.select({ kind: 'track', id: selectId }); };
+  return <Line id={row.id} height={64} headClass={styles.trackHead} head={
+    <button className={styles.headButton} data-selected={selected || undefined}
+      style={{ ['--tc' as string]: 'var(--track-motion)' }} disabled={selectId === null}
+      title={`${row.curve.clock} · ${row.curve.coordinates} · ${row.curve.unit}`} onClick={select}>
+      <span className={styles.slot} /><span className={styles.name}>{row.curve.displayName}</span>
+    </button>
+  }>
+    {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span> : <>
+      <svg className={styles.curvePlot} viewBox="0 0 1000 64" preserveAspectRatio="none" aria-label={row.curve.displayName}>
+        {samples.map(({ sample, seconds }, index) => {
+          const matchingImage = sample.presentationSequence === null || image !== null && image.kind !== 'unavailable' &&
+            sample.presentationSequence === image.metadata.presentationSequence;
+          return <circle key={`${sample.source.sdkFrame}/${sample.presentationSequence ?? 'logic'}/${index}`}
+            cx={(seconds - range.start) / (range.end - range.start) * 1000}
+            cy={max === min ? 32 : 57 - (sample.value - min) / (max - min) * 50} r={2.5}
+            data-current={sample.source.sdkFrame === hostFrame && matchingImage || undefined}
+            onClick={() => {
+              select();
+              if (metadata) void transport.seekTime(Number(BigInt(sample.source.sdkFrame) - BigInt(metadata.firstRecordedSdkFrame)) / metadata.sdkTickRate);
+            }}>
+            <title>{`${sample.value} ${row.curve.unit}\nSDK ${sample.source.sdkFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}</title>
+          </circle>;
+        })}
+      </svg>
+      {samples.length > 0 && <span className={styles.curveScale}>{max.toPrecision(4)} / {min.toPrecision(4)} {row.curve.unit}</span>}
+    </>}
+  </Line>;
+}
+
 function InputGroupLine({ open, toggle, roots }: {
   open: boolean; toggle(id: string): void; roots: FrozenInputTimeline[] | undefined;
 }) {
@@ -1555,6 +1657,10 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
         pending.current = false;
         const current = getState();
         const key = frameKey(current.runId, current.frameIndex);
+        if (current.selectedCurves.some(id => current.archiveFrame?.curves[id] === undefined)) {
+          clearRendered(panelId);
+          return;
+        }
         if (key) reportRendered(panelId, key);
       });
     }
@@ -1563,7 +1669,8 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
   useLayoutEffect(() => {
     apply();
     const stopRun = useWorkbench.subscribe((state, previous) => {
-      if (state.seconds !== previous.seconds || state.hostFrame !== previous.hostFrame || state.frameKey !== previous.frameKey) apply();
+      if (state.seconds !== previous.seconds || state.hostFrame !== previous.hostFrame || state.frameKey !== previous.frameKey ||
+        state.archiveFrame !== previous.archiveFrame || state.selectedCurves !== previous.selectedCurves) apply();
     });
     const stopAuthor = useAuthorCursor.subscribe(apply);
     return () => { stopRun(); stopAuthor(); };

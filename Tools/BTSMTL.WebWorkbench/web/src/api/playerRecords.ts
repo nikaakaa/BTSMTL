@@ -271,6 +271,16 @@ export const readPlayerInput = object({
   plans: array(object({ actorId: text, plan: text, planRevision: text, schemeIndex: number })),
   valueEncoding: nullable(text), availability: array(availability),
 });
+const dataCurve = object({
+  id: text, displayName: text, channel: text, clock: text, actorId: text, targetId: text, component: text,
+  coordinates: text, frameCoordinates: text, unit: text, encoding: choice('FixedPointRaw64', 'Float32', 'Int32'),
+});
+export const readPlayerCurves = observationPage(dataCurve);
+export const readPlayerCurveSamples = object({
+  curve: dataCurve, sdkTickRate: number, firstRecordedSdkFrame: text,
+  page: page(object({ source, presentationSequence: nullable(text), presentationTick: nullable(number), value: number, rawValue: text })),
+  availability: array(availability),
+});
 export const readPlayerArchiveImage = object({
   jobId, archiveJobId: identity<'archive'>(), playerBuildId: buildId, contentRevision: text, sceneRevision: text,
   inputSource: text, inputRevision: nullable(text), hostFrame: text, sourceHostFrame: text, presentationSequence: text,
@@ -319,6 +329,8 @@ export type PlayerCameraPage = ReturnType<typeof readPlayerCamera>;
 export type PlayerUnavailablePage = ReturnType<typeof readPlayerUnavailable>;
 export type PlayerInputPage = ReturnType<typeof readPlayerInput>;
 export type PlayerInputCatalog = ReturnType<typeof readPlayerInputCatalog>;
+export type PlayerDataCurve = ReturnType<typeof dataCurve>;
+export type PlayerCurveSample = ReturnType<typeof readPlayerCurveSamples>['page']['items'][number];
 export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
 export type PlayerFrameImage = ReturnType<typeof frameImage>;
 export type PlayerArchive = ReturnType<typeof readPlayerArchive>;
