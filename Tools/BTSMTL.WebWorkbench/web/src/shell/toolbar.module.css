@@ -1,9 +1,10 @@
 .toolbar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  height: var(--toolbar);
-  padding: 0 var(--gap-2);
+  gap: var(--gap-1) var(--gap-2);
+  min-height: var(--toolbar);
+  padding: var(--gap-1) var(--gap-2);
   background: var(--bg-1);
   border-bottom: 1px solid var(--bg-0);
   flex: none;
@@ -16,7 +17,13 @@
   min-width: 0;
 }
 
+.left {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+
 .right {
+  margin-left: auto;
   justify-content: flex-end;
 }
 
