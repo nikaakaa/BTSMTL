@@ -1,0 +1,20 @@
+{
+    "name": "BTSMTL.Preview.Animancer",
+    "rootNamespace": "BTSMTL.Preview",
+    "references": ["BTSMTL.Preview", "BTSMTL.Foundation", "Kybernetik.Animancer"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["System.Runtime.CompilerServices.Unsafe.dll"],
+    "autoReferenced": true,
+    "defineConstraints": ["BTSMTL_ANIMANCER"],
+    "versionDefines": [
+        {
+            "name": "com.kybernetik.animancer",
+            "expression": "[8.0.0,9.0.0)",
+            "define": "BTSMTL_ANIMANCER"
+        }
+    ],
+    "noEngineReferences": false
+}
