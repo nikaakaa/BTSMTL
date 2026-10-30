@@ -373,7 +373,7 @@ export interface AuthorTrack {
 export interface AuthorTimeline {
   documentId: string;
   contentIdentity: string;
-  contentRevision: string;
+  contentRevision: string | null;
   displayName: string;
   tracks: AuthorTrack[];
 }

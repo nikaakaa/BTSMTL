@@ -36,7 +36,8 @@ export function applyStateAddress() {
     const frame = Number(initial.get('frame') ?? '0');
     session.selectRun(run, Number.isSafeInteger(frame) && frame >= 0 ? frame : 0);
     selectionActions.select(parseSelection(initial.get('select')));
-  } else if (skill) {
+  }
+  if (skill) {
     void authoringActions.openSkill(skill);
     selectionActions.select(parseSelection(initial.get('select')));
   }
@@ -60,7 +61,8 @@ function write() {
   if (state.runId) {
     params.set('run', state.runId);
     params.set('frame', String(state.frameIndex));
-  } else if (skill) params.set('skill', skill);
+  }
+  if (skill) params.set('skill', skill);
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);

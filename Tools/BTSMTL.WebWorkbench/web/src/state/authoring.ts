@@ -9,7 +9,9 @@ import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
-import { consoleActions, useWorkbench } from './store';
+import { consoleActions, selectionActions, useWorkbench } from './store';
+import { findGraphEdge, findGraphNode } from './graphModel';
+import { findTimelineClip, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session } from './session';
 
@@ -25,6 +27,7 @@ export interface AuthoringState {
   programId: string | null;
   skill: string | null;
   revision: string | null;
+  sourceRevision: string | null;
   files: Record<string, string>;
   // 编辑过及新建的文件（路径 → 解析后的文档），逐次修改递增 version。
   edited: Record<string, JsonValue>;
@@ -70,7 +73,7 @@ export interface AddedPort {
 }
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null,
+  available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null, sourceRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
   skills: null, documentGraphs: null, documentError: null, tickRate: null,
@@ -153,14 +156,14 @@ async function trackPreview(input: { save: SavedCompilation; receipt: PlayerSkil
 }
 
 // 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
-export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
+export function documentTimelines(files: Record<string, string>, sourceRevision: string | null): AuthorTimeline[] {
   return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json'))
-    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject));
+    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject, sourceRevision));
 }
 
-function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
+function timelineOf(documentId: string, document: JsonObject, sourceRevision: string | null): AuthorTimeline {
   return {
-    documentId, contentIdentity: documentId, contentRevision: '', displayName: document.m_Name as string,
+    documentId, contentIdentity: documentId, contentRevision: sourceRevision, displayName: document.m_Name as string,
     tracks: (document.m_Tracks as JsonObject[]).map(track => ({
       id: track.m_AuthoringId as string, displayName: track.Name as string, muted: track.m_PersistentMuted === true,
       clips: (track.m_Clips as JsonObject[]).map(clip => ({
@@ -178,9 +181,9 @@ function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
 
 // 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
-  const { documentGraphs, files, skill } = get();
+  const { documentGraphs, files, skill, sourceRevision } = get();
   useWorkbench.setState({
-    graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files) : [],
+    graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files, sourceRevision) : [],
   });
 }
 
@@ -189,14 +192,27 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 async function readDocument(skill: string, signal?: AbortSignal) {
+  const revision = get().revision;
   try {
     const document = await authoringApi.document(skill, signal);
-    set({ documentGraphs: document.graphs, documentError: null, tickRate: document.tickRate, programId: document.programId });
+    if (get().skill !== skill || get().revision !== revision) return;
+    set({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
+      documentError: null, tickRate: document.tickRate, programId: document.programId });
   } catch (error) {
     if (isAbort(error)) throw error;
-    set({ documentGraphs: [], documentError: error instanceof ApiError ? error.reason : String(error) });
+    if (get().skill !== skill || get().revision !== revision) return;
+    set({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) });
     consoleActions.error('作者', error);
   }
+}
+
+function reconcileSelection() {
+  const { selection, graphs, timelines } = useWorkbench.getState();
+  if (!selection || selection.kind === 'actor' || selection.id.startsWith('input/')) return;
+  const { kind, id } = selection;
+  const exists = kind === 'node' ? findGraphNode(graphs, id) : kind === 'edge' ? findGraphEdge(graphs, id)
+    : kind === 'track' ? findTimelineTrack(timelines, id) : findTimelineClip(timelines, id) ?? findTimelineMarker(timelines, id);
+  if (!exists) selectionActions.select(null);
 }
 
 // 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
@@ -227,7 +243,8 @@ export const authoringActions = {
     loadController?.abort();
     const controller = loadController = new AbortController();
     clearHistory();
-    set({ skill: null, revision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
+    useWorkbench.setState({ graphRequest: null, timelineRequest: null });
+    set({ skill: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(skill, controller.signal);
@@ -235,6 +252,7 @@ export const authoringActions = {
       await readDocument(skill, controller.signal);
       set({ loading: false, author: true });
       publishDocument();
+      reconcileSelection();
     } catch (error) {
       if (isAbort(error)) return;
       set({ loading: false });
@@ -360,7 +378,7 @@ export const authoringActions = {
       }
       clearHistory();
       set({
-        revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
+        revision: content.revision, sourceRevision: null, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
         edited: {}, removed: [], addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
       });
       void reloadDocument();
@@ -411,7 +429,7 @@ export const authoringActions = {
       if (hasChanges()) set({ externalChange: true });
       else {
         const snapshot = await authoringApi.read(skill);
-        set({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
+        set({ revision: snapshot.revision, sourceRevision: null, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
         await reloadDocument();
       }
     } catch (error) {
@@ -1281,9 +1299,10 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
     const document = edited[timelinePath(timeline.documentId)] as JsonObject | undefined;
     if (!document) return timeline;
     const names = new Map(timeline.tracks.flatMap(track => track.clips.map(clip => [clip.id, clip.displayName])));
-    const tracks = timelineOf(timeline.documentId, document).tracks;
+    const tracks = timelineOf(timeline.documentId, document, null).tracks;
     return {
       ...timeline,
+      contentRevision: null,
       tracks: tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
     };
   });

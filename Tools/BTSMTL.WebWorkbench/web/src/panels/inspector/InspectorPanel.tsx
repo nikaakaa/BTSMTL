@@ -37,7 +37,7 @@ export function InspectorPanel() {
   const skill = useAuthoring(state => state.skill);
   const shown = params.locked ?? selection;
   const content = !skill ? <Empty text="选择一个技能" />
-      : shown ? <Content shown={shown} locked={!!params.locked} /> : <SkillSummary />;
+      : shown ? <Content key={`${skill}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} /> : <SkillSummary />;
   return (
     <div className={styles.root}>
       <PanelBar>
@@ -45,7 +45,7 @@ export function InspectorPanel() {
           tip={params.locked ? '解除锁定，跟随选中对象' : selection ? '锁定当前对象' : '没有选中对象'}
           onClick={() => setParams({ locked: params.locked ? null : selection })}>锁定</Button>
         <BarSeparator />
-        <BarLabel>{shown ? kindNames[shown.kind] : '运行'}</BarLabel>
+        <BarLabel>{shown ? kindNames[shown.kind] : '技能'}</BarLabel>
       </PanelBar>
       <div className={styles.scroll}>
         {content}
@@ -55,7 +55,7 @@ export function InspectorPanel() {
 }
 
 function Content({ shown, locked }: { shown: Selection | null; locked: boolean }) {
-  const missing = <Empty text={locked ? '锁定对象不在当前运行中' : '所选对象不在当前运行中'} />;
+  const missing = <Empty text={shown?.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前技能' : '所选对象不属于当前技能'} />;
   if (!shown) return <RunSummary />;
   switch (shown.kind) {
     case 'node': return <NodeInspector id={shown.id} missing={missing} />;
@@ -493,7 +493,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),
-        { displayName: 'Timeline 修订', value: timeline.contentRevision },
+        { displayName: 'Timeline 来源修订', value: timeline.contentRevision ?? '未保存或尚未读取来源修订' },
       ]} />
     </>
   );

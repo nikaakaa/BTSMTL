@@ -219,10 +219,13 @@ function useDescription(skill: string | null, graphId: string, node: JsonObject 
   const latest = useRef(configuration);
   latest.current = configuration;
   useEffect(() => {
+    setDescription(null);
+    setIssues([]);
     if (!skill || !type || key === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       authoringApi.describeNode(skill, type, latest.current!, graphId, controller.signal).then(result => {
+        if (controller.signal.aborted) return;
         const items = result.fields.items;
         setDescription({
           stored: items.filter((item): item is StoredField => !item.computed),
@@ -231,7 +234,7 @@ function useDescription(skill: string | null, graphId: string, node: JsonObject 
         });
         setIssues([]);
       }, error => {
-        if (isAbort(error)) return;
+        if (controller.signal.aborted || isAbort(error)) return;
         if (error instanceof ApiError && error.status === 422) {
           const body = JSON.parse(error.raw) as { errors?: DescribeIssue[]; message?: string };
           setIssues(body.errors?.length ? body.errors : [{ path: '', message: body.message ?? error.reason }]);
