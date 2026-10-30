@@ -48,6 +48,7 @@ public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
 public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status)
 {
     public PreviewExecutionCall? Call { get; init; }
+    public string? Domain { get; init; }
 }
 public sealed record PreviewRouteFrame(string HostFrame, double Seconds, PreviewRoutePlayback[] Playbacks,
     PreviewAuthoringLocation[] Active)
