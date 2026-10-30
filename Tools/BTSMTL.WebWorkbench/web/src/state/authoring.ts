@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type ElementTemplate, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
+import type { PlayerCommandReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
@@ -61,6 +62,7 @@ interface SaveOutcomeMessage {
 
 export type SaveOutcome = SaveOutcomeMessage & (
   | { saved: true; compilationState: 'succeeded'; preview: PlayerSkillRefreshReceipt | null }
+  | { saved: true; compilationState: 'not-required'; preview: PlayerCommandReceipt | null }
   | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
   | { saved: null; compilationState: null; preview: null }
 );
@@ -94,7 +96,7 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
-type SavedCompilation = Pick<SkillSaveResult, 'saved' | 'compilationState'>;
+type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
   const liveId = useWorkbench.getState().liveId;
@@ -389,6 +391,21 @@ export const authoringActions = {
       const result = await authoringApi.save(skill, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
       });
+      if (result.compilationState === 'not-required') {
+        const preview = result.preview;
+        const stage = preview?.stage;
+        const message = preview === null ? `已保存 ${result.inputs.length} 项输入方案，无需编译技能；${selection.kind === 'unavailable' ? selection.reason : '未请求重载'}`
+          : `已保存 ${result.inputs.length} 项输入方案，无需编译技能；所选 Player 来源重载：${stage}`;
+        const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
+          ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
+        consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
+        if (currentSkill && stage === 'applied') {
+          session.selectRun(null);
+          await playerService.refresh();
+        }
+        if (currentSkill && result.job !== null) session.selectRun(result.job.jobId);
+        return;
+      }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
       const currentSkill = accept(result.content, outcome);
       consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
@@ -402,7 +419,7 @@ export const authoringActions = {
         const rejection = JSON.parse(error.raw) as SkillSaveRejection;
         const errors = rejection.diagnostic?.errors ?? [];
         const message = rejection.stage === 'source-rejected'
-          ? `已保存，严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
+          ? `已保存，${rejection.compilationState === 'not-required' ? '输入方案' : '技能内容'}严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
           : `已保存，编译失败（结束代码 ${rejection.exitCode}）`;
         accept(rejection.content, {
           ok: false, message, errors, saved: rejection.saved, compilationState: rejection.compilationState, preview: null,

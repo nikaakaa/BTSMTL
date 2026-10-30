@@ -503,7 +503,8 @@ function AuthoringControls({ program }: { program: string | null }) {
       )}
       {!dirty && state.lastSave && (
         <span className={state.lastSave.ok ? styles.authorDirty : styles.authorWarn} title={state.lastSave.message}>
-          {state.lastSave.ok ? '已保存' : '编译未通过'}
+          {state.lastSave.ok ? '已保存' : state.lastSave.compilationState === 'failed' ? '编译未通过'
+            : state.lastSave.saved ? '已保存，尚未应用' : '保存未完成'}
         </span>
       )}
       <Button variant="ghost" pressed={state.author} disabled={state.available === false}

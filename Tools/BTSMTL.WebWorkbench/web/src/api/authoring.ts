@@ -1,6 +1,7 @@
 import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
 import { getJson, getText, postText, putJson, query } from './http';
+import type { PlayerCommandReceipt, PlayerJobReceipt, StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -172,19 +173,33 @@ export interface SkillCompilation {
   reused: boolean;
 }
 
-export interface SkillSaveResult {
+export interface CompiledSkillSaveResult {
   saved: true;
   compilationState: 'succeeded';
   content: SkillSnapshot;
   compilation: SkillCompilation;
   preview: PlayerSkillRefreshReceipt | null;
+  jobError: string | null;
 }
+
+export interface InputRevision { planId: string; path: string; revision: string }
+export interface InputSaveResult {
+  saved: true;
+  compilationState: 'not-required';
+  content: SkillSnapshot;
+  inputs: InputRevision[];
+  preview: PlayerCommandReceipt | null;
+  job: PlayerJobReceipt | null;
+}
+
+export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
 export type PlayerSkillRefreshTarget = Omit<PlayerPreviewTarget, 'playerBuildId'> & { requestId: string };
 
 export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };
   preview: PlayerSkillRefreshTarget | null;
+  job?: StartPlayerJobRequest;
 }
 
 interface SkillRefreshPackage {
@@ -227,7 +242,7 @@ export interface SkillFormatError {
 }
 
 export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
-  | { stage: 'source-rejected'; compilationState: 'not-started' } & (
+  | { stage: 'source-rejected'; compilationState: 'not-started' | 'not-required' } & (
     | { diagnostic: { message: string; errors: SkillFormatError[] }; error?: never }
     | { diagnostic?: never; error: string }
   )

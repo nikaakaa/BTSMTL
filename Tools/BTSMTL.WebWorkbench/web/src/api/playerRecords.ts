@@ -51,7 +51,7 @@ const buildId = identity<'build'>();
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
 const source = object({
-  playerBuildId: text, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: text,
+  playerBuildId: text, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   sdkFrame: text, gameplayTick: text,
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
@@ -97,6 +97,9 @@ export const readPlayerJobReceipt = object({
   acceptedAt: text, finishedAt: nullable(text), liveId: nullable(liveId), archivePath: nullable(text),
   load: opaque, result: opaque, error: nullable(text), cachedFrom: nullable(jobId),
   jobId, playerBuildId: buildId, statusPath: text,
+});
+export const readPlayerCommandReceipt = object({
+  stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
 });
 export const readPlayerJobs = object({
   capacity: number, concurrency: number, queued: number, archiveCacheCapacity: number,
@@ -217,6 +220,7 @@ export type PlayerBuildId = ReturnType<typeof buildId>;
 export type StartPlayerJobRequest = ReturnType<typeof readPlayerJobRequest>;
 export type PlayerCreationRequest = Pick<StartPlayerJobRequest, 'requestId' | 'source' | 'width' | 'height'>;
 export type PlayerJobReceipt = ReturnType<typeof readPlayerJobReceipt>;
+export type PlayerCommandReceipt = ReturnType<typeof readPlayerCommandReceipt>;
 export type PlayerJobStage = PlayerJobReceipt['stage'];
 export type PlayerJob = ReturnType<typeof readPlayerJob>;
 export type PlayerSummary = ReturnType<typeof readPlayerSummary>;
