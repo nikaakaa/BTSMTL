@@ -16,6 +16,8 @@ const boolean: Decoder<boolean> = (value, path = 'Player') => {
 const opaque: Decoder<unknown> = value => value;
 const nullable = <T>(decode: Decoder<T>): Decoder<T | null> =>
   (value, path) => value === null ? null : decode(value, path);
+const optional = <T>(decode: Decoder<T>): Decoder<T | undefined> =>
+  (value, path) => value === undefined ? undefined : decode(value, path);
 const array = <T>(decode: Decoder<T>): Decoder<T[]> => (value, path = 'Player') => {
   if (!Array.isArray(value)) throw new Error(`${path} 需要数组`);
   return value.map((item: unknown, index) => decode(item, `${path}[${index}]`));
@@ -101,6 +103,19 @@ export const readPlayerJobReceipt = object({
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
 });
+const nativeAck = object({
+  type: choice('ack'), commandId: text, ok: boolean, frame: number,
+  error: optional(nullable(text)), path: optional(nullable(text)),
+});
+export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
+  const receipt = readPlayerCommandReceipt(value, path);
+  if (receipt.ack === null) return { ...receipt, ack: null };
+  const ack = nativeAck(receipt.ack, `${path}.ack`);
+  return { ...receipt, ack: {
+    type: ack.type, commandId: ack.commandId, ok: ack.ok, hostFrame: String(ack.frame),
+    error: ack.error ?? undefined, path: ack.path ?? undefined, rawJson: JSON.stringify(receipt.ack),
+  } };
+}
 export const readPlayerJobs = object({
   capacity: number, concurrency: number, queued: number, archiveCacheCapacity: number,
   items: array(readPlayerJobReceipt),

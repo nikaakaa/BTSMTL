@@ -32,7 +32,10 @@ function onMessage(message: ViewerMessage) {
     }
     case 'ack':
       if (!message.ok) consoleActions.log('error', source, `命令被拒绝：${message.error ?? ''}`, message.rawJson);
-      else if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
+      else {
+        if (message.hostFrame !== undefined) useWorkbench.setState({ actualFrame: message.hostFrame });
+        if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
+      }
       break;
     case 'pick':
       pickListeners.forEach(listener => listener(message));

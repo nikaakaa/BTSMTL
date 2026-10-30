@@ -2,13 +2,14 @@ import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
+  readPlayerCommandResult,
   readPlayerArchive, readPlayerArchiveImage, readPlayerCamera, readPlayerInput,
   readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
   readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
   type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type StartPlayerJobRequest,
 } from './playerRecords';
 import type {
-  ImageSourceAvailability, LiveCommand, LiveCommandResult, LivePlayer, PlayerBuild,
+  ImageSourceAvailability, LiveCommand, LivePlayer, PlayerBuild,
   PlayerCodeUpdate, StartLivePlayerRequest, VideoFrame,
   ViewerMessage,
 } from './types';
@@ -70,9 +71,9 @@ export const playerApi = {
   swap: (id: string, playerBuildId: string, signal?: AbortSignal) =>
     postJson<unknown>(`${live(id)}/swap`, { playerBuildId }, signal).then(value => readLivePlayer(value)),
   command: (id: string, command: LiveCommand, signal?: AbortSignal) =>
-    postJson<LiveCommandResult>(`${live(id)}/commands`, command, signal),
+    postJson<unknown>(`${live(id)}/commands`, command, signal).then(value => readPlayerCommandResult(value)),
   readCommand: (id: string, commandId: string, signal?: AbortSignal) =>
-    getJson<LiveCommandResult>(`${live(id)}/commands/${encodeURIComponent(commandId)}`, signal),
+    decoded(`${live(id)}/commands/${encodeURIComponent(commandId)}`, readPlayerCommandResult, signal),
   capturePath: (id: string, commandId: string) => `${live(id)}/captures/${commandId.replaceAll('-', '')}.png`,
   latestImage: async (id: string, signal?: AbortSignal) => {
     const response = await getBlob(`${live(id)}/frame.jpg`, signal);
