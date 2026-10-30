@@ -18,12 +18,17 @@ namespace BTSMTL.Orchestration
         ReadOnlySpan<OrchestrationOutputTemplate> m_OutputTemplates => m_Content.OutputTemplates.Span;
         OrchestrationProgramStructure Structure => m_Content.Structure;
 
+        readonly byte[] m_Image;
+
         public OrchestrationProgram(OrchestrationProgramContent<TValue> content)
         {
             m_Content = content;
+            m_Image = OrchestrationProgramImage.Build(content);
         }
 
         public OrchestrationProgramContent<TValue> Content => m_Content;
+        public ReadOnlyMemory<byte> Image => m_Image;
+        public OrchestrationProgramView<TValue> View => new OrchestrationProgramView<TValue>(m_Image);
         public OrchestrationValueSchedule ValueSchedule => m_Content.ValueSchedule;
         public OrchestrationProgramStorageLayout ExecutionStorage => m_Content.ExecutionStorage;
         public int RootOperationIndex => m_Content.RootOperationIndex;
