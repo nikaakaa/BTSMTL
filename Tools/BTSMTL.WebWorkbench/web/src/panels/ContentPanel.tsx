@@ -94,8 +94,9 @@ function ScenarioFolders() {
 }
 
 function NewScenario({ onCreated }: { onCreated(): void }) {
-  const { scene, catalog } = useWorkbench(useShallow(state => ({
+  const { scene, catalog, failure } = useWorkbench(useShallow(state => ({
     scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
+    failure: state.inputCatalogFailure,
   })));
   const [name, setName] = useState('');
   const [actorId, setActorId] = useState<string | null>(null);
@@ -103,7 +104,7 @@ function NewScenario({ onCreated }: { onCreated(): void }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!scene) return <Empty text="先选择场景" />;
-  if (!catalog || catalog.revision !== scene.revision) return <Button onClick={() => void session.loadInputs()}>读取角色</Button>;
+  if (!catalog || catalog.revision !== scene.revision) return <Empty text={failure !== null ? '场景角色读取失败，见输入声明' : '正在读取场景角色'} />;
   const selectedActor = catalog.players.find(player => player.actorId === actorId);
   return <div className={styles.list}>
     <TextInput aria-label="场景方案名称" placeholder="方案名称" value={name} onChange={event => setName(event.currentTarget.value)} />
@@ -125,18 +126,10 @@ function NewScenario({ onCreated }: { onCreated(): void }) {
 }
 
 function LocalInputChoices() {
-  const { scene, catalog, choices, lastSdkFrame } = useWorkbench(useShallow(state => ({
+  const { scene, catalog, choices, lastSdkFrame, error } = useWorkbench(useShallow(state => ({
     scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
-    choices: state.inputChoices, lastSdkFrame: state.localLastSdkFrame,
+    choices: state.inputChoices, lastSdkFrame: state.localLastSdkFrame, error: state.inputCatalogFailure,
   })));
-  const [error, setError] = useState<number | null>(null);
-  useEffect(() => {
-    if (!scene) return;
-    const controller = new AbortController();
-    setError(null);
-    void session.loadInputs(controller.signal).then(entryId => { if (!controller.signal.aborted) setError(entryId); });
-    return () => controller.abort();
-  }, [scene?.path, scene?.revision]);
   if (!scene) return <Empty text="先选择场景" />;
   if (error !== null) return <ErrorLine text="输入方案读取失败" entryId={error} />;
   if (!catalog) return <Empty text="正在读取角色和输入方案" />;
@@ -166,16 +159,19 @@ function LocalInputChoices() {
   </>;
 }
 
+// 输入声明在选定场景后自动读取；这里显示结果，失败后可重新读取。
 function InputDeclarations() {
-  const { catalog, scenePath } = useWorkbench(useShallow(state => ({ catalog: state.inputCatalog, scenePath: state.scenePath })));
-  const [failure, setFailure] = useState<number | null>(null);
+  const { catalog, scenePath, reading, failure } = useWorkbench(useShallow(state => ({
+    catalog: state.inputCatalog, scenePath: state.scenePath, reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
+  })));
   return (
     <>
-      <Button disabled={!scenePath} tip={scenePath ? undefined : '先选择内容'}
-        onClick={() => { setFailure(null); void session.loadInputs().then(setFailure); }}>
-        读取输入声明
-      </Button>
-      {failure !== null && !catalog && <ErrorLine text="输入声明读取失败" entryId={failure} />}
+      {!scenePath && <Empty text="先选择内容" />}
+      {reading && <Empty text="正在读取输入声明" />}
+      {failure !== null && !catalog && <>
+        <ErrorLine text="输入声明读取失败" entryId={failure} />
+        <Button onClick={() => void session.loadInputs()}>重新读取</Button>
+      </>}
       {catalog && (
         <>
           <Facts fields={[

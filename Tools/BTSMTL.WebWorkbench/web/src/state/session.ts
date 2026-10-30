@@ -214,14 +214,41 @@ export const session = {
   },
 
   async loadInputs(signal?: AbortSignal): Promise<number | null> {
-    const { sources, scenePath } = getState();
-    const scene = sources?.scenes.find(item => item.path === scenePath);
+    const scene = selectedScene();
     if (!scene) return null;
+    const current = () => selectedScene()?.path === scene.path && selectedScene()?.revision === scene.revision;
+    useWorkbench.setState({ inputCatalogReading: true, inputCatalogFailure: null });
+    let failure: number | null = null;
     try {
       contentActions.setInputCatalog(scene.path, await previewApi.inputs(scene.path, scene.revision, signal));
-      return null;
     } catch (error) {
-      return consoleActions.error('content', error);
+      failure = consoleActions.error('content', error);
     }
+    if (current() && !signal?.aborted) useWorkbench.setState({ inputCatalogReading: false, inputCatalogFailure: failure });
+    return failure;
   },
 };
+
+function selectedScene() {
+  const { sources, scenePath } = getState();
+  return sources?.scenes.find(item => item.path === scenePath);
+}
+
+// 选定场景或其修订变化后自动读取一次输入声明，换场景时放弃上一次读取；失败后由界面的重新读取按钮重试。
+let inputsController: AbortController | null = null;
+let inputsKey: string | null = null;
+useWorkbench.subscribe((state, previous) => {
+  if (state.scenePath === previous.scenePath && state.sources === previous.sources) return;
+  const scene = selectedScene();
+  const key = scene ? `${scene.path}\n${scene.revision}` : null;
+  if (key === inputsKey) return;
+  inputsKey = key;
+  inputsController?.abort();
+  inputsController = null;
+  if (!scene) {
+    useWorkbench.setState({ inputCatalogReading: false });
+    return;
+  }
+  inputsController = new AbortController();
+  void session.loadInputs(inputsController.signal);
+});

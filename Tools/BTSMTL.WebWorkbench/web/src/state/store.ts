@@ -28,6 +28,9 @@ export interface ContentSlice {
   inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
   localLastSdkFrame: number | null;
   inputCatalog: InputCatalog | null;
+  // 所选场景的输入声明由 session 自动读取；失败时为控制台条目。
+  inputCatalogReading: boolean;
+  inputCatalogFailure: number | null;
   inputChoices: PlayerInputChoice[];
 }
 
@@ -193,7 +196,8 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, previewMode: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null, inputChoices: [],
+  sources: null, previewMode: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null,
+  inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,
@@ -253,12 +257,12 @@ export const contentActions = {
     const state = getState();
     const before = state.sources?.scenes.find(scene => scene.path === state.scenePath)?.revision;
     const after = sources.scenes.find(scene => scene.path === state.scenePath)?.revision;
-    set({ sources, ...(before === after ? {} : { inputCatalog: null, inputChoices: [] }) });
+    set({ sources, ...(before === after ? {} : { inputCatalog: null, inputCatalogFailure: null, inputChoices: [] }) });
   },
   // 场景只决定新建运行的内容，不打断当前运行；输入声明按场景路径丢弃旧结果。
   selectScene(scenePath: string | null) {
     if (getState().scenePath === scenePath) return;
-    set({ scenePath, inputCatalog: null, inputChoices: [] });
+    set({ scenePath, inputCatalog: null, inputCatalogFailure: null, inputChoices: [] });
   },
   selectInputSource(inputSource: ContentSlice['inputSource']) {
     set({ inputSource });

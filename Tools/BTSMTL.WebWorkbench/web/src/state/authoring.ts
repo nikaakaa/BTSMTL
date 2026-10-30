@@ -245,12 +245,15 @@ export function useInputContext(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
   const actorId = useAuthoring(state => state.inputActorId);
-  const { catalog, scene } = useWorkbench(useShallow(state => ({
+  const { catalog, scene, reading, failure } = useWorkbench(useShallow(state => ({
     catalog: state.inputCatalog, scene: state.sources?.scenes.find(item => item.path === state.scenePath),
+    reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
   })));
   if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;
-  if (!scene || !catalog || scene.revision !== catalog.revision)
-    return { kind: 'unavailable', reason: '先在内容面板选择场景并读取输入声明' } as const;
+  if (!scene) return { kind: 'unavailable', reason: '先在工具栏或内容面板选择场景' } as const;
+  if (!catalog || scene.revision !== catalog.revision)
+    return { kind: 'unavailable', reason: failure !== null ? '输入声明读取失败，见控制台；可在内容面板重新读取'
+      : reading ? '正在读取场景的输入声明' : '场景的输入声明尚未读取' } as const;
   if (scheme.scene && scheme.scene !== scene.path)
     return { kind: 'unavailable', reason: '所选场景与输入方案的 Scene 不一致' } as const;
   const actor = catalog.players.find(player => player.actorId === (scheme.actorId || actorId));
