@@ -311,6 +311,7 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
   );
 }
 
+// 输入片段与输入标记共用：两种图都在 @timelineEnable 锚点下写按键。
 export function InputClipFields({ documentId, graphId }: { documentId: string; graphId: string }) {
   const elements = useSkillElements(true);
   const context = useInputContext(documentId);

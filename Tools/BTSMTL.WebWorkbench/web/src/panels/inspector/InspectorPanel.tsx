@@ -533,10 +533,11 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-// 标记：时刻与触发图；作者模式可改时刻、删除。
+// 标记：时刻与触发图；作者模式可改时刻、删除。输入标记与输入片段一样直接读触发图文件，编辑写入的按键与值。
 function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<typeof findTimelineMarker>>; editable: boolean }) {
   const { timeline, track, marker } = found;
   const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
+  const input = useInputSchemes().some(scheme => scheme.documentId === timeline.documentId);
   const tickRate = useAuthoring(state => state.tickRate);
   const step = tickRate ? 1 / tickRate : 1 / 60;
   const kind = 'var(--track-act)';
@@ -545,7 +546,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
       <Head kind={kind} name={`${track.displayName} 标记`} sub={timeline.displayName} />
       <Fold title="标记" kind={kind} defaultOpen>
         <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入" onOpen={() => openTimeline(timeline.documentId)} />
-        {graph
+        {input ? null : graph
           ? <Link label="触发图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="触发图" mono={false} value="未保存，保存后可进入" />}
         {editable ? (
@@ -556,6 +557,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
           </div>
         ) : <Value label="时刻" value={`${marker.seconds.toFixed(3)} s`} />}
       </Fold>
+      {editable && input && marker.graphId && <InputClipFields documentId={timeline.documentId} graphId={marker.graphId} />}
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除标记；不再被引用的触发图保存时删除"
