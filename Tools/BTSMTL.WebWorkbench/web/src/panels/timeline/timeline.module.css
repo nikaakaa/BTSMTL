@@ -692,8 +692,21 @@ button.curveChannel:focus-visible {
   opacity: .45;
 }
 
-.clip[data-editable] {
-  cursor: grab;
+/* 照 Timeline 片段：中段普通箭头，两端 6 像素改起止区显示左右调整光标 */
+.clipResize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.clipResize[data-side='start'] {
+  left: 0;
+}
+
+.clipResize[data-side='end'] {
+  right: 0;
 }
 
 /* 不合规的片段（DrawInvalidClip）：片段底色乘 colorInvalidClipOverlay（红，50.2%），白框，不画两端过渡 */

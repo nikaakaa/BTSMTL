@@ -113,6 +113,19 @@
   background: #222222;
 }
 
+/* 照 GraphView：画布、节点与连线平时是普通箭头，只在中键平移时变抓手 */
+.canvas :global(.react-flow__pane.selection),
+.canvas :global(.react-flow__pane.draggable),
+.canvas :global(.react-flow__node.selectable),
+.canvas :global(.react-flow__node.draggable),
+.canvas :global(.react-flow__edge.selectable) {
+  cursor: default;
+}
+
+.canvas :global(.react-flow__pane.dragging) {
+  cursor: grabbing;
+}
+
 .gridMinor {
   stroke: #1e1e1e;
 }

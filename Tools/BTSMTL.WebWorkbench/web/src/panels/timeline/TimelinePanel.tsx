@@ -1777,7 +1777,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
 }) {
   const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
-    id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 6,
+    id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 12,
   });
   const { valueToPixels } = useTimelineContext();
   const clock = useContext(PreviewClockContext);
@@ -1816,6 +1816,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
             start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }} />}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
+          {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
       </div>
     </div>
