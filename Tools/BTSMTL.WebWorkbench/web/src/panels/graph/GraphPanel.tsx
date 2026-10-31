@@ -51,7 +51,7 @@ interface Params {
   labels: 'brief' | 'all' | 'none';
 }
 const defaults: Params = {
-  graph: null, call: null, path: null, pin: null, caller: null, viewport: null, values: true, dim: false, relations: false, minimap: true, labels: 'brief',
+  graph: null, call: null, path: null, pin: null, caller: null, viewport: null, values: true, dim: false, relations: false, minimap: false, labels: 'brief',
 };
 
 interface ViewOptions {
@@ -264,20 +264,19 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
           {paths.length > 1 && <Select label="图实例" value={path}
             options={paths.map((value, index) => ({ value, label: `图实例 ${index + 1}` }))}
             placeholder="选择图实例" onChange={path => setParams({ path })} />}
+          {caller !== null && calls.length === 0 && pin === null && <span className={styles.notice}>此帧没有精确匹配的子调用记录</span>}
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
         </PanelBar>
-        {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
-        <div className={styles.title}>
-          {graphName(graph)}
-          {caller !== null && calls.length === 0 && pin === null
-            ? <em>此帧没有精确匹配的子调用记录</em> : <SelectedSummary graph={graph} />}
+        {/* 图名只在面包屑里出现一次；黑板浮层贴在画布右上 */}
+        <div className={styles.stage}>
+          {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
+          {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
+            : path === null ? <ReportEmpty text="选择要显示的图实例" />
+              : <AuthoredCanvas graph={graph} path={path} call={observedCall}
+                hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
         </div>
-        {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
-          : path === null ? <ReportEmpty text="选择要显示的图实例" />
-            : <AuthoredCanvas graph={graph} path={path} call={observedCall}
-              hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
       </ReactFlowProvider>
     </div>
   );
@@ -382,18 +381,6 @@ function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose()
 function FitButton() {
   const flow = useReactFlow();
   return <Button variant="ghost" tip="适配视图" onClick={() => void flow.fitView({ padding: 0.12 })}>全部居中</Button>;
-}
-
-function SelectedSummary({ graph }: { graph: GraphDefinition }) {
-  const text = useWorkbench(state => {
-    if (state.selection?.kind !== 'node') return '';
-    const node = graph.nodes.find(item => nodeSelectId(graph, item) === state.selection!.id);
-    if (!node) return '';
-    const out = graph.edges.filter(edge => edge.source?.nodeId === node.id).length;
-    const into = graph.edges.filter(edge => edge.target?.nodeId === node.id).length;
-    return `选中 ${nodeName(node)} · ${out} 出 / ${into} 入`;
-  });
-  return <em>{text}</em>;
 }
 
 const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView), canvasGroup: memo(GroupView) };
@@ -676,7 +663,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     })() : { x: at.x, y: at.y, width: 400, height: 260 };
     graphAuthoring.addGroup(graph.id, rect, '新分组');
   };
-  const blocked = '进入 Timeline 编辑行的“作者”模式后可编辑当前技能的图';
+  const blocked = '只能编辑顶栏所选技能的图';
   const menu: MenuEntry[] = [
     !editable ? { label: machine ? '添加状态' : '添加节点…', onSelect: () => {}, disabled: true, tip: blocked }
       : machine ? { label: '添加状态', onSelect: () => void addState(screenToFlowPosition(menuAt.current)) }
@@ -711,7 +698,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
-          defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+          defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={readableFocus}
           minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
           deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={['Control', 'Shift']} proOptions={{ hideAttribution: true }}
           colorMode="dark">
@@ -731,6 +718,9 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     </ViewContext.Provider>
   );
 }
+
+// 首次显示照本项目 NodeCanvas 的 FocusReadableGraph：缩放 1、以全部节点的中心居中，字号可读；看全图用“全部居中”。
+const readableFocus = { minZoom: 1, maxZoom: 1 };
 
 // 跳到该 Timeline 第一次播放的帧并显示 Timeline 面板。
 function showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {

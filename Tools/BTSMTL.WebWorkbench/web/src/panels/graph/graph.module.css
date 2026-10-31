@@ -7,11 +7,20 @@
   min-height: 0;
 }
 
+/* 画布区：画布与贴在其右上的黑板浮层 */
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* 黑板浮层：贴在画布右上，内容滚动 */
 .blackboard {
   position: absolute;
   z-index: 20;
-  top: 64px;
+  top: 8px;
   right: 8px;
   bottom: 8px;
   display: flex;
@@ -81,27 +90,14 @@
   outline: 1px solid var(--accent);
 }
 
-.title {
-  display: flex;
-  align-items: center;
-  height: 21px;
-  padding: 0 8px;
-  background: var(--bg-3);
-  border-bottom: 1px solid var(--line);
-  color: #cfcfcf;
-  font-weight: 700;
-  font-size: 13.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  flex: none;
-}
-
-.title em {
-  margin-left: auto;
-  font-style: normal;
-  font-weight: 400;
-  font-size: 12px;
+/* 工具条里的观察说明：本帧没有匹配的子调用时 */
+.notice {
+  min-width: 0;
+  padding: 0 6px;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas {
