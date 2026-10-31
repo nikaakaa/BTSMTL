@@ -3,38 +3,26 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
+    public ref partial struct OrchestrationExecutionCursor<TValue, TNumerics, THost>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
         OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount) =>
             m_Host.Tick(ref this, m_TimelineState, operationIndex,
                 m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
                 ref OperationState(operationIndex).TimelineRuntimeHandle,
-                InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick,
-                ref m_Context);
+                InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick);
 
         OrchestrationStopStatus StopTimeline(int operationIndex,
             OrchestrationStopContext context, bool force) =>
             m_Host.Stop(ref this, m_TimelineState, operationIndex,
                 ref OperationState(operationIndex).TimelineRuntimeHandle, in context,
-                force, m_Input.Tick, ref m_Context);
+                force, m_Input.Tick);
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
-            in OrchestrationStopContext stopContext,
-            OrchestrationWorkbenchDiagnosticStorage<TValue> contextStorage,
+            in OrchestrationStopContext stopContext, bool captureContext,
             out OrchestrationTraceContext context)
         {
             context = default;
@@ -46,11 +34,10 @@ namespace BTSMTL.Orchestration
             try
             {
                 OrchestrationOperationResult result = Advance(invocation.Invocation.Entry);
-                if (contextStorage != null)
+                if (captureContext)
                 {
                     OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
-                    BindTraceInvocationScope(contextStorage, entry.OperationIndex, entry);
-                    ReadTraceContext(contextStorage, entry.OperationIndex, out context);
+                    m_Host.ReadEntryContext(ref this, in entry, out context);
                 }
                 if (invocation.EndsExecutionFrame)
                 {
@@ -68,8 +55,7 @@ namespace BTSMTL.Orchestration
         }
 
         OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
-            m_Host.RequestClipExit(m_TimelineState, operationIndex,
-                m_Input.Tick, ref m_Context);
+            m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
 
         public void ExecuteTimelineBatch<TTime>(
             OrchestrationTimelineBatch<TTime> batch,
@@ -92,9 +78,9 @@ namespace BTSMTL.Orchestration
                     bool releaseFrame = false;
                     try
                     {
-                        frameSlot = m_Host.EnterInvocation(batch.PlaybackSlot, i, ref m_Context);
+                        frameSlot = m_Host.EnterInvocation(batch.PlaybackSlot, i);
                         OrchestrationTimelineInvocationFacts facts = m_Host.ReadInvocationFacts();
-                        TValue time = m_Host.ReadTime();
+                        TValue time = default(TNumerics).FromTime(m_Host.ReadTime());
                         m_TimelineInvocation = facts;
                         m_TimelineTime = time;
                         SelectExecutionFrame(frameSlot);
@@ -102,7 +88,7 @@ namespace BTSMTL.Orchestration
                         if (facts.EndsExecutionFrame)
                         {
                             if (!invocation.Token.Marker &&
-                                m_Host.ReleaseInvocation(ref m_Context) != OrchestrationOperationResult.Success)
+                                m_Host.ReleaseInvocation() != OrchestrationOperationResult.Success)
                                 result = OrchestrationOperationResult.Failure;
                             CloseExecutionFrame(in stopContext);
                             releaseFrame = true;
@@ -112,7 +98,7 @@ namespace BTSMTL.Orchestration
                     {
                         try
                         {
-                            m_Host.LeaveInvocation(ref m_Context);
+                            m_Host.LeaveInvocation();
                         }
                         finally
                         {
@@ -182,9 +168,9 @@ namespace BTSMTL.Orchestration
 
         void ClearExecutionFrame(int frameSlot)
         {
-            m_Diagnostics.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireFrame, -1, frameSlot);
+            m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireFrame, -1, frameSlot);
             m_Frames.RemoveAt(frameSlot);
-            ClearForceStopFrame(frameSlot);
+            m_ForceStopVisits.ClearFrame(frameSlot);
         }
     }
 }

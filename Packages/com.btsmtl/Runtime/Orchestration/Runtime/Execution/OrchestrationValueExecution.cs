@@ -3,20 +3,10 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
+    public ref partial struct OrchestrationExecutionCursor<TValue, TNumerics, THost>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
         public void Evaluate(int operationIndex, ref TValue value, int outputPortIndex = -1)
         {
@@ -33,7 +23,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationValueScheduleEntry entry = ref m_BooleanEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             RunValueSchedule(in entry);
-            return default(TValues).Boolean(in m_ScheduledValues[m_Program.ScheduleBooleanSlot]);
+            return default(TNumerics).Boolean(in m_ScheduledValues[m_Program.ScheduleBooleanSlot]);
         }
 
         void EvaluateCoreValue(int operationIndex, int valueOperation, ReadOnlySpan<int> arguments,
@@ -41,8 +31,7 @@ namespace BTSMTL.Orchestration
         {
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[valueOperation];
-            TValues values = default;
-            TMath math = default;
+            TNumerics values = default;
             switch (typed.Code)
             {
                 case OrchestrationValueOpcode.Copy:
@@ -55,7 +44,8 @@ namespace BTSMTL.Orchestration
                     value = m_Input.HostInputs[typed.Argument];
                     return;
                 case OrchestrationValueOpcode.InputVector2Magnitude:
-                    value = values.FromScalar(math.Magnitude2(values.Vector2(in m_Input.HostInputs[typed.Argument])));
+                    values.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
+                        in m_Identities, ref value);
                     return;
                 case OrchestrationValueOpcode.InputRequest:
                     value = values.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
@@ -94,14 +84,12 @@ namespace BTSMTL.Orchestration
                         m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                         inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, binding,
-                        m_Host.InvokeReadOnly(binding, in m_Context, in invocation));
+                        m_Host.InvokeReadOnly(binding, in invocation));
                     value = outputs[typed.Argument];
                     return;
                 }
                 default:
-                    OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion,
-                        TMath, TValues>.Compute(typed.Code, m_ScheduledValues, arguments,
-                            in m_Identities, ref value);
+                    values.Compute(typed.Code, m_ScheduledValues, arguments, in m_Identities, ref value);
                     return;
             }
         }
@@ -134,34 +122,9 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        internal int FindDiagnosticOverride(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
-            int operationIndex, int slot, OrchestrationValueOverrideKind kind,
-            in OrchestrationBlackboardOwnerToken blackboardOwner)
+        internal int ConsumeBlackboardOverride(int valueSlot, in OrchestrationBlackboardOwnerToken owner)
         {
-            if (kind == OrchestrationValueOverrideKind.Blackboard)
-            {
-                OrchestrationValueOverrideAddress address = BlackboardOverrideAddress(slot, in blackboardOwner);
-                return ReadBlackboardOverrideIndex(in address);
-            }
-            Span<OrchestrationValueOverride<TValue>> overrides = m_Input.Overrides;
-            for (int index = 0; index < overrides.Length; index++)
-            {
-                ref OrchestrationValueOverride<TValue> supplied = ref overrides[index];
-                if (supplied.Mode == OrchestrationValueOverrideMode.None || supplied.Address.Kind != kind ||
-                    supplied.Address.Slot != slot || supplied.Status == OrchestrationValueOverrideStatus.OwnerRetired)
-                    continue;
-                OrchestrationExecutionOwnerToken owner = ReadExecutionOwner(storage, operationIndex);
-                if (!supplied.Address.Owner.Equals(in owner))
-                    continue;
-                if (!IsPredictiveEvaluation)
-                    supplied.Status = OrchestrationValueOverrideStatus.Consumed;
-                return index;
-            }
-            return -1;
-        }
-
-        int ReadBlackboardOverrideIndex(in OrchestrationValueOverrideAddress address)
-        {
+            OrchestrationValueOverrideAddress address = BlackboardOverrideAddress(valueSlot, in owner);
             int index = OrchestrationValueOverride<TValue>.Find(m_Input.Overrides, in address);
             if (index < 0)
                 return -1;
@@ -174,34 +137,13 @@ namespace BTSMTL.Orchestration
         void ObserveInput(int operationIndex, int inputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            m_Diagnostics.Observe(ref this, operationIndex, inputSlot, true, in value);
+            m_Host.Observe(ref this, operationIndex, inputSlot, true, in value);
         }
 
         void ObserveOutput(int operationIndex, int outputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            m_Diagnostics.Observe(ref this, operationIndex, outputSlot, false, in value);
-        }
-
-        internal void ObserveDiagnosticPort(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
-            int operationIndex, int slot, bool input, in TValue value)
-        {
-            IOrchestrationValueObservationSink<TValue> observations = storage.Observations;
-            if (!m_Input.CaptureValues && observations == null || IsPredictiveEvaluation)
-                return;
-            if (m_Input.CaptureValues)
-            {
-                (input ? storage.InputObservations : storage.OutputObservations)[slot] = value;
-                (input ? storage.InputObservationWritten : storage.OutputObservationWritten)[slot] = true;
-            }
-            if (observations != null)
-            {
-                int invocationIndex = ResolveTraceInvocation(storage, operationIndex);
-                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(storage, operationIndex, slot, input,
-                    invocationIndex);
-                WriteTraceContext(storage, operationIndex, invocationIndex, out OrchestrationTraceContext context);
-                observations.Observe(in address, in value, in context);
-            }
+            m_Host.Observe(ref this, operationIndex, outputSlot, false, in value);
         }
 
         void PrepareGraphCall(int operationIndex)
@@ -273,7 +215,7 @@ namespace BTSMTL.Orchestration
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                     if (m_Host.ExecutionContract(binding).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
-                    if (!m_Host.ShouldExecute(binding, in m_Context))
+                    if (!m_Host.ShouldExecute(binding))
                         return OrchestrationOperationResult.Success;
                     break;
             }
@@ -296,7 +238,7 @@ namespace BTSMTL.Orchestration
                     case OrchestrationOperationCode.Timeline:
                         return TickTimeline(operationIndex, depth, count);
                     case OrchestrationOperationCode.TimelineClipExitRequest:
-                        return default(TValues).Boolean(in InputRow(depth)[0])
+                        return default(TNumerics).Boolean(in InputRow(depth)[0])
                             ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
@@ -310,7 +252,7 @@ namespace BTSMTL.Orchestration
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)m_Host.InvokeCandidate(
-                            binding, ref m_Context, in invocation);
+                            binding, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,
                                 in outputs[assignment.SourceOutputPortIndex]);

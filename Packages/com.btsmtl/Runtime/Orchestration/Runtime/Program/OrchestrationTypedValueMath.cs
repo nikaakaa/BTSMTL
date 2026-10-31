@@ -32,6 +32,7 @@ namespace BTSMTL.Orchestration
                     result = values.FromScalar(math.FromInt64(checked((long)values.UInt64(in source))));
                     return;
                 case OrchestrationValueOpcode.ScalarToInt32: result = values.FromInt32(math.TruncateToInt32(values.Scalar(in source))); return;
+                case OrchestrationValueOpcode.Vector2Magnitude: result = values.FromScalar(math.Magnitude2(values.Vector2(in source))); return;
                 default: throw new ArgumentOutOfRangeException(nameof(code));
             }
         }

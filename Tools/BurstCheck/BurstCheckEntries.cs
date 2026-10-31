@@ -1,6 +1,5 @@
 using System;
 using BTSMTL.Orchestration;
-using ThirdPersonSimulation;
 using Unity.Burst;
 
 namespace BTSMTL.BurstCheck
@@ -9,52 +8,39 @@ namespace BTSMTL.BurstCheck
     [BurstCompile]
     public static unsafe partial class BurstCheckEntries
     {
-        static class Run<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TProjection>
-            where TValue : unmanaged
-            where TScalar : unmanaged
-            where TVector2 : unmanaged
-            where TVector3 : unmanaged
-            where TYaw : unmanaged
-            where TQuaternion : unmanaged
-            where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-            where TProjection : struct, IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar>
+        static class Run<TNumerics> where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
         {
             public static OrchestrationOperationResult Advance(BurstCheckMemory* memory, int operationIndex, ulong tick)
             {
-                var input = new OrchestrationFrameInput<TValue>(tick, 1, ReadOnlySpan<TValue>.Empty,
-                    ReadOnlySpan<int>.Empty);
-                var context = new BurstCheckContext();
-                var cursor = Cursor(memory, in input, in context);
+                var input = new OrchestrationFrameInput<Float32OrchestrationValue>(tick, 1,
+                    ReadOnlySpan<Float32OrchestrationValue>.Empty, ReadOnlySpan<int>.Empty);
+                var cursor = Cursor(memory, in input);
                 return cursor.Advance(new OrchestrationExecutionEntry(operationIndex, default));
             }
 
             public static void ForceStop(BurstCheckMemory* memory, int operationIndex, ulong tick)
             {
-                var input = new OrchestrationFrameInput<TValue>(tick, 1, ReadOnlySpan<TValue>.Empty,
-                    ReadOnlySpan<int>.Empty);
-                var context = new BurstCheckContext();
-                var cursor = Cursor(memory, in input, in context);
+                var input = new OrchestrationFrameInput<Float32OrchestrationValue>(tick, 1,
+                    ReadOnlySpan<Float32OrchestrationValue>.Empty, ReadOnlySpan<int>.Empty);
+                var cursor = Cursor(memory, in input);
                 cursor.ForceStop(operationIndex, OrchestrationStopContext.ParentStop(operationIndex));
             }
 
-            static OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationProductDiagnostics<TValue>, OrchestrationArrayValueStorage<TValue>,
-                BurstCheckHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TProjection>>
-                Cursor(BurstCheckMemory* memory, in OrchestrationFrameInput<TValue> input, in BurstCheckContext context)
+            static OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, BurstCheckHost> Cursor(
+                BurstCheckMemory* memory, in OrchestrationFrameInput<Float32OrchestrationValue> input)
             {
                 var ranks = new ReadOnlySpan<int>(memory->IdentityRanks, memory->IdentityRankCount);
-                OrchestrationCandidateState<TValue> state = OrchestrationStateBinding.BindCandidate<TValue>(
-                    new OrchestrationStateLayoutView(new ReadOnlySpan<byte>(memory->StateLayout, memory->StateLayoutLength)),
-                    new Span<byte>(memory->State, memory->StateLength));
-                return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, BurstCheckContext,
-                    OrchestrationProductDiagnostics<TValue>, OrchestrationArrayValueStorage<TValue>,
-                    BurstCheckHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TProjection>>(
-                    new OrchestrationProgramView<TValue>(new ReadOnlySpan<byte>(memory->Program, memory->ProgramLength)),
-                    new OrchestrationExecutionScratch<TValue>(new Span<byte>(memory->Scratch, memory->ScratchLength)),
+                OrchestrationCandidateState<Float32OrchestrationValue> state =
+                    OrchestrationStateBinding.BindCandidate<Float32OrchestrationValue>(
+                        new OrchestrationStateLayoutView(new ReadOnlySpan<byte>(memory->StateLayout, memory->StateLayoutLength)),
+                        new Span<byte>(memory->State, memory->StateLength));
+                return state.CreateCursor<TNumerics, BurstCheckHost>(
+                    new OrchestrationProgramView<Float32OrchestrationValue>(
+                        new ReadOnlySpan<byte>(memory->Program, memory->ProgramLength)),
+                    new OrchestrationExecutionScratch<Float32OrchestrationValue>(
+                        new Span<byte>(memory->Scratch, memory->ScratchLength)),
                     0, ReadOnlySpan<int>.Empty, in input, new OrchestrationIdentityOrdinalView(ranks, ranks, ranks),
-                    in context, new BurstCheckHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                        TProjection>(memory), default);
+                    new BurstCheckHost(memory));
             }
         }
     }
