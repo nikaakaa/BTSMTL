@@ -80,6 +80,27 @@ namespace BTSMTL.Compilation
 
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
         {
+            internal BtsmtlOrchestrationGraphLayout<TValue> RestoreLayout(OrchestrationGraphContent<TValue> content)
+            {
+                BuildExecutionIdentities();
+                m_StructureIdentityTexts = new List<string>(StructureIdentityTexts()).ToArray();
+                m_Identities = content.Identities;
+                BuildIdentityBindings();
+                BuildPorts();
+                BuildExecutionFrameOwners();
+                BuildValueSlots();
+                BuildConstantBindings();
+                CollectValueLiterals();
+                foreach (var binding in VariableDeclarations())
+                    ReadVariableMetadata(binding.Declaration);
+                foreach (var binding in GeneratedBlackboardDeclarations())
+                    ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排绑定恢复失败：{string.Join("；", m_Report.Messages)}");
+                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities);
+                return new BtsmtlOrchestrationGraphLayout<TValue>(CreateBindings(content, identities));
+            }
+
             ParameterBindings<TValue> CreateBindings(OrchestrationGraphContent<TValue> content,
                 IdentityCache identities, ParameterBindings<TValue> previous = null)
             {
@@ -88,13 +109,8 @@ namespace BTSMTL.Compilation
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts;
                 if (previous == null)
                 {
-                    constants = new int[m_ConstantIndexes.Count];
-                    foreach (KeyValuePair<int, int> binding in m_ConstantIndexes)
-                        constants[binding.Value] = binding.Key;
-                    defaults = EmptyIndexes(m_DefaultValues.Count);
-                    for (int i = 0; i < m_StateSlots.Count; i++)
-                        if (m_StateSlots[i].Semantic == ProgramStateSemantic.BlackboardValue)
-                            defaults[m_StateValueSlots[i]] = m_StateSlots[i].DefaultConstantIndex;
+                    constants = m_ConstantLiteralIndexes;
+                    defaults = m_DefaultLiteralIndexes;
                     entryContracts = m_EntryContracts == null ? null :
                         new Dictionary<string, OrchestrationExecutionContract>(m_EntryContracts, StringComparer.Ordinal);
                 }
@@ -245,11 +261,7 @@ namespace BTSMTL.Compilation
                 bool identitiesChanged = !ReferenceEquals(m_Identities, previous.Content.Identities);
                 m_IdentityIds = previous.IdentityIds;
                 if (identitiesChanged)
-                {
-                    m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
-                    for (int i = 0; i < m_Identities.Count; i++)
-                        m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
-                }
+                    BuildIdentityBindings();
                 PrepareValues();
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");

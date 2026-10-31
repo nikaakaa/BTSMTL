@@ -165,6 +165,34 @@ namespace BTSMTL.Compilation
                 scopes, catalog, sourceMap, entry, identity, contract, stateTransitionHooks, lowering,
                 domain, report, entryContracts).Build(layout);
 
+        public static BtsmtlOrchestrationGraphLayout<TValue>
+            RestoreLayout<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
+                SemanticGraphTables previousTables, ProgramGraphSources previousSources,
+                OrchestrationGraphContent<TValue> previousContent, OrchestrationExecutionContract contract,
+                IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks, TLowering lowering,
+                BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain, SimulationCompileReport report,
+                IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts = null)
+            where TValue : unmanaged
+            where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
+            where TVector2 : unmanaged
+            where TVector3 : unmanaged
+            where TYaw : unmanaged
+            where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+            where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        {
+            SemanticGraphStructure structure = previousTables.Structure;
+            var operations = new SemanticOperation[structure.OperationLayouts.Count];
+            for (int i = 0; i < operations.Length; i++)
+                operations[i] = new SemanticOperation(structure.OperationLayouts[i], previousTables.Parameters.Operations);
+            return new Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
+                operations, previousTables.Parameters.Literals, structure.ConstantInputBindings, structure.ControlFlow,
+                structure.References, structure.StateTables.GraphCallFrames, structure.StateTables.Slots,
+                structure.StateTables.Scopes, structure.CatalogEntries, previousSources.Diagnostics,
+                new OperationHandle(previousContent.Program.RootOperationIndex), previousContent.Identity, contract,
+                stateTransitionHooks, lowering, domain, report, entryContracts).RestoreLayout(previousContent);
+        }
+
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
@@ -277,6 +305,8 @@ namespace BTSMTL.Compilation
             string[] m_StructureIdentityTexts;
             int[] m_ValueLiteralIndexes;
             int[] m_CurveLiteralIndexes;
+            int[] m_ConstantLiteralIndexes;
+            int[] m_DefaultLiteralIndexes;
 
             internal Compilation(IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
                 IReadOnlyList<SemanticConstantInputBinding> constantInputs,
@@ -320,9 +350,7 @@ namespace BTSMTL.Compilation
                 ValidateDomain();
                 m_StructureIdentityTexts = new List<string>(StructureIdentityTexts()).ToArray();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), m_PreviousIdentities?.Table);
-                m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
-                for (int i = 0; i < m_Identities.Count; i++)
-                    m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
+                BuildIdentityBindings();
                 BuildPorts();
                 BuildExecutionFrameOwners();
                 BuildHostInputs();
@@ -333,6 +361,10 @@ namespace BTSMTL.Compilation
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
                 BuildValueSlots();
+                BuildConstantBindings();
+                foreach (int literal in m_ConstantLiteralIndexes)
+                    m_Constants.Add(m_LoweredValues[literal]);
+                BuildDefaultValues();
                 BuildExtensions();
                 BuildStateTransitionHooks();
                 BuildInputs();
@@ -675,6 +707,14 @@ namespace BTSMTL.Compilation
                     return identity;
                 throw new KeyNotFoundException($"图 '{m_Identity.GraphId}' 的身份文本 '{text}' 未包含在已发布内容表 '{m_Identities.Identity}' 中。");
             }
+
+            void BuildIdentityBindings()
+            {
+                m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
+                for (int i = 0; i < m_Identities.Count; i++)
+                    m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
+            }
+
             void BuildExecutionIdentities()
             {
                 m_OperationIdentities = new string[m_Operations.Count];
@@ -866,10 +906,7 @@ namespace BTSMTL.Compilation
                     if (source.Semantic != ProgramStateSemantic.BlackboardValue)
                         continue;
                     OrchestrationValueKind kind = Kind(source.ValueKind);
-                    m_StateValueSlots[i] = m_DefaultValues.Count;
-                    m_DefaultValues.Add(source.DefaultConstantIndex < 0
-                        ? DefaultValue(kind)
-                        : m_Constants[LowerConstant(source.DefaultConstantIndex)]);
+                    m_StateValueSlots[i] = m_Blackboards.Count;
                     ProgramScopeLayout scope = Scope(i);
                     OrchestrationBlackboardLifetime lifetime = m_ParameterSlots.Contains(i)
                         ? OrchestrationBlackboardLifetime.GraphInstance
@@ -885,13 +922,27 @@ namespace BTSMTL.Compilation
                         m_Operations[i].Extension.Value.Kind != OrchestrationExtensionKind.Action || ExecutionOutputCount(i) == 0 ||
                         !persistentOutputs[i])
                         continue;
-                    m_OutputOffsets[i] = m_DefaultValues.Count;
+                    m_OutputOffsets[i] = m_Blackboards.Count;
                     foreach (Port port in ExecutionOutputs(i))
-                    {
-                        m_DefaultValues.Add(DefaultValue(port.Kind));
                         m_Blackboards.Add(default);
-                    }
                 }
+                m_DefaultLiteralIndexes = EmptyIndexes(m_Blackboards.Count);
+                for (int i = 0; i < m_StateSlots.Count; i++)
+                    if (m_StateSlots[i].Semantic == ProgramStateSemantic.BlackboardValue)
+                        m_DefaultLiteralIndexes[m_StateValueSlots[i]] = m_StateSlots[i].DefaultConstantIndex;
+            }
+
+            void BuildDefaultValues()
+            {
+                foreach (ProgramStateSlot source in m_StateSlots)
+                    if (source.Semantic == ProgramStateSemantic.BlackboardValue)
+                        m_DefaultValues.Add(source.DefaultConstantIndex < 0
+                            ? DefaultValue(m_Blackboards[m_StateValueSlots[source.Index]].ValueKind)
+                            : m_Constants[ConstantIndex(source.DefaultConstantIndex)]);
+                for (int i = 0; i < m_Operations.Count; i++)
+                    if (m_OutputOffsets[i] >= 0)
+                        foreach (Port port in ExecutionOutputs(i))
+                            m_DefaultValues.Add(DefaultValue(port.Kind));
             }
 
             OrchestrationValueSlotType[] BuildValueSlotTypes(out int[] counts)
@@ -1046,7 +1097,7 @@ namespace BTSMTL.Compilation
                     Port target = m_Ports[input.TargetOperation.Value].Input(input.TargetPort);
                     OrchestrationValueKind kind = Kind(input.ResolvedValueKind);
                     grouped[input.TargetOperation.Value][target.Index] = new OrchestrationValueInputBinding(
-                        target.Index, kind, OrchestrationValueInputSource.Constant, LowerConstant(input.ConstantIndex), -1);
+                        target.Index, kind, OrchestrationValueInputSource.Constant, ConstantIndex(input.ConstantIndex), -1);
                 }
                 m_InputRanges = new OrchestrationRange[m_Operations.Count];
                 for (int i = 0; i < grouped.Length; i++)
@@ -1154,7 +1205,7 @@ namespace BTSMTL.Compilation
                     foreach (int state in source.StateSlots)
                         isRunnable |= m_StateSlots[state].Semantic == ProgramStateSemantic.RunnableLifecycle;
                     int constant = source.Code == OrchestrationOperationCode.Constant && source.LiteralReferences.Count > 0
-                        ? LowerConstant(source.LiteralReferences[0]) : -1;
+                        ? ConstantIndex(source.LiteralReferences[0]) : -1;
                     int valueSlot = source.Code == OrchestrationOperationCode.BlackboardGet || source.Code == OrchestrationOperationCode.BlackboardSet
                         ? ValueSlot(StateReference(i)) : -1;
                     int stateId = source.Code == OrchestrationOperationCode.State || source.Code == OrchestrationOperationCode.StateExit
@@ -1170,7 +1221,7 @@ namespace BTSMTL.Compilation
                     foreach (Port port in m_Ports[i].Outputs)
                         if (port.ConstantIndex >= 0)
                             result[port.OperationIndex] = new OperationDraft(OrchestrationOperationCode.Constant,
-                                false, Bind(ConstantOutputIdentity(i, port.Identity)), 0, 0, LowerConstant(port.ConstantIndex),
+                                false, Bind(ConstantOutputIdentity(i, port.Identity)), 0, 0, ConstantIndex(port.ConstantIndex),
                                 -1, 0, -1, 0, 0, -1, -1, -1, default, 1, -1, default, -1, parents[i], default,
                                 m_ExecutionFrameOwners[i]);
                 }
@@ -1391,6 +1442,17 @@ namespace BTSMTL.Compilation
             OrchestrationGraphBlackboardBinding[] BuildGeneratedBlackboards()
             {
                 var result = new List<OrchestrationGraphBlackboardBinding>();
+                foreach (var binding in GeneratedBlackboardDeclarations())
+                {
+                    var metadata = ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
+                    result.Add(new OrchestrationGraphBlackboardBinding(ValueSlot(binding.Slot), Bind(Scope(binding.Slot).Identity),
+                        Bind(metadata.Contract), metadata.Field));
+                }
+                return result.ToArray();
+            }
+
+            IEnumerable<(int Slot, ProgramCatalogEntry Declaration, ProgramCatalogField Field)> GeneratedBlackboardDeclarations()
+            {
                 for (int slot = 0; slot < m_StateSlots.Count; slot++)
                 {
                     if (m_StateSlots[slot].Semantic != ProgramStateSemantic.BlackboardValue || m_ParameterSlots.Contains(slot))
@@ -1399,14 +1461,16 @@ namespace BTSMTL.Compilation
                     foreach (ProgramCatalogField field in declaration.Fields)
                         if (field.Name == "GeneratedField")
                         {
-                            m_StructureLiteralIndexes.Add(field.ConstantIndex);
-                            result.Add(new OrchestrationGraphBlackboardBinding(ValueSlot(slot), Bind(Scope(slot).Identity),
-                                Bind(CatalogText(declaration, "GeneratedContract")),
-                                m_Literals[field.ConstantIndex].Int32));
+                            yield return (slot, declaration, field);
                             break;
                         }
                 }
-                return result.ToArray();
+            }
+
+            (string Contract, int Field) ReadGeneratedBlackboardMetadata(ProgramCatalogEntry declaration, ProgramCatalogField field)
+            {
+                m_StructureLiteralIndexes.Add(field.ConstantIndex);
+                return (CatalogText(declaration, "GeneratedContract"), m_Literals[field.ConstantIndex].Int32);
             }
 
             OrchestrationGraphEntry[] BuildEntries()
@@ -1425,6 +1489,18 @@ namespace BTSMTL.Compilation
             OrchestrationGraphVariable[] BuildVariables()
             {
                 var result = new List<OrchestrationGraphVariable>();
+                foreach (var binding in VariableDeclarations())
+                {
+                    var metadata = ReadVariableMetadata(binding.Declaration);
+                    ProgramExecutionSource source = binding.Source;
+                    result.Add(new OrchestrationGraphVariable(Bind(source.GraphId), Bind(source.DeclarationId),
+                        Bind(metadata.Key), Bind(metadata.ValueType), metadata.IsPublic, ValueSlot(source.TargetIndex)));
+                }
+                return result.ToArray();
+            }
+
+            IEnumerable<(ProgramExecutionSource Source, ProgramCatalogEntry Declaration)> VariableDeclarations()
+            {
                 var seen = new HashSet<int>();
                 foreach (ProgramSourceMapEntry entry in m_SourceMap)
                 {
@@ -1433,13 +1509,12 @@ namespace BTSMTL.Compilation
                         m_ParameterSlots.Contains(source.TargetIndex) ||
                         !seen.Add(source.TargetIndex))
                         continue;
-                    ProgramCatalogEntry declaration = Declaration(source.TargetIndex);
-                    result.Add(new OrchestrationGraphVariable(Bind(source.GraphId), Bind(source.DeclarationId),
-                        Bind(CatalogLiteral(declaration, "Key").String), Bind(CatalogLiteral(declaration, "ValueType").String),
-                        IsPublic(declaration), ValueSlot(source.TargetIndex)));
+                    yield return (source, Declaration(source.TargetIndex));
                 }
-                return result.ToArray();
             }
+
+            (string Key, string ValueType, bool IsPublic) ReadVariableMetadata(ProgramCatalogEntry declaration) =>
+                (CatalogLiteral(declaration, "Key").String, CatalogLiteral(declaration, "ValueType").String, IsPublic(declaration));
 
             OrchestrationGraphPort[] BuildPortMetadata()
             {
@@ -1572,16 +1647,30 @@ namespace BTSMTL.Compilation
                 return false;
             }
 
-            int LowerConstant(int semanticIndex)
+            void BuildConstantBindings()
             {
-                if (m_ConstantIndexes.TryGetValue(semanticIndex, out int existing))
-                    return existing;
-                var value = m_LoweredValues[semanticIndex];
-                int index = m_Constants.Count;
-                m_Constants.Add(value);
-                m_ConstantIndexes.Add(semanticIndex, index);
-                return index;
+                foreach (ProgramStateSlot slot in m_StateSlots)
+                    if (slot.Semantic == ProgramStateSemantic.BlackboardValue && slot.DefaultConstantIndex >= 0)
+                        Add(slot.DefaultConstantIndex);
+                foreach (SemanticConstantInputBinding input in m_ConstantInputs)
+                    Add(input.ConstantIndex);
+                for (int i = 0; i < m_Operations.Count; i++)
+                {
+                    SemanticOperation operation = m_Operations[i];
+                    if (operation.Code == OrchestrationOperationCode.Constant && operation.LiteralReferences.Count > 0)
+                        Add(operation.LiteralReferences[0]);
+                    foreach (Port port in m_Ports[i].Outputs)
+                        if (port.ConstantIndex >= 0)
+                            Add(port.ConstantIndex);
+                }
+                m_ConstantLiteralIndexes = new int[m_ConstantIndexes.Count];
+                foreach (KeyValuePair<int, int> binding in m_ConstantIndexes)
+                    m_ConstantLiteralIndexes[binding.Value] = binding.Key;
+
+                void Add(int literal) => m_ConstantIndexes.TryAdd(literal, m_ConstantIndexes.Count);
             }
+
+            int ConstantIndex(int semanticIndex) => m_ConstantIndexes[semanticIndex];
 
             TValue LowerValue(SemanticLiteral literal)
             {
