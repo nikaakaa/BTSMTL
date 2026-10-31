@@ -37,7 +37,7 @@ public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor
     public PreviewFrameSource? Source { get; init; }
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
-public sealed record PreviewExecutionIdentity(string Kind, string Identity, string? PlayerBuildId,
+public sealed record PreviewExecutionIdentity(string? Kind, string? Identity, string? PlayerBuildId,
     string? EditorAssemblyMvid);
 public sealed record PreviewPosition(string HostFrame);
 public sealed record PreviewTransportAction(string Action, bool Available, string Reason, PreviewPosition? Target);
