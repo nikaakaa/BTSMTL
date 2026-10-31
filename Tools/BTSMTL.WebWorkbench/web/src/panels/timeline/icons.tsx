@@ -34,10 +34,10 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
-// 标记旗头（9×11）：上方方、下方收成尖，尖端对准时刻。
-export const MarkerHead = (props: ShapeProps) => (
-  <svg width="9" height="11" viewBox="0 0 9 11" aria-hidden focusable="false" {...props}>
-    <path d="M.5.5h8v6L4.5 10.5.5 6.5z" />
+// 标记菱形（照 UE Sequencer.KeyDiamond，12×12）：中心对准时刻。
+export const MarkerKey = (props: ShapeProps) => (
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false" {...props}>
+    <path d="M6 .7 11.3 6 6 11.3.7 6z" />
   </svg>
 );
 

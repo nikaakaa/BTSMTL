@@ -42,7 +42,7 @@ import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
-import { KeyIcon, MarkerHead, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
+import { KeyIcon, MarkerKey, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
@@ -54,11 +54,12 @@ const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, wid
 const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
-// 片段太窄写不下名字、以及标记，名字写在右侧外面：与本体隔 4 像素，最多写到同行下一项起点前 4 像素，不足 24 像素不写。
-const outerLabelGap = 4;
-const outerLabelMin = 24;
-// 标记旗头（MarkerHead 9×11）的半宽，旗头尖端对准时刻。
-const markerHeadHalf = 4.5;
+// 事件名框（照 UE 动画通知 SAnimNotifyNode）：标记与写不下名字的窄片段，名字放进类别色名框挂在右侧，
+// 最多到同行下一项起点前 4 像素，不足 24 像素不画框。
+const eventLabelGap = 4;
+const eventLabelMin = 24;
+// 标记菱形（照 UE ScrubHandleSize 12×12）的半宽，名框从菱形中心起画。
+const markerKeyHalf = 6;
 const curveHeight = 64;
 // 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
 // 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
@@ -2221,7 +2222,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
-  const outerWidth = labelWidth > clipLabelMinWidth ? 0 : valueToPixels(next - end) - outerLabelGap * 2;
+  const eventWidth = labelWidth > clipLabelMinWidth ? 0 : valueToPixels(next - end) - eventLabelGap * 2;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
@@ -2242,8 +2243,8 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
       </div>
-      {outerWidth >= outerLabelMin && <span className={styles.outerLabel} data-selected={selected || undefined}
-        data-dim={dimmed || undefined} style={{ left: `calc(100% + ${outerLabelGap}px)`, maxWidth: outerWidth }}>{label}</span>}
+      {eventWidth >= eventLabelMin && <span className={styles.eventLabel} data-selected={selected || undefined} data-dim={dimmed || undefined}
+        style={{ left: `calc(100% + ${eventLabelGap}px)`, maxWidth: eventWidth, ['--tc' as string]: trackColors[kind] }}>{label}</span>}
     </div>
   );
 }
@@ -2260,8 +2261,8 @@ function openClipGraph(graphId: string | null, label: string) {
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
-// 时刻处一根 1 像素类别色细线贯穿整行，顶端是类别色的小旗头（MarkerHead）；所触发的内容（text）同窄片段一样写在右侧外面，
-// 最多到同行下一项（next 秒）之前。未绑定节点图时旗头只留轮廓、不写名字。
+// 照 UE 动画通知（SAnimNotifyNode::OnPaint）：时刻处 12×12 菱形在行内居中，所触发的内容（text）放进类别色名框，
+// 名框从菱形中心起向右，最多到同行下一项（next 秒）之前。未绑定节点图时菱形只留 20% 白（照 UE 无 Endpoint 的事件键），不画名框。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回。
 function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, move, snap }: {
   seconds: number; next: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
@@ -2273,7 +2274,7 @@ function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, mo
   const clock = useContext(PreviewClockContext);
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
-  const textWidth = valueToPixels(next - seconds) - markerHeadHalf - outerLabelGap * 2;
+  const textWidth = valueToPixels(next - seconds) - eventLabelGap;
   return (
     <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined} data-select={selectId}
       style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
@@ -2295,9 +2296,9 @@ function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, mo
       onPointerCancel={() => setDragging(null)}
       onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)}>
-      <MarkerHead className={styles.markerHead} />
-      {text && textWidth >= outerLabelMin && <span className={styles.outerLabel} data-selected={selected || undefined}
-        style={{ left: markerHeadHalf + outerLabelGap, maxWidth: textWidth }}>{text}</span>}
+      {text && textWidth >= eventLabelMin && <span className={styles.eventLabel} data-selected={selected || undefined}
+        style={{ left: 0, maxWidth: textWidth, paddingLeft: markerKeyHalf + 4 }}>{text}</span>}
+      <MarkerKey className={styles.markerKey} style={{ left: -markerKeyHalf }} />
     </button>
   );
 }

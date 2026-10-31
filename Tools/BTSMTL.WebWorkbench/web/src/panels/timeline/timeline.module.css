@@ -948,8 +948,8 @@
   pointer-events: none;
 }
 
-/* 标记：时刻处 1 像素类别色细线贯穿整行（左右共 8 像素可点中），顶端类别色小旗头、半透明黑描边，尖端对准时刻；
-   未绑定节点图时旗头只留类别色轮廓；悬停旗头提亮，选中时旗头与细线变白并压在其它标记之上 */
+/* 标记（照 UE 动画通知 SAnimNotifyNode）：12×12 菱形在行内居中，填类别名框色、黑描边（KeyDiamondBorder）；
+   未绑定节点图时只留 20% 白；悬停提亮，选中描边为 UE 选中蓝并压在其它标记之上 */
 .marker {
   all: unset;
   position: absolute;
@@ -964,76 +964,69 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -4px;
-  width: 8px;
+  left: -6px;
+  width: 12px;
 }
 
-.marker::after {
-  content: '';
+.markerKey {
   position: absolute;
-  top: 8px;
-  bottom: 0;
-  left: -.5px;
-  width: 1px;
-  background: color-mix(in srgb, var(--tc) 75%, transparent);
+  top: 9px;
 }
 
-.markerHead {
-  position: absolute;
-  top: 0;
-  left: -4.5px;
-  z-index: 1;
-}
-
-.markerHead path {
-  fill: var(--tc);
-  stroke: rgb(0 0 0 / 55%);
+.markerKey path {
+  fill: color-mix(in srgb, var(--tc) 35%, #fff);
+  stroke: #000;
   stroke-width: 1;
 }
 
-.marker[data-unbound] .markerHead path {
-  fill: var(--tl-track);
-  stroke: var(--tc);
+.marker[data-unbound] .markerKey path {
+  fill: rgb(255 255 255 / 20%);
 }
 
-.marker:hover .markerHead {
-  filter: brightness(1.35);
+.marker:hover .markerKey path {
+  fill: #fff;
 }
 
 .marker[data-selected] {
   z-index: 4;
 }
 
-.marker[data-selected]::after {
-  background: #fff;
+.marker[data-selected] .markerKey path {
+  stroke: #18a0fb;
+  stroke-width: 1.5;
 }
 
-.marker[data-selected] .markerHead path {
-  fill: #fff;
-  stroke: rgb(0 0 0 / 55%);
-}
-
-/* 外置名字：窄片段与标记共用，写在本体右侧外面、行内竖直居中，不加底色以免像片段；悬停标记或选中时变白，片段压暗时随之压暗 */
-.outerLabel {
+/* 事件名框（照 UE 动画通知的名框）：标记与窄片段共用；类别色调淡后 67% 不透明的圆角框、黑字，行内竖直居中，
+   标记的名框从菱形中心起画；选中为 UE 选中蓝，悬停标记提亮，片段离开本段后随之压暗 */
+.eventLabel {
   position: absolute;
-  top: 0;
+  top: 7px;
+  box-sizing: border-box;
+  height: 16px;
+  padding: 0 5px;
   overflow: hidden;
-  color: var(--text);
+  border-radius: 3px;
+  background: color-mix(in srgb, color-mix(in srgb, var(--tc) 35%, #fff) 67%, transparent);
+  color: #000;
   font-size: 11px;
-  line-height: 30px;
+  line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.item > .outerLabel {
+.item > .eventLabel {
   pointer-events: none;
 }
 
-.marker:hover .outerLabel, .outerLabel[data-selected] {
-  color: #fff;
+.marker:hover .eventLabel {
+  background: color-mix(in srgb, var(--tc) 35%, #fff);
 }
 
-.outerLabel[data-dim] {
+.eventLabel[data-selected] {
+  background: #18a0fb;
+}
+
+.eventLabel[data-dim] {
   opacity: .45;
 }
 
