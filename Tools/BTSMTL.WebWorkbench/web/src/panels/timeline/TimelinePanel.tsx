@@ -54,6 +54,8 @@ const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, wid
 const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
+// 标记高度（MarkerShape 9×16），在轨道行内上下居中。
+const markerHeight = 16;
 const curveHeight = 64;
 // 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
 // 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
@@ -2254,8 +2256,8 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   return (
     <button className={styles.marker} data-selected={selected || undefined}
-      data-select={selectId} data-editable={move ? true : undefined}
-      style={{ left: valueToPixels(seconds - range.start) }}
+      data-select={selectId}
+      style={{ left: valueToPixels(seconds - range.start), top: (trackHeight - markerHeight) / 2 }}
       title={`${label} · ${seconds.toFixed(3)} s\n双击打开节点图${move ? '\n左右拖动改时刻' : ''}`}
       onPointerDown={event => {
         if (!move || event.button !== 0) return;

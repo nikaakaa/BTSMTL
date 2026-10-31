@@ -952,7 +952,6 @@
 .marker {
   all: unset;
   position: absolute;
-  top: 0;
   z-index: 3;
   display: flex;
   margin-left: -4.5px;
@@ -966,10 +965,6 @@
 
 .marker[data-selected] {
   fill: #e6e6e6;
-}
-
-.marker[data-editable] {
-  cursor: ew-resize;
 }
 
 /* 轨道头双击改名 */
