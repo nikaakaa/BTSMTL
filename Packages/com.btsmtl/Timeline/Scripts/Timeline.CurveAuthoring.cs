@@ -4,14 +4,6 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline
 {
-    public enum TimelineCurveChannelRole : byte
-    {
-        Value = 0,
-        Weight = 1,
-        EaseIn = 2,
-        EaseOut = 3
-    }
-
 #if UNITY_EDITOR
     public enum TimelineAuthoringContentKind : byte
     {
@@ -136,26 +128,26 @@ namespace BTSMTL.Timeline
         {
             string prefix = clip.CurveChannelPrefix;
             Type owner = clip.GetType();
-            TimelineCurveValueDomain unit = TimelineCurveValueDomain.Bounded(0f, 1f);
             return new[]
             {
-                new TimelineCurveChannelDescriptor(new TimelineCurveChannelId(prefix + ".weight"), owner,
-                    "Weight", new Color32(120, 211, 151, 255), unit, One,
+                Sampled(prefix, owner, TimelineSampledCurveChannel.Weight,
                     value => ((SampledClip)value).WeightCurve,
-                    (value, curve) => ((SampledClip)value).WeightCurve = curve,
-                    role: TimelineCurveChannelRole.Weight),
-                new TimelineCurveChannelDescriptor(new TimelineCurveChannelId(prefix + ".ease-in"), owner,
-                    "Ease In", new Color32(93, 189, 141, 255), unit, ZeroOne,
+                    (value, curve) => ((SampledClip)value).WeightCurve = curve),
+                Sampled(prefix, owner, TimelineSampledCurveChannel.EaseIn,
                     value => ((SampledClip)value).EaseInCurve,
-                    (value, curve) => ((SampledClip)value).EaseInCurve = curve,
-                    role: TimelineCurveChannelRole.EaseIn),
-                new TimelineCurveChannelDescriptor(new TimelineCurveChannelId(prefix + ".ease-out"), owner,
-                    "Ease Out", new Color32(226, 165, 79, 255), unit, ZeroOne,
+                    (value, curve) => ((SampledClip)value).EaseInCurve = curve),
+                Sampled(prefix, owner, TimelineSampledCurveChannel.EaseOut,
                     value => ((SampledClip)value).EaseOutCurve,
-                    (value, curve) => ((SampledClip)value).EaseOutCurve = curve,
-                    role: TimelineCurveChannelRole.EaseOut)
+                    (value, curve) => ((SampledClip)value).EaseOutCurve = curve)
             };
         }
+
+        static TimelineCurveChannelDescriptor Sampled(string prefix, Type owner, TimelineSampledCurveChannel channel,
+            Func<object, AnimationCurve> read, Action<object, AnimationCurve> replace) =>
+            new(new TimelineCurveChannelId(prefix + channel.Suffix), owner, channel.DisplayName,
+                new Color32(channel.Red, channel.Green, channel.Blue, 255), channel.ValueDomain,
+                () => AnimationCurve.Linear(0f, channel.DefaultStart, 1f, channel.DefaultEnd), read, replace,
+                role: channel.Role);
 
         public static TimelineCurveChannelDescriptor Require(Clip owner, string channelId)
         {
@@ -165,9 +157,6 @@ namespace BTSMTL.Timeline
                     return descriptors[i];
             throw new InvalidOperationException($"Clip '{owner.ContractKind}' has no curve channel '{channelId}'.");
         }
-
-        static AnimationCurve One() => AnimationCurve.Linear(0f, 1f, 1f, 1f);
-        static AnimationCurve ZeroOne() => AnimationCurve.Linear(0f, 0f, 1f, 1f);
     }
 
     public static class TimelineCurveAuthoring
