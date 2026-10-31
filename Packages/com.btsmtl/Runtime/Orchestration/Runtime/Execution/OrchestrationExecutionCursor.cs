@@ -356,20 +356,13 @@ namespace BTSMTL.Orchestration
                     case OrchestrationOperationCode.StateMachine:
                         status = ContinueStateMachineStop(operationIndex, context);
                         break;
-                    case OrchestrationOperationCode.Timeline:
-                        status = ContinueLeafStop(operationIndex, context);
-                        break;
-                    case OrchestrationOperationCode.Extension:
-                        status = (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
-                            OrchestrationExtensionInvocationKind.ContinueStop) != 0
-                            ? ContinueLeafStop(operationIndex, context)
-                            : ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
-                        break;
-                    case OrchestrationOperationCode.SubGraph:
-                        status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Enter);
-                        break;
                     default:
-                        status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
+                        bool continuesStop = operation.Code == OrchestrationOperationCode.Extension &&
+                            (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
+                                OrchestrationExtensionInvocationKind.ContinueStop) != 0;
+                        status = OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, continuesStop)
+                            ? ContinueDirectChildStop(operationIndex, context, OrchestrationStopRoute.ChildFlowKind(operation.Code))
+                            : ContinueLeafStop(operationIndex, context);
                         break;
                 }
                 if (status == OrchestrationStopStatus.Running)
@@ -443,8 +436,7 @@ namespace BTSMTL.Orchestration
 
         void ForceStopChildren(int operationIndex, OrchestrationStopContext context)
         {
-            OrchestrationFlowKind kind = m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.SubGraph
-                ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child;
+            OrchestrationFlowKind kind = OrchestrationStopRoute.ChildFlowKind(m_Program.Operation(operationIndex).Code);
             foreach (int edgeIndex in m_Program.Outgoing(operationIndex, kind))
             {
                 int child = m_Program.Edge(edgeIndex).TargetOperationIndex;
