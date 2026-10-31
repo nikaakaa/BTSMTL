@@ -34,13 +34,6 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
-// 标记菱形（照 UE Sequencer.KeyDiamond，12×12）：中心对准时刻。
-export const MarkerKey = (props: ShapeProps) => (
-  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false" {...props}>
-    <path d="M6 .7 11.3 6 6 11.3.7 6z" />
-  </svg>
-);
-
 // 播放头（TimelineTimeCursor，11×20）：上方圆角的白色五边形，尖端接游标线。
 export const PlayheadShape = () => (
   <svg width="11" height="20" viewBox="0 0 11 20" aria-hidden focusable="false">

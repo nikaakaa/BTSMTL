@@ -42,7 +42,7 @@ import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
-import { KeyIcon, MarkerKey, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
+import { KeyIcon, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
@@ -54,12 +54,12 @@ const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, wid
 const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
-// 事件名框（照 UE 动画通知 SAnimNotifyNode）：标记与写不下名字的窄片段，名字放进类别色名框挂在右侧，
-// 最多到同行下一项起点前 4 像素，不足 24 像素不画框。
+// 事件名牌：标记与写不下名字的窄片段，名字放进深色名牌挂在右侧，最多到同行下一项起点前 4 像素，不足 24 像素不画。
 const eventLabelGap = 4;
 const eventLabelMin = 24;
-// 标记菱形（照 UE ScrubHandleSize 12×12）的半宽，名框从菱形中心起画。
-const markerKeyHalf = 6;
+// 标记圆点半径；名牌从圆点左侧 markerChipLead 像素处起画，把圆点包在左端。
+const markerDotRadius = 4;
+const markerChipLead = 9;
 const curveHeight = 64;
 // 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
 // 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
@@ -2261,8 +2261,8 @@ function openClipGraph(graphId: string | null, label: string) {
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
-// 照 UE 动画通知（SAnimNotifyNode::OnPaint）：时刻处 12×12 菱形在行内居中，所触发的内容（text）放进类别色名框，
-// 名框从菱形中心起向右，最多到同行下一项（next 秒）之前。未绑定节点图时菱形只留 20% 白（照 UE 无 Endpoint 的事件键），不画名框。
+// 时刻处一个 8 像素类别色圆点在行内居中（不用菱形，免得和曲线关键帧混淆）；所触发的内容（text）放进深色名牌，
+// 圆点嵌在名牌左端，名牌最多到同行下一项（next 秒）之前。未绑定节点图时圆点只留类别色圆环，不画名牌。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回。
 function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, move, snap }: {
   seconds: number; next: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
@@ -2274,7 +2274,7 @@ function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, mo
   const clock = useContext(PreviewClockContext);
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
-  const textWidth = valueToPixels(next - seconds) - eventLabelGap;
+  const textWidth = valueToPixels(next - seconds) + markerChipLead - eventLabelGap;
   return (
     <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined} data-select={selectId}
       style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
@@ -2297,8 +2297,8 @@ function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, mo
       onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)}>
       {text && textWidth >= eventLabelMin && <span className={styles.eventLabel} data-selected={selected || undefined}
-        style={{ left: 0, maxWidth: textWidth, paddingLeft: markerKeyHalf + 4 }}>{text}</span>}
-      <MarkerKey className={styles.markerKey} style={{ left: -markerKeyHalf }} />
+        style={{ left: -markerChipLead, maxWidth: textWidth, paddingLeft: markerChipLead + markerDotRadius + 6 }}>{text}</span>}
+      <span className={styles.markerDot} />
     </button>
   );
 }
