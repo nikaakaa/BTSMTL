@@ -19,12 +19,13 @@ export function TipProvider({ children }: { children: ReactNode }) {
   return <Tooltip.Provider delay={500} closeDelay={0}>{children}</Tooltip.Provider>;
 }
 
-export function Tip({ content, children }: { content: ReactNode; children: ReactElement }) {
+// delay 覆盖默认的 500 毫秒，Timeline 片段与标记悬停即显示名字时用 0。
+export function Tip({ content, delay, children }: { content: ReactNode; delay?: number; children: ReactElement }) {
   const container = usePortalContainer();
   if (content === null || content === undefined || content === '') return children;
   return (
     <Tooltip.Root>
-      <Tooltip.Trigger render={children} />
+      <Tooltip.Trigger render={children} delay={delay} />
       <Tooltip.Portal container={container}>
         <Tooltip.Positioner className={styles.positioner} sideOffset={6}>
           <Tooltip.Popup className={styles.tooltip}>{content}</Tooltip.Popup>

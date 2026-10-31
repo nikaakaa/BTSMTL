@@ -40,7 +40,7 @@ import {
 } from '../../state/curveEdit';
 import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
 import { KeyIcon, MarkerTriangle, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
@@ -2181,7 +2181,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 }
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
-// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写（看轨道头与悬停提示）；exit 之后的部分压暗。
+// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写（悬停即显示（Tip，无延迟））；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
 function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
@@ -2217,10 +2217,10 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
+        <Tip delay={0} content={`${label}\n${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}`}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
-          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
@@ -2231,6 +2231,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
+        </Tip>
       </div>
     </div>
   );
@@ -2249,7 +2250,7 @@ function openClipGraph(graphId: string | null, label: string) {
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
 // 时刻处一根 1 像素类别色细线贯穿整行，顶端一个朝下的小三角（MarkerTriangle）尖端对准时刻；所触发的内容（text）
-// 照 Unity 不写名字，写在悬停提示里。未绑定节点图时三角只留轮廓。
+// 照 Unity 不写名字，悬停即显示（Tip，无延迟）。未绑定节点图时三角只留轮廓。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回；标记不许重叠，
 // 拖到同轨已有标记的时刻（taken）时细线变红，松开不写回。
 function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, snap, taken }: {
@@ -2264,9 +2265,9 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
   return (
+    <Tip delay={0} content={`${text ?? '未绑定节点图'}\n${seconds.toFixed(3)} s${blocked ? '\n此刻已有标记，标记不能重叠' : ''}`}>
     <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined}
       data-invalid={blocked || undefined} data-select={selectId} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
-      title={`${label} · ${seconds.toFixed(3)} s\n${text ?? '未绑定节点图'}${blocked ? '\n此刻已有标记，标记不能重叠' : ''}\n双击打开节点图${move ? '\n左右拖动改时刻' : ''}`}
       onPointerDown={event => {
         if (!move || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -2286,6 +2287,7 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
       onDoubleClick={() => openClipGraph(graphId, label)}>
       <MarkerTriangle className={styles.markerHead} />
     </button>
+    </Tip>
   );
 }
 
