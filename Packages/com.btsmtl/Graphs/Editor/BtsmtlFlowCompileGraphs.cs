@@ -103,7 +103,7 @@ namespace BTSMTL.Graphs.Editor
                 IBtsmtlVariableFlowNode => CompileNodeRole.Variable,
                 _ => CompileNodeRole.Leaf
             };
-            var compiled = new CompileNode(node.UID, m_SourceType(node), info.Kind, role,
+            var compiled = new CompileNode(node.UID, m_SourceType(node), info.Kind, node.GetType(), role,
                 node.GetInputFlowPorts().Select(port => port.ID).ToArray(),
                 node.GetOutputFlowPorts().Select(port => port.ID).ToArray(),
                 inputs, outputs, info.Fields, info.Describe);

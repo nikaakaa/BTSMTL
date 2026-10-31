@@ -24,6 +24,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             public string Id;
             public bool ReadOnly;
             public string[] Path;
+            // 特性未写字段身份时由成员名首字母小写得出，其余构造参数从首位开始。
+            public bool ExplicitId => Metadata.ConstructorArguments.Length != 0 &&
+                Metadata.ConstructorArguments[0].Type?.SpecialType == SpecialType.System_String;
+            public IEnumerable<TypedConstant> Arguments => Metadata.ConstructorArguments.Skip(ExplicitId ? 1 : 0);
             public string Name => string.Join("_", Path);
             public string Access => string.Join(".", Path.Select(Escape));
         }
@@ -64,7 +68,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Symbol = member,
                     Type = memberType,
                     Metadata = metadata,
-                    Id = prefix + (string)metadata.ConstructorArguments[0].Value,
+                    Id = prefix + (metadata.ConstructorArguments.Length != 0 &&
+                        metadata.ConstructorArguments[0].Type?.SpecialType == SpecialType.System_String
+                            ? (string)metadata.ConstructorArguments[0].Value
+                            : char.ToLowerInvariant(member.Name[0]) + member.Name.Substring(1)),
                     ReadOnly = metadata.NamedArguments.Any(argument => argument.Key == "ReadOnly" && (bool)argument.Value.Value),
                     Path = memberPath
                 };
@@ -326,6 +333,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 .Append(inherited != null ? ", " + TypeName(inherited) + ".AuthoringContract" : "").AppendLine(");");
             code.Append(AuthoringRuntime).Append("GraphAuthoringTypeContract ").Append(AuthoringRuntime)
                 .AppendLine("IGraphAuthoringFieldSource.AuthoringFields => AuthoringContract;");
+            code.Append("public ").Append(inherited != null ? "new " : "").AppendLine("static class FieldIds {");
+            foreach (AuthoringField field in fields)
+                code.Append("public const string ").Append(Escape(field.Name)).Append(" = ").Append(Quote(field.Id)).AppendLine(";");
+            code.AppendLine("}");
             if (assigned.Length != 0)
             {
                 code.Append("public void ConfigureAuthoringFields(").Append(string.Join(", ", assigned.Select(field =>
@@ -420,14 +431,14 @@ namespace ThirdPerson.ValueGeneration.Generator
         }
 
         static string AuthoringFieldMetadata(AuthoringField field) => "new " + TypeName(field.Metadata.AttributeClass) +
-            "(" + Quote(field.Id) + (field.Metadata.ConstructorArguments.Length > 1 ? ", " + string.Join(", ",
-                field.Metadata.ConstructorArguments.Skip(1).Select(AuthoringConstant)) : "") + ")" +
+            "(" + Quote(field.Id) + (field.Arguments.Any() ? ", " + string.Join(", ",
+                field.Arguments.Select(AuthoringConstant)) : "") + ")" +
             (field.Metadata.NamedArguments.Length == 0 ? "" : " { " + string.Join(", ", field.Metadata.NamedArguments.Select(argument =>
                 Escape(argument.Key) + " = " + AuthoringConstant(argument.Value))) + " }");
 
         static bool AuthoringIdentityField(AuthoringField field)
         {
-            TypedConstant kind = field.Metadata.ConstructorArguments[1];
+            TypedConstant kind = field.Arguments.First();
             return kind.Kind == TypedConstantKind.Enum && kind.Type.GetMembers("IdentityReference").OfType<IFieldSymbol>()
                 .Any(member => Equals(member.ConstantValue, kind.Value));
         }

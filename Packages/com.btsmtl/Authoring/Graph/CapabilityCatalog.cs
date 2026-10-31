@@ -80,9 +80,6 @@ namespace BTSMTL.Authoring.Graph
             IReadOnlyList<GraphAuthoringCommandDescriptor> commands = null,
             string iconName = "",
             GraphAuthoringNodePresentationKind presentationKind = GraphAuthoringNodePresentationKind.Standard,
-            string mutationBindingId = "",
-            string validationBindingId = "",
-            string compilerBindingId = "",
             Type authoringType = null,
             string externalKind = "",
             bool systemOwned = false,
@@ -113,9 +110,6 @@ namespace BTSMTL.Authoring.Graph
             Commands = commands ?? Array.Empty<GraphAuthoringCommandDescriptor>();
             IconName = iconName ?? string.Empty;
             PresentationKind = presentationKind;
-            MutationBindingId = mutationBindingId ?? string.Empty;
-            ValidationBindingId = validationBindingId ?? string.Empty;
-            CompilerBindingId = compilerBindingId ?? string.Empty;
             RuntimeExtension = runtimeExtension;
             RuntimeExtensionPorts = runtimeExtensionPorts ?? Array.Empty<GraphOrchestrationExtensionPortBinding>();
             if (runtimeExtension.HasValue && runtimeExtension.Value.Contract.Ports.Length != RuntimeExtensionPorts.Count)
@@ -157,9 +151,6 @@ namespace BTSMTL.Authoring.Graph
         public IReadOnlyList<GraphAuthoringCommandDescriptor> Commands { get; }
         public string IconName { get; }
         public GraphAuthoringNodePresentationKind PresentationKind { get; }
-        public string MutationBindingId { get; }
-        public string ValidationBindingId { get; }
-        public string CompilerBindingId { get; }
         public OrchestrationExtensionDefinition? RuntimeExtension { get; }
         public IReadOnlyList<GraphOrchestrationExtensionPortBinding> RuntimeExtensionPorts { get; }
         public Type AuthoringType { get; }
