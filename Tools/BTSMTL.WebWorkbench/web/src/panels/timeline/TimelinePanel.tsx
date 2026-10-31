@@ -40,7 +40,9 @@ import {
 } from '../../state/curveEdit';
 import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
+import {
+  Button, ContextMenu, createTipGroup, GroupTip, MenuButton, NumberInput, Select, TextInput, Tip, TipGroup, type MenuEntry,
+} from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
 import { KeyIcon, MarkerTriangle, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
@@ -499,7 +501,7 @@ function ClipEditing({ rows, offsets, scroller }: {
             </div>
             {index === 0 && (
               <span className={styles.dropTip} data-invalid={drag.invalid || undefined}
-                style={{ left: Math.max(0, left), top: top >= 18 ? top - 18 : top + trackHeight + 2 }}>{drag.tip}</span>
+                style={{ left: Math.max(0, left), top: top >= 22 ? top - 22 : top + trackHeight + 2 }}>{drag.tip}</span>
             )}
           </Fragment>
         );
@@ -1012,7 +1014,7 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
             tip={parents.length === 1 ? '在节点图返回同一次实际父调用'
               : clock.observation.call.parentInvocationGeneration === null ? '本记录没有父调用代次' : '已加载记录中没有匹配的父调用'}>上层调用</Button>)}
       </>}
-      {notice && <span className={styles.hint} title={notice}>{notice}</span>}
+      {notice && <Tip name={notice}><span className={styles.hint} data-name>{notice}</span></Tip>}
       <span className={styles.grow} />
       <MenuButton label="Timeline 设置" variant="ghost" className={styles.cog} iconOnly caret entries={settings}><SettingsIcon /></MenuButton>
     </PanelBar>
@@ -1152,7 +1154,7 @@ function Ruler({ bounds, origin, rate, marks, seekAt }: {
       {labels.map(label => <span key={label.text} className={styles.tickLabel} style={{ left: label.x }}>{label.text}</span>)}
       {durationEnd > durationStart && <i className={styles.duration} style={{ left: durationStart, width: durationEnd - durationStart }} />}
       {marks.filter(mark => mark.seconds >= range.start && mark.seconds <= range.end).map(mark => (
-        <i key={mark.key} className={styles.routeMark} style={{ left: valueToPixels(mark.seconds - range.start) }} title={mark.label} />
+        <Tip key={mark.key} name={mark.label}><i className={styles.routeMark} style={{ left: valueToPixels(mark.seconds - range.start) }} /></Tip>
       ))}
     </div>
   );
@@ -1332,32 +1334,36 @@ function Line({ id, height = trackHeight, nest, head, headClass, children, laneC
 }
 
 // 分组标题：折叠三角在分组框内左侧（TimelineTreeView.DrawFoldout），整条标题单击即折叠或展开；
-// meta 为淡色的补充信息（如时间范围）。
-function GroupToggle({ open, name, meta, title, now, disabled, onToggle, onDoubleClick }: {
-  open: boolean; name: string; meta?: string; title?: string; now?: boolean; disabled?: boolean;
+// meta 为淡色的补充信息（如时间范围）。悬停补全被截断的名字；有 tip 时改为名字加这条说明。
+function GroupToggle({ open, name, meta, tip, now, disabled, onToggle, onDoubleClick }: {
+  open: boolean; name: string; meta?: string; tip?: string; now?: boolean; disabled?: boolean;
   onToggle(): void; onDoubleClick?(): void;
 }) {
   return (
-    <button className={styles.groupToggle} onClick={onToggle} onDoubleClick={onDoubleClick} aria-expanded={open} disabled={disabled}
-      title={title ?? `单击${open ? '折叠' : '展开'}`}>
-      <span className={styles.fold}><FoldoutIcon open={open} /></span>
-      <span className={styles.groupName} data-now={now || undefined}>{name}</span>
-      {meta && <span className={styles.groupMeta}>{meta}</span>}
-    </button>
+    <Tip name={tip ? undefined : name} content={tip && `${name}\n${tip}`}>
+      <button className={styles.groupToggle} onClick={onToggle} onDoubleClick={onDoubleClick} aria-expanded={open} disabled={disabled}>
+        <span className={styles.fold}><FoldoutIcon open={open} /></span>
+        <span className={styles.groupName} data-now={now || undefined} data-name>{name}</span>
+        {meta && <span className={styles.groupMeta}>{meta}</span>}
+      </button>
+    </Tip>
   );
 }
 
 // 轨道头（TimelineTrackGUI.DrawTrackHeader）：左侧 4 像素类别色条、16 像素类型图标、轨道名，右侧为按钮组与选项按钮。
 // rename 为改名输入框，给出时代替轨道名；below 为展开曲线时轨道头下部的内容（曲线通道列表）。
-function TrackHead({ kind, color, selected, name, title, onSelect, onRename, rename, children, below }: {
-  kind: TrackKind; color?: string; selected?: boolean; name: string; title?: string;
+// 悬停补全被截断的轨道名；有 tip 时改为轨道名加这条说明。
+function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, rename, children, below }: {
+  kind: TrackKind; color?: string; selected?: boolean; name: string; tip?: string;
   onSelect?(): void; onRename?(): void; rename?: ReactNode; children?: ReactNode; below?: ReactNode;
 }) {
-  const label = <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span><span className={styles.name}>{name}</span></>;
+  const label = <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span><span className={styles.name} data-name>{name}</span></>;
   const head = <>
     {rename ? <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span>{rename}</>
-      : onSelect ? <button className={styles.headSelect} title={title} onClick={onSelect} onDoubleClick={onRename}>{label}</button>
-        : <span className={styles.headSelect} title={title}>{label}</span>}
+      : <Tip name={tip ? undefined : name} content={tip && `${name}\n${tip}`}>
+        {onSelect ? <button className={styles.headSelect} onClick={onSelect} onDoubleClick={onRename}>{label}</button>
+          : <span className={styles.headSelect}>{label}</span>}
+      </Tip>}
     {children}
   </>;
   return (
@@ -1381,14 +1387,14 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
         <GroupToggle open={open} now={now} onToggle={() => toggle(row.id)}
           name={segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}
           meta={`${segment.state ? `${segment.state.name} · ` : ''}${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
-          title={`单击${open ? '折叠' : '展开'}${row.focused ? '' : '；双击进入这个 Timeline'}`}
+          tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId)} />
         {segment.timeline && !row.focused && <AddTrack documentId={segment.documentId} />}
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
         <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion}
-          title={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
+          tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
       ))}
     </Line>
   );
@@ -1588,7 +1594,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
       height={trackHeight + curves} head={
       <TrackHead kind={row.trackKind} selected={selected} name={row.track.displayName} onSelect={select}
         below={curves && elements ? <CurveParameters row={row} elements={elements} mixes={mixes} author={author} height={curves} /> : undefined}
-        onRename={author ? () => setNaming(true) : undefined} title={author ? '单击选中 · 双击改名 · 右键打开轨道菜单' : undefined}
+        onRename={author ? () => setNaming(true) : undefined} tip={author ? '单击选中 · 双击改名 · 右键打开轨道菜单' : undefined}
         rename={naming ? (
           <TextInput autoFocus defaultValue={row.track.displayName} aria-label="轨道名称" className={styles.nameInput}
             onBlur={event => {
@@ -1603,14 +1609,17 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
             }} />
         ) : undefined}>
         {(author || hasCurves) && <span className={styles.suite}>
-          {hasCurves && <button className={styles.suiteButton} aria-pressed={curves > 0} title={curves ? '收起片段曲线' : '展开片段曲线'}
-            onClick={() => toggleCurves(row.id)}>
-            <CurveIcon />
-          </button>}
-          {author && <button className={styles.suiteButton} aria-pressed={muted} title={muted ? '取消静音' : '静音'}
-            onClick={() => authoringActions.setTrackValue(documentId, row.track.id, ['m_PersistentMuted'], !muted)}>
-            <MuteIcon muted={muted} />
-          </button>}
+          {hasCurves && <Tip content={curves ? '收起片段曲线' : '展开片段曲线'}>
+            <button className={styles.suiteButton} aria-pressed={curves > 0} onClick={() => toggleCurves(row.id)}>
+              <CurveIcon />
+            </button>
+          </Tip>}
+          {author && <Tip content={muted ? '取消静音' : '静音'}>
+            <button className={styles.suiteButton} aria-pressed={muted}
+              onClick={() => authoringActions.setTrackValue(documentId, row.track.id, ['m_PersistentMuted'], !muted)}>
+              <MuteIcon muted={muted} />
+            </button>
+          </Tip>}
         </span>}
         {author && <span className={styles.options} onPointerDown={openOptions}>
           <MenuButton label="轨道菜单" variant="ghost" className={styles.optionsButton} iconOnly entries={menu}><OptionsIcon /></MenuButton>
@@ -1744,21 +1753,28 @@ function CurveParameters({ row, elements, mixes, author, height }: {
       };
       controls = <>
         <div className={styles.curveKeys}>
-          <button className={styles.curveKeyButton} disabled={previous === undefined} title="上一关键帧" onClick={() => jump(previous!)}>
-            <KeyIcon kind="previous" />
-          </button>
-          <button className={styles.curveKeyButton} data-on={atKey || undefined} disabled={!author || !inside || !channel}
-            title={!channel ? `参考曲线只读（${inspected.reference}）` : atKey ? '删除游标处的关键帧' : '在游标处添加关键帧'}
-            onClick={() => {
-              view.selectKeys([]);
-              write(channel!, atKey ? curveWithoutKey(curve!, t!, tolerance) : curveWithKey(curve!, clamp01(t!)));
-            }}>
-            <KeyIcon kind="key" />
-          </button>
-          <button className={styles.curveKeyButton} disabled={next === undefined} title="下一关键帧" onClick={() => jump(next!)}>
-            <KeyIcon kind="next" />
-          </button>
-          <span className={styles.curveValue} title="游标处的值">{t === null ? '—' : inspected.value(clamp01(t)).toFixed(3)}</span>
+          <Tip content="上一关键帧">
+            <button className={styles.curveKeyButton} disabled={previous === undefined} onClick={() => jump(previous!)}>
+              <KeyIcon kind="previous" />
+            </button>
+          </Tip>
+          <Tip content={!channel ? `参考曲线只读（${inspected.reference}）` : atKey ? '删除游标处的关键帧' : '在游标处添加关键帧'}>
+            <button className={styles.curveKeyButton} data-on={atKey || undefined} disabled={!author || !inside || !channel}
+              onClick={() => {
+                view.selectKeys([]);
+                write(channel!, atKey ? curveWithoutKey(curve!, t!, tolerance) : curveWithKey(curve!, clamp01(t!)));
+              }}>
+              <KeyIcon kind="key" />
+            </button>
+          </Tip>
+          <Tip content="下一关键帧">
+            <button className={styles.curveKeyButton} disabled={next === undefined} onClick={() => jump(next!)}>
+              <KeyIcon kind="next" />
+            </button>
+          </Tip>
+          <Tip content="游标处的值">
+            <span className={styles.curveValue}>{t === null ? '—' : inspected.value(clamp01(t)).toFixed(3)}</span>
+          </Tip>
         </div>
         {single && <div className={styles.curveKeys}>
           <span className={styles.curveKeyLabel}>时间</span>
@@ -1774,24 +1790,25 @@ function CurveParameters({ row, elements, mixes, author, height }: {
   return (
     <div className={styles.curveParams}>
       {parameters.map(parameter => (
-        <button key={parameter.id} className={styles.curveParam} aria-pressed={parameter === inspected}
-          style={{ ['--cc' as string]: parameter.color }}
-          title={`${parameter.name}${parameter.reference ? `（参考：${parameter.reference}，只读）` : ''} · ${parameter === inspected ? '单击收起' : '单击查看完整曲线'}`}
-          onClick={() => view.inspect(row.id, parameter === inspected ? null : parameter.id)}>
-          <span className={styles.curveParamName}>{parameter.name}</span>
-          {parameter.reference ? <small>参考</small> : !parameter.curve ? <small>未设置</small> : !parameter.span ? <small>无缓动</small> : null}
-        </button>
+        <Tip key={parameter.id} name={parameter.reference ? undefined : parameter.name}
+          content={parameter.reference && `${parameter.name}\n参考：${parameter.reference}，只读`}>
+          <button className={styles.curveParam} aria-pressed={parameter === inspected} style={{ ['--cc' as string]: parameter.color }}
+            onClick={() => view.inspect(row.id, parameter === inspected ? null : parameter.id)}>
+            <span className={styles.curveParamName} data-name>{parameter.name}</span>
+            {parameter.reference ? <small>参考</small> : !parameter.curve ? <small>未设置</small> : !parameter.span ? <small>无缓动</small> : null}
+          </button>
+        </Tip>
       ))}
-      {failure && <span className={styles.curveNote} title={failure}>参考曲线读取失败</span>}
+      {failure && <Tip content={failure}><span className={styles.curveNote}>参考曲线读取失败</span></Tip>}
       {inspected && controls}
-      {inspected && <div className={styles.curveResize} title="拖动改变曲线区高度"
+      {inspected && <Tip content="拖动改变曲线区高度"><div className={styles.curveResize}
         onPointerDown={event => {
           if (event.button !== 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           drag.current = { y: event.clientY, height };
         }}
         onPointerMove={event => { if (drag.current) view.resize(row.id, Math.min(curveMaxHeight, drag.current.height + event.clientY - drag.current.y)); }}
-        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} />}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} /></Tip>}
     </div>
   );
 }
@@ -1854,15 +1871,16 @@ function ClipCurves({ row, elements, mixes, author, height }: {
         const y = curveParamTop + index * curveParamPitch;
         const span = parameter.span;
         return (
-          <g key={parameter.id} className={styles.curveRow} style={{ ['--cc' as string]: parameter.color }}
-            data-unset={(parameter.channel && !parameter.curve) || !span || undefined}
-            onPointerDown={event => { if (event.button === 0) view.inspect(row.id, parameter.id); }}>
-            <title>{`${parameter.name} · 单击查看完整曲线`}</title>
-            <rect className={styles.curveRowBand} x={left} y={y} width={width} height={curveParamHeight} />
-            {span && parameter.times.map((time, key) => (
-              <path key={key} className={styles.curveDope} d={curveDiamond(spanX(span, clamp01(time)), y + curveParamHeight / 2, 4)} />
-            ))}
-          </g>
+          <Tip key={parameter.id} name={parameter.name}>
+            <g className={styles.curveRow} style={{ ['--cc' as string]: parameter.color }}
+              data-unset={(parameter.channel && !parameter.curve) || !span || undefined}
+              onPointerDown={event => { if (event.button === 0) view.inspect(row.id, parameter.id); }}>
+              <rect className={styles.curveRowBand} x={left} y={y} width={width} height={curveParamHeight} />
+              {span && parameter.times.map((time, key) => (
+                <path key={key} className={styles.curveDope} d={curveDiamond(spanX(span, clamp01(time)), y + curveParamHeight / 2, 4)} />
+              ))}
+            </g>
+          </Tip>
         );
       })}
     </svg>
@@ -2053,16 +2071,16 @@ function ClipCurves({ row, elements, mixes, author, height }: {
         {handles.map(handle => (
           <g key={`${handle.index}-${handle.side}`} className={styles.curveHandle} data-handle="">
             <line x1={handle.kx} y1={handle.ky} x2={handle.hx} y2={handle.hy} />
-            <circle cx={handle.hx} cy={handle.hy} r={3} onPointerDown={event => grabTangent(event, handle.index, handle.side)}>
-              <title>{`${handle.side === 'left' ? '左' : '右'}切线 ${handle.slope.toFixed(3)} · 拖动修改`}</title>
-            </circle>
+            <Tip content={`${handle.side === 'left' ? '左' : '右'}切线 ${handle.slope.toFixed(3)} · 拖动修改`}>
+              <circle cx={handle.hx} cy={handle.hy} r={3} onPointerDown={event => grabTangent(event, handle.index, handle.side)} />
+            </Tip>
           </g>
         ))}
         {editable && keys.map((key, index) => (
-          <circle key={index} data-key={index} className={styles.curvePlotKey} cx={spanX(span, clamp01(keyTime(key)))} cy={y(keyValue(key))} r={3.5}
-            data-active={picked.includes(index) || undefined} onPointerDown={event => grabKey(event, index)}>
-            <title>{`${inspected.name} 关键帧 ${index} · ${(keyTime(key) * length).toFixed(3)} s, ${keyValue(key).toFixed(3)} · 拖动修改，右键设切线`}</title>
-          </circle>
+          <Tip key={index} content={`${inspected.name} 关键帧 ${index} · ${(keyTime(key) * length).toFixed(3)} s, ${keyValue(key).toFixed(3)} · 拖动修改，右键设切线`}>
+            <circle data-key={index} className={styles.curvePlotKey} cx={spanX(span, clamp01(keyTime(key)))} cy={y(keyValue(key))} r={3.5}
+              data-active={picked.includes(index) || undefined} onPointerDown={event => grabKey(event, index)} />
+          </Tip>
         ))}
         {draft?.kind === 'box' && <rect className={styles.curveBox} x={Math.min(draft.x0, draft.x1)} y={Math.min(draft.y0, draft.y1)}
           width={Math.abs(draft.x1 - draft.x0)} height={Math.abs(draft.y1 - draft.y0)} />}
@@ -2079,15 +2097,16 @@ function ClipCurves({ row, elements, mixes, author, height }: {
   );
 }
 
-function Positioned({ start, end, className, children, style, title }: {
-  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; title?: string;
+function Positioned({ start, end, className, children, style, tip }: {
+  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   return (
-    <div className={className} title={title}
-      style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
-      {children}
-    </div>
+    <Tip content={tip}>
+      <div className={className} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
+        {children}
+      </div>
+    </Tip>
   );
 }
 
@@ -2151,10 +2170,12 @@ function EaseHandles({ ease, start, end, draft, setDraft, sides, step }: {
   // 方块中心对准淡入终点、淡出起点，贴边时收在片段内。
   return (
     <>
-      {sides.in && <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, inPx - 3.5)) }}
-        title={`淡入 ${easeIn.toFixed(3)} s · 左右拖动`} {...handle('in')} />}
-      {sides.out && <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, width - outPx - 3.5)) }}
-        title={`淡出 ${easeOut.toFixed(3)} s · 左右拖动`} {...handle('out')} />}
+      {sides.in && <Tip content={`淡入 ${easeIn.toFixed(3)} s · 左右拖动`}>
+        <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, inPx - 3.5)) }} {...handle('in')} />
+      </Tip>}
+      {sides.out && <Tip content={`淡出 ${easeOut.toFixed(3)} s · 左右拖动`}>
+        <span className={styles.easeHandle} style={{ left: Math.max(0, Math.min(width - 7, width - outPx - 3.5)) }} {...handle('out')} />
+      </Tip>}
     </>
   );
 }
@@ -2181,7 +2202,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 }
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
-// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停即提示完整名字（Tip，无延迟），写全时不提示；exit 之后的部分压暗。
+// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
 function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
@@ -2212,20 +2233,19 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
-  const labelShown = labelWidth > clipLabelMinWidth;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
-        <Tip delay={0} disabled={labelShown && labelTextWidth(label) <= labelWidth} content={label}>
+        <Tip name={label}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
-          {labelShown && <span className={styles.clipLabel}>{label}</span>}
+          {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel} data-name>{label}</span>}
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
             start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }}
             step={(edit && clipGrid(edit.documentId, edit.clipId)?.step) ?? minimumStep} />}
@@ -2236,20 +2256,6 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
       </div>
     </div>
   );
-}
-
-// 片段名在 11px 字体下的像素宽度（按名字缓存），判断框内能否写全；写全时不再悬停提示，没写或被截断时提示补出完整名字。
-const labelWidths = new Map<string, number>();
-let labelContext: CanvasRenderingContext2D | null = null;
-function labelTextWidth(text: string): number {
-  let width = labelWidths.get(text);
-  if (width === undefined) {
-    labelContext ??= document.createElement('canvas').getContext('2d')!;
-    labelContext.font = `11px ${getComputedStyle(document.body).fontFamily}`;
-    width = labelContext.measureText(text).width;
-    labelWidths.set(text, width);
-  }
-  return width;
 }
 
 // 照 Timeline Editor：双击片段或标记打开它的节点图。
@@ -2265,7 +2271,7 @@ function openClipGraph(graphId: string | null, label: string) {
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
 // 时刻处一根 1 像素类别色细线贯穿整行，顶端一个朝下的小三角（MarkerTriangle）尖端对准时刻；所触发的内容（text）
-// 照 Unity 不写名字，悬停即显示（Tip，无延迟）。未绑定节点图时三角只留轮廓。
+// 照 Unity 不写名字，悬停提示（Tip name）。未绑定节点图时三角只留轮廓。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回；标记不许重叠，
 // 拖到同轨已有标记的时刻（taken）时细线变红，松开不写回。
 function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, snap, taken }: {
@@ -2280,7 +2286,7 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
   return (
-    <Tip delay={0} content={text ?? '未绑定节点图'}>
+    <Tip name={text ?? '未绑定节点图'}>
     <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined}
       data-invalid={blocked || undefined} data-select={selectId} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
       onPointerDown={event => {
@@ -2321,7 +2327,7 @@ function CurveGroupLine({ nest, open, toggle }: { nest: Nest | undefined; open: 
     <GroupToggle open={open} name="项目曲线" onToggle={() => toggle('curves')} />
     {entries.length > 0 && <MenuButton label="选择项目曲线" variant="ghost" className={styles.addButton} iconOnly entries={entries}><AddIcon /></MenuButton>}
   </>}>
-    {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span>
+    {reason ? <Tip name={reason}><span className={styles.curveNotice} data-name>{reason}</span></Tip>
       : !curves?.length ? <span className={styles.curveNotice}>此档案未声明曲线</span> : null}
   </Line>;
 }
@@ -2345,27 +2351,30 @@ function CurveLine({ row, nest }: { row: CurveRow; nest: Nest | undefined }) {
     : record?.kind === 'sampled' ? record.availability.find(item =>
       (item.channel === row.curve.channel || item.channel === 'data-curves') && !item.available)?.reason ?? null : '正在读取曲线';
   const select = () => { if (selectId !== null) selectionActions.select({ kind: 'track', id: selectId }); };
+  // 采样点可能很多，共用一个提示。
+  const [sampleTips] = useState(createTipGroup);
   return <Line id={row.id} nest={nest} height={curveHeight} selected={selected} headClass={styles.trackHead} head={
     <TrackHead kind="motion" selected={selected} name={row.curve.displayName} onSelect={selectId === null ? undefined : select}
-      title={`${row.curve.clock} · ${row.curve.coordinates} · ${row.curve.unit}`} />
+      tip={`${row.curve.clock} · ${row.curve.coordinates} · ${row.curve.unit}`} />
   }>
-    {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span> : <>
+    {reason ? <Tip name={reason}><span className={styles.curveNotice} data-name>{reason}</span></Tip> : <>
       <svg className={styles.curvePlot} viewBox="0 0 1000 64" preserveAspectRatio="none" aria-label={row.curve.displayName}>
         {samples.map(({ sample, seconds }, index) => {
           const matchingImage = sample.presentationSequence === null || image !== null && image.kind !== 'unavailable' &&
             sample.presentationSequence === image.metadata.presentationSequence;
-          return <circle key={`${sample.source.clock.position.hostFrame}/${sample.presentationSequence ?? 'logic'}/${index}`}
-            cx={(seconds - range.start) / (range.end - range.start) * 1000}
-            cy={max === min ? 32 : 57 - (sample.value - min) / (max - min) * 50} r={2.5}
-            data-current={sample.source.clock.position.hostFrame === hostFrame && matchingImage || undefined}
-            onClick={() => {
-              select();
-              void transport.seekTime(sample.source.clock.seconds);
-            }}>
-            <title>{`${sample.value} ${row.curve.unit}\n${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}</title>
-          </circle>;
+          return <GroupTip key={`${sample.source.clock.position.hostFrame}/${sample.presentationSequence ?? 'logic'}/${index}`} group={sampleTips}
+            content={`${sample.value} ${row.curve.unit}\n${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}>
+            <circle cx={(seconds - range.start) / (range.end - range.start) * 1000}
+              cy={max === min ? 32 : 57 - (sample.value - min) / (max - min) * 50} r={2.5}
+              data-current={sample.source.clock.position.hostFrame === hostFrame && matchingImage || undefined}
+              onClick={() => {
+                select();
+                void transport.seekTime(sample.source.clock.seconds);
+              }} />
+          </GroupTip>;
         })}
       </svg>
+      <TipGroup group={sampleTips} />
       {samples.length > 0 && <span className={styles.curveScale}>{max.toPrecision(4)} / {min.toPrecision(4)} {row.curve.unit}</span>}
     </>}
   </Line>;
@@ -2378,9 +2387,9 @@ function ReceivedGroupLine({ nest, received, open, toggle }: {
   const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
   return <Line id="received" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
     <GroupToggle open={open} name="实际收到的输入" meta="已读帧" onToggle={() => toggle('received')}
-      title={`单击${open ? '折叠' : '展开'}；已读 SDK ${scope}，随游标分页读取`} />
+      tip={`已读 SDK ${scope}，随游标分页读取`} />
   </>}>
-    {notice && <span className={styles.curveNotice} title={notice}>{notice}</span>}
+    {notice && <Tip name={notice}><span className={styles.curveNotice} data-name>{notice}</span></Tip>}
   </Line>;
 }
 
@@ -2389,11 +2398,11 @@ function ReceivedLine({ row, nest }: { row: ReceivedRow; nest: Nest | undefined 
   const visible = (span: ReceivedSpan) => span.end >= range.start && span.start <= range.end;
   return <Line id={row.id} nest={nest} headClass={styles.trackHead} head={<TrackHead kind="in" name={row.name} />}>
     {row.spans.filter(visible).map(span => (
-      <Positioned key={`s${span.start}`} start={span.start} end={span.end} title={`${span.label} · ${span.start.toFixed(3)}—${span.end.toFixed(3)} s`}
+      <Positioned key={`s${span.start}`} start={span.start} end={span.end} tip={`${span.label} · ${span.start.toFixed(3)}—${span.end.toFixed(3)} s`}
         className={row.missing ? styles.receivedMissing : styles.receivedSpan} />
     ))}
     {row.requests.filter(visible).map(span => (
-      <Positioned key={`r${span.start}`} start={span.start} end={span.end} title={`请求 ${span.label} · ${span.start.toFixed(3)} s`}
+      <Positioned key={`r${span.start}`} start={span.start} end={span.end} tip={`请求 ${span.label} · ${span.start.toFixed(3)} s`}
         className={styles.receivedRequest} />
     ))}
   </Line>;

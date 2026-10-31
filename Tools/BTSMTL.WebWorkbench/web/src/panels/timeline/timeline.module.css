@@ -861,14 +861,19 @@
   opacity: .502;
 }
 
-/* 虚影上方的提示：起点时刻，或不能放下的原因 */
-.dropTip {
+/* 拖动读数（虚影上方的起点时刻或不能放下的原因、拖刻度时的游标时刻）：与悬停提示同一外观，只是更紧凑 */
+.dropTip, .cursorTip {
   position: absolute;
-  padding: 1px 4px;
-  background: var(--tl-tooltip);
-  color: rgb(255 255 255 / 75%);
-  font-size: 10px;
-  line-height: 14px;
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  box-shadow: var(--popup-shadow);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 18px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -1088,19 +1093,11 @@
   display: block;
 }
 
-/* 拖动刻度时在刻度上方显示游标时刻（TimeAreaItem 的提示） */
+/* 拖动刻度时在刻度上方显示游标时刻（TimeAreaItem 的提示），外观同 .dropTip */
 .cursorTip {
-  position: absolute;
   bottom: 100%;
   left: 0;
   display: none;
-  padding: 1px 4px;
-  background: var(--tl-tooltip);
-  color: rgb(255 255 255 / 75%);
-  font-size: 10px;
-  line-height: 14px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .timeline:has(.ruler[data-scrubbing]) .cursorTip:not([hidden]) {

@@ -13,27 +13,52 @@ import { usePortalContainer } from './portal';
 
 const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
-// ── 悬停提示：解释与不可用原因都放这里，不写进面板正文 ──
+// ── 悬停提示：工作台唯一的悬停提示，同一外观与时机；不用系统 title ──
+// 两种用法：content 为解释或不可用原因，不写进面板正文；name 为补全名字，只在名字被截断或没写出来时提示完整名字。
+// 名字所在元素标 data-name（触发元素自身或其内部）；没有该元素视为没写出来。
+// 第一次悬停等 500 毫秒，之后 400 毫秒内移到相邻元素立即显示（Tooltip.Provider 的分组）。
 
 export function TipProvider({ children }: { children: ReactNode }) {
   return <Tooltip.Provider delay={500} closeDelay={0}>{children}</Tooltip.Provider>;
 }
 
-// delay 覆盖默认的 500 毫秒，Timeline 片段与标记悬停即显示名字时用 0；
-// disabled 暂不提示但保留触发元素不重建（Timeline 片段名在框内写全时）。
-export function Tip({ content, delay, disabled, children }: { content: ReactNode; delay?: number; disabled?: boolean; children: ReactElement }) {
+function nameCut(trigger: Element | undefined): boolean {
+  const text = trigger?.matches('[data-name]') ? trigger : trigger?.querySelector('[data-name]');
+  return !text || text.scrollWidth > text.clientWidth;
+}
+
+function TipPopup({ children }: { children: ReactNode }) {
   const container = usePortalContainer();
-  if (content === null || content === undefined || content === '') return children;
   return (
-    <Tooltip.Root disabled={disabled}>
-      <Tooltip.Trigger render={children} delay={delay} />
-      <Tooltip.Portal container={container}>
-        <Tooltip.Positioner className={styles.positioner} sideOffset={6}>
-          <Tooltip.Popup className={styles.tooltip}>{content}</Tooltip.Popup>
-        </Tooltip.Positioner>
-      </Tooltip.Portal>
+    <Tooltip.Portal container={container}>
+      <Tooltip.Positioner className={styles.positioner} sideOffset={6}>
+        <Tooltip.Popup className={styles.tooltip}>{children}</Tooltip.Popup>
+      </Tooltip.Positioner>
+    </Tooltip.Portal>
+  );
+}
+
+export function Tip({ content, name, children }: { content?: ReactNode; name?: string; children: ReactElement }) {
+  const shown = name ?? content;
+  if (shown === null || shown === undefined || shown === '') return children;
+  return (
+    <Tooltip.Root onOpenChange={name === undefined ? undefined : (open, details) => { if (open && !nameCut(details.trigger)) details.cancel(); }}>
+      <Tooltip.Trigger render={children} />
+      <TipPopup>{shown}</TipPopup>
     </Tooltip.Root>
   );
+}
+
+// 大量同类元素（如曲线采样点）共用一个提示：TipGroup 放一次，各元素用 GroupTip 带上各自的说明。
+export type TipGroupHandle = Tooltip.Handle<ReactNode>;
+export const createTipGroup = (): TipGroupHandle => Tooltip.createHandle<ReactNode>();
+
+export function TipGroup({ group }: { group: TipGroupHandle }) {
+  return <Tooltip.Root handle={group}>{({ payload }) => <TipPopup>{payload}</TipPopup>}</Tooltip.Root>;
+}
+
+export function GroupTip({ group, content, children }: { group: TipGroupHandle; content: ReactNode; children: ReactElement }) {
+  return <Tooltip.Trigger handle={group} payload={content} render={children} />;
 }
 
 // ── 按钮 ──
