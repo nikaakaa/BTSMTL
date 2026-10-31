@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace BTSMTL.Timeline
 {
@@ -6,6 +7,52 @@ namespace BTSMTL.Timeline
     {
         ClipNormalized,
         SourceSeconds
+    }
+
+    public enum TimelineCurveChannelRole : byte
+    {
+        Value = 0,
+        Weight = 1,
+        EaseIn = 2,
+        EaseOut = 3
+    }
+
+    // 采样片段的权重与缓动曲线：Unity 曲线目录与 .NET 作者查询共用同一份通道定义。
+    // Member 是片段上存储该曲线的字段；默认曲线是从 (0, DefaultStart) 到 (1, DefaultEnd) 的直线。
+    public sealed class TimelineSampledCurveChannel
+    {
+        public static readonly TimelineSampledCurveChannel Weight =
+            new(".weight", "WeightCurve", "Weight", TimelineCurveChannelRole.Weight, 120, 211, 151, 1f, 1f);
+        public static readonly TimelineSampledCurveChannel EaseIn =
+            new(".ease-in", "EaseInCurve", "Ease In", TimelineCurveChannelRole.EaseIn, 93, 189, 141, 0f, 1f);
+        public static readonly TimelineSampledCurveChannel EaseOut =
+            new(".ease-out", "EaseOutCurve", "Ease Out", TimelineCurveChannelRole.EaseOut, 226, 165, 79, 0f, 1f);
+        public static readonly IReadOnlyList<TimelineSampledCurveChannel> All = new[] { Weight, EaseIn, EaseOut };
+
+        TimelineSampledCurveChannel(string suffix, string member, string displayName, TimelineCurveChannelRole role,
+            byte red, byte green, byte blue, float defaultStart, float defaultEnd)
+        {
+            Suffix = suffix;
+            Member = member;
+            DisplayName = displayName;
+            Role = role;
+            Red = red;
+            Green = green;
+            Blue = blue;
+            DefaultStart = defaultStart;
+            DefaultEnd = defaultEnd;
+        }
+
+        public string Suffix { get; }
+        public string Member { get; }
+        public string DisplayName { get; }
+        public TimelineCurveChannelRole Role { get; }
+        public byte Red { get; }
+        public byte Green { get; }
+        public byte Blue { get; }
+        public float DefaultStart { get; }
+        public float DefaultEnd { get; }
+        public TimelineCurveValueDomain ValueDomain => TimelineCurveValueDomain.Bounded(0f, 1f);
     }
 
     public readonly struct TimelineCurveChannelId : IEquatable<TimelineCurveChannelId>
