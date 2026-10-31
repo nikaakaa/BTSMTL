@@ -201,14 +201,16 @@ namespace BTSMTL.Graphs
         public override void DisconnectPort(Port port) =>
             Authoring.Disconnect(port, connection => base.RemoveConnection(connection, false));
 
-        public override List<Node> DuplicateNodes(List<Node> nodes, Vector2 position = default)
-        {
-            List<Node> result = null;
-            EditAuthoring("复制图节点", () => result = base.DuplicateNodes(
+        public override List<Node> DuplicateNodes(List<Node> nodes, Vector2 position = default) =>
+            m_Host.DuplicateNodes(this, nodes, position);
+
+        public List<Node> DuplicateNodeStructure(List<Node> nodes, Vector2 position = default) =>
+            base.DuplicateNodes(
                 nodes.Where(node => node is not BtsmtlMacroInputNode && node is not BtsmtlMacroOutputNode).ToList(),
-                position));
-            return result;
-        }
+                position);
+
+        public override bool HandleEditorCommand(string command, Vector2 position) =>
+            m_Host.HandleEditorCommand(this, command, position);
 
         public override void RenameNode(Node node, string name) =>
             EditAuthoring("修改图节点名称", () => node.name = name);

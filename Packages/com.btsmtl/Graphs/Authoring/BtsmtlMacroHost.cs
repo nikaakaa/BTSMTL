@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 #if UNITY_EDITOR
 using FlowCanvas;
+using NodeCanvas.Framework;
 using UnityEditor;
 #endif
 
@@ -30,6 +31,15 @@ namespace BTSMTL.Graphs
             FlowCanvas.Port context, UnityEngine.Object instance) { }
         // 新建子图的出入口锚点已创建；宿主领域可按自身作者合同配置锚点身份。
         public virtual void OnMacroCreated(BtsmtlMacroGraph macro) { }
+
+        public virtual List<Node> DuplicateNodes(BtsmtlMacroGraph macro, List<Node> nodes, Vector2 position)
+        {
+            List<Node> result = null;
+            macro.EditAuthoring("复制图节点", () => result = macro.DuplicateNodeStructure(nodes, position));
+            return result;
+        }
+
+        public virtual bool HandleEditorCommand(BtsmtlMacroGraph macro, string command, Vector2 position) => false;
 
         public virtual BtsmtlMacroGraph CreatePrivateMacro(FlowGraph owner, string name)
         {
