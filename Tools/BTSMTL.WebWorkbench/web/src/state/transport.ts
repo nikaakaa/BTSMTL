@@ -44,6 +44,17 @@ function moveCursor(frameIndex: number) {
   if (index !== getState().frameIndex || getState().hostFrame === null) writeCursor(index);
 }
 
+async function readTime(context: Timebase, index: number, signal: AbortSignal) {
+  const known = context.frames.get(index);
+  if (known) return known;
+  const page = await playerApi.frames(context.runId, index, 1, signal);
+  signal.throwIfAborted();
+  const frame = page.items[0];
+  const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
+  context.frames.set(index, entry);
+  return entry;
+}
+
 async function seekTime(seconds: number) {
   const { runId, generation, summary } = getState();
   const context = timebase;
@@ -54,16 +65,7 @@ async function seekTime(seconds: number) {
   stopReview();
   timeSeek?.abort();
   const controller = timeSeek = new AbortController();
-  const at = async (index: number) => {
-    const known = context.frames.get(index);
-    if (known) return known;
-    const page = await playerApi.frames(runId, index, 1, controller.signal);
-    controller.signal.throwIfAborted();
-    const frame = page.items[0];
-    const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
-    context.frames.set(index, entry);
-    return entry;
-  };
+  const at = (index: number) => readTime(context, index, controller.signal);
   try {
     let first = 0, last = summary.frameCount - 1;
     while (first < last) {
@@ -181,8 +183,14 @@ export const transport = {
   },
 
   duration(): number | null {
-    const metadata = getState().archiveMetadata;
-    return metadata ? (metadata.lastRecordedSdkFrame - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate : null;
+    const first = transport.secondsAt(0), last = transport.secondsAt(frameCount() - 1);
+    return first === null || last === null ? null : last - first;
+  },
+
+  async readBounds(context: Timebase, count: number, signal: AbortSignal) {
+    await readTime(context, 0, signal);
+    await readTime(context, count - 1, signal);
+    signal.throwIfAborted();
   },
 
   // 读取路线后由运行服务登记帧序号与宿主帧、秒数的对应；cursor 同步补齐。

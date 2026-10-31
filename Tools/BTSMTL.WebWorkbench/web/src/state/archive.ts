@@ -306,7 +306,14 @@ export const archive = {
       runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,
         metadataAvailability: summary.availability, archiveCurves: curves.items, curveAvailability: curves.availability });
       runActions.setSummary(generation, summary, true);
-      if (summary.frameCount) transport.place(Math.min(requestedFrame, summary.frameCount - 1));
+      if (summary.frameCount) {
+        transport.place(Math.min(requestedFrame, summary.frameCount - 1));
+        void transport.readBounds({ runId: jobId, frames: timebase }, summary.frameCount, controller.signal).then(() => {
+          if (isCurrent(generation)) transport.setTimebase(jobId, timebase);
+        }, error => {
+          if (isCurrent(generation)) consoleActions.error('archive-time', error);
+        });
+      }
       archive.loadFrame();
     } catch (error) {
       if (!isCurrent(generation)) return;
