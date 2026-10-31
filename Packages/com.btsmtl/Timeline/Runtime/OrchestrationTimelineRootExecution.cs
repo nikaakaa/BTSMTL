@@ -206,14 +206,16 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             m_CurrentPresentation = frame;
             m_Bindings.SamplePresentation(in frame);
-            foreach (TimelineRuntimeTreeClipRequest tree in frame.Operations.TreeClips)
+            for (int index = 0; index < frame.Operations.TreeClips.Count; index++)
             {
+                TimelineRuntimeTreeClipRequest tree = frame.Operations.TreeClips[index];
                 m_CurrentTree = tree;
                 OrchestrationTimelineInvocationFacts invocation = m_Root.Entries.CreatePresentationInvocation(in frame, in tree);
                 RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, in stopContext), in invocation);
             }
-            foreach (TimelineRuntimePresentationEvent marker in frame.Events)
+            for (int index = 0; index < frame.Events.Count; index++)
             {
+                TimelineRuntimePresentationEvent marker = frame.Events[index];
                 OrchestrationTimelineInvocationFacts invocation = m_Root.Entries.CreatePresentationInvocation(in frame, in marker);
                 RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, in stopContext), in invocation);
             }
