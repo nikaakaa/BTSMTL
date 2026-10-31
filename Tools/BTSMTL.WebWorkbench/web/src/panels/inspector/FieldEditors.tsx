@@ -11,7 +11,7 @@ import {
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Fold } from '../../ui/blocks';
-import { Button, Checkbox, NumberInput, Select, TextInput } from '../../ui/controls';
+import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import styles from './inspector.module.css';
@@ -71,7 +71,7 @@ function IdentityList({ id }: { id: string }) {
 // ── 基本输入 ──
 
 function Row({ label, tip, children }: { label: string; tip?: string; children: ReactNode }) {
-  return <div className={styles.field}><label title={tip ?? label}>{label}</label><div className={styles.editor}>{children}</div></div>;
+  return <div className={styles.field}><FieldLabel label={label} tip={tip} /><div className={styles.editor}>{children}</div></div>;
 }
 
 // 文本：失焦或回车提交；空文本按存储类型写空字符串或 null。
@@ -288,7 +288,10 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
       <Fold title="节点" defaultOpen>
         <IdentityList id={listId} />
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
-        {issues.map((issue, index) => <div key={index} className={styles.issue} title={issue.path}>{issue.path ? `${issue.path}：` : ''}{issue.message}</div>)}
+        {issues.map((issue, index) => {
+          const text = `${issue.path ? `${issue.path}：` : ''}${issue.message}`;
+          return <Tip key={index} name={text}><div className={styles.issue} data-name>{text}</div></Tip>;
+        })}
         {!description && !issues.length && <div className={styles.note}>读取字段</div>}
         {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}

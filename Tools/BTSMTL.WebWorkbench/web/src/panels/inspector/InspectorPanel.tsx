@@ -17,7 +17,7 @@ import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimeline
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { Empty, Fold, IdentityFold } from '../../ui/blocks';
-import { Button, NumberInput, ObjectField } from '../../ui/controls';
+import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
@@ -102,15 +102,17 @@ function Head({ icon, name, sub }: { icon?: ReactNode; name: ReactNode; sub?: Re
 function Value({ label, value, mono = true }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className={styles.field}>
-      <label title={label}>{label}</label>
-      <span className={`${styles.box} ${mono ? styles.mono : ''}`} title={typeof value === 'string' ? value : undefined}>{value}</span>
+      <FieldLabel label={label} />
+      <Tip name={typeof value === 'string' ? value : undefined}>
+        <span className={`${styles.box} ${mono ? styles.mono : ''}`} data-name>{value}</span>
+      </Tip>
     </div>
   );
 }
 
 // 引用字段：照 Unity 对象引用框，点击在节点图或 Timeline 面板打开所引用的对象。
 function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNode; kind: string; tip: string; onOpen(): void }) {
-  return <div className={styles.field}><label title={label}>{label}</label><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
+  return <div className={styles.field}><FieldLabel label={label} /><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
 }
 
 function openGraph(graph: GraphDefinition) {
@@ -270,11 +272,13 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           {ports.map(port => {
             const sample = samples.filter(item => item.portId === port.id && item.direction === port.direction).at(-1);
             return (
-              <div key={`${port.direction}:${port.id}`} className={styles.listRow} title={sample ? `${sample.valueType} · ${sample.sequence}` : undefined}>
+              <Tip key={`${port.direction}:${port.id}`} content={sample && `${sample.valueType} · ${sample.sequence}`}>
+              <div className={styles.listRow}>
                 {port.isTrigger ? <i className={styles.exec} /> : <i className={styles.dot} style={{ ['--pc' as string]: portColor(sample?.valueType) }} />}
                 <span className={styles.listText}>{port.displayName}{port.direction === 'input' ? '' : ' →'}</span>
                 <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample?.value ?? ''}</span>
               </div>
+              </Tip>
             );
           })}
         </div>
@@ -330,7 +334,7 @@ function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
   const target = id ? graphs?.find(item => item.id === id && item.programId === owner.programId) ?? null : null;
   return (
     <div className={styles.field}>
-      <label title={label}>{label}</label>
+      <FieldLabel label={label} />
       <div className={styles.actions}>
         {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => onCreate?.()}>{createText}</Button> : (
           <>
@@ -463,13 +467,14 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
               const active = frame?.route?.active.some(location => location.call !== null &&
                 callKey(location.call) === callKey(item.call) && location.documentId === timeline.documentId && location.elementId === clip.id);
               return (
-                <div key={callKey(item.call)} className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
-                  title="跳到已读取的首条活动记录"
+                <Tip key={callKey(item.call)} content="跳到已读取的首条活动记录">
+                <div className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
                   onClick={() => void transport.seekTime(item.first.seconds)}
                   onKeyDown={event => { if (event.key === 'Enter') void transport.seekTime(item.first.seconds); }}>
                   <span className={styles.listText}>{item.call.actorId} · {item.count} 帧记录{active ? ' · 当前帧活动' : ''}</span>
                   <span className={styles.listValue} data-sampled={active || undefined}>{item.first.seconds.toFixed(3)} — {item.last.seconds.toFixed(3)} s</span>
                 </div>
+                </Tip>
               );
             })}
           </div>
@@ -675,12 +680,17 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
       </Fold>
       <Fold title="写入" defaultOpen>
         <div className={styles.list}>
-          {writes.map((write, index) => (
-            <div key={index} className={styles.listRow} title={write.fields.map(field => `${field.displayName}=${field.value}`).join('\n')}>
-              <span className={styles.listText}>{write.keyId} · {write.fields.map(field => `${field.displayName}=${field.value}`).join(' · ')}</span>
-              <span className={styles.listValue}>{write.seconds.toFixed(3)} s</span>
-            </div>
-          ))}
+          {writes.map((write, index) => {
+            const text = `${write.keyId} · ${write.fields.map(field => `${field.displayName}=${field.value}`).join(' · ')}`;
+            return (
+              <Tip key={index} name={text}>
+                <div className={styles.listRow}>
+                  <span className={styles.listText} data-name>{text}</span>
+                  <span className={styles.listValue}>{write.seconds.toFixed(3)} s</span>
+                </div>
+              </Tip>
+            );
+          })}
         </div>
       </Fold>
       <Identity extra={[

@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from '../../state/skillJson';
-import { Button, NumberInput, Select } from '../../ui/controls';
+import { Button, FieldLabel, NumberInput, Select } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
 import styles from './inspector.module.css';
 
@@ -70,7 +70,7 @@ export function CurveEditor({ label, value, onSet }: { label: string; value: Jso
   const [drag, setDrag] = useState<{ index: number; t: number; v: number; bounds: Bounds } | null>(null);
   if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof JsonFloat) {
     return (
-      <div className={styles.field}><label title={label}>{label}</label>
+      <div className={styles.field}><FieldLabel label={label} />
         <div className={styles.editor}><Button variant="ghost" onClick={() => onSet(defaultCurve())}>创建曲线</Button></div>
       </div>
     );

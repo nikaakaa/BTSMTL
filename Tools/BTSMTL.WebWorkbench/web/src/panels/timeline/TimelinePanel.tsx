@@ -1340,7 +1340,7 @@ function GroupToggle({ open, name, meta, tip, now, disabled, onToggle, onDoubleC
   onToggle(): void; onDoubleClick?(): void;
 }) {
   return (
-    <Tip name={tip ? undefined : name} content={tip && `${name}\n${tip}`}>
+    <Tip name={name} content={tip}>
       <button className={styles.groupToggle} onClick={onToggle} onDoubleClick={onDoubleClick} aria-expanded={open} disabled={disabled}>
         <span className={styles.fold}><FoldoutIcon open={open} /></span>
         <span className={styles.groupName} data-now={now || undefined} data-name>{name}</span>
@@ -1360,7 +1360,7 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
   const label = <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span><span className={styles.name} data-name>{name}</span></>;
   const head = <>
     {rename ? <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span>{rename}</>
-      : <Tip name={tip ? undefined : name} content={tip && `${name}\n${tip}`}>
+      : <Tip name={name} content={tip}>
         {onSelect ? <button className={styles.headSelect} onClick={onSelect} onDoubleClick={onRename}>{label}</button>
           : <span className={styles.headSelect}>{label}</span>}
       </Tip>}
@@ -1790,8 +1790,7 @@ function CurveParameters({ row, elements, mixes, author, height }: {
   return (
     <div className={styles.curveParams}>
       {parameters.map(parameter => (
-        <Tip key={parameter.id} name={parameter.reference ? undefined : parameter.name}
-          content={parameter.reference && `${parameter.name}\n参考：${parameter.reference}，只读`}>
+        <Tip key={parameter.id} name={parameter.name} content={parameter.reference && `参考：${parameter.reference}，只读`}>
           <button className={styles.curveParam} aria-pressed={parameter === inspected} style={{ ['--cc' as string]: parameter.color }}
             onClick={() => view.inspect(row.id, parameter === inspected ? null : parameter.id)}>
             <span className={styles.curveParamName} data-name>{parameter.name}</span>

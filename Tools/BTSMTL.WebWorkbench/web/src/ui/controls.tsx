@@ -14,8 +14,8 @@ import { usePortalContainer } from './portal';
 const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
 // ── 悬停提示：工作台唯一的悬停提示，同一外观与时机；不用系统 title ──
-// 两种用法：content 为解释或不可用原因，不写进面板正文；name 为补全名字，只在名字被截断或没写出来时提示完整名字。
-// 名字所在元素标 data-name（触发元素自身或其内部）；没有该元素视为没写出来。
+// content 为解释或不可用原因，不写进面板正文；name 为元素的名字：只给 name 时为补全名字，名字被截断或没写出来时才提示，
+// 同时给 content 时提示名字加说明。名字所在元素标 data-name（触发元素自身或其内部）；没有该元素视为没写出来。
 // 第一次悬停等 500 毫秒，之后 400 毫秒内移到相邻元素立即显示（Tooltip.Provider 的分组）。
 
 export function TipProvider({ children }: { children: ReactNode }) {
@@ -39,14 +39,19 @@ function TipPopup({ children }: { children: ReactNode }) {
 }
 
 export function Tip({ content, name, children }: { content?: ReactNode; name?: string; children: ReactElement }) {
-  const shown = name ?? content;
-  if (shown === null || shown === undefined || shown === '') return children;
+  const explained = content !== null && content !== undefined && content !== '';
+  if (!explained && !name) return children;
   return (
-    <Tooltip.Root onOpenChange={name === undefined ? undefined : (open, details) => { if (open && !nameCut(details.trigger)) details.cancel(); }}>
+    <Tooltip.Root onOpenChange={explained ? undefined : (open, details) => { if (open && !nameCut(details.trigger)) details.cancel(); }}>
       <Tooltip.Trigger render={children} />
-      <TipPopup>{shown}</TipPopup>
+      <TipPopup>{name && explained ? <>{name}{'\n'}{content}</> : explained ? content : name}</TipPopup>
     </Tooltip.Root>
   );
+}
+
+// 表单字段名：写不下时悬停补全；有 tip 时提示名字加说明。
+export function FieldLabel({ label, tip }: { label: string; tip?: string }) {
+  return <Tip name={label} content={tip}><label data-name>{label}</label></Tip>;
 }
 
 // 大量同类元素（如曲线采样点）共用一个提示：TipGroup 放一次，各元素用 GroupTip 带上各自的说明。
