@@ -219,7 +219,7 @@ Load 的 `content` 是二选一：
 
 | 公共类型 | 字段与消费要求 |
 | --- | --- |
-| `PreviewExecutionIdentity` | `kind,identity,playerBuildId?,editorAssemblyMvid?`；后两项明确可为 null。保留真实 Player 或 Editor 执行身份，不为 Editor 制造构建 ID。 |
+| `PreviewExecutionIdentity` | `kind?,identity?,playerBuildId?,editorAssemblyMvid?`；四项均明确可为 null。旧档案未记录的执行类型／身份显示不可用，原因由 Host 的 availability 提供；不得以作业号、构建号或默认 kind 推导。保留现代记录的真实 Player／Editor 身份，不为 Editor 制造构建 ID。 |
 | `PreviewPosition` | `hostFrame`；原 Host 查询／定位 key。命令与采样使用同一形状，不包含原生时钟 kind 或另一套 request。路线与输入缓存按正式记录序号排序，历史路线按实际 seconds 截止，不用查询 key 做整数运算。 |
 | `PreviewTransportAction` | `action,available,reason,target?`；target 明确可为 null，资格和前后／首末目标由原 Host 提供。 |
 | `PreviewClock` | `position,seconds,positionDisplayName,requestedPosition?,fields`；请求位置与实际位置分开，显示字段直接取 Host，seconds 使用所属真实时间轴。 |

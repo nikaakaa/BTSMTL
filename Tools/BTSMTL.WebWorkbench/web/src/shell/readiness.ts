@@ -91,8 +91,8 @@ function evaluate() {
   if (frame.consistency) data.previewConsistency = frame.consistency.value;
   data.previewContent = state.summary.contentRevision;
   const execution = state.summary.execution;
-  data.previewExecutionKind = execution.kind;
-  data.previewExecutionIdentity = execution.identity;
+  if (execution.kind !== null) data.previewExecutionKind = execution.kind;
+  if (execution.identity !== null) data.previewExecutionIdentity = execution.identity;
   if (execution.playerBuildId !== null) data.previewPlayerBuild = execution.playerBuildId;
   if (execution.editorAssemblyMvid !== null) data.previewEditorAssemblyMvid = execution.editorAssemblyMvid;
   data.previewSceneRevision = state.summary.sceneRevision;

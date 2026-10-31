@@ -66,7 +66,7 @@ export const readPlayerHost = object({
 });
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
-const executionIdentity = object({ kind: text, identity: text, playerBuildId: nullable(text), editorAssemblyMvid: nullable(text) });
+const executionIdentity = object({ kind: nullable(text), identity: nullable(text), playerBuildId: nullable(text), editorAssemblyMvid: nullable(text) });
 const position = object({ hostFrame: text });
 export const readPreviewClock = object({ position, seconds: number, positionDisplayName: text,
   requestedPosition: nullable(position), fields: array(field) });

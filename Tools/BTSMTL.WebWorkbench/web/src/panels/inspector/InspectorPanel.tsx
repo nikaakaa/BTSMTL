@@ -158,7 +158,7 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   if (state.summary) {
     fields.push({ displayName: '运行', value: state.summary.runId }, { displayName: '内容修订', value: state.summary.contentRevision });
     const execution = state.summary.execution;
-    fields.push({ displayName: '执行类型', value: execution.kind }, { displayName: '执行身份', value: execution.identity });
+    fields.push({ displayName: '执行类型', value: execution.kind ?? '不可用' }, { displayName: '执行身份', value: execution.identity ?? '不可用' });
     if (execution.playerBuildId !== null) fields.push({ displayName: 'Player 构建', value: execution.playerBuildId });
     if (execution.editorAssemblyMvid !== null) fields.push({ displayName: 'Editor 程序集', value: execution.editorAssemblyMvid });
     if (state.hostFrame !== null) fields.push({ displayName: state.summary.frameDisplayName, value: state.hostFrame });

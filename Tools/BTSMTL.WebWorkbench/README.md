@@ -79,7 +79,7 @@
 - 运行：`data-preview-run`、`-frame`、`-frame-index`、`-consistency`、`-content`、`-rendered`、`-image-ready`。帧号与可选的一致性值直接取当前通用帧的 `hostFrame`、`consistency.value`，不要求逻辑通道；未提供一致性值时不写 `preview-consistency`。Timeline、节点图与 `panel` 指定的面板按当前帧实际绘制完成后一次写入；`preview-rendered` 由逻辑视图按实际画出的内容填写。
 - 资源：`data-resource-identity`、`-revision`、`-library`、`-source`、`-time`、`-image-ready`，资源面板按指定时刻绘制后写入。
 
-运行同时报告 `data-preview-execution-kind`、`-execution-identity`，仅当正式来源具有构建或 Editor 程序集身份时报告 `-player-build`、`-editor-assembly-mvid`。3C `Tools/CharacterWorkbench/CapturePreview.ps1` 用无头浏览器打开上述地址并核对其所需属性。
+运行按实际已记录的来源分别报告 `data-preview-execution-kind`、`-execution-identity`、`-player-build`、`-editor-assembly-mvid`；各项为空时不写对应属性。3C `Tools/CharacterWorkbench/CapturePreview.ps1` 用无头浏览器打开上述地址并核对其所需属性。
 
 ## 接口与职责
 
