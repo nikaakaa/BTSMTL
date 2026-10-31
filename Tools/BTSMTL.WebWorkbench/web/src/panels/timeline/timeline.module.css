@@ -1012,6 +1012,30 @@
   stroke: #fff;
 }
 
+/* 同一时刻叠着的标记数：类别色小圆角块白字，在名牌开头；名牌放不下时单独贴在细线右侧 */
+.markerCount {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: var(--tc);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  vertical-align: 1px;
+}
+
+.markerCount[data-alone] {
+  position: absolute;
+  top: 9px;
+  margin: 0;
+}
+
 /* 事件名牌：标记与窄片段共用；深色半透明圆角底、细亮边、浅灰字，行内竖直居中，压在轨道底色上不抢片段；
    标记的名牌把圆点包在左端；悬停提亮，选中同片段（选中底色、白框、白字），片段离开本段后随之压暗 */
 .eventLabel {
