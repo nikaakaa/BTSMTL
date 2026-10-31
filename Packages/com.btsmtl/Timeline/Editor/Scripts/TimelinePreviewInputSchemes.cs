@@ -1,45 +1,35 @@
-using System;
 using System.Collections.Generic;
 using BTSMTL.Authoring.Graph;
-using BTSMTL.Graphs;
 using UnityEditor;
 using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
 {
+    public interface ITimelinePreviewInputSchemeStorage
+    {
+        TimelinePreviewInputSchemes Find(TimelinePreviewRootIdentity root);
+        void AddSchemes(TimelineAsset entry, string label, TimelinePreviewInputSchemes schemes);
+        void AddInputTimeline(TimelinePreviewInputSchemes schemes, TimelineAsset timeline);
+        void RemoveInputTimeline(TimelineAsset timeline);
+        void ReleaseUnreferencedGraphs(TimelinePreviewInputSchemes schemes);
+        string InputPath(TimelinePreviewInputSchemes schemes);
+        bool OwnsInputTimeline(TimelineData timeline);
+    }
+
     // 一个预览根的具名输入方案：编排根按根程序的正式身份归属（Owner），独立 Timeline 按自身作者身份归属（Timeline）；
-    // 可提交，不参与运行时。资产文件放在哪里、叫什么都不影响归属。
+    // 可提交，不参与运行时。正式文档放在哪里、叫什么都不影响归属。
     public sealed partial class TimelinePreviewInputSchemes : ScriptableObject
     {
         public TimelineAssetPreviewPreferences Current => Schemes[Mathf.Clamp(Selected, 0, Schemes.Count - 1)];
-
-        public void ReleaseUnreferencedGraphs()
-        {
-            var referenced = new HashSet<UnityEngine.Object>();
-            foreach (TimelineAssetPreviewPreferences scheme in Schemes)
-                if (scheme.InputTimeline)
-                    foreach (Track track in scheme.InputTimeline.Data.Tracks)
-                    {
-                        foreach (Clip clip in track.Clips)
-                            if (clip is TreeClip tree)
-                                referenced.Add(tree.AssetTree);
-                        foreach (TimelineMarker marker in track.Markers)
-                            referenced.Add(marker.Graph);
-                    }
-            foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(this)))
-                if (asset is ITimelineTreeGraphAsset && !referenced.Contains(asset))
-                    Undo.DestroyObjectImmediate(asset);
-        }
     }
 
-    // 当前预览根输入方案的唯一存储与操作：第一次改动时在根入口 Timeline 旁创建方案资产，此后改动写入该资产；
-    // 所有操作只作用于本根。
+    // 当前预览根输入方案的唯一操作入口；正式文档提供存储，所有操作只作用于本根。
     public sealed class TimelinePreviewInputSchemeStore
     {
-        const string SearchFilter = "t:" + nameof(TimelinePreviewInputSchemes);
         TimelinePreviewRootIdentity m_Root;
         TimelineAsset m_Source;
         string m_Label;
+        ITimelinePreviewInputSchemeStorage m_Storage;
         TimelinePreviewInputSchemes m_Asset;
         TimelineAssetPreviewPreferences m_Default;
         string m_InputsFingerprint;
@@ -51,7 +41,7 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<TimelineAssetPreviewPreferences> All =>
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
 
-        public string Path => m_Asset != null ? AssetDatabase.GetAssetPath(m_Asset) : string.Empty;
+        public string Path => m_Asset != null ? m_Storage.InputPath(m_Asset) : string.Empty;
         public TimelinePreviewRootIdentity Root => m_Root;
 
         public void Load(TimelinePreviewRoot root)
@@ -60,13 +50,14 @@ namespace BTSMTL.Timeline.Editor
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;
-            m_Asset = Find(root.Identity);
+            m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringSave.Document(root.Entry);
+            m_Asset = m_Storage.Find(root.Identity);
             m_Default = new TimelineAssetPreviewPreferences();
             m_InputsFingerprint = null;
             m_ReadScheme = null;
         }
 
-        // 当前方案已被修改：尚无方案资产时创建，并标记待保存。
+        // 当前方案已被修改：尚无方案时由正式文档创建，并标记待保存。
         public void MarkChanged()
         {
             if (m_Asset == null)
@@ -106,7 +97,7 @@ namespace BTSMTL.Timeline.Editor
                 copy.InputTimeline = UnityEngine.Object.Instantiate(Current.InputTimeline);
                 copy.InputTimeline.Data.RegenerateAuthoringIdentities();
                 copy.InputTimeline.name = name + " 输入";
-                AssetDatabase.AddObjectToAsset(copy.InputTimeline, m_Asset);
+                m_Storage.AddInputTimeline(m_Asset, copy.InputTimeline);
             }
             m_Asset.Schemes.Add(copy);
             m_Asset.Selected = m_Asset.Schemes.Count - 1;
@@ -114,7 +105,7 @@ namespace BTSMTL.Timeline.Editor
             Save();
         }
 
-        // 当前方案的输入 Timeline；尚无时在方案资产内创建。
+        // 当前方案的输入 Timeline；尚无时加入所属正式文档。
         public TimelineAsset EnsureInputTimeline()
         {
             MarkChanged();
@@ -128,7 +119,7 @@ namespace BTSMTL.Timeline.Editor
             var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
             timeline.Data.EnsureAuthoringIdentities();
             timeline.name = current.Name + " 输入";
-            AssetDatabase.AddObjectToAsset(timeline, m_Asset);
+            m_Storage.AddInputTimeline(m_Asset, timeline);
             current.InputTimeline = timeline;
             EditorUtility.SetDirty(m_Asset);
             Save();
@@ -136,10 +127,9 @@ namespace BTSMTL.Timeline.Editor
             return timeline;
         }
 
-        // 输入 Timeline 是输入方案资产的子资产；按所在资产判断，不按名称。
         public static bool OwnsInputTimeline(TimelineData timeline) =>
             timeline?.SerializedOwner is TimelineAsset asset &&
-            AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(asset)) is TimelinePreviewInputSchemes;
+            ((ITimelinePreviewInputSchemeStorage)TimelineAuthoringSave.Document(asset)).OwnsInputTimeline(timeline);
 
         // 输入 Timeline 或其引用的图改动后经宿主重新读出；返回读出结果是否变化。
         public bool RefreshInputs(ITimelineAssetPreviewProvider provider, IReadOnlyList<GraphHostInputDescriptor> declared)
@@ -190,47 +180,21 @@ namespace BTSMTL.Timeline.Editor
             Undo.RegisterCompleteObjectUndo(m_Asset, "删除输入方案");
             int index = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
             if (m_Asset.Schemes[index].InputTimeline)
-                Undo.DestroyObjectImmediate(m_Asset.Schemes[index].InputTimeline);
+                m_Storage.RemoveInputTimeline(m_Asset.Schemes[index].InputTimeline);
             m_Asset.Schemes.RemoveAt(index);
             m_Asset.Selected = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
-            m_Asset.ReleaseUnreferencedGraphs();
+            m_Storage.ReleaseUnreferencedGraphs(m_Asset);
             EditorUtility.SetDirty(m_Asset);
             Save();
             return true;
         }
 
-        static TimelinePreviewInputSchemes Find(TimelinePreviewRootIdentity root)
-        {
-            TimelinePreviewInputSchemes found = null;
-            foreach (string guid in AssetDatabase.FindAssets(SearchFilter))
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
-                {
-                    if (asset is not TimelinePreviewInputSchemes schemes ||
-                        !string.Equals(root.Owner, schemes.Owner, StringComparison.Ordinal) ||
-                        !string.Equals(root.Timeline, schemes.Timeline, StringComparison.Ordinal))
-                        continue;
-                    if (found != null)
-                        throw new InvalidOperationException(
-                            $"预览根有两份输入方案：{AssetDatabase.GetAssetPath(found)} 与 {path}；请删除其中一份。");
-                    found = schemes;
-                }
-            }
-            return found;
-        }
-
         TimelinePreviewInputSchemes Create()
         {
-            string path = AssetDatabase.GetAssetPath(m_Source);
-            if (path.Length == 0)
-                throw new InvalidOperationException($"Timeline '{m_Source.name}' 不在资产中，无法保存输入方案。");
-            string directory = System.IO.Path.GetDirectoryName(path)!.Replace('\\', '/');
             var schemes = ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
             schemes.Owner = m_Root.Owner;
             schemes.Timeline = m_Root.Timeline;
-            AssetDatabase.CreateAsset(schemes,
-                AssetDatabase.GenerateUniqueAssetPath($"{directory}/{m_Label}.PreviewInputs.asset"));
+            m_Storage.AddSchemes(m_Source, m_Label, schemes);
             return schemes;
         }
     }
