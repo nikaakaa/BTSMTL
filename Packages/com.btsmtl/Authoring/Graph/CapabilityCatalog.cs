@@ -64,7 +64,6 @@ namespace BTSMTL.Authoring.Graph
         readonly HashSet<GraphAuthoringDocumentRoleId> m_AllowedDocumentRoles;
         readonly Dictionary<GraphAuthoringFieldId, GraphAuthoringFieldDescriptor> m_Fields;
         readonly Dictionary<GraphAuthoringPortId, GraphAuthoringPortDescriptor> m_FixedPorts;
-        readonly IReadOnlyList<GraphAuthoringPortVariantDescriptor> m_PortVariants;
 
         public GraphAuthoringCapabilityDescriptor(
             GraphAuthoringCapabilityId capabilityId,
@@ -84,8 +83,6 @@ namespace BTSMTL.Authoring.Graph
             bool systemOwned = false,
             string anchorId = "",
             string executionDomainId = "",
-            IReadOnlyList<GraphAuthoringPortVariantDescriptor> portVariants = null,
-            GraphAuthoringDynamicPortSource dynamicPortSource = GraphAuthoringDynamicPortSource.None,
             OrchestrationExtensionDefinition? runtimeExtension = null)
         {
             CapabilityId = capabilityId.IsValid ? capabilityId : throw new ArgumentException("Capability identity is missing.", nameof(capabilityId));
@@ -98,11 +95,6 @@ namespace BTSMTL.Authoring.Graph
             Color = color;
             m_Fields = Index(fields ?? Array.Empty<GraphAuthoringFieldDescriptor>(), value => value.FieldId, "field");
             m_FixedPorts = Index(fixedPorts ?? Array.Empty<GraphAuthoringPortDescriptor>(), value => value.PortId, "port");
-            DynamicPortSource = dynamicPortSource;
-            m_PortVariants = ValidatePortVariants(
-                portVariants ?? Array.Empty<GraphAuthoringPortVariantDescriptor>());
-            PortShape = new GraphAuthoringPortShapeDefinition(CapabilityId, m_FixedPorts.Values,
-                m_PortVariants);
             ChildSurfaces = childSurfaces ?? Array.Empty<GraphAuthoringChildSurfaceDescriptor>();
             Commands = commands ?? Array.Empty<GraphAuthoringCommandDescriptor>();
             IconName = iconName ?? string.Empty;
@@ -137,9 +129,6 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringColor Color { get; }
         public IReadOnlyCollection<GraphAuthoringFieldDescriptor> Fields => m_Fields.Values;
         public IReadOnlyCollection<GraphAuthoringPortDescriptor> FixedPorts => m_FixedPorts.Values;
-        public GraphAuthoringDynamicPortSource DynamicPortSource { get; }
-        public IReadOnlyList<GraphAuthoringPortVariantDescriptor> PortVariants => m_PortVariants;
-        public GraphAuthoringPortShapeDefinition PortShape { get; }
         public IReadOnlyList<GraphAuthoringChildSurfaceDescriptor> ChildSurfaces { get; }
         public IReadOnlyList<GraphAuthoringCommandDescriptor> Commands { get; }
         public string IconName { get; }
@@ -167,35 +156,6 @@ namespace BTSMTL.Authoring.Graph
                     throw new InvalidOperationException($"Capability contains duplicate {label} identity '{identity}'.");
             }
             return result;
-        }
-
-        IReadOnlyList<GraphAuthoringPortVariantDescriptor> ValidatePortVariants(
-            IReadOnlyList<GraphAuthoringPortVariantDescriptor> variants)
-        {
-            if (variants.Count == 0)
-                return Array.Empty<GraphAuthoringPortVariantDescriptor>();
-            var ids = new HashSet<string>(StringComparer.Ordinal);
-            GraphAuthoringPortVariantCondition discriminator = variants[0]?.When ??
-                throw new ArgumentException("Capability port variant is missing.", nameof(variants));
-            foreach (GraphAuthoringPortVariantDescriptor variant in variants)
-            {
-                if (variant == null || !ids.Add(variant.VariantId))
-                    throw new InvalidOperationException($"Capability '{CapabilityId}' contains a missing or duplicate port variant identity.");
-                if (!variant.When.FieldId.Equals(discriminator.FieldId) ||
-                    variant.When.ValueKind != discriminator.ValueKind)
-                {
-                    throw new InvalidOperationException($"Capability '{CapabilityId}' port variants must use one typed discriminator.");
-                }
-                foreach (GraphAuthoringPortDescriptor port in variant.Ports)
-                {
-                    if (m_FixedPorts.ContainsKey(port.PortId))
-                    {
-                        throw new InvalidOperationException(
-                            $"Capability '{CapabilityId}' port variant '{variant.VariantId}' overlaps fixed port '{port.PortId}'.");
-                    }
-                }
-            }
-            return variants.ToArray();
         }
     }
 

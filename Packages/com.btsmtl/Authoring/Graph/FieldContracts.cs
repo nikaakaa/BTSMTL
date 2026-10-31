@@ -265,23 +265,4 @@ namespace BTSMTL.Authoring.Graph
             };
         }
     }
-
-    public readonly struct GraphAuthoringTypedPropertyValue
-    {
-        public GraphAuthoringTypedPropertyValue(
-            GraphAuthoringFieldId fieldId,
-            GraphAuthoringFieldValueKind valueKind,
-            string canonicalValue)
-        {
-            FieldId = fieldId.IsValid
-                ? fieldId
-                : throw new ArgumentException("Typed property field identity is missing.", nameof(fieldId));
-            ValueKind = valueKind;
-            CanonicalValue = GraphAuthoringIdentity.Require(canonicalValue, nameof(canonicalValue));
-        }
-
-        public GraphAuthoringFieldId FieldId { get; }
-        public GraphAuthoringFieldValueKind ValueKind { get; }
-        public string CanonicalValue { get; }
-    }
 }
