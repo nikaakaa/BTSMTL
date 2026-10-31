@@ -166,8 +166,12 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   if (state.frame?.consistency) fields.push({ displayName: state.frame.consistency.displayName, value: state.frame.consistency.value });
   if (state.routeProtocol) fields.push({ displayName: '路线协议', value: state.routeProtocol });
   if (state.inputProtocol) fields.push({ displayName: '输入协议', value: state.inputProtocol });
-  for (const item of [...state.routeAvailability, ...state.graphAvailability, ...state.metadataAvailability, ...(state.frame?.route?.availability ?? [])])
-    if (gap(item)) fields.push({ displayName: `缺项 ${item.channel}`, value: item.reason || (item.available ? '不完整' : '不可用') });
+  for (const item of [...(state.summary?.availability ?? []), ...(state.frame?.availability ?? []),
+    ...state.routeAvailability, ...state.graphAvailability, ...state.metadataAvailability, ...(state.frame?.route?.availability ?? [])]) {
+    if (!gap(item)) continue;
+    const displayName = `缺项 ${item.channel}`, value = item.reason || (item.available ? '不完整' : '不可用');
+    if (!fields.some(field => field.displayName === displayName && field.value === value)) fields.push({ displayName, value });
+  }
   return <IdentityFold fields={fields} />;
 }
 
