@@ -793,7 +793,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
           </div>
           <Ruler bounds={bounds} origin={origin} rate={rate} marks={marks} seekAt={seekAt} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots}
+          onRangeChanged={onRangeChanged} />
         <div className={styles.footer}>
           <div className={styles.footHead} />
           <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
@@ -1061,8 +1062,9 @@ function Ruler({ bounds, origin, rate, marks, seekAt }: {
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
+function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots, onRangeChanged }: {
   rows: Row[];
+  onRangeChanged(update: (previous: Range) => Range): void;
   collapsed: string[];
   toggle(id: string): void;
   toggleCurves(id: string): void;
@@ -1085,7 +1087,34 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
       selectionActions.selectTimelineClips(panelId, []);
   }, [selection, selectedClips, panelId]);
 
+  const { getValueFromScreenX } = useTimelineContext();
+  // 照 Slate 中键拖动：上下滚动轨道，左右平移可见时间范围；拖动中秒每像素不变。
+  const panDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const element = event.currentTarget;
+    element.setPointerCapture(event.pointerId);
+    const secondsPerPixel = (getValueFromScreenX(event.clientX + 100) - getValueFromScreenX(event.clientX)) / 100;
+    let lastX = event.clientX, lastY = event.clientY;
+    const move = (next: globalThis.PointerEvent) => {
+      const seconds = (lastX - next.clientX) * secondsPerPixel;
+      element.scrollTop += lastY - next.clientY;
+      lastX = next.clientX;
+      lastY = next.clientY;
+      if (seconds) onRangeChanged(previous => ({ start: previous.start + seconds, end: previous.end + seconds }));
+    };
+    const up = () => {
+      element.removeEventListener('pointermove', move);
+      element.removeEventListener('pointerup', up);
+      element.removeEventListener('pointercancel', up);
+      delete element.dataset.panning;
+    };
+    element.dataset.panning = '';
+    element.addEventListener('pointermove', move);
+    element.addEventListener('pointerup', up);
+    element.addEventListener('pointercancel', up);
+  };
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button === 1) { panDown(event); return; }
     const target = event.target as HTMLElement;
     if (event.button !== 0 || !target.closest('[data-lane]') || target.closest(`button, .${styles.curvePlot}, .${styles.clipCurves}`)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1145,6 +1174,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
 
   return (
     <div className={styles.rows} ref={scroller} tabIndex={-1} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
+      onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
       onKeyDown={event => {
         if ((event.target as HTMLElement).closest('input, textarea')) return;
         // A：显示全部（Frame All），不分作者与运行。

@@ -292,6 +292,10 @@
   background: var(--tl-sequence);
 }
 
+.rows[data-panning], .rows[data-panning] * {
+  cursor: grabbing !important;
+}
+
 .rows::-webkit-scrollbar {
   display: none;
 }
