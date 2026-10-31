@@ -66,6 +66,8 @@ namespace BTSMTL.Authoring.Graph
         public bool AuthoringVisible { get; set; } = true;
         public string VisibleWhenField { get; set; }
         public string VisibleWhenValue { get; set; }
+        // 字段兼作输入端口：端口 identity 取字段 identity，值类型取字段 CLR 类型，未连线取字段当前值。
+        public bool InputPort { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]

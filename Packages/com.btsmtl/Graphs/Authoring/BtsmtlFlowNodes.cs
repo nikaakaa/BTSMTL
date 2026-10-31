@@ -79,7 +79,7 @@ namespace BTSMTL.Graphs
     {
         protected override void RegisterPorts()
         {
-            foreach (GraphNodePortDeclaration port in DeclarePorts())
+            foreach (GraphNodePort port in GraphNodePortShapes.Of(this))
                 if (port.IsInput)
                     AddFlowInput(port.DisplayName, RejectAuthoringExecution, port.Id);
                 else

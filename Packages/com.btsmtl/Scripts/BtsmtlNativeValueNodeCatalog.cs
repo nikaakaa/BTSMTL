@@ -12,7 +12,7 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL
 {
-    public sealed class BtsmtlNativeValueNodeDefinition : IGraphNodePortsSource
+    public sealed class BtsmtlNativeValueNodeDefinition
     {
         internal BtsmtlNativeValueNodeDefinition(string nodeTypeName, GraphNativeValueKind contract)
         {
@@ -33,12 +33,19 @@ namespace BTSMTL
 
         public string Output(string nativeId) => Contract.Output(nativeId);
 
-        public GraphNodePorts DeclarePorts()
+        // 原生数值节点的端口由其运行合同决定。
+        public IReadOnlyList<GraphNodePort> Ports
         {
-            var ports = new GraphNodePorts();
-            foreach (KeyValuePair<string, string> input in Contract.Inputs)
-                ports.ValueIn(input.Key, input.Key, ValueType(Contract.ValuePorts.RequireInput(input.Value).FixedKind));
-            return ports.ValueOut("Value", "Value", ValueType(Contract.ValuePorts.RequireSelection(Output("Value")).FixedKind));
+            get
+            {
+                var ports = new List<GraphNodePort>();
+                foreach (KeyValuePair<string, string> input in Contract.Inputs)
+                    ports.Add(new GraphNodePort(GraphAuthoringPortDirection.Input, false, input.Key, input.Key,
+                        ValueType(Contract.ValuePorts.RequireInput(input.Value).FixedKind), ports.Count));
+                ports.Add(new GraphNodePort(GraphAuthoringPortDirection.Output, false, "Value", "Value",
+                    ValueType(Contract.ValuePorts.RequireSelection(Output("Value")).FixedKind), ports.Count));
+                return ports;
+            }
         }
 
         static string ValueType(SemanticValueKind kind) => kind switch
