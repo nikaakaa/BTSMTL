@@ -948,54 +948,66 @@
   pointer-events: none;
 }
 
-/* 标记（TimelineMarkerItem）：轨道顶部 9×16 的水滴，选中时变亮 */
+/* 标记（照 UE Sequencer 事件键，KeyRenderer）：12×12 菱形在行内居中；平时浅灰填充近黑描边，悬停全白，
+   选中为近黑填充、选中蓝描边并压在其它标记之上；未绑定（UE 无 Endpoint）只留轮廓、填充 20% 白 */
 .marker {
   all: unset;
   position: absolute;
   z-index: 3;
   display: flex;
-  margin-left: -5.5px;
+  margin-left: -6px;
   cursor: default;
 }
 
-/* 形状照 Slate DrawNativeMarker：浅灰填充、深色描边；选中白底蓝边 */
 .marker path {
-  fill: #c7c7c7;
-  stroke: #161616;
-  stroke-width: 1;
-  stroke-linejoin: round;
+  fill: #c0c0c0;
+  stroke: #0d0d0d;
+  stroke-width: 1.5;
+  stroke-linejoin: miter;
+}
+
+.marker[data-unbound] path {
+  fill: rgb(255 255 255 / 20%);
 }
 
 .marker:hover path {
-  fill: #e4e4e4;
+  fill: #fff;
+  stroke: #fff;
+}
+
+.marker[data-selected] {
+  z-index: 4;
 }
 
 .marker[data-selected] path {
-  fill: #fff;
-  stroke: #4599ff;
-  stroke-width: 1.5;
+  fill: #0d0d0d;
+  stroke: #18a0fb;
+  stroke-width: 2;
 }
 
-/* 标记右侧照 UE Sequencer 事件键写所触发的内容 */
+/* 事件名框（照 UE EventSection::PaintEventName）：离菱形中心 10px，半透明黑底、4×2 内边距、选中蓝粗体字；
+   靠近右边界时画到左侧 */
 .markerText {
   position: absolute;
   top: 50%;
-  left: 15px;
-  max-width: 160px;
+  left: var(--offset);
+  max-width: var(--max);
   overflow: hidden;
+  padding: 2px 4px;
   transform: translateY(-50%);
-  color: var(--text);
+  background: rgb(0 0 0 / 50%);
+  color: #18a0fb;
   font-size: 11px;
+  font-weight: 700;
   line-height: 14px;
   white-space: nowrap;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 90%);
-  opacity: .75;
   pointer-events: none;
 }
 
-.marker:hover .markerText, .marker[data-selected] .markerText {
-  opacity: 1;
+.marker[data-flip] .markerText {
+  left: auto;
+  right: var(--offset);
 }
 
 /* 轨道头双击改名 */

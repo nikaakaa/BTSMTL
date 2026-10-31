@@ -34,10 +34,10 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
-// 标记（照 Slate 嵌入 Timeline 的 DrawNativeMarker，11×24）：上方圆角方块、下方 40% 收成尖角，尖端对准时刻。
+// 标记（照 UE Sequencer 事件键 Sequencer.KeyDiamond，12×12）：菱形，中心对准时刻。
 export const MarkerShape = () => (
-  <svg width="11" height="24" viewBox="0 0 11 24" aria-hidden focusable="false">
-    <path d="M.5 2.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12l-5 9-5-9z" />
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false">
+    <path d="M6 1 11 6 6 11 1 6z" />
   </svg>
 );
 
