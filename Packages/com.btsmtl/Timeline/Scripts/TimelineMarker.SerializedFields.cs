@@ -1,9 +1,3 @@
-#if UNITY_EDITOR
-using GraphAsset = UnityEngine.ScriptableObject;
-#else
-using GraphAsset = System.String;
-#endif
-
 namespace BTSMTL.Timeline
 {
     public sealed partial class TimelineMarker
@@ -24,7 +18,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         [UnityEngine.SerializeField]
 #endif
-        GraphAsset m_Graph;
+        string m_Graph = string.Empty;
 #endif
     }
 }

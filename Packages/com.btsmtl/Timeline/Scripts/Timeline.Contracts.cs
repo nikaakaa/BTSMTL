@@ -15,7 +15,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
     public interface ITimelineTreeClipAuthoringSource
     {
-        ScriptableObject AssetTree { get; }
+        string AssetTreeId { get; }
     }
 
     public interface ITimelineTreeGraphAsset

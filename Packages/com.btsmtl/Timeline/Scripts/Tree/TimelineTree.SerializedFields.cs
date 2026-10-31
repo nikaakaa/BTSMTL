@@ -1,11 +1,6 @@
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
 #endif
-#if UNITY_EDITOR
-using GraphAsset = UnityEngine.ScriptableObject;
-#else
-using GraphAsset = System.String;
-#endif
 
 namespace BTSMTL.Timeline
 {
@@ -33,7 +28,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         [SerializeField]
 #endif
-        GraphAsset m_AssetTree;
+        string m_AssetTree = string.Empty;
 #endif
 #if UNITY_5_3_OR_NEWER
         [SerializeField]

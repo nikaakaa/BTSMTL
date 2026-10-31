@@ -50,8 +50,12 @@ namespace BTSMTL.Timeline.Editor
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;
-            m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringSave.Document(root.Entry);
+            m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(root.Entry);
             m_Asset = m_Storage.Find(root.Identity);
+            if (m_Asset != null)
+                foreach (TimelineAssetPreviewPreferences scheme in m_Asset.Schemes)
+                    if (scheme.InputTimeline)
+                        TimelineAuthoringGraphBindings.Prepare(scheme.InputTimeline.Data);
             m_Default = new TimelineAssetPreviewPreferences();
             m_InputsFingerprint = null;
             m_ReadScheme = null;
@@ -98,6 +102,7 @@ namespace BTSMTL.Timeline.Editor
                 copy.InputTimeline.Data.RegenerateAuthoringIdentities();
                 copy.InputTimeline.name = name + " 输入";
                 m_Storage.AddInputTimeline(m_Asset, copy.InputTimeline);
+                TimelineAuthoringGraphBindings.Prepare(copy.InputTimeline.Data);
             }
             m_Asset.Schemes.Add(copy);
             m_Asset.Selected = m_Asset.Schemes.Count - 1;
@@ -120,6 +125,7 @@ namespace BTSMTL.Timeline.Editor
             timeline.Data.EnsureAuthoringIdentities();
             timeline.name = current.Name + " 输入";
             m_Storage.AddInputTimeline(m_Asset, timeline);
+            TimelineAuthoringGraphBindings.Prepare(timeline.Data);
             current.InputTimeline = timeline;
             EditorUtility.SetDirty(m_Asset);
             Save();
@@ -129,7 +135,7 @@ namespace BTSMTL.Timeline.Editor
 
         public static bool OwnsInputTimeline(TimelineData timeline) =>
             timeline?.SerializedOwner is TimelineAsset asset &&
-            ((ITimelinePreviewInputSchemeStorage)TimelineAuthoringSave.Document(asset)).OwnsInputTimeline(timeline);
+            ((ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(asset)).OwnsInputTimeline(timeline);
 
         // 输入 Timeline 或其引用的图改动后经宿主重新读出；返回读出结果是否变化。
         public bool RefreshInputs(ITimelineAssetPreviewProvider provider, IReadOnlyList<GraphHostInputDescriptor> declared)

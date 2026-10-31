@@ -12,13 +12,19 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
     public sealed class TimelineAuthoringGraphBindings : ITimelineGraphBindingSource
     {
+        public static Func<UnityEngine.Object, ITimelineAuthoringDocument> Document { get; set; }
+
         Func<ScriptableObject, string> m_Fingerprint;
 
+        public static void Prepare(TimelineData timeline, ScriptableObject graph = null) =>
+            (timeline.AuthoringDocument ?? Document(timeline.SerializedOwner)).Prepare(timeline, graph);
+
         public TimelineGraphBinding ResolveTreeClip(Clip clip, TimelineContentClosureBuilder closure) =>
-            Resolve(((ITimelineTreeClipAuthoringSource)clip).AssetTree, false, clip.ExecutionDomain, $"clip:{clip.AuthoringId}", closure);
+            Resolve(clip.Timeline.AuthoringDocument.ResolveGraph(((ITimelineTreeClipAuthoringSource)clip).AssetTreeId),
+                false, clip.ExecutionDomain, $"clip:{clip.AuthoringId}", closure);
 
         public TimelineGraphBinding ResolveMarker(TimelineMarker marker, TimelineContentClosureBuilder closure) =>
-            Resolve(marker.Graph, true, marker.ExecutionDomain,
+            Resolve(marker.Track.Timeline.AuthoringDocument.ResolveGraph(marker.GraphId), true, marker.ExecutionDomain,
                 $"track:{marker.Track.AuthoringId}/marker:{marker.AuthoringId}", closure);
 
         TimelineGraphBinding Resolve(ScriptableObject asset, bool marker, TimelineExecutionDomain domain,

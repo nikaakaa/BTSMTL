@@ -438,6 +438,7 @@ namespace BTSMTL.Timeline
         public IDisposable BeginAuthoringBatch()
         {
             UpdateSerializedTimeline();
+            TimelineAuthoringGraphBindings.Prepare(this);
             m_AuthoringBatchDepth++;
             return new AuthoringBatch(this);
         }
@@ -468,6 +469,7 @@ namespace BTSMTL.Timeline
             }
             if (!SerializedOwner || string.IsNullOrEmpty(SerializedPropertyPath))
                 throw new InvalidOperationException($"TimelineData {Name} is missing serialized owner/path.");
+            TimelineAuthoringGraphBindings.Prepare(this);
             UnityEditor.Undo.IncrementCurrentGroup();
             int undoGroup = UnityEditor.Undo.GetCurrentGroup();
             string undoName = $"Timeline: {name}";

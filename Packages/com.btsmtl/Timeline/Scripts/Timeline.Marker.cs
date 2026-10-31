@@ -25,7 +25,8 @@ namespace BTSMTL.Timeline
         public bool ForceTriggerOnInitialSeek => m_ForceTriggerOnInitialSeek;
 #if UNITY_EDITOR
         [GraphAuthoringField(nameof(m_Graph), GraphAuthoringFieldValueKind.IdentityReference)]
-        public ScriptableObject Graph => m_Graph;
+        public ScriptableObject Graph => m_Graph.Length == 0 ? null : m_Track.Timeline.AuthoringDocument.ResolveGraph(m_Graph);
+        public string GraphId => m_Graph;
 #endif
         public Track Track => m_Track;
         public TimelineExecutionDomain ExecutionDomain =>
@@ -49,7 +50,9 @@ namespace BTSMTL.Timeline
             if (graph is not ITimelineTreeGraphAsset markerGraph || !markerGraph.IsTimelineTrigger)
                 throw new ArgumentException("Timeline Marker需要正式的Timeline触发图资产。", nameof(graph));
             m_TimeFPRawValue = time.RawValue;
-            m_Graph = graph;
+            m_Graph = markerGraph.AuthoringId;
+            if (m_Track != null && m_Track.Timeline.AuthoringDocument != null)
+                TimelineAuthoringGraphBindings.Prepare(m_Track.Timeline, graph);
             m_ForceTriggerOnInitialSeek = forceTriggerOnInitialSeek;
         }
 

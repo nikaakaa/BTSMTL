@@ -59,7 +59,7 @@ namespace BTSMTL.Timeline.Editor
         public static void Register(ITimelineWorkspaceModeController controller)
         {
             s_Controller = controller;
-            TimelineAuthoringSave.Document = controller.Authoring.GetAuthoringDocument;
+            TimelineAuthoringGraphBindings.Document = controller.Authoring.GetAuthoringDocument;
         }
 
         public static bool TryResolvePreviewActor(out UnityEngine.Object actor, out string error)
@@ -474,6 +474,7 @@ namespace BTSMTL.Timeline.Editor
             titleContent = new GUIContent("Timeline Editor");
             TimelineWorkspaceModeBridge.ApplyToWindow(this);
             timeline.BindSerializedOwner(serializedOwner, serializedPropertyPath);
+            TimelineAuthoringGraphBindings.Prepare(timeline);
             timeline.OnValueChanged += OnTimelineValueChanged;
             m_Timeline = timeline;
 

@@ -18,6 +18,19 @@ namespace BTSMTL.Timeline
         string m_SerializedPropertyPath;
 
 #if UNITY_EDITOR
+        [NonSerialized] ITimelineAuthoringDocument m_AuthoringDocument;
+
+        public ITimelineAuthoringDocument AuthoringDocument => m_AuthoringDocument;
+
+        public void BindAuthoringDocument(ITimelineAuthoringDocument document)
+        {
+            m_AuthoringDocument = document;
+            foreach (Track track in m_Tracks)
+                foreach (Clip clip in track.Clips)
+                    if (clip is ITimelineTreeClipAuthoringSource tree && tree.AssetTreeId.Length != 0)
+                        ((ITimelineTreeGraphAsset)document.ResolveGraph(tree.AssetTreeId)).BindTimelineAuthoringContext(this, clip);
+        }
+
         [GraphAuthoringField(nameof(m_Name), GraphAuthoringFieldValueKind.String,
             DocumentMember = GraphAuthoringDocumentMember.DisplayName)]
 #endif
@@ -47,6 +60,9 @@ namespace BTSMTL.Timeline
             TimelineData clone = ManagedReferenceCloneUtility.Clone(this);
             clone.m_SerializedOwner = null;
             clone.m_SerializedPropertyPath = string.Empty;
+#if UNITY_EDITOR
+            clone.m_AuthoringDocument = m_AuthoringDocument;
+#endif
             return clone;
         }
 
@@ -216,6 +232,10 @@ namespace BTSMTL.Timeline
 
         public void BindSerializedOwner(UnityEngine.Object owner, string propertyPath)
         {
+#if UNITY_EDITOR
+            if (!ReferenceEquals(m_SerializedOwner, owner))
+                m_AuthoringDocument = null;
+#endif
             m_SerializedOwner = owner;
             m_SerializedPropertyPath = propertyPath ?? string.Empty;
 #if UNITY_EDITOR

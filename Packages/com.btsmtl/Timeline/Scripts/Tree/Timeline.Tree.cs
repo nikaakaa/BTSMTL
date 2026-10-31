@@ -40,7 +40,8 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("assetTree", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference,
             AuthoringVisible = false)]
         [TimelineAuthoringProperty(IsSourceAsset = true)]
-        public ScriptableObject AssetTree => m_AssetTree;
+        public ScriptableObject AssetTree => m_AssetTree.Length == 0 ? null : Timeline.AuthoringDocument.ResolveGraph(m_AssetTree);
+        public string AssetTreeId => m_AssetTree;
 #endif
 
 #if UNITY_EDITOR
@@ -83,7 +84,7 @@ namespace BTSMTL.Timeline
                 return false;
             }
             OrchestrationTime declaredEnd = default;
-            bool declared = m_AssetTree is ITimelineTreeGraphAsset graph && graph.TryGetDeclaredEndTime(out declaredEnd);
+            bool declared = AssetTree is ITimelineTreeGraphAsset graph && graph.TryGetDeclaredEndTime(out declaredEnd);
             OrchestrationTime endTime = TreeTimelineDefinition.TerminalTime(AuthoringId, StartTime, terminalTime,
                 declared ? declaredEnd : null);
             bool changed = m_HasDeclaredEndTime != declared;
@@ -99,13 +100,13 @@ namespace BTSMTL.Timeline
         {
             base.Init(track);
 #if UNITY_EDITOR
-            if (Timeline.SerializedOwner && m_AssetTree is ITimelineTreeGraphAsset graph)
-                graph.BindTimelineAuthoringContext(Timeline, this);
+            if (Timeline.AuthoringDocument != null && m_AssetTree.Length != 0)
+                ((ITimelineTreeGraphAsset)AssetTree).BindTimelineAuthoringContext(Timeline, this);
 #endif
         }
 
 #if UNITY_EDITOR
-        public override string Name => $"{ExecutionDomain} / {m_ExecutionPhase} / {(m_AssetTree ? m_AssetTree.name : "Unbound")}";
+        public override string Name => $"{ExecutionDomain} / {m_ExecutionPhase} / {(m_AssetTree.Length == 0 ? "Unbound" : AssetTree.name)}";
 #else
         public override string Name => $"{ExecutionDomain} / {m_ExecutionPhase}";
 #endif
@@ -124,7 +125,9 @@ namespace BTSMTL.Timeline
         {
             if (asset is not ITimelineTreeGraphAsset graph || !graph.IsTimelineTree)
                 throw new ArgumentException("TreeClip需要支持Timeline生命周期入口的正式节点图资产。", nameof(asset));
-            m_AssetTree = asset;
+            m_AssetTree = graph.AuthoringId;
+            if (Track != null && Timeline.AuthoringDocument != null)
+                TimelineAuthoringGraphBindings.Prepare(Timeline, asset);
             OnClipChanged();
         }
 
