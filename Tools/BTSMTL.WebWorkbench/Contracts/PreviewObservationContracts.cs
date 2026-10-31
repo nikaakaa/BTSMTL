@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace BTSMTL.WebWorkbench;
 
 public sealed record PreviewField(string DisplayName, string Value);
@@ -37,13 +39,25 @@ public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor
     public PreviewFrameSource? Source { get; init; }
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
-public sealed record PreviewFrameSource(string PlayerBuildId, string ContentRevision, string SceneRevision,
-    string InputSource, string? InputRevision, string SdkFrame, string GameplayTick);
+public sealed record PreviewExecutionIdentity(string Kind, string Identity, string? PlayerBuildId,
+    string? EditorAssemblyMvid);
+public sealed record PreviewPosition(string HostFrame, JsonElement Request);
+public sealed record PreviewClock(PreviewPosition Position, double Seconds, string PositionDisplayName,
+    PreviewPosition? RequestedPosition, PreviewField[] Fields);
+public sealed record PreviewContentIdentity(string Kind, string Revision, string? DocumentId,
+    string? ContentIdentity, string? ContentRevision, string? BindingRevision);
+public sealed record PreviewFrameSource(PreviewExecutionIdentity Execution, string ContentRevision, string SceneRevision,
+    string InputSource, string? InputRevision, PreviewClock Clock)
+{
+    public Guid? LoadCommandId { get; init; }
+    public string? Sequence { get; init; }
+    public PreviewContentIdentity? Content { get; init; }
+}
 public sealed record PreviewSummary(string RunId, string ContentRevision, string FrameDisplayName,
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
     PreviewField[] Fields, string RawJson)
 {
-    public string PlayerBuildId { get; init; } = string.Empty;
+    public required PreviewExecutionIdentity Execution { get; init; }
     public string SceneRevision { get; init; } = string.Empty;
     public string InputSource { get; init; } = string.Empty;
     public string? InputRevision { get; init; }
