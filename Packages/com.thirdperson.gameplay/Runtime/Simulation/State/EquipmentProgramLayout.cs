@@ -42,8 +42,8 @@ namespace ThirdPersonSimulation
             FeatureId = featureId;
             Revision = revision;
             CodeBindingId = SimulationIdentity.Require(codeBindingId, nameof(codeBindingId));
-            m_GrantedTags = StableIdentities(grantedTags?.Select(value => value.StartsWith("tag:", StringComparison.Ordinal) ? value : "tag:" + value), "Equipment granted Tag");
-            m_PassiveEffects = StableIdentities(passiveEffects?.Select(value => value.StartsWith("effect:", StringComparison.Ordinal) ? value : "effect:" + value), "Equipment passive Effect");
+            m_GrantedTags = StableIdentities(grantedTags?.Select(GameplayEffectRuntimeIdentity.Tag), "Equipment granted Tag");
+            m_PassiveEffects = StableIdentities(passiveEffects?.Select(GameplayEffectRuntimeIdentity.Effect), "Equipment passive Effect");
             RequiredWorldCapabilities = requiredWorldCapabilities;
         }
 
