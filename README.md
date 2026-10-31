@@ -97,8 +97,10 @@ Job／Burst 宿主：
 `Tools/BurstCheck` 是检查专用实例（不是正式宿主），示范上述纯数据插头。解决方案构建传入 Unity 工程与 Editor 路径时自动执行，失败报告调用链与源码位置：
 
 ```powershell
-dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false "/p:BurstCheckClientRoot=<Unity 工程根目录>" "/p:UnityEditorDataPath=<Unity Editor\Data>" "/p:BurstCheckOutput=<输出目录>\"
+dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false "/p:BurstCheckClientRoot=<Unity 工程根目录>" "/p:UnityEditorDataPath=<Unity Editor\Data>" "/p:BurstCheckTemp=<临时目录>" "/p:BurstCheckOutput=<输出目录>\"
 ```
+
+`BurstCheckTemp` 必须提供：缺失时 bcl 的 TEMP 为空，在 `Path.GetTempPath` 抛"路径的形式不合法"，构建只报退出码。
 
 ## 源码位置与依赖
 
