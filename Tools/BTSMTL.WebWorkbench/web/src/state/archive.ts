@@ -250,10 +250,13 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
 
 export const archive = {
   inputFrames(jobId: PlayerJobId, actorId: string) {
-    return [...cache.entries()].flatMap(([id, frame]) => {
+    const prefix = `${jobId}:`;
+    return [...cache.entries()].filter(([id]) => id.startsWith(prefix))
+      .sort(([left], [right]) => Number(left.slice(prefix.length)) - Number(right.slice(prefix.length)))
+      .flatMap(([, frame]) => {
       const input = frame.input?.actors.find(actor => actor.actorId === actorId);
-      return id.startsWith(jobId + ':') && input ? [{ frame: frame.hostFrame, input }] : [];
-    }).sort((left, right) => BigInt(left.frame) < BigInt(right.frame) ? -1 : BigInt(left.frame) > BigInt(right.frame) ? 1 : 0);
+      return input ? [{ frame: frame.hostFrame, input }] : [];
+    });
   },
 
   curveSamples(jobId: PlayerJobId, curveId: string): PlayerCurveSample[] {

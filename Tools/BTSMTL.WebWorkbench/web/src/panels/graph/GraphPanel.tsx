@@ -515,7 +515,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
       if (machine && state.frame !== null) {
         for (const frame of state.routeFrames) {
-          if (BigInt(frame.hostFrame) > BigInt(state.frame.hostFrame)) continue;
+          if (frame.seconds > state.frame.seconds) continue;
           const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
             belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);

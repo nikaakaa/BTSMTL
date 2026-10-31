@@ -32,10 +32,10 @@ export function cachedFrame(runId: string, index: number): Frame | undefined {
 }
 
 function publishRoutes(runId: PlayerJobId, generation: number) {
-  const routeFrames = [...cache.entries()].flatMap(([id, frame]) =>
-    id.startsWith(`${runId}:`) && frame.route !== null ? [frame.route] : []);
-  routeFrames.sort((left, right) => BigInt(left.hostFrame) < BigInt(right.hostFrame) ? -1
-    : BigInt(left.hostFrame) > BigInt(right.hostFrame) ? 1 : 0);
+  const prefix = `${runId}:`;
+  const routeFrames = [...cache.entries()].filter(([id]) => id.startsWith(prefix))
+    .sort(([left], [right]) => Number(left.slice(prefix.length)) - Number(right.slice(prefix.length)))
+    .flatMap(([, frame]) => frame.route === null ? [] : [frame.route]);
   runActions.setData(generation, { routeFrames });
 }
 

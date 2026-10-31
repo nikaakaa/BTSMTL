@@ -76,7 +76,7 @@ export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | n
     byId.set(graph.id, matches);
   }
   for (const frame of [...frames, current]) {
-    if (BigInt(frame.hostFrame) > BigInt(current.hostFrame)) continue;
+    if (frame.seconds > current.seconds) continue;
     for (const record of [...frame.nodes, ...frame.edges, ...frame.ports.filter(item => item.sourceAvailable)]) {
       if (record.call === null || !matchesDocumentCall(record.call, binding)) continue;
       for (const graph of byId.get(record.graphId) ?? [])
