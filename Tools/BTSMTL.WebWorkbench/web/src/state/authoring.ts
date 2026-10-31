@@ -117,10 +117,13 @@ async function selectedPreview(): Promise<PreviewSelection> {
     const live = await playerApi.live(liveId);
     if (live.previewTarget === null)
       return { kind: 'unavailable', reason: '所选 Player 尚无已确认载入的内容，预览未刷新' };
-    const { liveId: targetLiveId, scene, sceneRevision, source, channels } = live.previewTarget;
+    const { liveId: targetLiveId, content, channels } = live.previewTarget;
+    if (content.kind !== 'scene')
+      return { kind: 'unavailable', reason: '所选 Player 当前载入 Timeline，技能刷新需要场景内容' };
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
-    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId, scene, sceneRevision, source, channels } };
+    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
+      scene: content.scene, sceneRevision: content.revision, source: content.source, channels } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -181,9 +184,10 @@ async function trackPreview(input: {
     const live = await playerApi.live(receipt.liveId, input.controller.signal);
     input.controller.signal.throwIfAborted();
     const target = live.previewTarget;
-    if (target === null || target.sceneRevision !== receipt.package.sceneRevision)
+    if (target === null || target.content.kind !== 'scene' || target.content.revision !== receipt.package.sceneRevision)
       throw new Error('Player 当前确认内容与本次采用回执不一致，未提交封存作业');
-    if (input.viewport === null || target.channels === null || target.source.kind === 'device') {
+    const content = target.content;
+    if (input.viewport === null || target.channels === null || content.source.kind === 'device') {
       const reason = input.viewport === null ? '没有本次画面尺寸' : target.channels === null ? 'Player 未声明录制通道'
         : '设备输入没有固定修订';
       set({ lastSave: { ...savedOutcome(input.save, receipt, ''), message: `已保存、编译并采用；${reason}，未提交封存作业` } });
@@ -192,7 +196,7 @@ async function trackPreview(input: {
       return;
     }
     const request = await session.prepareRun({ kind: 'adopted',
-      target: { ...target, channels: target.channels, source: target.source }, viewport: input.viewport,
+      target: { ...target, channels: target.channels, content: { ...content, source: content.source } }, viewport: input.viewport,
     }, input.controller.signal);
     input.controller.signal.throwIfAborted();
     const job = await playerApi.startJob(request, input.controller.signal);

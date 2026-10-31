@@ -75,7 +75,8 @@ function PlayerView({ frameName }: { frameName: string }) {
         <BarSeparator />
         <Button variant="ghost" disabled={!!loadSceneBlocked} tip={loadSceneBlocked ?? '载入当前内容的离线包，接管输入试玩'}
           onClick={async () => {
-            const result = await playerService.loadScene(scene!.path, scene!.revision);
+            const result = await playerService.loadContent({ kind: 'scene', scene: scene!.path, revision: scene!.revision,
+              source: { kind: 'device', lastSdkFrame: 0 } });
             if (result?.stage === 'applied') session.selectRun(null);
           }}>离线包试玩</Button>
       </PanelBar>}

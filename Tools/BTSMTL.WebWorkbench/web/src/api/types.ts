@@ -1,5 +1,5 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
-import type { readPlayerHost } from './playerRecords';
+import type { PlayerSceneContent, PlayerTimelineContent, readPlayerHost } from './playerRecords';
 
 export interface Field {
   displayName: string;
@@ -33,10 +33,7 @@ export type NumberInput = HostDescription['inputLimit'];
 
 // ── 来源与输入 ──
 
-export type RunSource =
-  | { kind: 'replay'; path: string; revision: string }
-  | { kind: 'recording'; runId: string; revision: string }
-  | { kind: 'local'; lastSdkFrame: number; players: PlayerInputChoice[] };
+export type RunSource = Exclude<PlayerSceneContent['source'], { kind: 'device' }>;
 
 export interface PlayerInputChoice {
   actorId: string;
@@ -58,10 +55,21 @@ export interface ReplayChoice {
 
 export interface Sources {
   scenes: SourceFile[];
+  timelines: TimelineSource[];
   replays: ReplayChoice[];
   sceneDirectory: string;
   replayDirectory: string;
   runDirectory: string;
+}
+
+export interface TimelineSource {
+  content: PlayerTimelineContent;
+  contentIdentity: string;
+  contentRevision: string;
+  bindingRevision: string;
+  tickRate: number;
+  scene: unknown;
+  bindings: unknown;
 }
 
 export type { PlayerInputCatalog as InputCatalog } from './playerRecords';

@@ -1,5 +1,6 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
+import type { PlayerPreviewContent } from '../api/playerRecords';
 import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerMessage } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
 
@@ -158,11 +159,11 @@ export const playerService = {
     await playerService.refresh();
   },
 
-  loadScene: (scene: string, sceneRevision: string) =>
+  loadContent: (content: PlayerPreviewContent) =>
     command('load', async liveId => {
       const live = await playerApi.live(liveId);
-      return playerApi.load(liveId, { commandId: crypto.randomUUID(), scene, sceneRevision,
-        source: { kind: 'device', lastSdkFrame: 0 }, executionMode: 'interactive', channels: live.identity.channels });
+      return playerApi.load(liveId, { commandId: crypto.randomUUID(), content,
+        executionMode: 'interactive', channels: live.identity.channels });
     }),
   async capture() {
     const liveId = getState().liveId;

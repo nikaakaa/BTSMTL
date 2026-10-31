@@ -100,8 +100,18 @@ const runSource = (value: unknown, path = 'Player.source') => {
     default: throw new Error(`${path} 的 kind 不受支持`);
   }
 };
+const sceneContent = object({ kind: choice('scene'), scene: text, revision: text, source: runSource });
+const timelineContent = object({ kind: choice('timeline'), package: text, revision: text, timeline: text });
+const previewContent = (value: unknown, path = 'Player.content') => {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) throw new Error(`${path} 缺少 kind`);
+  switch (value.kind) {
+    case 'scene': return sceneContent(value, path);
+    case 'timeline': return timelineContent(value, path);
+    default: throw new Error(`${path} 的 kind 不受支持`);
+  }
+};
 const previewTarget = object({
-  liveId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
+  liveId, playerBuildId: buildId, content: previewContent,
   channels: nullable(array(observationChannel)),
 });
 const liveIdentity = object({
@@ -309,9 +319,13 @@ export type PlayerJobId = ReturnType<typeof jobId>;
 export type PlayerObservationChannel = ReturnType<typeof observationChannel>;
 export type PlayerPreviewMode = ReturnType<typeof previewMode>;
 export type LivePlayer = ReturnType<typeof readLivePlayer>;
+export type PlayerSceneContent = ReturnType<typeof sceneContent>;
+export type PlayerTimelineContent = ReturnType<typeof timelineContent>;
+export type PlayerPreviewContent = ReturnType<typeof previewContent>;
 export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
-export type PlayerLoadRequest = Omit<PlayerPreviewTarget, 'liveId' | 'playerBuildId' | 'channels'> & {
+export type PlayerLoadRequest = {
   commandId: string;
+  content: PlayerPreviewContent;
   executionMode: 'interactive';
   channels: PlayerObservationChannel[];
 };

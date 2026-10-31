@@ -3,7 +3,7 @@ import { playerApi } from '../api/player';
 import { previewApi } from '../api/preview';
 import {
   newPlayerJobId, readPlayerJobId, readPlayerJobRequest,
-  type PlayerJobId, type PlayerJobReceipt, type PlayerJobStage, type PlayerPreviewTarget,
+  type PlayerJobId, type PlayerJobReceipt, type PlayerJobStage, type PlayerPreviewTarget, type PlayerSceneContent,
 } from '../api/playerRecords';
 import { archive } from './archive';
 import {
@@ -16,9 +16,9 @@ const pendingRequestKey = 'btsmtl.preview.pending-player-job';
 const heartbeatMilliseconds = 3000;
 const pollMilliseconds = 500;
 
-export type ArchivePreviewTarget = Omit<PlayerPreviewTarget, 'channels' | 'source'> & {
+export type ArchivePreviewTarget = Omit<PlayerPreviewTarget, 'channels' | 'content'> & {
   channels: NonNullable<PlayerPreviewTarget['channels']>;
-  source: Exclude<PlayerPreviewTarget['source'], { kind: 'device' }>;
+  content: Omit<PlayerSceneContent, 'source'> & { source: Exclude<PlayerSceneContent['source'], { kind: 'device' }> };
 };
 
 type RunPreparation = { kind: 'selection' } | {
@@ -125,8 +125,8 @@ useWorkbench.subscribe((state, previous) => {
 export const session = {
   async prepareRun(input: RunPreparation, signal?: AbortSignal) {
     const selected = input.kind === 'selection' ? selectedStart() : {
-      kind: 'selected' as const, liveId: input.target.liveId, source: input.target.source, viewport: input.viewport,
-      scene: { path: input.target.scene, revision: input.target.sceneRevision },
+      kind: 'selected' as const, liveId: input.target.liveId, source: input.target.content.source, viewport: input.viewport,
+      scene: { path: input.target.content.scene, revision: input.target.content.revision },
     };
     if (selected.kind === 'unavailable') throw new Error(selected.reason);
     const [options, playerBuildId] = await Promise.all([

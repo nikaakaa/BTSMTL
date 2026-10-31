@@ -198,9 +198,9 @@ export interface InputSaveResult {
 
 export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
-export type PlayerSkillRefreshTarget = Omit<PlayerPreviewTarget, 'playerBuildId' | 'channels'> & {
+export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sceneRevision' | 'source' | 'channels'> & {
   requestId: string;
-  channels: NonNullable<PlayerPreviewTarget['channels']>;
+  liveId: PlayerPreviewTarget['liveId'];
 };
 
 export interface SkillSaveRequest {
@@ -230,7 +230,7 @@ interface SkillRefreshIdentity {
   playerBuildId: string | null;
   sourceRevision: string;
   baseSceneRevision: string;
-  source: PlayerPreviewTarget['source'];
+  source: PlayerSkillRefreshTarget['source'];
 }
 
 export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
