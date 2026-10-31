@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using BTSMTL.Graphs;
 using NodeCanvas.Framework;
 using UnityEditor;
@@ -18,6 +19,7 @@ namespace BTSMTL.Timeline.Editor
         static readonly Dictionary<string, AssetGraphs> s_LocalGraphs = new(StringComparer.Ordinal);
         static readonly Dictionary<string, List<ScriptableObject>> s_SharedGraphs = new(StringComparer.Ordinal);
         static readonly Dictionary<string, (string Id, ScriptableObject Graph)> s_SharedSources = new(StringComparer.Ordinal);
+        static readonly SynchronizationContext s_EditorContext = SynchronizationContext.Current;
 
         readonly UnityEngine.Object m_Source;
         AssetGraphs m_Graphs;
@@ -32,6 +34,7 @@ namespace BTSMTL.Timeline.Editor
             foreach (string path in paths)
                 RefreshSharedGraph(path);
             Graph.onGraphSerialized += OnGraphChanged;
+            Graph.onGraphDeserialized += OnGraphChanged;
             ObjectChangeEvents.changesPublished += OnObjectsChanged;
             TimelineAssetGraphChanges.Changed += OnAssetsChanged;
         }
@@ -156,7 +159,10 @@ namespace BTSMTL.Timeline.Editor
                     timeline.Data.BindAuthoringDocument(new TimelineAssetAuthoringDocument(timeline) { m_Graphs = s_LocalGraphs[path] });
         }
 
-        static void OnGraphChanged(ScriptableObject source)
+        static void OnGraphChanged(Graph source) =>
+            s_EditorContext.Post(static state => RefreshGraph((ScriptableObject)state), source);
+
+        static void RefreshGraph(ScriptableObject source)
         {
             string path = AssetDatabase.GetAssetPath(source);
             if (path.Length == 0)
@@ -186,8 +192,8 @@ namespace BTSMTL.Timeline.Editor
                     case ObjectChangeKind.ChangeAssetObjectProperties:
                         stream.GetChangeAssetObjectPropertiesEvent(index, out var changed);
                         UnityEngine.Object source = EditorUtility.InstanceIDToObject(changed.instanceId);
-                        if (source is ScriptableObject graph && source is ITimelineTreeGraphAsset)
-                            OnGraphChanged(graph);
+                        if (source is ScriptableObject graph && source is ITimelineTreeGraphAsset && source is not Graph)
+                            RefreshGraph(graph);
                         else if (source is TimelineAsset timeline)
                             timelines.Add(timeline);
                         break;
