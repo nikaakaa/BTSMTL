@@ -23,6 +23,12 @@ namespace BTSMTL.Timeline.Unity
         public float OpenAmount => m_OpenAmount;
         public bool Visible => m_Visible;
 
+        public void Configure(string targetIdentity, Graphic graphic)
+        {
+            m_TargetIdentity = targetIdentity;
+            m_Graphic = graphic;
+        }
+
         public void Prepare()
         {
             if (string.IsNullOrWhiteSpace(m_TargetIdentity))
