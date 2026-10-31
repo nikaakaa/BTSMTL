@@ -87,24 +87,86 @@ namespace BTSMTL.Timeline.Runtime
         }
     }
 
+    public readonly struct OrchestrationTimelineGraphEntryBinding
+    {
+        internal OrchestrationTimelineGraphEntryBinding(OrchestrationExecutionEntry entry,
+            int executionFrameOwnerOperationIndex, int graphOwnerOperationIndex, int sourceIdentityId)
+        {
+            Entry = entry;
+            ExecutionFrameOwnerOperationIndex = executionFrameOwnerOperationIndex;
+            GraphOwnerOperationIndex = graphOwnerOperationIndex;
+            SourceIdentityId = sourceIdentityId;
+        }
+
+        public OrchestrationExecutionEntry Entry { get; }
+        public int ExecutionFrameOwnerOperationIndex { get; }
+        public int GraphOwnerOperationIndex { get; }
+        public int SourceIdentityId { get; }
+    }
+
     public readonly struct OrchestrationTimelineGraphBinding
     {
-        public OrchestrationTimelineGraphBinding(int programIndex, int graphIdentityId,
-            int sourceIdentityId, int graphOwnerOperationIndex,
-            in OrchestrationTimelineEntryBinding entries)
+        readonly string m_GraphId;
+        readonly Dictionary<OrchestrationTimelineHook, OrchestrationTimelineGraphEntryBinding> m_Entries;
+
+        OrchestrationTimelineGraphBinding(int programIndex, string graphId, int graphIdentityId,
+            Dictionary<OrchestrationTimelineHook, OrchestrationTimelineGraphEntryBinding> entries)
         {
             ProgramIndex = programIndex;
+            m_GraphId = graphId;
             GraphIdentityId = graphIdentityId;
-            SourceIdentityId = sourceIdentityId;
-            GraphOwnerOperationIndex = graphOwnerOperationIndex;
-            Entries = entries;
+            m_Entries = entries;
         }
 
         public int ProgramIndex { get; }
         public int GraphIdentityId { get; }
-        public int SourceIdentityId { get; }
-        public int GraphOwnerOperationIndex { get; }
-        public OrchestrationTimelineEntryBinding Entries { get; }
+
+        public OrchestrationTimelineGraphEntryBinding Entry(OrchestrationTimelineHook hook)
+        {
+            if (m_Entries.TryGetValue(hook, out OrchestrationTimelineGraphEntryBinding entry))
+                return entry;
+            throw new InvalidOperationException($"Timeline 图 '{m_GraphId}' 缺少 '{hook}' 生命周期入口。");
+        }
+
+        public static OrchestrationTimelineGraphBinding Prepare<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+            int programIndex, PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> graph)
+            where TValue : unmanaged
+            where TScalar : unmanaged
+            where TVector2 : unmanaged
+            where TVector3 : unmanaged
+            where TYaw : unmanaged
+            where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        {
+            string graphId = graph.Source.Identity.GraphId;
+            var sources = new Dictionary<string, OrchestrationGraphExecutionSource>(StringComparer.Ordinal);
+            foreach (OrchestrationGraphSource source in graph.Sources.Span)
+            {
+                OrchestrationGraphExecutionSource invocation = source.Source;
+                if (invocation.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation &&
+                    invocation.GraphId == graphId && invocation.InvocationCallerKind == "None")
+                    sources.Add(graphId + "/entry:" + invocation.InvocationCallerId, invocation);
+            }
+            var entries = new Dictionary<OrchestrationTimelineHook, OrchestrationTimelineGraphEntryBinding>();
+            foreach (ref readonly OrchestrationGraphEntry entry in graph.Entries.Span)
+            {
+                string entryId = graph.Identities.Table.Resolve(entry.EntryIdentityId);
+                OrchestrationGraphExecutionSource invocation = sources[entryId];
+                OrchestrationTimelineHook hook = invocation.InvocationCallerId switch
+                {
+                    "OnEnable" => OrchestrationTimelineHook.Enable,
+                    "Root" => OrchestrationTimelineHook.Root,
+                    "OnDisable" => OrchestrationTimelineHook.Disable,
+                    "OnDestroy" => OrchestrationTimelineHook.Destroy,
+                    _ => throw new InvalidOperationException($"Timeline 图 '{graphId}' 的入口 '{entryId}' 不是生命周期入口。")
+                };
+                entries.Add(hook, new OrchestrationTimelineGraphEntryBinding(entry.Execution,
+                    graph.Program.Operations.Span[entry.Execution.OperationIndex].ExecutionFrameOwnerOperationIndex,
+                    invocation.TargetIndex, invocation.SourceIdentityId));
+            }
+            return new OrchestrationTimelineGraphBinding(programIndex, graphId,
+                graph.Identities.Table.Bind(graphId), entries);
+        }
     }
 
     public sealed class OrchestrationTimelinePreparedDomainRoot
@@ -195,10 +257,9 @@ namespace BTSMTL.Timeline.Runtime
 
     public static class OrchestrationTimelineContentPreparation
     {
-        public static OrchestrationTimelinePreparedEntries PrepareRootEntries<TValue>(
+        public static OrchestrationTimelinePreparedEntries PrepareRootEntries(
             TimelineRuntimePreparedContent prepared,
-            IReadOnlyDictionary<string, OrchestrationTimelineGraphBinding> graphs,
-            ReadOnlySpan<OrchestrationProgram<TValue>> programs) where TValue : unmanaged
+            IReadOnlyDictionary<string, OrchestrationTimelineGraphBinding> graphs)
         {
             TimelineContentUnit content = prepared.Content;
             var clips = new OrchestrationTimelineEntryBinding[content.Clips.Count];
@@ -214,21 +275,20 @@ namespace BTSMTL.Timeline.Runtime
                     int ordinal = indexed.ContentIndex;
                     TimelineContentClip clip = content.Clips[ordinal];
                     OrchestrationTimelineGraphBinding graph = graphs[TimelineGraphBinding.GraphAuthoringId(clip.GraphBinding.GraphId)];
-                    clips[ordinal] = graph.Entries;
                     clipPrograms[ordinal] = graph.ProgramIndex;
-                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Enable, in graph, programs[graph.ProgramIndex], metadata);
-                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Root, in graph, programs[graph.ProgramIndex], metadata);
-                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Disable, in graph, programs[graph.ProgramIndex], metadata);
-                    BindRootEntry(ordinal, false, OrchestrationTimelineHook.Destroy, in graph, programs[graph.ProgramIndex], metadata);
+                    OrchestrationExecutionEntry enable = BindRootEntry(ordinal, false, OrchestrationTimelineHook.Enable, in graph, metadata);
+                    OrchestrationExecutionEntry root = BindRootEntry(ordinal, false, OrchestrationTimelineHook.Root, in graph, metadata);
+                    OrchestrationExecutionEntry disable = BindRootEntry(ordinal, false, OrchestrationTimelineHook.Disable, in graph, metadata);
+                    OrchestrationExecutionEntry destroy = BindRootEntry(ordinal, false, OrchestrationTimelineHook.Destroy, in graph, metadata);
+                    clips[ordinal] = new OrchestrationTimelineEntryBinding(enable, root, disable, destroy);
                 }
                 for (int markerIndex = 0; markerIndex < domain.Markers.Count; markerIndex++)
                 {
                     int ordinal = domain.Markers.ContentIndexAt(markerIndex);
                     TimelineContentMarker marker = content.Markers[ordinal];
                     OrchestrationTimelineGraphBinding graph = graphs[TimelineGraphBinding.GraphAuthoringId(marker.GraphId)];
-                    markers[ordinal] = graph.Entries.Enable;
                     markerPrograms[ordinal] = graph.ProgramIndex;
-                    BindRootEntry(ordinal, true, OrchestrationTimelineHook.Enable, in graph, programs[graph.ProgramIndex], metadata);
+                    markers[ordinal] = BindRootEntry(ordinal, true, OrchestrationTimelineHook.Enable, in graph, metadata);
                 }
             }
             return new OrchestrationTimelinePreparedEntries(clips, markers, clipPrograms, markerPrograms, metadata.ToArray());
@@ -443,14 +503,14 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        static void BindRootEntry<TValue>(int ordinal, bool marker, OrchestrationTimelineHook hook,
-            in OrchestrationTimelineGraphBinding graph, OrchestrationProgram<TValue> program,
-            List<OrchestrationTimelineInvocationMetadata> metadata) where TValue : unmanaged
+        static OrchestrationExecutionEntry BindRootEntry(int ordinal, bool marker, OrchestrationTimelineHook hook,
+            in OrchestrationTimelineGraphBinding graph, List<OrchestrationTimelineInvocationMetadata> metadata)
         {
-            OrchestrationExecutionEntry entry = graph.Entries.Entry(hook);
-            metadata.Add(new OrchestrationTimelineInvocationMetadata(graph.ProgramIndex, ordinal, marker, hook, entry,
-                program.Operation(entry.OperationIndex).ExecutionFrameOwnerOperationIndex,
-                graph.GraphOwnerOperationIndex, null, graph.GraphIdentityId, graph.SourceIdentityId));
+            OrchestrationTimelineGraphEntryBinding binding = graph.Entry(hook);
+            metadata.Add(new OrchestrationTimelineInvocationMetadata(graph.ProgramIndex, ordinal, marker, hook, binding.Entry,
+                binding.ExecutionFrameOwnerOperationIndex, binding.GraphOwnerOperationIndex,
+                null, graph.GraphIdentityId, binding.SourceIdentityId));
+            return binding.Entry;
         }
 
         static OrchestrationExecutionEntry BindEntry<TValue>(int programIndex, int ordinal, bool marker,
