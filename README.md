@@ -9,8 +9,8 @@
 | `com.thirdperson.gameplay.contracts` | 领域扩展身份、版本、端口、只读参数与枚举 |
 | `com.thirdperson.gameplay` | 独立运动算法、攻击几何、玩法配置及仍在清理的旧冷合同 |
 | `com.thirdperson.shared` | 项目玩法与表现共用的角色身份、动画与控制 trace、性能合同、表现请求和 Luban 基础读写，依赖 Foundation |
-| `com.thirdperson.numerics.quantum` | Quantum 宿主的 FP 数学策略、作者数值转换和时间采样边界 |
-| `com.thirdperson.memorypack` | 从原成员生成按需使用的外部冷数据编码 |
+| `com.thirdperson.numerics.quantum` | Quantum 宿主的 FP 数学策略、编排与图数值方案（`FPOrchestrationNumerics`、`FPGraphNumerics`）、作者数值转换和时间采样边界 |
+| `com.thirdperson.memorypack` | 从原成员生成按需使用的外部冷数据编码；`Graphs` 程序集提供正式 Float32 图入口 |
 
 例如一次攻击由 BTSMTL 安排何时发起和结束，Quantum 领域扩展读取当前 Frame，处理攻击查询、命中与属性效果；表现请求交给 Unity 宿主消费。编排时间使用整数 Tick 与 Q48.16 整数进度、倍率和余数；黑板值、比较与曲线采样值由宿主通过泛型和数学策略决定。旧 FPGameplay／Float32 完整玩法执行器、Snapshot 包和服务器权威产品已直接删除。
 
@@ -80,18 +80,18 @@ try {
 
 ## 宿主接入推进：普通插头与 Job／Burst
 
-推进入口只有一份：`OrchestrationExecutionCursor` 读取程序、状态布局、草稿与 Timeline 的连续内存视图，经结构体宿主插头 `IOrchestrationHost`（扩展调用、Timeline 派发、片段退出）与诊断插头工作。宿主决定线程、Job、Burst 与内存来源，BTSMTL 不提供调度或原生容器。Burst 只是可选插法：普通插头也可由宿主自有线程并行推进，每路推进各持草稿、诊断存储与 Timeline 调度实例，共享的扩展对象推进时不得写自身状态。
+推进入口只有一份：`OrchestrationExecutionCursor<TValue, TNumerics, THost>` 读取程序、状态布局、草稿与 Timeline 的连续内存视图。`TNumerics : IOrchestrationNumerics<TValue>` 是数值方案，以 `TValue` 为单位提供运算、赋值、布尔与身份读取及时间换算，标量和向量只在方案内部出现；BTSMTL 提供 `Float32OrchestrationNumerics`，Quantum 数值包提供 `FPOrchestrationNumerics`。`THost : IOrchestrationHost<TValue>` 是结构体执行环境，合并值存储、扩展调用、Timeline 派发、片段退出与诊断回调，调用上下文由插头自己持有。工作台 Trace 不在游标内：`OrchestrationWorkbenchDiagnosticStorage` 经 `BindTraceInvocationScope`、`ReadTraceContext`、`ReadExecutionOwner`、`ReadPortOverrideAddress`、`TrySelectExecutionOwner(ref cursor, ...)` 读取游标。宿主决定线程、Job、Burst 与内存来源，BTSMTL 不提供调度或原生容器。Burst 只是可选插法：普通插头也可由宿主自有线程并行推进，每路推进各持草稿、诊断存储与 Timeline 调度实例，共享的扩展对象推进时不得写自身状态。
 
 普通插头（托管扩展照常实现 `IOrchestrationExtension`）：
 
 1. 准备期：`new OrchestrationProgram<TValue>(content)` 生成程序镜像；`OrchestrationExtensionBindings.Prepare(...)` 绑定扩展；`new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(program.View, frameCapacity, tickCapacity.CursorOutputs))` 准备草稿；需要 Trace 或值观察时另建 `OrchestrationWorkbenchDiagnosticStorage<TValue>`。
-2. 推进：`var host = new ManagedOrchestrationHost<...>(bindings, timelineDispatcher);`，`host.CreateCursor<TDiagnostics, TStorage>(OrchestrationStateBinding.BindCandidate(layout, memory), program.View, scratch.View, frameSlot, characterSlots, in input, identities, in context, diagnostics)`。诊断插头用 `default(OrchestrationProductDiagnostics<TValue>)`，采集时用 `new OrchestrationWorkbenchDiagnostics<TValue>(storage)`。
+2. 推进：`var host = new ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>(in context, diagnostics, bindings, timelineDispatcher);`，`host.CreateCursor<TNumerics>(OrchestrationStateBinding.BindCandidate(layout, memory), program.View, scratch.View, frameSlot, characterSlots, in input, identities)`。`TStorage` 决定状态区段中值的读写格式（例如 Quantum 位压缩存储）；诊断用 `default(OrchestrationProductDiagnostics<TValue>)`，采集时用 `new OrchestrationWorkbenchDiagnostics<TValue>(storage)`，两者以类型在编译期区分。Timeline 推进 `cursor.AdvanceTimeline(in invocation, in time, in stop, captureContext, out traceContext)` 只在工作台诊断下 `captureContext` 才有内容。
 3. 失败：推进路径只抛固定文字，捕获后用 `OrchestrationExecutionErrorFormatter.Describe(exception, in scratch.Error, graphId, revision)` 组织原信息。
 
 Job／Burst 宿主：
 
 1. 准备期仍用上面的托管类生成内容，把 `OrchestrationProgram.Image`、`OrchestrationPreparedStateLayout.Image`、Timeline 内容镜像与工作区、身份序号复制到原生内存，草稿按 `SizeBytes` 分配并 `Initialize`。
-2. 自写 `IOrchestrationHost` 纯数据结构体，只持原生指针与纯值（区段位置用 `OrchestrationTimelineStateRegions`）；Timeline 派发转调 `OrchestrationTimelineDispatch<...>` 静态核心，逻辑采样转调 `TimelineRuntimeLogicSampling<...>.Invoke`，扩展由插头直接实现，不经托管扩展对象。
+2. 自写 `IOrchestrationHost<TValue>` 纯数据结构体，只持原生指针与纯值（区段位置用 `OrchestrationTimelineStateRegions`）；Timeline 派发转调 `OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>` 静态核心，逻辑采样转调 `TimelineRuntimeLogicSampling<...>.Invoke`，扩展由插头直接实现，不经托管扩展对象。
 3. Job 内用 `new OrchestrationProgramView<TValue>(span)`、`OrchestrationStateBinding.BindCandidate<TValue>(new OrchestrationStateLayoutView(span), memory)`、`new OrchestrationExecutionScratch<TValue>(span)` 与 `new OrchestrationIdentityOrdinalView(...)` 构造游标后推进。数值目标须本身可被 Burst 编译：BTSMTL 的 Float32 受检查守护；Photon FP 读取可变静态查表，不能直接进入 Burst，使用它的宿主走普通插头。Float32 在 Burst 与托管下的逐位一致未保证。
 
 `Tools/BurstCheck` 是检查专用实例（不是正式宿主），示范上述纯数据插头。解决方案构建传入 Unity 工程与 Editor 路径时自动执行，失败报告调用链与源码位置：
@@ -101,6 +101,24 @@ dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilatio
 ```
 
 `BurstCheckTemp` 必须提供：缺失时 bcl 的 TEMP 为空，在 `Path.GetTempPath` 抛"路径的形式不合法"，构建只报退出码。
+
+## 图宿主入口
+
+事件图与参数图经 `GraphRuntime<TNumerics, TContext>` 推进，`TNumerics : IGraphNumerics<TValue>` 在执行数值方案之上提供宿主值转换、状态布局，并在初始化时创建强类型实现 `HostedGraphRuntime<TValue, TNumerics, TContext>`；普通调用只经图级生命周期（准备、计算、采用、丢弃、重置、录制与恢复、失败状态），需要直接读写编排值时才用强类型档。`Float32GraphNumerics` 位于 BTSMTL.Graphs，`FPGraphNumerics` 位于 `ThirdPersonSimulation.QuantumNumerics.Graphs`。
+
+两类输入互不替代：`TContext` 是扩展调用上下文，随 `Compute`／`Execute` 传给扩展；图输入每次经 `IGraphHostContext` 由宿主提供。
+
+正式 Float32 入口在 `ThirdPersonSimulation.MemoryPack.Graphs`，内容编码固定为 MemoryPack：
+
+```csharp
+var runtime = new Float32GraphRuntime(graph,
+    Float32GraphRuntime.CreatePublishedHostContract(graph, contractId, revision, updateEventId, scopes, domains, numericTarget));
+runtime.Prepare(invocation, hostInputs);
+runtime.Compute();
+GraphExecutionResult result = runtime.Adopt();
+```
+
+需要扩展时用 `new Float32GraphRuntime<TContext>(graph, contract, extensions)`，`Compute(in context)` 传入扩展上下文。其它数值目标用 `new GraphRuntime<TNumerics, TContext>(new GraphRuntimeSetup(graph, contract, encoding, extensions))`，编码须支持该方案的 `TValue`。
 
 ## 源码位置与依赖
 

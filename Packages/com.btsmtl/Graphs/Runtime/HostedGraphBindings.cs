@@ -5,18 +5,12 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
-    sealed class HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
+    sealed class HostedGraphBindings<TValue, TNumerics>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
+        where TNumerics : struct, IGraphNumerics<TValue>
     {
         internal readonly OrchestrationGraphContent<TValue> Content;
-        internal readonly PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> Prepared;
+        internal readonly PreparedOrchestrationGraph<TValue, TNumerics> Prepared;
         internal readonly OrchestrationProgram<TValue> Program;
         internal readonly GraphVariableContract Variables;
         internal readonly Type[] StateTypes;
@@ -57,12 +51,12 @@ namespace BTSMTL.Graphs
                 new[] { Content.Identities, OrchestrationIdentityPublication.Create(new[] { contract.ContractId }) },
                 Array.Empty<string>());
             SourceIdentityId = frozen.Table.Bind(contract.ContractId);
-            Prepared = PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.Prepare(Content, frozen, 0,
+            Prepared = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(Content, frozen, 0,
                     ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty);
             Program = new OrchestrationProgram<TValue>(Prepared.Program);
             StateTypes = new Type[Program.ValueSlotCount];
             for (int i = 0; i < StateTypes.Length; i++)
-                StateTypes[i] = GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>.ValueType(Program.DefaultValue(i), frozen.Table);
+                StateTypes[i] = default(TNumerics).ValueType(Program.DefaultValue(i), frozen.Table);
             var descriptors = new List<GraphVariableDescriptor>();
             var slots = new Dictionary<string, int>(StringComparer.Ordinal);
             string variableOwnerId = source.Variables.OwnerId;
@@ -76,12 +70,12 @@ namespace BTSMTL.Graphs
                     string declaration = frozen.Table.Resolve(variable.DeclarationIdentityId);
                     Type type = StateTypes[variable.ValueSlot];
                     TValue value = Program.DefaultValue(variable.ValueSlot);
-                    string identity = default(TValues).Kind(in value) == OrchestrationValueKind.Identity
-                        ? frozen.Resolve(default(TValues).Identity(in value)) : default;
+                    string identity = default(TNumerics).Kind(in value) == OrchestrationValueKind.Identity
+                        ? frozen.Resolve(default(TNumerics).Identity(in value)) : default;
                     descriptors.Add(new GraphVariableDescriptor(
                         new BtsmtlGraphVariableReference(variableOwnerId, declaration),
                         frozen.Table.Resolve(variable.KeyIdentityId), type,
-                        GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>.FromState(in value, type, identity), variable.IsPublic));
+                        default(TNumerics).FromState(in value, type, identity), variable.IsPublic));
                     slots.Add(declaration, variable.ValueSlot);
                 }
             }
@@ -141,7 +135,7 @@ namespace BTSMTL.Graphs
             {
                 identity = texts.Capture(value.TextValue);
             }
-            return GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>.ToState(in value, enumTypeContentId, in identity);
+            return default(TNumerics).ToState(in value, enumTypeContentId, in identity);
         }
 
         internal void PrepareInputs(IGraphHostContext host, Span<TValue> destination,
@@ -160,9 +154,9 @@ namespace BTSMTL.Graphs
         internal GraphHostValue FromState(in TValue value, Type enumType,
             GraphTextStorage texts)
         {
-            string identity = default(TValues).Kind(in value) == OrchestrationValueKind.Identity
-                ? texts.Resolve(default(TValues).Identity(in value)) : default;
-            return GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>.FromState(in value, enumType, identity);
+            string identity = default(TNumerics).Kind(in value) == OrchestrationValueKind.Identity
+                ? texts.Resolve(default(TNumerics).Identity(in value)) : default;
+            return default(TNumerics).FromState(in value, enumType, identity);
         }
 
         OrchestrationExecutionEntry FindEntry(string identity)

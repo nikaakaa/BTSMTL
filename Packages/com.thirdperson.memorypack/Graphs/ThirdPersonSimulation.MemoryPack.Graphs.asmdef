@@ -1,0 +1,28 @@
+{
+    "name": "ThirdPersonSimulation.MemoryPack.Graphs",
+    "rootNamespace": "ThirdPersonSimulation.Serialization",
+    "references": [
+        "BTSMTL",
+        "BTSMTL.Authoring",
+        "BTSMTL.Graphs",
+        "BTSMTL.Foundation",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
+        "ParadoxNotion",
+        "NodeCanvas",
+        "FlowCanvas",
+        "ThirdPersonSimulation.MemoryPack"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "MemoryPack.Core.dll",
+        "Quantum.Deterministic.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

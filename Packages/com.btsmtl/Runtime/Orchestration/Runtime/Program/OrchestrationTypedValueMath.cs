@@ -32,6 +32,7 @@ namespace BTSMTL.Orchestration
                     result = values.FromScalar(math.FromInt64(checked((long)values.UInt64(in source))));
                     return;
                 case OrchestrationValueOpcode.ScalarToInt32: result = values.FromInt32(math.TruncateToInt32(values.Scalar(in source))); return;
+                case OrchestrationValueOpcode.Vector2Magnitude: result = values.FromScalar(math.Magnitude2(values.Vector2(in source))); return;
                 default: throw new ArgumentOutOfRangeException(nameof(code));
             }
         }
@@ -105,6 +106,36 @@ namespace BTSMTL.Orchestration
                 default: throw new ArgumentOutOfRangeException(nameof(code));
             }
         }
+
+        // 把值内引用的局部内容身份换成共享表身份；0 表示无身份，保持不变。
+        public static TValue MapContentIdentities(in TValue value, ReadOnlySpan<int> mapping)
+        {
+            TValues values = default;
+            switch (values.Kind(in value))
+            {
+                case OrchestrationValueKind.Identity:
+                    return values.FromIdentity(Map(values.Identity(in value), mapping));
+                case OrchestrationValueKind.Enum:
+                {
+                    OrchestrationEnumValue enumValue = values.Enum(in value);
+                    return values.FromEnum(new OrchestrationEnumValue(Map(enumValue.TypeContentId, mapping), enumValue.Value));
+                }
+                case OrchestrationValueKind.SpatialIdentity:
+                {
+                    OrchestrationSpatialIdentity<TVector3, TYaw> spatial = values.SpatialIdentity(in value);
+                    return values.FromSpatialIdentity(new OrchestrationSpatialIdentity<TVector3, TYaw>(
+                        Map(spatial.Identity, mapping), spatial.Position, spatial.Yaw));
+                }
+                default:
+                    return value;
+            }
+        }
+
+        static int Map(int identity, ReadOnlySpan<int> mapping) => identity == 0 ? 0 : mapping[identity];
+
+        static OrchestrationIdentityValue Map(in OrchestrationIdentityValue identity, ReadOnlySpan<int> mapping) =>
+            identity.Space == OrchestrationIdentitySpace.Content
+                ? OrchestrationIdentityValue.Content(Map(identity.Index, mapping)) : identity;
 
         public static void Assign(OrchestrationAssignmentOpcode code, in TValue current, in TValue value, ref TValue result)
         {

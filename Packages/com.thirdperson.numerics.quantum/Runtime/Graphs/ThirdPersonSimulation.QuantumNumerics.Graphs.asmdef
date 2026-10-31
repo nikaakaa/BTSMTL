@@ -3,6 +3,9 @@
     "rootNamespace": "ThirdPersonSimulation.QuantumNumerics",
     "references": [
         "BTSMTL.Graphs",
+        "BTSMTL.Foundation",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
         "ThirdPersonSimulation.QuantumNumerics"
     ],
     "includePlatforms": [],

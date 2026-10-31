@@ -5,14 +5,23 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
-    public interface IOrchestrationTimelineRootBindings<TValue, TContext, THost, TDiagnostics>
+    public interface IOrchestrationTimelineRootLogicSamples<TValue> where TValue : unmanaged
+    {
+        void Invoke(OrchestrationCandidateState<TValue> candidate, int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start, ulong tick,
+            OrchestrationTime previousTime, int previousCycle, OrchestrationTime time, int cycle);
+    }
+
+    public interface IOrchestrationTimelineRootBindings<TValue, TContext, THost>
         where TValue : unmanaged
         where TContext : struct
-        where THost : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
-        THost PrepareProgram(TimelineExecutionDomain domain, int programIndex,
+        void PrepareProgram(TimelineExecutionDomain domain, int programIndex,
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExit);
+
+        THost CreateHost(TimelineExecutionDomain domain, int programIndex, in TContext context,
+            OrchestrationWorkbenchDiagnosticStorage<TValue> diagnostics);
 
         TContext CreateContext(TimelineExecutionDomain domain, int programIndex, int frameSlot,
             in OrchestrationExecutionFrameState frame, OrchestrationTimelineInvocationMetadata? invocation);
@@ -21,9 +30,6 @@ namespace BTSMTL.Timeline.Runtime
             ulong tick, in OrchestrationExecutionFrameState frame);
 
         ReadOnlySpan<int> CharacterValueSlots(int programIndex);
-
-        TDiagnostics Diagnostics(TimelineExecutionDomain domain, int programIndex,
-            OrchestrationWorkbenchDiagnosticStorage<TValue> storage);
 
         OrchestrationOperationResult ReleaseInvocation(TimelineExecutionDomain domain,
             in OrchestrationTimelineInvocationMetadata metadata, in OrchestrationTimelineInvocationFacts invocation,
@@ -34,44 +40,32 @@ namespace BTSMTL.Timeline.Runtime
             in TContext context, ReadOnlySpan<OrchestrationOutputRequest> requests,
             ReadOnlySpan<TValue> values, in OrchestrationTraceContext traceContext);
 
-        bool SupportsSampleKind(TimelineExecutionDomain domain, string contractKind);
+        bool SupportsPresentationSampleKind(string contractKind);
 
-        void SampleLogic(OrchestrationCandidateState<TValue> candidate, int playbackSlot,
-            in OrchestrationTimelineStart<OrchestrationTime> start, ulong tick,
-            OrchestrationTime previousTime, int previousCycle, OrchestrationTime time, int cycle);
+        Func<TimelineRuntimePreparedContent, OrchestrationTimelinePlaybackMode,
+            IOrchestrationTimelineRootLogicSamples<TValue>> LogicSamples { get; }
 
         void SamplePresentation(in TimelineRuntimePresentationFrame frame);
     }
 
-    public sealed class OrchestrationTimelineRootExecution<TValue, TScalar, TVector2, TVector3,
-        TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost, TBindings, TProjection> :
+    public sealed class OrchestrationTimelineRootExecution<TValue, TNumerics, TContext, THost, TBindings> :
         IOrchestrationTimelineClipExitDispatcher<TContext>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
         where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
-        where TBindings : struct, IOrchestrationTimelineRootBindings<TValue, TContext, THost, TDiagnostics>
-        where TProjection : struct, IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar>
+        where THost : struct, IOrchestrationHost<TValue>
+        where TBindings : struct, IOrchestrationTimelineRootBindings<TValue, TContext, THost>
     {
         readonly OrchestrationTimelinePreparedRoot m_Root;
-        readonly OrchestrationGraphPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> m_Graphs;
+        readonly OrchestrationGraphPreparation<TValue, TNumerics> m_Graphs;
         readonly OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<OrchestrationTime>> m_TimelineLayout;
         readonly OrchestrationTimelinePreparedCapacity m_TimelineCapacity;
         readonly OrchestrationTimelineWorkspace<OrchestrationTime> m_Workspace;
         readonly OrchestrationExecutionScratchMemory<TValue>[] m_Scratches;
         readonly OrchestrationWorkbenchDiagnosticStorage<TValue>[] m_Diagnostics;
-        readonly THost[][] m_Hosts;
         readonly Dictionary<(bool Marker, int Ordinal, OrchestrationTimelineHook Hook), OrchestrationTimelineInvocationMetadata> m_Invocations;
         readonly TimelineRuntimePresentationDriver m_Presentation;
-        readonly bool m_HasLogicSamples;
+        readonly IOrchestrationTimelineRootLogicSamples<TValue> m_LogicSamples;
         readonly int m_SourceIdentityId;
         TBindings m_Bindings;
         TimelineExecutionDomain m_CurrentDomain;
@@ -82,7 +76,7 @@ namespace BTSMTL.Timeline.Runtime
         TimelineRuntimeTreeClipRequest m_CurrentTree;
 
         public OrchestrationTimelineRootExecution(OrchestrationTimelinePreparedRoot root,
-            OrchestrationGraphPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> graphs,
+            OrchestrationGraphPreparation<TValue, TNumerics> graphs,
             in OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<OrchestrationTime>> timelineLayout,
             in OrchestrationTimelinePreparedCapacity timelineCapacity,
             OrchestrationExecutionCapacity executionCapacity, OrchestrationExecutionTickCapacity tickCapacity,
@@ -102,7 +96,6 @@ namespace BTSMTL.Timeline.Runtime
             int programs = graphs.Programs.Length;
             m_Scratches = new OrchestrationExecutionScratchMemory<TValue>[programs];
             m_Diagnostics = new OrchestrationWorkbenchDiagnosticStorage<TValue>[programs];
-            m_Hosts = new[] { new THost[programs], new THost[programs] };
             for (int programIndex = 0; programIndex < programs; programIndex++)
             {
                 OrchestrationProgram<TValue> program = graphs.Programs.Span[programIndex];
@@ -112,23 +105,29 @@ namespace BTSMTL.Timeline.Runtime
                 m_Diagnostics[programIndex] = new OrchestrationWorkbenchDiagnosticStorage<TValue>(
                     program, graphs.Graphs.Span[programIndex].Source, executionCapacity.State.FrameCount);
                 if (root.Logic.TickBudgets.Span[programIndex].OuterInvocationCount != 0)
-                    m_Hosts[0][programIndex] = m_Bindings.PrepareProgram(TimelineExecutionDomain.Logic, programIndex, this);
+                    m_Bindings.PrepareProgram(TimelineExecutionDomain.Logic, programIndex, this);
                 if (root.Presentation.TickBudgets.Span[programIndex].OuterInvocationCount != 0)
-                    m_Hosts[1][programIndex] = m_Bindings.PrepareProgram(TimelineExecutionDomain.Presentation, programIndex, this);
+                    m_Bindings.PrepareProgram(TimelineExecutionDomain.Presentation, programIndex, this);
             }
+            bool hasLogicSamples = false;
             foreach (TimelineContentClip clip in root.Prepared.Content.Clips)
             {
                 if (clip.TrackMuted || clip.ContentKind != TimelineContentKind.Sampled ||
                     clip.ExecutionPolicy.Domain != TimelineExecutionDomain.Logic)
                     continue;
-                if (!m_Bindings.SupportsSampleKind(TimelineExecutionDomain.Logic, clip.ContractKind))
-                    throw new InvalidOperationException($"Timeline '{root.Prepared.Content.Identity}' 片段 '{clip.AuthoringId}' 的逻辑采样种类 '{clip.ContractKind}' 未装配消费者。");
-                m_HasLogicSamples = true;
+                hasLogicSamples = true;
+            }
+            if (hasLogicSamples)
+            {
+                var prepareLogicSamples = m_Bindings.LogicSamples;
+                if (prepareLogicSamples == null)
+                    throw new InvalidOperationException($"Timeline '{root.Prepared.Content.Identity}' 声明了逻辑采样片段，必须装配实际逻辑采样服务。");
+                m_LogicSamples = prepareLogicSamples(root.Prepared, root.Logic.Content.Mode);
             }
             m_Presentation = new TimelineRuntimePresentationDriver(timelineCapacity.PlaybackCount, timelineCapacity.PlaybackCount);
             m_Presentation.Prepare(root.Prepared, root.Presentation.Content, sourceIdentityId,
                 TimelineRuntimePresentationGraphSource.Unexecuted,
-                kind => m_Bindings.SupportsSampleKind(TimelineExecutionDomain.Presentation, kind));
+                m_Bindings.SupportsPresentationSampleKind);
         }
 
         OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock> Runtime =>
@@ -173,10 +172,10 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationOperationResult result = Dispatch(candidate, in start, batch, in stopContext);
             if (result == OrchestrationOperationResult.Failure)
                 return result;
-            if (m_HasLogicSamples)
+            if (m_LogicSamples != null)
             {
                 ref readonly OrchestrationTimelineOperationWork<OrchestrationTime> work = ref m_Workspace.View.Operations[slot];
-                m_Bindings.SampleLogic(candidate, slot, in start, step.Tick,
+                m_LogicSamples.Invoke(candidate, slot, in start, step.Tick,
                     work.PreviousTime, work.PreviousCycle, work.Proposed.Progress.CursorTime, work.Proposed.Progress.Cycle);
             }
             runtime.Complete(candidate.Timeline, slot, in batch);
@@ -240,9 +239,8 @@ namespace BTSMTL.Timeline.Runtime
                 workspace.EnterInvocation(batch.PlaybackSlot, index);
                 try
                 {
-                    OrchestrationTimelineInvocationFacts invocation = OrchestrationTimelineDispatch<TValue, TScalar,
-                        TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                        OrchestrationTime, OrchestrationTimeClock, TProjection>.ReadInvocationFacts(Runtime);
+                    OrchestrationTimelineInvocationFacts invocation = OrchestrationTimelineDispatch<TValue, TContext,
+                        OrchestrationTime, OrchestrationTimeClock>.ReadInvocationFacts(Runtime);
                     OrchestrationOperationResult result = Execute(candidate, TimelineExecutionDomain.Logic, in invocation, in stopContext);
                     if (result == OrchestrationOperationResult.Failure)
                         return result;
@@ -269,7 +267,7 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationExecutionFrames<TValue> frames = candidate.Frames;
             int frameSlot = frames.FindTimeline(in invocation.Start, in token);
             if (frameSlot < 0)
-                frameSlot = frames.Insert<TStorage>(new OrchestrationExecutionFrameState
+                frameSlot = frames.Insert<THost>(new OrchestrationExecutionFrameState
                 {
                     SkillContentId = m_Graphs.PreparedProgramStorages.Span[programIndex].SkillContentId,
                     EntryOperationIndex = metadata.ExecutionFrameOwnerOperationIndex,
@@ -286,12 +284,10 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationExecutionFrameState header = frames.Header(frameSlot);
             TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, metadata);
             OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, invocation.Invocation.Tick, in header);
-            TDiagnostics diagnostics = m_Bindings.Diagnostics(domain, programIndex, m_Diagnostics[programIndex]);
-            THost host = m_Hosts[DomainIndex(domain)][programIndex];
-            var cursor = candidate.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                TContext, TDiagnostics, TStorage, THost>(program.View, m_Scratches[programIndex].View,
+            THost host = m_Bindings.CreateHost(domain, programIndex, in context, m_Diagnostics[programIndex]);
+            var cursor = candidate.CreateCursor<TNumerics, THost>(program.View, m_Scratches[programIndex].View,
                 frameSlot, m_Bindings.CharacterValueSlots(programIndex), in input, m_Graphs.Graphs.Span[programIndex].Identities.Ordinals,
-                in context, host, diagnostics);
+                host);
             TimelineExecutionDomain previousDomain = m_CurrentDomain;
             OrchestrationTimelineInvocationMetadata previousMetadata = m_CurrentMetadata;
             OrchestrationTimelineInvocationFacts previousInvocation = m_CurrentInvocation;
@@ -302,9 +298,9 @@ namespace BTSMTL.Timeline.Runtime
             m_CurrentFrame = header;
             try
             {
-                TValue time = default(TValues).FromScalar(default(TProjection).Project(invocation.Invocation.Time));
+                TValue time = default(TNumerics).FromTime(invocation.Invocation.Time);
                 OrchestrationOperationResult result = cursor.AdvanceTimeline(in invocation, in time, in stopContext,
-                    input.HasDiagnostics ? m_Diagnostics[programIndex] : null, out OrchestrationTraceContext traceContext);
+                    input.HasDiagnostics, out OrchestrationTraceContext traceContext);
                 if (invocation.EndsExecutionFrame && !token.Marker &&
                     m_Bindings.ReleaseInvocation(domain, in metadata, in invocation, in header, ref context) != OrchestrationOperationResult.Success)
                     result = OrchestrationOperationResult.Failure;
@@ -337,12 +333,10 @@ namespace BTSMTL.Timeline.Runtime
                 int programIndex = frames.Plan.ProgramIndex(header.SkillContentId);
                 TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, null);
                 OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, tick, in header);
-                TDiagnostics diagnostics = m_Bindings.Diagnostics(domain, programIndex, m_Diagnostics[programIndex]);
-                var cursor = candidate.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                    TContext, TDiagnostics, TStorage, THost>(m_Graphs.Programs.Span[programIndex].View,
+                THost host = m_Bindings.CreateHost(domain, programIndex, in context, m_Diagnostics[programIndex]);
+                var cursor = candidate.CreateCursor<TNumerics, THost>(m_Graphs.Programs.Span[programIndex].View,
                     m_Scratches[programIndex].View, frameSlot, m_Bindings.CharacterValueSlots(programIndex), in input,
-                    m_Graphs.Graphs.Span[programIndex].Identities.Ordinals, in context,
-                    m_Hosts[DomainIndex(domain)][programIndex], diagnostics);
+                    m_Graphs.Graphs.Span[programIndex].Identities.Ordinals, host);
                 cursor.ReleaseExecutionFrame(frameSlot, in stopContext);
                 Consume(domain, programIndex, null, in header, in context, default);
             }
@@ -370,8 +364,6 @@ namespace BTSMTL.Timeline.Runtime
             return m_Bindings.ReleaseInvocation(m_CurrentDomain, in m_CurrentMetadata,
                 in m_CurrentInvocation, in m_CurrentFrame, ref context);
         }
-
-        static int DomainIndex(TimelineExecutionDomain domain) => domain == TimelineExecutionDomain.Logic ? 0 : 1;
 
         static void RequireSuccess(OrchestrationOperationResult result, in OrchestrationTimelineInvocationFacts invocation)
         {

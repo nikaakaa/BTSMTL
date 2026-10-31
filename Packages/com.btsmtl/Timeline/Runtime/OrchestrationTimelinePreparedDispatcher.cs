@@ -5,30 +5,20 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Timeline.Runtime
 {
     // Timeline 逻辑派发核心：只经运行视图与结构体插头，托管宿主与 Burst 宿主共用同一份代码。
-    public static class OrchestrationTimelineDispatch<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TTime, TClock, TProjection>
+    public static class OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TTime : unmanaged, IEquatable<TTime>
         where TClock : struct, IOrchestrationTimelineClock<TTime>
-        where TProjection : struct, IOrchestrationTimelineTimeProjection<TTime, TScalar>
     {
-        public static OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost, TBindings, TSamples>(
+        public static OrchestrationOperationResult Tick<TNumerics, THost, TBindings, TSamples>(
             OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings, ref TSamples samples,
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
             ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
             where TSamples : struct, ITimelineRuntimeLogicSamples<TValue, TContext>
         {
@@ -68,14 +58,13 @@ namespace BTSMTL.Timeline.Runtime
             return Result(batch.Status);
         }
 
-        public static OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost, TBindings>(
+        public static OrchestrationStopStatus Stop<TNumerics, THost, TBindings>(
             OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings,
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
         {
             int slot = runtime.FindPlayback(candidate, playbackIdentity);
@@ -96,8 +85,8 @@ namespace BTSMTL.Timeline.Runtime
             return OrchestrationStopStatus.Completed;
         }
 
-        public static TValue ReadTime(OrchestrationTimelineRuntime<TTime, TClock> runtime) =>
-            default(TValues).FromScalar(default(TProjection).Project(runtime.Workspace.CurrentInvocation.Time));
+        public static OrchestrationTime ReadTime(OrchestrationTimelineRuntime<TTime, TClock> runtime) =>
+            OrchestrationTime.FromRaw(default(TClock).Raw(runtime.Workspace.CurrentInvocation.Time));
 
         public static void ReleasePlayback(OrchestrationTimelineRuntime<TTime, TClock> runtime,
             OrchestrationStateView candidate, ref ulong playbackIdentity)
@@ -187,21 +176,12 @@ namespace BTSMTL.Timeline.Runtime
     }
 
     // 普通插头：托管宿主持有内容、草稿与绑定对象，派发转入同一核心。
-    public sealed class OrchestrationTimelinePreparedDispatcher<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TTime, TClock, TProjection> :
-        IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+    public sealed class OrchestrationTimelinePreparedDispatcher<TValue, TContext, TTime, TClock> :
+        IOrchestrationTimelineDispatcher<TValue, TContext>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TTime : unmanaged, IEquatable<TTime>
         where TClock : struct, IOrchestrationTimelineClock<TTime>
-        where TProjection : struct, IOrchestrationTimelineTimeProjection<TTime, TScalar>
     {
         readonly OrchestrationTimelinePreparedContent<TTime> m_Content;
         readonly OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<TTime>> m_Layout;
@@ -230,60 +210,52 @@ namespace BTSMTL.Timeline.Runtime
         OrchestrationTimelineRuntime<TTime, TClock> Runtime =>
             new OrchestrationTimelineRuntime<TTime, TClock>(m_Content.View, m_Layout.Regions, in m_Capacity, m_Workspace.View);
 
-        public OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+        public OrchestrationOperationResult Tick<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
             ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.Tick(Runtime, ref m_Bindings, ref m_Samples, ref cursor, candidate,
-                operationIndex, contentIdentityId, operationGeneration, ref playbackIdentity, inputs, tick, ref context);
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue> =>
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.Tick(Runtime, ref m_Bindings, ref m_Samples,
+                ref cursor, candidate, operationIndex, contentIdentityId, operationGeneration, ref playbackIdentity,
+                inputs, tick, ref context);
 
-        public OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+        public OrchestrationStopStatus Stop<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.Stop(Runtime, ref m_Bindings, ref cursor, candidate, operationIndex,
-                ref playbackIdentity, in stopContext, force, tick, ref context);
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue> =>
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.Stop(Runtime, ref m_Bindings, ref cursor,
+                candidate, operationIndex, ref playbackIdentity, in stopContext, force, tick, ref context);
 
-        public TValue ReadTime() => OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw,
-            TQuaternion, TMath, TValues, TContext, TTime, TClock, TProjection>.ReadTime(Runtime);
+        public OrchestrationTime ReadTime() => OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReadTime(Runtime);
 
         public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
 
         public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate,
             int operationIndex, ulong tick, ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.RequestClipExit(Runtime, ref m_Bindings, candidate, ref context);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.RequestClipExit(Runtime, ref m_Bindings,
+                candidate, ref context);
 
         public int EnterInvocation(int playbackSlot, int invocationIndex, ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.EnterInvocation(Runtime, ref m_Bindings, playbackSlot, invocationIndex, ref context);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.EnterInvocation(Runtime, ref m_Bindings,
+                playbackSlot, invocationIndex, ref context);
 
         public void SelectExecutionFrame(int frameSlot, ref TContext context) =>
             m_Bindings.SelectExecutionFrame(frameSlot, ref context);
 
         public OrchestrationTimelineInvocationFacts ReadInvocationFacts() =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.ReadInvocationFacts(Runtime);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReadInvocationFacts(Runtime);
 
         public OrchestrationOperationResult ReleaseInvocation(ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.ReleaseInvocation(Runtime, ref m_Bindings, ref context);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReleaseInvocation(Runtime, ref m_Bindings, ref context);
 
         public void LeaveInvocation(ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
-                TTime, TClock, TProjection>.LeaveInvocation(Runtime, ref m_Bindings, ref context);
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.LeaveInvocation(Runtime, ref m_Bindings, ref context);
     }
 
     public readonly struct ManagedOrchestrationTimelineBindings<TTime, TValue, TContext> :

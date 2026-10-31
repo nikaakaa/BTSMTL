@@ -5,17 +5,10 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
-    // TContext 是宿主交给扩展实现的调用句柄；没有扩展领域的宿主使用 ValueTuple。
-    public sealed partial class HostedGraphRuntime<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TNumeric, TContext> : IDisposable
+    // 高级接入档：强类型图运行时，可直接读写编排值。TContext 是宿主交给扩展实现的调用句柄，没有扩展领域时使用 ValueTuple。
+    public sealed partial class HostedGraphRuntime<TValue, TNumerics, TContext> : IGraphRuntimeCore<TContext>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
+        where TNumerics : struct, IGraphNumerics<TValue>
         where TContext : struct
     {
         enum EvaluationStatus : byte
@@ -28,14 +21,13 @@ namespace BTSMTL.Graphs
 
         readonly BtsmtlGraphRoot m_Source;
         readonly GraphHostContract m_Contract;
-        readonly HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric> m_Bindings;
+        readonly HostedGraphBindings<TValue, TNumerics> m_Bindings;
         readonly OrchestrationPreparedStateLayout<TValue> m_Layout;
         readonly OrchestrationStateRegion<TValue> m_PrivateValues;
         readonly OrchestrationStateLayout m_MemoryLayout;
         readonly OrchestrationExecutionScratchMemory<TValue> m_Scratch;
         readonly OrchestrationWorkbenchDiagnosticStorage<TValue> m_Diagnostics;
         readonly OrchestrationExtensionBindings<TValue, TContext> m_Extensions;
-        readonly ManagedOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext> m_Host;
         readonly TValue[] m_Inputs;
         OrchestrationOutputRequest[] m_OutputRequests;
         TValue[] m_OutputValues;
@@ -64,14 +56,11 @@ namespace BTSMTL.Graphs
         bool m_Disposed;
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<TValue> encoding,
-            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int,
-                OrchestrationExecutionStateLayout<TValue>> createStateLayout,
-            IReadOnlyList<IOrchestrationExtension> extensions)
+            IOrchestrationGraphContentEncoding<TValue> encoding, IReadOnlyList<IOrchestrationExtension> extensions)
         {
             m_Source = source;
             m_Contract = contract;
-            m_Bindings = new HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(source, contract, encoding);
+            m_Bindings = new HostedGraphBindings<TValue, TNumerics>(source, contract, encoding);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             OrchestrationGraphContent<TValue> content = m_Bindings.Content;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
@@ -83,7 +72,7 @@ namespace BTSMTL.Graphs
                 new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
             OrchestrationExecutionStateCapacity stateCapacity = capacity.State;
-            OrchestrationExecutionStateLayout<TValue> executionLayout = createStateLayout(
+            OrchestrationExecutionStateLayout<TValue> executionLayout = default(TNumerics).CreateStateLayout(
                 StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
                 content.NumericProfile.Id, content.NumericProfile.AbiVersion,
                 stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
@@ -106,8 +95,6 @@ namespace BTSMTL.Graphs
             m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
                 content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
                 extensions ?? throw new ArgumentNullException(nameof(extensions)));
-            m_Host = new ManagedOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>(
-                m_Extensions);
             // Start 与 Update 的输出按两次调用保留；编辑器排队触发时提前准备额外容量。
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Scratch.OutputRequestCapacity * 2)];
             m_OutputValues = new TValue[checked(m_Scratch.OutputValueCapacity * 2)];
@@ -212,9 +199,8 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            var cursor = m_Host.CreateCursor<TDiagnostics, OrchestrationArrayValueStorage<TValue>>(state,
-                m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities,
-                in context, diagnostics);
+            var cursor = Host(in context, diagnostics).CreateCursor<TNumerics>(state,
+                m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             try
@@ -243,6 +229,12 @@ namespace BTSMTL.Graphs
                     m_Bindings.Content.Identity.GraphId, m_Bindings.Content.Identity.SourceRevision), exception);
             }
         }
+
+        ManagedOrchestrationHost<TValue, TContext, OrchestrationArrayValueStorage<TValue>, TDiagnostics>
+            Host<TDiagnostics>(in TContext context, TDiagnostics diagnostics)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue> =>
+            new ManagedOrchestrationHost<TValue, TContext, OrchestrationArrayValueStorage<TValue>, TDiagnostics>(
+                in context, diagnostics, m_Extensions);
 
         // 本次计算发出的编排输出，在 Adopt 或 Discard 前有效；值中的运行文本用 ResolveOutputText 读取。
         public ReadOnlySpan<OrchestrationOutputRequest> OutputRequests => m_OutputRequests.AsSpan(0, m_OutputRequestCount);
@@ -382,7 +374,7 @@ namespace BTSMTL.Graphs
 
         void RemapValue(ref TValue value)
         {
-            TValues values = default;
+            TNumerics values = default;
             if (values.Kind(in value) != OrchestrationValueKind.Identity)
                 return;
             OrchestrationIdentityValue identity = values.Identity(in value);
@@ -466,7 +458,7 @@ namespace BTSMTL.Graphs
         internal void RequireIdle()
         {
             if (m_Disposed)
-                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TNumeric, TContext>));
+                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TValue, TNumerics, TContext>));
             if (m_Status != EvaluationStatus.Idle)
                 throw new InvalidOperationException("图实例必须完成或丢弃已派发候选后才能改变生命周期。");
         }

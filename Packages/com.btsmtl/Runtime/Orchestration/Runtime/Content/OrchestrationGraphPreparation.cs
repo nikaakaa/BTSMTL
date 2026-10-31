@@ -3,17 +3,12 @@ using System.Collections.Generic;
 
 namespace BTSMTL.Orchestration
 {
-    public sealed class OrchestrationGraphPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>
+    public sealed class OrchestrationGraphPreparation<TValue, TNumerics>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
     {
         OrchestrationGraphPreparation(
-            PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>[] graphs,
+            PreparedOrchestrationGraph<TValue, TNumerics>[] graphs,
             OrchestrationProgram<TValue>[] programs,
             OrchestrationPreparedProgramStorage<TValue>[] storages)
         {
@@ -22,11 +17,11 @@ namespace BTSMTL.Orchestration
             PreparedProgramStorages = storages;
         }
 
-        public ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>> Graphs { get; }
+        public ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TNumerics>> Graphs { get; }
         public ReadOnlyMemory<OrchestrationProgram<TValue>> Programs { get; }
         public ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> PreparedProgramStorages { get; }
 
-        public static OrchestrationGraphPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> Prepare(
+        public static OrchestrationGraphPreparation<TValue, TNumerics> Prepare(
             FrozenOrchestrationIdentities identities,
             ReadOnlySpan<OrchestrationProgramSource<TValue>> sources,
             ReadOnlySpan<int> programContentIds,
@@ -41,14 +36,14 @@ namespace BTSMTL.Orchestration
                 {
                     TValue sourceValue = value.Value;
                     projected.Add((mapping.Span[value.ContractIdentityId], value.Field),
-                        PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.MapValue(in sourceValue, mapping));
+                        PreparedOrchestrationGraph<TValue, TNumerics>.MapValue(in sourceValue, mapping));
                 }
             }
 
-            var graphs = new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>[sources.Length];
+            var graphs = new PreparedOrchestrationGraph<TValue, TNumerics>[sources.Length];
             var programs = new OrchestrationProgram<TValue>[sources.Length];
             var storages = new OrchestrationPreparedProgramStorage<TValue>[sources.Length];
-            TValues values = default;
+            TNumerics values = default;
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
@@ -66,14 +61,14 @@ namespace BTSMTL.Orchestration
                         throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
                     overrides[bindingIndex] = new OrchestrationDefaultValue<TValue>(binding.ValueSlot, value);
                 }
-                graphs[programIndex] = PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.Prepare(
+                graphs[programIndex] = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(
                     content, identities, sources[programIndex].IdentityTableIndex, overrides);
                 OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
                 programs[programIndex] = new OrchestrationProgram<TValue>(program);
                 storages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
                     programContentIds[programIndex], program.ExecutionStorage, program.ValueSlotTypes);
             }
-            return new OrchestrationGraphPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+            return new OrchestrationGraphPreparation<TValue, TNumerics>(
                 graphs, programs, storages);
         }
     }

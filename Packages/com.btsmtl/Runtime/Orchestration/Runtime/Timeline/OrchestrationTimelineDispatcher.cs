@@ -1,39 +1,26 @@
 using System;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public interface IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext> : IOrchestrationTimelineClipExitDispatcher<TContext>
+    public interface IOrchestrationTimelineDispatcher<TValue, TContext> : IOrchestrationTimelineClipExitDispatcher<TContext>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
     {
-        OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+        OrchestrationOperationResult Tick<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
             ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>;
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>;
 
-        OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost> cursor,
+        OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext,
             bool force, ulong tick, ref TContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>;
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>;
 
-        TValue ReadTime();
+        OrchestrationTime ReadTime();
 
         void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context);

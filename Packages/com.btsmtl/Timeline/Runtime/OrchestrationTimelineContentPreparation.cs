@@ -128,15 +128,10 @@ namespace BTSMTL.Timeline.Runtime
             throw new InvalidOperationException($"Timeline 图 '{m_GraphId}' 缺少 '{hook}' 生命周期入口。");
         }
 
-        public static OrchestrationTimelineGraphBinding Prepare<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
-            int programIndex, PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> graph)
+        public static OrchestrationTimelineGraphBinding Prepare<TValue, TNumerics>(
+            int programIndex, PreparedOrchestrationGraph<TValue, TNumerics> graph)
             where TValue : unmanaged
-            where TScalar : unmanaged
-            where TVector2 : unmanaged
-            where TVector3 : unmanaged
-            where TYaw : unmanaged
-            where TQuaternion : unmanaged
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
         {
             string graphId = graph.Source.Identity.GraphId;
             var sources = new Dictionary<string, OrchestrationGraphExecutionSource>(StringComparer.Ordinal);
