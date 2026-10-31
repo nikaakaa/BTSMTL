@@ -94,5 +94,6 @@ namespace BTSMTL.Timeline
 #endif
         long m_ClipInTimeFPRawValue;
         public virtual string ContractKind => string.Empty;
+        public virtual ClipCapabilities Capabilities => ClipCapabilities.None;
     }
 }

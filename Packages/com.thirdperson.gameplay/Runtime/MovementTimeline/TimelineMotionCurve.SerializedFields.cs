@@ -43,6 +43,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
     public sealed partial class MotionCurveClip : SampledClip
     {
         public override string ContractKind => MotionCurveTimelineContracts.ClipKind;
+        public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif

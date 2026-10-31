@@ -17,6 +17,10 @@ namespace BTSMTL.Timeline
     public partial class TreeClip : Clip
     {
         public override string ContractKind => TimelineContractKinds.TreeClip;
+        public override ClipCapabilities Capabilities =>
+            m_ExitSource == TimelineClipExitSource.TreeDecision
+                ? ClipCapabilities.TickQuantized
+                : ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
 #if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("OnClipChanged", "RepaintInspector")]
 #endif
