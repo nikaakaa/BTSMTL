@@ -167,7 +167,7 @@ namespace BTSMTL.Graphs
             CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string OwnerId => m_OwnerId;
         [GraphAuthoringField("variableId", GraphAuthoringFieldValueKind.IdentityReference,
-            DisplayName = "变量", PickerKind = "graph-variable", PickerOwnerField = "ownerId",
+            DisplayName = "变量", PickerKind = "graph-variable", PickerOwnerField = nameof(OwnerId),
             CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string VariableId => m_VariableId;
         public Type ValueType => typeof(T);
