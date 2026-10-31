@@ -2181,7 +2181,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 }
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
-// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停即提示完整名字与起止（Tip，无延迟），写全时不提示；exit 之后的部分压暗。
+// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停即提示完整名字（Tip，无延迟），写全时不提示；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
 function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
@@ -2218,7 +2218,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
-        <Tip delay={0} disabled={labelShown && labelTextWidth(label) <= labelWidth} content={`${label}\n${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}`}>
+        <Tip delay={0} disabled={labelShown && labelTextWidth(label) <= labelWidth} content={label}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
@@ -2280,7 +2280,7 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
   return (
-    <Tip delay={0} content={`${text ?? '未绑定节点图'}\n${seconds.toFixed(3)} s${blocked ? '\n此刻已有标记，标记不能重叠' : ''}`}>
+    <Tip delay={0} content={text ?? '未绑定节点图'}>
     <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined}
       data-invalid={blocked || undefined} data-select={selectId} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
       onPointerDown={event => {
