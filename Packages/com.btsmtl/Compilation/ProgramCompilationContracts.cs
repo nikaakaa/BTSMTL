@@ -805,7 +805,7 @@ namespace BTSMTL.Compilation
                             !invocations.TryAdd(entry.GraphInvocationPath, entry) ||
                             !Enum.IsDefined(typeof(ProgramInvocationCallerKind), entry.InvocationCallerKind) ||
                             (entry.InvocationCallerKind == ProgramInvocationCallerKind.None) != string.IsNullOrEmpty(entry.ParentInvocationPath) ||
-                            (entry.InvocationCallerKind == ProgramInvocationCallerKind.None) != string.IsNullOrEmpty(entry.InvocationCallerId) ||
+                            entry.InvocationCallerKind != ProgramInvocationCallerKind.None && string.IsNullOrEmpty(entry.InvocationCallerId) ||
                             timelineCaller != !string.IsNullOrEmpty(entry.InvocationCallerClipId) ||
                             timelineCaller && (entry.InvocationCallerOperationIndex < 0 ||
                                 entry.InvocationCallerOperationIndex >= operationCount))
