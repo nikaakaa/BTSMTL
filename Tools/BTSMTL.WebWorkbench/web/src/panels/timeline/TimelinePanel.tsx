@@ -24,7 +24,7 @@ import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
+import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
@@ -1211,12 +1211,21 @@ function Line({ id, height = trackHeight, nest, head, headClass, children, laneC
   );
 }
 
-// 分组折叠三角：画在分组框左侧的缩进里（TimelineTreeView.DrawFoldout）。
-const Foldout = ({ open, label, disabled, onToggle }: { open: boolean; label: string; disabled?: boolean; onToggle(): void }) => (
-  <button className={styles.fold} onClick={onToggle} aria-expanded={open} disabled={disabled} aria-label={`${open ? '折叠' : '展开'}${label}`}>
-    <FoldoutIcon open={open} />
-  </button>
-);
+// 分组标题：折叠三角在分组框内左侧（TimelineTreeView.DrawFoldout），整条标题单击即折叠或展开；
+// meta 为淡色的补充信息（如时间范围）。
+function GroupToggle({ open, name, meta, title, now, disabled, onToggle, onDoubleClick }: {
+  open: boolean; name: string; meta?: string; title?: string; now?: boolean; disabled?: boolean;
+  onToggle(): void; onDoubleClick?(): void;
+}) {
+  return (
+    <button className={styles.groupToggle} onClick={onToggle} onDoubleClick={onDoubleClick} aria-expanded={open} disabled={disabled}
+      title={title ?? `单击${open ? '折叠' : '展开'}`}>
+      <span className={styles.fold}><FoldoutIcon open={open} /></span>
+      <span className={styles.groupName} data-now={now || undefined}>{name}</span>
+      {meta && <span className={styles.groupMeta}>{meta}</span>}
+    </button>
+  );
+}
 
 // 轨道头（TimelineTrackGUI.DrawTrackHeader）：左侧 4 像素类别色条、16 像素类型图标、轨道名，右侧为按钮组与选项按钮。
 // rename 为改名输入框，给出时代替轨道名。
@@ -1242,30 +1251,15 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
   // 运行路线上游标所在的段名高亮；技能文档的各 Timeline 都从 0 开始，不分先后。
   const route = useContext(PreviewClockContext).kind === 'archive';
   const now = useWorkbench(state => route && state.frameIndex >= segment.firstIndex && state.frameIndex <= segment.lastIndex);
-  const stateNode = useWorkbench(useShallow(state => {
-    if (!segment.state) return null;
-    for (const graph of state.graphs ?? []) {
-      if (graph.id !== segment.state.graphId) continue;
-      const node = graph.nodes.find(item => item.id === segment.state!.nodeId);
-      if (node) return { selectId: nodeSelectId(graph, node), graph: graphKey(graph) };
-    }
-    return null;
-  }));
   const { range } = useTimelineContext();
   return (
     <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
-        <Foldout open={open} label={row.title} onToggle={() => toggle(row.id)} />
-        <button className={styles.segmentTitle} data-now={now || undefined}
-          title={`${stateNode ? '单击选中该状态并在节点图显示、跳到段首' : '单击跳到段首'}；双击进入这个 Timeline`}
-          onClick={() => {
-            if (stateNode) {
-              selectionActions.select({ kind: 'node', id: stateNode.selectId });
-              selectionActions.showGraph(stateNode.graph, null);
-            }
-            transport.seek(segment.firstIndex);
-          }}
-          onDoubleClick={() => enter(segment.documentId)}>{row.title}</button>
+        <GroupToggle open={open} now={now} onToggle={() => toggle(row.id)}
+          name={segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}
+          meta={`${segment.state ? `${segment.state.name} · ` : ''}${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
+          title={`单击${open ? '折叠' : '展开'}${row.focused ? '' : '；双击进入这个 Timeline'}`}
+          onDoubleClick={row.focused ? undefined : () => enter(segment.documentId)} />
         {segment.timeline && !row.focused && <AddTrack documentId={segment.documentId} />}
       </>
     }>
@@ -1724,8 +1718,7 @@ function CurveGroupLine({ nest, open, toggle }: { nest: Nest | undefined; open: 
     checked: selected.includes(curve.id), onChange: checked => runActions.selectCurve(curve.id, checked),
   }));
   return <Line id="curves" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
-    <Foldout open={open} label="项目曲线" onToggle={() => toggle('curves')} />
-    <span className={styles.segmentTitle}>项目曲线</span>
+    <GroupToggle open={open} name="项目曲线" onToggle={() => toggle('curves')} />
     {entries.length > 0 && <MenuButton label="选择项目曲线" variant="ghost" className={styles.addButton} iconOnly entries={entries}><AddIcon /></MenuButton>}
   </>}>
     {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span>
@@ -1784,8 +1777,8 @@ function ReceivedGroupLine({ nest, received, open, toggle }: {
   const notice = !received.keys.length && !received.missing.length ? '已读帧内没有非中性输入' : null;
   const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
   return <Line id="received" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
-    <Foldout open={open} label="实际输入" onToggle={() => toggle('received')} />
-    <span className={styles.segmentTitle} title={`已读 SDK ${scope}；随游标分页读取`}>实际收到的输入（已读帧）</span>
+    <GroupToggle open={open} name="实际收到的输入" meta="已读帧" onToggle={() => toggle('received')}
+      title={`单击${open ? '折叠' : '展开'}；已读 SDK ${scope}，随游标分页读取`} />
   </>}>
     {notice && <span className={styles.curveNotice} title={notice}>{notice}</span>}
   </Line>;
@@ -1815,8 +1808,7 @@ function InputGroupLine({ nest, open, toggle, roots }: {
   return (
     <Line id="input" nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
-        <Foldout open={open && !!options.length} label="预览输入" disabled={!options.length} onToggle={() => toggle('input')} />
-        <span className={styles.segmentTitle}>预览输入</span>
+        <GroupToggle open={open && !!options.length} name="预览输入" disabled={!options.length} onToggle={() => toggle('input')} />
         <span className={styles.scheme}>
           <Select label="已采用输入方案" placeholder="方案" value={inputRoot} options={options}
             disabled={options.length < 2} tip={options.length ? undefined : reason || '本次运行没有预览输入'}

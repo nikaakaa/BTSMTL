@@ -331,12 +331,12 @@
   min-width: 0;
 }
 
-/* 分组（TimelineGroupGUI）：圆角色块，名字从左起 20 像素；有子行时只留上圆角，下方由子行接续 */
+/* 分组（TimelineGroupGUI）：圆角色块，折叠三角在框内左侧；有子行时只留上圆角，下方由子行接续 */
 .groupHead {
   position: relative;
   align-items: center;
   gap: 4px;
-  padding: 0 2px 0 20px;
+  padding: 0 2px 0 0;
   border-radius: 4px;
   background: var(--tl-group);
   color: var(--tl-group-font);
@@ -463,44 +463,77 @@
   padding: 0 3px;
 }
 
-.segmentTitle {
+/* 分组标题：整条可单击折叠，悬停提亮；名字常色，补充信息淡色等宽数字 */
+.groupToggle {
   all: unset;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 6px;
   flex: 1;
+  min-width: 0;
+  padding: 0 6px 0 4px;
+  border-radius: 4px 0 0 4px;
+  cursor: default;
+}
+
+.groupToggle:hover:not(:disabled) {
+  background: rgb(255 255 255 / 5%);
+}
+
+.groupToggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.groupToggle:disabled {
+  color: var(--text-disabled);
+}
+
+.groupName {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: default;
+  color: var(--text-strong);
 }
 
-.segmentTitle[data-now] {
+.groupToggle:disabled .groupName {
+  color: inherit;
+}
+
+.groupName[data-now] {
   color: #79a6e9;
 }
 
-.segmentTitle:focus-visible {
-  outline: 1px solid var(--accent);
+/* 窄时先收补充信息，名字尽量完整 */
+.groupMeta {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .scheme {
   min-width: 0;
 }
 
-/* 折叠三角：画在分组框左侧的缩进里 */
 .fold {
-  all: unset;
-  position: absolute;
-  left: -14px;
-  top: calc(50% - 6.5px);
   display: flex;
+  flex: none;
   color: var(--glyph);
 }
 
-.fold:disabled {
-  color: var(--text-disabled);
+.groupToggle:hover:not(:disabled) .fold {
+  color: var(--glyph-strong);
 }
 
-.fold:focus-visible {
-  outline: 1px solid var(--accent);
+.groupToggle:disabled .fold {
+  color: var(--text-disabled);
 }
 
 /* 时间区：轨道底色半透明，分组内叠在分组轨道底色上；选中轨道为选中色 */

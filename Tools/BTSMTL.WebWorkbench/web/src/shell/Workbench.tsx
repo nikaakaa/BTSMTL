@@ -7,6 +7,7 @@ import { TipProvider } from '../ui/controls';
 import './dockview.css';
 import { GroupActions, Watermark } from './GroupActions';
 import { attachLayout } from './layout';
+import { PanelTab } from './PanelTab';
 import { bindShortcuts } from './shortcuts';
 import styles from './shell.module.css';
 import { Toolbar } from './Toolbar';
@@ -29,6 +30,7 @@ export function Workbench() {
           className={styles.dock}
           theme={theme}
           components={panelComponents}
+          defaultTabComponent={PanelTab}
           rightHeaderActionsComponent={GroupActions}
           watermarkComponent={Watermark}
           popoutUrl="/popout.html"
