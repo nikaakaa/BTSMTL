@@ -215,7 +215,7 @@ namespace ThirdPersonSimulation
 
         void ValidateReferences(OperationValuePortContract[] contracts)
         {
-            GameplayAbilityOperationSet.RequireVersion(Manifest.OperationSetVersion);
+            GameplayAbilityOperationSet.RequireVersion(Manifest.Contract.OperationSetVersion);
             for (int i = 0; i < m_Operations.Count; i++)
             {
                 SemanticOperation operation = m_Operations[i];
