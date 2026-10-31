@@ -558,9 +558,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       selectCanvas([...selected], current?.view === view ? current.edges : []);
     }
   }, [panelId, selectCanvas, view]);
-  const onNodeClick = useCallback((_: unknown, node: CanvasNode) => {
+  const onNodeClick = useCallback((event: ReactMouseEvent, node: CanvasNode) => {
+    if (editable && !event.ctrlKey && !event.shiftKey) selectCanvas([node.id], []);
     if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call: call ?? undefined });
-  }, [call]);
+  }, [call, editable, selectCanvas]);
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
     if (node.data.children.length) enter(node.data.children[0]);
@@ -587,9 +588,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
     if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
     if (!editable) return;
-    const next = new Set(event.ctrlKey || event.shiftKey ? selectedEdges : []);
+    const additive = event.ctrlKey || event.shiftKey;
+    const next = new Set(additive ? selectedEdges : []);
     if (!next.delete(edge.id)) next.add(edge.id);
-    selectCanvas(nodes.filter(node => node.selected).map(node => node.id), [...next]);
+    selectCanvas(additive ? nodes.filter(node => node.selected).map(node => node.id) : [], [...next]);
   }, [editable, machine, graph, call, nodes, selectCanvas, selectedEdges]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
