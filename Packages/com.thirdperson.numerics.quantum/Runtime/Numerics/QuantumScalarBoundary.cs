@@ -5,7 +5,7 @@ namespace ThirdPersonSimulation.QuantumNumerics
 {
     public readonly struct QuantumScalarConversion
     {
-        internal QuantumScalarConversion(string sourceIdentity, double sourceValue, FP value)
+        public QuantumScalarConversion(string sourceIdentity, double sourceValue, FP value)
         {
             SourceIdentity = sourceIdentity;
             SourceValue = sourceValue;
