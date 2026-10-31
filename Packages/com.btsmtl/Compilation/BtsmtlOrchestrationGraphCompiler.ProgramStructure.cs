@@ -482,10 +482,11 @@ namespace BTSMTL.Compilation
                                 "输出节点必须为模板的每个端口提供输入。");
                     }
                 }
-                if (operations[m_Entry.Value].Code != OrchestrationOperationCode.Root ||
+                if ((operations[m_Entry.Value].Code != OrchestrationOperationCode.Root &&
+                     (operations[m_Entry.Value].Code != OrchestrationOperationCode.ConditionResult || m_Contract != OrchestrationExecutionContract.Complete)) ||
                     operations[m_Entry.Value].ExecutionFrameOwnerOperationIndex != m_Entry.Value)
                     Error("program_root_invalid", ProgramSourceTargetKind.Operation, m_Entry.Value,
-                        "编排程序入口必须是持有自身执行帧的 Root。");
+                        "Graph 入口必须持有自身执行帧，并声明 Root 或同步条件结果。");
 
                 foreach (ProgramGraphCallFrame frame in m_GraphCalls)
                 {

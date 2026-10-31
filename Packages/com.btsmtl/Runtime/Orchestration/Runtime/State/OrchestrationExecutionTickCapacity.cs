@@ -203,15 +203,21 @@ namespace BTSMTL.Orchestration
                     throw new ArgumentException("A Timeline Tick capacity does not describe a prepared Timeline operation.");
                 timelines.Add((content.ProgramIndex, content.OperationIndex), content);
             }
+            var analyses = new ProgramAnalysis<TValue>[programs.Length];
+            for (int programIndex = 0; programIndex < programs.Length; programIndex++)
+            {
+                analyses[programIndex] = new ProgramAnalysis<TValue>(programs[programIndex], extensions[programIndex], programIndex);
+                analyses[programIndex].Analyze(true);
+            }
+            OrchestrationProgramTickBudget[] executionBudgets = PrepareBudgets(programs, budgets, executionCapacity, timelines, analyses);
             var result = new OrchestrationProgramTickCapacity[programs.Length];
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
-                ref readonly OrchestrationProgramTickBudget budget = ref budgets[programIndex];
+                ref readonly OrchestrationProgramTickBudget budget = ref executionBudgets[programIndex];
                 if (budget.OuterInvocationCount < 0 || budget.StandaloneEvaluationCount < 0)
                     throw new ArgumentException($"Program '{programIndex}' has a negative Tick invocation budget.");
                 OrchestrationProgram<TValue> program = programs[programIndex];
-                var analysis = new ProgramAnalysis<TValue>(program, extensions[programIndex], programIndex, timelines);
-                analysis.Analyze(budget.OuterInvocationCount > 0);
+                ProgramAnalysis<TValue> analysis = analyses[programIndex];
                 OrchestrationTraceCapacity trace = analysis.AnalyzeTrace(budget.OuterInvocationCount > 0);
                 long execution = checked((long)budget.OuterInvocationCount * analysis.InvocationEvaluations);
                 long evaluations = checked(execution +
@@ -271,6 +277,53 @@ namespace BTSMTL.Orchestration
             return new OrchestrationExecutionTickCapacity(result);
         }
 
+        static OrchestrationProgramTickBudget[] PrepareBudgets<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<OrchestrationProgramTickBudget> roots, OrchestrationExecutionCapacity capacity,
+            Dictionary<(int Program, int Operation), OrchestrationTimelineTickContentCapacity> timelines,
+            ProgramAnalysis<TValue>[] analyses) where TValue : unmanaged
+        {
+            var incoming = new int[programs.Length];
+            var calls = new List<OrchestrationTimelineTickContentCapacity>[programs.Length];
+            for (int program = 0; program < calls.Length; program++)
+                calls[program] = new List<OrchestrationTimelineTickContentCapacity>();
+            foreach (OrchestrationTimelineTickContentCapacity timeline in timelines.Values)
+            {
+                calls[timeline.ProgramIndex].Add(timeline);
+                foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.Content.GraphEntries.Span)
+                    incoming[entry.ProgramIndex]++;
+            }
+            var ready = new Queue<int>();
+            for (int program = 0; program < incoming.Length; program++)
+                if (incoming[program] == 0)
+                    ready.Enqueue(program);
+            OrchestrationProgramTickBudget[] budgets = roots.ToArray();
+            int prepared = 0;
+            while (ready.Count != 0)
+            {
+                int caller = ready.Dequeue();
+                prepared++;
+                foreach (OrchestrationTimelineTickContentCapacity timeline in calls[caller])
+                {
+                    int owner = programs[caller].Operation(timeline.OperationIndex).ExecutionFrameOwnerOperationIndex;
+                    long advances = checked((long)budgets[caller].OuterInvocationCount * analyses[caller].ExecuteVisits[timeline.OperationIndex]);
+                    long stops = budgets[caller].OuterInvocationCount == 0 ? 0 :
+                        checked(capacity.OwnerInstances(caller).Span[owner] + advances);
+                    foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.Content.GraphEntries.Span)
+                    {
+                        int invocations = checked((int)(advances * entry.AdvanceInvocations + stops * entry.StopInvocations));
+                        OrchestrationProgramTickBudget target = budgets[entry.ProgramIndex];
+                        budgets[entry.ProgramIndex] = new OrchestrationProgramTickBudget(
+                            checked(target.OuterInvocationCount + invocations), target.StandaloneEvaluationCount);
+                        if (--incoming[entry.ProgramIndex] == 0)
+                            ready.Enqueue(entry.ProgramIndex);
+                    }
+                }
+            }
+            if (prepared != programs.Length)
+                throw new InvalidOperationException("Timeline Graph 调用存在没有有限执行预算的循环。");
+            return budgets;
+        }
+
         sealed class ProgramAnalysis<TValue> where TValue : unmanaged
         {
             readonly OrchestrationProgram<TValue> m_Program;
@@ -279,7 +332,6 @@ namespace BTSMTL.Orchestration
             readonly bool[] m_ActiveStops;
             readonly long[] m_StopVisits;
             readonly int m_ProgramIndex;
-            readonly Dictionary<(int Program, int Operation), OrchestrationTimelineTickContentCapacity> m_Timelines;
             readonly long[][] m_BoundedVisits;
             readonly bool[][] m_ActiveVisits;
             readonly long[] m_ValueVisits;
@@ -289,15 +341,13 @@ namespace BTSMTL.Orchestration
             enum CapacityMetric { Evaluations, TraceEvents, StateFrames }
 
             internal ProgramAnalysis(OrchestrationProgram<TValue> program,
-                ReadOnlyMemory<OrchestrationExtensionReference> extensions, int programIndex,
-                Dictionary<(int Program, int Operation), OrchestrationTimelineTickContentCapacity> timelines)
+                ReadOnlyMemory<OrchestrationExtensionReference> extensions, int programIndex)
             {
                 m_Program = program;
                 m_Extensions = extensions;
                 m_ActiveStops = new bool[program.OperationCount];
                 m_StopVisits = new long[program.OperationCount];
                 m_ProgramIndex = programIndex;
-                m_Timelines = timelines;
                 var states = new List<int>();
                 for (int operation = 0; operation < program.OperationCount; operation++)
                     if (program.Operation(operation).Code == OrchestrationOperationCode.State)
@@ -458,19 +508,7 @@ namespace BTSMTL.Orchestration
                     m_CountTarget >= 0 ? !stop && index == m_CountTarget ? 1 : 0 :
                     stop ? 1 : checked(1 + ValueVisits(index, -1));
                 count = checked(count + 2 * InputVisits(index));
-                if (operation.Code == OrchestrationOperationCode.Timeline)
-                {
-                    if (!m_Timelines.TryGetValue((m_ProgramIndex, index), out OrchestrationTimelineTickContentCapacity timeline))
-                        throw new InvalidOperationException($"Program '{m_ProgramIndex}' Timeline '{index}' lacks its prepared invocation bound.");
-                    foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.Content.GraphEntries.Span)
-                    {
-                        long graph = checked(BoundedVisits(entry.OperationIndex, false) +
-                            BoundedVisits(entry.OperationIndex, true));
-                        count = checked(count + graph * (stop ? entry.StopInvocations :
-                            checked(entry.AdvanceInvocations + entry.StopInvocations)));
-                    }
-                }
-                else if (operation.Code == OrchestrationOperationCode.StateMachine)
+                if (operation.Code == OrchestrationOperationCode.StateMachine)
                     count = checked(count + StateMachineVisits(index, stop));
                 else if (operation.Code == OrchestrationOperationCode.State)
                 {
@@ -480,7 +518,7 @@ namespace BTSMTL.Orchestration
                     if (stop)
                         count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), false));
                 }
-                else if (operation.Code != OrchestrationOperationCode.Succeed &&
+                else if (operation.Code != OrchestrationOperationCode.Timeline && operation.Code != OrchestrationOperationCode.Succeed &&
                     (!stop || OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(index))))
                 {
                     OrchestrationFlowKind kind = OrchestrationStopRoute.ChildFlowKind(operation.Code);
