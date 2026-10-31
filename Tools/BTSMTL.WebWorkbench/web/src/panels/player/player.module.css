@@ -27,8 +27,14 @@
 .splitCaret {
   min-width: 0;
   padding: 0 4px;
+  border-left-width: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
+}
+
+.split:has(> [aria-pressed='true']) > .splitCaret {
+  background: var(--tool-on);
+  border-color: var(--tool-on-line);
 }
 
 .splitCaret > span {
