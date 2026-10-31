@@ -147,7 +147,7 @@ namespace BTSMTL.Orchestration
                     ReleaseExecutionFrame(frameSlot, in stopContext);
         }
 
-        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
         {
             int previousFrame = m_FrameSlot;
             int previousOperation = m_CurrentOperationIndex;
