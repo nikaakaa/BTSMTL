@@ -75,7 +75,6 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringColor color,
             IReadOnlyList<GraphAuthoringFieldDescriptor> fields = null,
             IReadOnlyList<GraphAuthoringPortDescriptor> fixedPorts = null,
-            GraphAuthoringDynamicPortPolicy dynamicPortPolicy = GraphAuthoringDynamicPortPolicy.None,
             IReadOnlyList<GraphAuthoringChildSurfaceDescriptor> childSurfaces = null,
             IReadOnlyList<GraphAuthoringCommandDescriptor> commands = null,
             string iconName = "",
@@ -100,12 +99,11 @@ namespace BTSMTL.Authoring.Graph
             Color = color;
             m_Fields = Index(fields ?? Array.Empty<GraphAuthoringFieldDescriptor>(), value => value.FieldId, "field");
             m_FixedPorts = Index(fixedPorts ?? Array.Empty<GraphAuthoringPortDescriptor>(), value => value.PortId, "port");
-            DynamicPortPolicy = dynamicPortPolicy;
             DynamicPortSource = dynamicPortSource;
             m_PortVariants = ValidatePortVariants(
                 portVariants ?? Array.Empty<GraphAuthoringPortVariantDescriptor>());
             PortShape = new GraphAuthoringPortShapeDefinition(CapabilityId, m_FixedPorts.Values,
-                m_PortVariants, dynamicPortPolicy);
+                m_PortVariants);
             ChildSurfaces = childSurfaces ?? Array.Empty<GraphAuthoringChildSurfaceDescriptor>();
             Commands = commands ?? Array.Empty<GraphAuthoringCommandDescriptor>();
             IconName = iconName ?? string.Empty;
@@ -143,7 +141,6 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringColor Color { get; }
         public IReadOnlyCollection<GraphAuthoringFieldDescriptor> Fields => m_Fields.Values;
         public IReadOnlyCollection<GraphAuthoringPortDescriptor> FixedPorts => m_FixedPorts.Values;
-        public GraphAuthoringDynamicPortPolicy DynamicPortPolicy { get; }
         public GraphAuthoringDynamicPortSource DynamicPortSource { get; }
         public IReadOnlyList<GraphAuthoringPortVariantDescriptor> PortVariants => m_PortVariants;
         public GraphAuthoringPortShapeDefinition PortShape { get; }

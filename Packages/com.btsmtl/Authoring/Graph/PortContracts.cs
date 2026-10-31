@@ -5,14 +5,6 @@ using System.Linq;
 
 namespace BTSMTL.Authoring.Graph
 {
-    public enum GraphAuthoringDynamicPortPolicy : byte
-    {
-        None = 0,
-        OrderedInputs = 1,
-        OrderedOutputs = 2,
-        OrderedBidirectional = 3
-    }
-
     public enum GraphAuthoringDynamicPortSource : byte
     {
         None = 0,
@@ -160,19 +152,16 @@ namespace BTSMTL.Authoring.Graph
     {
         public GraphAuthoringPortShapeDefinition(GraphAuthoringCapabilityId capabilityId,
             IReadOnlyCollection<GraphAuthoringPortDescriptor> fixedPorts,
-            IReadOnlyList<GraphAuthoringPortVariantDescriptor> portVariants,
-            GraphAuthoringDynamicPortPolicy dynamicPortPolicy)
+            IReadOnlyList<GraphAuthoringPortVariantDescriptor> portVariants)
         {
             CapabilityId = capabilityId;
             FixedPorts = fixedPorts;
             PortVariants = portVariants;
-            DynamicPortPolicy = dynamicPortPolicy;
         }
 
         public GraphAuthoringCapabilityId CapabilityId { get; }
         public IReadOnlyCollection<GraphAuthoringPortDescriptor> FixedPorts { get; }
         public IReadOnlyList<GraphAuthoringPortVariantDescriptor> PortVariants { get; }
-        public GraphAuthoringDynamicPortPolicy DynamicPortPolicy { get; }
     }
 
     public static class GraphAuthoringNodePortShapeProjector
@@ -262,7 +251,6 @@ namespace BTSMTL.Authoring.Graph
             foreach (GraphAuthoringDynamicPortProjection port in
                      authoredDynamicPorts ?? Array.Empty<GraphAuthoringDynamicPortProjection>())
             {
-                ValidateDynamicPort(capability, port);
                 AddProjectedPort(
                     result,
                     occupied,
@@ -339,25 +327,6 @@ namespace BTSMTL.Authoring.Graph
                     $"Capability '{capabilityId}' projects duplicate interface port identity '{port.InterfacePortId}'.");
             }
             result.Add(port);
-        }
-
-        static void ValidateDynamicPort(
-            GraphAuthoringPortShapeDefinition capability,
-            GraphAuthoringDynamicPortProjection port)
-        {
-            if (capability.DynamicPortPolicy ==
-                GraphAuthoringDynamicPortPolicy.None ||
-                capability.DynamicPortPolicy ==
-                GraphAuthoringDynamicPortPolicy.OrderedInputs &&
-                port.Direction != GraphAuthoringPortDirection.Input ||
-                capability.DynamicPortPolicy ==
-                GraphAuthoringDynamicPortPolicy.OrderedOutputs &&
-                port.Direction != GraphAuthoringPortDirection.Output)
-            {
-                throw new GraphAuthoringPortShapeException(
-                    "port_shape_dynamic_port_forbidden",
-                    $"Capability '{capability.CapabilityId}' does not allow dynamic port '{port.PortId}' with direction '{port.Direction}'.");
-            }
         }
     }
 }
