@@ -7,7 +7,12 @@ import { inputRootKey } from './store';
 
 export type TrackKind = 'anim' | 'motion' | 'act' | 'in' | 'other';
 
-// 片段类型只按正式合同判断，不按名称推断。
+// 轨道与片段类型只按正式合同判断，不按名称推断。
+const trackKinds: Record<string, TrackKind> = {
+  'animation.track': 'anim',
+  'motion-curve.track': 'motion',
+  'tree.track': 'act',
+};
 const clipKinds: Record<string, TrackKind> = {
   'animation.clip': 'anim',
   'motion-curve.clip': 'motion',
@@ -68,15 +73,25 @@ export interface GroupRow {
   id: string;
   segment: RouteSegment;
   title: string;
+  // 单个 Timeline 视图的 Timeline 分组：添加轨道在编辑行，分组头不再重复。
+  focused?: boolean;
 }
 
-export function trackKind(track: AuthorTrack): TrackKind {
-  for (const clip of track.clips) {
-    const kind = clipKinds[clip.contract];
-    if (kind) return kind;
+// 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）。
+export function clipUnions(segment: RouteSegment): Span[] {
+  const result: Span[] = [];
+  for (const track of segment.timeline?.tracks ?? []) {
+    let current: Span | null = null;
+    for (const clip of [...track.clips].sort((left, right) => left.startSeconds - right.startSeconds)) {
+      const start = segment.origin + clip.startSeconds, end = segment.origin + clip.endSeconds;
+      if (current && start < current.end) current.end = Math.max(current.end, end);
+      else result.push(current = { start, end });
+    }
   }
-  return 'other';
+  return result;
 }
+
+export const trackKind = (track: AuthorTrack): TrackKind => trackKinds[track.contract] ?? 'other';
 
 export function clipKind(clip: AuthorClip): TrackKind {
   return clipKinds[clip.contract] ?? 'other';

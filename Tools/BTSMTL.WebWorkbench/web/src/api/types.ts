@@ -337,6 +337,8 @@ export interface AuthorClip {
 
 export interface AuthorTrack {
   id: string;
+  // 轨道合同种类（ContractKind）。
+  contract: string;
   displayName: string;
   muted: boolean;
   clips: AuthorClip[];

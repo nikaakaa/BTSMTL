@@ -269,7 +269,8 @@ function timelineOf(documentId: string, document: JsonObject, sourceRevision: st
   return {
     documentId, contentIdentity: documentId, contentRevision: sourceRevision, displayName: document.m_Name as string,
     tracks: (document.m_Tracks as JsonObject[]).map(track => ({
-      id: track.m_AuthoringId as string, displayName: track.Name as string, muted: track.m_PersistentMuted === true,
+      id: track.m_AuthoringId as string, contract: track.ContractKind as string, displayName: track.Name as string,
+      muted: track.m_PersistentMuted === true,
       clips: (track.m_Clips as JsonObject[]).map(clip => ({
         id: clip.m_AuthoringId as string, contract: clip.ContractKind as string, displayName: null,
         startSeconds: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(clip.m_EndTimeFPRawValue)),

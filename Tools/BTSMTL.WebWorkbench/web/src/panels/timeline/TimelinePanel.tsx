@@ -21,7 +21,7 @@ import {
   consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
-  clipGraph, clipMix, clipSelectId, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
@@ -634,8 +634,11 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     };
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
-      const tracks = segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
-      result.push(...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
+      // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
+      const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
+      const tracks = collapsed.has(group.id) ? []
+        : segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
+      result.push(group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
       if (input && received) {
         result.push({ kind: 'receivedGroup', id: 'received', received });
         if (!collapsed.has('received')) {
@@ -1248,7 +1251,7 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
     }
     return null;
   }));
-  const authoredEnd = segment.origin + segment.length;
+  const { range } = useTimelineContext();
   return (
     <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
@@ -1263,19 +1266,13 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
             transport.seek(segment.firstIndex);
           }}
           onDoubleClick={() => enter(segment.documentId)}>{row.title}</button>
-        {segment.timeline && <AddTrack documentId={segment.documentId} />}
+        {segment.timeline && !row.focused && <AddTrack documentId={segment.documentId} />}
       </>
     }>
-      {/* 折叠时照 Unity 分组画子轨道片段的并集条 */}
-      {!open && (
-        <>
-          <Positioned start={segment.start} end={segment.end} className={styles.segmentPlayed}
-            title={`实际播放 ${segment.start.toFixed(3)}–${segment.end.toFixed(3)} s`} />
-          {authoredEnd > segment.end && (
-            <Positioned start={segment.end} end={authoredEnd} className={styles.segmentRest} title="离开后未播放的部分" />
-          )}
-        </>
-      )}
+      {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
+        <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion}
+          title={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
+      ))}
     </Line>
   );
 });

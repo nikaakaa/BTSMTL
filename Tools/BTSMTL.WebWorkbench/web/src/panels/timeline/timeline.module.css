@@ -546,15 +546,12 @@
 }
 
 /* 折叠的分组：子轨道片段的并集条（TimelineClipUnion） */
-.segmentPlayed, .segmentRest {
+/* 折叠分组的片段并集（TimelineClipUnion）：上下各收 4 像素 */
+.clipUnion {
   position: absolute;
   top: 4px;
   bottom: 4px;
   background: var(--tl-clip-union);
-}
-
-.segmentRest {
-  opacity: .45;
 }
 
 .item {
