@@ -59,6 +59,7 @@ namespace BTSMTL.Timeline.Editor
         public static void Register(ITimelineWorkspaceModeController controller)
         {
             s_Controller = controller;
+            TimelineAuthoringSave.Document = controller.Authoring.GetAuthoringDocument;
         }
 
         public static bool TryResolvePreviewActor(out UnityEngine.Object actor, out string error)
