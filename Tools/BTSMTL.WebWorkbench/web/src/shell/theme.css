@@ -35,39 +35,37 @@
   --warn: #e8b84a;
   --value: #e6c35c;
 
-  /* Timeline 取色自 BTSMTL Timeline Editor 实际画面 */
+  /* 轨道类别色：Timeline 轨道头色条与片段底边，也用作其它面板的类别标记 */
   --track-anim: #7ffde5;
   --track-motion: #7ddc92;
   --track-act: #ca3c20;
-  --track-cam: #d98c32;
-  --track-vfx: #3fb3a8;
   --track-in: #ca3c20;
-  --track-list: #383838;
-  --track-head: #3a3a3a;
-  --track-slot: #333333;
-  --track-head-select: #3e5168;
-  --track-group: #333333;
-  --track-group-stripe: #2e2e2e;
-  --track-lane: #1a1a1a;
-  --track-lane-range: #222222;
-  --track-lane-played: #2a2a2a;
-  --track-ruler: #343434;
-  --track-row-line: #232323;
   --segment-line: #d29843;
-  --clip: #9c9c9c;
-  --clip-top: #b6b6b6;
-  --clip-dim: #555555;
-  --clip-line: #1d1d1d;
-  --clip-text: #f6f6f6;
-  --clip-out-text: #a8a8a8;
-  --clip-anim-band: #3e4d4d;
-  --clip-motion-band: #3e5143;
-  --clip-select: #8d8df0;
-  --input-key: #d2d2d2;
-  --input-key-active: #e8b84a;
-  --input-hold: #6f5b8f;
-  --preview-on: #6a3131;
-  --preview-on-line: #3d1c1c;
+
+  /* Timeline 窗口：com.unity.timeline 1.7.7 Timeline_DarkSkin 色表 */
+  --tl-header: #373737;
+  --tl-sequence: #292929;
+  --tl-splitter: #464646;
+  --tl-track: rgb(55 55 55 / 62.8%);
+  --tl-track-selected: rgb(66 86 122 / 51.6%);
+  --tl-track-head: #414141;
+  --tl-track-font: #b7b7b7;
+  --tl-track-darken: rgb(15 15 15 / 67.2%);
+  --tl-state-box: rgb(153 153 153 / 70.9%);
+  --tl-button-suite: rgb(40 40 40 / 75%);
+  --tl-selection: #3d5e98;
+  --tl-group: #273739;
+  --tl-group-track: rgb(20 78 84 / 17.8%);
+  --tl-group-font: #cccccc;
+  --tl-clip: #40444a;
+  --tl-clip-selected: #686d7a;
+  --tl-clip-border: #323232;
+  --tl-clip-blend: #494e54;
+  --tl-clip-ease: #272727;
+  --tl-clip-union: rgb(58 71 81 / 70.9%);
+  --tl-duration: rgb(39 59 96 / 70.9%);
+  --tl-end: #3d5e98;
+  --tl-tooltip: #1d2021;
 
   --node-event: #c45656;
   --node-anim: #4d86c4;

@@ -148,18 +148,21 @@ function MenuEntries({ parts, entries }: { parts: MenuParts; entries: MenuEntry[
   });
 }
 
-export function MenuButton({ label, entries, children, variant = 'default', caret = false }: {
+// iconOnly：按钮只有图标，悬停时用 label 作说明。
+export function MenuButton({ label, entries, children, variant = 'default', caret = false, className, iconOnly = false }: {
   label: string;
   entries: MenuEntry[];
   children: ReactNode;
   variant?: ButtonProps['variant'];
   caret?: boolean;
+  className?: string;
+  iconOnly?: boolean;
 }) {
   const container = usePortalContainer();
   return (
     <BaseMenu.Root>
-      <BaseMenu.Trigger aria-label={label}
-        className={join(styles.button, variant === 'icon' && styles.icon, variant === 'ghost' && styles.ghost)}>
+      <BaseMenu.Trigger aria-label={label} title={iconOnly ? label : undefined}
+        className={join(styles.button, variant === 'icon' && styles.icon, variant === 'ghost' && styles.ghost, className)}>
         {children}
         {caret && <span className={styles.caret} />}
       </BaseMenu.Trigger>

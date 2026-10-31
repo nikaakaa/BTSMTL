@@ -1,4 +1,4 @@
-/* 照 BTSMTL Timeline Editor 实际画面（D5）。 */
+/* 照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤，D5）。 */
 .frame {
   height: 100%;
   min-height: 0;
@@ -9,7 +9,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--track-lane);
+  background: var(--tl-sequence);
 }
 
 .hint {
@@ -126,7 +126,7 @@
   height: 16px;
   margin: 0 4px;
   flex: none;
-  background: var(--track-ruler);
+  background: var(--tl-header);
 }
 
 .scrollThumb {
@@ -168,7 +168,7 @@
   padding: 0 6px 5px;
   color: var(--text-dim);
   font-size: 11.5px;
-  background: var(--track-list);
+  background: var(--bg-3);
   border-right: 1px solid var(--seam);
   border-bottom: 1px solid var(--line);
   flex: none;
@@ -178,7 +178,7 @@
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: var(--track-ruler);
+  background: var(--tl-header);
   border-bottom: 1px dotted #b8b8b8;
   touch-action: none;
 }
@@ -214,13 +214,15 @@
   height: 18px;
 }
 
+/* 轨道区：底色为 Sequence 背景；首行距顶 6 像素（这里 3，加每行自带的 3 像素行间隔） */
 .rows {
   flex: 1;
   min-height: 0;
+  padding-top: 3px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  background: var(--track-lane);
+  background: var(--tl-sequence);
 }
 
 .rows::-webkit-scrollbar {
@@ -236,93 +238,168 @@
   display: contents;
 }
 
+/* 一行：上方 3 像素是行间隔 */
 .line {
   width: 100%;
-  border-bottom: 2px solid var(--track-row-line);
-}
-
-/* 轨道头：左侧空槽、名称、右侧类型色条 */
-.groupHead, .trackHead {
-  align-items: center;
-  gap: 6px;
-  background: var(--track-list);
-  border-right: 1px solid var(--seam);
-}
-
-.groupHead {
-  gap: 7px;
-  padding: 0 6px 0 8px;
-  background: var(--track-group);
-}
-
-.trackHead {
-  padding-left: 10px;
-}
-
-.headButton {
-  all: unset;
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  width: 100%;
-  height: 100%;
-  padding-right: 10px;
+  padding-top: 3px;
   box-sizing: border-box;
-  background: var(--track-head);
-  cursor: default;
 }
 
-.headButton::after {
+/* 分组里的行：行间隔在轨道头一侧露出分组底色，在时间区一侧露出分组轨道底色 */
+.line[data-nest='child'], .line[data-nest='last'] {
+  background: linear-gradient(90deg, transparent 15px, var(--tl-group) 15px calc(var(--sidebar) - 2px),
+    transparent calc(var(--sidebar) - 2px) var(--sidebar), var(--tl-group-track) var(--sidebar));
+}
+
+/* 轨道头一列：左侧 15 像素缩进放分组折叠三角，右侧 2 像素让给分隔线 */
+.head {
+  position: relative;
+  box-sizing: border-box;
+  padding: 0 2px 0 15px;
+}
+
+.groupHead, .trackHead {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 分组（TimelineGroupGUI）：圆角色块，名字从左起 20 像素；有子行时只留上圆角，下方由子行接续 */
+.groupHead {
+  position: relative;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px 0 20px;
+  border-radius: 4px;
+  background: var(--tl-group);
+  color: var(--tl-group-font);
+}
+
+.line[data-nest='head'] .groupHead {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* 分组里的轨道再缩进 15 像素，缩进处是分组底色 */
+.line[data-nest='child'] .trackHead, .line[data-nest='last'] .trackHead {
+  padding-left: 15px;
+  background: var(--tl-group);
+}
+
+.line[data-nest='last'] .trackHead {
+  border-bottom-left-radius: 4px;
+}
+
+/* 轨道头（DrawTrackHeader）：左侧 4 像素类别色条，选中时底色为选中蓝 */
+.headButton {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  background: var(--tl-track-head);
+  color: var(--tl-track-font);
+}
+
+.headButton::before {
   content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  align-self: stretch;
   width: 4px;
+  flex: none;
   background: var(--tc);
 }
 
 .headButton[data-selected] {
-  background: var(--track-head-select);
+  background: var(--tl-selection);
+  color: #fff;
 }
 
-.headButton:focus-visible {
+.headSelect {
+  all: unset;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex: 1;
+  min-width: 0;
+  cursor: default;
+}
+
+.headSelect:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
 
-/* 照 Timeline Editor 轨道头左侧的绑定空槽：带暗边的方块 */
-.slot {
-  align-self: stretch;
-  width: 38px;
-  margin: 3px 0;
+.trackIcon {
+  display: flex;
   flex: none;
-  box-sizing: border-box;
-  background: var(--track-slot);
-  border: 1px solid #2a2a2a;
-  border-radius: 2px;
+  color: var(--glyph);
 }
 
 .name {
   min-width: 0;
-  padding-top: 8px;
-  font-size: 13.5px;
+  padding-left: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.muted {
-  padding-top: 7px;
-  color: var(--text-disabled);
+/* 轨道按钮组（trackButtonSuite）：半透明暗底圆角框 */
+.suite {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--tl-button-suite);
+  flex: none;
+}
+
+/* 静音开关：未静音为暗色眼睛，静音为亮色带斜线的眼睛 */
+.suiteButton {
+  all: unset;
+  display: flex;
+  color: rgb(255 255 255 / 28%);
+}
+
+.suiteButton:hover {
+  color: rgb(255 255 255 / 55%);
+}
+
+.suiteButton[aria-pressed='true'] {
+  color: #c4c4c4;
+}
+
+.suiteButton:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.options {
+  display: flex;
+  margin: 0 2px;
+  flex: none;
+}
+
+/* 只有图标的工具按钮：选项（⋮）与添加（＋） */
+.optionsButton, .addButton {
+  min-width: 0;
+  height: 18px;
+  color: var(--glyph);
+}
+
+.optionsButton {
+  width: 16px;
+  padding: 0;
+}
+
+.addButton {
+  gap: 1px;
+  padding: 0 3px;
 }
 
 .segmentTitle {
   all: unset;
+  flex: 1;
   min-width: 0;
-  font-weight: 700;
-  font-size: 14.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -341,70 +418,76 @@
   min-width: 0;
 }
 
+/* 折叠三角：画在分组框左侧的缩进里 */
 .fold {
   all: unset;
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-  flex: none;
+  position: absolute;
+  left: -14px;
+  top: calc(50% - 6.5px);
+  display: flex;
+  color: var(--glyph);
 }
 
-.foldOpen, .foldClosed {
-  width: 0;
-  height: 0;
+.fold:disabled {
+  color: var(--text-disabled);
 }
 
-.foldOpen {
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid #9a9a9a;
+.fold:focus-visible {
+  outline: 1px solid var(--accent);
 }
 
-.foldClosed {
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid #9a9a9a;
-}
-
-/* 时间区 */
-.lane, .groupLane {
+/* 时间区：轨道底色半透明，分组内叠在分组轨道底色上；选中轨道为选中色 */
+.lane {
   overflow: hidden;
+  background: var(--tl-track);
+}
+
+.line[data-selected] .lane {
+  background: var(--tl-track-selected);
 }
 
 .groupLane {
-  background: repeating-linear-gradient(135deg, var(--track-group) 0 6px, var(--track-group-stripe) 6px 12px);
+  overflow: hidden;
+  background: var(--tl-group-track);
 }
 
-.segmentBracket {
+/* 静音：时间区压暗，中间写明状态（DrawTrackState） */
+.line[data-muted] .lane::after {
+  content: '';
   position: absolute;
-  bottom: 3px;
-  height: 5px;
-  border: 1px solid var(--segment-line);
-  border-top: 0;
+  inset: 0;
+  z-index: 4;
+  background: var(--tl-track-darken);
+  pointer-events: none;
 }
 
+.stateBox {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  bottom: 2px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-radius: 3px;
+  background: var(--tl-state-box);
+  color: #fff;
+  font-size: 11px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* 折叠的分组：子轨道片段的并集条（TimelineClipUnion） */
 .segmentPlayed, .segmentRest {
   position: absolute;
-  top: 6px;
-  bottom: 6px;
-  border-radius: 1px;
-  background: linear-gradient(90deg, #9a9a9a, #7a7a7a);
+  top: 4px;
+  bottom: 4px;
+  background: var(--tl-clip-union);
 }
 
 .segmentRest {
-  background: #4e4e4e;
-}
-
-.authoredRange, .playedRange {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: var(--track-lane-range);
-}
-
-.playedRange {
-  background: var(--track-lane-played);
+  opacity: .45;
 }
 
 .item {
@@ -415,100 +498,47 @@
   pointer-events: auto;
 }
 
+/* 片段（ClipDrawer）：中段底色画在 --in 与 --out 之间，两端过渡由 ClipShape 画；底边 4 像素类别色；选中时整块白框 */
 .clip {
   all: unset;
   position: relative;
   display: block;
   box-sizing: border-box;
   flex: 1;
-  min-width: 5px;
-  margin: 2px 0 3px;
-  background: linear-gradient(var(--clip-top), var(--clip));
-  border-radius: 2px;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 22%);
+  background: linear-gradient(90deg, transparent var(--in), var(--body) var(--in) calc(100% - var(--out)), transparent calc(100% - var(--out)));
   overflow: hidden;
   cursor: default;
+  --body: var(--tl-clip);
+  --blend: var(--tl-clip-blend);
 }
 
-.clip:hover {
-  filter: brightness(1.1);
-}
-
-.clip[data-kind='anim'] {
-  background: linear-gradient(var(--clip-top) 0 54%, var(--clip-anim-band) 54%);
-}
-
-.clip[data-kind='motion'] {
-  background: linear-gradient(var(--clip-top) 0 54%, var(--clip-motion-band) 54%);
-}
-
-.clip[data-dim] {
-  background: linear-gradient(#606060, #505050);
-}
-
-.clip[data-active] {
-  box-shadow: inset 0 0 0 1px #f0f0f0;
+.clip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--tc);
+  pointer-events: none;
 }
 
 .clip[data-selected] {
-  outline: 2px solid var(--clip-select);
+  outline: 1px solid #fff;
   outline-offset: -1px;
+  --body: var(--tl-clip-selected);
+  --blend: var(--tl-clip-selected);
 }
 
-/* 作者模式可拖动的片段；所在 Timeline 有未保存修改时左上角加小三角 */
+.clip[data-dim] {
+  opacity: .45;
+}
+
 .clip[data-editable] {
   cursor: grab;
 }
 
-.clip[data-changed]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  border-top: 6px solid var(--cursor);
-  border-right: 6px solid transparent;
-  z-index: 1;
-}
-
-.clipLabel {
-  position: absolute;
-  left: 5px;
-  top: 5px;
-  color: var(--clip-text);
-  font-size: 13px;
-  text-shadow: 0 1px 1px rgb(0 0 0 / 65%);
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.clip[data-kind='anim'] .clipLabel, .clip[data-kind='motion'] .clipLabel {
-  top: 2px;
-}
-
-.clip[data-dim] .clipLabel {
-  color: #c6c6c6;
-}
-
-.easeIn, .easeOut {
-  position: absolute;
-  bottom: 4px;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  pointer-events: none;
-}
-
-.easeIn {
-  left: 0;
-  border-left: 5px solid #fff;
-}
-
-.easeOut {
-  right: 0;
-  border-right: 5px solid #fff;
-}
-
-/* 作者模式的淡入淡出：斜线区域与顶边可拖动的小方块 */
-.easeShape {
+.clipShape {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -516,20 +546,58 @@
   pointer-events: none;
 }
 
-.easeShape polygon {
-  fill: rgb(0 0 0 / 28%);
+.easeBack {
+  fill: var(--tl-clip-ease);
 }
 
+.blendShape {
+  fill: var(--blend);
+}
+
+.clipEdge {
+  fill: var(--tl-clip-border);
+}
+
+.blendLine {
+  stroke: var(--tl-clip-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 片段名：白字黑影，在中段内居中，放不下时省略 */
+.clipLabel {
+  position: absolute;
+  left: calc(var(--in) + 6px);
+  right: calc(var(--out) + 6px);
+  top: 0;
+  bottom: 0;
+  color: #fff;
+  font-size: 11px;
+  line-height: 30px;
+  text-align: center;
+  text-shadow: 1px 1px 0 #000;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 作者模式的淡入淡出手柄：悬停或选中片段时出现在顶边 */
 .easeHandle {
   position: absolute;
   top: 0;
+  z-index: 2;
   width: 7px;
   height: 7px;
-  background: #f0f0f0;
-  border: 1px solid rgb(0 0 0 / 50%);
   box-sizing: border-box;
+  border: 1px solid var(--tl-clip-border);
+  background: #c4c4c4;
   cursor: ew-resize;
-  z-index: 2;
+  opacity: 0;
+}
+
+.clip:hover .easeHandle, .clip[data-selected] .easeHandle {
+  opacity: 1;
 }
 
 .clipCut {
@@ -537,68 +605,28 @@
   top: 0;
   bottom: 0;
   right: 0;
-  background: rgb(28 28 28 / 60%);
+  background: var(--tl-track-darken);
   pointer-events: none;
 }
 
-.clipOut {
-  position: absolute;
-  top: 7px;
-  color: var(--clip-out-text);
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-.clipOut[data-dim] {
-  color: #7a7a7a;
-}
-
-.blend {
-  position: absolute;
-  top: 2px;
-  bottom: 3px;
-  z-index: 2;
-  background: rgb(0 0 0 / 28%);
-  pointer-events: none;
-}
-
-.blend svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.blend path {
-  fill: none;
-  stroke: var(--clip-text);
-  stroke-width: 1.2;
-  vector-effect: non-scaling-stroke;
-}
-
-/* 标记：作者标记与预览输入的单次按键共用 */
+/* 标记（TimelineMarkerItem）：轨道顶部 9×16 的水滴，选中时变亮 */
 .marker {
   all: unset;
   position: absolute;
-  top: 3px;
-  width: 12px;
-  height: 22px;
-  margin-left: -6px;
-  background: linear-gradient(#ececec, #bdbdbd);
-  clip-path: polygon(0 0, 100% 0, 100% 58%, 50% 100%, 0 58%);
+  top: 0;
   z-index: 3;
+  display: flex;
+  margin-left: -4.5px;
+  fill: #8c8c8c;
   cursor: default;
 }
 
-.marker[data-active] {
-  background: var(--cursor);
+.marker:hover {
+  fill: #a8a8a8;
 }
 
 .marker[data-selected] {
-  background: var(--clip-select);
+  fill: #e6e6e6;
 }
 
 .marker[data-editable] {
@@ -609,7 +637,8 @@
 .nameInput {
   flex: 1;
   min-width: 0;
-  margin-top: 4px;
+  height: 20px;
+  margin: 0 4px 0 5px;
 }
 
 /* 覆盖层：起点、段边界、结束线与游标 */
@@ -682,7 +711,7 @@
 }
 
 .receivedMissing {
-  background: repeating-linear-gradient(135deg, var(--clip-dim) 0 4px, transparent 4px 8px);
+  background: repeating-linear-gradient(135deg, var(--tl-clip-blend) 0 4px, transparent 4px 8px);
 }
 
 .receivedRequest {
