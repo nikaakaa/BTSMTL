@@ -334,30 +334,8 @@ namespace ThirdPersonGameplay.Movement.Timeline
     {
         public static ITimelineContractProvider CreateProvider(
             TimelineContentParameterCodec<TimelineContentMotion> codec) => new TimelineContractProvider(
-            new[]
-            {
-                new TimelineTrackContract(
-                    TrackKind,
-                    TimelineTrackOverlapPolicy.Blend,
-                    TimelineContentKind.Sampled,
-                    TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.LogicFact,
-                    new TimelineLogicSampleExtension(TimelineContentMotion.MotionCurveSample.Definition.Identity,
-                        TimelineContentMotion.MotionCurveSample.Definition.SemanticVersion),
-                    ClipKind)
-            },
-            new[]
-            {
-                new TimelineClipContract(
-                    ClipKind,
-                    TrackKind,
-                    TimelineClipExecutionPhase.Commit,
-                    TimelineContentKind.Sampled,
-                    true,
-                    true,
-                    TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.LogicFact)
-            },
+            new[] { Track },
+            new[] { new TimelineClipContract(Clip, null) },
             new ITimelineContentParameterCodec[] { codec });
     }
 }
