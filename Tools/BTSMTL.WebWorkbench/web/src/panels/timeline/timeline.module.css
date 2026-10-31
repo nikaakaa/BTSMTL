@@ -903,27 +903,22 @@
   vector-effect: non-scaling-stroke;
 }
 
-/* 片段与标记共用的名牌（ItemLabel）：在片段中段（底边色条之上）竖直居中的深色半透明小圆角底白字，
-   宽度由同行下一项决定，超出时省略；不接鼠标；离开本段的片段名牌随片段压暗 */
-.itemLabel, .item > .itemLabel {
+/* 片段名：白字黑影，在中段内居中，放不下时省略 */
+.clipLabel {
   position: absolute;
-  top: 4px;
-  box-sizing: border-box;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 3px;
-  background: rgb(0 0 0 / 32%);
+  left: calc(var(--in) + 6px);
+  right: calc(var(--out) + 6px);
+  top: 0;
+  bottom: 0;
   color: #fff;
   font-size: 11px;
-  line-height: 18px;
+  line-height: 30px;
+  text-align: center;
+  text-shadow: 1px 1px 0 #000;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
-}
-
-.itemLabel[data-dim] {
-  opacity: .45;
 }
 
 /* 作者模式的淡入淡出手柄：悬停或选中片段时出现在顶边 */
