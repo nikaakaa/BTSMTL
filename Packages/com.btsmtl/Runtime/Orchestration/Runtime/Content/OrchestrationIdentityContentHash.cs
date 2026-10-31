@@ -19,7 +19,7 @@ namespace BTSMTL.Orchestration
             where TValue : unmanaged
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-actor-preparation/2");
+            Text(hash, "btsmtl-orchestration-actor-preparation/3");
             Text(hash, identities.ToString());
             Text(hash, defaults.ToString());
             Integer(hash, defaultIdentityTableIndex);
