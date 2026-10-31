@@ -149,7 +149,7 @@ Load 的 `content` 是二选一：
 | --- | --- |
 | `play/pause/stop/capture` | `commandId` |
 | `step` | `commandId,count` |
-| `seek` | `commandId,position`；场景 `{kind:"quantumSdk",sdkFrame}`，纯 Timeline `{kind:"timeline",tick}` |
+| `seek` | `commandId,position:{hostFrame:"目标键"}`；手工数字和 Host 提供的目标均走此入口，由原 Host 按实际采用内容解析为运行端位置 |
 | `pick` | `commandId,x,y`；命中结果按 `PlayerPick` 回执读取 |
 | `camera` | `mode:"orbit"或"game"`，可带 `focusActorId,reset,yaw,pitch,zoom,panX,panY`，沿现有相机控制合同发送 |
 | `input` | 完整 `InputCommand`：`keys,mouseDx,mouseDy,mouseButtons,scroll,x,y,lx,ly,rx,ry,lt,rt,padButtons` |
@@ -159,12 +159,9 @@ Load 的 `content` 是二选一：
 
 ### 时钟与画面身份
 
-`PreviewSampleSource` 为 `{loadCommandId,playerBuildId,sequence,content,clock}`：
+实时采样与档案使用同一公共 `PreviewFrameSource`，完整字段见下文公共合同表；执行身份取 `execution`，载入和画面分别保留 `loadCommandId/sequence`，内容保留正式 `content` 及绑定修订。实际位置、秒数和显示名取 `clock.position.hostFrame/seconds/positionDisplayName`；请求位置独立保存在 `clock.requestedPosition`。网页不解读运行端时钟种类或换算帧率。
 
-- 场景 content 为 `{kind:"scene",revision}`，clock 为 `{kind:"quantumSdk",tickRate,sdkFrame,gameplayTick,requestedSdkFrame?}`。
-- Timeline content 为 `{kind:"timeline",revision,timeline,contentIdentity,contentRevision,bindingRevision}`，clock 为 `{kind:"timeline",tickRate,tick,requestedTick?}`。
-
-实际帧／tick 与 requested 字段分开；秒数按相应实际时钟换算。纯 Timeline 没有可伪造的 SDK 帧、角色或 Quantum CRC。
+`Live/status.player.transport` 为 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。`seek` 描述任意位置定位资格；`first/previous/next/last` 的目标由 Host 按原运行规则提供；`play/pause/step` 同样使用实际状态的资格。网页按其原因禁用操作，缺少操作项时明确提示资格未提供，不从时钟种类推断。上一帧、首末帧只使用正式目标，下一帧仍向原入口发送 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
 
 画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON][图像字节]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip,mediaType`。直接复用 `openViewer` 解析，不能在浏览器消费 Native Player 的内部二进制头。
 
@@ -223,13 +220,14 @@ Load 的 `content` 是二选一：
 | 公共类型 | 字段与消费要求 |
 | --- | --- |
 | `PreviewExecutionIdentity` | `kind,identity,playerBuildId?,editorAssemblyMvid?`；后两项明确可为 null。保留真实 Player 或 Editor 执行身份，不为 Editor 制造构建 ID。 |
-| `PreviewPosition` | `hostFrame,request`；前者是 Host 查询 key，后者为 Host 提供的 `JsonElement` 原生命令请求，消费者不解析或拼接。 |
+| `PreviewPosition` | `hostFrame`；原 Host 查询／定位 key。命令与采样使用同一形状，不包含原生时钟 kind 或另一套 request。 |
+| `PreviewTransportAction` | `action,available,reason,target?`；target 明确可为 null，资格和前后／首末目标由原 Host 提供。 |
 | `PreviewClock` | `position,seconds,positionDisplayName,requestedPosition?,fields`；请求位置与实际位置分开，显示字段直接取 Host，seconds 使用所属真实时间轴。 |
 | `PreviewContentIdentity` | `kind,revision,documentId?,contentIdentity?,contentRevision?,bindingRevision?`；除前两项外均可为 null，实际内容和绑定修订随来源保留。 |
 | `PreviewFrameSource` | `execution,contentRevision,sceneRevision,inputSource,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null，未记录不补身份。 |
 | `PreviewSummary` | 原摘要字段保留，原 `playerBuildId` 改为必填 `execution`；构建 ID 从 `execution.playerBuildId` 读取。 |
 
-曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。实时 WS／ACK、任意数字目标定位和通道范围的公共投影尚待原 Host 交付，当前不表示已采用新合同。
+曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。上述公共来源、实时控制与通道范围的 Host 实际投影尚未完成采用检查；已部署的旧形状不会在前端兼容解码。
 
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 

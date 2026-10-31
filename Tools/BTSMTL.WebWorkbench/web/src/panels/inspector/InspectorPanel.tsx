@@ -240,10 +240,10 @@ function PlayerStatus() {
     <Fold title="播放器" kind="var(--track-cam)" defaultOpen>
       <Value label="播放器进程" mono={false} value={live.state} />
       {live.player && <Values fields={live.player.fields} />}
-      {targetPosition !== null && <Value label={targetPosition.kind === 'timeline' ? '目标 Tick / 实际 Tick' : '目标 SDK 帧 / 实际 SDK 帧'}
+      {targetPosition !== null && <Value label="定位目标 / 实际位置"
         value={`${positionValue(targetPosition)} / ${live.player?.source ? clockPosition(live.player.source.clock) : '—'}`} />}
       {lastCommand && <Value label="最后命令" value={`${lastCommand.type} · ${lastCommand.stage}${lastCommand.clock
-        ? ` · ${lastCommand.clock.kind === 'timeline' ? 'Tick' : 'SDK 帧'} ${clockPosition(lastCommand.clock)}` : ''}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
+        ? ` · ${lastCommand.clock.positionDisplayName} ${clockPosition(lastCommand.clock)}` : ''}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
     </Fold>
   );
 }

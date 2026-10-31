@@ -8,7 +8,7 @@ import type {
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
-  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition, PreviewSampleSource,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -147,7 +147,7 @@ export interface PlayerSlice {
   viewerOpen: boolean;
   playerViewport: { width: number; height: number } | null;
   targetPosition: PreviewPosition | null;
-  pendingSeek: { commandId: string; loadCommandId: string; position: PreviewPosition } | null;
+  pendingSeek: { commandId: string; loadCommandId: PreviewSampleSource['loadCommandId']; position: PreviewPosition } | null;
   lastCommand: PlayerCommandRecord | null;
   // 画面面板正在接管键鼠时，运行快捷键不响应。
   capturing: boolean;
