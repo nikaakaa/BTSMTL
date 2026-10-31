@@ -109,7 +109,7 @@
 
 .header {
   display: flex;
-  height: 40px;
+  height: 50px;
   flex: none;
 }
 
@@ -120,10 +120,10 @@
   min-width: 0;
 }
 
-/* 刻度上方的时间滚动条：滑块是当前可见范围，拖两端缩放 */
+/* 刻度上方的时间滚动条：深槽 + 圆头浅色滑块 */
 .scroller {
   position: relative;
-  height: 12px;
+  height: 16px;
   margin: 0 4px;
   flex: none;
   background: var(--track-ruler);
@@ -132,29 +132,25 @@
 .scrollThumb {
   position: absolute;
   top: 3px;
-  height: 6px;
+  height: 10px;
   min-width: 16px;
-  background: #5e5e5e;
-  border-radius: 3px;
+  background: #9a9a9a;
+  border-radius: 5px;
   touch-action: none;
 }
 
 .scrollThumb:hover {
-  background: #747474;
+  background: #b4b4b4;
 }
 
 .scrollEnd {
   position: absolute;
-  top: -2px;
-  width: 8px;
-  height: 10px;
-  border-radius: 4px;
-  background: #8c8c8c;
+  top: -1px;
+  width: 10px;
+  height: 12px;
+  border-radius: 6px;
+  background: #e2e2e2;
   cursor: ew-resize;
-}
-
-.scrollEnd:hover {
-  background: #bdbdbd;
 }
 
 .scrollEnd[data-side='start'] {
@@ -167,22 +163,23 @@
 
 .timeHead {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   width: var(--sidebar);
-  padding: 0 6px;
+  padding: 0 6px 5px;
+  color: var(--text-dim);
+  font-size: 11.5px;
   background: var(--track-list);
   border-right: 1px solid var(--seam);
   border-bottom: 1px solid var(--line);
   flex: none;
 }
 
-/* 刻度：数字居中于主刻度，游标处的时刻牌整块盖住下面的数字 */
 .ruler {
   position: relative;
   flex: 1;
   overflow: hidden;
   background: var(--track-ruler);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px dotted #b8b8b8;
   touch-action: none;
 }
 
@@ -190,32 +187,31 @@
   position: absolute;
   bottom: 0;
   width: 1px;
-  background: #7c7c7c;
+  background: #9a9a9a;
 }
 
 .majorTick {
-  height: 10px;
+  height: 8px;
 }
 
 .minorTick {
   height: 4px;
-  background: #5c5c5c;
+  background: #7a7a7a;
 }
 
 .tickLabel {
   position: absolute;
-  bottom: 10px;
-  color: var(--text-dim);
-  font: var(--mono);
-  font-size: 10.5px;
-  translate: -50% 0;
+  bottom: 6px;
+  font-size: 13px;
+  color: var(--text);
+  transform: translateX(-50%);
   white-space: nowrap;
   pointer-events: none;
 }
 
 .filterInput {
   flex: 1;
-  height: var(--control);
+  height: 18px;
 }
 
 .rows {
@@ -242,50 +238,52 @@
 
 .line {
   width: 100%;
-  border-bottom: 1px solid var(--track-row-line);
+  border-bottom: 2px solid var(--track-row-line);
 }
 
-/* 轨道头：左侧类别色条、名称、右侧执行域 */
+/* 轨道头：左侧空槽、名称、右侧类型色条 */
 .groupHead, .trackHead {
   align-items: center;
+  gap: 6px;
   background: var(--track-list);
   border-right: 1px solid var(--seam);
 }
 
 .groupHead {
-  gap: 6px;
-  padding: 0 8px;
+  gap: 7px;
+  padding: 0 6px 0 8px;
   background: var(--track-group);
+}
+
+.trackHead {
+  padding-left: 10px;
 }
 
 .headButton {
   all: unset;
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 9px;
   width: 100%;
   height: 100%;
-  padding: 0 10px 0 14px;
+  padding-right: 10px;
   box-sizing: border-box;
+  background: var(--track-head);
   cursor: default;
 }
 
-.headButton::before {
+.headButton::after {
   content: '';
   position: absolute;
-  left: 0;
+  right: 0;
   top: 0;
   bottom: 0;
-  width: 3px;
+  width: 4px;
   background: var(--tc);
 }
 
-button.headButton:hover {
-  background: rgb(255 255 255 / 4%);
-}
-
-.headButton[data-selected], .headButton[data-selected]:hover {
+.headButton[data-selected] {
   background: var(--track-head-select);
 }
 
@@ -294,29 +292,37 @@ button.headButton:hover {
   outline-offset: -1px;
 }
 
+/* 照 Timeline Editor 轨道头左侧的绑定空槽：带暗边的方块 */
+.slot {
+  align-self: stretch;
+  width: 38px;
+  margin: 3px 0;
+  flex: none;
+  box-sizing: border-box;
+  background: var(--track-slot);
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+}
+
 .name {
-  flex: 1;
   min-width: 0;
+  padding-top: 8px;
+  font-size: 13.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.headButton[data-selected] .name {
-  color: var(--text-strong);
-}
-
-.muted, .domain {
-  flex: none;
+.muted {
+  padding-top: 7px;
   color: var(--text-disabled);
-  font-size: 11px;
 }
 
 .segmentTitle {
   all: unset;
   min-width: 0;
-  color: var(--text-strong);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 14.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -352,13 +358,13 @@ button.headButton:hover {
 .foldOpen {
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
-  border-top: 5px solid var(--glyph);
+  border-top: 5px solid #9a9a9a;
 }
 
 .foldClosed {
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 5px solid var(--glyph);
+  border-left: 5px solid #9a9a9a;
 }
 
 /* 时间区 */
@@ -367,7 +373,7 @@ button.headButton:hover {
 }
 
 .groupLane {
-  background: var(--track-group);
+  background: repeating-linear-gradient(135deg, var(--track-group) 0 6px, var(--track-group-stripe) 6px 12px);
 }
 
 .segmentBracket {
@@ -409,41 +415,44 @@ button.headButton:hover {
   pointer-events: auto;
 }
 
-/* 片段：类别色描边、同色深底，名字写在片段里；游标经过加亮，选中白框，离开本段后转灰 */
 .clip {
   all: unset;
-  --fill: 26%;
   position: relative;
-  display: flex;
-  align-items: center;
+  display: block;
   box-sizing: border-box;
   flex: 1;
-  min-width: 4px;
-  margin: 3px 0;
-  background: color-mix(in srgb, var(--tc) var(--fill), var(--clip-base));
-  border: 1px solid color-mix(in srgb, var(--tc) 75%, var(--clip-base));
-  border-radius: 3px;
+  min-width: 5px;
+  margin: 2px 0 3px;
+  background: linear-gradient(var(--clip-top), var(--clip));
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 22%);
   overflow: hidden;
   cursor: default;
 }
 
 .clip:hover {
-  --fill: 34%;
+  filter: brightness(1.1);
 }
 
-.clip[data-active] {
-  --fill: 38%;
-  border-color: var(--tc);
+.clip[data-kind='anim'] {
+  background: linear-gradient(var(--clip-top) 0 54%, var(--clip-anim-band) 54%);
 }
 
-.clip[data-selected] {
-  --fill: 40%;
-  border-color: var(--clip-select);
-  box-shadow: 0 0 0 1px var(--clip-select);
+.clip[data-kind='motion'] {
+  background: linear-gradient(var(--clip-top) 0 54%, var(--clip-motion-band) 54%);
 }
 
 .clip[data-dim] {
-  --tc: var(--clip-dim);
+  background: linear-gradient(#606060, #505050);
+}
+
+.clip[data-active] {
+  box-shadow: inset 0 0 0 1px #f0f0f0;
+}
+
+.clip[data-selected] {
+  outline: 2px solid var(--clip-select);
+  outline-offset: -1px;
 }
 
 /* 作者模式可拖动的片段；所在 Timeline 有未保存修改时左上角加小三角 */
@@ -456,26 +465,49 @@ button.headButton:hover {
   position: absolute;
   left: 0;
   top: 0;
-  border-top: 6px solid var(--value);
+  border-top: 6px solid var(--cursor);
   border-right: 6px solid transparent;
   z-index: 1;
 }
 
 .clipLabel {
-  min-width: 0;
-  padding: 0 6px;
+  position: absolute;
+  left: 5px;
+  top: 5px;
   color: var(--clip-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13px;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 65%);
   white-space: nowrap;
   pointer-events: none;
 }
 
-.clip[data-dim] .clipLabel {
-  color: var(--text-dim);
+.clip[data-kind='anim'] .clipLabel, .clip[data-kind='motion'] .clipLabel {
+  top: 2px;
 }
 
-/* 淡入淡出：片段内的暗色斜区，悬停或选中时顶边出现可拖动的小方块 */
+.clip[data-dim] .clipLabel {
+  color: #c6c6c6;
+}
+
+.easeIn, .easeOut {
+  position: absolute;
+  bottom: 4px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  pointer-events: none;
+}
+
+.easeIn {
+  left: 0;
+  border-left: 5px solid #fff;
+}
+
+.easeOut {
+  right: 0;
+  border-right: 5px solid #fff;
+}
+
+/* 作者模式的淡入淡出：斜线区域与顶边可拖动的小方块 */
 .easeShape {
   position: absolute;
   inset: 0;
@@ -485,7 +517,7 @@ button.headButton:hover {
 }
 
 .easeShape polygon {
-  fill: rgb(0 0 0 / 32%);
+  fill: rgb(0 0 0 / 28%);
 }
 
 .easeHandle {
@@ -493,16 +525,11 @@ button.headButton:hover {
   top: 0;
   width: 7px;
   height: 7px;
-  background: var(--clip-text);
-  border: 1px solid rgb(0 0 0 / 55%);
+  background: #f0f0f0;
+  border: 1px solid rgb(0 0 0 / 50%);
   box-sizing: border-box;
   cursor: ew-resize;
   z-index: 2;
-  opacity: 0;
-}
-
-.clip:hover .easeHandle, .clip[data-selected] .easeHandle {
-  opacity: 1;
 }
 
 .clipCut {
@@ -516,9 +543,9 @@ button.headButton:hover {
 
 .clipOut {
   position: absolute;
-  top: 50%;
-  translate: 0 -50%;
+  top: 7px;
   color: var(--clip-out-text);
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -526,15 +553,15 @@ button.headButton:hover {
 }
 
 .clipOut[data-dim] {
-  color: var(--text-disabled);
+  color: #7a7a7a;
 }
 
 .blend {
   position: absolute;
-  top: 3px;
+  top: 2px;
   bottom: 3px;
   z-index: 2;
-  background: rgb(0 0 0 / 25%);
+  background: rgb(0 0 0 / 28%);
   pointer-events: none;
 }
 
@@ -547,27 +574,23 @@ button.headButton:hover {
 
 .blend path {
   fill: none;
-  stroke: rgb(255 255 255 / 70%);
-  stroke-width: 1;
+  stroke: var(--clip-text);
+  stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 
-/* 标记：作者标记与预览输入的单次按键共用，取所在轨道的类别色 */
+/* 标记：作者标记与预览输入的单次按键共用 */
 .marker {
   all: unset;
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  width: 10px;
-  margin-left: -5px;
-  background: var(--tc);
-  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+  top: 3px;
+  width: 12px;
+  height: 22px;
+  margin-left: -6px;
+  background: linear-gradient(#ececec, #bdbdbd);
+  clip-path: polygon(0 0, 100% 0, 100% 58%, 50% 100%, 0 58%);
   z-index: 3;
   cursor: default;
-}
-
-.marker:hover {
-  filter: brightness(1.25);
 }
 
 .marker[data-active] {
@@ -586,6 +609,7 @@ button.headButton:hover {
 .nameInput {
   flex: 1;
   min-width: 0;
+  margin-top: 4px;
 }
 
 /* 覆盖层：起点、段边界、结束线与游标 */
@@ -601,22 +625,30 @@ button.headButton:hover {
 
 .cursorLine, .endLine, .startLine, .segmentLine {
   position: absolute;
-  top: 12px;
+  top: 16px;
   bottom: 0;
   left: 0;
   width: 1px;
   will-change: transform;
 }
 
-.startLine, .endLine {
-  background: rgb(255 255 255 / 38%);
+.startLine {
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
 }
 
 .segmentLine {
   background: var(--segment-line);
 }
 
+.endLine {
+  background: rgb(255 255 255 / 55%);
+}
+
 .cursorLine {
+  width: 2px;
+  margin-left: -1px;
   background: var(--cursor);
 }
 
@@ -676,21 +708,23 @@ button.headButton:hover {
   pointer-events: none;
 }
 
-/* 游标头：刻度上的黄色时刻牌，可拖动；位置由游标覆盖层按时间区宽度收边 */
+/* 游标头：照 Timeline Editor 刻度上的大号黄色时刻，可拖动；水平位置由覆盖层按时间区宽度收边 */
 .cursorTag {
   position: absolute;
-  top: 14px;
+  top: 18px;
   left: 0;
-  padding: 0 5px;
-  background: var(--cursor);
-  color: var(--cursor-tag);
-  font: 600 11px Consolas, 'Microsoft YaHei UI', monospace;
-  line-height: 16px;
-  border-radius: 3px;
+  padding: 0 8px;
+  background: var(--cursor-tag);
+  color: var(--cursor);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 28px;
+  border-radius: 4px;
   white-space: nowrap;
   pointer-events: auto;
   cursor: ew-resize;
   touch-action: none;
   user-select: none;
+  font-variant-numeric: tabular-nums;
   will-change: transform;
 }

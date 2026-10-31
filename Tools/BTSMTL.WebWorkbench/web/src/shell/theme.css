@@ -35,28 +35,37 @@
   --warn: #e8b84a;
   --value: #e6c35c;
 
-  /* Timeline 类别色：动画、位移曲线按片段合同，树片段按执行域分逻辑与表现，与节点图的节点类别色同一套。
-     片段用类别色描边、同色深底；轨道头左侧色条取同一颜色。 */
-  --track-anim: #4f8fd8;
-  --track-motion: #5fb36a;
-  --track-logic: #d39a3e;
-  --track-present: #3cb0a6;
-  --track-in: #9277cc;
+  /* Timeline 取色自 BTSMTL Timeline Editor 实际画面 */
+  --track-anim: #7ffde5;
+  --track-motion: #7ddc92;
+  --track-act: #ca3c20;
   --track-cam: #d98c32;
+  --track-vfx: #3fb3a8;
+  --track-in: #ca3c20;
   --track-list: #383838;
+  --track-head: #3a3a3a;
+  --track-slot: #333333;
   --track-head-select: #3e5168;
-  --track-group: #303030;
+  --track-group: #333333;
+  --track-group-stripe: #2e2e2e;
   --track-lane: #1a1a1a;
   --track-lane-range: #222222;
   --track-lane-played: #2a2a2a;
   --track-ruler: #343434;
-  --track-row-line: #262626;
+  --track-row-line: #232323;
   --segment-line: #d29843;
-  --clip-base: #1c1c1c;
+  --clip: #9c9c9c;
+  --clip-top: #b6b6b6;
   --clip-dim: #555555;
-  --clip-text: #ececec;
+  --clip-line: #1d1d1d;
+  --clip-text: #f6f6f6;
   --clip-out-text: #a8a8a8;
-  --clip-select: #f2f2f2;
+  --clip-anim-band: #3e4d4d;
+  --clip-motion-band: #3e5143;
+  --clip-select: #8d8df0;
+  --input-key: #d2d2d2;
+  --input-key-active: #e8b84a;
+  --input-hold: #6f5b8f;
   --preview-on: #6a3131;
   --preview-on-line: #3d1c1c;
 

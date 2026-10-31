@@ -13,21 +13,10 @@ const clipKinds: Record<string, TrackKind> = {
   'tree.clip': 'act',
 };
 
-// 显示类别：动画、位移曲线与预览输入按片段合同，其余按轨道执行域分逻辑与表现。
-export type TrackTone = 'anim' | 'motion' | 'logic' | 'present' | 'in' | 'other';
-
-export function trackTone(kind: TrackKind, domain: string | null): TrackTone {
-  if (kind === 'anim' || kind === 'motion' || kind === 'in') return kind;
-  return domain === 'Logic' ? 'logic' : domain === 'Presentation' ? 'present' : 'other';
-}
-
-export const toneColors: Record<TrackTone, string> = {
-  anim: 'var(--track-anim)', motion: 'var(--track-motion)', logic: 'var(--track-logic)', present: 'var(--track-present)',
-  in: 'var(--track-in)', other: 'var(--text-disabled)',
+export const trackColors: Record<TrackKind, string> = {
+  anim: 'var(--track-anim)', motion: 'var(--track-motion)', act: 'var(--track-act)', in: 'var(--track-in)',
+  other: 'var(--text-disabled)',
 };
-
-const domainNames: Record<string, string> = { Logic: '逻辑', Presentation: '表现' };
-export const domainLabel = (domain: string) => domainNames[domain] ?? domain;
 
 export interface PlaySegment {
   documentId: string;

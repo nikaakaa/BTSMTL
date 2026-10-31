@@ -8,13 +8,13 @@ import {
   isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, trackDomain, useAuthoring, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, toneColors, trackKind, trackTone,
+  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
@@ -475,7 +475,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
-  const kind = toneColors[trackTone(input ? 'in' : clipKind(clip), trackDomain(timeline.documentId, track.id))];
+  const kind = trackColors[input ? 'in' : clipKind(clip)];
   const graph = clipGraph(graphs, clip.graphId);
   const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
   return (
@@ -540,7 +540,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
   const input = useInputSchemes().some(scheme => scheme.documentId === timeline.documentId);
   const tickRate = useAuthoring(state => state.tickRate);
   const step = tickRate ? 1 / tickRate : 1 / 60;
-  const kind = toneColors[trackTone(input ? 'in' : trackKind(track), trackDomain(timeline.documentId, track.id))];
+  const kind = 'var(--track-act)';
   return (
     <>
       <Head kind={kind} name={`${track.displayName} 标记`} sub={timeline.displayName} />
@@ -579,7 +579,7 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
   if (!found) return missing;
   const { timeline, track } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
-  const kind = toneColors[trackTone(input ? 'in' : trackKind(track), trackDomain(timeline.documentId, track.id))];
+  const kind = trackColors[input ? 'in' : trackKind(track)];
   return (
     <>
       <Head kind={kind} name={track.displayName} sub={timeline.displayName} />
