@@ -93,7 +93,7 @@ namespace BTSMTL.Graphs
             }
         }
 
-        internal void Initialize(Action mutation)
+        public void Initialize(Action mutation)
         {
             m_EditDepth++;
             try
