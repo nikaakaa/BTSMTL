@@ -110,11 +110,6 @@ namespace BTSMTL.Timeline
         public override string Name => $"{ExecutionDomain} / {m_ExecutionPhase}";
 #endif
 #if UNITY_EDITOR
-        public override ClipCapabilities Capabilities =>
-            m_ExitSource == TimelineClipExitSource.TreeDecision
-                ? ClipCapabilities.TickQuantized
-                : ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
-
         public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
             SetAssetTree(referenceObject as ScriptableObject);

@@ -309,8 +309,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
         }
 
 #if UNITY_EDITOR
-        public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
-
         public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
             if (referenceObject is not RootMotionCurveAsset source)

@@ -9,6 +9,7 @@ namespace BTSMTL.Timeline.Editor
         Type TreeGraphType { get; }
         Type TimeGridSourceType { get; }
         int GetTimeGridTickRate(ScriptableObject source);
+        ITimelineAuthoringDocument GetAuthoringDocument(UnityEngine.Object source);
         ScriptableObject CreateGraph(UnityEngine.Object container, string graphName, bool isTrigger);
         void OpenGraph(ScriptableObject source);
         void MutateOwnedContent(TimelineData timeline, Action mutation);

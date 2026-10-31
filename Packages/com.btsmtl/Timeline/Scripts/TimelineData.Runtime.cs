@@ -599,7 +599,6 @@ namespace BTSMTL.Timeline
         public bool Invalid;
 
         public virtual OrchestrationTime Length => DurationTime;
-        public virtual ClipCapabilities Capabilities => ClipCapabilities.None;
 
         public virtual void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {

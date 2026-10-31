@@ -41,12 +41,12 @@ namespace BTSMTL.Timeline.Editor
         int m_PreviewPathPlayback = -1;
         bool m_SeekToSourcePlayback;
         TimelineAsset m_RouteInputs;
-        readonly List<UnityEngine.Object> m_UnsavedAssets = new();
+        readonly List<ITimelineAuthoringDocument> m_UnsavedDocuments = new();
 
         // 编辑行右侧的保存：只在本技能根有未保存作者资产时出现。
         ToolbarButton CreateSaveButton()
         {
-            m_SaveButton = new ToolbarButton(SaveRouteAssets);
+            m_SaveButton = new ToolbarButton(SaveRouteDocuments);
             m_SaveButton.schedule.Execute(RefreshSaveButton).Every(500);
             RefreshSaveButton();
             return m_SaveButton;
@@ -189,10 +189,9 @@ namespace BTSMTL.Timeline.Editor
             RefreshAssetPreviewControls();
         }
 
-        // 本技能根内未保存的作者资产：路线上与技能引用的 Timeline 及其所在资产。
-        void CollectUnsavedAssets(TimelineAssetPreviewHost preview)
+        void CollectUnsavedDocuments(TimelineAssetPreviewHost preview)
         {
-            m_UnsavedAssets.Clear();
+            m_UnsavedDocuments.Clear();
             var timelines = new HashSet<TimelineAsset>();
             if (SourceAsset)
                 timelines.Add(SourceAsset);
@@ -200,32 +199,29 @@ namespace BTSMTL.Timeline.Editor
                 foreach (OrchestrationStaticTimeline timeline in preview.Query.Query.Timelines)
                     if (preview.Query.ResolveTimeline(timeline.Identity) is { } resolved && resolved)
                         timelines.Add(resolved);
-            // Clip／Marker 的节点图是同文件子资产，只改图时主资产与 Timeline 都不脏，按整份文件判断。
-            foreach (string path in timelines.Select(AssetDatabase.GetAssetPath).Distinct())
-            {
-                UnityEngine.Object main = AssetDatabase.LoadMainAssetAtPath(path);
-                if (main && AssetDatabase.LoadAllAssetsAtPath(path).Any(EditorUtility.IsDirty))
-                    m_UnsavedAssets.Add(main);
-            }
+            foreach (ITimelineAuthoringDocument document in timelines.Select(TimelineAuthoringSave.Document)
+                         .GroupBy(value => value.SourcePath).Select(group => group.First()))
+                if (document.HasUnsavedChanges)
+                    m_UnsavedDocuments.Add(document);
         }
 
         void RefreshSaveButton()
         {
             if (m_SaveButton == null)
                 return;
-            CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
-            SetDisplayed(m_SaveButton, m_UnsavedAssets.Count != 0);
-            if (m_UnsavedAssets.Count == 0)
+            CollectUnsavedDocuments(TimelineAssetPreviewHost.Shared);
+            SetDisplayed(m_SaveButton, m_UnsavedDocuments.Count != 0);
+            if (m_UnsavedDocuments.Count == 0)
                 return;
-            m_SaveButton.text = $"保存 {m_UnsavedAssets.Count}";
-            m_SaveButton.tooltip = "未保存：\n" + string.Join("\n", m_UnsavedAssets.Select(asset => AssetDatabase.GetAssetPath(asset)));
+            m_SaveButton.text = $"保存 {m_UnsavedDocuments.Count}";
+            m_SaveButton.tooltip = "未保存：\n" + string.Join("\n", m_UnsavedDocuments.Select(document => document.SourcePath));
         }
 
-        void SaveRouteAssets()
+        void SaveRouteDocuments()
         {
-            CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
-            foreach (UnityEngine.Object asset in m_UnsavedAssets)
-                TimelineAuthoringSave.Save(asset);
+            CollectUnsavedDocuments(TimelineAssetPreviewHost.Shared);
+            foreach (ITimelineAuthoringDocument document in m_UnsavedDocuments)
+                document.Save();
             RefreshSaveButton();
         }
 

@@ -1,6 +1,4 @@
 using System;
-using System.Linq;
-using UnityEditor;
 
 namespace BTSMTL.Timeline.Editor
 {
@@ -8,13 +6,11 @@ namespace BTSMTL.Timeline.Editor
     {
         public static event Action<string[]> Saving;
 
-        public static void Save(UnityEngine.Object asset)
-        {
-            string path = AssetDatabase.GetAssetPath(asset);
-            if (!AssetDatabase.LoadAllAssetsAtPath(path).Any(EditorUtility.IsDirty))
-                return;
-            Saving?.Invoke(new[] { path });
-            AssetDatabase.SaveAssetIfDirty(asset);
-        }
+        public static ITimelineAuthoringDocument Document(UnityEngine.Object source) =>
+            TimelineWorkspaceModeBridge.Authoring.GetAuthoringDocument(source);
+
+        public static void Save(UnityEngine.Object source) => Document(source).Save();
+
+        internal static void NotifySaving(string path) => Saving?.Invoke(new[] { path });
     }
 }
