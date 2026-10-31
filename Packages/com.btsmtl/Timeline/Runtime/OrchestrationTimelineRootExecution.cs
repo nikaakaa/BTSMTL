@@ -304,6 +304,8 @@ namespace BTSMTL.Timeline.Runtime
                 if (invocation.EndsExecutionFrame && !token.Marker &&
                     m_Bindings.ReleaseInvocation(domain, in metadata, in invocation, in header, ref context) != OrchestrationOperationResult.Success)
                     result = OrchestrationOperationResult.Failure;
+                if (invocation.EndsExecutionFrame)
+                    cursor.CompleteTimelineInvocation(in stopContext);
                 Consume(domain, programIndex, metadata, in header, in context, in traceContext);
                 return result;
             }

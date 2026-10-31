@@ -12,7 +12,7 @@ namespace BTSMTL.Orchestration
         {
             int state;
             if (m_StateDepth == 0)
-                state = m_Blackboards.BorrowedStateOperationIndex;
+                return m_Blackboards.HasBorrowedState && m_Blackboards.BorrowedStateRootCompleted();
             else
             {
                 ref readonly OrchestrationStateContext context =
@@ -33,7 +33,7 @@ namespace BTSMTL.Orchestration
             if (m_StateDepth != 0)
                 return m_States[m_StateDepth - 1].ExitCause;
             OrchestrationStopContext source = m_Blackboards.BorrowedStopContext;
-            return m_Blackboards.BorrowedStateOperationIndex >= 0 && source.IsValid ? MapExitCause(source.Cause) : -1;
+            return m_Blackboards.HasBorrowedState && source.IsValid ? MapExitCause(source.Cause) : -1;
         }
 
         public bool IsCurrentStateExecution(int stateOperationIndex)

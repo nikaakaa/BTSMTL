@@ -7,56 +7,51 @@ using BTSMTL.Orchestration;
 
 namespace ThirdPersonSimulation
 {
-    public sealed partial class GameplayAbilitySemanticIrContract
+    public sealed partial class GameplayGraphSemanticIrContract
     {
-        public GameplayAbilitySemanticIrContract(ProgramId programId, string compilerVersion,
-            OperationSetVersion operationSetVersion, int tickRate,
-            GameplayAbilityRootDescriptor root)
+        public GameplayGraphSemanticIrContract(string graphId, string compilerVersion,
+            OperationSetVersion operationSetVersion, int tickRate, int rootOperationIndex,
+            OrchestrationExecutionContract rootContract,
+            IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)
         {
-            ProgramId = programId;
+            GraphId = SimulationIdentity.Require(graphId, nameof(graphId));
             CompilerVersion = SimulationIdentity.Require(compilerVersion, nameof(compilerVersion));
             OperationSetVersion = operationSetVersion;
             TickRate = tickRate;
-            Root = root;
+            RootOperationIndex = rootOperationIndex;
+            RootContract = rootContract;
+            EntryContracts = new ReadOnlyDictionary<string, OrchestrationExecutionContract>(
+                new Dictionary<string, OrchestrationExecutionContract>(entryContracts, StringComparer.Ordinal));
             RequireRecord();
         }
 
-        public ProgramId ProgramId { get; }
+        public string GraphId { get; }
         public string CompilerVersion { get; }
         public OperationSetVersion OperationSetVersion { get; }
         public int TickRate { get; }
-        public GameplayAbilityRootDescriptor Root { get; }
+        public int RootOperationIndex { get; }
+        public OrchestrationExecutionContract RootContract { get; }
+        public IReadOnlyDictionary<string, OrchestrationExecutionContract> EntryContracts { get; }
 
         [ValueValidation]
         void RequireRecord()
         {
-            if (!ProgramId.IsValid || !OperationSetVersion.IsValid || TickRate <= 0)
+            if (!OperationSetVersion.IsValid || TickRate <= 0 || RootOperationIndex < 0 || EntryContracts.Count == 0)
                 throw new ArgumentException("Semantic IR contract is incomplete.");
-            SimulationIdentity.Require(CompilerVersion, nameof(CompilerVersion));
-            if (!Root.IsValid || !Root.IsAbility)
-                throw new ArgumentException("Semantic IR requires an Ability root descriptor.", nameof(Root));
         }
     }
 
-    public sealed partial class GameplayAbilitySemanticIrManifest
+    public sealed partial class GameplayGraphSemanticIrManifest
     {
-        public GameplayAbilitySemanticIrManifest(ProgramId programId, string compilerVersion,
-            OperationSetVersion operationSetVersion, int tickRate, ProgramRevision sourceRevision,
-            GameplayAbilityRootDescriptor root)
+        public GameplayGraphSemanticIrManifest(GameplayGraphSemanticIrContract contract, ProgramRevision sourceRevision)
         {
-            Contract = new GameplayAbilitySemanticIrContract(programId, compilerVersion,
-                operationSetVersion, tickRate, root);
+            Contract = contract;
             SourceRevision = sourceRevision;
             RequireRecord();
         }
 
-        public GameplayAbilitySemanticIrContract Contract { get; }
+        public GameplayGraphSemanticIrContract Contract { get; }
         public ProgramRevision SourceRevision { get; }
-        public ProgramId ProgramId => Contract.ProgramId;
-        public string CompilerVersion => Contract.CompilerVersion;
-        public OperationSetVersion OperationSetVersion => Contract.OperationSetVersion;
-        public int TickRate => Contract.TickRate;
-        public GameplayAbilityRootDescriptor Root => Contract.Root;
 
         [ValueValidation]
         void RequireRecord()
@@ -66,7 +61,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class GameplayAbilitySemanticIr
+    public sealed class GameplayGraphSemanticIr
     {
         readonly ReadOnlyCollection<SemanticOperation> m_Operations;
         SemanticGraphStructure Structure => Tables.Structure;
@@ -75,8 +70,8 @@ namespace ThirdPersonSimulation
         readonly ReadOnlyCollection<ProgramOutputChannelLayout> m_OutputChannels;
         readonly ReadOnlyCollection<ProgramProducer> m_Producers;
 
-        public GameplayAbilitySemanticIr(
-            GameplayAbilitySemanticIrManifest manifest,
+        public GameplayGraphSemanticIr(
+            GameplayGraphSemanticIrManifest manifest,
             IEnumerable<SemanticOperation> operations,
             IEnumerable<SemanticLiteral> literals,
             IEnumerable<SemanticConstantInputBinding> constantInputBindings,
@@ -117,15 +112,13 @@ namespace ThirdPersonSimulation
                 ExecutionSources,
                 m_Operations.Count,
                 m_StateLayout.Slots.Count);
-            GameplayAbilityRootValidation.RequireEntryReference(
-                Manifest.Root,
-                Structure.References,
-                m_Operations);
+            if (Manifest.Contract.RootOperationIndex >= m_Operations.Count)
+                throw new InvalidDataException("Graph root operation is outside the compiled operation layout.");
             ValidateReferences(contracts);
             ValidateGraphCallFrames();
         }
 
-        GameplayAbilitySemanticIr(GameplayAbilitySemanticIr structure, GameplayAbilitySemanticIrManifest manifest,
+        GameplayGraphSemanticIr(GameplayGraphSemanticIr structure, GameplayGraphSemanticIrManifest manifest,
             SemanticGraphParameters parameters, ProgramGraphSources sources)
         {
             Manifest = manifest;
@@ -146,14 +139,14 @@ namespace ThirdPersonSimulation
             GraphSources = sources;
         }
 
-        public GameplayAbilitySemanticIr WithParameters(GameplayAbilitySemanticIrManifest manifest,
+        public GameplayGraphSemanticIr WithParameters(GameplayGraphSemanticIrManifest manifest,
             SemanticGraphParameters parameters, ProgramGraphSources sources) =>
-            new GameplayAbilitySemanticIr(this, manifest, parameters, sources);
+            new GameplayGraphSemanticIr(this, manifest, parameters, sources);
 
-        public GameplayAbilitySemanticIr WithSources(GameplayAbilitySemanticIrManifest manifest,
-            ProgramGraphSources sources) => new GameplayAbilitySemanticIr(this, manifest, Parameters, sources);
+        public GameplayGraphSemanticIr WithSources(GameplayGraphSemanticIrManifest manifest,
+            ProgramGraphSources sources) => new GameplayGraphSemanticIr(this, manifest, Parameters, sources);
 
-        public GameplayAbilitySemanticIrManifest Manifest { get; }
+        public GameplayGraphSemanticIrManifest Manifest { get; }
         public IReadOnlyList<SemanticOperation> Operations => m_Operations;
         public SemanticGraphParameters Parameters => Tables.Parameters;
         public IReadOnlyList<SemanticLiteral> Literals => Parameters.Literals;

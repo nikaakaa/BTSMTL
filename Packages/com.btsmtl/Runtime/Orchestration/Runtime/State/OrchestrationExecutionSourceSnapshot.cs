@@ -55,8 +55,8 @@ namespace BTSMTL.Orchestration
                 if (segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames ||
                     segment.Role == OrchestrationStateSegmentRole.Roster)
                     continue;
-                OrchestrationStateSegment sourceSegment = source.Frames.Plan.Segment(segment.Role, segment.ValueKind);
-                source.Frames.Memory.Slice(sourceSegment.OffsetBytes, sourceSegment.SizeBytes)
+                OrchestrationStateSegment sourceSegment = source.CharacterFrames.Plan.Segment(segment.Role, segment.ValueKind);
+                source.CharacterFrames.Memory.Slice(sourceSegment.OffsetBytes, sourceSegment.SizeBytes)
                     .CopyTo(m_Memory.AsSpan(segment.OffsetBytes, segment.SizeBytes));
             }
             m_Tick = source.Tick;

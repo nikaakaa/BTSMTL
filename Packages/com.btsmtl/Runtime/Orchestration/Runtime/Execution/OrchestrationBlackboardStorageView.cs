@@ -38,7 +38,12 @@ namespace BTSMTL.Orchestration
         internal int ProgramIndex => m_ProgramIndex;
         internal int CharacterSlot(int valueSlot) =>
             m_CharacterSlots.IsEmpty ? valueSlot : m_CharacterSlots[valueSlot];
-        internal int BorrowedStateOperationIndex => m_SourceBinding.HasSource ? m_SourceBinding.SourceStateOperationIndex : -1;
+        internal int BorrowedStateOperationIndex => m_SourceBinding.HasSource && m_SourceBinding.SameProgram ?
+            m_SourceBinding.SourceStateOperationIndex : -1;
+        internal bool HasBorrowedState => m_SourceBinding.HasSource && m_SourceBinding.SourceStateOperationIndex >= 0;
+        internal bool BorrowedStateRootCompleted() => m_SourceBinding.SourceStateRootOperationIndex >= 0 &&
+            m_Reader.ReadSourceOperation(m_SourceBinding.SourceStateRootOperationIndex,
+                m_SourceBinding.SourceStateRootOwnerOperationIndex).Status == OrchestrationOperationStatus.Success;
         internal OrchestrationStopContext BorrowedStopContext => m_Reader.SourceStopContext;
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
             m_SourceBinding.HasSource && m_SourceBinding.ContainsSourceState(in m_Program, stateOperationIndex);
@@ -97,6 +102,8 @@ namespace BTSMTL.Orchestration
 
         internal bool IsBorrowedGraphScope(int graphOwnerOperationIndex)
         {
+            if (!m_SourceBinding.SameProgram)
+                return false;
             int ownerFrame = m_Reader.OwnerFrameIndex(m_Program.Operation(graphOwnerOperationIndex).ExecutionFrameOwnerOperationIndex);
             int frame = m_Reader.SourceFrameIndex;
             int operation = m_SourceBinding.SourceOperationIndex;

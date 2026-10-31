@@ -8,11 +8,15 @@ namespace BTSMTL.Orchestration
         readonly int m_OperationCount;
 
         internal OrchestrationExecutionSourceBindingView(int sourceOperationIndex, int sourceStateOperationIndex,
+            int sourceStateRootOperationIndex, int sourceStateRootOwnerOperationIndex, bool sameProgram,
             int operationCount, ReadOnlySpan<ulong> graphMembers)
         {
             HasSource = true;
             SourceOperationIndex = sourceOperationIndex;
             SourceStateOperationIndex = sourceStateOperationIndex;
+            SourceStateRootOperationIndex = sourceStateRootOperationIndex;
+            SourceStateRootOwnerOperationIndex = sourceStateRootOwnerOperationIndex;
+            SameProgram = sameProgram;
             m_OperationCount = operationCount;
             m_GraphMembers = graphMembers;
         }
@@ -20,10 +24,15 @@ namespace BTSMTL.Orchestration
         public bool HasSource { get; }
         public int SourceOperationIndex { get; }
         public int SourceStateOperationIndex { get; }
+        public int SourceStateRootOperationIndex { get; }
+        public int SourceStateRootOwnerOperationIndex { get; }
+        public bool SameProgram { get; }
 
         internal bool ContainsSourceState<TValue>(in OrchestrationProgramView<TValue> program, int stateOperationIndex)
             where TValue : unmanaged
         {
+            if (!SameProgram)
+                return false;
             for (int state = SourceStateOperationIndex; state >= 0;
                 state = program.Operation(state).ParentStateOperationIndex)
                 if (state == stateOperationIndex)
@@ -33,6 +42,8 @@ namespace BTSMTL.Orchestration
 
         internal bool ContainsSourceGraph(int graphOwnerOperationIndex, int sourceOperationIndex)
         {
+            if (!SameProgram)
+                return false;
             int bit = graphOwnerOperationIndex * m_OperationCount + sourceOperationIndex;
             return (m_GraphMembers[bit >> 6] & (1UL << (bit & 63))) != 0;
         }
@@ -42,14 +53,21 @@ namespace BTSMTL.Orchestration
     {
         readonly ulong[] m_GraphMembers;
         readonly int m_SourceStateOperationIndex;
+        readonly int m_SourceStateRootOperationIndex;
+        readonly int m_SourceStateRootOwnerOperationIndex;
 
         OrchestrationExecutionSourceBinding(OrchestrationProgram<TValue> program,
-            int candidateOwnerOperationIndex, int sourceOperationIndex)
+            int candidateOwnerOperationIndex, OrchestrationProgram<TValue> sourceProgram, int sourceOperationIndex)
         {
             Program = program;
             CandidateOwnerOperationIndex = candidateOwnerOperationIndex;
             SourceOperationIndex = sourceOperationIndex;
-            m_SourceStateOperationIndex = program.Operation(sourceOperationIndex).ParentStateOperationIndex;
+            SourceProgram = sourceProgram;
+            m_SourceStateOperationIndex = sourceProgram.Operation(sourceOperationIndex).ParentStateOperationIndex;
+            int edge = m_SourceStateOperationIndex < 0 ? -1 : sourceProgram.View.StateRootEdge(m_SourceStateOperationIndex);
+            m_SourceStateRootOperationIndex = edge < 0 ? -1 : sourceProgram.Edge(edge).TargetOperationIndex;
+            m_SourceStateRootOwnerOperationIndex = m_SourceStateRootOperationIndex < 0 ? -1 :
+                sourceProgram.Operation(m_SourceStateRootOperationIndex).ExecutionFrameOwnerOperationIndex;
             int operationCount = program.OperationCount;
             m_GraphMembers = new ulong[(operationCount * operationCount + 63) / 64];
             var collected = new bool[operationCount];
@@ -65,17 +83,20 @@ namespace BTSMTL.Orchestration
         }
 
         public OrchestrationProgram<TValue> Program { get; }
+        public OrchestrationProgram<TValue> SourceProgram { get; }
         public int CandidateOwnerOperationIndex { get; }
         public int SourceOperationIndex { get; }
 
         public OrchestrationExecutionSourceBindingView View =>
             new OrchestrationExecutionSourceBindingView(SourceOperationIndex, m_SourceStateOperationIndex,
+                m_SourceStateRootOperationIndex, m_SourceStateRootOwnerOperationIndex, ReferenceEquals(Program, SourceProgram),
                 Program.OperationCount, m_GraphMembers);
 
         public static OrchestrationExecutionSourceBinding<TValue> Prepare(OrchestrationProgram<TValue> program,
-            int candidateOwnerOperationIndex, int sourceOperationIndex)
+            int candidateOwnerOperationIndex, OrchestrationProgram<TValue> sourceProgram, int sourceOperationIndex,
+            bool candidateWritesOnly)
         {
-            for (int index = 0; index < program.OperationCount; index++)
+            for (int index = 0; candidateWritesOnly && index < program.OperationCount; index++)
             {
                 ref readonly OrchestrationOperation operation = ref program.Operation(index);
                 if (operation.ExecutionFrameOwnerOperationIndex != candidateOwnerOperationIndex)
@@ -87,7 +108,7 @@ namespace BTSMTL.Orchestration
                     foreach (ref readonly OrchestrationBlackboardOutputBinding output in program.OutputAssignments(index))
                         RequireCandidateWrite(program, candidateOwnerOperationIndex, index, output.ValueSlot);
             }
-            return new OrchestrationExecutionSourceBinding<TValue>(program, candidateOwnerOperationIndex, sourceOperationIndex);
+            return new OrchestrationExecutionSourceBinding<TValue>(program, candidateOwnerOperationIndex, sourceProgram, sourceOperationIndex);
         }
 
         static void RequireCandidateWrite(OrchestrationProgram<TValue> program,

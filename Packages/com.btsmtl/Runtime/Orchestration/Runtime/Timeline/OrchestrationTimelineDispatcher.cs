@@ -25,14 +25,7 @@ namespace BTSMTL.Orchestration
         void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context);
 
-        int EnterInvocation(int playbackSlot, int invocationIndex, ref TContext context);
-
-        OrchestrationTimelineInvocationFacts ReadInvocationFacts();
-
         void SelectExecutionFrame(int frameSlot, ref TContext context);
-
-        OrchestrationOperationResult ReleaseInvocation(ref TContext context);
-
-        void LeaveInvocation(ref TContext context);
+        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context);
     }
 }
