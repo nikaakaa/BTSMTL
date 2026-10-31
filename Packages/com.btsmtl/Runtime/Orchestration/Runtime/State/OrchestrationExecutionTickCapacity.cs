@@ -481,12 +481,9 @@ namespace BTSMTL.Orchestration
                         count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), false));
                 }
                 else if (operation.Code != OrchestrationOperationCode.Succeed &&
-                    (!stop || operation.Code != OrchestrationOperationCode.Extension ||
-                        (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(index).BindingIndex].RequiredInvocations &
-                            OrchestrationExtensionInvocationKind.ContinueStop) == 0))
+                    (!stop || OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(index))))
                 {
-                    OrchestrationFlowKind kind = operation.Code == OrchestrationOperationCode.SubGraph
-                        ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child;
+                    OrchestrationFlowKind kind = OrchestrationStopRoute.ChildFlowKind(operation.Code);
                     bool singleStop = operation.Code == OrchestrationOperationCode.Sequence ||
                         operation.Code == OrchestrationOperationCode.Selector;
                     long stoppedChild = 0;
@@ -635,15 +632,15 @@ namespace BTSMTL.Orchestration
                     if (root >= 0)
                         VisitOrdinaryStop(m_Program.Edge(root).TargetOperationIndex);
                 }
-                else if (operation.Code == OrchestrationOperationCode.SubGraph)
-                    VisitOrdinaryStopChildren(operationIndex, OrchestrationFlowKind.Enter);
-                else if (operation.Code != OrchestrationOperationCode.Timeline &&
-                    (operation.Code != OrchestrationOperationCode.Extension ||
-                        (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].RequiredInvocations &
-                            OrchestrationExtensionInvocationKind.ContinueStop) == 0))
-                    VisitOrdinaryStopChildren(operationIndex, OrchestrationFlowKind.Child);
+                else if (OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(operationIndex)))
+                    VisitOrdinaryStopChildren(operationIndex, OrchestrationStopRoute.ChildFlowKind(operation.Code));
                 m_ActiveStops[operationIndex] = false;
             }
+
+            bool RequiresContinueStop(int operationIndex) =>
+                m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Extension &&
+                (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].RequiredInvocations &
+                    OrchestrationExtensionInvocationKind.ContinueStop) != 0;
 
             void VisitOrdinaryStopChildren(int operationIndex, OrchestrationFlowKind kind)
             {

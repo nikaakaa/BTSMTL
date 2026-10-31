@@ -1,7 +1,7 @@
 import { NumberField } from '@base-ui/react/number-field';
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { clockPosition, positionValue, type PlayerJobReceipt } from '../api/playerRecords';
+import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
@@ -167,17 +167,14 @@ function useTransportState() {
     let blocked: string | null = null;
     if (!source) blocked = state.runId ? (state.receipt ? stageNames[state.receipt.stage] : '读取中') : '选择一个运行';
     else if (source !== 'player-live' && !count) blocked = '还没有确认帧';
+    if (source === 'player-live') return {
+      playing, blocked: transport.unavailableReason(playing ? 'pause' : 'play'),
+      previous: transport.unavailableReason('previous'), next: transport.unavailableReason('next'),
+    };
     let previous = blocked, next = blocked;
     if (!blocked) {
       if (playing) previous = next = '需要先暂停';
-      else if (source === 'player-live') {
-        const player = state.live!.player!;
-        const clock = player.source!.clock;
-        previous = clock.kind === 'timeline'
-          ? player.state !== 'paused' ? '需要先暂停' : clockPosition(clock) === '0' ? '已到起点' : null
-          : '实时场景不能后退';
-        next = player.state === 'paused' ? null : '需要先暂停';
-      } else {
+      else {
         if (state.frameIndex <= 0) previous = '已是第一帧';
         if (state.frameIndex >= count - 1)
           next = '已是最后一帧';
@@ -212,26 +209,29 @@ function FrameField() {
     if (transport.source() === 'player-live') {
       const player = state.live!.player!;
       const clock = player.source!.clock;
-      return { frame: Number(clockPosition(clock)), last: player.endPosition === null ? null : positionValue(player.endPosition),
-        seconds: clock.kind === 'timeline' ? Number(clock.tick) / clock.tickRate : null,
-        label: clock.kind === 'timeline' ? 'Timeline Tick' : 'SDK 帧' };
+      const first = transport.action('first')?.target, last = transport.action('last')?.target;
+      return { frame: Number(clockPosition(clock)), first: first == null ? undefined : Number(first.hostFrame),
+        last: last == null ? undefined : Number(last.hostFrame), seconds: clock.seconds,
+        label: clock.positionDisplayName, blocked: transport.unavailableReason('seek') };
     }
     if (!state.summary?.frameCount) return null;
     return {
       frame: state.frameIndex,
+      first: 0,
       last: state.summary.frameCount - 1,
       seconds: state.seconds,
       label: '记录序号',
+      blocked: null,
     };
   }));
   if (!view) return null;
   return (
     <div className={styles.frame}>
-      <NumberField.Root value={view.frame} min={0} max={view.last ?? 2147483647}
+      <NumberField.Root value={view.frame} min={view.first} max={view.last} disabled={view.blocked !== null}
         onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
-        <NumberField.Input className={styles.frameInput} aria-label={view.label} title={view.label} />
+        <NumberField.Input className={styles.frameInput} aria-label={view.label} title={view.blocked ?? view.label} />
       </NumberField.Root>
-      {view.last !== null && <span className={styles.frameLast}>/ {view.last}</span>}
+      {view.last !== undefined && <span className={styles.frameLast}>/ {view.last}</span>}
       {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
   );

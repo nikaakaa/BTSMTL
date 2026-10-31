@@ -114,8 +114,7 @@ namespace BTSMTL.Compilation
                             AddForceChildren(i, OrchestrationFlowKind.Exit);
                         }
                         else
-                            AddForceChildren(i, code == OrchestrationOperationCode.SubGraph
-                                ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child);
+                            AddForceChildren(i, OrchestrationStopRoute.ChildFlowKind(code));
                     }
                     m_ForceCycles = new bool[operations.Length];
                     var visited = new byte[operations.Length];
@@ -538,13 +537,13 @@ namespace BTSMTL.Compilation
                         case OrchestrationOperationCode.Extension:
                             if (op.OutputSlotOffset < 0)
                                 result.Row(0, 0, op.OutputCount);
-                            if ((m_Compiler.m_Extensions[op.ExtensionBindingIndex].RequiredInvocations &
-                                OrchestrationExtensionInvocationKind.ContinueStop) != 0)
-                                return result;
                             break;
                     }
-                    Children(result, operation, op.Code == OrchestrationOperationCode.SubGraph
-                        ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child, Phase.Stop, contract);
+                    bool continuesStop = op.Code == OrchestrationOperationCode.Extension &&
+                        (m_Compiler.m_Extensions[op.ExtensionBindingIndex].RequiredInvocations &
+                            OrchestrationExtensionInvocationKind.ContinueStop) != 0;
+                    if (OrchestrationStopRoute.OrdinaryStopUsesChildren(op.Code, continuesStop))
+                        Children(result, operation, OrchestrationStopRoute.ChildFlowKind(op.Code), Phase.Stop, contract);
                     return result;
                 }
 

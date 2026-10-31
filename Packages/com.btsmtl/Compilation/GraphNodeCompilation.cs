@@ -3,21 +3,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation
 {
-    // 节点编译描述按能力的 CompilerBindingId 登记，由来源读取器提供作者字段及编译期引用。
-    [AttributeUsage(AttributeTargets.Class)]
-    public sealed class GraphNodeCompilerAttribute : Attribute
-    {
-        public GraphNodeCompilerAttribute(params string[] bindingIds) => BindingIds = bindingIds;
-        public IReadOnlyList<string> BindingIds { get; }
-    }
-
+    // 节点编译描述按作者节点类型登记，由来源读取器提供作者字段及编译期引用。
     public interface IGraphNodeCompiler
     {
+        Type NodeType { get; }
         GraphNodeCompileDescription Describe(GraphNodeFields fields);
+    }
+
+    public abstract class GraphNodeCompiler<TNode> : IGraphNodeCompiler where TNode : class
+    {
+        public Type NodeType => typeof(TNode);
+        public abstract GraphNodeCompileDescription Describe(GraphNodeFields fields);
     }
 
     // 平台按引用身份提供被引用内容的编译所需值：Unity 读资产，.NET 读导出的身份表；缺失时抛出带引用身份的异常。
@@ -49,8 +50,17 @@ namespace BTSMTL.Compilation
             RequiredInputConnections = requiredInputConnections?.ToArray() ?? Array.Empty<string>();
         }
 
-        public static GraphNodeCompileDescription Fields(params (string Name, object Value)[] payload) =>
-            new(SimulationNodeEmissionFields.Fields(payload));
+        public static GraphNodeCompileDescription Fields(params (OrchestrationExtensionContentField Field, object Value)[] payload) =>
+            new(PayloadFields(payload));
+
+        public static GraphNodeCompileDescription Fields(params (OrchestrationOutputPort Port, object Value)[] payload) =>
+            new(PayloadFields(payload));
+
+        public static KeyValuePair<string, object>[] PayloadFields(params (OrchestrationExtensionContentField Field, object Value)[] payload) =>
+            SimulationNodeEmissionFields.Fields(payload.Select(item => (item.Field.Id, item.Value)).ToArray());
+
+        public static KeyValuePair<string, object>[] PayloadFields(params (OrchestrationOutputPort Port, object Value)[] payload) =>
+            SimulationNodeEmissionFields.Fields(payload.Select(item => (item.Port.Id, item.Value)).ToArray());
 
         public IReadOnlyList<KeyValuePair<string, object>> Payload { get; }
         public IReadOnlyList<GraphOrchestrationBlackboardPort> ReadBindings { get; }
@@ -63,29 +73,30 @@ namespace BTSMTL.Compilation
 
     public sealed class GraphNodeCompilers
     {
-        readonly Dictionary<string, IGraphNodeCompiler> m_Compilers;
+        readonly Dictionary<Type, IGraphNodeCompiler> m_Compilers;
 
-        GraphNodeCompilers(Dictionary<string, IGraphNodeCompiler> compilers) => m_Compilers = compilers;
+        GraphNodeCompilers(Dictionary<Type, IGraphNodeCompiler> compilers) => m_Compilers = compilers;
 
         public static GraphNodeCompilers From(IEnumerable<Assembly> assemblies)
         {
-            var compilers = new Dictionary<string, IGraphNodeCompiler>(StringComparer.Ordinal);
+            var compilers = new Dictionary<Type, IGraphNodeCompiler>();
             foreach (Type type in assemblies.SelectMany(assembly => assembly.GetTypes()))
             {
-                GraphNodeCompilerAttribute attribute = type.GetCustomAttribute<GraphNodeCompilerAttribute>();
-                if (attribute == null)
+                if (type.IsAbstract || type.ContainsGenericParameters || !typeof(IGraphNodeCompiler).IsAssignableFrom(type))
                     continue;
-                var compiler = (IGraphNodeCompiler)Activator.CreateInstance(type);
-                foreach (string bindingId in attribute.BindingIds)
-                    if (!compilers.TryAdd(bindingId, compiler))
-                        throw new InvalidOperationException($"节点编译描述 '{bindingId}' 重复登记：{type.FullName}。");
+                var compiler = (IGraphNodeCompiler)Activator.CreateInstance(type, true);
+                if (!compilers.TryAdd(compiler.NodeType, compiler))
+                    throw new InvalidOperationException($"节点类型 '{compiler.NodeType.FullName}' 的编译描述重复登记：{type.FullName}。");
             }
             return new GraphNodeCompilers(compilers);
         }
 
-        public GraphNodeCompileDescription Describe(string bindingId, GraphNodeFields fields)
+        // 按节点类型及其基类查找；没有编译描述的节点返回空描述。
+        public GraphNodeCompileDescription Describe(GraphNodeFields fields)
         {
-            if (!m_Compilers.TryGetValue(bindingId, out IGraphNodeCompiler compiler))
+            IGraphNodeCompiler compiler = null;
+            for (Type type = fields.NodeType; type != null && !m_Compilers.TryGetValue(type, out compiler); type = type.BaseType) { }
+            if (compiler == null)
                 return GraphNodeCompileDescription.Empty;
             try
             {
@@ -93,7 +104,7 @@ namespace BTSMTL.Compilation
             }
             catch (Exception exception) when (exception is not GraphNodeCompileException)
             {
-                throw new GraphNodeCompileException($"节点编译描述 '{bindingId}' 失败：{exception.Message}", exception);
+                throw new GraphNodeCompileException($"节点 '{fields.NodeType.Name}' 编译描述失败：{exception.Message}", exception);
             }
         }
     }
@@ -105,6 +116,8 @@ namespace BTSMTL.Compilation
 
     public interface IGraphNodeFieldReader
     {
+        // 作者节点或复合值的 CLR 类型；没有对应类型（原生数值、宏端点）时为 null。
+        Type NodeType { get; }
         T Read<T>(string fieldId);
         bool IsNull(string fieldId);
         IGraphNodeFieldReader Object(string fieldId);
@@ -151,6 +164,7 @@ namespace BTSMTL.Compilation
             m_References = references;
         }
 
+        public Type NodeType => m_Reader.NodeType;
         public GraphNodeField Value(string fieldId) => new(m_Reader, fieldId);
         public bool IsNull(string fieldId) => m_Reader.IsNull(fieldId);
         public string String(string fieldId) => m_Reader.Read<string>(fieldId);

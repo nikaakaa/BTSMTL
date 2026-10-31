@@ -16,6 +16,8 @@ namespace BTSMTL.Graphs.Editor
 
         public BtsmtlFlowCompileFields(object source) => m_Source = source;
 
+        public Type NodeType => m_Source.GetType();
+
         public T Read<T>(string fieldId)
         {
             object value = Value(fieldId);

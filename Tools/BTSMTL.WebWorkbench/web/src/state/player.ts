@@ -23,19 +23,21 @@ function setVideo(frame: VideoFrame | null) {
 }
 
 function sameLoad(left: PreviewSampleSource, right: PreviewSampleSource) {
-  if (left.loadCommandId !== right.loadCommandId || left.playerBuildId !== right.playerBuildId ||
-    left.content.kind !== right.content.kind || left.content.revision !== right.content.revision ||
-    left.clock.kind !== right.clock.kind || left.clock.tickRate !== right.clock.tickRate) return false;
-  return left.content.kind === 'scene' || right.content.kind === 'timeline' &&
-    left.content.timeline === right.content.timeline && left.content.contentIdentity === right.content.contentIdentity &&
+  if (left.loadCommandId !== right.loadCommandId || left.execution.kind !== right.execution.kind ||
+    left.execution.identity !== right.execution.identity || left.execution.playerBuildId !== right.execution.playerBuildId ||
+    left.execution.editorAssemblyMvid !== right.execution.editorAssemblyMvid || left.contentRevision !== right.contentRevision ||
+    left.sceneRevision !== right.sceneRevision || left.inputSource !== right.inputSource || left.inputRevision !== right.inputRevision) return false;
+  if (left.content === null || right.content === null) return left.content === right.content;
+  return left.content.kind === right.content.kind && left.content.revision === right.content.revision &&
+    left.content.documentId === right.content.documentId && left.content.contentIdentity === right.content.contentIdentity &&
     left.content.contentRevision === right.content.contentRevision && left.content.bindingRevision === right.content.bindingRevision;
 }
 
 function matchesRequestedLoad(sample: PreviewSampleSource) {
   const request = requestedLoad;
-  return request === null || sample.loadCommandId === request.commandId && sample.content.kind === request.content.kind &&
-    sample.content.revision === request.content.revision && (request.content.kind === 'scene' ||
-      sample.content.kind === 'timeline' && sample.content.timeline === request.content.timeline);
+  const content = sample.content;
+  return request === null || sample.loadCommandId === request.commandId && content !== null && content.kind === request.content.kind &&
+    content.revision === request.content.revision && (request.content.kind === 'scene' || content.documentId === request.content.timeline);
 }
 
 function acceptVideo(frame: VideoFrame) {

@@ -1,7 +1,7 @@
 import { playerApi } from '../api/player';
 import { isAbort } from '../api/http';
-import { clockPosition, positionValue, type PlayerJobId, type PreviewPosition } from '../api/playerRecords';
-import type { LiveCommand, LiveCommandResult } from '../api/types';
+import type { PlayerJobId, PreviewPosition } from '../api/playerRecords';
+import type { Frame, LiveCommand, LiveCommandResult } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
 export type TransportSource = 'sealed' | 'player-live';
@@ -44,6 +44,17 @@ function moveCursor(frameIndex: number) {
   if (index !== getState().frameIndex || getState().hostFrame === null) writeCursor(index);
 }
 
+async function readTime(context: Timebase, index: number, signal: AbortSignal) {
+  const known = context.frames.get(index);
+  if (known) return known;
+  const page = await playerApi.frames(context.runId, index, 1, signal);
+  signal.throwIfAborted();
+  const frame = page.items[0];
+  const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
+  context.frames.set(index, entry);
+  return entry;
+}
+
 async function seekTime(seconds: number) {
   const { runId, generation, summary } = getState();
   const context = timebase;
@@ -54,16 +65,7 @@ async function seekTime(seconds: number) {
   stopReview();
   timeSeek?.abort();
   const controller = timeSeek = new AbortController();
-  const at = async (index: number) => {
-    const known = context.frames.get(index);
-    if (known) return known;
-    const page = await playerApi.frames(runId, index, 1, controller.signal);
-    controller.signal.throwIfAborted();
-    const frame = page.items[0];
-    const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
-    context.frames.set(index, entry);
-    return entry;
-  };
+  const at = (index: number) => readTime(context, index, controller.signal);
   try {
     let first = 0, last = summary.frameCount - 1;
     while (first < last) {
@@ -137,6 +139,11 @@ async function playerCommand(command: LiveCommand): Promise<PlayerCommandRecord 
   const liveId = getState().liveId;
   const loadCommandId = getState().live?.player?.source?.loadCommandId;
   if (!liveId) return null;
+  const reason = transport.unavailableReason(command.type);
+  if (reason !== null) {
+    consoleActions.log('warn', source, reason);
+    return null;
+  }
   try {
     const result = await playerApi.command(liveId, command);
     if (getState().liveId !== liveId || getState().live?.player?.source?.loadCommandId !== loadCommandId) return null;
@@ -148,9 +155,7 @@ async function playerCommand(command: LiveCommand): Promise<PlayerCommandRecord 
 }
 
 // 定位合并绑定本次载入，上一条回执后只补发更新的目标。
-function seekPlayer(frame: number) {
-  const clock = getState().live!.player!.source!.clock;
-  const position: PreviewPosition = clock.kind === 'quantumSdk' ? { kind: 'quantumSdk', sdkFrame: frame } : { kind: 'timeline', tick: frame };
+function seekPlayer(position: PreviewPosition) {
   useWorkbench.setState({ targetPosition: position });
   if (getState().pendingSeek) return;
   void sendSeek(position);
@@ -165,7 +170,7 @@ async function sendSeek(position: PreviewPosition) {
   if (getState().liveId !== liveId || getState().pendingSeek?.commandId !== commandId ||
     getState().live?.player?.source?.loadCommandId !== loadCommandId) return;
   const { targetPosition } = getState();
-  if (targetPosition !== null && (targetPosition.kind !== position.kind || positionValue(targetPosition) !== positionValue(position)))
+  if (targetPosition !== null && targetPosition.hostFrame !== position.hostFrame)
     void sendSeek(targetPosition);
   else useWorkbench.setState({ pendingSeek: null, targetPosition: null });
 }
@@ -176,19 +181,41 @@ export const transport = {
   source: transportSource,
   seekTime,
 
+  action(name: string) {
+    return getState().live?.player?.transport.find(item => item.action === name);
+  },
+
+  unavailableReason(name: string) {
+    const action = transport.action(name);
+    return action === undefined ? '宿主未提供此操作的资格' : action.available ? null : action.reason;
+  },
+
   secondsAt(index: number): number | null {
     return timebase?.runId === getState().runId ? timebase.frames.get(index)?.seconds ?? null : null;
   },
 
   duration(): number | null {
-    const metadata = getState().archiveMetadata;
-    return metadata ? (metadata.lastRecordedSdkFrame - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate : null;
+    const first = transport.secondsAt(0), last = transport.secondsAt(frameCount() - 1);
+    return first === null || last === null ? null : last - first;
+  },
+
+  async readBounds(context: Timebase, count: number, signal: AbortSignal) {
+    await readTime(context, 0, signal);
+    await readTime(context, count - 1, signal);
+    signal.throwIfAborted();
   },
 
   // 读取路线后由运行服务登记帧序号与宿主帧、秒数的对应；cursor 同步补齐。
   setTimebase(runId: PlayerJobId, frames: ArchiveTimebase) {
     timebase = { runId, frames };
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
+  },
+
+  recordFrames(runId: PlayerJobId, offset: number, frames: ReadonlyArray<Pick<Frame, 'hostFrame' | 'seconds'>>) {
+    if (timebase?.runId !== runId) return;
+    for (const [index, frame] of frames.entries())
+      timebase.frames.set(offset + index, { hostFrame: frame.hostFrame, seconds: frame.seconds });
+    if (frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 
   // 运行载入或地址恢复时定位到指定帧序号，不改变跟随状态。
@@ -243,14 +270,14 @@ export const transport = {
       case 'player-live':
         if (delta > 0) void playerCommand({ type: 'step', commandId: crypto.randomUUID(), count: 1 });
         else {
-          const clock = getState().live!.player!.source!.clock;
-          if (clock.kind === 'timeline') seekPlayer(Math.max(0, Number(clockPosition(clock)) - 1));
+          const previous = transport.action('previous');
+          if (previous?.available && previous.target !== null) seekPlayer(previous.target);
         }
         break;
     }
   },
 
-  // 档案按记录序号；实时定位保留实际时钟种类。
+  // 档案按记录序号；实时定位由 Host 解析目标键。
   seek(frame: number) {
     timeSeek?.abort();
     switch (transportSource()) {
@@ -259,16 +286,21 @@ export const transport = {
         moveCursor(frame);
         break;
       case 'player-live':
-        seekPlayer(frame);
+        seekPlayer({ hostFrame: String(frame) });
         break;
     }
   },
 
-  home() { transport.seek(0); },
+  home() {
+    if (transportSource() === 'player-live') {
+      const first = transport.action('first');
+      if (first?.available && first.target !== null) seekPlayer(first.target);
+    } else transport.seek(0);
+  },
   end() {
     if (transportSource() === 'player-live') {
-      const end = getState().live!.player!.endPosition;
-      if (end !== null) transport.seek(positionValue(end));
+      const last = transport.action('last');
+      if (last?.available && last.target !== null) seekPlayer(last.target);
     } else transport.seek(frameCount() - 1);
   },
 

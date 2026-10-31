@@ -303,8 +303,8 @@ function loadTypes(skill: AuthoringTarget) {
   return typeCatalog.items;
 }
 
-function NodeTypePicker({ graph, at, onClose }: {
-  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onClose(): void;
+function NodeTypePicker({ graph, at, onCreated, onClose }: {
+  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onCreated(id: string): void; onClose(): void;
 }) {
   const skill = useAuthoring(state => state.target)!;
   const [types, setTypes] = useState<NodeTypeInfo[] | null>(null);
@@ -327,7 +327,8 @@ function NodeTypePicker({ graph, at, onClose }: {
       const ports = (description.ports.items ?? []).map(entry => ({
         id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
       }));
-      graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      const id = graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      onCreated(id);
       onClose();
     } catch (reason) {
       consoleActions.error('作者', reason);
@@ -350,7 +351,7 @@ function NodeTypePicker({ graph, at, onClose }: {
           : !types ? <div className={styles.pickerNote}>读取节点类型中</div>
             : !shown.length ? <div className={styles.pickerNote}>没有匹配的类型</div>
               : shown.map(item => (
-                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType}
+                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType ?? undefined}
                   onClick={() => void add(item)}>
                   <span>{item.type}</span>
                   <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
@@ -502,7 +503,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const history: RouteHistory = { visited: new Set(), traveled: new Set() };
       if (machine && state.frame !== null) {
         for (const frame of state.routeFrames) {
-          if (BigInt(frame.hostFrame) > BigInt(state.frame.hostFrame)) continue;
+          if (frame.seconds > state.frame.seconds) continue;
           const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
             belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
@@ -591,6 +592,11 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
   }, [graph.id, machine, elements]);
+  const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
+    graphAuthoring.reconnect(graph.id, edge.id,
+      { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
+      { nodeId: connection.target, portId: portOf(connection.targetHandle) });
+  }, [graph.id]);
   // 拖动结束写布局：分组写矩形，分组里没有一起拖动的节点按同一位移移动。
   const onNodeDragStop = useCallback((_: unknown, __: CanvasNode, dragged: CanvasNode[]) => {
     if (!editable) return;
@@ -625,6 +631,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const selectedFlowNodes = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
   const copySelected = () => graphAuthoring.copy(graph.id, selectedFlowNodes.map(node => node.id),
     Object.fromEntries(selectedFlowNodes.map(node => [node.id, node.position])), portsOf(selectedFlowNodes.map(node => node.id)));
+  const selectCreated = (id: string) => {
+    selectCanvas([id], []);
+    selectionActions.select({ kind: 'node', id: nodeSelectId(graph, { id, invocationPath: path }) });
+  };
   const paste = () => {
     const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
     const [first] = pasted;
@@ -648,7 +658,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
       const elementsNow = elements ?? await skillElements();
-      selectCanvas([graphAuthoring.addState(graph.id, elementsNow, description.configuration, position)], []);
+      selectCreated(graphAuthoring.addState(graph.id, elementsNow, description.configuration, position));
     } catch (error) {
       consoleActions.error('作者', error);
     }
@@ -699,7 +709,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
           onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
-          onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
+          onConnect={onConnect} onReconnect={onReconnect} edgesReconnectable={editable && !machine}
+          onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={readableFocus}
           minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
@@ -715,7 +726,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
-        {picker && <NodeTypePicker graph={graph} at={picker} onClose={() => setPicker(null)} />}
+        {picker && <NodeTypePicker graph={graph} at={picker} onCreated={selectCreated} onClose={() => setPicker(null)} />}
       </div>
       </ContextMenu>
     </ViewContext.Provider>

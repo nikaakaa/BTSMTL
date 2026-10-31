@@ -67,10 +67,10 @@ export function schedule() {
 function evaluate() {
   const state = getState();
   const key = frameKey(state.runId, state.frameIndex);
-  const logic = state.archiveFrame?.logic;
+  const frame = state.frame;
   const data = root();
   for (const name of Object.keys(data)) if (name.startsWith('preview')) delete data[name];
-  if (!key || !state.summary || state.frameKey !== key || !state.frame || !logic || !state.archiveMetadata) return;
+  if (!key || !state.summary || state.frameKey !== key || !frame || !state.archiveMetadata) return;
   const visible = visiblePanels();
   const required = visible.filter(id => {
     const type = panelTypeOf(id);
@@ -86,11 +86,15 @@ function evaluate() {
   const viewport = visible.map(id => panelTypeOf(id) === 'viewport' ? rendered.get(id) : undefined)
     .find(entry => entry?.key === key && entry.detail);
   data.previewRun = state.summary.runId;
-  data.previewFrame = logic.source.sdkFrame;
+  data.previewFrame = frame.hostFrame;
   data.previewFrameIndex = String(state.frameIndex);
-  data.previewConsistency = logic.checksum;
+  if (frame.consistency) data.previewConsistency = frame.consistency.value;
   data.previewContent = state.summary.contentRevision;
-  data.previewPlayerBuild = state.summary.playerBuildId;
+  const execution = state.summary.execution;
+  if (execution.kind !== null) data.previewExecutionKind = execution.kind;
+  if (execution.identity !== null) data.previewExecutionIdentity = execution.identity;
+  if (execution.playerBuildId !== null) data.previewPlayerBuild = execution.playerBuildId;
+  if (execution.editorAssemblyMvid !== null) data.previewEditorAssemblyMvid = execution.editorAssemblyMvid;
   data.previewSceneRevision = state.summary.sceneRevision;
   data.previewInputSource = state.summary.inputSource;
   if (state.summary.inputRevision !== null) data.previewInputRevision = state.summary.inputRevision;

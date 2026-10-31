@@ -62,6 +62,23 @@ namespace BTSMTL.Orchestration
         Interrupt = 5
     }
 
+    public static class OrchestrationStopRoute
+    {
+        public static OrchestrationFlowKind ChildFlowKind(OrchestrationOperationCode code) =>
+            code == OrchestrationOperationCode.SubGraph ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child;
+
+        // 状态、状态机走各自路线；Timeline 与声明 ContinueStop 的扩展由自身完成普通停止。
+        // continuesStop 由调用方按自身依据给出：执行器读实际绑定能力，容量分析读引用保证的能力。
+        public static bool OrdinaryStopUsesChildren(OrchestrationOperationCode code, bool continuesStop) =>
+            code switch
+            {
+                OrchestrationOperationCode.State or OrchestrationOperationCode.StateMachine or
+                    OrchestrationOperationCode.Timeline => false,
+                OrchestrationOperationCode.Extension => !continuesStop,
+                _ => true
+            };
+    }
+
     public enum OrchestrationAbortPolicy : byte
     {
         None = 0,

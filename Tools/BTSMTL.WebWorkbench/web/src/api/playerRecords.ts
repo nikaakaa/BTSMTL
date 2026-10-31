@@ -66,9 +66,15 @@ export const readPlayerHost = object({
 });
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
+const executionIdentity = object({ kind: nullable(text), identity: nullable(text), playerBuildId: nullable(text), editorAssemblyMvid: nullable(text) });
+const position = object({ hostFrame: text });
+export const readPreviewClock = object({ position, seconds: number, positionDisplayName: text,
+  requestedPosition: nullable(position), fields: array(field) });
+const contentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
+  contentIdentity: nullable(text), contentRevision: nullable(text), bindingRevision: nullable(text) });
 const source = object({
-  playerBuildId: text, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
-  sdkFrame: text, gameplayTick: text,
+  execution: executionIdentity, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(contentIdentity),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
 const observationPage = <T>(item: Decoder<T>) => object({ page: page(item), availability: array(availability) });
@@ -114,42 +120,16 @@ const previewTarget = object({
   liveId, playerBuildId: buildId, loadCommandId: text, content: previewContent,
   channels: nullable(array(observationChannel)),
 });
-const sceneIdentity = object({ kind: choice('scene'), revision: text });
-const timelineIdentity = object({ kind: choice('timeline'), revision: text, timeline: text,
-  contentIdentity: text, contentRevision: text, bindingRevision: text });
-const contentIdentity = (value: unknown, path = 'Player.content') => {
-  const { kind } = object({ kind: choice('scene', 'timeline') })(value, path);
-  return kind === 'scene' ? sceneIdentity(value, path) : timelineIdentity(value, path);
-};
-const quantumClock = object({ kind: choice('quantumSdk'), tickRate: number, sdkFrame: text, gameplayTick: text,
-  requestedSdkFrame: optional(nullable(text)) });
-const timelineClock = object({ kind: choice('timeline'), tickRate: number, tick: text,
-  requestedTick: optional(nullable(text)) });
-export const readPreviewClock = (value: unknown, path = 'Player.clock') => {
-  const { kind } = object({ kind: choice('quantumSdk', 'timeline') })(value, path);
-  return kind === 'quantumSdk' ? quantumClock(value, path) : timelineClock(value, path);
-};
-const quantumPosition = object({ kind: choice('quantumSdk'), sdkFrame: number });
-const timelinePosition = object({ kind: choice('timeline'), tick: number });
-const position = (value: unknown, path = 'Player.position') => {
-  const { kind } = object({ kind: choice('quantumSdk', 'timeline') })(value, path);
-  return kind === 'quantumSdk' ? quantumPosition(value, path) : timelinePosition(value, path);
-};
-const sampleHeader = object({ loadCommandId: text, playerBuildId: text, sequence: text, content: contentIdentity, clock: opaque });
-export function readPreviewSampleSource(value: unknown, path = 'Player.source') {
-  const sample = sampleHeader(value, path);
-  return sample.content.kind === 'scene'
-    ? { ...sample, content: sample.content, clock: quantumClock(sample.clock, `${path}.clock`) }
-    : { ...sample, content: sample.content, clock: timelineClock(sample.clock, `${path}.clock`) };
-}
-export const clockPosition = (clock: PreviewClock) => clock.kind === 'quantumSdk' ? clock.sdkFrame : clock.tick;
-export const positionValue = (value: PreviewPosition) => value.kind === 'quantumSdk' ? value.sdkFrame : value.tick;
+export const readPreviewSampleSource = source;
+export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
+export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
 export const readViewerStatus = object({ type: choice('status'), live: object({
   liveId: text, buildId: text, state: text, exitCode: nullable(number), rawJson: text,
   player: nullable(object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
-    error: nullable(text), source: nullable(readPreviewSampleSource), endPosition: nullable(position),
+    error: nullable(text), source: nullable(readPreviewSampleSource),
+    transport: array(object({ action: text, available: boolean, reason: text, target: nullable(position) })),
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
     fields: array(field), rawJson: text })),
 }) });
@@ -213,7 +193,7 @@ export const readPlayerCancellation = object({ jobId, cancellationRequested: boo
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
   frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
-  playerBuildId: buildId, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  execution: executionIdentity, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   availability: array(availability),
 });
 const vector3 = tuple(number, number, number);
@@ -237,13 +217,13 @@ const routeFrame = object({
 const logicPose = object({ position: vector3, rotation: quaternion });
 const segment = object({ shapeIndex: number, start: logicPose, end: logicPose });
 const frame = object({
-  hostFrame: text, seconds: number, source, availability: array(availability),
+  hostFrame: text, seconds: number, source: nullable(source), availability: array(availability),
   actors: array(object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text })),
   channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
   sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
   geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment) })),
     contacts: array(object({ point: vector3, normal: vector3,
-      kind: optional(nullable(choice('kcc-contact', 'query-candidate'))),
+      kind: optional(nullable(text)),
       actorId: optional(nullable(text)), purpose: optional(nullable(text)) })) }), rawJson: text, route: nullable(routeFrame),
 });
 export const readPlayerFrames = page(frame);

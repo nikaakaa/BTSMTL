@@ -431,6 +431,7 @@ function Corner({ stats }: { stats: boolean }) {
     player: state.live?.player ?? null, process: state.live?.state ?? null, runId: state.runId, archiveImage: state.archiveImage,
     hostFrame: state.hostFrame,
     targetPosition: state.targetPosition,
+    frameDisplayName: state.summary?.frameDisplayName,
   })));
   const actual = view.player?.source?.clock;
   const picture = !view.runId ? video?.source.clock : undefined;
@@ -438,7 +439,7 @@ function Corner({ stats }: { stats: boolean }) {
     !view.runId && view.targetPosition !== null && actual
       ? `定位 ${positionValue(view.targetPosition)} / 实际 ${clockPosition(actual)} …` : null,
     picture && actual && clockPosition(picture) !== clockPosition(actual)
-      ? `画面 ${picture.kind === 'timeline' ? 'Tick' : 'SDK 帧'} ${clockPosition(picture)}` : null,
+      ? `画面 ${picture.positionDisplayName} ${clockPosition(picture)}` : null,
   ].filter(text => text !== null);
   return (
     <>
@@ -446,12 +447,12 @@ function Corner({ stats }: { stats: boolean }) {
       {stats && (
         <div className={styles.stats}>
           <b>Statistics</b>
-          <div><span>来源</span><span>{view.runId ? 'Player 档案' : '实时 Player'}</span></div>
-          {view.runId ? <div><span>SDK 帧</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
+          <div><span>来源</span><span>{view.runId ? '运行档案' : '实时 Player'}</span></div>
+          {view.runId ? <div><span>{view.frameDisplayName}</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
             <div><span>播放器</span><span>{view.player ? playerStates[view.player.state] : view.process}</span></div>
-            {actual && <div><span>{actual.kind === 'timeline' ? 'Timeline Tick' : 'SDK 帧'}</span><span>{clockPosition(actual)}</span></div>}
+            {actual && <div><span>{actual.positionDisplayName}</span><span>{clockPosition(actual)}</span></div>}
             {picture && <>
-              <div><span>画面{picture.kind === 'timeline' ? ' Tick' : ' SDK 帧'}</span><span>{clockPosition(picture)}</span></div>
+              <div><span>画面{picture.positionDisplayName}</span><span>{clockPosition(picture)}</span></div>
               <div><span>采样序号</span><span>{video!.source.sequence}</span></div>
             </>}
             {view.player?.error && <div className={styles.error}><span>错误</span><span>{view.player.error}</span></div>}

@@ -6,8 +6,7 @@ namespace BTSMTL.Timeline.Editor
     {
         public static event Action<string[]> Saving;
 
-        public static ITimelineAuthoringDocument Document(UnityEngine.Object source) =>
-            TimelineWorkspaceModeBridge.Authoring.GetAuthoringDocument(source);
+        public static Func<UnityEngine.Object, ITimelineAuthoringDocument> Document { get; set; }
 
         public static void Save(UnityEngine.Object source) => Document(source).Save();
 

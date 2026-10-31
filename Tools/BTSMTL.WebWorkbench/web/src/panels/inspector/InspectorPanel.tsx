@@ -169,13 +169,21 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   const fields: Field[] = [...extra];
   if (state.summary) {
     fields.push({ displayName: '运行', value: state.summary.runId }, { displayName: '内容修订', value: state.summary.contentRevision });
-    if (state.hostFrame !== null) fields.push({ displayName: state.summary.frameDisplayName || 'SDK 帧', value: state.hostFrame });
+    const execution = state.summary.execution;
+    fields.push({ displayName: '执行类型', value: execution.kind ?? '不可用' }, { displayName: '执行身份', value: execution.identity ?? '不可用' });
+    if (execution.playerBuildId !== null) fields.push({ displayName: 'Player 构建', value: execution.playerBuildId });
+    if (execution.editorAssemblyMvid !== null) fields.push({ displayName: 'Editor 程序集', value: execution.editorAssemblyMvid });
+    if (state.hostFrame !== null) fields.push({ displayName: state.summary.frameDisplayName, value: state.hostFrame });
   }
   if (state.frame?.consistency) fields.push({ displayName: state.frame.consistency.displayName, value: state.frame.consistency.value });
   if (state.routeProtocol) fields.push({ displayName: '路线协议', value: state.routeProtocol });
   if (state.inputProtocol) fields.push({ displayName: '输入协议', value: state.inputProtocol });
-  for (const item of [...state.routeAvailability, ...state.graphAvailability, ...state.metadataAvailability, ...(state.frame?.route?.availability ?? [])])
-    if (gap(item)) fields.push({ displayName: `缺项 ${item.channel}`, value: item.reason || (item.available ? '不完整' : '不可用') });
+  for (const item of [...(state.summary?.availability ?? []), ...(state.frame?.availability ?? []),
+    ...state.routeAvailability, ...state.graphAvailability, ...state.metadataAvailability, ...(state.frame?.route?.availability ?? [])]) {
+    if (!gap(item)) continue;
+    const displayName = `缺项 ${item.channel}`, value = item.reason || (item.available ? '不完整' : '不可用');
+    if (!fields.some(field => field.displayName === displayName && field.value === value)) fields.push({ displayName, value });
+  }
   return <IdentityFold fields={fields} />;
 }
 
@@ -580,18 +588,18 @@ function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
       <Value label="分量" value={curve.component} />
       <Value label="编码" value={curve.encoding} />
     </Fold>
-    <Fold title="当前 SDK 帧样本" defaultOpen>
+    <Fold title="当前帧样本" defaultOpen>
       {record === undefined ? <div className={styles.note}>正在读取曲线</div>
         : record.kind === 'failed' ? <ErrorLine text={record.reason} entryId={record.entryId} />
           : unavailable ? <div className={styles.note}>{unavailable}</div>
             : record.samples.length === 0 ? <div className={styles.note}>此帧没有样本</div>
-              : record.samples.map((sample, index) => <Fold key={index} title={`SDK ${sample.source.sdkFrame}`} defaultOpen>
+              : record.samples.map((sample, index) => <Fold key={index} title={`${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame}`} defaultOpen>
                 <Value label="显示值" value={String(sample.value)} />
                 <Value label="原始值" value={sample.rawValue} />
                 {sample.presentationSequence !== null && <Value label="表现序号" value={sample.presentationSequence} />}
                 {sample.presentationTick !== null && <Value label="表现 Tick" value={String(sample.presentationTick)} />}
                 <Identity extra={[
-                  { displayName: '来源 Tick', value: sample.source.gameplayTick },
+                  ...sample.source.clock.fields,
                   { displayName: '场景修订', value: sample.source.sceneRevision },
                   { displayName: '输入修订', value: sample.source.inputRevision ?? '无固定修订' },
                 ]} />
