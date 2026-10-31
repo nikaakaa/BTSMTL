@@ -18,7 +18,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> ExtensionBindingIndices { get; }
 
         public static OrchestrationEntryScope Prepare<TValue>(
-            OrchestrationProgramContent<TValue> program,
+            OrchestrationProgramContent program, OrchestrationGraphParameters<TValue> parameters,
             ReadOnlySpan<OrchestrationExecutionEntry> entries) where TValue : unmanaged
         {
             ReadOnlySpan<OrchestrationOperation> operations = program.Operations.Span;
@@ -46,7 +46,7 @@ namespace BTSMTL.Orchestration
                 int operationIndex = pending[cursor];
                 ref readonly OrchestrationOperation operation = ref operations[operationIndex];
                 if (operation.Code == OrchestrationOperationCode.Extension)
-                    extensionBindings.Add(program.ReadOperationPayload<OrchestrationExtensionPayload>(operationIndex).BindingIndex);
+                    extensionBindings.Add(parameters.ReadOperationPayload<OrchestrationExtensionPayload>(program, operationIndex).BindingIndex);
                 if (operation.BlackboardFactsBindingIndex >= 0)
                     extensionBindings.Add(operation.BlackboardFactsBindingIndex);
                 ReadOnlySpan<OrchestrationHookBinding> hooks = program.Hooks.Span.Slice(
@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
                     if (input.Source == OrchestrationValueInputSource.Operation)
                         AddOperation(input.SourceIndex, reachable, pending);
                 if (operation.Code == OrchestrationOperationCode.SubGraph)
-                    AddOperation(program.GraphCalls.Span[program.ReadOperationPayload<OrchestrationGraphCallPayload>(operationIndex).CallIndex].EntryOperationIndex,
+                    AddOperation(program.GraphCalls.Span[parameters.ReadOperationPayload<OrchestrationGraphCallPayload>(program, operationIndex).CallIndex].EntryOperationIndex,
                         reachable, pending);
 
                 int segment = operationIndex * OrchestrationProgramStructure.FlowKindCount;

@@ -11,7 +11,7 @@ namespace BTSMTL.Orchestration
         PreparedOrchestrationGraph(
             OrchestrationGraphContent<TValue> source,
             FrozenOrchestrationIdentities identities, ReadOnlyMemory<int> localToShared,
-            OrchestrationProgramContent<TValue> program,
+            OrchestrationProgramContent program, OrchestrationGraphParameters<TValue> parameters,
             ReadOnlyMemory<OrchestrationGraphEntry> entries, ReadOnlyMemory<OrchestrationGraphVariable> variables,
             ReadOnlyMemory<OrchestrationGraphHostInput> hostInputs, ReadOnlyMemory<OrchestrationGraphPort> ports,
             ReadOnlyMemory<OrchestrationGraphSource> sources)
@@ -20,6 +20,7 @@ namespace BTSMTL.Orchestration
             Identities = identities;
             LocalToShared = localToShared;
             Program = program;
+            Parameters = parameters;
             Entries = entries;
             Variables = variables;
             HostInputs = hostInputs;
@@ -30,13 +31,14 @@ namespace BTSMTL.Orchestration
         public OrchestrationGraphContent<TValue> Source { get; }
         public FrozenOrchestrationIdentities Identities { get; }
         public ReadOnlyMemory<int> LocalToShared { get; }
-        public OrchestrationProgramContent<TValue> Program { get; }
+        public OrchestrationProgramContent Program { get; }
+        public OrchestrationGraphParameters<TValue> Parameters { get; }
         public ReadOnlyMemory<OrchestrationGraphEntry> Entries { get; }
         public ReadOnlyMemory<OrchestrationGraphVariable> Variables { get; }
         public ReadOnlyMemory<OrchestrationGraphHostInput> HostInputs { get; }
         public ReadOnlyMemory<OrchestrationGraphPort> Ports { get; }
         public ReadOnlyMemory<OrchestrationGraphSource> Sources { get; }
-        public ReadOnlyMemory<OrchestrationExtensionReference> Extensions => Source.Extensions;
+        public ReadOnlyMemory<OrchestrationExtensionReference> Extensions => Source.Structure.Extensions;
 
         public static PreparedOrchestrationGraph<TValue, TNumerics> Prepare(
             OrchestrationGraphContent<TValue> source,
@@ -44,7 +46,9 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationDefaultValue<TValue>> defaults)
         {
             ReadOnlyMemory<int> mapping = identities.LocalToShared(contentTableIndex);
-            OrchestrationProgramContent<TValue> data = source.Program;
+            OrchestrationGraphStructure structure = source.Structure;
+            OrchestrationProgramContent data = structure.Program;
+            OrchestrationGraphParameters<TValue> values = source.Parameters;
             var cold = new OrchestrationOperationColdData[data.ColdOperations.Length];
             for (int i = 0; i < cold.Length; i++)
             {
@@ -65,52 +69,55 @@ namespace BTSMTL.Orchestration
                 Map(ports.StateOnEnter, mapping), Map(ports.StateRoot, mapping), Map(ports.StateOnExit, mapping),
                 Map(ports.BranchTrue, mapping), Map(ports.BranchFalse, mapping),
                 Map(ports.BranchThen, mapping), Map(ports.CycleReset, mapping));
-            var finalDefaultValues = MapValues(data.DefaultValues, mapping);
+            var finalDefaultValues = MapValues(values.DefaultValues, mapping);
             foreach (ref readonly OrchestrationDefaultValue<TValue> value in defaults)
                 finalDefaultValues[value.ValueSlot] = value.Value;
-            var program = new OrchestrationProgramContent<TValue>(
-                data.Operations, MapOperationPayloads(data, mapping), cold, edges, MapStructure(data.Structure, mapping),
-                data.ValueSchedule, data.WorkspaceCapacity, data.ExecutionStorage, data.ValueInputs, MapValues(data.Constants, mapping),
-                finalDefaultValues, data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks, data.HookInputs,
+            var program = new OrchestrationProgramContent(
+                data.Operations, cold, edges, MapStructure(data.Structure, mapping),
+                data.ValueSchedule, data.WorkspaceCapacity, data.ExecutionStorage, data.ValueInputs,
+                data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks, data.HookInputs,
                 data.BlackboardSlots, data.BlackboardOutputs, data.OutputTemplates, mappedPorts,
                 data.RootOperationIndex, data.MaximumOperationEvaluations);
-            var entries = new OrchestrationGraphEntry[source.Entries.Length];
+            var parameters = new OrchestrationGraphParameters<TValue>(values.SourceIdentity, values.Identities,
+                MapOperationPayloads(data, values, mapping), MapValues(values.Constants, mapping),
+                finalDefaultValues, values.OperationContents);
+            var entries = new OrchestrationGraphEntry[structure.Entries.Length];
             for (int i = 0; i < entries.Length; i++)
             {
-                ref readonly OrchestrationGraphEntry entry = ref source.Entries.Span[i];
+                ref readonly OrchestrationGraphEntry entry = ref structure.Entries.Span[i];
                 OrchestrationExecutionEntry execution = entry.Execution;
                 entries[i] = new OrchestrationGraphEntry(Map(entry.EntryIdentityId, mapping),
                     new OrchestrationExecutionEntry(execution.OperationIndex, execution.Contract,
                         Map(execution.InputPortId, mapping)));
             }
-            var variables = new OrchestrationGraphVariable[source.Variables.Length];
+            var variables = new OrchestrationGraphVariable[structure.Variables.Length];
             for (int i = 0; i < variables.Length; i++)
             {
-                ref readonly OrchestrationGraphVariable variable = ref source.Variables.Span[i];
+                ref readonly OrchestrationGraphVariable variable = ref structure.Variables.Span[i];
                 variables[i] = new OrchestrationGraphVariable(Map(variable.GraphIdentityId, mapping),
                     Map(variable.DeclarationIdentityId, mapping), Map(variable.KeyIdentityId, mapping),
                     Map(variable.ValueTypeIdentityId, mapping), variable.IsPublic, variable.ValueSlot);
             }
-            var hostInputs = new OrchestrationGraphHostInput[source.HostInputs.Length];
+            var hostInputs = new OrchestrationGraphHostInput[structure.HostInputs.Length];
             for (int i = 0; i < hostInputs.Length; i++)
             {
-                ref readonly OrchestrationGraphHostInput input = ref source.HostInputs.Span[i];
+                ref readonly OrchestrationGraphHostInput input = ref structure.HostInputs.Span[i];
                 hostInputs[i] = new OrchestrationGraphHostInput(Map(input.InputIdentityId, mapping),
                     Map(input.ValueTypeIdentityId, mapping), input.InputSlot);
             }
-            var graphPorts = new OrchestrationGraphPort[source.Ports.Length];
+            var graphPorts = new OrchestrationGraphPort[structure.Ports.Length];
             for (int i = 0; i < graphPorts.Length; i++)
             {
-                ref readonly OrchestrationGraphPort port = ref source.Ports.Span[i];
+                ref readonly OrchestrationGraphPort port = ref structure.Ports.Span[i];
                 graphPorts[i] = new OrchestrationGraphPort(Map(port.GraphIdentityId, mapping),
                     Map(port.NodeIdentityId, mapping), Map(port.PortIdentityId, mapping), port.OperationIndex,
                     port.IsInput, port.IsTrigger, Map(port.CompiledPortIdentityId, mapping), port.ValueIndex);
             }
-            var sources = new OrchestrationGraphSource[source.Sources.Length];
+            var sources = new OrchestrationGraphSource[structure.Sources.Length];
             for (int i = 0; i < sources.Length; i++)
             {
-                OrchestrationGraphSource item = source.Sources.Span[i];
-                OrchestrationGraphExecutionSource execution = item.Source;
+                OrchestrationGraphSourceText item = source.Sources.Entries.Span[i];
+                OrchestrationGraphExecutionSource execution = structure.Sources.Span[i];
                 if ((execution.TargetKind == OrchestrationGraphSourceTargetKind.Operation ||
                      execution.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation) &&
                     execution.SourceIdentityId <= OrchestrationGraphExecutionSource.NoExecutionIdentity)
@@ -126,58 +133,48 @@ namespace BTSMTL.Orchestration
                     item.SourceType, item.DisplayPathSegments);
             }
             return new PreparedOrchestrationGraph<TValue, TNumerics>(
-                source, identities, mapping, program, entries, variables, hostInputs, graphPorts, sources);
+                source, identities, mapping, program, parameters, entries, variables, hostInputs, graphPorts, sources);
         }
 
         public PreparedOrchestrationGraph<TValue, TNumerics> PrepareParameterCandidate(
             OrchestrationGraphContent<TValue> candidate,
-            Func<OrchestrationGraphContent<TValue>, byte[]> encode,
             out string rejection)
         {
-            OrchestrationProgramContent<TValue> original = Source.Program;
-            OrchestrationProgramContent<TValue> edited = candidate.Program;
-            rejection = candidate.Identity.GraphId != Source.Identity.GraphId ? "图身份已变化"
-                : edited.Constants.Length != original.Constants.Length ||
-                  edited.DefaultValues.Length != original.DefaultValues.Length ? "常量或值槽数量已变化"
+            OrchestrationGraphParameters<TValue> original = Source.Parameters;
+            OrchestrationGraphParameters<TValue> edited = candidate.Parameters;
+            rejection = candidate.Identity.StructureIdentity != Source.Identity.StructureIdentity ? "节点结构、接口或参数布局已变化"
+                : candidate.Identity.StateLayoutIdentity != Source.Identity.StateLayoutIdentity ? "状态布局已变化"
+                : candidate.Identities.Identity != Source.Identities.Identity ? "参数需要新的身份绑定"
                 : null;
             if (rejection != null)
                 return null;
-            var probe = new OrchestrationGraphContent<TValue>(
-                Source.Identity, candidate.NumericProfile, candidate.Identities,
-                new OrchestrationProgramContent<TValue>(
-                    edited.Operations, edited.OperationPayloads, edited.ColdOperations, edited.Edges, edited.Structure,
-                    edited.ValueSchedule, edited.WorkspaceCapacity, edited.ExecutionStorage, edited.ValueInputs, original.Constants, original.DefaultValues,
-                    edited.ValueSlotTypes, edited.ValueKindSlotCounts,
-                    edited.GraphCalls, edited.Hooks, edited.HookInputs, edited.BlackboardSlots,
-                    edited.BlackboardOutputs, edited.OutputTemplates, edited.CorePorts,
-                    edited.RootOperationIndex, edited.MaximumOperationEvaluations),
-                candidate.Extensions, Source.OperationContents, candidate.Entries, candidate.Variables,
-                candidate.GeneratedBlackboards, candidate.HostInputs, candidate.Ports, candidate.Sources);
-            if (!encode(probe).AsSpan().SequenceEqual(encode(Source)))
-            {
-                rejection = "节点结构、连线或身份表已变化";
-                return null;
-            }
             var comparer = System.Collections.Generic.EqualityComparer<TValue>.Default;
-            var defaults = Program.DefaultValues.ToArray();
+            var defaults = Parameters.DefaultValues.ToArray();
             for (int i = 0; i < defaults.Length; i++)
                 if (comparer.Equals(defaults[i], MapValue(in original.DefaultValues.Span[i], LocalToShared)))
                     defaults[i] = MapValue(in edited.DefaultValues.Span[i], LocalToShared);
-            OrchestrationProgramContent<TValue> prepared = Program;
-            var program = new OrchestrationProgramContent<TValue>(
-                prepared.Operations, prepared.OperationPayloads, prepared.ColdOperations, prepared.Edges, prepared.Structure,
-                prepared.ValueSchedule, prepared.WorkspaceCapacity, prepared.ExecutionStorage, prepared.ValueInputs, MapValues(edited.Constants, LocalToShared),
-                defaults, prepared.ValueSlotTypes, prepared.ValueKindSlotCounts,
-                prepared.GraphCalls, prepared.Hooks, prepared.HookInputs, prepared.BlackboardSlots,
-                prepared.BlackboardOutputs, prepared.OutputTemplates, prepared.CorePorts,
-                prepared.RootOperationIndex, prepared.MaximumOperationEvaluations);
+            var parameters = new OrchestrationGraphParameters<TValue>(edited.SourceIdentity, edited.Identities,
+                MapOperationPayloads(candidate.Structure.Program, edited, LocalToShared),
+                MapValues(edited.Constants, LocalToShared), defaults, edited.OperationContents);
+            ReadOnlyMemory<OrchestrationGraphSource> sources = Sources;
+            if (!ReferenceEquals(candidate.Sources, Source.Sources))
+            {
+                var mapped = new OrchestrationGraphSource[Sources.Length];
+                for (int i = 0; i < mapped.Length; i++)
+                {
+                    OrchestrationGraphSourceText text = candidate.Sources.Entries.Span[i];
+                    mapped[i] = new OrchestrationGraphSource(Sources.Span[i].Source, text.SourceType, text.DisplayPathSegments);
+                }
+                sources = mapped;
+            }
             return new PreparedOrchestrationGraph<TValue, TNumerics>(
-                candidate, Identities, LocalToShared, program, Entries, Variables, HostInputs, Ports, Sources);
+                candidate, Identities, LocalToShared, Program, parameters, Entries, Variables, HostInputs, Ports, sources);
         }
 
-        static byte[] MapOperationPayloads(OrchestrationProgramContent<TValue> source, ReadOnlyMemory<int> mapping)
+        static byte[] MapOperationPayloads(OrchestrationProgramContent source,
+            OrchestrationGraphParameters<TValue> parameters, ReadOnlyMemory<int> mapping)
         {
-            byte[] payloads = source.OperationPayloads.ToArray();
+            byte[] payloads = parameters.OperationPayloads.ToArray();
             for (int i = 0; i < source.Operations.Length; i++)
             {
                 ref readonly OrchestrationOperation operation = ref source.Operations.Span[i];
@@ -185,26 +182,26 @@ namespace BTSMTL.Orchestration
                 {
                     case OrchestrationOperationCode.State:
                     {
-                        OrchestrationStatePayload state = source.ReadOperationPayload<OrchestrationStatePayload>(i);
-                        Write(new OrchestrationStatePayload(Map(state.Identity.IdentityId, mapping), state.MachineIndex), operation.PayloadOffset);
+                        OrchestrationStatePayload state = parameters.ReadOperationPayload<OrchestrationStatePayload>(source, i);
+                        Write(new OrchestrationStatePayload(Map(state.Identity.IdentityId, mapping), state.MachineIndex), operation.ParameterOffset);
                         break;
                     }
                     case OrchestrationOperationCode.StateExit:
-                        Write(new OrchestrationStateIdentityPayload(Map(source.ReadOperationPayload<OrchestrationStateIdentityPayload>(i).IdentityId, mapping)), operation.PayloadOffset);
+                        Write(new OrchestrationStateIdentityPayload(Map(parameters.ReadOperationPayload<OrchestrationStateIdentityPayload>(source, i).IdentityId, mapping)), operation.ParameterOffset);
                         break;
                     case OrchestrationOperationCode.InputRequest:
-                        Write(new OrchestrationRequestPayload(Map(source.ReadOperationPayload<OrchestrationRequestPayload>(i).IdentityId, mapping)), operation.PayloadOffset);
+                        Write(new OrchestrationRequestPayload(Map(parameters.ReadOperationPayload<OrchestrationRequestPayload>(source, i).IdentityId, mapping)), operation.ParameterOffset);
                         break;
                     case OrchestrationOperationCode.Timeline:
                     {
-                        OrchestrationTimelinePayload timeline = source.ReadOperationPayload<OrchestrationTimelinePayload>(i);
-                        Write(new OrchestrationTimelinePayload(Map(timeline.ContentIdentityId, mapping), timeline.Mode), operation.PayloadOffset);
+                        OrchestrationTimelinePayload timeline = parameters.ReadOperationPayload<OrchestrationTimelinePayload>(source, i);
+                        Write(new OrchestrationTimelinePayload(Map(timeline.ContentIdentityId, mapping), timeline.Mode), operation.ParameterOffset);
                         break;
                     }
                     case OrchestrationOperationCode.EmitOutput:
                     {
-                        OrchestrationOutputPayload output = source.ReadOperationPayload<OrchestrationOutputPayload>(i);
-                        Write(new OrchestrationOutputPayload(output.TemplateIndex, Map(output.ProducerIdentityId, mapping)), operation.PayloadOffset);
+                        OrchestrationOutputPayload output = parameters.ReadOperationPayload<OrchestrationOutputPayload>(source, i);
+                        Write(new OrchestrationOutputPayload(output.TemplateIndex, Map(output.ProducerIdentityId, mapping)), operation.ParameterOffset);
                         break;
                     }
                 }

@@ -32,15 +32,21 @@ namespace BTSMTL.Compilation
     {
         public BtsmtlOrchestrationCompilationDomain(ProgramStateSchema stateSchema,
             IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
-            OrchestrationExtensionDefinition? actionInstanceBlackboard)
+            OrchestrationExtensionDefinition? actionInstanceBlackboard,
+            IOrchestrationGraphContentEncoding<TValue> encoding,
+            Func<SemanticGraphParameters, StableHash> parameterIdentity)
         {
             StateSchema = stateSchema;
             ContentEncoder = contentEncoder;
             ActionInstanceBlackboard = actionInstanceBlackboard;
+            Encoding = encoding;
+            ParameterIdentity = parameterIdentity;
         }
 
         public ProgramStateSchema StateSchema { get; }
         public IBtsmtlOrchestrationContentEncoder<TValue, TScalar> ContentEncoder { get; }
+        public IOrchestrationGraphContentEncoding<TValue> Encoding { get; }
+        public Func<SemanticGraphParameters, StableHash> ParameterIdentity { get; }
         // ActionInstance 作用域黑板的读写由该扩展向宿主提供实例数据；没有此类黑板的图可以不提供。
         public OrchestrationExtensionDefinition? ActionInstanceBlackboard { get; }
         internal BtsmtlOrchestrationGraphCompiler.IdentityCache Identities;
@@ -116,25 +122,36 @@ namespace BTSMTL.Compilation
 
     public static partial class BtsmtlOrchestrationGraphCompiler
     {
+        readonly struct OperationContentDraft
+        {
+            internal OperationContentDraft(int operationIndex, string encodingContract, ReadOnlyMemory<byte> payload)
+            {
+                OperationIndex = operationIndex;
+                EncodingContract = encodingContract;
+                Payload = payload;
+            }
+
+            internal readonly int OperationIndex;
+            internal readonly string EncodingContract;
+            internal readonly ReadOnlyMemory<byte> Payload;
+        }
+
         internal sealed class IdentityCache
         {
             internal IdentityCache(
                 IReadOnlyDictionary<(string GraphId, string InvocationPath, string Template), string> operations,
                 IReadOnlyDictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
                     string SourceGraphId, string TimelineId, string TrackId, string ClipId,
-                    ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> invocations,
-                OrchestrationIdentityTable table)
+                    ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> invocations)
             {
                 Operations = operations;
                 Invocations = invocations;
-                Table = table;
             }
 
             internal readonly IReadOnlyDictionary<(string GraphId, string InvocationPath, string Template), string> Operations;
             internal readonly IReadOnlyDictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
                 string SourceGraphId, string TimelineId, string TrackId, string ClipId,
                 ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> Invocations;
-            internal readonly OrchestrationIdentityTable Table;
         }
 
         public static BtsmtlOrchestrationCompilation<TValue>
@@ -145,7 +162,7 @@ namespace BTSMTL.Compilation
                 IReadOnlyList<ProgramGraphCallFrame> graphCalls, IReadOnlyList<ProgramStateSlot> stateSlots,
                 IReadOnlyList<ProgramScopeLayout> scopes, IReadOnlyList<ProgramCatalogEntry> catalog,
                 IReadOnlyList<ProgramSourceMapEntry> sourceMap, OperationHandle entry,
-                GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
+                GraphCompilationIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
                 BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
@@ -189,7 +206,7 @@ namespace BTSMTL.Compilation
                 operations, previousTables.Parameters.Literals, structure.ConstantInputBindings, structure.ControlFlow,
                 structure.References, structure.StateTables.GraphCallFrames, structure.StateTables.Slots,
                 structure.StateTables.Scopes, structure.CatalogEntries, previousSources.Diagnostics,
-                new OperationHandle(previousContent.Program.RootOperationIndex), previousContent.Identity, contract,
+                new OperationHandle(previousContent.Structure.Program.RootOperationIndex), previousContent.Identity.Source, contract,
                 stateTransitionHooks, lowering, domain, report, entryContracts).RestoreLayout(previousContent);
         }
 
@@ -259,7 +276,7 @@ namespace BTSMTL.Compilation
             readonly IReadOnlyList<ProgramSourceMapEntry> m_SourceMap;
             readonly SimulationCompileReport m_Report;
             readonly OperationHandle m_Entry;
-            readonly GraphExecutionIdentity m_Identity;
+            readonly GraphCompilationIdentity m_Identity;
             readonly OrchestrationExecutionContract m_Contract;
             readonly IReadOnlyDictionary<string, OrchestrationExecutionContract> m_EntryContracts;
             readonly IReadOnlyList<OrchestrationExtensionReference> m_StateTransitionHooks;
@@ -287,6 +304,7 @@ namespace BTSMTL.Compilation
             readonly HashSet<int> m_StructureLiteralIndexes = new();
             readonly Dictionary<string, GraphInvocationFrame> m_GraphInvocationFrames = new(StringComparer.Ordinal);
             OrchestrationIdentityTable m_Identities;
+            OrchestrationIdentityTable m_StructureIdentities;
             Dictionary<string, int> m_IdentityIds;
             string[] m_OperationIdentities;
             string[] m_GraphInvocationIdentities;
@@ -314,7 +332,7 @@ namespace BTSMTL.Compilation
                 IReadOnlyList<ProgramGraphCallFrame> graphCalls, IReadOnlyList<ProgramStateSlot> stateSlots,
                 IReadOnlyList<ProgramScopeLayout> scopes, IReadOnlyList<ProgramCatalogEntry> catalog,
                 IReadOnlyList<ProgramSourceMapEntry> sourceMap, OperationHandle entry,
-                GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
+                GraphCompilationIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
                 BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
@@ -348,19 +366,32 @@ namespace BTSMTL.Compilation
                     return BindParameters(layout.Bindings);
                 BuildExecutionIdentities();
                 ValidateDomain();
-                m_StructureIdentityTexts = new List<string>(StructureIdentityTexts()).ToArray();
-                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), m_PreviousIdentities?.Table);
-                BuildIdentityBindings();
                 BuildPorts();
                 BuildExecutionFrameOwners();
+                BuildValueSlots();
+                CollectValueLiterals();
+                var structureTexts = new List<string>(StructureIdentityTexts());
+                foreach (var binding in VariableDeclarations())
+                {
+                    var metadata = ReadVariableMetadata(binding.Declaration);
+                    structureTexts.Add(metadata.Key);
+                    structureTexts.Add(metadata.ValueType);
+                }
+                foreach (var binding in GeneratedBlackboardDeclarations())
+                    structureTexts.Add(ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field).Contract);
+                foreach (SemanticOperation operation in m_Operations)
+                    if (operation.Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit or OrchestrationOperationCode.EmitOutput)
+                        structureTexts.Add(operation.Text0);
+                m_StructureIdentityTexts = structureTexts.ToArray();
+                m_StructureIdentities = OrchestrationIdentityPublication.Create(m_StructureIdentityTexts);
+                m_Identities = OrchestrationIdentityPublication.Extend(m_StructureIdentities, IdentityTexts());
+                BuildIdentityBindings();
                 BuildHostInputs();
                 ValidateInputs();
                 int[] parents = BuildParentStates();
-                CollectValueLiterals();
                 PrepareValues();
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
-                BuildValueSlots();
                 BuildConstantBindings();
                 foreach (int literal in m_ConstantLiteralIndexes)
                     m_Constants.Add(m_LoweredValues[literal]);
@@ -390,18 +421,72 @@ namespace BTSMTL.Compilation
                     out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
-                var program = new OrchestrationProgramContent<TValue>(
-                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, valueSchedule,
-                    workspaceCapacity, executionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                var program = new OrchestrationProgramContent(
+                    hotOperations, coldOperations, controlFlow, structure, valueSchedule,
+                    workspaceCapacity, executionStorage, m_Inputs.ToArray(),
                     valueSlotTypes, valueKindSlotCounts,
                     BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
-                var content = new OrchestrationGraphContent<TValue>(
-                    m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), entries,
-                    BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources(entries));
-                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities);
+                var content = CreateContent(program, operationPayloads, m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                    m_Extensions.ToArray(), BuildOperationContents(), entries, BuildVariables(), BuildGeneratedBlackboards(),
+                    m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources(entries));
+                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts);
                 return CompleteCompilation(content, CreateBindings(content, identities));
+            }
+
+            OrchestrationGraphContent<TValue> CreateContent(OrchestrationProgramContent program,
+                ReadOnlyMemory<byte> payloads, ReadOnlyMemory<TValue> constants, ReadOnlyMemory<TValue> defaults,
+                ReadOnlyMemory<OrchestrationExtensionReference> extensions,
+                ReadOnlyMemory<OperationContentDraft> operationContents,
+                ReadOnlyMemory<OrchestrationGraphEntry> entries, ReadOnlyMemory<OrchestrationGraphVariable> variables,
+                ReadOnlyMemory<OrchestrationGraphBlackboardBinding> blackboards,
+                ReadOnlyMemory<OrchestrationGraphHostInput> hostInputs, ReadOnlyMemory<OrchestrationGraphPort> ports,
+                ReadOnlyMemory<OrchestrationGraphSource> sources)
+            {
+                var executions = new OrchestrationGraphExecutionSource[sources.Length];
+                var diagnostics = new OrchestrationGraphSourceText[sources.Length];
+                var contentBindings = new OrchestrationOperationContentBinding[operationContents.Length];
+                var contents = new ReadOnlyMemory<byte>[operationContents.Length];
+                for (int i = 0; i < contents.Length; i++)
+                {
+                    OperationContentDraft content = operationContents.Span[i];
+                    contentBindings[i] = new OrchestrationOperationContentBinding(content.OperationIndex, content.EncodingContract);
+                    contents[i] = content.Payload;
+                }
+                for (int i = 0; i < sources.Length; i++)
+                {
+                    OrchestrationGraphSource source = sources.Span[i];
+                    executions[i] = source.Source;
+                    diagnostics[i] = new OrchestrationGraphSourceText(source.SourceType, source.DisplayPathSegments);
+                }
+                return m_Domain.Encoding.Create(m_Identity,
+                    new OrchestrationGraphStructure(m_Lowering.Profile, m_StructureIdentities, program,
+                        new OrchestrationGraphParameterLayout(constants.Length, defaults.Length, payloads.Length, contentBindings), extensions, entries,
+                        variables, blackboards, hostInputs, ports, executions),
+                    new OrchestrationGraphParameters<TValue>(SourceParameterIdentity(), ParameterIdentities(), payloads, constants, defaults, contents),
+                    new OrchestrationGraphSourceMap(diagnostics), null);
+            }
+
+            OrchestrationIdentityTable ParameterIdentities() =>
+                OrchestrationIdentityPublication.Create(m_Identities.Entries.Slice(m_StructureIdentities.Count).ToArray());
+
+            StableHash SourceParameterIdentity()
+            {
+                var literals = new List<SemanticLiteral>();
+                foreach (int index in ParameterLiteralIndexes())
+                    literals.Add(m_Literals[index]);
+                return m_Domain.ParameterIdentity(new SemanticGraphParameters(literals.AsReadOnly(), m_Operations[0].ParameterValues));
+            }
+
+            SortedSet<int> ParameterLiteralIndexes()
+            {
+                var indexes = new SortedSet<int>(m_ValueLiteralIndexes);
+                indexes.UnionWith(m_CurveLiteralIndexes);
+                foreach (SemanticOperation operation in m_Operations)
+                    foreach (SemanticPayloadField field in operation.PayloadFields)
+                        indexes.Add(field.LiteralIndex);
+                return indexes;
             }
 
             string SourceLocation(ProgramSourceTargetKind kind, int index, string portId = null,
@@ -591,9 +676,12 @@ namespace BTSMTL.Compilation
                 foreach (string text in m_StructureIdentityTexts)
                     yield return text;
                 foreach (SemanticOperation operation in m_Operations)
-                    yield return operation.Text0;
-                foreach (SemanticLiteral literal in m_Literals)
+                    if (operation.Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit or
+                        OrchestrationOperationCode.EmitOutput or OrchestrationOperationCode.Timeline or OrchestrationOperationCode.InputRequest)
+                        yield return operation.Text0;
+                foreach (int index in ParameterLiteralIndexes())
                 {
+                    SemanticLiteral literal = m_Literals[index];
                     if (literal.Kind == SemanticLiteralKind.String)
                         yield return literal.String;
                     if (literal.Kind == SemanticLiteralKind.Enum)
@@ -1020,7 +1108,7 @@ namespace BTSMTL.Compilation
                 for (int i = 0; i < m_Operations.Count; i++)
                 {
                     if (m_Operations[i].Extension.HasValue)
-                        m_ExtensionIndexes[i] = AddExtension(m_Operations[i].Extension.Value);
+                        m_ExtensionIndexes[i] = AddExtension(BindExtensionSource(m_Operations[i].Extension.Value, i));
                     if (!UsesActionBlackboard(i) && !observers.Contains(i))
                         continue;
                     if (factsBinding < 0)
@@ -1063,6 +1151,11 @@ namespace BTSMTL.Compilation
                 return index;
             }
 
+            OrchestrationExtensionReference BindExtensionSource(OrchestrationExtensionReference reference, int operationIndex) =>
+                new OrchestrationExtensionReference(reference.Identity, reference.SemanticVersion, reference.ContentIndex,
+                    reference.Kind, reference.Access, reference.Ports, reference.Fields, reference.RequiredInvocations,
+                    reference.Completion, m_OperationIdentities[operationIndex]);
+
             void BuildStateTransitionHooks()
             {
                 m_LifecycleHookRanges = new OrchestrationRange[m_Operations.Count];
@@ -1071,7 +1164,7 @@ namespace BTSMTL.Compilation
                     OrchestrationExtensionReference reference = m_StateTransitionHooks[i];
                     m_LifecycleHookRanges[reference.ContentIndex] = new OrchestrationRange(m_LifecycleHooks.Count, 1);
                     m_LifecycleHooks.Add(new OrchestrationHookBinding(OrchestrationLifecycleHook.StateTransition,
-                        AddExtension(reference), default));
+                        AddExtension(BindExtensionSource(reference, reference.ContentIndex)), default));
                 }
             }
 
@@ -1730,16 +1823,16 @@ namespace BTSMTL.Compilation
                 return value;
             }
 
-            OrchestrationOperationContent[] BuildOperationContents()
+            OperationContentDraft[] BuildOperationContents()
             {
-                var result = new List<OrchestrationOperationContent>();
+                var result = new List<OperationContentDraft>();
                 for (int operationIndex = 0; operationIndex < m_Operations.Count; operationIndex++)
                     if (m_Operations[operationIndex].Extension.HasValue)
                         result.Add(BuildOperationContent(operationIndex));
                 return result.ToArray();
             }
 
-            OrchestrationOperationContent BuildOperationContent(int operationIndex)
+            OperationContentDraft BuildOperationContent(int operationIndex)
             {
                 IReadOnlyList<SemanticPayloadField> source = m_Operations[operationIndex].PayloadFields;
                 IBtsmtlOrchestrationContentEncoder<TValue, TScalar> encoder = m_Domain.ContentEncoder;
@@ -1773,7 +1866,7 @@ namespace BTSMTL.Compilation
                             break;
                     }
                 }
-                return new OrchestrationOperationContent(operationIndex, encoder.ContractIdentity, writer.Complete());
+                return new OperationContentDraft(operationIndex, encoder.ContractIdentity, writer.Complete());
             }
 
             GameplayAbilityCurve<TScalar> LowerCurve(SemanticLiteral literal)

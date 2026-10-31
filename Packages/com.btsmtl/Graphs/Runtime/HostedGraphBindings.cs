@@ -53,7 +53,7 @@ namespace BTSMTL.Graphs
             SourceIdentityId = frozen.Table.Bind(contract.ContractId);
             Prepared = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(Content, frozen, 0,
                     ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty);
-            Program = new OrchestrationProgram<TValue>(Prepared.Program);
+            Program = new OrchestrationProgram<TValue>(Prepared.Program, Prepared.Parameters);
             StateTypes = new Type[Program.ValueSlotCount];
             for (int i = 0; i < StateTypes.Length; i++)
                 StateTypes[i] = default(TNumerics).ValueType(Program.DefaultValue(i), frozen.Table);

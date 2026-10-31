@@ -7,6 +7,9 @@ namespace BTSMTL.Orchestration
         string EncodingContract { get; }
         byte[] WriteIdentity(GraphExecutionIdentity identity);
         GraphExecutionIdentity ReadIdentity(byte[] bytes);
+        OrchestrationGraphContent<TValue> Create(GraphCompilationIdentity source,
+            OrchestrationGraphStructure structure, OrchestrationGraphParameters<TValue> parameters,
+            OrchestrationGraphSourceMap sources, OrchestrationGraphContent<TValue> previous);
         byte[] Write(OrchestrationGraphContent<TValue> content);
         OrchestrationGraphContent<TValue> Read(byte[] bytes, GraphExecutionIdentity expected);
     }

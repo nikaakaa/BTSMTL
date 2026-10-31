@@ -8,7 +8,7 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationWorkbenchDiagnosticStorage<TValue> where TValue : unmanaged
     {
         readonly OrchestrationProgram<TValue> m_Program;
-        readonly OrchestrationGraphContent<TValue> m_Content;
+        readonly ReadOnlyMemory<OrchestrationGraphSource> m_Sources;
         readonly int m_ExecutionFrameCapacity;
         TValue[] m_InputObservations;
         bool[] m_InputObservationWritten;
@@ -33,7 +33,7 @@ namespace BTSMTL.Orchestration
             OrchestrationGraphContent<TValue> content, int executionFrameCapacity)
         {
             m_Program = program;
-            m_Content = content;
+            m_Sources = content.Sources.Bind(content.Structure.Sources.Span);
             m_ExecutionFrameCapacity = executionFrameCapacity;
         }
 
@@ -43,7 +43,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<bool> WrittenInputs => m_InputObservationWritten;
         public ReadOnlySpan<TValue> ObservedOutputs => m_OutputObservations;
         public ReadOnlySpan<bool> WrittenOutputs => m_OutputObservationWritten;
-        public ReadOnlyMemory<OrchestrationGraphSource> TraceSources => m_Content.Sources;
+        public ReadOnlyMemory<OrchestrationGraphSource> TraceSources => m_Sources;
         public ReadOnlySpan<OrchestrationTraceEvent<TValue>> Trace => m_TraceEvents.AsSpan(0, m_TraceCount);
         public ReadOnlySpan<OrchestrationStateTraceFrame> StateTraceFrames => m_StateFrames.AsSpan(0, m_StateFrameCount);
         public ReadOnlySpan<OrchestrationTraceContext> Contexts => m_TraceContexts.AsSpan(0, m_TraceContextCount);
@@ -78,7 +78,7 @@ namespace BTSMTL.Orchestration
             m_TraceFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceBorrowedFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceEntryScopes = new TraceEntryScope[m_Program.Content.WorkspaceCapacity.EntryDepth];
-            ReadOnlySpan<OrchestrationGraphSource> sources = m_Content.Sources.Span;
+            ReadOnlySpan<OrchestrationGraphSource> sources = m_Sources.Span;
             var groupIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
             var groups = new List<List<int>>();
             var operationSources = new Dictionary<int, int>();

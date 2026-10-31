@@ -73,7 +73,7 @@ namespace BTSMTL.Compilation
 
         public OrchestrationGraphContent<TValue>
             BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                OperationHandle entry, GraphExecutionIdentity identity, TLowering lowering,
+                OperationHandle entry, GraphCompilationIdentity identity, TLowering lowering,
                 BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
                 OrchestrationExecutionContract contract,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)

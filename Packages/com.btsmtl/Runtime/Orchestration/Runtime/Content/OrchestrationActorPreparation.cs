@@ -110,12 +110,12 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.GeneratedBlackboards.Span)
+                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.GeneratedBlackboards.Span)
                 {
-                    OrchestrationBlackboardSlot descriptor = content.Program.BlackboardSlots.Span[binding.ValueSlot];
+                    OrchestrationBlackboardSlot descriptor = content.Structure.Program.BlackboardSlots.Span[binding.ValueSlot];
                     if (descriptor.ScopeKind != OrchestrationScopeKind.Character)
                         continue;
-                    OrchestrationValueKind kind = content.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
+                    OrchestrationValueKind kind = content.Structure.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
                     var key = (Instance: mapping[binding.InstanceIdentityId], Contract: mapping[binding.ContractIdentityId], binding.Field);
                     if (characters.TryGetValue(key, out var existing))
                     {
@@ -125,7 +125,7 @@ namespace BTSMTL.Orchestration
                     }
                     else
                         characters.Add(key, (descriptor, kind,
-                            prepared.Graphs.Span[programIndex].Program.DefaultValues.Span[binding.ValueSlot]));
+                            prepared.Graphs.Span[programIndex].Parameters.DefaultValues.Span[binding.ValueSlot]));
                 }
             }
 
@@ -153,11 +153,11 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                var characterMapping = new int[content.Program.DefaultValues.Length];
+                var characterMapping = new int[content.Parameters.DefaultValues.Length];
                 Array.Fill(characterMapping, -1);
-                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.GeneratedBlackboards.Span)
+                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.GeneratedBlackboards.Span)
                 {
-                    OrchestrationBlackboardSlot descriptor = content.Program.BlackboardSlots.Span[binding.ValueSlot];
+                    OrchestrationBlackboardSlot descriptor = content.Structure.Program.BlackboardSlots.Span[binding.ValueSlot];
                     if (descriptor.ScopeKind == OrchestrationScopeKind.Character)
                     {
                         int shared = sharedSlots[(mapping[binding.InstanceIdentityId], mapping[binding.ContractIdentityId], binding.Field)];
@@ -165,9 +165,9 @@ namespace BTSMTL.Orchestration
                     }
                 }
                 for (int valueSlot = 0; valueSlot < characterMapping.Length; valueSlot++)
-                    if (content.Program.BlackboardSlots.Span[valueSlot].ScopeKind == OrchestrationScopeKind.Character &&
+                    if (content.Structure.Program.BlackboardSlots.Span[valueSlot].ScopeKind == OrchestrationScopeKind.Character &&
                         characterMapping[valueSlot] < 0)
-                        throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的 Character 黑板槽 '{valueSlot}' 缺少共享字段绑定。");
+                        throw new InvalidOperationException($"图 '{content.Identity.Source.GraphId}' 的 Character 黑板槽 '{valueSlot}' 缺少共享字段绑定。");
                 characterMappings[programIndex] = characterMapping;
             }
 

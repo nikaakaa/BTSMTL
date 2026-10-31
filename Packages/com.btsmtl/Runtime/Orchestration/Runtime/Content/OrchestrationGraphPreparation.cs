@@ -48,23 +48,23 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                var overrides = new OrchestrationDefaultValue<TValue>[content.GeneratedBlackboards.Length];
+                var overrides = new OrchestrationDefaultValue<TValue>[content.Structure.GeneratedBlackboards.Length];
                 for (int bindingIndex = 0; bindingIndex < overrides.Length; bindingIndex++)
                 {
-                    ref readonly OrchestrationGraphBlackboardBinding binding = ref content.GeneratedBlackboards.Span[bindingIndex];
+                    ref readonly OrchestrationGraphBlackboardBinding binding = ref content.Structure.GeneratedBlackboards.Span[bindingIndex];
                     int contract = mapping[binding.ContractIdentityId];
                     if (!projected.TryGetValue((contract, binding.Field), out TValue value))
                         throw new InvalidOperationException($"当前发布默认值缺少黑板合同 '{identities.Table.Resolve(contract)}' 的字段 '{binding.Field}'。");
-                    OrchestrationValueKind declaredKind = content.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
+                    OrchestrationValueKind declaredKind = content.Structure.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
                     OrchestrationValueKind kind = values.Kind(in value);
                     if (kind != declaredKind)
-                        throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
+                        throw new InvalidOperationException($"图 '{content.Identity.Source.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
                     overrides[bindingIndex] = new OrchestrationDefaultValue<TValue>(binding.ValueSlot, value);
                 }
                 graphs[programIndex] = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(
                     content, identities, sources[programIndex].IdentityTableIndex, overrides);
-                OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
-                programs[programIndex] = new OrchestrationProgram<TValue>(program);
+                OrchestrationProgramContent program = graphs[programIndex].Program;
+                programs[programIndex] = new OrchestrationProgram<TValue>(program, graphs[programIndex].Parameters);
                 storages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
                     programContentIds[programIndex], program.ExecutionStorage, program.ValueSlotTypes);
             }

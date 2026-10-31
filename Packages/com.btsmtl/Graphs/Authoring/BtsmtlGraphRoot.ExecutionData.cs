@@ -20,13 +20,12 @@ namespace BTSMTL.Graphs
         {
             if (m_ExecutionData.Length == 0 || m_ExecutionIdentity.Length == 0)
                 throw new InvalidOperationException($"图 '{AuthoringId}' 尚未发布执行数据，请显式编译该图。");
-#if UNITY_EDITOR
-            GraphExecutionIdentity expected = new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
-                encoding.EncodingContract, numericTarget);
-#else
             GraphExecutionIdentity expected = encoding.ReadIdentity(m_ExecutionIdentity);
-            if (expected.GraphId != AuthoringId)
+            if (expected.Source.GraphId != AuthoringId)
                 throw new InvalidOperationException($"图 '{AuthoringId}' 的发布身份不匹配。");
+#if UNITY_EDITOR
+            expected.Source.RequireMatches(new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
+                encoding.EncodingContract, numericTarget));
 #endif
             OrchestrationGraphContent<TValue> data = encoding.Read(m_ExecutionData, expected);
             m_PreparedIdentity = expected;

@@ -3,13 +3,13 @@ namespace BTSMTL.Orchestration
     public readonly struct OrchestrationOperation
     {
         public OrchestrationOperation(OrchestrationOperationCode code, bool isRunnable,
-            ushort payloadOffset, OrchestrationIndexRange inputs, ushort outputCount, ushort outputSlot,
+            ushort parameterOffset, OrchestrationIndexRange inputs, ushort outputCount, ushort outputSlot,
             OrchestrationIndexRange lifecycleHooks, ushort blackboardFactsBinding,
             ushort parentState, ushort executionFrameOwnerOperationIndex)
         {
             Code = code;
             IsRunnable = isRunnable;
-            PayloadOffset = payloadOffset;
+            ParameterOffset = parameterOffset;
             Inputs = inputs;
             OutputCount = outputCount;
             OutputSlot = outputSlot;
@@ -21,7 +21,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationOperationCode Code { get; }
         public bool IsRunnable { get; }
-        public ushort PayloadOffset { get; }
+        public ushort ParameterOffset { get; }
         public OrchestrationIndexRange Inputs { get; }
         public ushort OutputCount { get; }
         public ushort OutputSlot { get; }

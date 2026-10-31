@@ -133,7 +133,7 @@ namespace BTSMTL.Timeline.Runtime
             where TValue : unmanaged
             where TNumerics : struct, IOrchestrationNumerics<TValue>
         {
-            string graphId = graph.Source.Identity.GraphId;
+            string graphId = graph.Source.Identity.Source.GraphId;
             var sources = new Dictionary<string, OrchestrationGraphExecutionSource>(StringComparer.Ordinal);
             foreach (OrchestrationGraphSource source in graph.Sources.Span)
             {
@@ -322,7 +322,7 @@ namespace BTSMTL.Timeline.Runtime
             int programIndex, int operationIndex) where TValue : unmanaged
         {
             var sources = new Dictionary<(string Clip, string Graph, string Hook), OrchestrationGraphSource>();
-            foreach (OrchestrationGraphSource source in graph.Sources.Span)
+            foreach (OrchestrationGraphSource source in graph.Sources.Bind(graph.Structure.Sources.Span).Span)
             {
                 OrchestrationGraphExecutionSource invocation = source.Source;
                 if (invocation.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation &&

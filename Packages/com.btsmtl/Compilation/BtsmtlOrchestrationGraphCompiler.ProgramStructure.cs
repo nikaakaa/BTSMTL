@@ -85,6 +85,7 @@ namespace BTSMTL.Compilation
                 BuildExecutionIdentities();
                 m_StructureIdentityTexts = new List<string>(StructureIdentityTexts()).ToArray();
                 m_Identities = content.Identities;
+                m_StructureIdentities = content.Structure.Identities;
                 BuildIdentityBindings();
                 BuildPorts();
                 BuildExecutionFrameOwners();
@@ -97,7 +98,7 @@ namespace BTSMTL.Compilation
                     ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排绑定恢复失败：{string.Join("；", m_Report.Messages)}");
-                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities);
+                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts);
                 return new BtsmtlOrchestrationGraphLayout<TValue>(CreateBindings(content, identities));
             }
 
@@ -138,13 +139,13 @@ namespace BTSMTL.Compilation
 
             bool CanReuseBindings(ParameterBindings<TValue> previous)
             {
-                GraphExecutionIdentity identity = previous.Content.Identity;
+                GraphCompilationIdentity identity = previous.Content.Identity.Source;
                 if (previous.CompilationType != GetType() || !ReferenceEquals(previous.Domain, m_Domain) ||
                     previous.EncoderIdentity != m_Domain.ContentEncoder?.ContractIdentity ||
-                    previous.Content.NumericProfile != m_Lowering.Profile ||
+                    previous.Content.Structure.NumericProfile != m_Lowering.Profile ||
                     identity.GraphId != m_Identity.GraphId || identity.EncodingContract != m_Identity.EncodingContract ||
                     identity.NodeContract != m_Identity.NodeContract || identity.NumericTarget != m_Identity.NumericTarget ||
-                    previous.Content.Program.RootOperationIndex != m_Entry.Value || previous.Contract != m_Contract ||
+                    previous.Content.Structure.Program.RootOperationIndex != m_Entry.Value || previous.Contract != m_Contract ||
                     !ReferenceEquals(previous.ConstantInputs, m_ConstantInputs) ||
                     !ReferenceEquals(previous.ControlFlow, m_ControlFlow) || !ReferenceEquals(previous.References, m_References) ||
                     !ReferenceEquals(previous.GraphCalls, m_GraphCalls) || !ReferenceEquals(previous.StateSlots, m_StateSlots) ||
@@ -257,7 +258,18 @@ namespace BTSMTL.Compilation
                 m_StructureIdentityTexts = previous.StructureIdentityTexts;
                 m_ValueLiteralIndexes = previous.ValueLiteralIndexes;
                 m_CurveLiteralIndexes = previous.CurveLiteralIndexes;
-                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), previous.Content.Identities);
+                m_StructureIdentities = previous.Content.Structure.Identities;
+                if (ReferenceEquals(m_Operations, previous.Operations) && ReferenceEquals(m_Literals, previous.Literals))
+                {
+                    m_Identities = previous.Content.Identities;
+                    m_IdentityIds = previous.IdentityIds;
+                    OrchestrationGraphContent<TValue> unchanged = m_Domain.Encoding.Create(m_Identity,
+                        previous.Content.Structure, previous.Content.Parameters, BindSources(previous), previous.Content);
+                    return CompleteCompilation(unchanged, CreateBindings(unchanged, previous.ExecutionIdentities, previous));
+                }
+                m_Identities = OrchestrationIdentityPublication.Extend(m_StructureIdentities, IdentityTexts());
+                if (m_Identities.Entries.Span.SequenceEqual(previous.Content.Identities.Entries.Span))
+                    m_Identities = previous.Content.Identities;
                 bool identitiesChanged = !ReferenceEquals(m_Identities, previous.Content.Identities);
                 m_IdentityIds = previous.IdentityIds;
                 if (identitiesChanged)
@@ -266,65 +278,17 @@ namespace BTSMTL.Compilation
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
 
-                OrchestrationProgramContent<TValue> original = previous.Content.Program;
+                OrchestrationGraphParameters<TValue> original = previous.Content.Parameters;
                 ReadOnlyMemory<TValue> constants = BindLiteralValues(original.Constants,
                     previous.ConstantLiteralIndexes, previous, identitiesChanged);
                 ReadOnlyMemory<TValue> defaults = BindLiteralValues(original.DefaultValues,
                     previous.DefaultLiteralIndexes, previous, identitiesChanged);
-                ReadOnlyMemory<OrchestrationOperationColdData> cold = RebindIdentities(original.ColdOperations,
-                    identitiesChanged, value => new OrchestrationOperationColdData(Rebind(value.IdentityId), value.ValueVariant));
-                ReadOnlyMemory<OrchestrationFlowEdge> edges = RebindIdentities(original.Edges, identitiesChanged,
-                    value => new OrchestrationFlowEdge(Rebind(value.IdentityId), value.SourceOperationIndex,
-                        value.TargetOperationIndex, Rebind(value.SourcePortId), Rebind(value.TargetPortId), value.Kind,
-                        value.Order, value.Priority, value.AbortPolicy, value.ConditionOperationIndex));
-                OrchestrationCorePorts ports = original.CorePorts;
-                if (identitiesChanged)
-                    ports = new OrchestrationCorePorts(Rebind(ports.AnyState), Rebind(ports.StateOnEnter),
-                        Rebind(ports.StateRoot), Rebind(ports.StateOnExit), Rebind(ports.BranchTrue),
-                        Rebind(ports.BranchFalse), Rebind(ports.BranchThen), Rebind(ports.CycleReset));
-                OrchestrationProgramStructure structure = original.Structure;
-                if (identitiesChanged)
-                {
-                    int maximumIdentity = 0;
-                    foreach (int operation in structure.StateOperationIndexes.Span)
-                        if (operation >= 0)
-                            maximumIdentity = Math.Max(maximumIdentity, cold.Span[operation].IdentityId);
-                    int[] states = EmptyIndexes(maximumIdentity + 1);
-                    foreach (int operation in structure.StateOperationIndexes.Span)
-                        if (operation >= 0)
-                            states[cold.Span[operation].IdentityId] = operation;
-                    structure = new OrchestrationProgramStructure(structure.OutgoingEdgeIndexes, structure.OutgoingOffsets,
-                        structure.InitialStateEntries, structure.AnyStateEntries, structure.StateOnEnterEdges,
-                        structure.StateRootEdges, structure.StateOnExitEdges, structure.ValueEvaluationOffsets, states);
-                }
-                var program = new OrchestrationProgramContent<TValue>(original.Operations,
-                    BindOperationPayloads(previous, identitiesChanged, Rebind), cold, edges, structure,
-                    original.ValueSchedule, original.WorkspaceCapacity, original.ExecutionStorage, original.ValueInputs,
-                    constants, defaults, original.ValueSlotTypes, original.ValueKindSlotCounts, original.GraphCalls,
-                    original.Hooks, original.HookInputs, original.BlackboardSlots, original.BlackboardOutputs,
-                    original.OutputTemplates, ports, original.RootOperationIndex, original.MaximumOperationEvaluations);
                 OrchestrationGraphContent<TValue> source = previous.Content;
-                var content = new OrchestrationGraphContent<TValue>(m_Identity, m_Lowering.Profile, m_Identities, program,
-                    BindExtensions(previous), BindOperationContents(previous),
-                    RebindIdentities(source.Entries, identitiesChanged,
-                        value => new OrchestrationGraphEntry(Rebind(value.EntryIdentityId), value.Execution)),
-                    RebindIdentities(source.Variables, identitiesChanged,
-                        value => new OrchestrationGraphVariable(Rebind(value.GraphIdentityId), Rebind(value.DeclarationIdentityId),
-                            Rebind(value.KeyIdentityId), Rebind(value.ValueTypeIdentityId), value.IsPublic, value.ValueSlot)),
-                    RebindIdentities(source.GeneratedBlackboards, identitiesChanged,
-                        value => new OrchestrationGraphBlackboardBinding(value.ValueSlot, Rebind(value.InstanceIdentityId),
-                            Rebind(value.ContractIdentityId), value.Field)),
-                    RebindIdentities(source.HostInputs, identitiesChanged,
-                        value => new OrchestrationGraphHostInput(Rebind(value.InputIdentityId), Rebind(value.ValueTypeIdentityId), value.InputSlot)),
-                    RebindIdentities(source.Ports, identitiesChanged,
-                        value => new OrchestrationGraphPort(Rebind(value.GraphIdentityId), Rebind(value.NodeIdentityId),
-                            Rebind(value.PortIdentityId), value.OperationIndex, value.IsInput, value.IsTrigger,
-                            Rebind(value.CompiledPortIdentityId), value.ValueIndex)),
-                    BindSources(previous, identitiesChanged, Rebind));
-                IdentityCache identities = identitiesChanged
-                    ? new IdentityCache(previous.ExecutionIdentities.Operations, previous.ExecutionIdentities.Invocations, m_Identities)
-                    : previous.ExecutionIdentities;
-                return CompleteCompilation(content, CreateBindings(content, identities, previous));
+                var content = m_Domain.Encoding.Create(m_Identity, source.Structure,
+                    new OrchestrationGraphParameters<TValue>(SourceParameterIdentity(), identitiesChanged ? ParameterIdentities() : original.Identities,
+                        BindOperationPayloads(previous, identitiesChanged, Rebind), constants, defaults, BindOperationContents(previous)),
+                    BindSources(previous), source);
+                return CompleteCompilation(content, CreateBindings(content, previous.ExecutionIdentities, previous));
 
                 int Rebind(int identity) => identity == 0 ? 0 : Bind(previous.Content.Identities.Resolve(identity));
             }
@@ -348,57 +312,31 @@ namespace BTSMTL.Compilation
                 return changed == null ? original : changed;
             }
 
-            static ReadOnlyMemory<T> RebindIdentities<T>(ReadOnlyMemory<T> original, bool changed, Func<T, T> rebind)
+            ReadOnlyMemory<ReadOnlyMemory<byte>> BindOperationContents(ParameterBindings<TValue> previous)
             {
-                if (!changed)
-                    return original;
-                var result = new T[original.Length];
-                for (int i = 0; i < result.Length; i++)
-                    result[i] = rebind(original.Span[i]);
-                return result;
-            }
-
-            ReadOnlyMemory<OrchestrationExtensionReference> BindExtensions(ParameterBindings<TValue> previous)
-            {
-                ReadOnlyMemory<OrchestrationExtensionReference> original = previous.Content.Extensions;
-                OrchestrationExtensionReference[] changed = null;
-                foreach (OrchestrationExtensionReference hook in m_StateTransitionHooks)
-                {
-                    int offset = previous.Content.Program.Operations.Span[hook.ContentIndex].LifecycleHooks.Offset;
-                    int binding = previous.Content.Program.Hooks.Span[offset].ExtensionBindingIndex;
-                    if (original.Span[binding].SourcePath == hook.SourcePath)
-                        continue;
-                    changed ??= original.ToArray();
-                    changed[binding] = hook;
-                }
-                return changed == null ? original : changed;
-            }
-
-            ReadOnlyMemory<OrchestrationOperationContent> BindOperationContents(ParameterBindings<TValue> previous)
-            {
-                ReadOnlyMemory<OrchestrationOperationContent> original = previous.Content.OperationContents;
-                OrchestrationOperationContent[] changed = null;
+                ReadOnlyMemory<ReadOnlyMemory<byte>> original = previous.Content.Parameters.OperationContents;
+                ReadOnlySpan<OrchestrationOperationContentBinding> bindings = previous.Content.Structure.ParameterLayout.OperationContents.Span;
+                ReadOnlyMemory<byte>[] changed = null;
                 for (int i = 0; i < original.Length; i++)
                 {
-                    int operation = original.Span[i].OperationIndex;
+                    int operation = bindings[i].OperationIndex;
                     foreach (SemanticPayloadField field in m_Operations[operation].PayloadFields)
                         if (!SameLiteral(m_Literals[field.LiteralIndex], previous.Literals[field.LiteralIndex]))
                         {
                             changed ??= original.ToArray();
-                            changed[i] = BuildOperationContent(operation);
+                            changed[i] = BuildOperationContent(operation).Payload;
                             break;
                         }
                 }
                 return changed == null ? original : changed;
             }
 
-            ReadOnlyMemory<OrchestrationGraphSource> BindSources(ParameterBindings<TValue> previous,
-                bool identitiesChanged, Func<int, int> rebind)
+            OrchestrationGraphSourceMap BindSources(ParameterBindings<TValue> previous)
             {
-                ReadOnlyMemory<OrchestrationGraphSource> original = previous.Content.Sources;
-                if (!identitiesChanged && ReferenceEquals(m_SourceMap, previous.SourceMap))
+                OrchestrationGraphSourceMap original = previous.Content.Sources;
+                if (ReferenceEquals(m_SourceMap, previous.SourceMap))
                     return original;
-                OrchestrationGraphSource[] changed = null;
+                OrchestrationGraphSourceText[] changed = null;
                 int offset = 0;
                 for (int i = 0; i < m_SourceMap.Count; i++)
                 {
@@ -407,24 +345,15 @@ namespace BTSMTL.Compilation
                         ? m_Operations[entry.Source.TargetIndex].ConstantOutputs.Count + 1 : 1;
                     for (int j = 0; j < count; j++, offset++)
                     {
-                        OrchestrationGraphSource value = original.Span[offset];
-                        OrchestrationGraphExecutionSource source = value.Source;
-                        int identity = identitiesChanged ? rebind(source.SourceIdentityId) : source.SourceIdentityId;
-                        if (identity == source.SourceIdentityId && entry.SourceType == value.SourceType &&
+                        OrchestrationGraphSourceText value = original.Entries.Span[offset];
+                        if (entry.SourceType == value.SourceType &&
                             entry.Text.DisplayPathSegments.Span.SequenceEqual(value.DisplayPathSegments.Span))
                             continue;
-                        if (identity != source.SourceIdentityId)
-                            source = new OrchestrationGraphExecutionSource(source.TargetKind, source.TargetIndex,
-                                source.GraphId, source.NodeId, source.PortId, source.EdgeId, source.DeclarationId,
-                                source.TimelineId, source.TrackId, source.ClipId, source.IsInputPort, source.GraphInvocationPath,
-                                source.CompiledPortId, source.ValuePortDirection, source.SourceInvocationPath,
-                                source.ParentInvocationPath, source.InvocationCallerKind, source.InvocationCallerId,
-                                source.InvocationCallerClipId, source.InvocationCallerOperationIndex, source.InvocationEntry, identity);
-                        changed ??= original.ToArray();
-                        changed[offset] = new OrchestrationGraphSource(source, entry.SourceType, entry.Text.DisplayPathSegments);
+                        changed ??= original.Entries.ToArray();
+                        changed[offset] = new OrchestrationGraphSourceText(entry.SourceType, entry.Text.DisplayPathSegments);
                     }
                 }
-                return changed == null ? original : changed;
+                return changed == null ? original : new OrchestrationGraphSourceMap(changed);
             }
 
             OrchestrationProgramStructure BuildProgramStructure(OperationDraft[] operations,

@@ -677,7 +677,7 @@ namespace BTSMTL.Graphs
             OrchestrationGraphContent<TValue> content = graph.RequireExecutionData(encoding, numericTarget);
             var inputs = new List<GraphHostInputDescriptor>();
             var ids = new HashSet<string>(StringComparer.Ordinal);
-            foreach (ref readonly OrchestrationGraphHostInput input in content.HostInputs.Span)
+            foreach (ref readonly OrchestrationGraphHostInput input in content.Structure.HostInputs.Span)
             {
                 string inputId = content.Identities.Resolve(input.InputIdentityId);
                 if (ids.Add(inputId))

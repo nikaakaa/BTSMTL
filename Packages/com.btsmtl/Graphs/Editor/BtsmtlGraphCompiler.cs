@@ -23,7 +23,7 @@ namespace BTSMTL.Graphs.Editor
             IOrchestrationGraphContentEncoding<TValue> encoding,
             TLowering lowering,
             IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
-            IBtsmtlGraphNodeCompileSource nodes)
+            IBtsmtlGraphNodeCompileSource nodes, Func<SemanticGraphParameters, StableHash> parameterIdentity)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
@@ -34,10 +34,12 @@ namespace BTSMTL.Graphs.Editor
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
             var fingerprint = new BtsmtlGraphFingerprint();
-            GraphExecutionIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
+            GraphCompilationIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
                 encoding.EncodingContract, contract.NumericTarget);
             string inputIdentity = ComputeCompilationInputIdentity(contract,
-                StableHash.Compute(encoding.WriteIdentity(identity)).Value,
+                StableHash.Compute(new[] { identity.GraphId, identity.SourceRevision, identity.EncodingContract,
+                    identity.NodeContract, identity.NumericTarget }.Concat(identity.Dependencies.SelectMany(
+                    dependency => new[] { dependency.Identity, dependency.Revision })).ToArray()).Value,
                 typeof(TLowering).FullName, typeof(TValues).FullName, contentEncoder?.ContractIdentity ?? string.Empty);
             if (root.CompilationInputIdentity == inputIdentity)
             {
@@ -48,8 +50,8 @@ namespace BTSMTL.Graphs.Editor
             root.SelfSerialize();
             OrchestrationGraphContent<TValue> content =
                 new Compilation(root, contract, identity.SourceRevision, nodes).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                    identity, lowering, contentEncoder);
-            root.SetExecutionData(encoding.Write(content), identity, encoding, inputIdentity);
+                    identity, lowering, contentEncoder, encoding, parameterIdentity);
+            root.SetExecutionData(encoding.Write(content), content.Identity, encoding, inputIdentity);
             EditorUtility.SetDirty(root);
         }
 
@@ -114,8 +116,9 @@ namespace BTSMTL.Graphs.Editor
             }
 
             internal OrchestrationGraphContent<TValue>
-                Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(GraphExecutionIdentity identity, TLowering lowering,
-                    IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder)
+                Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(GraphCompilationIdentity identity, TLowering lowering,
+                    IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
+                    IOrchestrationGraphContentEncoding<TValue> encoding, Func<SemanticGraphParameters, StableHash> parameterIdentity)
                 where TValue : unmanaged
                 where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
                 where TVector2 : unmanaged
@@ -146,7 +149,7 @@ namespace BTSMTL.Graphs.Editor
                     ProgramInvocationCallerKind.None, string.Empty, string.Empty, -1);
                 return m_Builder.BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     owner, identity, lowering,
-                    new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(ProgramStateSchema.Core, contentEncoder, null),
+                    new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(ProgramStateSchema.Core, contentEncoder, null, encoding, parameterIdentity),
                     OrchestrationExecutionContract.Complete, entryContracts);
             }
 

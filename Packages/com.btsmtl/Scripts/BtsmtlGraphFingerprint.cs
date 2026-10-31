@@ -341,13 +341,13 @@ namespace BTSMTL
             return source;
         }
 
-        public GraphExecutionIdentity CreateIdentity(Graph graph, string graphId, string encodingContract, string numericTarget)
+        public GraphCompilationIdentity CreateIdentity(Graph graph, string graphId, string encodingContract, string numericTarget)
         {
             string revision = Compute(graph);
             var dependencies = new Dictionary<string, GraphExecutionDependency>(StringComparer.Ordinal);
             Collect(graph);
-            return new GraphExecutionIdentity(graphId, revision, encodingContract,
-                GraphNodeSemanticContract.Identity, numericTarget,
+            return new GraphCompilationIdentity(graphId, revision, encodingContract,
+                GraphNodeSemanticContract.Identity, numericTarget, "btsmtl-hosted-graph-compiler/8",
                 dependencies.Values.OrderBy(value => value.Identity, StringComparer.Ordinal).ToArray());
 
             void Collect(Graph current)
@@ -361,7 +361,8 @@ namespace BTSMTL
                     if (dependencies.ContainsKey(id))
                         continue;
                     dependencies.Add(id, new GraphExecutionDependency(id, reference is Graph child
-                        ? Compute(child) : ComputeDependencies(AssetDatabase.GetAssetPath(reference))));
+                        ? Compute(child) : ComputeDependencies(AssetDatabase.GetAssetPath(reference)),
+                        reference is Graph ? GraphExecutionDependencyKind.GraphSource : GraphExecutionDependencyKind.RuntimeContent));
                     if (reference is Graph nested)
                         Collect(nested);
                 }

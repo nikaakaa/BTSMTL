@@ -280,7 +280,7 @@ namespace BTSMTL.Timeline.Runtime
                     ClipOrdinal = token.ClipOrdinal,
                     Cycle = token.Cycle,
                     Marker = token.Marker
-                }, program.Content.DefaultValues.Span);
+                }, program.Parameters.DefaultValues.Span);
             OrchestrationExecutionFrameState header = frames.Header(frameSlot);
             TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, metadata);
             OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, invocation.Invocation.Tick, in header);
