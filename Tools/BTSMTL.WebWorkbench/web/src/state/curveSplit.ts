@@ -30,6 +30,12 @@ function evaluate(keys: Key[], time: number): number {
   return last.value;
 }
 
+// 曲线在 [0, 1] 上均匀取 count + 1 个点（Timeline 片段曲线按片段或缓动区间归一化）；权重切线按非权重近似。
+export function sampleCurve(curve: JsonObject, count: number): [number, number][] {
+  const keys = keysOf(curve);
+  return Array.from({ length: count + 1 }, (_, index) => [index / count, evaluate(keys, index / count)]);
+}
+
 // 边界切线：落在关键帧之间取前一关键帧的出切线（照 Unity BoundaryTangent）。
 function boundaryTangent(keys: Key[], time: number): number {
   if (!keys.length) return 0;

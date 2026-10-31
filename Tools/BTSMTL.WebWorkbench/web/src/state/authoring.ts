@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -805,6 +805,32 @@ export function clipTemplatesFor(elements: SkillElements, documentId: string, tr
   const { template, domain } = placement;
   return elements.clips.filter(clip => template.contract.clipKinds.includes(clip.kind) && clip.contract.trackKind === template.kind &&
     template.contract.domains.includes(domain) && clip.contract.domains.includes(domain));
+}
+
+// 轨道能放带曲线通道的片段时可展开曲线。
+export const trackHasCurves = (elements: SkillElements, documentId: string, trackId: string) =>
+  clipTemplatesFor(elements, documentId, trackId).some(template => template.curves.length > 0);
+
+// 片段各曲线通道的当前曲线；字段未设置（null）时 curve 为 null，运行时该通道不起作用。
+export function clipCurves(elements: SkillElements, documentId: string, clipId: string): { channel: ClipCurveChannel; curve: JsonObject | null }[] {
+  const document = currentDocument(timelinePath(documentId));
+  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
+  const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
+  if (!clip || !template) return [];
+  return template.curves.map(channel => {
+    const value = clip[channel.member];
+    return { channel, curve: value && typeof value === 'object' && Array.isArray((value as JsonObject).keys) ? value as JsonObject : null };
+  });
+}
+
+// 通道的默认曲线（两端线性切线，非权重），与 Unity 目录的 AnimationCurve.Linear 相同。
+export function defaultChannelCurve(channel: ClipCurveChannel): JsonObject {
+  const tangent = channel.defaultEnd - channel.defaultStart;
+  const key = (time: number, value: number): JsonObject => ({
+    inTangent: new JsonFloat(tangent), inWeight: new JsonFloat(0), outTangent: new JsonFloat(tangent), outWeight: new JsonFloat(0),
+    tangentMode: 0, time: new JsonFloat(time), value: new JsonFloat(value), weightedMode: 0,
+  });
+  return { keys: [key(0, channel.defaultStart), key(1, channel.defaultEnd)], postWrapMode: 8, preWrapMode: 8 };
 }
 
 // 片段换轨（照 TimelineData.MoveClip）：目标轨道能放这种片段，且执行域与原轨道相同；可以时为 null，否则给出原因。

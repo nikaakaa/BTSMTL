@@ -45,6 +45,14 @@ export const MuteIcon = ({ muted, ...props }: IconProps & { muted: boolean }) =>
   </Icon>
 );
 
+// 轨道曲线展开（Slate 轨道头的 ShowCurves）：坐标框内一条起伏的曲线。
+export const CurveIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path fill="none" stroke="currentColor" strokeWidth="1.1" opacity=".55" d="M2 2.5v11h12" />
+    <path fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" d="M3.5 11.5C6 11.5 6 4.5 8.5 4.5s2.5 4 5 4" />
+  </Icon>
+);
+
 // 折叠三角（Foldout，13×13）。
 export const FoldoutIcon = ({ open, ...props }: IconProps & { open: boolean }) => (
   <Icon box={13} {...props}><path d={open ? 'M2.5 4.5h8l-4 4.5z' : 'M4.5 2.5v8l4.5-4z'} /></Icon>

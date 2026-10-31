@@ -380,6 +380,67 @@
   color: #fff;
 }
 
+/* 展开曲线的轨道头：上部 30 像素照常放名字与按钮，下部列出曲线通道 */
+.headColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.headRow {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 30px;
+  min-width: 0;
+}
+
+.curveLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 8px 0 26px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.curveChannel {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.curveChannel::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--cc);
+}
+
+.curveChannel[data-unset] {
+  color: var(--text-disabled);
+}
+
+.curveChannel[data-unset]::before {
+  opacity: .4;
+}
+
+button.curveChannel:hover {
+  color: var(--text-strong);
+}
+
+button.curveChannel:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
 .headSelect {
   all: unset;
   display: flex;
@@ -887,6 +948,55 @@
 
 .timeline:has(.ruler[data-scrubbing]) .cursorTip:not([hidden]) {
   display: block;
+}
+
+/* 片段曲线区：片段下方，选中片段的区间提亮、曲线全亮，其余压暗 */
+.clipCurves {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  border-top: 1px solid rgb(0 0 0 / 25%);
+  box-sizing: border-box;
+}
+
+.clipCurveGuide {
+  stroke: rgb(255 255 255 / 9%);
+  stroke-dasharray: 3 3;
+}
+
+.clipCurveSpan {
+  fill: rgb(0 0 0 / 16%);
+  stroke: rgb(255 255 255 / 5%);
+}
+
+g[data-selected] > .clipCurveSpan {
+  fill: rgb(255 255 255 / 4%);
+  stroke: rgb(255 255 255 / 22%);
+}
+
+.clipCurveLine {
+  fill: none;
+  stroke: var(--cc);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: .4;
+  pointer-events: none;
+}
+
+g[data-selected] .clipCurveLine {
+  opacity: 1;
+}
+
+.clipCurveKey {
+  fill: #1e1e1e;
+  stroke: var(--cc);
+  stroke-width: 1.5;
+  cursor: grab;
+}
+
+.clipCurveKey:hover, .clipCurveKey[data-active] {
+  fill: var(--cc);
 }
 
 .curvePlot {

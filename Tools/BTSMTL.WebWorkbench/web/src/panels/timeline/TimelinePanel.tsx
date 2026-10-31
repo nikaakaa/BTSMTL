@@ -9,13 +9,15 @@ import {
 } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
+import type { ClipCurveChannel, SkillElements } from '../../api/authoring';
 import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from '../../api/types';
 import type { PlayerDataCurve, PlayerJobId } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipMoveIssue, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipTemplatesFor, currentDocument, defaultChannelCurve, graphPath, inputAuthoring,
+  trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
@@ -29,9 +31,11 @@ import { transport } from '../../state/transport';
 import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
+import { sampleCurve } from '../../state/curveSplit';
+import { JsonFloat, cloneJson, numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
-import { AddIcon, CrumbArrow, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
+import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
 import { MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
@@ -45,6 +49,8 @@ const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
 const curveHeight = 64;
+// 轨道展开片段曲线时，片段下方的曲线区高度（BtsmtlSlateTimelineBinding 的 ShowCurves）。
+const clipCurveHeight = 72;
 const rowSpacing = 3;
 // 行列表顶部内边距（.rows 的 padding-top）。
 const rowsPadding = 3;
@@ -64,6 +70,8 @@ type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow |
 interface Params {
   range: Range | null;
   collapsed: string[];
+  // 展开片段曲线的轨道行。
+  curveTracks: string[];
   follow: boolean;
   filter: string;
   // 顶栏所选技能（programId）；null 为路线上第一个技能。
@@ -80,7 +88,7 @@ interface Params {
 }
 type Snap = 'tick' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null, pin: null, caller: null,
+  range: null, collapsed: [], curveTracks: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null, pin: null, caller: null,
 };
 
 // 吸附步长（秒）；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
@@ -127,7 +135,8 @@ function playbackAt(segments: RouteSegment[], documentId: string, frameIndex: nu
 
 const segmentRange = (segment: RouteSegment) => fitRange({ start: segment.origin, end: segment.origin + segment.length });
 
-const rowHeight = (row: Row) => (row.kind === 'curve' ? curveHeight : trackHeight) + rowSpacing;
+const rowHeight = (row: Row) =>
+  (row.kind === 'curve' ? curveHeight : row.kind === 'track' && row.curves ? trackHeight + clipCurveHeight : trackHeight) + rowSpacing;
 
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
@@ -623,6 +632,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
   const rows = useMemo(() => {
     const filter = params.filter.trim().toLowerCase();
     const collapsed = new Set(params.collapsed);
+    const curveTracks = new Set(params.curveTracks);
+    const expand = (row: TrackRow): TrackRow => curveTracks.has(row.id) ? { ...row, curves: true } : row;
     const result: Row[] = [];
     const addCurves = () => {
       if (curves === null) return;
@@ -637,7 +648,7 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
       // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
       const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
       const tracks = collapsed.has(group.id) ? []
-        : segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : row);
+        : segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : expand(row));
       result.push(group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
       if (input && received) {
         result.push({ kind: 'receivedGroup', id: 'received', received });
@@ -663,19 +674,24 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     for (const segment of segments) {
       const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
       const titleMatched = !filter || group.title.toLowerCase().includes(filter);
-      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames);
+      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
       const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
       if (titleMatched || children.length) result.push(group, ...children);
     }
     addCurves();
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed]);
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed, params.curveTracks]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
     if (!collapsed.delete(id)) collapsed.add(id);
     setParams({ collapsed: [...collapsed] });
   }, [params.collapsed, setParams]);
+  const toggleCurves = useCallback((id: string) => {
+    const expanded = new Set(params.curveTracks);
+    if (!expanded.delete(id)) expanded.add(id);
+    setParams({ curveTracks: [...expanded] });
+  }, [params.curveTracks, setParams]);
 
   const step = useContext(SnapContext);
   // 游标跳到时间轴上的一点（运行档案为运行秒数，技能文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
@@ -777,7 +793,7 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
           </div>
           <Ruler bounds={bounds} origin={origin} rate={rate} marks={marks} seekAt={seekAt} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
         <div className={styles.footer}>
           <div className={styles.footHead} />
           <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
@@ -1045,10 +1061,11 @@ function Ruler({ bounds, origin, rate, marks, seekAt }: {
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
+function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
   rows: Row[];
   collapsed: string[];
   toggle(id: string): void;
+  toggleCurves(id: string): void;
   enter(documentId: string): void;
   frameAll(): void;
   inputRoots: FrozenInputTimeline[] | undefined;
@@ -1070,7 +1087,7 @@ function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
 
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (event.button !== 0 || !target.closest('[data-lane]') || target.closest(`button, .${styles.curvePlot}`)) return;
+    if (event.button !== 0 || !target.closest('[data-lane]') || target.closest(`button, .${styles.curvePlot}, .${styles.clipCurves}`)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     boxStart.current = { x: event.clientX, y: event.clientY };
   };
@@ -1160,7 +1177,7 @@ function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
         const nest = nesting[first + offset];
         switch (row.kind) {
           case 'group': return <GroupLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
-          case 'track': return <TrackLine key={row.id} row={row} nest={nest} />;
+          case 'track': return <TrackLine key={row.id} row={row} nest={nest} toggleCurves={toggleCurves} />;
           case 'inputGroup':
             return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
@@ -1228,18 +1245,21 @@ function GroupToggle({ open, name, meta, title, now, disabled, onToggle, onDoubl
 }
 
 // 轨道头（TimelineTrackGUI.DrawTrackHeader）：左侧 4 像素类别色条、16 像素类型图标、轨道名，右侧为按钮组与选项按钮。
-// rename 为改名输入框，给出时代替轨道名。
-function TrackHead({ kind, color, selected, name, title, onSelect, onRename, rename, children }: {
+// rename 为改名输入框，给出时代替轨道名；below 为展开曲线时轨道头下部的内容（曲线通道列表）。
+function TrackHead({ kind, color, selected, name, title, onSelect, onRename, rename, children, below }: {
   kind: TrackKind; color?: string; selected?: boolean; name: string; title?: string;
-  onSelect?(): void; onRename?(): void; rename?: ReactNode; children?: ReactNode;
+  onSelect?(): void; onRename?(): void; rename?: ReactNode; children?: ReactNode; below?: ReactNode;
 }) {
   const label = <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span><span className={styles.name}>{name}</span></>;
+  const head = <>
+    {rename ? <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span>{rename}</>
+      : onSelect ? <button className={styles.headSelect} title={title} onClick={onSelect} onDoubleClick={onRename}>{label}</button>
+        : <span className={styles.headSelect} title={title}>{label}</span>}
+    {children}
+  </>;
   return (
     <div className={styles.headButton} data-selected={selected || undefined} style={{ ['--tc' as string]: color ?? trackColors[kind] }}>
-      {rename ? <><span className={styles.trackIcon}><TrackIcon kind={kind} /></span>{rename}</>
-        : onSelect ? <button className={styles.headSelect} title={title} onClick={onSelect} onDoubleClick={onRename}>{label}</button>
-          : <span className={styles.headSelect} title={title}>{label}</span>}
-      {children}
+      {below ? <div className={styles.headColumn}><div className={styles.headRow}>{head}</div>{below}</div> : head}
     </div>
   );
 }
@@ -1422,7 +1442,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   ];
 }
 
-const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: Nest | undefined }) {
+const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: TrackRow; nest: Nest | undefined; toggleCurves(id: string): void }) {
   const clock = useContext(PreviewClockContext);
   const selected = useSelected(row.selectId, 'track');
   const { range, getValueFromScreenX } = useTimelineContext();
@@ -1439,6 +1459,9 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const blend = elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
+  // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
+  const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
+  const curves = hasCurves && !!row.curves;
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
   const muted = row.track.muted;
@@ -1457,8 +1480,10 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
       if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select);
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) select();
     }}>
-    <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead} head={
+    <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead}
+      height={curves ? trackHeight + clipCurveHeight : trackHeight} head={
       <TrackHead kind={row.trackKind} selected={selected} name={row.track.displayName} onSelect={select}
+        below={curves && elements ? <CurveLegend row={row} elements={elements} mixes={mixes} author={author} /> : undefined}
         onRename={author ? () => setNaming(true) : undefined} title={author ? '单击选中 · 双击改名 · 右键打开轨道菜单' : undefined}
         rename={naming ? (
           <TextInput autoFocus defaultValue={row.track.displayName} aria-label="轨道名称" className={styles.nameInput}
@@ -1473,21 +1498,24 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
               else if (event.key === 'Escape') { event.currentTarget.value = row.track.displayName; event.currentTarget.blur(); }
             }} />
         ) : undefined}>
-        {author && <>
-          <span className={styles.suite}>
-            <button className={styles.suiteButton} aria-pressed={muted} title={muted ? '取消静音' : '静音'}
-              onClick={() => authoringActions.setTrackValue(documentId, row.track.id, ['m_PersistentMuted'], !muted)}>
-              <MuteIcon muted={muted} />
-            </button>
-          </span>
-          <span className={styles.options} onPointerDown={openOptions}>
-            <MenuButton label="轨道菜单" variant="ghost" className={styles.optionsButton} iconOnly entries={menu}><OptionsIcon /></MenuButton>
-          </span>
-        </>}
+        {(author || hasCurves) && <span className={styles.suite}>
+          {hasCurves && <button className={styles.suiteButton} aria-pressed={curves} title={curves ? '收起片段曲线' : '展开片段曲线'}
+            onClick={() => toggleCurves(row.id)}>
+            <CurveIcon />
+          </button>}
+          {author && <button className={styles.suiteButton} aria-pressed={muted} title={muted ? '取消静音' : '静音'}
+            onClick={() => authoringActions.setTrackValue(documentId, row.track.id, ['m_PersistentMuted'], !muted)}>
+            <MuteIcon muted={muted} />
+          </button>}
+        </span>}
+        {author && <span className={styles.options} onPointerDown={openOptions}>
+          <MenuButton label="轨道菜单" variant="ghost" className={styles.optionsButton} iconOnly entries={menu}><OptionsIcon /></MenuButton>
+        </span>}
       </TrackHead>
     }>
       {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
         documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
+      {curves && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} />}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
         <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId}
           selectId={marker.selectId}
@@ -1503,6 +1531,141 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
 // 片段两端与同轨片段的混合（Mix）秒数。
 interface ClipMix { in: number; out: number }
 const noMix: ClipMix = { in: 0, out: 0 };
+
+// 通道曲线在时间轴上的区间（照 TimelineRuntimeClipSampler.Weight）：Weight 覆盖整段；Ease In / Ease Out 只在
+// 生效的缓动区间内取值，有混合时为混合秒数，否则为自身淡入淡出（不超过片段长减去另一端的混合）。
+function channelSpan(role: ClipCurveChannel['role'], clip: ClipInstance, mix: ClipMix): Span | null {
+  const duration = clip.end - clip.start;
+  if (role === 'Weight') return { start: clip.start, end: clip.end };
+  const ease = role === 'EaseIn'
+    ? mix.in > 0 ? mix.in : Math.min(clip.clip.easeInSeconds ?? 0, duration - mix.out)
+    : mix.out > 0 ? mix.out : Math.min(clip.clip.easeOutSeconds ?? 0, duration - mix.in);
+  if (!(ease > 0)) return null;
+  return role === 'EaseIn' ? { start: clip.start, end: clip.start + ease } : { start: clip.end - ease, end: clip.end };
+}
+
+const curvePad = 8;
+const roundCurve = (value: number) => Math.round(value * 1e4) / 1e4;
+
+type CurveDraft = { clipId: string; member: string; index: number; t: number; v: number; span: Span; channel: ClipCurveChannel };
+
+// 展开的片段曲线（BtsmtlSlateTimelineBinding.ShowCurves）：片段下方按正式通道颜色画各片段的曲线，选中片段高亮，
+// 其余压暗；作者模式下拖动选中片段的关键帧改时间与值，时间限在 0–1，值限在通道取值范围，取到万分位写回。
+function ClipCurves({ row, elements, mixes, author }: {
+  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean;
+}) {
+  const clock = useContext(PreviewClockContext);
+  const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
+  useAuthoring(state => state.version);
+  const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
+  const [draft, setDraft] = useState<CurveDraft | null>(null);
+  const svg = useRef<SVGSVGElement>(null);
+  const documentId = row.timeline.documentId;
+  const plotHeight = clipCurveHeight - curvePad * 2;
+  const x = (seconds: number) => valueToPixels(seconds - range.start);
+  const y = (value: number, channel: ClipCurveChannel) => curvePad + (channel.max - value) / (channel.max - channel.min) * plotHeight;
+  const keysOf = (curve: JsonObject) => curve.keys as JsonObject[];
+
+  const move = (event: PointerEvent<SVGSVGElement>) => {
+    if (!draft) return;
+    const box = svg.current!.getBoundingClientRect();
+    const { span, channel } = draft;
+    const t = Math.max(0, Math.min(1, (getValueFromScreenX(event.clientX) - span.start) / (span.end - span.start)));
+    const v = channel.max - (event.clientY - box.top - curvePad) / plotHeight * (channel.max - channel.min);
+    setDraft({ ...draft, t: roundCurve(t), v: roundCurve(Math.max(channel.min, Math.min(channel.max, v))) });
+  };
+  const release = () => {
+    if (!draft) return;
+    setDraft(null);
+    const curve = clipCurves(elements, documentId, draft.clipId).find(item => item.channel.member === draft.member)?.curve;
+    if (!curve) return;
+    const keys = keysOf(curve).map((key, index) => index === draft.index
+      ? { ...cloneJson(key) as JsonObject, time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : cloneJson(key));
+    keys.sort((left, right) => numberOf((left as JsonObject).time) - numberOf((right as JsonObject).time));
+    authoringActions.setClipValue(documentId, draft.clipId, [draft.member], { ...cloneJson(curve) as JsonObject, keys });
+  };
+
+  return (
+    <svg ref={svg} className={styles.clipCurves} style={{ top: trackHeight, height: clipCurveHeight }}
+      onPointerMove={move} onPointerUp={release} onPointerCancel={() => setDraft(null)}>
+      {/* 取值上下限的参考线（通道同为 0–1）。 */}
+      <line className={styles.clipCurveGuide} x1={0} x2="100%" y1={curvePad} y2={curvePad} />
+      <line className={styles.clipCurveGuide} x1={0} x2="100%" y1={curvePad + plotHeight} y2={curvePad + plotHeight} />
+      {row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end).map(clip => {
+        const chosen = selection === clip.selectId;
+        const mix = mixes.get(clip.key) ?? noMix;
+        return (
+          <g key={clip.key} data-selected={chosen || undefined}>
+            <rect className={styles.clipCurveSpan} x={x(clip.start)} y={1} width={Math.max(1, x(clip.end) - x(clip.start))} height={clipCurveHeight - 2}
+              onPointerDown={event => { if (event.button === 0) selectTimelineObject(clock, 'clip', clip.selectId); }} />
+            {clipCurves(elements, documentId, clip.clip.id).map(({ channel, curve }) => {
+              const span = channelSpan(channel.role, clip, mix);
+              if (!span || !curve) return null;
+              const dragging = draft?.clipId === clip.clip.id && draft.member === channel.member ? draft : null;
+              const shown = dragging ? { ...curve, keys: keysOf(curve).map((key, index) => index === dragging.index
+                ? { ...key, time: new JsonFloat(dragging.t), value: new JsonFloat(dragging.v) } : key)
+                .sort((left, right) => numberOf((left as JsonObject).time) - numberOf((right as JsonObject).time)) } : curve;
+              const px = x(span.end) - x(span.start);
+              const at = (t: number) => x(span.start + t * (span.end - span.start));
+              const points = sampleCurve(shown, Math.max(8, Math.min(96, Math.round(px / 4))))
+                .map(([t, v]) => `${at(t)},${y(Math.max(channel.min, Math.min(channel.max, v)), channel)}`).join(' ');
+              return (
+                <g key={channel.member} style={{ ['--cc' as string]: channel.color }}>
+                  <title>{`${channel.name} · ${clip.label}`}</title>
+                  <polyline className={styles.clipCurveLine} points={points} />
+                  {chosen && author && keysOf(curve).map((key, index) => {
+                    const t = dragging?.index === index ? dragging.t : numberOf(key.time);
+                    const v = dragging?.index === index ? dragging.v : numberOf(key.value);
+                    return (
+                      <circle key={index} className={styles.clipCurveKey} cx={at(Math.max(0, Math.min(1, t)))} cy={y(v, channel)} r={3.5}
+                        data-active={dragging?.index === index || undefined}
+                        onPointerDown={event => {
+                          if (event.button !== 0) return;
+                          event.stopPropagation();
+                          svg.current!.setPointerCapture(event.pointerId);
+                          setDraft({ clipId: clip.clip.id, member: channel.member, index, t, v, span, channel });
+                        }}>
+                        <title>{`${channel.name} 关键帧 ${index} · ${t.toFixed(3)}, ${v.toFixed(3)} · 拖动修改`}</title>
+                      </circle>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// 展开曲线的轨道头下部：选中片段（不在本轨时取第一个片段）的曲线通道；未设置的通道运行时不起作用，
+// 作者模式下单击按通道默认直线创建；没有缓动区间的缓动曲线不取值，标明无缓动。
+function CurveLegend({ row, elements, mixes, author }: { row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean }) {
+  useAuthoring(state => state.version);
+  const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
+  const documentId = row.timeline.documentId;
+  const clip = row.clips.find(item => item.selectId === selection) ?? row.clips[0];
+  if (!clip) return <div className={styles.curveLegend}>轨道上没有片段</div>;
+  const chosen = clip.selectId === selection;
+  return (
+    <div className={styles.curveLegend} title={chosen ? `${clip.label} 的曲线` : '选中片段后可拖动它的关键帧'}>
+      {clipCurves(elements, documentId, clip.clip.id).map(({ channel, curve }) => curve
+        ? channelSpan(channel.role, clip, mixes.get(clip.key) ?? noMix)
+          ? <span key={channel.member} className={styles.curveChannel} style={{ ['--cc' as string]: channel.color }}>{channel.name}</span>
+          : <span key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
+            title="片段没有淡入淡出或混合，这条缓动曲线不取值">{channel.name} · 无缓动</span>
+        : author && chosen
+          ? <button key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
+            title="未设置，运行时不起作用；单击按默认直线创建"
+            onClick={() => authoringActions.setClipValue(documentId, clip.clip.id, [channel.member], defaultChannelCurve(channel))}>
+            {channel.name} · 创建
+          </button>
+          : <span key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
+            title="未设置，运行时不起作用">{channel.name} · 未设置</span>)}
+    </div>
+  );
+}
 
 function Positioned({ start, end, className, children, style, title }: {
   start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; title?: string;
@@ -1638,7 +1801,8 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
   return (
-    <div ref={setNodeRef} style={moving ? { ...itemStyle, visibility: 'hidden' } : itemStyle} className={styles.item}
+    // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
+    <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}

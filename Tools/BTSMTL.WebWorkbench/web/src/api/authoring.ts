@@ -1,4 +1,4 @@
-import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
+import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
 import { getJson, getText, postJson, postText, putJson, query } from './http';
 import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
@@ -161,9 +161,17 @@ export interface TrackTemplate extends ElementTemplate {
   contract: { overlap: TrackOverlap; domain: string; domains: string[]; clipKinds: string[] };
 }
 
+// 采样片段的曲线通道（TimelineSampledCurveChannel）：存储字段、显示名、角色、颜色、取值范围，
+// 默认曲线是 (0, defaultStart) 到 (1, defaultEnd) 的直线。
+export interface ClipCurveChannel {
+  member: string; name: string; role: 'Weight' | 'EaseIn' | 'EaseOut'; color: string;
+  min: number; max: number; defaultStart: number; defaultEnd: number;
+}
+
 export interface ClipTemplate extends ElementTemplate {
   kind: string;
   contract: { trackKind: string; domains: string[] };
+  curves: ClipCurveChannel[];
 }
 
 export interface SkillElements {
@@ -337,8 +345,16 @@ export const authoringApi = {
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
   identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
   blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
-  elements: async (target: AuthoringTarget, signal?: AbortSignal) =>
-    parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements,
+  // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
+  elements: async (target: AuthoringTarget, signal?: AbortSignal) => {
+    const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements;
+    for (const clip of elements.clips)
+      clip.curves = clip.curves.map(channel => ({
+        ...channel, min: numberOf(channel.min), max: numberOf(channel.max),
+        defaultStart: numberOf(channel.defaultStart), defaultEnd: numberOf(channel.defaultEnd),
+      }));
+    return elements;
+  },
 };
 
 async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
