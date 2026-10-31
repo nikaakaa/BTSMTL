@@ -110,16 +110,19 @@ export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket 
   socket.onopen = () => handlers.open();
   socket.onclose = event => handlers.close(event);
   socket.onmessage = event => {
+    let packet: ViewerMessage | VideoFrame;
     try {
-    if (typeof event.data === 'string') {
-      handlers.message(readViewerMessage(JSON.parse(event.data)));
-      return;
-    }
-    const buffer = event.data as ArrayBuffer;
-    const length = new DataView(buffer, 0, 4).getInt32(0, true);
-    const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
-    handlers.video({ ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) });
-    } catch (error) { handlers.error(error); }
+      if (typeof event.data === 'string') packet = readViewerMessage(JSON.parse(event.data));
+      else {
+        if (!(event.data instanceof ArrayBuffer)) throw new Error('画面连接需要文本或 ArrayBuffer');
+        const buffer = event.data;
+        const length = new DataView(buffer, 0, 4).getInt32(0, true);
+        const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
+        packet = { ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) };
+      }
+    } catch (error) { handlers.error(error); return; }
+    if ('type' in packet) handlers.message(packet);
+    else handlers.video(packet);
   };
   return socket;
 }
