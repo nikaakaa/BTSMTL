@@ -43,6 +43,7 @@ namespace BTSMTL.Replay.Input
 
         public long FirstFrame { get; }
         public int TickRate { get; }
+        public double StepSeconds => 1d / TickRate;
 
         public static CharacterInputPlanClock AfterFrame(long effectiveAfterFrame, int tickRate) =>
             new CharacterInputPlanClock(effectiveAfterFrame + 1, tickRate);

@@ -57,6 +57,7 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     PreviewField[] Fields, string RawJson)
 {
     public required PreviewExecutionIdentity Execution { get; init; }
+    public double? FrameStepSeconds { get; init; }
     public string SceneRevision { get; init; } = string.Empty;
     public string InputSource { get; init; } = string.Empty;
     public string? InputRevision { get; init; }
