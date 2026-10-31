@@ -445,7 +445,8 @@ function ClipEditing({ step, rows, offsets, scroller }: {
   );
 }
 
-// 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；中键拖动横移。
+// 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；
+// 照 Slate 中键拖动：左右平移时间，上下滚动轨道列表。
 const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
   useLayoutEffect(() => {
     const element = bag.timelineRef.current;
@@ -460,30 +461,38 @@ const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
         onPanEnd({ deltaX: event.deltaX || event.deltaY, deltaY: 0 });
       }
     };
-    let dragX: number | null = null;
+    let drag: { x: number; y: number; rows: HTMLElement | null } | null = null;
+    // 阻止浏览器的中键自动滚动。
+    const mouseDown = (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); };
     const down = (event: globalThis.PointerEvent) => {
       if (event.button !== 1) return;
       event.preventDefault();
-      dragX = event.clientX;
+      drag = { x: event.clientX, y: event.clientY, rows: element.querySelector<HTMLElement>(`.${styles.rows}`) };
+      element.dataset.panning = '';
       element.setPointerCapture(event.pointerId);
     };
     const move = (event: globalThis.PointerEvent) => {
-      if (dragX === null) return;
-      onPanEnd({ deltaX: dragX - event.clientX, deltaY: 0 });
-      dragX = event.clientX;
+      if (drag === null) return;
+      onPanEnd({ deltaX: drag.x - event.clientX, deltaY: 0 });
+      if (drag.rows) drag.rows.scrollTop += drag.y - event.clientY;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
     };
     const up = (event: globalThis.PointerEvent) => {
-      if (dragX === null) return;
-      dragX = null;
-      element.releasePointerCapture(event.pointerId);
+      if (drag === null) return;
+      drag = null;
+      delete element.dataset.panning;
+      if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
     };
     element.addEventListener('wheel', wheel, { passive: false });
+    element.addEventListener('mousedown', mouseDown);
     element.addEventListener('pointerdown', down);
     element.addEventListener('pointermove', move);
     element.addEventListener('pointerup', up);
     element.addEventListener('pointercancel', up);
     return () => {
       element.removeEventListener('wheel', wheel);
+      element.removeEventListener('mousedown', mouseDown);
       element.removeEventListener('pointerdown', down);
       element.removeEventListener('pointermove', move);
       element.removeEventListener('pointerup', up);
@@ -793,8 +802,7 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
           </div>
           <Ruler bounds={bounds} origin={origin} rate={rate} marks={marks} seekAt={seekAt} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots}
-          onRangeChanged={onRangeChanged} />
+        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
         <div className={styles.footer}>
           <div className={styles.footHead} />
           <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
@@ -1062,9 +1070,8 @@ function Ruler({ bounds, origin, rate, marks, seekAt }: {
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots, onRangeChanged }: {
+function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
   rows: Row[];
-  onRangeChanged(update: (previous: Range) => Range): void;
   collapsed: string[];
   toggle(id: string): void;
   toggleCurves(id: string): void;
@@ -1087,34 +1094,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
       selectionActions.selectTimelineClips(panelId, []);
   }, [selection, selectedClips, panelId]);
 
-  const { getValueFromScreenX } = useTimelineContext();
-  // 照 Slate 中键拖动：上下滚动轨道，左右平移可见时间范围；拖动中秒每像素不变。
-  const panDown = (event: PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const element = event.currentTarget;
-    element.setPointerCapture(event.pointerId);
-    const secondsPerPixel = (getValueFromScreenX(event.clientX + 100) - getValueFromScreenX(event.clientX)) / 100;
-    let lastX = event.clientX, lastY = event.clientY;
-    const move = (next: globalThis.PointerEvent) => {
-      const seconds = (lastX - next.clientX) * secondsPerPixel;
-      element.scrollTop += lastY - next.clientY;
-      lastX = next.clientX;
-      lastY = next.clientY;
-      if (seconds) onRangeChanged(previous => ({ start: previous.start + seconds, end: previous.end + seconds }));
-    };
-    const up = () => {
-      element.removeEventListener('pointermove', move);
-      element.removeEventListener('pointerup', up);
-      element.removeEventListener('pointercancel', up);
-      delete element.dataset.panning;
-    };
-    element.dataset.panning = '';
-    element.addEventListener('pointermove', move);
-    element.addEventListener('pointerup', up);
-    element.addEventListener('pointercancel', up);
-  };
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button === 1) { panDown(event); return; }
     const target = event.target as HTMLElement;
     if (event.button !== 0 || !target.closest('[data-lane]') || target.closest(`button, .${styles.curvePlot}, .${styles.clipCurves}`)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1174,7 +1154,6 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
 
   return (
     <div className={styles.rows} ref={scroller} tabIndex={-1} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
-      onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
       onKeyDown={event => {
         if ((event.target as HTMLElement).closest('input, textarea')) return;
         // A：显示全部（Frame All），不分作者与运行。

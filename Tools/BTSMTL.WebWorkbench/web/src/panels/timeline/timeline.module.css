@@ -292,7 +292,7 @@
   background: var(--tl-sequence);
 }
 
-.rows[data-panning], .rows[data-panning] * {
+.timeline[data-panning], .timeline[data-panning] * {
   cursor: grabbing !important;
 }
 
