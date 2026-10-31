@@ -13,6 +13,8 @@ namespace ThirdPersonSimulation.QuantumNumerics
         // FP 与 OrchestrationTime 的 Raw 可直接互换的前提；精度不同时此处编译失败。
         internal const int MatchingPrecision = 1 / (FP.Precision == OrchestrationTime.Precision ? 1 : 0);
 
+        public OrchestrationValueKind Kind(in FPOrchestrationValue value) => default(FPOrchestrationValueAccess).Kind(in value);
+
         public bool Boolean(in FPOrchestrationValue value) => default(FPOrchestrationValueAccess).Boolean(in value);
 
         public ulong UInt64(in FPOrchestrationValue value) => default(FPOrchestrationValueAccess).UInt64(in value);
@@ -41,5 +43,8 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public void Assign(OrchestrationAssignmentOpcode code, in FPOrchestrationValue current,
             in FPOrchestrationValue value, ref FPOrchestrationValue result) =>
             FPValueMath.Assign(code, in current, in value, ref result);
+
+        public FPOrchestrationValue MapContentIdentities(in FPOrchestrationValue value, ReadOnlySpan<int> mapping) =>
+            FPValueMath.MapContentIdentities(in value, mapping);
     }
 }

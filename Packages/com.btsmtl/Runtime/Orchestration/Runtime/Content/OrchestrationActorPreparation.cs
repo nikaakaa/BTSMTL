@@ -4,21 +4,16 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public sealed class OrchestrationActorPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>
+    public sealed class OrchestrationActorPreparation<TValue, TNumerics>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
     {
         readonly ReadOnlyMemory<int>[] m_CharacterValueSlots;
         readonly ReadOnlyMemory<int> m_DependencyIdentityTableIndices;
 
         OrchestrationActorPreparation(FrozenOrchestrationIdentities identities,
             OrchestrationActorProgramSource<TValue>[] sources,
-            PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>[] graphs,
+            PreparedOrchestrationGraph<TValue, TNumerics>[] graphs,
             OrchestrationProgram<TValue>[] programs,
             ReadOnlyMemory<int>[] characterValueSlots,
             int[] dependencyIdentityTableIndices,
@@ -49,7 +44,7 @@ namespace BTSMTL.Orchestration
         public int ProgramCount => Programs.Length;
         public int DependencyIdentityTableCount => m_DependencyIdentityTableIndices.Length;
         public ReadOnlyMemory<OrchestrationActorProgramSource<TValue>> Sources { get; }
-        public ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>> Graphs { get; }
+        public ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TNumerics>> Graphs { get; }
         public ReadOnlyMemory<OrchestrationProgram<TValue>> Programs { get; }
         public ReadOnlyMemory<OrchestrationGraphBlackboardBinding> CharacterBlackboards { get; }
         public ReadOnlyMemory<TValue> CharacterValueDefaults { get; }
@@ -98,7 +93,7 @@ namespace BTSMTL.Orchestration
                 composite.GetTimelineRegion(), timelineLayout.Layout);
         }
 
-        public static OrchestrationActorPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> Prepare(
+        public static OrchestrationActorPreparation<TValue, TNumerics> Prepare(
             FrozenOrchestrationIdentities identities,
             ReadOnlySpan<OrchestrationActorProgramSource<TValue>> sources,
             ReadOnlySpan<int> skillContentIds,
@@ -112,7 +107,7 @@ namespace BTSMTL.Orchestration
             {
                 var sourceValue = value.Value;
                 projected.Add((defaultMapping.Span[value.ContractIdentityId], value.Field),
-                    PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.MapValue(in sourceValue, defaultMapping));
+                    PreparedOrchestrationGraph<TValue, TNumerics>.MapValue(in sourceValue, defaultMapping));
             }
 
             var characters = new SortedDictionary<(int Instance, int Contract, int Field),
@@ -157,11 +152,11 @@ namespace BTSMTL.Orchestration
                 sharedSlot++;
             }
 
-            var graphs = new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>[sources.Length];
+            var graphs = new PreparedOrchestrationGraph<TValue, TNumerics>[sources.Length];
             var programs = new OrchestrationProgram<TValue>[sources.Length];
             var preparedProgramStorages = new OrchestrationPreparedProgramStorage<TValue>[sources.Length];
             var characterMappings = new ReadOnlyMemory<int>[sources.Length];
-            TValues values = default;
+            TNumerics values = default;
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
@@ -188,7 +183,7 @@ namespace BTSMTL.Orchestration
                     if (content.Program.BlackboardSlots.Span[valueSlot].ScopeKind == OrchestrationScopeKind.Character &&
                         characterMapping[valueSlot] < 0)
                         throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的 Character 黑板槽 '{valueSlot}' 缺少共享字段绑定。");
-                graphs[programIndex] = PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.Prepare(
+                graphs[programIndex] = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(
                     content, identities, sources[programIndex].IdentityTableIndex, overrides);
                 programs[programIndex] = new OrchestrationProgram<TValue>(graphs[programIndex].Program);
                 OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
@@ -206,7 +201,7 @@ namespace BTSMTL.Orchestration
             StableHash identity = OrchestrationIdentityContentHash.Actor(identities.Identity, defaults.ContentIdentity,
                 defaultIdentityTableIndex, sources, dependencyIdentityTableIndices,
                 characterBlackboards, characterDescriptors, characterSlotTypes, characterKindSlotCounts, characterMappings);
-            return new OrchestrationActorPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+            return new OrchestrationActorPreparation<TValue, TNumerics>(
                 identities, sources.ToArray(), graphs, programs, characterMappings,
                 dependencyIdentityTableIndices.ToArray(), characterBlackboards,
                 characterDefaults, characterDescriptors, characterSlotTypes, characterKindSlotCounts,

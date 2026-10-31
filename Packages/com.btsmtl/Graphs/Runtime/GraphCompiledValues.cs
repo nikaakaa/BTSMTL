@@ -7,34 +7,6 @@ namespace BTSMTL.Graphs
 {
     public static class GraphCompiledValues
     {
-        public static TValue
-            ToState<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(
-                in GraphHostValue value, int enumTypeContentId, in OrchestrationIdentityValue identity)
-            where TValue : unmanaged
-            where TScalar : unmanaged
-            where TVector2 : unmanaged
-            where TVector3 : unmanaged
-            where TYaw : unmanaged
-            where TQuaternion : unmanaged
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-            where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion> =>
-            GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
-                .ToState(in value, enumTypeContentId, in identity);
-
-        public static GraphHostValue
-            FromState<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(
-                in TValue value, Type enumType, string identity)
-            where TValue : unmanaged
-            where TScalar : unmanaged
-            where TVector2 : unmanaged
-            where TVector3 : unmanaged
-            where TYaw : unmanaged
-            where TQuaternion : unmanaged
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-            where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion> =>
-            GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
-                .FromState(in value, enumType, identity);
-
         public static string TypeIdentity(Type type)
         {
             GraphHostValueKinds.TryGet(type, out GraphHostValueKind kind);
@@ -76,7 +48,8 @@ namespace BTSMTL.Graphs
 
     }
 
-    internal static class GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
+    // 图宿主值与编排值的转换算法只有一份，各数值方案以自身的标量转换实例化后转调。
+    public static class GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -86,7 +59,7 @@ namespace BTSMTL.Graphs
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
     {
-        internal static Type ValueType(in TValue value, OrchestrationIdentityTable identities) => default(TValues).Kind(in value) switch
+        public static Type ValueType(in TValue value, OrchestrationIdentityTable identities) => default(TValues).Kind(in value) switch
         {
             OrchestrationValueKind.Boolean => typeof(bool),
             OrchestrationValueKind.Int32 => typeof(int),
@@ -99,7 +72,7 @@ namespace BTSMTL.Graphs
             _ => throw new InvalidOperationException($"事件图状态类型 '{default(TValues).Kind(in value)}' 不受支持。")
         };
 
-        internal static TValue ToState(in GraphHostValue value, int enumTypeContentId,
+        public static TValue ToState(in GraphHostValue value, int enumTypeContentId,
             in OrchestrationIdentityValue identity) => value.Kind switch
         {
             GraphHostValueKind.Bool => default(TValues).FromBoolean(value.BoolValue),
@@ -113,7 +86,7 @@ namespace BTSMTL.Graphs
             _ => throw new InvalidOperationException($"事件图输入类型 '{value.Kind}' 不受支持。")
         };
 
-        internal static GraphHostValue FromState(in TValue value, Type enumType,
+        public static GraphHostValue FromState(in TValue value, Type enumType,
             string identity) => default(TValues).Kind(in value) switch
         {
             OrchestrationValueKind.Boolean => GraphHostValue.FromBool(default(TValues).Boolean(in value)),

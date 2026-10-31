@@ -11,6 +11,7 @@ namespace BTSMTL.Orchestration
     // 具体方案转调 OrchestrationTypedValueMath，指令算法只有一份。
     public interface IOrchestrationNumerics<TValue> where TValue : unmanaged
     {
+        OrchestrationValueKind Kind(in TValue value);
         bool Boolean(in TValue value);
         ulong UInt64(in TValue value);
         OrchestrationIdentityValue Identity(in TValue value);
@@ -26,10 +27,15 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> arguments, in OrchestrationIdentityOrdinalView identities, ref TValue result);
 
         void Assign(OrchestrationAssignmentOpcode code, in TValue current, in TValue value, ref TValue result);
+
+        TValue MapContentIdentities(in TValue value, ReadOnlySpan<int> mapping);
     }
 
     public readonly struct Float32OrchestrationNumerics : IOrchestrationNumerics<Float32OrchestrationValue>
     {
+        public OrchestrationValueKind Kind(in Float32OrchestrationValue value) =>
+            default(Float32OrchestrationValueAccess).Kind(in value);
+
         public bool Boolean(in Float32OrchestrationValue value) =>
             default(Float32OrchestrationValueAccess).Boolean(in value);
 
@@ -63,5 +69,8 @@ namespace BTSMTL.Orchestration
         public void Assign(OrchestrationAssignmentOpcode code, in Float32OrchestrationValue current,
             in Float32OrchestrationValue value, ref Float32OrchestrationValue result) =>
             Float32ValueMath.Assign(code, in current, in value, ref result);
+
+        public Float32OrchestrationValue MapContentIdentities(in Float32OrchestrationValue value, ReadOnlySpan<int> mapping) =>
+            Float32ValueMath.MapContentIdentities(in value, mapping);
     }
 }
