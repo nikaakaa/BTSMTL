@@ -24,6 +24,7 @@ export interface SkillChanges {
   skill: string;
   revision: string;
   changed: boolean;
+  files: { path: string; revision: string }[];
 }
 
 // 按需查询的统一外壳：availability 表示作者来源是否可读，items 为原分页结果。
@@ -35,7 +36,7 @@ export interface QueryAvailability {
 // 可创建的节点类型（原 Types）：按实际 C# 类型与原生节点声明发现。
 export interface NodeTypeInfo {
   type: string;
-  clrType: string;
+  clrType: string | null;
   family: string;
   kind: string | null;
   nativeType: string | null;
@@ -52,6 +53,10 @@ export interface DescribedPort {
   direction: 'input' | 'output';
   port: { ID: string; name: string; type: string; serializedValue: unknown };
 }
+
+export type DescribedPorts =
+  | { availability: { available: true; reason: null }; hasMore: boolean; items: DescribedPort[]; errors?: never }
+  | { availability: { available: false; reason: string }; errors: SkillFormatError[]; hasMore?: never; items?: never };
 
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
@@ -115,7 +120,7 @@ export interface TypeDescription {
   type: string;
   configuration: JsonObject;
   fields: { hasMore: boolean; items: FieldItem[] };
-  ports: { availability: QueryAvailability; hasMore: boolean; items?: DescribedPort[] };
+  ports: DescribedPorts;
 }
 
 // 身份表（references.json）一项：作者 JSON 中引用的资产身份。
@@ -241,10 +246,13 @@ export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
 
 export interface SkillFormatError {
   code: string;
-  file?: string;
-  graphId?: string;
-  nodeId?: string;
-  path?: string;
+  authoring?: string | null;
+  skill?: string | null;
+  type?: string | null;
+  file?: string | null;
+  graphId?: string | null;
+  nodeId?: string | null;
+  path?: string | null;
   message: string;
 }
 
