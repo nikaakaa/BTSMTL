@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace BTSMTL.WebWorkbench;
 
 public sealed record PreviewField(string DisplayName, string Value);
@@ -41,7 +39,8 @@ public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor
 }
 public sealed record PreviewExecutionIdentity(string Kind, string Identity, string? PlayerBuildId,
     string? EditorAssemblyMvid);
-public sealed record PreviewPosition(string HostFrame, JsonElement Request);
+public sealed record PreviewPosition(string HostFrame);
+public sealed record PreviewTransportAction(string Action, bool Available, string Reason, PreviewPosition? Target);
 public sealed record PreviewClock(PreviewPosition Position, double Seconds, string PositionDisplayName,
     PreviewPosition? RequestedPosition, PreviewField[] Fields);
 public sealed record PreviewContentIdentity(string Kind, string Revision, string? DocumentId,
