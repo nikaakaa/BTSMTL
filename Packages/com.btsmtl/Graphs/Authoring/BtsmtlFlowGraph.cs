@@ -49,8 +49,8 @@ namespace BTSMTL.Graphs
         public override bool CanAuthorConnection(Port source, Port target, out string reason) =>
             Authoring.CanConnect(source, target, out reason);
 
-        public override Node AddNode(Type nodeType, Vector2 position = default) =>
-            Authoring.AddNode(nodeType, () => base.AddNode(nodeType, position));
+        public override Node AddNode(Type nodeType, Vector2 position = default, Action<Node> initialize = null) =>
+            Authoring.AddNode(nodeType, () => base.AddNode(nodeType, position, initialize));
 
         public override BinderConnection CreatePortConnection(Port source, Port target) =>
             Authoring.Connect(source, target);

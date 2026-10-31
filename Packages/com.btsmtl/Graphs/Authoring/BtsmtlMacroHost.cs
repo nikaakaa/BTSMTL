@@ -34,7 +34,7 @@ namespace BTSMTL.Graphs
         // 宿主领域可用普通节点定义作作者类型：创建时换成承载定义的画布节点，再按定义完成初始化；
         // 准入与菜单判断读取画布节点所承载的作者类型。
         public virtual Type CanvasNodeType(Type authoringType) => authoringType;
-        public virtual void OnNodeCreated(Node node, Type authoringType) { }
+        public virtual void InitializeNode(Node node, Type authoringType) { }
         public virtual Type AuthoringNodeType(Node node) => node.GetType();
 
         public virtual List<Node> DuplicateNodes(BtsmtlMacroGraph macro, List<Node> nodes, Vector2 position)
