@@ -515,6 +515,11 @@
   color: var(--value);
 }
 
+.curveKeyLabel {
+  padding: 0 2px 0 4px;
+  color: var(--text-dim);
+}
+
 /* 底边拖动改曲线区高度 */
 .curveResize {
   position: absolute;
@@ -1132,8 +1137,39 @@
   cursor: grab;
 }
 
-.curvePlotKey:hover, .curvePlotKey[data-active] {
+.curvePlotKey:hover {
   fill: var(--cc);
+}
+
+/* 选中的关键帧（照 Unity 曲线编辑器）为白色实心，并显示切线手柄 */
+.curvePlotKey[data-active], .curveDope[data-active] {
+  fill: #fff;
+}
+
+.curveHandle line {
+  stroke: #c8c8c8;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.curveHandle circle {
+  fill: #c8c8c8;
+  stroke: rgb(0 0 0 / 55%);
+  cursor: grab;
+}
+
+.curveHandle circle:hover {
+  fill: #fff;
+}
+
+.curveBox {
+  fill: rgb(80 140 255 / 12%);
+  stroke: rgb(80 140 255 / 70%);
+  pointer-events: none;
+}
+
+svg.clipCurves:focus {
+  outline: none;
 }
 
 .curvePlot {

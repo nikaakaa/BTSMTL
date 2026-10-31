@@ -5,7 +5,7 @@ import {
 } from 'dnd-timeline';
 import {
   createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent,
-  type PointerEvent, type ReactNode, type RefObject,
+  type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject,
 } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,9 +34,13 @@ import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSp
 import { archive } from '../../state/archive';
 import { useAnimationFrameRates } from '../../state/resources';
 import { curveWithKey, curveWithoutKey, evaluateCurve } from '../../state/curveSplit';
-import { JsonFloat, cloneJson, numberOf, type JsonObject } from '../../state/skillJson';
+import {
+  breakKeys, isBroken, keyTime, keyValue, moveKeys, removeKeys, setTangent, setTangentKind, smoothKeys, tangentKind, tangentOf,
+  type TangentKind, type TangentSide,
+} from '../../state/curveEdit';
+import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
 import { KeyIcon, MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
@@ -174,14 +178,19 @@ const segmentRange = (segment: RouteSegment) => fitRange({ start: segment.origin
 const rowHeight = (row: Row) =>
   (row.kind === 'curve' ? curveHeight : row.kind === 'track' && row.curves ? trackHeight + row.curves : trackHeight) + rowSpacing;
 
-// 曲线参数区的查看状态与游标跳转（轨道行是 memo 组件，经上下文取）。seek 不按吸附取整，跳到关键帧本身。
+// 曲线参数区的查看状态、所查看曲线上选中的关键帧序号与游标跳转（轨道行是 memo 组件，经上下文取）。
+// seek 不按吸附取整，跳到关键帧本身。
 interface CurveView {
   inspected: Params['curveParam'];
   inspect(track: string, parameter: string | null): void;
   resize(track: string, height: number): void;
   seek(value: number): void;
+  keys: number[];
+  selectKeys(keys: number[]): void;
 }
-const CurveViewContext = createContext<CurveView>({ inspected: null, inspect: () => {}, resize: () => {}, seek: () => {} });
+const CurveViewContext = createContext<CurveView>({
+  inspected: null, inspect: () => {}, resize: () => {}, seek: () => {}, keys: [], selectKeys: () => {},
+});
 
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
@@ -796,12 +805,18 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
   }, [frames, observed, focused, step, inputScheme, inputObservation]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
+  const [pickedKeys, setPickedKeys] = useState<number[]>([]);
   const curveView = useMemo<CurveView>(() => ({
     inspected: params.curveParam,
-    inspect: (track, parameter) => setParams({ curveParam: parameter === null ? null : { track, parameter } }),
+    inspect: (track, parameter) => {
+      setPickedKeys([]);
+      setParams({ curveParam: parameter === null ? null : { track, parameter } });
+    },
     resize: (track, height) => setParams({ curveHeights: { ...params.curveHeights, [track]: Math.round(height) } }),
     seek: value => seek(value, true),
-  }), [params.curveParam, params.curveHeights, setParams, seek]);
+    keys: pickedKeys,
+    selectKeys: setPickedKeys,
+  }), [params.curveParam, params.curveHeights, setParams, seek, pickedKeys]);
 
   // 显示全部（照 Timeline 的 Frame All，快捷键 A）：所看的 Timeline，否则整条时间轴。
   const frameAll = useCallback(() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) }), [setParams, focused, bounds]);
@@ -1700,10 +1715,10 @@ function CurveParameters({ row, elements, mixes, author, height }: {
   let controls: ReactNode = null;
   if (inspected) {
     const { span, curve, channel } = inspected;
-    if (channel && !curve) controls = author
+    if (channel && !curve) controls = <div className={styles.curveKeys}>{author
       ? <Button variant="ghost" onClick={() => write(channel, defaultChannelCurve(channel))}>按默认直线创建</Button>
-      : <span className={styles.curveNote}>未设置，运行时不起作用</span>;
-    else if (!span) controls = <span className={styles.curveNote}>片段没有淡入淡出或混合，不取值</span>;
+      : <span className={styles.curveNote}>未设置，运行时不起作用</span>}</div>;
+    else if (!span) controls = <div className={styles.curveKeys}><span className={styles.curveNote}>片段没有淡入淡出或混合，不取值</span></div>;
     else {
       // 游标在参数区间里的归一化时间；离关键帧不到半个 tick 视为在关键帧上。
       const length = span.end - span.start;
@@ -1714,19 +1729,40 @@ function CurveParameters({ row, elements, mixes, author, height }: {
       const next = t === null ? undefined : inspected.times.find(time => time > t + tolerance);
       const jump = (time: number) => view.seek(span.start + time * length);
       const inside = t !== null && t >= -tolerance && t <= 1 + tolerance;
+      // 单选一个关键帧时可直接输入它的时间（参数区间内的秒数）与值（照 Unity Edit Key）。
+      const single = author && channel && curve && view.keys.length === 1 ? curveKeys(curve)[view.keys[0]] : undefined;
+      const place = (time: number, value: number) => {
+        const result = moveKeys(curve!, view.keys, () => [roundCurve(clamp01(time)), roundCurve(Math.max(channel!.min, Math.min(channel!.max, value)))]);
+        if (!result) return;
+        write(channel!, result.curve);
+        view.selectKeys(result.indices);
+      };
       controls = <>
-        <button className={styles.curveKeyButton} disabled={previous === undefined} title="上一关键帧" onClick={() => jump(previous!)}>
-          <KeyIcon kind="previous" />
-        </button>
-        <button className={styles.curveKeyButton} data-on={atKey || undefined} disabled={!author || !inside || !channel}
-          title={!channel ? `参考曲线只读（${inspected.reference}）` : atKey ? '删除游标处的关键帧' : '在游标处添加关键帧'}
-          onClick={() => write(channel!, atKey ? curveWithoutKey(curve!, t!, tolerance) : curveWithKey(curve!, clamp01(t!)))}>
-          <KeyIcon kind="key" />
-        </button>
-        <button className={styles.curveKeyButton} disabled={next === undefined} title="下一关键帧" onClick={() => jump(next!)}>
-          <KeyIcon kind="next" />
-        </button>
-        <span className={styles.curveValue} title="游标处的值">{t === null ? '—' : inspected.value(clamp01(t)).toFixed(3)}</span>
+        <div className={styles.curveKeys}>
+          <button className={styles.curveKeyButton} disabled={previous === undefined} title="上一关键帧" onClick={() => jump(previous!)}>
+            <KeyIcon kind="previous" />
+          </button>
+          <button className={styles.curveKeyButton} data-on={atKey || undefined} disabled={!author || !inside || !channel}
+            title={!channel ? `参考曲线只读（${inspected.reference}）` : atKey ? '删除游标处的关键帧' : '在游标处添加关键帧'}
+            onClick={() => {
+              view.selectKeys([]);
+              write(channel!, atKey ? curveWithoutKey(curve!, t!, tolerance) : curveWithKey(curve!, clamp01(t!)));
+            }}>
+            <KeyIcon kind="key" />
+          </button>
+          <button className={styles.curveKeyButton} disabled={next === undefined} title="下一关键帧" onClick={() => jump(next!)}>
+            <KeyIcon kind="next" />
+          </button>
+          <span className={styles.curveValue} title="游标处的值">{t === null ? '—' : inspected.value(clamp01(t)).toFixed(3)}</span>
+        </div>
+        {single && <div className={styles.curveKeys}>
+          <span className={styles.curveKeyLabel}>时间</span>
+          <NumberInput label="关键帧时间（秒）" value={roundCurve(keyTime(single) * length)} min={0} max={length} step={tick}
+            onChange={value => { if (value !== null) place(value / length, keyValue(single)); }} />
+          <span className={styles.curveKeyLabel}>值</span>
+          <NumberInput label="关键帧值" value={keyValue(single)} min={channel!.min} max={channel!.max} step={0.01}
+            onChange={value => { if (value !== null) place(keyTime(single), value); }} />
+        </div>}
       </>;
     }
   }
@@ -1742,7 +1778,7 @@ function CurveParameters({ row, elements, mixes, author, height }: {
         </button>
       ))}
       {failure && <span className={styles.curveNote} title={failure}>参考曲线读取失败</span>}
-      {inspected && <div className={styles.curveKeys}>{controls}</div>}
+      {inspected && controls}
       {inspected && <div className={styles.curveResize} title="拖动改变曲线区高度"
         onPointerDown={event => {
           if (event.button !== 0) return;
@@ -1757,7 +1793,13 @@ function CurveParameters({ row, elements, mixes, author, height }: {
 
 // 纵向范围 min–max 含留白；low–high 为曲线实际取值的上下端。
 interface CurveScale { min: number; max: number; low: number; high: number }
-type CurveDraft = { index: number; t: number; v: number; from: { t: number; v: number }; scale: CurveScale };
+// 曲线编辑的拖动草稿：移动所选关键帧、拖切线手柄（预览曲线与原曲线、纵向范围冻结），或框选关键帧（曲线区像素坐标）。
+type CurveDraft =
+  | { kind: 'move'; from: { t: number; v: number }; base: JsonObject; preview: JsonObject; indices: number[]; moved: number[]; scale: CurveScale }
+  | { kind: 'tangent'; index: number; side: TangentSide; base: JsonObject; preview: JsonObject; scale: CurveScale }
+  | { kind: 'box'; x0: number; y0: number; x1: number; y1: number; add: boolean };
+const tangentNames: Record<TangentKind, string> = { free: 'Free', linear: 'Linear', constant: 'Constant' };
+const tangentHandle = 36;
 
 // 曲线的纵向范围（照 Slate FrameAllCurvesOf）：曲线实际取值（通道参数并上通道取值域），上下留白。
 function curveScale(parameter: CurveParameter): CurveScale {
@@ -1776,15 +1818,21 @@ function curveScale(parameter: CurveParameter): CurveScale {
 const scaleLabel = (value: number) => Number(value.toPrecision(4)).toString();
 
 // 片段下方的参数区（照 TrackEditorGUI.DrawClipCurves）：只在选中片段的时间范围内画。未查看参数时每个参数一行，
-// 菱形为关键帧，单击一行查看该参数；查看时上方一行关键帧，下面是完整曲线。作者模式下可拖动通道参数的关键帧改时间与值，
-// 时间限在 0–1，值限在通道取值域，取到万分位写回；参考曲线只读。
+// 菱形为关键帧，单击一行查看该参数；查看时上方一行关键帧，下面是完整曲线。
+// 作者模式下通道参数照 Unity 曲线编辑器编辑：单击选中、Shift 加选、空白处拖动框选，拖动所选关键帧改时间与值
+// （时间按 tick 吸附并限在 0–1，值限在通道取值域，取到万分位），选中关键帧显示切线手柄，双击空白处添加关键帧，
+// 右键关键帧删除或设切线模式，Delete 删除所选；参考曲线只读。
 function ClipCurves({ row, elements, mixes, author, height }: {
   row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
+  const step = useContext(SnapContext);
   const { clip, parameters, inspected, view } = useCurveClip(row, elements, mixes);
   const [draft, setDraft] = useState<CurveDraft | null>(null);
+  const [menu, setMenu] = useState<{ key: number | null; t: number }>({ key: null, t: 0 });
   const svg = useRef<SVGSVGElement>(null);
+  const inspecting = inspected !== null;
+  useEffect(() => { if (inspecting) view.selectKeys([]); }, [clip?.key]);
   const x = (seconds: number) => valueToPixels(seconds - range.start);
   if (!clip) return (
     <div className={styles.clipCurves} style={{ top: trackHeight, height }}>
@@ -1817,70 +1865,212 @@ function ClipCurves({ row, elements, mixes, author, height }: {
 
   const { span, curve, channel } = inspected;
   const plotTop = 26, plotBottom = height - 6;
-  const scale = draft?.scale ?? curveScale(inspected);
-  const y = (value: number) => plotTop + (scale.max - value) / (scale.max - scale.min) * (plotBottom - plotTop);
-  const editable = author && channel !== null && curve !== null;
-  const shown = curve && draft ? { ...curve, keys: curveKeys(curve).map((key, index) => index === draft.index
-    ? { ...key, time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : key)
-    .sort((a, b) => numberOf(a.time) - numberOf(b.time)) } : curve;
+  const scale = draft && draft.kind !== 'box' ? draft.scale : curveScale(inspected);
+  const pxPerV = (plotBottom - plotTop) / (scale.max - scale.min);
+  const y = (value: number) => plotTop + (scale.max - value) * pxPerV;
+  const editable = author && channel !== null && curve !== null && span !== null;
+  const shown = draft && draft.kind !== 'box' ? draft.preview : curve;
+  const keys = curveKeys(shown);
+  const picked = draft?.kind === 'move' ? draft.moved : view.keys.filter(index => index < keys.length);
   const valueAt = shown ? (t: number) => evaluateCurve(shown, t) : inspected.value;
-  const move = (event: PointerEvent<SVGSVGElement>) => {
-    if (!draft || !span || !channel) return;
+  const length = span ? span.end - span.start : 1;
+  const pxPerT = span ? spanX(span, 1) - spanX(span, 0) : 1;
+  const snapT = (t: number) => clamp01(step ? Math.round(t * length / step) * step / length : t);
+  const clampV = (v: number) => channel ? Math.max(channel.min, Math.min(channel.max, v)) : v;
+  const at = (event: { clientX: number; clientY: number }) => {
     const box = svg.current!.getBoundingClientRect();
-    const t = clamp01((getValueFromScreenX(event.clientX) - span.start) / (span.end - span.start));
-    const v = draft.scale.max - (event.clientY - box.top - plotTop) / (plotBottom - plotTop) * (draft.scale.max - draft.scale.min);
-    setDraft({ ...draft, t: roundCurve(t), v: roundCurve(Math.max(channel.min, Math.min(channel.max, v))) });
+    const px = event.clientX - box.left, py = event.clientY - box.top;
+    return { px, py, t: span ? (getValueFromScreenX(event.clientX) - span.start) / length : 0, v: scale.max - (py - plotTop) / pxPerV };
+  };
+  const write = (next: JsonObject) => authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [channel!.member], next);
+  const commit = (result: { curve: JsonObject; indices: number[] } | null) => {
+    if (!result) return;
+    write(result.curve);
+    view.selectKeys(result.indices);
+  };
+  const addAt = (t: number) => {
+    if (!curve || t < 0 || t > 1) return;
+    const time = roundCurve(snapT(t));
+    if (keys.some(key => Math.abs(keyTime(key) - time) < 1e-6)) return;
+    const next = curveWithKey(curve, time);
+    write(next);
+    view.selectKeys([curveKeys(next).findIndex(key => keyTime(key) === time)]);
+  };
+  const remove = (indices: number[]) => {
+    if (!curve || !indices.length) return;
+    write(removeKeys(curve, indices));
+    view.selectKeys([]);
+  };
+  const capture = (event: PointerEvent<Element>) => {
+    event.stopPropagation();
+    svg.current!.focus();
+    svg.current!.setPointerCapture(event.pointerId);
+  };
+  const down = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    if (!editable) return;
+    capture(event);
+    const p = at(event);
+    setDraft({ kind: 'box', x0: p.px, y0: p.py, x1: p.px, y1: p.py, add: event.shiftKey });
+  };
+  const grabKey = (event: PointerEvent<SVGElement>, index: number) => {
+    if (event.button !== 0 || !editable) return;
+    capture(event);
+    if (event.shiftKey) {
+      view.selectKeys(picked.includes(index) ? picked.filter(item => item !== index) : [...picked, index]);
+      return;
+    }
+    const indices = picked.includes(index) ? picked : [index];
+    view.selectKeys(indices);
+    const p = at(event);
+    setDraft({ kind: 'move', from: { t: p.t, v: p.v }, base: curve!, preview: curve!, indices, moved: indices, scale });
+  };
+  const grabTangent = (event: PointerEvent<SVGElement>, index: number, side: TangentSide) => {
+    if (event.button !== 0) return;
+    capture(event);
+    setDraft({ kind: 'tangent', index, side, base: curve!, preview: curve!, scale });
+  };
+  const move = (event: PointerEvent<SVGSVGElement>) => {
+    if (!draft) return;
+    const p = at(event);
+    if (draft.kind === 'box') { setDraft({ ...draft, x1: p.px, y1: p.py }); return; }
+    if (!span) return;
+    if (draft.kind === 'move') {
+      const dt = p.t - draft.from.t, dv = p.v - draft.from.v;
+      const result = moveKeys(draft.base, draft.indices, (t, v) => [roundCurve(snapT(t + dt)), roundCurve(clampV(v + dv))]);
+      if (result) setDraft({ ...draft, preview: result.curve, moved: result.indices });
+      return;
+    }
+    // 切线为手柄方向在曲线坐标里的斜率（值 / 归一化时间）；左手柄只取向左、右手柄只取向右。
+    const key = curveKeys(draft.base)[draft.index];
+    const dx = (p.px - spanX(span, keyTime(key))) / pxPerT;
+    const run = draft.side === 'right' ? Math.max(dx, 1e-4) : Math.min(dx, -1e-4);
+    const rise = (y(keyValue(key)) - p.py) / pxPerV;
+    setDraft({ ...draft, preview: setTangent(draft.base, draft.index, draft.side, roundCurve(rise / run)).curve });
   };
   const release = () => {
-    if (!draft || !curve || !channel) return;
+    if (!draft) return;
     setDraft(null);
-    if (draft.t === draft.from.t && draft.v === draft.from.v) return;
-    const keys = curveKeys(curve).map((key, index) => index === draft.index
-      ? { ...cloneJson(key), time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : cloneJson(key));
-    keys.sort((a, b) => numberOf(a.time) - numberOf(b.time));
-    authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [channel.member], { ...cloneJson(curve), keys });
+    if (draft.kind === 'box') {
+      const [x0, x1] = [Math.min(draft.x0, draft.x1), Math.max(draft.x0, draft.x1)];
+      const [y0, y1] = [Math.min(draft.y0, draft.y1), Math.max(draft.y0, draft.y1)];
+      const inside = span && x1 - x0 + y1 - y0 > 3 ? keys.flatMap((key, index) => {
+        const kx = spanX(span, keyTime(key)), ky = y(keyValue(key));
+        return kx >= x0 && kx <= x1 && ky >= y0 && ky <= y1 ? [index] : [];
+      }) : [];
+      view.selectKeys(draft.add ? [...new Set([...picked, ...inside])] : inside);
+      return;
+    }
+    if (draft.preview === draft.base) return;
+    write(draft.preview);
+    view.selectKeys(draft.kind === 'move' ? draft.moved : [draft.index]);
   };
-  const samples = span ? Math.max(16, Math.min(240, Math.round((spanX(span, 1) - spanX(span, 0)) / 3))) : 0;
+  const keyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if ((event.key !== 'Delete' && event.key !== 'Backspace') || !editable || !picked.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    remove(picked);
+  };
+  // 右键关键帧时先选中它（已在所选中则作用于全部所选），菜单随所选给出。
+  const openMenu = (event: ReactMouseEvent<SVGSVGElement>) => {
+    event.stopPropagation();
+    const hit = (event.target as Element).closest('[data-key]');
+    const key = hit ? Number(hit.getAttribute('data-key')) : null;
+    if (key !== null && !picked.includes(key)) view.selectKeys([key]);
+    setMenu({ key, t: at(event).t });
+  };
+  const menuEntries = (): MenuEntry[] => {
+    const note = (label: string): MenuEntry[] => [{ label, disabled: true, onSelect: () => {} }];
+    if (!author) return note('进入作者模式后可编辑');
+    if (!channel) return note(`参考曲线只读（${inspected.reference}）`);
+    if (!editable) return note('这条曲线现在不取值，不能编辑');
+    const add: MenuEntry = { label: '在此处添加关键帧', disabled: menu.t < 0 || menu.t > 1, onSelect: () => addAt(menu.t) };
+    if (menu.key === null) return [add];
+    const targets = picked.includes(menu.key) ? picked : [menu.key];
+    const items = targets.map(index => keys[index]).filter(Boolean);
+    const all = (test: (key: JsonObject) => boolean) => items.length > 0 && items.every(test);
+    const sideEntries = (label: string, sides: TangentSide[]): MenuEntry[] => [
+      { kind: 'label', label },
+      ...(['free', 'linear', 'constant'] as const).map((kind): MenuEntry => ({
+        kind: 'radio', label: tangentNames[kind], checked: all(key => sides.every(side => tangentKind(key, side) === kind)),
+        onSelect: () => commit(setTangentKind(curve!, targets, sides, kind)),
+      })),
+    ];
+    return [
+      { label: targets.length > 1 ? `删除 ${targets.length} 个关键帧` : '删除关键帧', onSelect: () => remove(targets) },
+      { kind: 'separator' },
+      {
+        kind: 'radio', label: 'Free Smooth', onSelect: () => commit(smoothKeys(curve!, targets, false)),
+        checked: all(key => !isBroken(key) && tangentKind(key, 'left') === 'free' && tangentKind(key, 'right') === 'free'),
+      },
+      { label: 'Flat', onSelect: () => commit(smoothKeys(curve!, targets, true)) },
+      { kind: 'check', label: 'Broken', checked: all(isBroken), onChange: checked => commit(breakKeys(curve!, targets, checked)) },
+      { kind: 'separator' },
+      ...sideEntries('左切线', ['left']), ...sideEntries('右切线', ['right']), ...sideEntries('两侧切线', ['left', 'right']),
+    ];
+  };
+  const samples = span ? Math.max(16, Math.min(240, Math.round(pxPerT / 3))) : 0;
   const points = span && (curve || !channel) ? Array.from({ length: samples + 1 }, (_, index) => index / samples)
     .map(t => `${spanX(span, t)},${y(valueAt(t))}`).join(' ') : null;
   // 参考线：通道参数为取值域两端，参考曲线为实际取值的上下端。
   const guides = channel ? [channel.max, channel.min] : scale.high > scale.low ? [scale.high, scale.low] : [scale.high];
+  const times = editable ? keys.map(keyTime) : inspected.times;
+  // 所选关键帧的切线手柄：沿切线方向固定长度；首帧没有左手柄、末帧没有右手柄，阶跃（无穷）切线不画。
+  const handles = editable ? picked.flatMap(index => {
+    const key = keys[index];
+    const kx = spanX(span, keyTime(key)), ky = y(keyValue(key));
+    return (['left', 'right'] as const).filter(side => side === 'left' ? index > 0 : index < keys.length - 1).flatMap(side => {
+      const slope = tangentOf(key, side);
+      if (!Number.isFinite(slope)) return [];
+      const dy = -slope * pxPerV, norm = Math.hypot(pxPerT, dy) || 1, sign = side === 'left' ? -1 : 1;
+      return [{ index, side, kx, ky, hx: kx + sign * pxPerT / norm * tangentHandle, hy: ky + sign * dy / norm * tangentHandle, slope }];
+    });
+  }) : [];
   return (
-    <svg ref={svg} className={styles.clipCurves} style={{ top: trackHeight, height, ['--cc' as string]: inspected.color }}
-      onPointerMove={move} onPointerUp={release} onPointerCancel={() => setDraft(null)}>
-      <rect className={styles.curveClipArea} x={left} y={1} width={width} height={height - 4} />
-      <rect className={styles.curveRowBand} x={left} y={4} width={width} height={16} />
-      {span && inspected.times.map((time, key) => <path key={key} className={styles.curveDope} d={curveDiamond(spanX(span, clamp01(time)), 12, 4)} />)}
-      <line className={styles.curvePlotEdge} x1={left} x2={left + width} y1={plotTop - 3} y2={plotTop - 3} />
-      {guides.map((value, index) => (
-        <g key={index}>
-          <line className={styles.curveGuide} x1={left} x2={left + width} y1={y(value)} y2={y(value)} />
-          <text className={styles.curveScaleText} x={left + 4} y={y(value) - 3}>{scaleLabel(value)}</text>
-        </g>
-      ))}
-      {points && <polyline className={styles.curvePlotLine} points={points} />}
-      {span && shown && editable && curveKeys(curve).map((key, index) => {
-        const t = draft?.index === index ? draft.t : numberOf(key.time);
-        const v = draft?.index === index ? draft.v : numberOf(key.value);
-        return (
-          <circle key={index} className={styles.curvePlotKey} cx={spanX(span, clamp01(t))} cy={y(v)} r={3.5}
-            data-active={draft?.index === index || undefined}
-            onPointerDown={event => {
-              if (event.button !== 0) return;
-              event.stopPropagation();
-              svg.current!.setPointerCapture(event.pointerId);
-              setDraft({ index, t, v, from: { t, v }, scale });
-            }}>
-            <title>{`${inspected.name} 关键帧 ${index} · ${t.toFixed(3)}, ${v.toFixed(3)} · 拖动修改`}</title>
+    <ContextMenu entries={menuEntries()}>
+      <svg ref={svg} className={styles.clipCurves} tabIndex={-1} style={{ top: trackHeight, height, ['--cc' as string]: inspected.color }}
+        onPointerDown={down} onPointerMove={move} onPointerUp={release} onPointerCancel={() => setDraft(null)}
+        onDoubleClick={event => { if (editable && !(event.target as Element).closest('[data-key], [data-handle]')) addAt(at(event).t); }}
+        onKeyDown={keyDown} onContextMenu={openMenu}>
+        <rect className={styles.curveClipArea} x={left} y={1} width={width} height={height - 4} />
+        <rect className={styles.curveRowBand} x={left} y={4} width={width} height={16} />
+        {span && times.map((time, key) => <path key={key} className={styles.curveDope} data-active={(editable && picked.includes(key)) || undefined}
+          d={curveDiamond(spanX(span, clamp01(time)), 12, 4)} />)}
+        <line className={styles.curvePlotEdge} x1={left} x2={left + width} y1={plotTop - 3} y2={plotTop - 3} />
+        {guides.map((value, index) => (
+          <g key={index}>
+            <line className={styles.curveGuide} x1={left} x2={left + width} y1={y(value)} y2={y(value)} />
+            <text className={styles.curveScaleText} x={left + 4} y={y(value) - 3}>{scaleLabel(value)}</text>
+          </g>
+        ))}
+        {points && <polyline className={styles.curvePlotLine} points={points} />}
+        {handles.map(handle => (
+          <g key={`${handle.index}-${handle.side}`} className={styles.curveHandle} data-handle="">
+            <line x1={handle.kx} y1={handle.ky} x2={handle.hx} y2={handle.hy} />
+            <circle cx={handle.hx} cy={handle.hy} r={3} onPointerDown={event => grabTangent(event, handle.index, handle.side)}>
+              <title>{`${handle.side === 'left' ? '左' : '右'}切线 ${handle.slope.toFixed(3)} · 拖动修改`}</title>
+            </circle>
+          </g>
+        ))}
+        {editable && keys.map((key, index) => (
+          <circle key={index} data-key={index} className={styles.curvePlotKey} cx={spanX(span, clamp01(keyTime(key)))} cy={y(keyValue(key))} r={3.5}
+            data-active={picked.includes(index) || undefined} onPointerDown={event => grabKey(event, index)}>
+            <title>{`${inspected.name} 关键帧 ${index} · ${(keyTime(key) * length).toFixed(3)} s, ${keyValue(key).toFixed(3)} · 拖动修改，右键设切线`}</title>
           </circle>
-        );
-      })}
-      {inspected.reference && <text className={styles.curveScaleText} x={left + width - 4} y={plotBottom - 2} textAnchor="end">
-        参考：{inspected.reference}（只读）
-      </text>}
-      {channel && !curve ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>未设置，运行时不起作用</text>
-        : !span ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>片段没有淡入淡出或混合，这条缓动曲线不取值</text> : null}
-    </svg>
+        ))}
+        {draft?.kind === 'box' && <rect className={styles.curveBox} x={Math.min(draft.x0, draft.x1)} y={Math.min(draft.y0, draft.y1)}
+          width={Math.abs(draft.x1 - draft.x0)} height={Math.abs(draft.y1 - draft.y0)} />}
+        {editable && <text className={styles.curveScaleText} x={left + width - 4} y={plotTop + 10} textAnchor="end">
+          双击添加 · 拖动框选 · 右键切线 · Delete 删除
+        </text>}
+        {inspected.reference && <text className={styles.curveScaleText} x={left + width - 4} y={plotBottom - 2} textAnchor="end">
+          参考：{inspected.reference}（只读）
+        </text>}
+        {channel && !curve ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>未设置，运行时不起作用</text>
+          : !span ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>片段没有淡入淡出或混合，这条缓动曲线不取值</text> : null}
+      </svg>
+    </ContextMenu>
   );
 }
 
