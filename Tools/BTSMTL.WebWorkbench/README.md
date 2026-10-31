@@ -76,7 +76,7 @@
 
 就绪标记写在 `<html>` 的 `data-*` 属性上，只有可见面板参与判断，帧或资源变化时先删除 `image-ready`：
 
-- 运行：`data-preview-run`、`-frame`、`-frame-index`、`-consistency`、`-content`、`-rendered`、`-image-ready`。Timeline、节点图与 `panel` 指定的面板按当前帧实际绘制完成后一次写入；`preview-rendered` 由逻辑视图按实际画出的内容填写。
+- 运行：`data-preview-run`、`-frame`、`-frame-index`、`-consistency`、`-content`、`-rendered`、`-image-ready`。帧号与可选的一致性值直接取当前通用帧的 `hostFrame`、`consistency.value`，不要求逻辑通道；未提供一致性值时不写 `preview-consistency`。Timeline、节点图与 `panel` 指定的面板按当前帧实际绘制完成后一次写入；`preview-rendered` 由逻辑视图按实际画出的内容填写。
 - 资源：`data-resource-identity`、`-revision`、`-library`、`-source`、`-time`、`-image-ready`，资源面板按指定时刻绘制后写入。
 
 3C `Tools/CharacterWorkbench/CapturePreview.ps1` 用无头浏览器打开上述地址并核对这些属性。
