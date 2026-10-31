@@ -903,22 +903,24 @@
   vector-effect: non-scaling-stroke;
 }
 
-/* 片段名：白字黑影，在中段内居中，放不下时省略 */
-.clipLabel {
+/* 片段与标记共用的名字（ItemLabel）：白字黑影左对齐，宽度由同行下一项决定，超出时省略；不接鼠标；
+   离开本段的片段名随片段压暗 */
+.itemLabel, .item > .itemLabel {
   position: absolute;
-  left: calc(var(--in) + 6px);
-  right: calc(var(--out) + 6px);
   top: 0;
-  bottom: 0;
+  height: 30px;
   color: #fff;
   font-size: 11px;
   line-height: 30px;
-  text-align: center;
   text-shadow: 1px 1px 0 #000;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+
+.itemLabel[data-dim] {
+  opacity: .45;
 }
 
 /* 作者模式的淡入淡出手柄：悬停或选中片段时出现在顶边 */
@@ -1012,66 +1014,14 @@
   stroke: #fff;
 }
 
-/* 同一时刻叠着的标记数：类别色小圆角块白字，在名牌开头；名牌放不下时单独贴在细线右侧 */
-.markerCount {
-  display: inline-block;
-  box-sizing: border-box;
-  min-width: 12px;
-  height: 12px;
-  margin-right: 5px;
-  padding: 0 3px;
-  border-radius: 6px;
-  background: var(--tc);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 12px;
-  text-align: center;
-  vertical-align: 1px;
+/* 拖到同轨已有标记的时刻：细线与三角变红，同片段的非法放置 */
+.marker[data-invalid]::after {
+  background: #f33;
 }
 
-.markerCount[data-alone] {
-  position: absolute;
-  top: 9px;
-  margin: 0;
-}
-
-/* 事件名牌：标记与窄片段共用；深色半透明圆角底、细亮边、浅灰字，行内竖直居中，压在轨道底色上不抢片段；
-   标记的名牌把圆点包在左端；悬停提亮，选中同片段（选中底色、白框、白字），片段离开本段后随之压暗 */
-.eventLabel {
-  position: absolute;
-  top: 6px;
-  box-sizing: border-box;
-  height: 18px;
-  padding: 0 6px;
-  overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 7%);
-  border-radius: 9px;
-  background: rgb(22 23 25 / 72%);
-  color: var(--text);
-  font-size: 11px;
-  line-height: 16px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.item > .eventLabel {
-  pointer-events: none;
-}
-
-.marker:hover .eventLabel {
-  background: rgb(40 42 46 / 90%);
-  color: #fff;
-}
-
-.eventLabel[data-selected] {
-  border-color: #fff;
-  background: var(--tl-clip-selected);
-  color: #fff;
-}
-
-.eventLabel[data-dim] {
-  opacity: .45;
+.marker[data-invalid] .markerHead path {
+  fill: #f33;
+  stroke: #f33;
 }
 
 /* 轨道头双击改名 */

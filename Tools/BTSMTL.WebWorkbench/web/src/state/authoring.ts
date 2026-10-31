@@ -754,6 +754,11 @@ export const authoringActions = {
   },
 
   setMarkerTime(documentId: string, markerId: string, seconds: number) {
+    const track = markerTrack(documentId, markerId);
+    if (track && markerTimeTaken(documentId, track, seconds, markerId)) {
+      consoleActions.log('warn', '作者', `同一轨道在 ${seconds.toFixed(3)} s 已有标记，标记不能重叠`);
+      return;
+    }
     authoringActions.edit(timelinePath(documentId), document => {
       const marker = tracksOf(document).flatMap(track => (track.m_Markers as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === markerId);
       if (!marker) throw new Error(`Timeline ${documentId} 中没有标记 ${markerId}`);
@@ -767,7 +772,11 @@ export const authoringActions = {
     return authoringActions.addClip(documentId, trackId, template.value, startSeconds, endSeconds, graph);
   },
 
-  addMarkerAt(documentId: string, trackId: string, elements: SkillElements, seconds: number): string {
+  addMarkerAt(documentId: string, trackId: string, elements: SkillElements, seconds: number): string | null {
+    if (markerTimeTaken(documentId, trackId, seconds, null)) {
+      consoleActions.log('warn', '作者', `同一轨道在 ${seconds.toFixed(3)} s 已有标记，标记不能重叠`);
+      return null;
+    }
     return authoringActions.addMarker(documentId, trackId, elements.marker.value, seconds, createGraph(elements, 'TimelineTrigger', '标记触发'));
   },
 
@@ -785,6 +794,22 @@ export const authoringActions = {
 };
 
 const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as JsonObject[];
+
+const markersOf = (track: JsonObject) => (track.m_Markers as JsonObject[] | undefined) ?? [];
+
+// 标记所在轨道的作者身份；当前文档里找不到时为 null。
+function markerTrack(documentId: string, markerId: string): string | null {
+  const document = currentDocument(timelinePath(documentId));
+  const track = document ? tracksOf(document).find(item => markersOf(item).some(marker => marker.m_AuthoringId === markerId)) : undefined;
+  return (track?.m_AuthoringId as string | undefined) ?? null;
+}
+
+// 标记不许重叠：同一轨道上除 except 外是否已有标记在这一时刻（按定点时刻比较）。
+export function markerTimeTaken(documentId: string, trackId: string, seconds: number, except: string | null): boolean {
+  const document = currentDocument(timelinePath(documentId));
+  const track = document ? tracksOf(document).find(item => item.m_AuthoringId === trackId) : undefined;
+  return !!track && markersOf(track).some(marker => marker.m_AuthoringId !== except && numberOf(marker.m_TimeFPRawValue) === fpRaw(seconds));
+}
 
 let clipClipboard: JsonObject | null = null;
 
