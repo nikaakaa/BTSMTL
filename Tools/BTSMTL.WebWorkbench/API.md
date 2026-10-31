@@ -10,7 +10,7 @@
 - WebSocket 使用同源的 `ws://` 或 `wss://`。Vite 当前把 `/api`（含 WebSocket）代理到 `http://127.0.0.1:5367`；联调其它端口时，UI 开发配置应指向该实际 Host。
 - 独立启动通用网页服务只装配静态页面、动画资源及不可用的 `/api/preview/host`；完整编辑与运行使用项目 Host。技能和场景作者接口需 Host 启用 `SkillAuthoring`。
 - 作者文件的 `content` 是完整 JSON 原文字符串。读取、编辑和写出沿用 [skillJson.ts](web/src/state/skillJson.ts)，保留大整数及 `1.0` 等正式浮点写法；不能经过普通 `JSON.parse`／`JSON.stringify` 整体往返。
-- 响应里的帧号、64 位身份、序号、FP Raw 和修订保持字符串。控制请求的 SDK 帧／Timeline tick 是协议规定的整数 `number`，不由展示字符串重新推断其它时钟。
+- 公共帧键、64 位身份、序号、FP Raw 和修订保持字符串。定位请求只提交 `position:{hostFrame:"目标键"}`，由原 Host 按实际采用内容解释；网页不转换为 SDK 帧或 Timeline tick。
 - 查询分页有两种原合同：作者查询用 `hasMore`，档案分页用 `nextOffset`（终点为 `null`）。按各自回执翻页，不把二者混用。
 - 三维公共几何采用右手坐标、Y 轴向上、米；四元数顺序为 `[x,y,z,w]`。画面使用实际 `flipY` 和列主序 `worldToClip`。
 
