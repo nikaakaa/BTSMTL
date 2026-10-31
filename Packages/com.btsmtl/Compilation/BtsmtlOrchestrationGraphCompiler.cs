@@ -721,6 +721,7 @@ namespace BTSMTL.Compilation
                     string type = HostInputType(m_Operations[i]);
                     if (type != null)
                     {
+                        yield return m_Operations[i].Text0;
                         yield return type;
                         if (type.StartsWith("Enum:", StringComparison.Ordinal))
                             yield return type.Substring(5);
