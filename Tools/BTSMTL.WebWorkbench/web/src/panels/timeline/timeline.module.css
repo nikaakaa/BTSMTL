@@ -948,8 +948,8 @@
   pointer-events: none;
 }
 
-/* 标记：8 像素类别色圆点在行内居中、深色描边（左右共 12 像素可点中）；未绑定节点图时只留类别色圆环；
-   悬停圆点提亮，选中时圆点变白并压在其它标记之上 */
+/* 标记：1 像素类别色细线贯穿整行，顶端 9×6 朝下小三角（左右共 12 像素可点中）；未绑定节点图时三角只留轮廓；
+   悬停提亮，选中时细线与三角变白并压在其它标记之上 */
 .marker {
   all: unset;
   position: absolute;
@@ -968,24 +968,34 @@
   width: 12px;
 }
 
-.markerDot {
+.marker::after {
+  content: '';
   position: absolute;
-  top: 11px;
-  left: -4px;
-  box-sizing: border-box;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  top: 0;
+  bottom: 0;
+  left: -.5px;
+  width: 1px;
   background: var(--tc);
-  box-shadow: 0 0 0 1.5px #1b1b1b;
 }
 
-.marker[data-unbound] .markerDot {
-  border: 1.5px solid var(--tc);
-  background: transparent;
+.markerHead {
+  position: absolute;
+  top: 0;
+  left: -4.5px;
 }
 
-.marker:hover .markerDot {
+.markerHead path {
+  fill: var(--tc);
+  stroke: var(--tc);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.marker[data-unbound] .markerHead path {
+  fill: var(--tl-track);
+}
+
+.marker:hover::after, .marker:hover .markerHead {
   filter: brightness(1.3);
 }
 
@@ -993,8 +1003,13 @@
   z-index: 4;
 }
 
-.marker[data-selected] .markerDot {
+.marker[data-selected]::after {
   background: #fff;
+}
+
+.marker[data-selected] .markerHead path {
+  fill: #fff;
+  stroke: #fff;
 }
 
 /* 事件名牌：标记与窄片段共用；深色半透明圆角底、细亮边、浅灰字，行内竖直居中，压在轨道底色上不抢片段；

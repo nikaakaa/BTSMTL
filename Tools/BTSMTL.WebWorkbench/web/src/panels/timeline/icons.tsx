@@ -34,6 +34,13 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
+// 标记三角（9×6）：朝下，尖端对准时刻，接标记细线。
+export const MarkerTriangle = (props: ShapeProps) => (
+  <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden focusable="false" {...props}>
+    <path d="M.5.5h8L4.5 5.5z" />
+  </svg>
+);
+
 // 播放头（TimelineTimeCursor，11×20）：上方圆角的白色五边形，尖端接游标线。
 export const PlayheadShape = () => (
   <svg width="11" height="20" viewBox="0 0 11 20" aria-hidden focusable="false">
