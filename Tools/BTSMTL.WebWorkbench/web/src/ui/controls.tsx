@@ -19,12 +19,13 @@ export function TipProvider({ children }: { children: ReactNode }) {
   return <Tooltip.Provider delay={500} closeDelay={0}>{children}</Tooltip.Provider>;
 }
 
-// delay 覆盖默认的 500 毫秒，Timeline 片段与标记悬停即显示名字时用 0。
-export function Tip({ content, delay, children }: { content: ReactNode; delay?: number; children: ReactElement }) {
+// delay 覆盖默认的 500 毫秒，Timeline 片段与标记悬停即显示名字时用 0；
+// disabled 暂不提示但保留触发元素不重建（Timeline 片段名在框内写全时）。
+export function Tip({ content, delay, disabled, children }: { content: ReactNode; delay?: number; disabled?: boolean; children: ReactElement }) {
   const container = usePortalContainer();
   if (content === null || content === undefined || content === '') return children;
   return (
-    <Tooltip.Root>
+    <Tooltip.Root disabled={disabled}>
       <Tooltip.Trigger render={children} delay={delay} />
       <Tooltip.Portal container={container}>
         <Tooltip.Positioner className={styles.positioner} sideOffset={6}>

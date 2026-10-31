@@ -2181,7 +2181,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 }
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
-// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写（悬停即显示（Tip，无延迟））；exit 之后的部分压暗。
+// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停即提示完整名字与起止（Tip，无延迟），写全时不提示；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
 function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
@@ -2212,19 +2212,20 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
+  const labelShown = labelWidth > clipLabelMinWidth;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
-        <Tip delay={0} content={`${label}\n${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}`}>
+        <Tip delay={0} disabled={labelShown && labelTextWidth(label) <= labelWidth} content={`${label}\n${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}`}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
-          {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel}>{label}</span>}
+          {labelShown && <span className={styles.clipLabel}>{label}</span>}
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
             start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }}
             step={(edit && clipGrid(edit.documentId, edit.clipId)?.step) ?? minimumStep} />}
@@ -2235,6 +2236,20 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
       </div>
     </div>
   );
+}
+
+// 片段名在 11px 字体下的像素宽度（按名字缓存），判断框内能否写全；写全时不再悬停提示，没写或被截断时提示补出完整名字。
+const labelWidths = new Map<string, number>();
+let labelContext: CanvasRenderingContext2D | null = null;
+function labelTextWidth(text: string): number {
+  let width = labelWidths.get(text);
+  if (width === undefined) {
+    labelContext ??= document.createElement('canvas').getContext('2d')!;
+    labelContext.font = `11px ${getComputedStyle(document.body).fontFamily}`;
+    width = labelContext.measureText(text).width;
+    labelWidths.set(text, width);
+  }
+  return width;
 }
 
 // 照 Timeline Editor：双击片段或标记打开它的节点图。
