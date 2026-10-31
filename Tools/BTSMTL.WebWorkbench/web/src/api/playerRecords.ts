@@ -73,7 +73,7 @@ export const readPreviewClock = object({ position, seconds: number, positionDisp
 const contentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
   contentIdentity: nullable(text), contentRevision: nullable(text), bindingRevision: nullable(text) });
 const source = object({
-  execution: executionIdentity, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  execution: executionIdentity, contentRevision: text, sceneRevision: nullable(text), inputSource: nullable(text), inputRevision: nullable(text),
   clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(contentIdentity),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
@@ -312,7 +312,7 @@ const dataCurve = object({
 });
 export const readPlayerCurves = observationPage(dataCurve);
 export const readPlayerCurveSamples = object({
-  curve: dataCurve, sdkTickRate: number, firstRecordedSdkFrame: text,
+  curve: dataCurve,
   page: page(object({ source, presentationSequence: nullable(text), presentationTick: nullable(number), value: number, rawValue: text })),
   availability: array(availability),
 });
@@ -377,7 +377,7 @@ export type PlayerCurveSample = ReturnType<typeof readPlayerCurveSamples>['page'
 export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
 export type PlayerFrameImage = ReturnType<typeof frameImage>;
 export type PlayerArchive = ReturnType<typeof readPlayerArchive>;
-export type PlayerArchiveRange = { firstSdkFrame: number; lastSdkFrame: number; offset: number; limit: number };
+export type PlayerArchiveRange = { firstFrame: string; lastFrame: string; offset: number; limit: number };
 
 export const newPlayerJobId = (): PlayerJobId => crypto.randomUUID() as PlayerJobId;
 export const readPlayerJobId = jobId;

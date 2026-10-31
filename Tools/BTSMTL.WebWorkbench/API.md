@@ -184,7 +184,7 @@ Load 的 `content` 是二选一：
 
 作业 stage 为 `queued/running/completed/failed/cancelled/rejected/unavailable`。按原 `statusPath` 读取，直到实际终态；失败是否有可读档案取原清单／回执，不用 stage 名字捏造空档案。
 
-档案下表全部为 GET。范围参数记为 `firstSdkFrame,lastSdkFrame,offset?,limit?`；`firstSdkFrame/lastSdkFrame` 是实际 SDK 范围，不是网页列表索引。分页 `limit` 默认 128。各通道结构直接使用 playerRecords 中对应读取器；不得假设所有结果都有同一分页外壳。
+档案下表全部为 GET。范围参数为 `firstFrame,lastFrame,offset?,limit?`；范围使用 Host 的原帧键，不是网页列表索引。网页原样提交十进制文本，由原 Host 绑定到其实际帧范围；不转换为 SDK 帧或另建范围协议。分页 `limit` 默认 128。各通道结构直接使用 playerRecords 中对应读取器；不得假设所有结果都有同一分页外壳。
 
 | 完整路径 | 参数／返回用途 |
 | --- | --- |
@@ -224,10 +224,10 @@ Load 的 `content` 是二选一：
 | `PreviewTransportAction` | `action,available,reason,target?`；target 明确可为 null，资格和前后／首末目标由原 Host 提供。 |
 | `PreviewClock` | `position,seconds,positionDisplayName,requestedPosition?,fields`；请求位置与实际位置分开，显示字段直接取 Host，seconds 使用所属真实时间轴。 |
 | `PreviewContentIdentity` | `kind,revision,documentId?,contentIdentity?,contentRevision?,bindingRevision?`；除前两项外均可为 null，实际内容和绑定修订随来源保留。 |
-| `PreviewFrameSource` | `execution,contentRevision,sceneRevision,inputSource,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null，未记录不补身份。 |
+| `PreviewFrameSource` | `execution,contentRevision,sceneRevision?,inputSource?,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null。独立 Timeline 没有场景修订或 Quantum 输入来源时保留 null，不猜方案或场景身份；未记录不补身份。 |
 | `PreviewSummary` | 原摘要字段保留，原 `playerBuildId` 改为必填 `execution`；构建 ID 从 `execution.playerBuildId` 读取。 |
 
-曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。上述公共来源、实时控制与通道范围的 Host 实际投影尚未完成采用检查；已部署的旧形状不会在前端兼容解码。
+曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。档案上下文保留原 Summary，范围和帧数只从它读取；不再读取项目清单来重建范围。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。上述公共来源、实时控制与通道范围尚未完成运行采用检查；已部署的旧形状不会在前端兼容解码。
 
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 

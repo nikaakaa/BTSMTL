@@ -61,10 +61,10 @@ export const playerApi = {
     decoded(`${job(id)}/curves/samples${query({ curveId, ...range })}`, readPlayerCurveSamples, signal),
   unavailable: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/unavailable${query({ ...range })}`, readPlayerUnavailable, signal),
-  archiveImageMetadata: (id: PlayerJobId, sdkFrame: string, signal?: AbortSignal) =>
-    decoded(`${job(id)}/images/${encodeURIComponent(sdkFrame)}/metadata`, readPlayerArchiveImage, signal),
-  archiveImage: (id: PlayerJobId, sdkFrame: string, signal?: AbortSignal) =>
-    getBlob(`${job(id)}/images/${encodeURIComponent(sdkFrame)}`, signal).then(response => response.blob()),
+  archiveImageMetadata: (id: PlayerJobId, hostFrame: string, signal?: AbortSignal) =>
+    decoded(`${job(id)}/images/${encodeURIComponent(hostFrame)}/metadata`, readPlayerArchiveImage, signal),
+  archiveImage: (id: PlayerJobId, hostFrame: string, signal?: AbortSignal) =>
+    getBlob(`${job(id)}/images/${encodeURIComponent(hostFrame)}`, signal).then(response => response.blob()),
   frameImages: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/frame-images${query({ ...range })}`, readPlayerFrameImages, signal),
   frameImage: (id: PlayerJobId, imageIndex: number, signal?: AbortSignal) =>

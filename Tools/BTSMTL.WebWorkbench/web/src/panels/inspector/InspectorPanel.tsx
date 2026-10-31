@@ -600,7 +600,7 @@ function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
                 {sample.presentationTick !== null && <Value label="表现 Tick" value={String(sample.presentationTick)} />}
                 <Identity extra={[
                   ...sample.source.clock.fields,
-                  { displayName: '场景修订', value: sample.source.sceneRevision },
+                  ...(sample.source.sceneRevision === null ? [] : [{ displayName: '场景修订', value: sample.source.sceneRevision }]),
                   { displayName: '输入修订', value: sample.source.inputRevision ?? '无固定修订' },
                 ]} />
               </Fold>)}
