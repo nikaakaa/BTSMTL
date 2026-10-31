@@ -1,7 +1,9 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, SVGProps } from 'react';
 import type { TrackKind } from '../../state/timelineModel';
 
 // Timeline 窗口专用图形的矢量重画（照 com.unity.timeline Dark 皮肤的轨道图标、标记与播放头形状），颜色取 currentColor。
+
+type ShapeProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 
 // 轨道头类型图标（16×16）：动画为关键帧，位移曲线为带端点的曲线，逻辑为节点树，输入为按键，其它为通用轨道。
 const trackIcons: Record<TrackKind, ReactElement> = {
@@ -25,6 +27,20 @@ export const TrackIcon = ({ kind }: { kind: TrackKind }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden focusable="false">{trackIcons[kind]}</svg>
 );
 
+// 面包屑里的 Timeline 资源图标（16×16）：错开的三段片段。
+export const TimelineAssetIcon = (props: ShapeProps) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden focusable="false" {...props}>
+    <path d="M1.5 3h7.5v2.5H1.5zm4.5 4h8.5v2.5H6zm-3 4h6.5v2.5H3z" />
+  </svg>
+);
+
+// 面包屑层级之间的细长箭头（7×20）。
+export const CrumbArrow = (props: ShapeProps) => (
+  <svg width="7" height="20" viewBox="0 0 7 20" fill="none" stroke="currentColor" aria-hidden focusable="false" {...props}>
+    <path d="M1 3.5 6 10l-5 6.5" />
+  </svg>
+);
+
 // 标记（TimelineMarkerItem，9×16）：上圆下尖的水滴。
 export const MarkerShape = () => (
   <svg width="9" height="16" viewBox="0 0 9 16" aria-hidden focusable="false">
@@ -32,7 +48,9 @@ export const MarkerShape = () => (
   </svg>
 );
 
-// 播放头（TimelineTimeCursor，11×20）：白色五边形，尖端接游标线。
+// 播放头（TimelineTimeCursor，11×20）：上方圆角的白色五边形，尖端接游标线。
 export const PlayheadShape = () => (
-  <svg width="11" height="20" viewBox="0 0 11 20" aria-hidden focusable="false"><path d="M0 0h11v13.5L5.5 20 0 13.5z" /></svg>
+  <svg width="11" height="20" viewBox="0 0 11 20" aria-hidden focusable="false">
+    <path d="M1.5 0h8A1.5 1.5 0 0 1 11 1.5v12L5.5 20 0 13.5v-12A1.5 1.5 0 0 1 1.5 0z" />
+  </svg>
 );

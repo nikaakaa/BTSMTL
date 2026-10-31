@@ -4,8 +4,8 @@ import {
   type ResizeEndEvent, type ResizeItemData, type UsePanStrategy,
 } from 'dnd-timeline';
 import {
-  createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent,
-  type ReactNode,
+  createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent,
+  type PointerEvent, type ReactNode,
 } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -31,8 +31,8 @@ import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSp
 import { archive } from '../../state/archive';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
-import { AddIcon, FoldoutIcon, MuteIcon, OptionsIcon } from '../../ui/icons';
-import { MarkerShape, TrackIcon } from './icons';
+import { AddIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
+import { CrumbArrow, MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
@@ -236,7 +236,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
         <SnapContext.Provider value={step}>
           {step !== null && <ClipEditing step={step} />}
-          <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
+          <TimelineBody params={params} setParams={setParams} bounds={bounds} rate={rate} frames={frames} onRangeChanged={onRangeChanged} />
         </SnapContext.Provider>
       </TimelineContext>
     </div>
@@ -350,10 +350,12 @@ const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
   }, [bag.timelineRef, bag.sidebarWidth, onPanEnd]);
 };
 
-function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
+function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged }: {
   params: Params;
   setParams(patch: Partial<Params>): void;
   bounds: Range;
+  // 时间轴帧率（逻辑 tick 或运行档案帧率），决定刻度数字的小数位；未知时为 null。
+  rate: number | null;
   frames: RouteFrame[] | null;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
@@ -479,11 +481,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     setParams({ caller: request.observation });
   }, [request, allSegments, programOf, program, setParams, enter]);
 
-  // 转移标记：路线上每次换段的时刻，悬停说明转移到的状态。
-  const marks = useMemo(() => segments.slice(1).map(segment => ({
+  // 转移标记：路线上每次换段的时刻，悬停说明转移到的状态。技能文档的各 Timeline 都从 0 开始，没有转移。
+  const marks = useMemo(() => frames ? segments.slice(1).map(segment => ({
     key: segment.id, seconds: segment.start,
     label: `转移到 ${segment.state?.name ?? segment.timeline?.displayName ?? segment.documentId.slice(0, 8)} · ${segment.start.toFixed(3)} s`,
-  })), [segments]);
+  })) : [], [frames, segments]);
 
   const rows = useMemo(() => {
     const filter = params.filter.trim().toLowerCase();
@@ -540,10 +542,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }, [params.collapsed, setParams]);
 
   const step = useContext(SnapContext);
-  const seekAt = useCallback((clientX: number) => {
-    if (frames) { void transport.seekTime(getValueFromScreenX(clientX)); return; }
+  // 游标跳到时间轴上的一点（运行档案为运行秒数，技能文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
+  const seek = useCallback((value: number) => {
+    if (frames) { void transport.seekTime(value); return; }
     if (!focused) return;
-    const raw = Math.max(0, Math.min(focused.length, getValueFromScreenX(clientX)));
+    const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step ? Math.min(focused.length, snapTo(raw, step)) : raw;
     if (inputScheme && inputObservation.kind === 'ready') {
       const metadata = inputObservation.metadata;
@@ -560,15 +563,20 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     if (transport.source() === 'sealed' && playback && state.seconds !== null)
       void transport.seekTime(state.seconds - playback.cursorSeconds + seconds);
     else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
-  }, [frames, observed, focused, step, getValueFromScreenX, inputScheme, inputObservation]);
+  }, [frames, observed, focused, step, inputScheme, inputObservation]);
+  const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
 
+  // 显示全部（照 Timeline 的 Frame All，快捷键 A）：所看的 Timeline，否则整条时间轴。
+  const frameAll = useCallback(() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) }), [setParams, focused, bounds]);
   const snap = params.snap ?? 'tick';
+  // 齿轮菜单（照 Timeline 窗口右上角的设置）：显示范围、游标跟随、编辑吸附、分组展开。
   const settings: MenuEntry[] = [
+    { label: <>显示全部<kbd className={styles.shortcut}>A</kbd></>, onSelect: frameAll },
     { kind: 'check', label: '游标离开视图时跟随', checked: params.follow, onChange: follow => setParams({ follow }) },
     { kind: 'separator' },
     { kind: 'label', label: '编辑吸附' },
     ...([['tick', '逻辑 tick'], ['0.1', '0.1 秒'], ['0.01', '0.01 秒'], ['0.001', '0.001 秒'], ['none', '关闭吸附']] as const)
-      .map(([value, label]): MenuEntry => ({ kind: 'check', label, checked: snap === value, onChange: () => setParams({ snap: value }) })),
+      .map(([value, label]): MenuEntry => ({ kind: 'radio', label, checked: snap === value, onSelect: () => setParams({ snap: value }) })),
     { kind: 'separator' },
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
     {
@@ -578,20 +586,32 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   ];
 
   const origin = focused?.origin ?? 0;
+  const programLabel = (item: string) => `${item.slice(item.indexOf(':') + 1)} / 技能根`;
+  const timelineName = (segment: RouteSegment) =>
+    schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segment.timeline?.displayName ?? segment.documentId.slice(0, 8);
+  const routeFocus = focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null);
   const subject: Subject = frames ? {
-    options: programs.map(item => ({ value: item, label: `${item.slice(item.indexOf(':') + 1)} / 技能根` })),
-    program, setProgram: next => setParams({ program: next, focus: null, routeRange: null, call: null, pin: null, caller: null }),
-    focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back, timelines: null,
+    selector: programs.length > 1 ? {
+      label: '选择技能根', entries: programs.map((item): MenuEntry => ({
+        kind: 'radio', label: programLabel(item), checked: item === program,
+        onSelect: () => setParams({ program: item, focus: null, routeRange: null, call: null, pin: null, caller: null }),
+      })),
+    } : null,
+    crumbs: [
+      { label: program ? programLabel(program) : '技能根', onSelect: routeFocus === null ? undefined : back },
+      ...(routeFocus === null ? [] : [{ label: routeFocus }]),
+    ],
   } : {
-    options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,
-    timelines: { value: focused?.documentId ?? allTimelines, options: segments.map(segment => ({
-      value: segment.documentId, label: (
-        <>
-          {schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}
-          <span className={styles.subjectLength}>{segment.length.toFixed(2)} s</span>
-        </>
-      ),
-    })), select: documentId => documentId === allTimelines ? showAll() : enter(documentId) },
+    selector: segments.length > 1 ? {
+      label: '选择 Timeline', entries: [
+        { kind: 'radio', label: '全部 Timeline', checked: focused === null, onSelect: showAll },
+        ...segments.map((segment): MenuEntry => ({
+          kind: 'radio', checked: segment.documentId === focused?.documentId, onSelect: () => enter(segment.documentId),
+          label: <>{timelineName(segment)}<span className={styles.subjectLength}>{segment.length.toFixed(2)} s</span></>,
+        })),
+      ],
+    } : null,
+    crumbs: [{ label: focused ? timelineName(focused) : '全部 Timeline' }],
   };
   const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
     : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: inputObservation.kind === 'ready' }
@@ -607,23 +627,27 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     <PreviewClockContext.Provider value={clock}>
     <CurveClockContext.Provider value={curveClock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
-      <TimelineToolbar settings={settings} subject={subject} documentId={focused?.timeline ? focused.documentId : null}
-        observations={choices} selectCall={selectCall} pinned={pin !== null} togglePin={togglePin} parents={parents} openParent={openParent}
-        fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
+      <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
+        observations={choices} selectCall={selectCall} pinned={pin !== null} togglePin={togglePin} parents={parents} openParent={openParent} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>
-            <TextInput className={styles.filterInput} placeholder="搜索轨道" value={params.filter}
-              onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="搜索轨道" />
+            <AddTrack documentId={focused?.timeline ? focused.documentId : null} caret />
+            <label className={styles.search}>
+              <SearchIcon className={styles.searchIcon} />
+              <TextInput className={styles.searchInput} placeholder="搜索轨道" value={params.filter}
+                onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="搜索轨道" />
+            </label>
           </div>
-          <div className={styles.headerLane}>
-            <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
-              onRangeChanged={onRangeChanged} />
-            <Ruler bounds={bounds} origin={origin} marks={marks} seekAt={seekAt} />
-          </div>
+          <Ruler bounds={bounds} origin={origin} rate={rate} marks={marks} seekAt={seekAt} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} inputRoots={inputTimeline?.roots} />
-        <Overlay bounds={bounds} origin={origin} seekAt={seekAt} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
+        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+        <div className={styles.footer}>
+          <div className={styles.footHead} />
+          <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
+            onRangeChanged={onRangeChanged} />
+        </div>
+        <Overlay bounds={bounds} origin={origin} segments={frames && !focused ? segments : []} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
     </CurveClockContext.Provider>
@@ -631,20 +655,16 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   );
 }
 
-// ── 窗口工具条：只有一行。左侧所看的 Timeline 与实际调用，右侧添加、适配与设置；播放与保存在顶栏 ──
+// ── 窗口工具条（照 Timeline 窗口顶行）：时间框、Timeline 选择器与面包屑、本次实际调用，右侧齿轮设置；播放与保存在顶栏 ──
 
 interface Subject {
-  options: { value: string; label: string }[];
-  program: string | null;
-  setProgram(program: string): void;
-  // 单个 Timeline 视图的名字；路线视图为 null。
-  focus: string | null;
-  back(): void;
-  // 技能文档：所看的 Timeline（全部时为 allTimelines）与技能内全部 Timeline；运行视图为 null。
-  timelines: { value: string; options: { value: string; label: ReactNode }[]; select(documentId: string): void } | null;
+  // 选择器（照 Sequence Selector）：技能里的 Timeline 或路线所属的技能根；只有一项可选时为 null。
+  selector: { label: string; entries: MenuEntry[] } | null;
+  // 面包屑：前面的层级可点击返回，最后一项是所看的内容。
+  crumbs: { label: ReactNode; onSelect?(): void }[];
 }
 
-// 在 Timeline 上添加轨道（Unity 的＋按钮；caret 为编辑行的下拉样式）：种类与默认值取原 C# 轨道类型。
+// 在 Timeline 上添加轨道（编辑行带下拉三角的＋，分组头的＋）：种类与默认值取原 C# 轨道类型。
 function AddTrack({ documentId, caret }: { documentId: string | null; caret?: boolean }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const elements = useSkillElements(author && documentId !== null);
@@ -687,8 +707,8 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   return <MenuButton label="添加输入" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
 }
 
-function TimelineToolbar({ settings, fit, subject, documentId, observations, selectCall, pinned, togglePin, parents, openParent }: {
-  settings: MenuEntry[]; fit(): void; subject: Subject; documentId: string | null;
+function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pinned, togglePin, parents, openParent }: {
+  settings: MenuEntry[]; subject: Subject; origin: number; seek(value: number): void;
   observations: TimelineObservation[]; selectCall(value: string): void;
   pinned: boolean; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
@@ -704,29 +724,25 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
     if (!state.frame?.route) return '档案播放记录尚未提供';
     return documentPlayback(state, clock) ? null : '本帧没有这个 Timeline 的播放记录';
   });
-  const root = subject.options.find(item => item.value === subject.program)?.label ?? '技能根';
-  const timelines = subject.timelines;
   return (
     <PanelBar>
-      {timelines ? (timelines.options.length > 1 ? (
-        <span className={styles.subject}>
-          <Select variant="ghost" label="Timeline" value={timelines.value} onChange={timelines.select}
-            options={[{ value: allTimelines, label: '全部 Timeline' }, ...timelines.options]}
-            tip="节点图里双击播放 Timeline 的节点也会切到这里" />
-        </span>
-      ) : <span className={styles.subjectName}>{timelines.options[0]?.label}</span>) : subject.focus === null ? (
-        <span className={styles.subject}>
-          <Select variant="ghost" label="技能根" placeholder="没有技能根" value={subject.program} options={subject.options}
-            disabled={!subject.options.length} tip={subject.options.length ? '路线所属的技能根状态机' : '路线没有经过状态机'}
-            onChange={subject.setProgram} />
-        </span>
-      ) : (
-        <span className={styles.crumbs}>
-          <button className={styles.crumbLink} onClick={subject.back}>{root}</button>
-          <span className={styles.crumbSeparator}>›</span>
-          <span>{subject.focus}</span>
-        </span>
+      <TimeField origin={origin} seek={seek} />
+      {subject.selector && (
+        <MenuButton label={subject.selector.label} variant="ghost" className={styles.selector} iconOnly caret entries={subject.selector.entries}>
+          <SelectorIcon />
+        </MenuButton>
       )}
+      <span className={styles.crumbs}>
+        <TimelineAssetIcon className={styles.crumbIcon} />
+        {subject.crumbs.map((crumb, index) => (
+          <Fragment key={index}>
+            {index > 0 && <CrumbArrow className={styles.crumbArrow} />}
+            {crumb.onSelect
+              ? <button className={styles.crumbLink} onClick={crumb.onSelect}>{crumb.label}</button>
+              : <span className={styles.crumb}>{crumb.label}</span>}
+          </Fragment>
+        ))}
+      </span>
       {observations.length > 1 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
         value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
@@ -743,18 +759,45 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
       </>}
       {notice && <span className={styles.hint} title={notice}>{notice}</span>}
       <span className={styles.grow} />
-      <AddTrack documentId={documentId} caret />
-      <Button variant="ghost" tip="显示整个 Timeline" onClick={fit}>适配</Button>
-      <MenuButton label="Timeline 显示设置" variant="ghost" caret entries={settings}>显示设置</MenuButton>
+      <MenuButton label="Timeline 设置" variant="ghost" className={styles.cog} iconOnly caret entries={settings}><SettingsIcon /></MenuButton>
     </PanelBar>
   );
 }
 
-// ── 刻度：间隔随缩放调整，点击与拖动经 transport 跳帧 ──
+// 游标时刻的文字：秒，至多四位小数（照 Timeline 时间框的 0.####）。
+const timeText = (seconds: number) => String(Math.round(seconds * 1e4) / 1e4);
 
-const tickSteps = [1 / 60, 1 / 30, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 30, 60];
+// 时间框（TimeCodeGUI，宽 100）：显示游标在所看 Timeline 里的秒数；回车或离开输入框后跳到输入的时刻，Esc 放弃输入。
+function TimeField({ origin, seek }: { origin: number; seek(value: number): void }) {
+  const clock = useContext(PreviewClockContext);
+  const seconds = usePreviewSelect(clock, value => value);
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    setDraft(null);
+    const value = Number(draft);
+    if (draft.trim() && Number.isFinite(value) && value >= 0) seek(origin + value);
+  };
+  return (
+    <TextInput className={styles.timeField} aria-label="游标时间（秒）" disabled={seconds === null}
+      value={draft ?? (seconds === null ? '' : timeText(seconds - origin))}
+      onChange={event => setDraft(event.currentTarget.value)} onBlur={commit}
+      onKeyDown={event => {
+        if (event.key === 'Enter') commit();
+        else if (event.key === 'Escape') setDraft(null);
+      }} />
+  );
+}
 
-// 照 Timeline Editor 刻度上方的时间滚动条：滑块是当前可见范围，拖滑块平移，拖两端缩放。
+// ── 刻度（照 Unity TimeArea.TimeRuler）：点击与拖动经 transport 跳帧 ──
+
+// 刻度级别（秒）：相邻级别成整数倍，与编辑吸附的 0.1／0.01／0.001 秒网格对齐。
+const tickModulos = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60, 300, 600, 1800, 3600];
+const rulerHeight = 22;
+// 小数位：能区分 modulo 间隔所需的位数（MathUtils.GetNumberOfDecimalsForMinimumDifference）。
+const decimalsFor = (modulo: number) => Math.max(0, Math.ceil(-Math.log10(modulo) - 1e-9));
+
+// 底部时间滚动条（照 ZoomableArea 的横向滑条）：滑块是当前可见范围，拖滑块平移，拖两端缩放。
 function TimeScroller({ bounds, onRangeChanged }: { bounds: Range; onRangeChanged(update: (previous: Range) => Range): void }) {
   const { range } = useTimelineContext();
   const track = useRef<HTMLDivElement>(null);
@@ -795,36 +838,64 @@ function TimeScroller({ bounds, onRangeChanged }: { bounds: Range; onRangeChange
   );
 }
 
-// origin：刻度零点。单个 Timeline 视图按该次播放的本地时间标注。
-function Ruler({ bounds, origin, marks, seekAt }: {
-  bounds: Range; origin: number; marks: { key: string; seconds: number; label: string }[]; seekAt(clientX: number): void;
+// origin：刻度零点，单个 Timeline 视图按该次播放的本地时间标注，0 之前不画刻度。
+// 每级刻度按间距定强度：3 像素为 0、80 像素为 1，开方渐显，高至多为刻度高的 0.9×0.7，自底向上画；
+// 首个间距不小于 40 像素的级别在刻度右侧 3 像素标数字，小数位取帧率与该级间隔中较细的一个。
+// 底部 5 像素蓝条为 Timeline 时长（HighlightTimeAreaRange）。拖动刻度时 data-scrubbing 让覆盖层显示游标时刻。
+function Ruler({ bounds, origin, rate, marks, seekAt }: {
+  bounds: Range; origin: number; rate: number | null; marks: { key: string; seconds: number; label: string }[]; seekAt(clientX: number): void;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   const width = valueToPixels(range.end - range.start);
-  const step = tickSteps.find(item => valueToPixels(item) >= 64) ?? tickSteps[tickSteps.length - 1];
-  const digits = Number.isInteger(step) ? 0 : Number.isInteger(Math.round(step * 1e6) / 1e5) ? 1 : 2;
-  const ticks: ReactNode[] = [];
-  if (width > 0) {
-    const minor = step / 5;
-    const first = Math.ceil((range.start - origin) / minor);
-    for (let index = first; index * minor + origin <= range.end; index++) {
-      const value = index * minor;
-      const major = index % 5 === 0;
-      const x = valueToPixels(value + origin - range.start);
-      ticks.push(<i key={index} className={major ? styles.majorTick : styles.minorTick} style={{ left: x }} />);
-      if (major) ticks.push(<span key={`l${index}`} className={styles.tickLabel} style={{ left: x }}>{value.toFixed(digits)} s</span>);
+  const scale = width / (range.end - range.start);
+  const first = Math.max(0, range.start - origin), last = range.end - origin;
+  const x = (local: number) => Math.floor(valueToPixels(local + origin - range.start));
+  const levels: { path: string; opacity: number }[] = [];
+  const labels: { x: number; text: string }[] = [];
+  if (width > 0 && last > first) {
+    // 最细的可见级别与最细的满强度级别（TickHandler.SetTickStrengths）。
+    const strengths = tickModulos.map(modulo => (modulo * scale - 3) / (80 - 3));
+    let smallest = 0, biggest = tickModulos.length - 1;
+    for (let index = tickModulos.length - 1; index >= 0; index--) {
+      if (strengths[index] >= 1) biggest = index;
+      if (tickModulos[index] * scale <= 3) { smallest = index; break; }
+    }
+    for (let index = smallest; index <= biggest; index++) {
+      const strength = Math.sqrt(Math.min(1, Math.max(0, strengths[index]))) * 0.9;
+      if (strength <= 0) continue;
+      const modulo = tickModulos[index];
+      // 与上一级重合的刻度留给上一级画。
+      const coarser = index < biggest ? Math.round(tickModulos[index + 1] / modulo) : 0;
+      const top = rulerHeight - rulerHeight * Math.min(1, strength) * 0.7;
+      let path = '';
+      for (let tick = Math.ceil(first / modulo); tick * modulo <= last; tick++)
+        if (!coarser || tick % coarser) path += `M${x(tick * modulo) + 0.5} ${top}V${rulerHeight}`;
+      if (path) levels.push({ path, opacity: Math.min(1, strength / 0.5 * 0.75) });
+    }
+    const labelModulo = tickModulos.find(modulo => modulo * scale >= 40);
+    if (labelModulo !== undefined) {
+      const digits = Math.max(decimalsFor(labelModulo), rate ? decimalsFor(1 / rate) : 0);
+      for (let tick = Math.ceil(first / labelModulo); tick * labelModulo <= last; tick++)
+        labels.push({ x: x(tick * labelModulo) + 3, text: (tick * labelModulo).toFixed(digits) });
     }
   }
-  const drag = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    seekAt(event.clientX);
-  };
+  const durationStart = Math.max(0, valueToPixels(bounds.start - range.start));
+  const durationEnd = Math.min(width, valueToPixels(bounds.end - range.start));
   return (
     <div className={styles.ruler} role="slider" aria-label="记录游标" aria-valuemin={bounds.start} aria-valuemax={bounds.end}
-      onPointerDown={drag}
-      onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekAt(event.clientX); }}>
-      {ticks}
+      onPointerDown={event => {
+        if (event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.currentTarget.dataset.scrubbing = '';
+        seekAt(event.clientX);
+      }}
+      onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekAt(event.clientX); }}
+      onLostPointerCapture={event => { delete event.currentTarget.dataset.scrubbing; }}>
+      <svg className={styles.ticks} width={Math.max(0, width)} height={rulerHeight} aria-hidden>
+        {levels.map((level, index) => <path key={index} d={level.path} strokeOpacity={level.opacity} />)}
+      </svg>
+      {labels.map(label => <span key={label.text} className={styles.tickLabel} style={{ left: label.x }}>{label.text}</span>)}
+      {durationEnd > durationStart && <i className={styles.duration} style={{ left: durationStart, width: durationEnd - durationStart }} />}
       {marks.filter(mark => mark.seconds >= range.start && mark.seconds <= range.end).map(mark => (
         <i key={mark.key} className={styles.routeMark} style={{ left: valueToPixels(mark.seconds - range.start) }} title={mark.label} />
       ))}
@@ -838,11 +909,12 @@ function Ruler({ bounds, origin, marks, seekAt }: {
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
+function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
   rows: Row[];
   collapsed: string[];
   toggle(id: string): void;
   enter(documentId: string): void;
+  frameAll(): void;
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
   const clock = useContext(PreviewClockContext);
@@ -920,7 +992,14 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   return (
     <div className={styles.rows} ref={scroller} tabIndex={-1} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
       onKeyDown={event => {
-        if (!useAuthoring.getState().author || (event.target as HTMLElement).closest('input, textarea')) return;
+        if ((event.target as HTMLElement).closest('input, textarea')) return;
+        // A：显示全部（Frame All），不分作者与运行。
+        if ((event.key === 'a' || event.key === 'A') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          frameAll();
+          return;
+        }
+        if (!useAuthoring.getState().author) return;
         if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'v')) {
           if (event.key === 'c' ? copySelection() : pasteAfterSelection()) event.preventDefault();
           return;
@@ -1023,7 +1102,9 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
   row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string): void;
 }) {
   const segment = row.segment;
-  const now = useWorkbench(state => state.frameIndex >= segment.firstIndex && state.frameIndex <= segment.lastIndex);
+  // 运行路线上游标所在的段名高亮；技能文档的各 Timeline 都从 0 开始，不分先后。
+  const route = useContext(PreviewClockContext).kind === 'archive';
+  const now = useWorkbench(state => route && state.frameIndex >= segment.firstIndex && state.frameIndex <= segment.lastIndex);
   const stateNode = useWorkbench(useShallow(state => {
     if (!segment.state) return null;
     for (const graph of state.graphs ?? []) {
@@ -1648,15 +1729,18 @@ const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputT
   );
 });
 
-// ── 游标覆盖线与结束线：直接改 transform，不经过 React ──
+// ── 覆盖层：游标（TimelineTimeCursor）、终点（End Marker）与段边界，盖在刻度与轨道上 ──
+// 游标订阅时刻后直接改 transform，不经过 React。游标头在刻度区底部对齐，线从时长条处向下；
+// 拖动刻度时在刻度上方显示游标时刻。终点由片段决定、不能拖动，照 Unity 用暗蓝线与灰色头。
 
-function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
-  bounds: Range; origin: number; seekAt(clientX: number): void; segments: RouteSegment[]; follow: boolean;
+function Overlay({ bounds, origin, segments, follow, onRangeChanged }: {
+  bounds: Range; origin: number; segments: RouteSegment[]; follow: boolean;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { range, valueToPixels, sidebarWidth } = useTimelineContext();
   const line = useRef<HTMLDivElement>(null);
-  const tag = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLDivElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
   const panelId = usePanelId();
   const visible = usePanelVisible();
   const panelWindow = usePanelWindow();
@@ -1665,24 +1749,20 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
 
   const apply = useCallback(() => {
     const state = getState();
-    const lineElement = line.current, tagElement = tag.current;
-    if (!lineElement || !tagElement) return;
+    const lineElement = line.current, headElement = head.current, tipElement = tip.current;
+    if (!lineElement || !headElement || !tipElement) return;
     const seconds = previewSeconds(state, clock, authorCursorOf(useAuthorCursor.getState(), clock));
-    if (seconds === null) {
-      lineElement.hidden = tagElement.hidden = true;
-    } else {
+    lineElement.hidden = headElement.hidden = tipElement.hidden = seconds === null;
+    if (seconds !== null) {
       if (follow && transport.isPlaying() && (seconds > range.end || seconds < range.start)) {
         const span = range.end - range.start;
         onRangeChanged(() => ({ start: seconds - span * 0.1, end: seconds + span * 0.9 }));
       }
-      const x = valueToPixels(seconds - range.start);
-      lineElement.hidden = tagElement.hidden = false;
-      lineElement.style.transform = `translateX(${x}px)`;
-      // 时刻牌居中于游标；贴近时间区两端时收在区内，0 秒处不被轨道头挡住。
-      tagElement.textContent = `${(seconds - origin).toFixed(6)} s`;
-      const tagWidth = tagElement.offsetWidth;
-      const laneWidth = lineElement.parentElement?.clientWidth ?? tagWidth;
-      tagElement.style.transform = `translateX(${Math.max(0, Math.min(laneWidth - tagWidth, x - tagWidth / 2))}px)`;
+      // 取整到像素：1 像素的线与 11 像素宽的头共用同一中线。
+      const x = Math.floor(valueToPixels(seconds - range.start));
+      lineElement.style.transform = headElement.style.transform = `translateX(${x}px)`;
+      tipElement.textContent = timeText(seconds - origin);
+      tipElement.style.transform = `translateX(calc(${x + 0.5}px - 50%))`;
     }
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
     if (visible && !pending.current) {
@@ -1712,25 +1792,17 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
 
   useEffect(() => () => clearRendered(panelId), [panelId]);
 
-  const x = (seconds: number) => `translateX(${valueToPixels(seconds - range.start)}px)`;
+  const x = (seconds: number) => `translateX(${Math.floor(valueToPixels(seconds - range.start))}px)`;
   return (
     <div className={styles.overlay} style={{ left: sidebarWidth }}>
-      <div className={styles.startLine} style={{ transform: x(bounds.start) }} />
       {segments.filter(segment => segment.start > range.start && segment.start < range.end).map(segment => (
         <div key={segment.id} className={styles.segmentLine} style={{ transform: x(segment.start) }} />
       ))}
       <div className={styles.endLine} style={{ transform: x(bounds.end) }} />
+      <div className={styles.endHead} style={{ transform: x(bounds.end) }} />
       <div ref={line} className={styles.cursorLine} hidden />
-      {/* 游标头：按住拖动移动游标 */}
-      <div ref={tag} className={styles.cursorTag} hidden title="拖动移动游标"
-        onPointerDown={event => {
-          if (event.button !== 0) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          event.currentTarget.dataset.dragging = '';
-        }}
-        onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekAt(event.clientX); }}
-        onPointerUp={event => { delete event.currentTarget.dataset.dragging; }}
-        onPointerCancel={event => { delete event.currentTarget.dataset.dragging; }} />
+      <div ref={head} className={styles.cursorHead} hidden><PlayheadShape /></div>
+      <div ref={tip} className={styles.cursorTip} hidden />
     </div>
   );
 }

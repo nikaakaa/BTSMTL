@@ -29,7 +29,6 @@
   --select: #2c5d87;
   --select-graph: #44c0ff;
   --cursor: #ffeb04;
-  --cursor-tag: #1f1f1f;
   --ok: #5cb85c;
   --reject: #d9534f;
   --warn: #e8b84a;
@@ -65,6 +64,9 @@
   --tl-clip-union: rgb(58 71 81 / 70.9%);
   --tl-duration: rgb(39 59 96 / 70.9%);
   --tl-end: #3d5e98;
+  --tl-end-head: #a8a8a8;
+  --tl-playhead: #ffffff;
+  --tl-tick: #b4b4b4;
   --tl-tooltip: #1d2021;
 
   --node-event: #c45656;

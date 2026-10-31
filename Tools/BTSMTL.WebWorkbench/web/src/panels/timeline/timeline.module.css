@@ -23,53 +23,74 @@
   flex: 1;
 }
 
-/* 编辑行的技能根下拉：照 Timeline Editor 占编辑行左侧一大段 */
-.subject {
-  display: flex;
-  flex: 0 1 220px;
-  min-width: 64px;
+/* 工具条时间框（TimeCodeGUI）：宽 100 */
+.timeField {
+  width: 100px;
+  height: 18px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
 }
 
-.subject > :first-child {
-  flex: 1;
-  max-width: none;
-}
-
-.subjectName {
+/* 工具条的图标下拉：Timeline 选择器与右上角齿轮 */
+.selector, .cog {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  height: 20px;
+  padding: 0 3px;
+  gap: 1px;
+  color: var(--glyph);
 }
 
+/* 选择器菜单里每个 Timeline 的时长 */
 .subjectLength {
   margin-left: 8px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.crumbSeparator {
+/* 菜单项右侧的快捷键 */
+.shortcut {
+  margin-left: auto;
+  padding-left: 24px;
   color: var(--text-dim);
+  font: var(--font);
 }
 
+/* 面包屑（BreadcrumbDrawer）：Timeline 图标、层级名，上层半透明可点击返回 */
 .crumbs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   padding: 0 4px;
   overflow: hidden;
 }
 
+.crumbIcon {
+  flex: none;
+  color: var(--glyph);
+}
+
+.crumbArrow {
+  flex: none;
+  color: var(--text-disabled);
+}
+
+.crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .crumbLink {
   all: unset;
-  color: #79a6e9;
+  opacity: .6;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
 .crumbLink:hover {
-  text-decoration: underline;
+  opacity: 1;
 }
 
 .crumbLink:focus-visible {
@@ -98,120 +119,163 @@
   cursor: help;
 }
 
+/* 时间区：编辑行与刻度、轨道、底部滚动条；游标时刻会画到刻度上方，所以不裁剪 */
 .timeline {
   position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+}
+
+/* 轨道头与时间区的分隔条（SplitterGUI）：2 像素，从编辑行顶下 2 像素画到底 */
+.timeline::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--sidebar) - 2px);
+  top: 2px;
+  bottom: 0;
+  width: 2px;
+  background: var(--tl-splitter);
+  pointer-events: none;
+  z-index: 6;
 }
 
 .header {
   display: flex;
-  height: 50px;
+  height: 22px;
   flex: none;
 }
 
-.headerLane {
+/* 编辑行（DrawHeaderEditButtons）：左缩进 15，添加轨道下拉与轨道搜索 */
+.timeHead {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: var(--sidebar);
+  padding: 0 6px 0 15px;
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.search {
+  position: relative;
+  display: flex;
   flex: 1;
   min-width: 0;
 }
 
-/* 刻度上方的时间滚动条：深槽 + 圆头浅色滑块 */
+.searchIcon {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.searchInput {
+  flex: 1;
+  height: 18px;
+  padding-left: 19px;
+}
+
+/* 刻度（TimeArea.TimeRuler）：Timeline 背景色，刻度自底向上，数字在刻度右侧顶对齐 */
+.ruler {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--tl-header);
+  touch-action: none;
+}
+
+.ticks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  stroke: var(--tl-tick);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+  pointer-events: none;
+}
+
+.tickLabel {
+  position: absolute;
+  top: 0;
+  color: var(--tl-tick);
+  font-size: 10px;
+  line-height: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Timeline 时长：刻度底部 5 像素蓝条 */
+.duration {
+  position: absolute;
+  bottom: 0;
+  height: 5px;
+  background: var(--tl-duration);
+  pointer-events: none;
+}
+
+/* 底部时间滚动条（ZoomableArea 横向滑条）：高 15，左侧在轨道头下方留空 */
+.footer {
+  display: flex;
+  height: 15px;
+  flex: none;
+}
+
+.footHead {
+  width: var(--sidebar);
+  flex: none;
+  background: var(--tl-sequence);
+}
+
 .scroller {
   position: relative;
-  height: 16px;
-  margin: 0 4px;
-  flex: none;
-  background: var(--tl-header);
+  flex: 1;
+  min-width: 0;
+  background: var(--tl-sequence);
 }
 
 .scrollThumb {
   position: absolute;
   top: 3px;
-  height: 10px;
+  bottom: 3px;
   min-width: 16px;
-  background: #9a9a9a;
-  border-radius: 5px;
+  border-radius: 4.5px;
+  background: var(--button);
   touch-action: none;
 }
 
 .scrollThumb:hover {
-  background: #b4b4b4;
+  background: var(--button-hover);
 }
 
+/* 滑块两端：拖动缩放 */
 .scrollEnd {
   position: absolute;
-  top: -1px;
-  width: 10px;
-  height: 12px;
-  border-radius: 6px;
-  background: #e2e2e2;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  border-radius: 4.5px;
   cursor: ew-resize;
 }
 
+.scrollEnd:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
 .scrollEnd[data-side='start'] {
-  left: -2px;
+  left: 0;
 }
 
 .scrollEnd[data-side='end'] {
-  right: -2px;
-}
-
-.timeHead {
-  display: flex;
-  align-items: flex-end;
-  width: var(--sidebar);
-  padding: 0 6px 5px;
-  color: var(--text-dim);
-  font-size: 11.5px;
-  background: var(--bg-3);
-  border-right: 1px solid var(--seam);
-  border-bottom: 1px solid var(--line);
-  flex: none;
-}
-
-.ruler {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-  background: var(--tl-header);
-  border-bottom: 1px dotted #b8b8b8;
-  touch-action: none;
-}
-
-.majorTick, .minorTick {
-  position: absolute;
-  bottom: 0;
-  width: 1px;
-  background: #9a9a9a;
-}
-
-.majorTick {
-  height: 8px;
-}
-
-.minorTick {
-  height: 4px;
-  background: #7a7a7a;
-}
-
-.tickLabel {
-  position: absolute;
-  bottom: 6px;
-  font-size: 13px;
-  color: var(--text);
-  transform: translateX(-50%);
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.filterInput {
-  flex: 1;
-  height: 18px;
+  right: 0;
 }
 
 /* 轨道区：底色为 Sequence 背景；首行距顶 6 像素（这里 3，加每行自带的 3 像素行间隔） */
@@ -641,44 +705,81 @@
   margin: 0 4px 0 5px;
 }
 
-/* 覆盖层：起点、段边界、结束线与游标 */
+/* 覆盖层：盖住刻度与轨道，左右裁在时间区内，上方给游标时刻留出位置 */
 .overlay {
   position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
-  overflow: hidden;
+  bottom: 15px;
+  clip-path: inset(-18px 0 0 0);
   pointer-events: none;
   z-index: 5;
 }
 
-.cursorLine, .endLine, .startLine, .segmentLine {
+/* 竖线从刻度底部的时长条处画到轨道底 */
+.cursorLine, .endLine, .segmentLine {
   position: absolute;
-  top: 16px;
+  top: 17px;
   bottom: 0;
   left: 0;
   width: 1px;
   will-change: transform;
 }
 
-.startLine {
-  width: 2px;
-  margin-left: -1px;
-  background: #fff;
-}
-
 .segmentLine {
   background: var(--segment-line);
 }
 
+/* 终点（时长由片段决定、不能拖动）：暗蓝线，灰色 5×14 头压在时长条上方 */
 .endLine {
-  background: rgb(255 255 255 / 55%);
+  background: color-mix(in srgb, var(--tl-end) 66%, transparent);
 }
 
+.endHead {
+  position: absolute;
+  top: 3px;
+  left: -2px;
+  width: 5px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--tl-end-head);
+  will-change: transform;
+}
+
+/* 游标：白线与白色五边形头，头底对齐刻度底 */
 .cursorLine {
-  width: 2px;
-  margin-left: -1px;
-  background: var(--cursor);
+  background: var(--tl-playhead);
+}
+
+.cursorHead {
+  position: absolute;
+  top: 2px;
+  left: -5px;
+  fill: var(--tl-playhead);
+  will-change: transform;
+}
+
+.cursorHead svg {
+  display: block;
+}
+
+/* 拖动刻度时在刻度上方显示游标时刻（TimeAreaItem 的提示） */
+.cursorTip {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  display: none;
+  padding: 1px 4px;
+  background: var(--tl-tooltip);
+  color: rgb(255 255 255 / 75%);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline:has(.ruler[data-scrubbing]) .cursorTip:not([hidden]) {
+  display: block;
 }
 
 .curvePlot {
@@ -735,25 +836,4 @@
   top: 2px;
   color: var(--text-dim);
   pointer-events: none;
-}
-
-/* 游标头：照 Timeline Editor 刻度上的大号黄色时刻，可拖动；水平位置由覆盖层按时间区宽度收边 */
-.cursorTag {
-  position: absolute;
-  top: 18px;
-  left: 0;
-  padding: 0 8px;
-  background: var(--cursor-tag);
-  color: var(--cursor);
-  font-size: 21px;
-  font-weight: 700;
-  line-height: 28px;
-  border-radius: 4px;
-  white-space: nowrap;
-  pointer-events: auto;
-  cursor: ew-resize;
-  touch-action: none;
-  user-select: none;
-  font-variant-numeric: tabular-nums;
-  will-change: transform;
 }
