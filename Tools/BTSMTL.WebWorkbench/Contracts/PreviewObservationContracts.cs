@@ -45,8 +45,8 @@ public sealed record PreviewClock(PreviewPosition Position, double Seconds, stri
     PreviewPosition? RequestedPosition, PreviewField[] Fields);
 public sealed record PreviewContentIdentity(string Kind, string Revision, string? DocumentId,
     string? ContentIdentity, string? ContentRevision, string? BindingRevision);
-public sealed record PreviewFrameSource(PreviewExecutionIdentity Execution, string ContentRevision, string SceneRevision,
-    string InputSource, string? InputRevision, PreviewClock Clock)
+public sealed record PreviewFrameSource(PreviewExecutionIdentity Execution, string ContentRevision, string? SceneRevision,
+    string? InputSource, string? InputRevision, PreviewClock Clock)
 {
     public Guid? LoadCommandId { get; init; }
     public string? Sequence { get; init; }
