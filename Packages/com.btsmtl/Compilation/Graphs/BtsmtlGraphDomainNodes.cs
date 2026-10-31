@@ -32,11 +32,11 @@ namespace BTSMTL.Compilation
                 GraphNodeCompileDescription description = describe();
                 emission = new SimulationNodeEmission(OrchestrationOperationCode.Extension,
                     constants: description.Payload, extension: extension.Definition,
-                    blackboardInputs: Blackboards(declaration, description.ReadBindings, OrchestrationExtensionPortDirection.Input),
-                    blackboardOutputs: Blackboards(declaration, description.WriteBindings, OrchestrationExtensionPortDirection.Output),
-                    constantInputs: Constants(declaration, description.ConstantInputs, OrchestrationExtensionPortDirection.Input),
-                    constantOutputs: Constants(declaration, description.ConstantOutputs, OrchestrationExtensionPortDirection.Output),
-                    derivedInputs: Derived(declaration, description.DerivedInputs),
+                    blackboardInputs: Blackboards(description.ReadBindings),
+                    blackboardOutputs: Blackboards(description.WriteBindings),
+                    constantInputs: Constants(description.ConstantInputs),
+                    constantOutputs: Constants(description.ConstantOutputs),
+                    derivedInputs: Derived(description.DerivedInputs),
                     requiredInputConnections: description.RequiredInputConnections);
                 return true;
             }
@@ -44,19 +44,16 @@ namespace BTSMTL.Compilation
             return false;
         }
 
-        static IEnumerable<SemanticBlackboardPortBinding> Blackboards(GraphOrchestrationNodeDeclaration declaration,
-            IReadOnlyList<GraphOrchestrationBlackboardPort> ports, OrchestrationExtensionPortDirection direction) =>
-            ports.Select(port => new SemanticBlackboardPortBinding(declaration.RuntimePort(port.PortId, direction), port.OwnerId,
+        static IEnumerable<SemanticBlackboardPortBinding> Blackboards(IReadOnlyList<GraphOrchestrationBlackboardPort> ports) =>
+            ports.Select(port => new SemanticBlackboardPortBinding(port.PortId, port.OwnerId,
                 port.DeclarationId, OrchestrationValuePortContracts.FromOrchestrationKind(port.ValueKind), port.ValueTypeIdentity));
 
-        static IEnumerable<SemanticConstantPortDeclaration> Constants(GraphOrchestrationNodeDeclaration declaration,
-            IReadOnlyList<GraphOrchestrationConstantPort> ports, OrchestrationExtensionPortDirection direction) =>
-            ports.Select(port => new SemanticConstantPortDeclaration(declaration.RuntimePort(port.PortId, direction),
+        static IEnumerable<SemanticConstantPortDeclaration> Constants(IReadOnlyList<GraphOrchestrationConstantPort> ports) =>
+            ports.Select(port => new SemanticConstantPortDeclaration(port.PortId,
                 port.PayloadFieldName, OrchestrationValuePortContracts.FromOrchestrationKind(port.ValueKind), port.ValueTypeIdentity));
 
-        static IEnumerable<SemanticDerivedInput> Derived(GraphOrchestrationNodeDeclaration declaration,
-            IReadOnlyList<GraphOrchestrationDerivedInput> ports) =>
-            ports.Select(port => new SemanticDerivedInput(declaration.RuntimePort(port.PortId, OrchestrationExtensionPortDirection.Input),
+        static IEnumerable<SemanticDerivedInput> Derived(IReadOnlyList<GraphOrchestrationDerivedInput> ports) =>
+            ports.Select(port => new SemanticDerivedInput(port.PortId,
                 (SemanticDerivedInputSource)port.Source, port.SourceOutputPortIndex,
                 OrchestrationValuePortContracts.FromOrchestrationKind(port.ValueKind), port.ValueTypeIdentity));
     }

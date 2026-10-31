@@ -88,12 +88,10 @@ namespace BTSMTL.Graphs.Editor
             GraphOrchestrationNodeDeclaration declaration = GraphOrchestrationNodeDeclaration.Of(node.GetType());
             bool hostOutput = node is IBtsmtlHostInputFlowNode && declaration.HostInputs == null;
             var inputs = node.GetInputValuePorts().Select(port => new CompileValuePort(port.ID,
-                native != null ? native.Input(port.ID) : node is IBtsmtlVariableFlowNode ? "m_Value"
-                    : declaration.RuntimePort(port.ID, OrchestrationExtensionPortDirection.Input),
+                native != null ? native.Input(port.ID) : node is IBtsmtlVariableFlowNode ? "m_Value" : port.ID,
                 ValueType(port.type), port.isConnected, port.isRequired, SemanticValue(port.serializedValue))).ToArray();
             var outputs = node.GetOutputValuePorts().Select(port => new CompileValuePort(port.ID,
-                native != null ? native.Output(port.ID) : node is IBtsmtlVariableFlowNode || hostOutput ? "m_Output"
-                    : declaration.RuntimePort(port.ID, OrchestrationExtensionPortDirection.Output),
+                native != null ? native.Output(port.ID) : node is IBtsmtlVariableFlowNode || hostOutput ? "m_Output" : port.ID,
                 ValueType(port.type))).ToArray();
             CompileNodeRole role = node switch
             {

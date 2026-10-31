@@ -148,8 +148,20 @@ namespace BTSMTL.Authoring.Graph
 
         public bool HasDefault { get; private set; }
 
+        // 未连线时取该作者字段（节点成员名，用 nameof 引用）的当前值；省略值类型时取该成员的 CLR 类型。
+        public string DefaultField { get; set; }
+
         protected internal override Func<object, GraphNodePort> Bind(Type nodeType)
         {
+            if (!string.IsNullOrEmpty(DefaultField))
+            {
+                if (HasDefault || !string.IsNullOrEmpty(TypeFrom))
+                    throw new InvalidOperationException($"端口 '{Id}' 的 DefaultField 不能与 Default 或 TypeFrom 同时声明。");
+                (string fieldId, Type fieldType) = GraphNodeMembers.AuthoringField(nodeType, DefaultField);
+                var fieldPort = new GraphNodePort(GraphAuthoringPortDirection.Input, false, Id, DisplayName,
+                    GraphNodeValueTypes.Of(ValueType ?? fieldType), 0, defaultFieldId: fieldId);
+                return _ => fieldPort;
+            }
             Func<object, string> valueType = BindValueType(nodeType);
             if (ValueType != null)
             {
@@ -339,9 +351,6 @@ namespace BTSMTL.Authoring.Graph
                         Func<object, object> enabled = GraphNodeMembers.Reader(nodeType, attribute.EnabledBy, typeof(bool));
                         return (node, _) => (bool)enabled(node) ? new[] { port(node) } : Array.Empty<GraphNodePort>();
                     }));
-                foreach (GraphAuthoringMember field in GraphAuthoringMemberBindings.Contract(nodeType).Fields)
-                    if (field.Metadata.InputPort)
-                        sources.Add(Declare(nodeType, $"GraphAuthoringField({field.Metadata.FieldId})", () => FieldInput(field)));
                 foreach (MemberInfo member in GraphNodeMembers.Ordered(nodeType))
                 {
                     if (member.GetCustomAttribute<FlowOutputListAttribute>(true) is { } list)
@@ -371,15 +380,6 @@ namespace BTSMTL.Authoring.Graph
                 {
                     throw new GraphNodePortDeclarationException(nodeType, declaration, exception);
                 }
-            }
-
-            static Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> FieldInput(GraphAuthoringMember field)
-            {
-                string fieldId = field.Metadata.FieldId;
-                var port = new GraphNodePort(GraphAuthoringPortDirection.Input, false, fieldId,
-                    string.IsNullOrWhiteSpace(field.Metadata.DisplayName) ? fieldId : field.Metadata.DisplayName,
-                    GraphNodeValueTypes.Of(field.ValueType), 0, defaultFieldId: fieldId);
-                return (_, _) => new[] { port };
             }
 
             static Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> FlowOutputs(Type nodeType,
@@ -520,6 +520,23 @@ namespace BTSMTL.Authoring.Graph
                 foreach (MemberInfo member in current.GetMembers(Instance | BindingFlags.DeclaredOnly)
                              .Where(member => member is FieldInfo or PropertyInfo).OrderBy(member => member.MetadataToken))
                     yield return member;
+        }
+
+        // 节点成员上的作者字段：省略字段身份时按成员名首字母小写得出，与值生成器一致。
+        public static (string FieldId, Type ValueType) AuthoringField(Type type, string name)
+        {
+            for (Type current = type; current != null; current = current.BaseType)
+            {
+                MemberInfo member = (MemberInfo)current.GetProperty(name, Instance | BindingFlags.DeclaredOnly) ??
+                    current.GetField(name, Instance | BindingFlags.DeclaredOnly);
+                if (member == null)
+                    continue;
+                GraphAuthoringFieldAttribute field = member.GetCustomAttribute<GraphAuthoringFieldAttribute>(true) ??
+                    throw new InvalidOperationException($"成员 '{name}' 不是作者字段。");
+                string id = field.FieldId.Length != 0 ? field.FieldId : char.ToLowerInvariant(name[0]) + name.Substring(1);
+                return (id, member is PropertyInfo property ? property.PropertyType : ((FieldInfo)member).FieldType);
+            }
+            throw new InvalidOperationException($"节点没有成员 '{name}'。");
         }
 
         public static Func<object, object> Reader(Type type, string name, Type expected)

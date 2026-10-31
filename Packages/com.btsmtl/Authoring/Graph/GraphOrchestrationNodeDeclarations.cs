@@ -6,53 +6,47 @@ using BTSMTL.Orchestration;
 
 namespace BTSMTL.Authoring.Graph
 {
-    public readonly struct GraphOrchestrationExtensionPortBinding
-    {
-        public GraphOrchestrationExtensionPortBinding(string authoringPortId, IOrchestrationExtensionPort port)
-        {
-            AuthoringPortId = authoringPortId;
-            RuntimePort = port.Declaration;
-        }
-
-        public string AuthoringPortId { get; }
-        public OrchestrationExtensionPort RuntimePort { get; }
-    }
-
-    // 扩展节点执行的扩展操作，以及作者端口到扩展端口的映射。
+    // 节点执行的扩展操作；作者端口 identity 即合同端口 identity。
     public readonly struct GraphOrchestrationExtensionContract
     {
-        public GraphOrchestrationExtensionContract(OrchestrationExtensionDefinition definition,
-            IReadOnlyList<GraphOrchestrationExtensionPortBinding> ports)
-        {
-            Definition = definition;
-            Ports = ports;
-        }
+        public GraphOrchestrationExtensionContract(OrchestrationExtensionDefinition definition) => Definition = definition;
 
         public OrchestrationExtensionDefinition Definition { get; }
-        public IReadOnlyList<GraphOrchestrationExtensionPortBinding> Ports { get; }
     }
 
-    // 宿主按节点类给出编排声明；声明数据本身由宿主按能力维护，独立编译不经节点类直接读取。
-    public interface IGraphOrchestrationDeclarationSource
+    // 编排输出节点：Member 用 nameof 引用 Owner 上类型为 OrchestrationOutputTemplate 的静态成员。
+    [AttributeUsage(AttributeTargets.Class, Inherited = true)]
+    public sealed class GraphNodeOutputAttribute : Attribute
     {
-        GraphOrchestrationNodeDeclaration Declare(Type nodeType);
+        public GraphNodeOutputAttribute(Type owner, string member)
+        {
+            Owner = owner;
+            Member = member;
+        }
+
+        public Type Owner { get; }
+        public string Member { get; }
     }
 
-    // 节点类所在程序集以此标明编排声明来源；没有来源的程序集，其节点没有编排声明。
-    [AttributeUsage(AttributeTargets.Assembly)]
-    public sealed class GraphOrchestrationDeclarationsAttribute : Attribute
+    // 宿主输入节点：Member 用 nameof 引用 Owner 上类型为宿主输入端口列表的静态成员。
+    [AttributeUsage(AttributeTargets.Class, Inherited = true)]
+    public sealed class GraphNodeHostInputsAttribute : Attribute
     {
-        public GraphOrchestrationDeclarationsAttribute(Type source) => Source = source;
+        public GraphNodeHostInputsAttribute(Type owner, string member)
+        {
+            Owner = owner;
+            Member = member;
+        }
 
-        public Type Source { get; }
+        public Type Owner { get; }
+        public string Member { get; }
     }
 
-    // 节点的编排声明：宿主输入、编排输出或扩展操作三者至多其一。
+    // 节点的编排声明：宿主输入、编排输出或扩展操作三者至多其一，由节点类型上的特性决定。
     public sealed class GraphOrchestrationNodeDeclaration
     {
         public static readonly GraphOrchestrationNodeDeclaration None = new(null, null, null);
 
-        static readonly ConcurrentDictionary<Assembly, IGraphOrchestrationDeclarationSource> s_Sources = new();
         static readonly ConcurrentDictionary<Type, GraphOrchestrationNodeDeclaration> s_Declarations = new();
 
         GraphOrchestrationNodeDeclaration(IReadOnlyList<GraphOrchestrationHostInputPort> hostInputs,
@@ -71,32 +65,35 @@ namespace BTSMTL.Authoring.Graph
         public string DomainId => Extension is { } extension ? extension.Definition.Identity.DomainId
             : Output is { } output ? output.ContractIdentity : string.Empty;
 
-        public static GraphOrchestrationNodeDeclaration ForHostInputs(IReadOnlyList<GraphOrchestrationHostInputPort> inputs) =>
-            new(inputs ?? throw new ArgumentNullException(nameof(inputs)), null, null);
+        // 未声明编排特性的节点类型（含原生数值与宏端点的 null）没有编排声明。
+        public static GraphOrchestrationNodeDeclaration Of(Type nodeType) =>
+            nodeType == null ? None : s_Declarations.GetOrAdd(nodeType, Create);
 
-        public static GraphOrchestrationNodeDeclaration ForOutput(OrchestrationOutputTemplate output) => new(null, output, null);
-
-        public static GraphOrchestrationNodeDeclaration ForExtension(IOrchestrationExtensionDefinition definition,
-            params GraphOrchestrationExtensionPortBinding[] ports) =>
-            new(null, null, new GraphOrchestrationExtensionContract(definition.Declaration, Array.AsReadOnly(ports)));
-
-        public static GraphOrchestrationNodeDeclaration Of(Type nodeType) => s_Declarations.GetOrAdd(nodeType, type =>
+        static GraphOrchestrationNodeDeclaration Create(Type type)
         {
-            IGraphOrchestrationDeclarationSource source = s_Sources.GetOrAdd(type.Assembly, assembly =>
-                assembly.GetCustomAttribute<GraphOrchestrationDeclarationsAttribute>() is { } attribute
-                    ? (IGraphOrchestrationDeclarationSource)Activator.CreateInstance(attribute.Source) : null);
-            return source?.Declare(type) ?? None;
-        });
+            var extension = type.GetCustomAttribute<GraphNodeExtensionAttribute>(true);
+            var output = type.GetCustomAttribute<GraphNodeOutputAttribute>(true);
+            var hostInputs = type.GetCustomAttribute<GraphNodeHostInputsAttribute>(true);
+            if ((extension != null ? 1 : 0) + (output != null ? 1 : 0) + (hostInputs != null ? 1 : 0) > 1)
+                throw new InvalidOperationException($"节点 '{type.FullName}' 只能声明宿主输入、编排输出或扩展操作之一。");
+            if (extension != null)
+                return new GraphOrchestrationNodeDeclaration(null, null,
+                    new GraphOrchestrationExtensionContract(GraphNodeContracts.Definition(type).Declaration));
+            if (output != null)
+                return new GraphOrchestrationNodeDeclaration(null,
+                    Static<OrchestrationOutputTemplate>(type, output.Owner, output.Member), null);
+            if (hostInputs != null)
+                return new GraphOrchestrationNodeDeclaration(
+                    Static<IReadOnlyList<GraphOrchestrationHostInputPort>>(type, hostInputs.Owner, hostInputs.Member), null, null);
+            return None;
+        }
 
-        // 扩展端口按作者端口映射到运行端口；未映射的作者端口（常量输出）保持原身份，由编译合同核对。
-        public string RuntimePort(string port, OrchestrationExtensionPortDirection direction)
+        static T Static<T>(Type nodeType, Type owner, string member)
         {
-            if (Extension is not { } extension)
-                return port;
-            foreach (GraphOrchestrationExtensionPortBinding binding in extension.Ports)
-                if (binding.AuthoringPortId == port && binding.RuntimePort.Direction == direction)
-                    return binding.RuntimePort.Id;
-            return port;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
+            object value = owner.GetProperty(member, flags)?.GetValue(null) ?? owner.GetField(member, flags)?.GetValue(null);
+            return value is T typed ? typed : throw new InvalidOperationException(
+                $"节点 '{nodeType.FullName}' 引用的 '{owner.FullName}.{member}' 不是 {typeof(T).Name}。");
         }
     }
 
