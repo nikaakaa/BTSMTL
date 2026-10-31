@@ -1248,6 +1248,29 @@ export const graphAuthoring = {
     });
   },
 
+  reconnect(graphId: string, connectionId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const nodes = nodesOf(document);
+      for (const owner of nodes) {
+        const connections = connectionsOf(owner);
+        const index = connections.findIndex(connection => connection.UID === connectionId);
+        if (index < 0) continue;
+        const connection = connections[index];
+        if (owner.UID !== source.nodeId) {
+          const node = nodes.find(item => item.UID === source.nodeId);
+          if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
+          connections.splice(index, 1);
+          connectionsOf(node).push(connection);
+        }
+        connection.sourcePortID = source.portId;
+        connection.targetNode = target.nodeId;
+        connection.targetPortID = target.portId;
+        return;
+      }
+      throw new Error(`图 ${graphId} 中没有连线 ${connectionId}`);
+    });
+  },
+
   disconnect(graphId: string, connectionIds: string[]) {
     const removed = new Set(connectionIds);
     const source = currentDocument(graphPath(graphId));

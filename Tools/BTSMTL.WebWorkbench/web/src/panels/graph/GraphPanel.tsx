@@ -604,6 +604,11 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
   }, [graph.id, machine, elements]);
+  const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
+    graphAuthoring.reconnect(graph.id, edge.id,
+      { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
+      { nodeId: connection.target, portId: portOf(connection.targetHandle) });
+  }, [graph.id]);
   // 拖动结束写布局：分组写矩形，分组里没有一起拖动的节点按同一位移移动。
   const onNodeDragStop = useCallback((_: unknown, __: CanvasNode, dragged: CanvasNode[]) => {
     if (!editable) return;
@@ -716,7 +721,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
           onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
-          onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
+          onConnect={onConnect} onReconnect={onReconnect} edgesReconnectable={editable && !machine}
+          onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
           minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
