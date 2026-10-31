@@ -1,7 +1,7 @@
 import { NumberField } from '@base-ui/react/number-field';
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { PlayerJobReceipt } from '../api/playerRecords';
+import { clockPosition, positionValue, type PlayerJobReceipt } from '../api/playerRecords';
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
@@ -170,8 +170,12 @@ function useTransportState() {
     if (!blocked) {
       if (playing) previous = next = '需要先暂停';
       else if (source === 'player-live') {
-        previous = '试玩不能后退';
-        next = state.live?.player?.state === 'paused' ? null : '需要先暂停';
+        const player = state.live!.player!;
+        const clock = player.source!.clock;
+        previous = clock.kind === 'timeline'
+          ? player.state !== 'paused' ? '需要先暂停' : clockPosition(clock) === '0' ? '已到起点' : null
+          : '实时场景不能后退';
+        next = player.state === 'paused' ? null : '需要先暂停';
       } else {
         if (state.frameIndex <= 0) previous = '已是第一帧';
         if (state.frameIndex >= count - 1)
@@ -205,24 +209,28 @@ function Transport() {
 function FrameField() {
   const view = useWorkbench(useShallow(state => {
     if (transport.source() === 'player-live') {
-      const player = state.live?.player;
-      return player ? { frame: Number(player.hostFrame), last: Number(player.lastFrame ?? player.hostFrame), seconds: null } : null;
+      const player = state.live!.player!;
+      const clock = player.source!.clock;
+      return { frame: Number(clockPosition(clock)), last: player.endPosition === null ? null : positionValue(player.endPosition),
+        seconds: clock.kind === 'timeline' ? Number(clock.tick) / clock.tickRate : null,
+        label: clock.kind === 'timeline' ? 'Timeline Tick' : 'SDK 帧' };
     }
     if (!state.summary?.frameCount) return null;
     return {
       frame: state.frameIndex,
       last: state.summary.frameCount - 1,
       seconds: state.seconds,
+      label: '记录序号',
     };
   }));
   if (!view) return null;
-  const live = transport.source() === 'player-live';
   return (
     <div className={styles.frame}>
-      <NumberField.Root value={view.frame} onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
-        <NumberField.Input className={styles.frameInput} aria-label={live ? 'SDK 帧' : '记录序号'} title={live ? 'SDK 帧' : '记录序号'} />
+      <NumberField.Root value={view.frame} min={0} max={view.last ?? 2147483647}
+        onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
+        <NumberField.Input className={styles.frameInput} aria-label={view.label} title={view.label} />
       </NumberField.Root>
-      <span className={styles.frameLast}>/ {view.last}</span>
+      {view.last !== null && <span className={styles.frameLast}>/ {view.last}</span>}
       {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
   );

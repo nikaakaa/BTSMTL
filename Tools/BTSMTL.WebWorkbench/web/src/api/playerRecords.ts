@@ -111,19 +111,58 @@ const previewContent = (value: unknown, path = 'Player.content') => {
   }
 };
 const previewTarget = object({
-  liveId, playerBuildId: buildId, content: previewContent,
+  liveId, playerBuildId: buildId, loadCommandId: text, content: previewContent,
   channels: nullable(array(observationChannel)),
 });
+const sceneIdentity = object({ kind: choice('scene'), revision: text });
+const timelineIdentity = object({ kind: choice('timeline'), revision: text, timeline: text,
+  contentIdentity: text, contentRevision: text, bindingRevision: text });
+const contentIdentity = (value: unknown, path = 'Player.content') => {
+  const { kind } = object({ kind: choice('scene', 'timeline') })(value, path);
+  return kind === 'scene' ? sceneIdentity(value, path) : timelineIdentity(value, path);
+};
+const quantumClock = object({ kind: choice('quantumSdk'), tickRate: number, sdkFrame: text, gameplayTick: text,
+  requestedSdkFrame: optional(nullable(text)) });
+const timelineClock = object({ kind: choice('timeline'), tickRate: number, tick: text,
+  requestedTick: optional(nullable(text)) });
+export const readPreviewClock = (value: unknown, path = 'Player.clock') => {
+  const { kind } = object({ kind: choice('quantumSdk', 'timeline') })(value, path);
+  return kind === 'quantumSdk' ? quantumClock(value, path) : timelineClock(value, path);
+};
+const quantumPosition = object({ kind: choice('quantumSdk'), sdkFrame: number });
+const timelinePosition = object({ kind: choice('timeline'), tick: number });
+const position = (value: unknown, path = 'Player.position') => {
+  const { kind } = object({ kind: choice('quantumSdk', 'timeline') })(value, path);
+  return kind === 'quantumSdk' ? quantumPosition(value, path) : timelinePosition(value, path);
+};
+const sampleHeader = object({ loadCommandId: text, playerBuildId: text, sequence: text, content: contentIdentity, clock: opaque });
+export function readPreviewSampleSource(value: unknown, path = 'Player.source') {
+  const sample = sampleHeader(value, path);
+  return sample.content.kind === 'scene'
+    ? { ...sample, content: sample.content, clock: quantumClock(sample.clock, `${path}.clock`) }
+    : { ...sample, content: sample.content, clock: timelineClock(sample.clock, `${path}.clock`) };
+}
+export const clockPosition = (clock: PreviewClock) => clock.kind === 'quantumSdk' ? clock.sdkFrame : clock.tick;
+export const positionValue = (value: PreviewPosition) => value.kind === 'quantumSdk' ? value.sdkFrame : value.tick;
+export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
+  width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
+export const readViewerStatus = object({ type: choice('status'), live: object({
+  liveId: text, buildId: text, state: text, exitCode: nullable(number), rawJson: text,
+  player: nullable(object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
+    error: nullable(text), source: nullable(readPreviewSampleSource), endPosition: nullable(position),
+    hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
+    fields: array(field), rawJson: text })),
+}) });
 const liveIdentity = object({
   liveId, playerBuildId: buildId, width: number, height: number, running: boolean,
-  observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),
+  liveProtocol: nullable(text), observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),
   channels: array(observationChannel),
 });
 export const readLivePlayer = object({
   liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
   width: nullable(number), height: nullable(number), hello: opaque, player: opaque,
   identity: liveIdentity,
-  previewTarget: nullable(previewTarget), viewers: number, latestVideoFrame: nullable(number),
+  previewTarget: nullable(previewTarget), viewers: number, latestSample: nullable(readPreviewSampleSource),
 });
 export const readLivePlayers = array(readLivePlayer);
 export const readPlayerCreationOptions = object({
@@ -150,15 +189,18 @@ export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
 });
 const nativeAck = object({
-  type: choice('ack'), commandId: text, ok: boolean, frame: number,
+  type: choice('ack'), commandId: text, ok: boolean,
+  playerBuildId: optional(nullable(text)), content: optional(nullable(contentIdentity)), clock: optional(nullable(readPreviewClock)),
   error: optional(nullable(text)), path: optional(nullable(text)),
 });
 export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
   const receipt = readPlayerCommandReceipt(value, path);
   if (receipt.ack === null) return { ...receipt, ack: null };
   const ack = nativeAck(receipt.ack, `${path}.ack`);
+  const clock = ack.clock ?? null;
   return { ...receipt, ack: {
-    type: ack.type, commandId: ack.commandId, ok: ack.ok, hostFrame: String(ack.frame),
+    type: ack.type, commandId: ack.commandId, ok: ack.ok, clock, content: ack.content ?? null,
+    playerBuildId: ack.playerBuildId ?? null, hostFrame: clock === null ? null : clockPosition(clock),
     error: ack.error ?? undefined, path: ack.path ?? undefined, rawJson: JSON.stringify(receipt.ack),
   } };
 }
@@ -322,6 +364,10 @@ export type LivePlayer = ReturnType<typeof readLivePlayer>;
 export type PlayerSceneContent = ReturnType<typeof sceneContent>;
 export type PlayerTimelineContent = ReturnType<typeof timelineContent>;
 export type PlayerPreviewContent = ReturnType<typeof previewContent>;
+export type PreviewClock = ReturnType<typeof readPreviewClock>;
+export type PreviewPosition = ReturnType<typeof position>;
+export type PreviewSampleSource = ReturnType<typeof readPreviewSampleSource>;
+export type PreviewContentIdentity = ReturnType<typeof contentIdentity>;
 export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
 export type PlayerLoadRequest = {
   commandId: string;

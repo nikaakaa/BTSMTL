@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
-import type { PlayerPreviewContent } from '../api/playerRecords';
+import type { PlayerPreviewContent, PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerMessage } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
 
@@ -13,6 +13,7 @@ const pendingStartKey = 'btsmtl.player.pending-start';
 
 let socket: WebSocket | null = null;
 let latest: VideoFrame | null = null;
+let requestedLoad: { commandId: string; content: PlayerPreviewContent } | null = null;
 const videoListeners = new Set<() => void>();
 const pickListeners = new Set<(pick: PlayerPick) => void>();
 
@@ -21,20 +22,41 @@ function setVideo(frame: VideoFrame | null) {
   videoListeners.forEach(listener => listener());
 }
 
+function sameLoad(left: PreviewSampleSource, right: PreviewSampleSource) {
+  if (left.loadCommandId !== right.loadCommandId || left.playerBuildId !== right.playerBuildId ||
+    left.content.kind !== right.content.kind || left.content.revision !== right.content.revision ||
+    left.clock.kind !== right.clock.kind || left.clock.tickRate !== right.clock.tickRate) return false;
+  return left.content.kind === 'scene' || right.content.kind === 'timeline' &&
+    left.content.timeline === right.content.timeline && left.content.contentIdentity === right.content.contentIdentity &&
+    left.content.contentRevision === right.content.contentRevision && left.content.bindingRevision === right.content.bindingRevision;
+}
+
+function matchesRequestedLoad(sample: PreviewSampleSource) {
+  const request = requestedLoad;
+  return request === null || sample.loadCommandId === request.commandId && sample.content.kind === request.content.kind &&
+    sample.content.revision === request.content.revision && (request.content.kind === 'scene' ||
+      sample.content.kind === 'timeline' && sample.content.timeline === request.content.timeline);
+}
+
+function acceptVideo(frame: VideoFrame) {
+  const source = getState().live?.player?.source;
+  if (source && matchesRequestedLoad(frame.source) && sameLoad(frame.source, source)) setVideo(frame);
+}
+
 function onMessage(message: ViewerMessage) {
   switch (message.type) {
-    case 'status':
-      useWorkbench.setState({ live: message.live });
-      break;
-    case 'frames': {
-      const last = message.items.at(-1);
-      if (last) useWorkbench.setState({ actualFrame: last.hostFrame });
+    case 'status': {
+      const previous = getState().live?.player?.source;
+      const source = message.live.player?.source;
+      if (source && requestedLoad && matchesRequestedLoad(source)) requestedLoad = null;
+      useWorkbench.setState({ live: message.live,
+        ...(previous?.loadCommandId === source?.loadCommandId ? {} : initialPlayerTarget) });
+      if (latest && (!source || !sameLoad(latest.source, source))) setVideo(null);
       break;
     }
     case 'ack':
       if (!message.ok) consoleActions.log('error', source, `命令被拒绝：${message.error ?? ''}`, message.rawJson);
       else {
-        if (message.hostFrame !== undefined) useWorkbench.setState({ actualFrame: message.hostFrame });
         if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
       }
       break;
@@ -54,6 +76,7 @@ function close() {
   const current = socket;
   socket = null;
   current?.close();
+  requestedLoad = null;
   setVideo(null);
 }
 
@@ -112,7 +135,7 @@ export const playerService = {
     const opened = openViewer(liveId, {
       open: () => { if (socket === opened) useWorkbench.setState({ viewerOpen: true }); },
       message: message => { if (socket === opened) onMessage(message); },
-      video: frame => { if (socket === opened) setVideo(frame); },
+      video: frame => { if (socket === opened) acceptVideo(frame); },
       close: () => {
         if (socket !== opened) return;
         socket = null;
@@ -161,8 +184,11 @@ export const playerService = {
 
   loadContent: (content: PlayerPreviewContent) =>
     command('load', async liveId => {
+      const commandId = crypto.randomUUID();
+      requestedLoad = { commandId, content };
+      setVideo(null);
       const live = await playerApi.live(liveId);
-      return playerApi.load(liveId, { commandId: crypto.randomUUID(), content,
+      return playerApi.load(liveId, { commandId, content,
         executionMode: 'interactive', channels: live.identity.channels });
     }),
   async capture() {

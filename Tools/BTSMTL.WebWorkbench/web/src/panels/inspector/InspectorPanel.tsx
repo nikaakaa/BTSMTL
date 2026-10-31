@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
+import { clockPosition, positionValue } from '../../api/playerRecords';
 import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
@@ -226,8 +227,8 @@ function SkillSummary() {
 }
 
 function PlayerStatus() {
-  const { live, targetFrame, actualFrame, lastCommand } = useWorkbench(useShallow(state => ({
-    live: state.live, targetFrame: state.targetFrame, actualFrame: state.actualFrame,
+  const { live, targetPosition, lastCommand } = useWorkbench(useShallow(state => ({
+    live: state.live, targetPosition: state.targetPosition,
     lastCommand: state.lastCommand,
   })));
   if (!live) return null;
@@ -235,8 +236,10 @@ function PlayerStatus() {
     <Fold title="播放器" kind="var(--track-cam)" defaultOpen>
       <Value label="播放器进程" mono={false} value={live.state} />
       {live.player && <Values fields={live.player.fields} />}
-      {targetFrame !== null && <Value label="目标帧 / 实际帧" value={`${targetFrame} / ${actualFrame ?? '—'}`} />}
-      {lastCommand && <Value label="最后命令" value={`${lastCommand.type} · ${lastCommand.stage}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
+      {targetPosition !== null && <Value label={targetPosition.kind === 'timeline' ? '目标 Tick / 实际 Tick' : '目标 SDK 帧 / 实际 SDK 帧'}
+        value={`${positionValue(targetPosition)} / ${live.player?.source ? clockPosition(live.player.source.clock) : '—'}`} />}
+      {lastCommand && <Value label="最后命令" value={`${lastCommand.type} · ${lastCommand.stage}${lastCommand.clock
+        ? ` · ${lastCommand.clock.kind === 'timeline' ? 'Tick' : 'SDK 帧'} ${clockPosition(lastCommand.clock)}` : ''}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
     </Fold>
   );
 }

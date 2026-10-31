@@ -8,7 +8,7 @@ import type {
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
-  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -136,7 +136,7 @@ export interface PlayerCommandRecord {
   type: string;
   commandId: string | null;
   stage: LiveCommandStage;
-  hostFrame: string | null;
+  clock: PreviewClock | null;
   error: string | null;
 }
 export interface PlayerSlice {
@@ -146,9 +146,8 @@ export interface PlayerSlice {
   live: ViewerLive | null;
   viewerOpen: boolean;
   playerViewport: { width: number; height: number } | null;
-  targetFrame: number | null;
-  actualFrame: string | null;
-  pendingSeek: { commandId: string; frame: number } | null;
+  targetPosition: PreviewPosition | null;
+  pendingSeek: { commandId: string; loadCommandId: string; position: PreviewPosition } | null;
   lastCommand: PlayerCommandRecord | null;
   // 画面面板正在接管键鼠时，运行快捷键不响应。
   capturing: boolean;
@@ -216,7 +215,7 @@ export const consoleLimit = 500;
 export const initialCursor: CursorSlice = { frameIndex: 0, hostFrame: null, seconds: null };
 
 export const initialPlayerTarget = {
-  targetFrame: null, actualFrame: null, pendingSeek: null, lastCommand: null,
+  targetPosition: null, pendingSeek: null, lastCommand: null,
 } satisfies Partial<PlayerSlice>;
 
 export const useWorkbench = create<WorkbenchState>()(() => ({
