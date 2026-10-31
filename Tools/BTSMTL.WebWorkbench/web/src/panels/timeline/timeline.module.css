@@ -1,7 +1,9 @@
 /* 照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤，D5）。 */
+/* 照 Unity Timeline 窗口：拖游标、片段与框选时不选中文字；输入框仍可选 */
 .frame {
   height: 100%;
   min-height: 0;
+  user-select: none;
 }
 
 .window {
