@@ -29,6 +29,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 Metadata.ConstructorArguments[0].Type?.SpecialType == SpecialType.System_String;
             public IEnumerable<TypedConstant> Arguments => Metadata.ConstructorArguments.Skip(ExplicitId ? 1 : 0);
             public string Name => string.Join("_", Path);
+            // 辅助特性与字段间引用写 nameof(成员)，按成员路径找到字段后再取正式字段身份。
+            public string MemberPath => string.Join(".", Path);
             public string Access => string.Join(".", Path.Select(Escape));
         }
 
@@ -90,9 +92,9 @@ namespace ThirdPerson.ValueGeneration.Generator
             symbol.GetAttributes().Where(attribute =>
                 Identity(attribute.AttributeClass) == AuthoringNamespace + suffix + "Attribute");
 
-        static ISymbol AuthoringAuxiliary(INamedTypeSymbol type, string suffix, string id) =>
+        static ISymbol AuthoringAuxiliary(INamedTypeSymbol type, string suffix, AuthoringField field) =>
             type.GetMembers().SingleOrDefault(member => AuthoringAttributes(member, suffix)
-                .Any(attribute => (string)attribute.ConstructorArguments[0].Value == id));
+                .Any(attribute => (string)attribute.ConstructorArguments[0].Value == field.MemberPath));
 
         static bool AuthoringWritable(AuthoringField field) => !field.ReadOnly &&
             (field.Symbol is IFieldSymbol member ? !member.IsReadOnly :
@@ -168,14 +170,14 @@ namespace ThirdPerson.ValueGeneration.Generator
             if (!valid) return;
             foreach (AuthoringField field in fields)
             {
-                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field.Id);
+                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field);
                 if (defaults != null && (!PublicAuthoringRead(defaults) ||
                     !SymbolEqualityComparer.Default.Equals(AuthoringResultType(defaults), field.Type)))
                 {
                     Error(defaults, "作者默认值必须是公开无参读取成员，并返回正式字段的准确类型");
                     valid = false;
                 }
-                ISymbol choices = AuthoringAuxiliary(type, "GraphAuthoringChoices", field.Id);
+                ISymbol choices = AuthoringAuxiliary(type, "GraphAuthoringChoices", field);
                 if (choices != null && (!PublicAuthoringRead(choices) ||
                     !(AuthoringResultType(choices) is INamedTypeSymbol choiceType) ||
                     !choiceType.AllInterfaces.Concat(new[] { choiceType }).Any(candidate => candidate.MetadataName == "IReadOnlyList`1" &&
@@ -184,7 +186,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Error(choices, "作者候选必须是公开无参读取成员，并返回 IReadOnlyList<T>");
                     valid = false;
                 }
-                ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field.Id);
+                ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field);
                 if (owner != null && (!(owner is IPropertySymbol ownerProperty) || owner.IsStatic ||
                     !PublicAuthoringRead(owner) || ownerProperty.SetMethod?.DeclaredAccessibility != Accessibility.Public ||
                     !ownerProperty.Type.IsReferenceType))
@@ -192,7 +194,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Error(owner, "资源 owner 必须是公开可读写的平台资源引用属性");
                     valid = false;
                 }
-                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
+                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field);
                 if (field.Metadata.NamedArguments.Any(argument => argument.Key == "ResourceDomain" &&
                     argument.Value.Value is string domain && domain.Length != 0) && (owner == null || binder == null))
                 {
@@ -251,9 +253,16 @@ namespace ThirdPerson.ValueGeneration.Generator
                     attribute.AttributeClass.Name != "GraphAuthoringConfigureAttribute" &&
                     attribute.AttributeClass.Name != "GraphAuthoringInlineAttribute" &&
                     attribute.ConstructorArguments.Length == 1 && attribute.ConstructorArguments[0].Value is string))
-                    if (!fields.Any(field => field.Id == (string)annotation.ConstructorArguments[0].Value))
+                    if (!fields.Any(field => field.MemberPath == (string)annotation.ConstructorArguments[0].Value))
                     {
-                        Error(member, "作者字段辅助成员引用了未声明的字段身份：" + annotation.ConstructorArguments[0].Value);
+                        Error(member, "作者字段辅助成员引用了未声明的字段成员：" + annotation.ConstructorArguments[0].Value);
+                        valid = false;
+                    }
+            foreach (AuthoringField field in fields)
+                foreach (KeyValuePair<string, TypedConstant> argument in field.Metadata.NamedArguments)
+                    if (AuthoringFieldReference(argument) && !fields.Any(candidate => candidate.MemberPath == (string)argument.Value.Value))
+                    {
+                        Error(field.Symbol, argument.Key + " 引用了未声明的字段成员：" + argument.Value.Value);
                         valid = false;
                     }
             if (!valid) return;
@@ -270,7 +279,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 string read = "((" + TypeName(type) + ")target)." + field.Access;
                 string evaluate = AuthoringCandidate(field);
-                ISymbol evaluator = AuthoringAuxiliary(type, "GraphAuthoringEvaluate", field.Id);
+                ISymbol evaluator = AuthoringAuxiliary(type, "GraphAuthoringEvaluate", field);
                 if (evaluator is IMethodSymbol evaluatorMethod)
                 {
                     if (!evaluatorMethod.IsStatic || evaluatorMethod.DeclaredAccessibility != Accessibility.Public ||
@@ -284,16 +293,16 @@ namespace ThirdPerson.ValueGeneration.Generator
                     evaluate = TypeName(type) + "." + Escape(evaluator.Name) + "(" + string.Join(", ",
                         evaluatorMethod.Parameters.Select(parameter => AuthoringCandidate(fields.Single(candidate => candidate.Id == parameter.Name)))) + ")";
                 }
-                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field.Id);
+                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field);
                 string defaultValue = defaults == null ? read : AuthoringAuxiliaryRead(type, defaults, "target");
-                ISymbol choices = AuthoringAuxiliary(type, "GraphAuthoringChoices", field.Id);
+                ISymbol choices = AuthoringAuxiliary(type, "GraphAuthoringChoices", field);
                 string choice = choices == null ? "null" : "new global::System.Func<object, " + TypeName(
                     choices is IPropertySymbol choiceProperty ? choiceProperty.Type : ((IMethodSymbol)choices).ReturnType) + ">(" +
                     "target => " + AuthoringAuxiliaryRead(type, choices, "target") + ")";
-                ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field.Id);
-                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
+                ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field);
+                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field);
                 code.Append("new ").Append(AuthoringRuntime).Append("GraphAuthoringMember(")
-                    .Append(AuthoringFieldMetadata(field)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
+                    .Append(AuthoringFieldMetadata(field, fields)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
                     .Append("new string[] { ").Append(string.Join(", ",
                         AuthoringSerializedMemberPath(context.Compilation, type, field).Select(Quote))).Append(" }, ")
                     .Append("target => ").Append(read).Append(", new global::System.Func<object, ").Append(TypeName(field.Type))
@@ -364,7 +373,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 code.Append("public ").Append(TypeName(field.Type)).Append(' ').Append(Escape(field.Name)).AppendLine(";");
                 if (field.ReadOnly) continue;
                 code.Append("public bool Changed_").Append(field.Name).AppendLine(";");
-                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
+                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field);
                 if (binder != null)
                 {
                     code.Append("public bool ResourceChanged_").Append(field.Name).AppendLine(";");
@@ -386,7 +395,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 .Append(inherited != null ? " : base(target, complete)" : "").AppendLine(" {");
             foreach (AuthoringField field in fields)
             {
-                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field.Id);
+                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field);
                 string read = "target." + field.Access;
                 code.Append(Escape(field.Name)).Append(" = ")
                     .Append(defaults == null ? read : "complete ? " + AuthoringAuxiliaryRead(type, defaults, "target") + " : " + read)
@@ -398,7 +407,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.Append("public override bool HasChanges => ").Append(string.Join(" || ",
                 fields.Where(field => !field.ReadOnly).Select(field => "Changed_" + field.Name)
                     .Concat(inherited != null ? new[] { "base.HasChanges" } : new[] { "false" }))).AppendLine(";");
-            AuthoringField[] resources = fields.Where(field => AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id) != null).ToArray();
+            AuthoringField[] resources = fields.Where(field => AuthoringAuxiliary(type, "GraphAuthoringBindResource", field) != null).ToArray();
             if (resources.Length != 0)
             {
                 code.AppendLine("public override void ResolveResources(object target) {");
@@ -406,7 +415,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 foreach (AuthoringField field in resources)
                     code.Append("if (ResourceChanged_").Append(field.Name).Append(") Set_").Append(field.Name)
                         .Append("(((").Append(TypeName(type)).Append(")target).")
-                        .Append(Escape(AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id).Name))
+                        .Append(Escape(AuthoringAuxiliary(type, "GraphAuthoringBindResource", field).Name))
                         .Append("(Resource_").Append(field.Name).AppendLine("));");
                 code.AppendLine("}");
             }
@@ -430,11 +439,18 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.AppendLine("return target; } }");
         }
 
-        static string AuthoringFieldMetadata(AuthoringField field) => "new " + TypeName(field.Metadata.AttributeClass) +
+        // 带点的 VisibleWhenField 是进入字段值的成员路径，由对应领域读取，不换算。
+        static bool AuthoringFieldReference(KeyValuePair<string, TypedConstant> argument) =>
+            (argument.Key == "PickerOwnerField" || argument.Key == "VisibleWhenField") &&
+            argument.Value.Value is string member && member.Length != 0 && member.IndexOf('.') < 0;
+
+        static string AuthoringFieldMetadata(AuthoringField field, AuthoringField[] fields) => "new " + TypeName(field.Metadata.AttributeClass) +
             "(" + Quote(field.Id) + (field.Arguments.Any() ? ", " + string.Join(", ",
                 field.Arguments.Select(AuthoringConstant)) : "") + ")" +
             (field.Metadata.NamedArguments.Length == 0 ? "" : " { " + string.Join(", ", field.Metadata.NamedArguments.Select(argument =>
-                Escape(argument.Key) + " = " + AuthoringConstant(argument.Value))) + " }");
+                Escape(argument.Key) + " = " + (AuthoringFieldReference(argument)
+                    ? Quote(fields.Single(candidate => candidate.MemberPath == (string)argument.Value.Value).Id)
+                    : AuthoringConstant(argument.Value)))) + " }");
 
         static bool AuthoringIdentityField(AuthoringField field)
         {
