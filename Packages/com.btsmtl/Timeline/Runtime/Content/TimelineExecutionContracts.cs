@@ -10,7 +10,7 @@ namespace BTSMTL.Timeline
     public readonly struct TimelineScenePresentationSample
     {
         public TimelineScenePresentationSample(
-            OperationHandle operation,
+            OperationHandle? operation,
             string targetIdentity,
             string parameterId,
             float value,
@@ -18,7 +18,7 @@ namespace BTSMTL.Timeline
             in OrchestrationTimelineStart<OrchestrationTime> start,
             int cycle)
         {
-            if (!operation.IsValid || cycle < 0 ||
+            if (operation.HasValue && !operation.Value.IsValid || cycle < 0 ||
                 float.IsNaN(value) || float.IsInfinity(value) ||
                 float.IsNaN(normalizedTime) || float.IsInfinity(normalizedTime))
                 throw new ArgumentException("Timeline scene presentation sample is incomplete.");
@@ -35,7 +35,7 @@ namespace BTSMTL.Timeline
             Cycle = cycle;
         }
 
-        public OperationHandle Operation { get; }
+        public OperationHandle? Operation { get; }
         public string TargetIdentity { get; }
         public string ParameterId { get; }
         public float Value { get; }
