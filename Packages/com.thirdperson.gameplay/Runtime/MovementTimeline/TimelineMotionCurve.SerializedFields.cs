@@ -13,6 +13,26 @@ namespace ThirdPersonGameplay.Movement.Timeline
     {
         public const string TrackKind = "motion-curve.track";
         public const string ClipKind = TimelineContentMotion.Kind;
+
+        public static TimelineTrackContract Track { get; } = new(
+            TrackKind,
+            TimelineTrackOverlapPolicy.Blend,
+            TimelineContentKind.Sampled,
+            TimelineExecutionDomain.Logic,
+            TimelineOutputKind.LogicFact,
+            new TimelineLogicSampleExtension(TimelineContentMotion.MotionCurveSample.Definition.Identity,
+                TimelineContentMotion.MotionCurveSample.Definition.SemanticVersion),
+            ClipKind);
+
+        public static TimelineClipDefinition Clip { get; } = new(
+            ClipKind,
+            TrackKind,
+            TimelineClipExecutionPhase.Commit,
+            TimelineContentKind.Sampled,
+            true,
+            true,
+            TimelineExecutionDomain.Logic,
+            TimelineOutputKind.LogicFact);
     }
 
     public sealed partial class MotionCurveTrack : SampledTrack
