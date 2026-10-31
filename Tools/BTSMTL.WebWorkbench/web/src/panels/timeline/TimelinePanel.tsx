@@ -42,7 +42,7 @@ import { numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
-import { KeyIcon, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
+import { KeyIcon, MarkerHead, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
@@ -54,8 +54,11 @@ const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, wid
 const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
-// 标记标签最宽像素；离右边界不够时标签翻到立杆左侧。
-const markerTagMax = 200;
+// 片段太窄写不下名字、以及标记，名字写在右侧外面：与本体隔 4 像素，最多写到同行下一项起点前 4 像素，不足 24 像素不写。
+const outerLabelGap = 4;
+const outerLabelMin = 24;
+// 标记旗头（MarkerHead 9×11）的半宽，旗头尖端对准时刻。
+const markerHeadHalf = 4.5;
 const curveHeight = 64;
 // 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
 // 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
@@ -1560,6 +1563,8 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
+  const markers = row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end);
+  const nexts = nextStarts([...visible, ...markers.map(marker => ({ start: marker.seconds }))], range.end);
   // 照 Clip.UpdateMix 只给可混合的片段算混合：轨道合同为 Blend 的动画与位移曲线轨。
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const blend = elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
@@ -1618,11 +1623,11 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
         </span>}
       </TrackHead>
     }>
-      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
+      {visible.map((clip, i) => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!} next={nexts[i]}
         documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
       {curves > 0 && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} height={curves} />}
-      {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.key} seconds={marker.seconds} kind={row.trackKind} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
+      {markers.map((marker, i) => (
+        <Marker key={marker.key} seconds={marker.seconds} next={nexts[visible.length + i]} kind={row.trackKind} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
           selectId={marker.selectId}
           move={author ? seconds => authoringActions.setMarkerTime(documentId, marker.selectId.split('/')[1], snapLocal(seconds)) : undefined}
           snap={author ? seconds => segment.origin + snapLocal(seconds) : undefined} />
@@ -1632,6 +1637,12 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
     </ContextMenu>
   );
 });
+
+// 每项外置名字可写到的右界（秒）：同行在它之后开始的最近一项的起点（同时开始的按先后），没有则到视图右端。
+function nextStarts(spans: { start: number }[], end: number): number[] {
+  return spans.map((span, i) => spans.reduce((next, other, j) =>
+    j !== i && (other.start > span.start || (other.start === span.start && j > i)) ? Math.min(next, other.start) : next, end));
+}
 
 // 片段两端与同轨片段的混合（Mix）秒数。
 interface ClipMix { in: number; out: number }
@@ -2088,8 +2099,8 @@ function Positioned({ start, end, className, children, style, title }: {
   );
 }
 
-const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackId }: {
-  clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
+const Clip = memo(function Clip({ clip, kind, mix, next, documentId, segmentId, trackId }: {
+  clip: ClipInstance; kind: TrackKind; mix: ClipMix; next: number; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
@@ -2101,7 +2112,7 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
   } : undefined, [author, clip, documentId]);
   return (
     <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
-      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix} />
+      exit={clip.exit} next={next} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix} />
   );
 });
 
@@ -2179,9 +2190,10 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名；exit 之后的部分压暗。
+// 片段窄到写不下名字时，名字改写在右侧外面，最多到同行下一项（next 秒）之前。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
-  boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId, edit, ease, mix }: {
+  boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number; next: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
 }) {
   const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
@@ -2209,6 +2221,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
+  const outerWidth = labelWidth > clipLabelMinWidth ? 0 : valueToPixels(next - end) - outerLabelGap * 2;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
@@ -2229,6 +2242,8 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
       </div>
+      {outerWidth >= outerLabelMin && <span className={styles.outerLabel} data-selected={selected || undefined}
+        data-dim={dimmed || undefined} style={{ left: `calc(100% + ${outerLabelGap}px)`, maxWidth: outerWidth }}>{label}</span>}
     </div>
   );
 }
@@ -2245,10 +2260,11 @@ function openClipGraph(graphId: string | null, label: string) {
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
-// 时刻处一根轨道类别色立杆贯穿整行，贴着立杆挂一个片段底色的标签写所触发的内容（text）；没有内容（未绑定节点图）时只留小旗头。
+// 时刻处一根 1 像素类别色细线贯穿整行，顶端是类别色的小旗头（MarkerHead）；所触发的内容（text）同窄片段一样写在右侧外面，
+// 最多到同行下一项（next 秒）之前。未绑定节点图时旗头只留轮廓、不写名字。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回。
-function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, snap }: {
-  seconds: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
+function Marker({ seconds: shown, next, kind, label, text, graphId, selectId, move, snap }: {
+  seconds: number; next: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
   move?(seconds: number): void; snap?(seconds: number): number;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
@@ -2257,10 +2273,10 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
   const clock = useContext(PreviewClockContext);
   const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
   const left = valueToPixels(seconds - range.start);
-  const flip = valueToPixels(range.end - range.start) - left < markerTagMax;
+  const textWidth = valueToPixels(next - seconds) - markerHeadHalf - outerLabelGap * 2;
   return (
-    <button className={styles.marker} data-selected={selected || undefined} data-flip={flip || undefined} data-select={selectId}
-      style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind], ['--max' as string]: `${markerTagMax}px` }}
+    <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined} data-select={selectId}
+      style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
       title={`${label} · ${seconds.toFixed(3)} s\n双击打开节点图${move ? '\n左右拖动改时刻' : ''}`}
       onPointerDown={event => {
         if (!move || event.button !== 0) return;
@@ -2279,7 +2295,9 @@ function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, sn
       onPointerCancel={() => setDragging(null)}
       onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)}>
-      <span className={styles.markerTag}>{text}</span>
+      <MarkerHead className={styles.markerHead} />
+      {text && textWidth >= outerLabelMin && <span className={styles.outerLabel} data-selected={selected || undefined}
+        style={{ left: markerHeadHalf + outerLabelGap, maxWidth: textWidth }}>{text}</span>}
     </button>
   );
 }
@@ -2406,22 +2424,24 @@ const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputT
   const selected = useSelected(row.selectId, 'track');
   const routeEnd = useWorkbench(() => transport.duration());
   const { range } = useTimelineContext();
-  const clips = row.track.clips;
+  const clips = row.track.clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end);
+  const markers = row.track.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end);
+  const nexts = nextStarts([...clips.map(clip => ({ start: clip.startSeconds })), ...markers.map(marker => ({ start: marker.seconds }))], range.end);
   if (routeEnd === null) return null;
   return (
     <Line id={row.id} nest={nest} selected={selected} headClass={styles.trackHead} head={
       <TrackHead kind="in" selected={selected} name={row.track.displayName}
         onSelect={() => selectionActions.select({ kind: 'track', id: row.selectId })} />
     }>
-      {clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end).map(clip => {
+      {clips.map((clip, i) => {
         const selectId = inputClipSelectId(row.track.id, clip.id);
         return (
           <ClipBox key={clip.id} boxKey={selectId} selectId={selectId} kind="in" label={inputLabel(clip.writes, true)}
-            start={clip.startSeconds} end={clip.endSeconds} exit={routeEnd} graphId={clip.graphId} />
+            start={clip.startSeconds} end={clip.endSeconds} exit={routeEnd} next={nexts[i]} graphId={clip.graphId} />
         );
       })}
-      {row.track.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.id} seconds={marker.seconds} kind="in" label={inputLabel(marker.writes, false)} text={inputLabel(marker.writes, false)}
+      {markers.map((marker, i) => (
+        <Marker key={marker.id} seconds={marker.seconds} next={nexts[clips.length + i]} kind="in" label={inputLabel(marker.writes, false)} text={inputLabel(marker.writes, false)}
           graphId={marker.graphId}
           selectId={inputClipSelectId(row.track.id, marker.id)} />
       ))}

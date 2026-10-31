@@ -948,8 +948,8 @@
   pointer-events: none;
 }
 
-/* 标记：时刻处 2 像素类别色立杆贯穿整行（两侧各留 2 像素好点中），贴着立杆挂片段底色的标签，白字黑影同片段名；
-   悬停标签提亮，选中同片段（选中底色、白框、立杆变白）并压在其它标记之上；标签为空时只剩 6 像素小旗头 */
+/* 标记：时刻处 1 像素类别色细线贯穿整行（左右共 8 像素可点中），顶端类别色小旗头、半透明黑描边，尖端对准时刻；
+   未绑定节点图时旗头只留类别色轮廓；悬停旗头提亮，选中时旗头与细线变白并压在其它标记之上 */
 .marker {
   all: unset;
   position: absolute;
@@ -964,54 +964,77 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -3px;
-  width: 6px;
-  background: linear-gradient(90deg, transparent 2px, var(--stem, var(--tc)) 2px 4px, transparent 4px);
+  left: -4px;
+  width: 8px;
 }
 
-.markerTag {
+.marker::after {
+  content: '';
   position: absolute;
-  top: 6px;
-  left: 1px;
-  box-sizing: border-box;
-  height: 18px;
-  max-width: var(--max);
-  padding: 0 6px;
-  overflow: hidden;
-  border-radius: 0 3px 3px 0;
-  background: var(--tl-clip);
-  color: #fff;
-  font-size: 11px;
-  line-height: 18px;
-  text-shadow: 1px 1px 0 #000;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  top: 8px;
+  bottom: 0;
+  left: -.5px;
+  width: 1px;
+  background: color-mix(in srgb, var(--tc) 75%, transparent);
 }
 
-.markerTag:empty {
-  width: 6px;
-  padding: 0;
+.markerHead {
+  position: absolute;
+  top: 0;
+  left: -4.5px;
+  z-index: 1;
 }
 
-.marker[data-flip] .markerTag {
-  left: auto;
-  right: 1px;
-  border-radius: 3px 0 0 3px;
+.markerHead path {
+  fill: var(--tc);
+  stroke: rgb(0 0 0 / 55%);
+  stroke-width: 1;
 }
 
-.marker:hover .markerTag {
-  background: var(--tl-clip-blend);
+.marker[data-unbound] .markerHead path {
+  fill: var(--tl-track);
+  stroke: var(--tc);
+}
+
+.marker:hover .markerHead {
+  filter: brightness(1.35);
 }
 
 .marker[data-selected] {
   z-index: 4;
-  --stem: #fff;
 }
 
-.marker[data-selected] .markerTag {
-  outline: 1px solid #fff;
-  outline-offset: -1px;
-  background: var(--tl-clip-selected);
+.marker[data-selected]::after {
+  background: #fff;
+}
+
+.marker[data-selected] .markerHead path {
+  fill: #fff;
+  stroke: rgb(0 0 0 / 55%);
+}
+
+/* 外置名字：窄片段与标记共用，写在本体右侧外面、行内竖直居中，不加底色以免像片段；悬停标记或选中时变白，片段压暗时随之压暗 */
+.outerLabel {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 30px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.item > .outerLabel {
+  pointer-events: none;
+}
+
+.marker:hover .outerLabel, .outerLabel[data-selected] {
+  color: #fff;
+}
+
+.outerLabel[data-dim] {
+  opacity: .45;
 }
 
 /* 轨道头双击改名 */

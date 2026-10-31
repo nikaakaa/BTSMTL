@@ -34,6 +34,13 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
+// 标记旗头（9×11）：上方方、下方收成尖，尖端对准时刻。
+export const MarkerHead = (props: ShapeProps) => (
+  <svg width="9" height="11" viewBox="0 0 9 11" aria-hidden focusable="false" {...props}>
+    <path d="M.5.5h8v6L4.5 10.5.5 6.5z" />
+  </svg>
+);
+
 // 播放头（TimelineTimeCursor，11×20）：上方圆角的白色五边形，尖端接游标线。
 export const PlayheadShape = () => (
   <svg width="11" height="20" viewBox="0 0 11 20" aria-hidden focusable="false">
