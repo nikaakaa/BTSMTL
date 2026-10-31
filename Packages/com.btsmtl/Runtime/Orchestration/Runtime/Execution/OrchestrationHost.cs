@@ -139,7 +139,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationTimelineInvocationFacts ReadInvocationFacts() => m_Timeline.ReadInvocationFacts();
 
-        public void SelectExecutionFrame(int frameSlot) => m_Timeline.SelectExecutionFrame(frameSlot, ref m_Context);
+        public void SelectExecutionFrame(int frameSlot) => m_Timeline?.SelectExecutionFrame(frameSlot, ref m_Context);
 
         public OrchestrationOperationResult ReleaseInvocation() => m_Timeline.ReleaseInvocation(ref m_Context);
 
