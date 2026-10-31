@@ -237,13 +237,13 @@ const routeFrame = object({
 const logicPose = object({ position: vector3, rotation: quaternion });
 const segment = object({ shapeIndex: number, start: logicPose, end: logicPose });
 const frame = object({
-  hostFrame: text, seconds: number, source, availability: array(availability),
+  hostFrame: text, seconds: number, source: nullable(source), availability: array(availability),
   actors: array(object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text })),
   channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
   sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
   geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment) })),
     contacts: array(object({ point: vector3, normal: vector3,
-      kind: optional(nullable(choice('kcc-contact', 'query-candidate'))),
+      kind: optional(nullable(text)),
       actorId: optional(nullable(text)), purpose: optional(nullable(text)) })) }), rawJson: text, route: nullable(routeFrame),
 });
 export const readPlayerFrames = page(frame);
