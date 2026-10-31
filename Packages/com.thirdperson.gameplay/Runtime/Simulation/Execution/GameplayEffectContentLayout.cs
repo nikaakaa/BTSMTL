@@ -6,13 +6,15 @@ namespace ThirdPersonSimulation
 {
     public static class GameplayEffectRuntimeIdentity
     {
-        const string AttributePrefix = "attribute:";
+        public const string TagPrefix = "tag:";
+        public const string AttributePrefix = "attribute:";
+        public const string EffectPrefix = "effect:";
 
-        public static string Tag(string value) => Normalize(value, "tag:", "GameplayTag");
+        public static string Tag(string value) => Normalize(value, TagPrefix, "GameplayTag");
         public static string Attribute(string value) => Normalize(value, AttributePrefix, "GameplayAttribute");
-        public static string Effect(string value) => Normalize(value, "effect:", "GameplayEffect");
+        public static string Effect(string value) => Normalize(value, EffectPrefix, "GameplayEffect");
 
-        static string Normalize(string value, string prefix, string parameterName)
+        internal static string Normalize(string value, string prefix, string parameterName)
         {
             string identity = SimulationIdentity.Require(value, parameterName);
             return identity.StartsWith(prefix, StringComparison.Ordinal) ? identity : prefix + identity;
