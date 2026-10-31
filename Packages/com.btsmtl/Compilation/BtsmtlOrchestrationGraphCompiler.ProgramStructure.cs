@@ -1,13 +1,418 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using BTSMTL.Orchestration;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation
 {
     public static partial class BtsmtlOrchestrationGraphCompiler
     {
+        internal sealed class ParameterBindings<TValue> where TValue : unmanaged
+        {
+            internal ParameterBindings(OrchestrationGraphContent<TValue> content,
+                IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
+                IReadOnlyList<SemanticConstantInputBinding> constantInputs,
+                IReadOnlyList<ProgramControlFlowEdge> controlFlow, IReadOnlyList<ProgramReference> references,
+                IReadOnlyList<ProgramGraphCallFrame> graphCalls, IReadOnlyList<ProgramStateSlot> stateSlots,
+                IReadOnlyList<ProgramScopeLayout> scopes, IReadOnlyList<ProgramCatalogEntry> catalog,
+                IReadOnlyList<ProgramSourceMapEntry> sourceMap,
+                IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
+                IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts,
+                object domain, Type compilationType, OrchestrationExecutionContract contract, string encoderIdentity,
+                string[] structureIdentityTexts, int[] valueLiteralIndexes, int[] curveLiteralIndexes,
+                int[] constantLiteralIndexes, int[] defaultLiteralIndexes,
+                Dictionary<string, int> identityIds, IdentityCache executionIdentities)
+            {
+                Content = content;
+                Operations = operations;
+                Literals = literals;
+                ConstantInputs = constantInputs;
+                ControlFlow = controlFlow;
+                References = references;
+                GraphCalls = graphCalls;
+                StateSlots = stateSlots;
+                Scopes = scopes;
+                Catalog = catalog;
+                SourceMap = sourceMap;
+                StateTransitionHooks = stateTransitionHooks;
+                EntryContracts = entryContracts;
+                Domain = domain;
+                CompilationType = compilationType;
+                Contract = contract;
+                EncoderIdentity = encoderIdentity;
+                StructureIdentityTexts = structureIdentityTexts;
+                ValueLiteralIndexes = valueLiteralIndexes;
+                CurveLiteralIndexes = curveLiteralIndexes;
+                ConstantLiteralIndexes = constantLiteralIndexes;
+                DefaultLiteralIndexes = defaultLiteralIndexes;
+                IdentityIds = identityIds;
+                ExecutionIdentities = executionIdentities;
+            }
+
+            internal readonly OrchestrationGraphContent<TValue> Content;
+            internal readonly IReadOnlyList<SemanticOperation> Operations;
+            internal readonly IReadOnlyList<SemanticLiteral> Literals;
+            internal readonly IReadOnlyList<SemanticConstantInputBinding> ConstantInputs;
+            internal readonly IReadOnlyList<ProgramControlFlowEdge> ControlFlow;
+            internal readonly IReadOnlyList<ProgramReference> References;
+            internal readonly IReadOnlyList<ProgramGraphCallFrame> GraphCalls;
+            internal readonly IReadOnlyList<ProgramStateSlot> StateSlots;
+            internal readonly IReadOnlyList<ProgramScopeLayout> Scopes;
+            internal readonly IReadOnlyList<ProgramCatalogEntry> Catalog;
+            internal readonly IReadOnlyList<ProgramSourceMapEntry> SourceMap;
+            internal readonly IReadOnlyList<OrchestrationExtensionReference> StateTransitionHooks;
+            internal readonly IReadOnlyDictionary<string, OrchestrationExecutionContract> EntryContracts;
+            internal readonly object Domain;
+            internal readonly Type CompilationType;
+            internal readonly OrchestrationExecutionContract Contract;
+            internal readonly string EncoderIdentity;
+            internal readonly string[] StructureIdentityTexts;
+            internal readonly int[] ValueLiteralIndexes;
+            internal readonly int[] CurveLiteralIndexes;
+            internal readonly int[] ConstantLiteralIndexes;
+            internal readonly int[] DefaultLiteralIndexes;
+            internal readonly Dictionary<string, int> IdentityIds;
+            internal readonly IdentityCache ExecutionIdentities;
+        }
+
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
         {
+            ParameterBindings<TValue> CreateBindings(OrchestrationGraphContent<TValue> content,
+                IdentityCache identities, ParameterBindings<TValue> previous = null)
+            {
+                int[] constants;
+                int[] defaults;
+                IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts;
+                if (previous == null)
+                {
+                    constants = new int[m_ConstantIndexes.Count];
+                    foreach (KeyValuePair<int, int> binding in m_ConstantIndexes)
+                        constants[binding.Value] = binding.Key;
+                    defaults = EmptyIndexes(m_DefaultValues.Count);
+                    for (int i = 0; i < m_StateSlots.Count; i++)
+                        if (m_StateSlots[i].Semantic == ProgramStateSemantic.BlackboardValue)
+                            defaults[m_StateValueSlots[i]] = m_StateSlots[i].DefaultConstantIndex;
+                    entryContracts = m_EntryContracts == null ? null :
+                        new Dictionary<string, OrchestrationExecutionContract>(m_EntryContracts, StringComparer.Ordinal);
+                }
+                else
+                {
+                    constants = previous.ConstantLiteralIndexes;
+                    defaults = previous.DefaultLiteralIndexes;
+                    entryContracts = previous.EntryContracts;
+                }
+                return new ParameterBindings<TValue>(content, m_Operations, m_Literals, m_ConstantInputs,
+                    m_ControlFlow, m_References, m_GraphCalls, m_StateSlots, m_Scopes, m_Catalog, m_SourceMap,
+                    m_StateTransitionHooks, entryContracts, m_Domain, GetType(), m_Contract,
+                    m_Domain.ContentEncoder?.ContractIdentity, m_StructureIdentityTexts,
+                    m_ValueLiteralIndexes, m_CurveLiteralIndexes, constants, defaults, m_IdentityIds, identities);
+            }
+
+            BtsmtlOrchestrationCompilation<TValue> CompleteCompilation(OrchestrationGraphContent<TValue> content,
+                ParameterBindings<TValue> bindings)
+            {
+                Volatile.Write(ref m_Domain.Identities, bindings.ExecutionIdentities);
+                return new BtsmtlOrchestrationCompilation<TValue>(content,
+                    new BtsmtlOrchestrationGraphLayout<TValue>(bindings));
+            }
+
+            bool CanReuseBindings(ParameterBindings<TValue> previous)
+            {
+                GraphExecutionIdentity identity = previous.Content.Identity;
+                if (previous.CompilationType != GetType() || !ReferenceEquals(previous.Domain, m_Domain) ||
+                    previous.EncoderIdentity != m_Domain.ContentEncoder?.ContractIdentity ||
+                    previous.Content.NumericProfile != m_Lowering.Profile ||
+                    identity.GraphId != m_Identity.GraphId || identity.EncodingContract != m_Identity.EncodingContract ||
+                    identity.NodeContract != m_Identity.NodeContract || identity.NumericTarget != m_Identity.NumericTarget ||
+                    previous.Content.Program.RootOperationIndex != m_Entry.Value || previous.Contract != m_Contract ||
+                    !ReferenceEquals(previous.ConstantInputs, m_ConstantInputs) ||
+                    !ReferenceEquals(previous.ControlFlow, m_ControlFlow) || !ReferenceEquals(previous.References, m_References) ||
+                    !ReferenceEquals(previous.GraphCalls, m_GraphCalls) || !ReferenceEquals(previous.StateSlots, m_StateSlots) ||
+                    !ReferenceEquals(previous.Scopes, m_Scopes) || !ReferenceEquals(previous.Catalog, m_Catalog) ||
+                    previous.Operations.Count != m_Operations.Count || previous.Literals.Count != m_Literals.Count ||
+                    previous.SourceMap.Count != m_SourceMap.Count || previous.StateTransitionHooks.Count != m_StateTransitionHooks.Count)
+                    return false;
+                if ((previous.EntryContracts == null) != (m_EntryContracts == null))
+                    return false;
+                if (m_EntryContracts != null)
+                {
+                    if (previous.EntryContracts.Count != m_EntryContracts.Count)
+                        return false;
+                    foreach (KeyValuePair<string, OrchestrationExecutionContract> entry in m_EntryContracts)
+                        if (!previous.EntryContracts.TryGetValue(entry.Key, out OrchestrationExecutionContract contract) ||
+                            contract != entry.Value)
+                            return false;
+                }
+                for (int i = 0; i < m_Operations.Count; i++)
+                {
+                    SemanticOperation current = m_Operations[i];
+                    SemanticOperation original = previous.Operations[i];
+                    if (!ReferenceEquals(current.Layout, original.Layout))
+                        return false;
+                    switch (current.Code)
+                    {
+                        case OrchestrationOperationCode.Compare:
+                        case OrchestrationOperationCode.Calculate:
+                        case OrchestrationOperationCode.StateExitCause:
+                            if (current.Integer0 != original.Integer0)
+                                return false;
+                            break;
+                        case OrchestrationOperationCode.BlackboardSet:
+                            if (current.Integer1 != original.Integer1)
+                                return false;
+                            break;
+                        case OrchestrationOperationCode.InputBoolean:
+                        case OrchestrationOperationCode.InputScalar:
+                        case OrchestrationOperationCode.InputVector2:
+                        case OrchestrationOperationCode.InputVector2Magnitude:
+                            if (current.Text0 != original.Text0)
+                                return false;
+                            break;
+                    }
+                }
+                for (int i = 0; i < m_SourceMap.Count; i++)
+                    if (!ReferenceEquals(m_SourceMap[i].Source, previous.SourceMap[i].Source))
+                        return false;
+                for (int i = 0; i < m_Literals.Count; i++)
+                    if (m_Literals[i].Kind != previous.Literals[i].Kind ||
+                        m_Literals[i].Identity != previous.Literals[i].Identity ||
+                        m_Literals[i].Kind == SemanticLiteralKind.Enum &&
+                        m_Literals[i].Enum.TypeIdentity != previous.Literals[i].Enum.TypeIdentity)
+                        return false;
+                foreach (ProgramCatalogEntry entry in m_Catalog)
+                    foreach (ProgramCatalogField field in entry.Fields)
+                        if (field.ConstantIndex >= 0 && !SameLiteral(m_Literals[field.ConstantIndex], previous.Literals[field.ConstantIndex]))
+                            return false;
+                for (int i = 0; i < m_StateTransitionHooks.Count; i++)
+                {
+                    OrchestrationExtensionReference current = m_StateTransitionHooks[i];
+                    OrchestrationExtensionReference original = previous.StateTransitionHooks[i];
+                    if (!current.Identity.Equals(original.Identity) || current.SemanticVersion != original.SemanticVersion ||
+                        current.ContentIndex != original.ContentIndex || current.Kind != original.Kind || current.Access != original.Access ||
+                        !current.Ports.Equals(original.Ports) || !current.Fields.Equals(original.Fields) ||
+                        current.RequiredInvocations != original.RequiredInvocations || current.Completion != original.Completion)
+                        return false;
+                }
+                return true;
+            }
+
+            static bool SameLiteral(SemanticLiteral current, SemanticLiteral previous)
+            {
+                if (ReferenceEquals(current, previous))
+                    return true;
+                if (current.Kind != previous.Kind)
+                    return false;
+                return current.Kind switch
+                {
+                    SemanticLiteralKind.Boolean => current.Boolean == previous.Boolean,
+                    SemanticLiteralKind.Int32 => current.Int32 == previous.Int32,
+                    SemanticLiteralKind.UInt64 => current.UInt64 == previous.UInt64,
+                    SemanticLiteralKind.Number => current.Number.Equals(previous.Number),
+                    SemanticLiteralKind.Vector2 => current.Vector2.Equals(previous.Vector2),
+                    SemanticLiteralKind.Vector3 => current.Vector3.Equals(previous.Vector3),
+                    SemanticLiteralKind.Yaw => current.Yaw.Equals(previous.Yaw),
+                    SemanticLiteralKind.String => current.String == previous.String,
+                    SemanticLiteralKind.Quaternion => current.Quaternion.Equals(previous.Quaternion),
+                    SemanticLiteralKind.Enum => current.Enum.Equals(previous.Enum),
+                    SemanticLiteralKind.Identities => current.Identities.Span.SequenceEqual(previous.Identities.Span),
+                    SemanticLiteralKind.Curve => SameCurve(current.Curve, previous.Curve),
+                    _ => throw new ArgumentOutOfRangeException(nameof(current.Kind))
+                };
+            }
+
+            static bool SameCurve(GameplayAbilityCurve<double> current, GameplayAbilityCurve<double> previous)
+            {
+                if (ReferenceEquals(current, previous))
+                    return true;
+                if (current.PreWrapMode != previous.PreWrapMode || current.PostWrapMode != previous.PostWrapMode ||
+                    current.Keys.Count != previous.Keys.Count)
+                    return false;
+                for (int i = 0; i < current.Keys.Count; i++)
+                    if (!current.Keys[i].Equals(previous.Keys[i]))
+                        return false;
+                return true;
+            }
+
+            BtsmtlOrchestrationCompilation<TValue> BindParameters(ParameterBindings<TValue> previous)
+            {
+                m_StructureIdentityTexts = previous.StructureIdentityTexts;
+                m_ValueLiteralIndexes = previous.ValueLiteralIndexes;
+                m_CurveLiteralIndexes = previous.CurveLiteralIndexes;
+                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), previous.Content.Identities);
+                bool identitiesChanged = !ReferenceEquals(m_Identities, previous.Content.Identities);
+                m_IdentityIds = previous.IdentityIds;
+                if (identitiesChanged)
+                {
+                    m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
+                    for (int i = 0; i < m_Identities.Count; i++)
+                        m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
+                }
+                PrepareValues();
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+
+                OrchestrationProgramContent<TValue> original = previous.Content.Program;
+                ReadOnlyMemory<TValue> constants = BindLiteralValues(original.Constants,
+                    previous.ConstantLiteralIndexes, previous, identitiesChanged);
+                ReadOnlyMemory<TValue> defaults = BindLiteralValues(original.DefaultValues,
+                    previous.DefaultLiteralIndexes, previous, identitiesChanged);
+                ReadOnlyMemory<OrchestrationOperationColdData> cold = RebindIdentities(original.ColdOperations,
+                    identitiesChanged, value => new OrchestrationOperationColdData(Rebind(value.IdentityId), value.ValueVariant));
+                ReadOnlyMemory<OrchestrationFlowEdge> edges = RebindIdentities(original.Edges, identitiesChanged,
+                    value => new OrchestrationFlowEdge(Rebind(value.IdentityId), value.SourceOperationIndex,
+                        value.TargetOperationIndex, Rebind(value.SourcePortId), Rebind(value.TargetPortId), value.Kind,
+                        value.Order, value.Priority, value.AbortPolicy, value.ConditionOperationIndex));
+                OrchestrationCorePorts ports = original.CorePorts;
+                if (identitiesChanged)
+                    ports = new OrchestrationCorePorts(Rebind(ports.AnyState), Rebind(ports.StateOnEnter),
+                        Rebind(ports.StateRoot), Rebind(ports.StateOnExit), Rebind(ports.BranchTrue),
+                        Rebind(ports.BranchFalse), Rebind(ports.BranchThen), Rebind(ports.CycleReset));
+                OrchestrationProgramStructure structure = original.Structure;
+                if (identitiesChanged)
+                {
+                    int maximumIdentity = 0;
+                    foreach (int operation in structure.StateOperationIndexes.Span)
+                        if (operation >= 0)
+                            maximumIdentity = Math.Max(maximumIdentity, cold.Span[operation].IdentityId);
+                    int[] states = EmptyIndexes(maximumIdentity + 1);
+                    foreach (int operation in structure.StateOperationIndexes.Span)
+                        if (operation >= 0)
+                            states[cold.Span[operation].IdentityId] = operation;
+                    structure = new OrchestrationProgramStructure(structure.OutgoingEdgeIndexes, structure.OutgoingOffsets,
+                        structure.InitialStateEntries, structure.AnyStateEntries, structure.StateOnEnterEdges,
+                        structure.StateRootEdges, structure.StateOnExitEdges, structure.ValueEvaluationOffsets, states);
+                }
+                var program = new OrchestrationProgramContent<TValue>(original.Operations,
+                    BindOperationPayloads(previous, identitiesChanged, Rebind), cold, edges, structure,
+                    original.ValueSchedule, original.WorkspaceCapacity, original.ExecutionStorage, original.ValueInputs,
+                    constants, defaults, original.ValueSlotTypes, original.ValueKindSlotCounts, original.GraphCalls,
+                    original.Hooks, original.HookInputs, original.BlackboardSlots, original.BlackboardOutputs,
+                    original.OutputTemplates, ports, original.RootOperationIndex, original.MaximumOperationEvaluations);
+                OrchestrationGraphContent<TValue> source = previous.Content;
+                var content = new OrchestrationGraphContent<TValue>(m_Identity, m_Lowering.Profile, m_Identities, program,
+                    BindExtensions(previous), BindOperationContents(previous),
+                    RebindIdentities(source.Entries, identitiesChanged,
+                        value => new OrchestrationGraphEntry(Rebind(value.EntryIdentityId), value.Execution)),
+                    RebindIdentities(source.Variables, identitiesChanged,
+                        value => new OrchestrationGraphVariable(Rebind(value.GraphIdentityId), Rebind(value.DeclarationIdentityId),
+                            Rebind(value.KeyIdentityId), Rebind(value.ValueTypeIdentityId), value.IsPublic, value.ValueSlot)),
+                    RebindIdentities(source.GeneratedBlackboards, identitiesChanged,
+                        value => new OrchestrationGraphBlackboardBinding(value.ValueSlot, Rebind(value.InstanceIdentityId),
+                            Rebind(value.ContractIdentityId), value.Field)),
+                    RebindIdentities(source.HostInputs, identitiesChanged,
+                        value => new OrchestrationGraphHostInput(Rebind(value.InputIdentityId), Rebind(value.ValueTypeIdentityId), value.InputSlot)),
+                    RebindIdentities(source.Ports, identitiesChanged,
+                        value => new OrchestrationGraphPort(Rebind(value.GraphIdentityId), Rebind(value.NodeIdentityId),
+                            Rebind(value.PortIdentityId), value.OperationIndex, value.IsInput, value.IsTrigger,
+                            Rebind(value.CompiledPortIdentityId), value.ValueIndex)),
+                    BindSources(previous, identitiesChanged, Rebind));
+                IdentityCache identities = identitiesChanged
+                    ? new IdentityCache(previous.ExecutionIdentities.Operations, previous.ExecutionIdentities.Invocations, m_Identities)
+                    : previous.ExecutionIdentities;
+                return CompleteCompilation(content, CreateBindings(content, identities, previous));
+
+                int Rebind(int identity) => identity == 0 ? 0 : Bind(previous.Content.Identities.Resolve(identity));
+            }
+
+            ReadOnlyMemory<TValue> BindLiteralValues(ReadOnlyMemory<TValue> original, int[] literals,
+                ParameterBindings<TValue> previous, bool identitiesChanged)
+            {
+                TValue[] changed = null;
+                for (int i = 0; i < literals.Length; i++)
+                {
+                    int literal = literals[i];
+                    if (literal < 0)
+                        continue;
+                    SemanticLiteral current = m_Literals[literal];
+                    if (SameLiteral(current, previous.Literals[literal]) &&
+                        !(identitiesChanged && current.Kind is SemanticLiteralKind.String or SemanticLiteralKind.Enum))
+                        continue;
+                    changed ??= original.ToArray();
+                    changed[i] = m_LoweredValues[literal];
+                }
+                return changed == null ? original : changed;
+            }
+
+            static ReadOnlyMemory<T> RebindIdentities<T>(ReadOnlyMemory<T> original, bool changed, Func<T, T> rebind)
+            {
+                if (!changed)
+                    return original;
+                var result = new T[original.Length];
+                for (int i = 0; i < result.Length; i++)
+                    result[i] = rebind(original.Span[i]);
+                return result;
+            }
+
+            ReadOnlyMemory<OrchestrationExtensionReference> BindExtensions(ParameterBindings<TValue> previous)
+            {
+                ReadOnlyMemory<OrchestrationExtensionReference> original = previous.Content.Extensions;
+                OrchestrationExtensionReference[] changed = null;
+                foreach (OrchestrationExtensionReference hook in m_StateTransitionHooks)
+                {
+                    int offset = previous.Content.Program.Operations.Span[hook.ContentIndex].LifecycleHooks.Offset;
+                    int binding = previous.Content.Program.Hooks.Span[offset].ExtensionBindingIndex;
+                    if (original.Span[binding].SourcePath == hook.SourcePath)
+                        continue;
+                    changed ??= original.ToArray();
+                    changed[binding] = hook;
+                }
+                return changed == null ? original : changed;
+            }
+
+            ReadOnlyMemory<OrchestrationOperationContent> BindOperationContents(ParameterBindings<TValue> previous)
+            {
+                ReadOnlyMemory<OrchestrationOperationContent> original = previous.Content.OperationContents;
+                OrchestrationOperationContent[] changed = null;
+                for (int i = 0; i < original.Length; i++)
+                {
+                    int operation = original.Span[i].OperationIndex;
+                    foreach (SemanticPayloadField field in m_Operations[operation].PayloadFields)
+                        if (!SameLiteral(m_Literals[field.LiteralIndex], previous.Literals[field.LiteralIndex]))
+                        {
+                            changed ??= original.ToArray();
+                            changed[i] = BuildOperationContent(operation);
+                            break;
+                        }
+                }
+                return changed == null ? original : changed;
+            }
+
+            ReadOnlyMemory<OrchestrationGraphSource> BindSources(ParameterBindings<TValue> previous,
+                bool identitiesChanged, Func<int, int> rebind)
+            {
+                ReadOnlyMemory<OrchestrationGraphSource> original = previous.Content.Sources;
+                if (!identitiesChanged && ReferenceEquals(m_SourceMap, previous.SourceMap))
+                    return original;
+                OrchestrationGraphSource[] changed = null;
+                int offset = 0;
+                for (int i = 0; i < m_SourceMap.Count; i++)
+                {
+                    ProgramSourceMapEntry entry = m_SourceMap[i];
+                    int count = entry.Source.TargetKind == ProgramSourceTargetKind.Operation
+                        ? m_Operations[entry.Source.TargetIndex].ConstantOutputs.Count + 1 : 1;
+                    for (int j = 0; j < count; j++, offset++)
+                    {
+                        OrchestrationGraphSource value = original.Span[offset];
+                        OrchestrationGraphExecutionSource source = value.Source;
+                        int identity = identitiesChanged ? rebind(source.SourceIdentityId) : source.SourceIdentityId;
+                        if (identity == source.SourceIdentityId && entry.SourceType == value.SourceType &&
+                            entry.Text.DisplayPathSegments.Span.SequenceEqual(value.DisplayPathSegments.Span))
+                            continue;
+                        if (identity != source.SourceIdentityId)
+                            source = new OrchestrationGraphExecutionSource(source.TargetKind, source.TargetIndex,
+                                source.GraphId, source.NodeId, source.PortId, source.EdgeId, source.DeclarationId,
+                                source.TimelineId, source.TrackId, source.ClipId, source.IsInputPort, source.GraphInvocationPath,
+                                source.CompiledPortId, source.ValuePortDirection, source.SourceInvocationPath,
+                                source.ParentInvocationPath, source.InvocationCallerKind, source.InvocationCallerId,
+                                source.InvocationCallerClipId, source.InvocationCallerOperationIndex, source.InvocationEntry, identity);
+                        changed ??= original.ToArray();
+                        changed[offset] = new OrchestrationGraphSource(source, entry.SourceType, entry.Text.DisplayPathSegments);
+                    }
+                }
+                return changed == null ? original : changed;
+            }
+
             OrchestrationProgramStructure BuildProgramStructure(OperationDraft[] operations,
                 OrchestrationFlowEdge[] edges, OrchestrationCorePorts ports)
             {
@@ -154,12 +559,6 @@ namespace BTSMTL.Compilation
                 return new OrchestrationProgramStructure(edgeIndexes, offsets, initial, any, onEnter, roots, onExit,
                     evaluationOffsets, BuildStateOperationIndexes(operations));
             }
-
-            OrchestrationProgramStructure BindProgramStructure(BtsmtlOrchestrationGraphLayout<TValue> layout,
-                OperationDraft[] operations) => new OrchestrationProgramStructure(
-                layout.OutgoingEdgeIndexes, layout.OutgoingOffsets, layout.InitialStateEntries,
-                layout.AnyStateEntries, layout.StateOnEnterEdges, layout.StateRootEdges,
-                layout.StateOnExitEdges, layout.ValueEvaluationOffsets, BuildStateOperationIndexes(operations));
 
             static int[] BuildStateOperationIndexes(OperationDraft[] operations)
             {

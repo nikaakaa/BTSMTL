@@ -71,6 +71,67 @@ namespace BTSMTL.Compilation
 
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
         {
+            ReadOnlyMemory<byte> BindOperationPayloads(ParameterBindings<TValue> previous,
+                bool identitiesChanged, Func<int, int> rebind)
+            {
+                OrchestrationProgramContent<TValue> program = previous.Content.Program;
+                byte[] changed = null;
+                for (int i = 0; i < m_Operations.Count; i++)
+                {
+                    SemanticOperation current = m_Operations[i];
+                    SemanticOperation original = previous.Operations[i];
+                    int offset = program.Operations.Span[i].PayloadOffset;
+                    switch (current.Code)
+                    {
+                        case OrchestrationOperationCode.Loop:
+                        case OrchestrationOperationCode.Parallel:
+                            if (current.Integer0 != original.Integer0)
+                                Write(offset, new OrchestrationModePayload(current.Integer0));
+                            break;
+                        case OrchestrationOperationCode.Cycle:
+                            if (current.Integer0 != original.Integer0 || current.Integer1 != original.Integer1)
+                                Write(offset, new OrchestrationCyclePayload(current.Integer0, current.Integer1));
+                            break;
+                        case OrchestrationOperationCode.Timeline:
+                            if (identitiesChanged || current.Text0 != original.Text0 || current.Integer0 != original.Integer0)
+                                Write(offset, new OrchestrationTimelinePayload(Bind(current.Text0), current.Integer0));
+                            break;
+                        case OrchestrationOperationCode.InputRequest:
+                            if (identitiesChanged || current.Text0 != original.Text0)
+                                Write(offset, new OrchestrationRequestPayload(Bind(current.Text0)));
+                            break;
+                        case OrchestrationOperationCode.State:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationStatePayload state = program.ReadOperationPayload<OrchestrationStatePayload>(i);
+                                Write(offset, new OrchestrationStatePayload(rebind(state.Identity.IdentityId), state.MachineIndex));
+                            }
+                            break;
+                        case OrchestrationOperationCode.StateExit:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationStateIdentityPayload state = program.ReadOperationPayload<OrchestrationStateIdentityPayload>(i);
+                                Write(offset, new OrchestrationStateIdentityPayload(rebind(state.IdentityId)));
+                            }
+                            break;
+                        case OrchestrationOperationCode.EmitOutput:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationOutputPayload output = program.ReadOperationPayload<OrchestrationOutputPayload>(i);
+                                Write(offset, new OrchestrationOutputPayload(output.TemplateIndex, rebind(output.ProducerIdentityId)));
+                            }
+                            break;
+                    }
+                }
+                return changed == null ? program.OperationPayloads : changed;
+
+                void Write<T>(int offset, T value) where T : unmanaged
+                {
+                    changed ??= program.OperationPayloads.ToArray();
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).CopyTo(changed.AsSpan(offset));
+                }
+            }
+
             ushort CompactIndex(int value, int operation, string field)
             {
                 if ((uint)value <= ushort.MaxValue)

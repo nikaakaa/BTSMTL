@@ -95,41 +95,10 @@ namespace BTSMTL.Compilation
 
     public sealed class BtsmtlOrchestrationGraphLayout<TValue> where TValue : unmanaged
     {
-        internal BtsmtlOrchestrationGraphLayout(OrchestrationProgramStructure structure,
-            OrchestrationAssignmentOpcode[] assignments, OrchestrationValueSlotType[] valueSlotTypes,
-            int[] valueKindSlotCounts, OrchestrationValueSchedule valueSchedule,
-            OrchestrationWorkspaceCapacity workspaceCapacity, OrchestrationProgramStorageLayout executionStorage)
-        {
-            OutgoingEdgeIndexes = structure.OutgoingEdgeIndexes;
-            OutgoingOffsets = structure.OutgoingOffsets;
-            InitialStateEntries = structure.InitialStateEntries;
-            AnyStateEntries = structure.AnyStateEntries;
-            StateOnEnterEdges = structure.StateOnEnterEdges;
-            StateRootEdges = structure.StateRootEdges;
-            StateOnExitEdges = structure.StateOnExitEdges;
-            ValueEvaluationOffsets = structure.ValueEvaluationOffsets;
-            Assignments = assignments;
-            ValueSlotTypes = valueSlotTypes;
-            ValueKindSlotCounts = valueKindSlotCounts;
-            ValueSchedule = valueSchedule;
-            WorkspaceCapacity = workspaceCapacity;
-            ExecutionStorage = executionStorage;
-        }
+        internal BtsmtlOrchestrationGraphLayout(BtsmtlOrchestrationGraphCompiler.ParameterBindings<TValue> bindings) =>
+            Bindings = bindings;
 
-        internal readonly ReadOnlyMemory<int> OutgoingEdgeIndexes;
-        internal readonly ReadOnlyMemory<int> OutgoingOffsets;
-        internal readonly ReadOnlyMemory<int> InitialStateEntries;
-        internal readonly ReadOnlyMemory<int> AnyStateEntries;
-        internal readonly ReadOnlyMemory<int> StateOnEnterEdges;
-        internal readonly ReadOnlyMemory<int> StateRootEdges;
-        internal readonly ReadOnlyMemory<int> StateOnExitEdges;
-        internal readonly ReadOnlyMemory<int> ValueEvaluationOffsets;
-        internal readonly OrchestrationAssignmentOpcode[] Assignments;
-        internal readonly OrchestrationValueSlotType[] ValueSlotTypes;
-        internal readonly int[] ValueKindSlotCounts;
-        internal readonly OrchestrationValueSchedule ValueSchedule;
-        internal readonly OrchestrationWorkspaceCapacity WorkspaceCapacity;
-        internal readonly OrchestrationProgramStorageLayout ExecutionStorage;
+        internal readonly BtsmtlOrchestrationGraphCompiler.ParameterBindings<TValue> Bindings;
     }
 
     public readonly struct BtsmtlOrchestrationCompilation<TValue> where TValue : unmanaged
@@ -304,6 +273,9 @@ namespace BTSMTL.Compilation
             OrchestrationRange[] m_InputRanges;
             OrchestrationRange[] m_OutputAssignmentRanges;
             OrchestrationRange[] m_LifecycleHookRanges;
+            string[] m_StructureIdentityTexts;
+            int[] m_ValueLiteralIndexes;
+            int[] m_CurveLiteralIndexes;
 
             internal Compilation(IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
                 IReadOnlyList<SemanticConstantInputBinding> constantInputs,
@@ -341,8 +313,11 @@ namespace BTSMTL.Compilation
 
             internal BtsmtlOrchestrationCompilation<TValue> Build(BtsmtlOrchestrationGraphLayout<TValue> layout)
             {
+                if (layout != null && CanReuseBindings(layout.Bindings))
+                    return BindParameters(layout.Bindings);
                 BuildExecutionIdentities();
                 ValidateDomain();
+                m_StructureIdentityTexts = new List<string>(StructureIdentityTexts()).ToArray();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), m_PreviousIdentities?.Table);
                 m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
                 for (int i = 0; i < m_Identities.Count; i++)
@@ -352,6 +327,7 @@ namespace BTSMTL.Compilation
                 BuildHostInputs();
                 ValidateInputs();
                 int[] parents = BuildParentStates();
+                CollectValueLiterals();
                 PrepareValues();
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
@@ -365,43 +341,34 @@ namespace BTSMTL.Compilation
                 var corePorts = new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
                     Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset"));
                 OrchestrationGraphEntry[] entries = BuildEntries();
-                OrchestrationProgramStructure structure;
-                if (layout == null)
-                {
-                    structure = BuildProgramStructure(operations, controlFlow, corePorts);
-                    ValidateValueDependencies(operations, controlFlow, structure);
-                    BuildTypedValues(operations, controlFlow, structure);
-                    OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
-                    if (!m_Report.IsValid)
-                        throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
-                    OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
-                    OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
-                    OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
-                        structure, valueSchedule, entries);
-                    layout = new BtsmtlOrchestrationGraphLayout<TValue>(structure, assignments, valueSlotTypes,
-                        valueKindSlotCounts, valueSchedule, workspaceCapacity,
-                        BuildExecutionStorage(operations, valueSlotTypes));
-                }
-                else
-                    structure = BindProgramStructure(layout, operations);
+                OrchestrationProgramStructure structure = BuildProgramStructure(operations, controlFlow, corePorts);
+                ValidateValueDependencies(operations, controlFlow, structure);
+                BuildTypedValues(operations, controlFlow, structure);
+                OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
+                OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
+                OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
+                    structure, valueSchedule, entries);
+                OrchestrationProgramStorageLayout executionStorage = BuildExecutionStorage(operations, valueSlotTypes);
                 m_EvaluationOffsets = structure.ValueEvaluationOffsets;
-                BuildOperationTables(operations, layout.Assignments, out OrchestrationOperation[] hotOperations,
+                BuildOperationTables(operations, assignments, out OrchestrationOperation[] hotOperations,
                     out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
                 var program = new OrchestrationProgramContent<TValue>(
-                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, layout.ValueSchedule,
-                    layout.WorkspaceCapacity, layout.ExecutionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
-                    layout.ValueSlotTypes, layout.ValueKindSlotCounts,
+                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, valueSchedule,
+                    workspaceCapacity, executionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                    valueSlotTypes, valueKindSlotCounts,
                     BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
                 var content = new OrchestrationGraphContent<TValue>(
                     m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), entries,
                     BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources(entries));
-                Volatile.Write(ref m_Domain.Identities,
-                    new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities));
-                return new BtsmtlOrchestrationCompilation<TValue>(content, layout);
+                var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities);
+                return CompleteCompilation(content, CreateBindings(content, identities));
             }
 
             string SourceLocation(ProgramSourceTargetKind kind, int index, string portId = null,
@@ -502,7 +469,7 @@ namespace BTSMTL.Compilation
                 }
             }
 
-            void PrepareValues()
+            void CollectValueLiterals()
             {
                 var values = new SortedSet<int>();
                 var curves = new SortedSet<int>();
@@ -534,7 +501,13 @@ namespace BTSMTL.Compilation
                                 break;
                         }
                 }
-                foreach (int index in values)
+                m_ValueLiteralIndexes = new List<int>(values).ToArray();
+                m_CurveLiteralIndexes = new List<int>(curves).ToArray();
+            }
+
+            void PrepareValues()
+            {
+                foreach (int index in m_ValueLiteralIndexes)
                     try
                     {
                         m_LoweredValues.Add(index, LowerValue(m_Literals[index]));
@@ -548,7 +521,7 @@ namespace BTSMTL.Compilation
                         Error("numeric_lowering_invalid", ProgramSourceTargetKind.Constant, index,
                             $"数值 '{exception.SourceIdentity}' 无法降低：{exception.Message}");
                     }
-                foreach (int index in curves)
+                foreach (int index in m_CurveLiteralIndexes)
                     try
                     {
                         m_LoweredCurves.Add(index, LowerCurve(m_Literals[index]));
@@ -582,6 +555,24 @@ namespace BTSMTL.Compilation
 
             IEnumerable<string> IdentityTexts()
             {
+                foreach (string text in m_StructureIdentityTexts)
+                    yield return text;
+                foreach (SemanticOperation operation in m_Operations)
+                    yield return operation.Text0;
+                foreach (SemanticLiteral literal in m_Literals)
+                {
+                    if (literal.Kind == SemanticLiteralKind.String)
+                        yield return literal.String;
+                    if (literal.Kind == SemanticLiteralKind.Enum)
+                        yield return literal.Enum.TypeIdentity;
+                    if (literal.Kind == SemanticLiteralKind.Identities)
+                        for (int identity = 0; identity < literal.Identities.Length; identity++)
+                            yield return literal.Identities.Span[identity];
+                }
+            }
+
+            IEnumerable<string> StructureIdentityTexts()
+            {
                 yield return m_Identity.GraphId;
                 yield return "AnyState";
                 yield return "OnEnter";
@@ -606,7 +597,6 @@ namespace BTSMTL.Compilation
                         if (input.ValueTypeIdentity.StartsWith("Enum:", StringComparison.Ordinal))
                             yield return input.ValueTypeIdentity.Substring(5);
                     }
-                    yield return m_Operations[i].Text0;
                     string type = HostInputType(m_Operations[i]);
                     if (type != null)
                     {
@@ -621,17 +611,6 @@ namespace BTSMTL.Compilation
                     yield return edge.Identity;
                     yield return edge.SourcePort;
                     yield return edge.TargetPort;
-                }
-                for (int i = 0; i < m_Literals.Count; i++)
-                {
-                    SemanticLiteral literal = m_Literals[i];
-                    if (literal.Kind == SemanticLiteralKind.String)
-                        yield return literal.String;
-                    if (literal.Kind == SemanticLiteralKind.Enum)
-                        yield return literal.Enum.TypeIdentity;
-                    if (literal.Kind == SemanticLiteralKind.Identities)
-                        for (int identity = 0; identity < literal.Identities.Length; identity++)
-                            yield return literal.Identities.Span[identity];
                 }
                 for (int i = 0; i < m_References.Count; i++)
                 {
@@ -1658,47 +1637,46 @@ namespace BTSMTL.Compilation
             {
                 var result = new List<OrchestrationOperationContent>();
                 for (int operationIndex = 0; operationIndex < m_Operations.Count; operationIndex++)
-                {
-                    IReadOnlyList<SemanticPayloadField> source = m_Operations[operationIndex].PayloadFields;
-                    if (!m_Operations[operationIndex].Extension.HasValue)
-                        continue;
-                    IBtsmtlOrchestrationContentEncoder<TValue, TScalar> encoder =
-                        m_Domain.ContentEncoder;
-                    ReadOnlyMemory<OrchestrationExtensionContentField> declarations = m_Operations[operationIndex].Extension.Value.Fields;
-                    IBtsmtlOrchestrationContentBuffer<TValue, TScalar> writer =
-                        encoder.Begin(declarations);
-                    for (int i = 0; i < source.Count; i++)
-                    {
-                        SemanticPayloadField field = source[i];
-                        OrchestrationExtensionContentField declaration = writer.GetField(field.Name);
-                        SemanticLiteral literal = m_Literals[field.LiteralIndex];
-                        switch (literal.Kind)
-                        {
-                            case SemanticLiteralKind.String:
-                                if (declaration.Kind == OrchestrationExtensionFieldKind.Identity)
-                                    writer.WriteIdentity(in declaration, literal.String);
-                                else
-                                    writer.WriteText(in declaration, literal.String);
-                                break;
-                            case SemanticLiteralKind.Enum:
-                                writer.WriteEnum(in declaration, literal.Enum.TypeIdentity, literal.Enum.Value);
-                                break;
-                            case SemanticLiteralKind.Identities:
-                                writer.WriteIdentities(in declaration, literal.Identities.Span);
-                                break;
-                            case SemanticLiteralKind.Curve:
-                                writer.WriteCurve(in declaration, m_LoweredCurves[field.LiteralIndex]);
-                                break;
-                            default:
-                                var value = m_LoweredValues[field.LiteralIndex];
-                                writer.WriteValue(in declaration, in value);
-                                break;
-                        }
-                    }
-                    result.Add(new OrchestrationOperationContent(operationIndex,
-                        encoder.ContractIdentity, writer.Complete()));
-                }
+                    if (m_Operations[operationIndex].Extension.HasValue)
+                        result.Add(BuildOperationContent(operationIndex));
                 return result.ToArray();
+            }
+
+            OrchestrationOperationContent BuildOperationContent(int operationIndex)
+            {
+                IReadOnlyList<SemanticPayloadField> source = m_Operations[operationIndex].PayloadFields;
+                IBtsmtlOrchestrationContentEncoder<TValue, TScalar> encoder = m_Domain.ContentEncoder;
+                ReadOnlyMemory<OrchestrationExtensionContentField> declarations = m_Operations[operationIndex].Extension.Value.Fields;
+                IBtsmtlOrchestrationContentBuffer<TValue, TScalar> writer = encoder.Begin(declarations);
+                for (int i = 0; i < source.Count; i++)
+                {
+                    SemanticPayloadField field = source[i];
+                    OrchestrationExtensionContentField declaration = writer.GetField(field.Name);
+                    SemanticLiteral literal = m_Literals[field.LiteralIndex];
+                    switch (literal.Kind)
+                    {
+                        case SemanticLiteralKind.String:
+                            if (declaration.Kind == OrchestrationExtensionFieldKind.Identity)
+                                writer.WriteIdentity(in declaration, literal.String);
+                            else
+                                writer.WriteText(in declaration, literal.String);
+                            break;
+                        case SemanticLiteralKind.Enum:
+                            writer.WriteEnum(in declaration, literal.Enum.TypeIdentity, literal.Enum.Value);
+                            break;
+                        case SemanticLiteralKind.Identities:
+                            writer.WriteIdentities(in declaration, literal.Identities.Span);
+                            break;
+                        case SemanticLiteralKind.Curve:
+                            writer.WriteCurve(in declaration, m_LoweredCurves[field.LiteralIndex]);
+                            break;
+                        default:
+                            var value = m_LoweredValues[field.LiteralIndex];
+                            writer.WriteValue(in declaration, in value);
+                            break;
+                    }
+                }
+                return new OrchestrationOperationContent(operationIndex, encoder.ContractIdentity, writer.Complete());
             }
 
             GameplayAbilityCurve<TScalar> LowerCurve(SemanticLiteral literal)
