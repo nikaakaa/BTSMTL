@@ -7,7 +7,7 @@ import {
 } from '../api/playerRecords';
 import { archive } from './archive';
 import {
-  connectionActions, consoleActions, contentActions, getState, isCurrent, runActions, useWorkbench,
+  connectionActions, consoleActions, contentActions, getState, isCurrent, runActions, selectedScene, useWorkbench,
 } from './store';
 import { transport } from './transport';
 
@@ -46,7 +46,9 @@ function selectedStart() {
   const liveId = state.liveId;
   if (liveId === null) return { kind: 'unavailable', reason: '先选择一个 Player' } as const;
   if (!state.playerViewport) return { kind: 'unavailable', reason: '打开画面面板以确定本次画面尺寸' } as const;
-  const scene = state.sources?.scenes.find(item => item.path === state.scenePath);
+  if (state.contentSelection?.kind === 'timeline')
+    return { kind: 'unavailable', reason: '独立 Timeline 请通过画面面板载入预览' } as const;
+  const scene = selectedScene(state);
   if (!scene) return { kind: 'unavailable', reason: '先选择内容' } as const;
   const selectedInput = state.inputSource;
   if (selectedInput === null) return { kind: 'unavailable', reason: '先选择输入来源' } as const;
@@ -214,9 +216,12 @@ export const session = {
   },
 
   async loadInputs(signal?: AbortSignal): Promise<number | null> {
-    const scene = selectedScene();
+    const scene = selectedScene(getState());
     if (!scene) return null;
-    const current = () => selectedScene()?.path === scene.path && selectedScene()?.revision === scene.revision;
+    const current = () => {
+      const selected = selectedScene(getState());
+      return selected?.path === scene.path && selected.revision === scene.revision;
+    };
     useWorkbench.setState({ inputCatalogReading: true, inputCatalogFailure: null });
     let failure: number | null = null;
     try {
@@ -229,17 +234,12 @@ export const session = {
   },
 };
 
-function selectedScene() {
-  const { sources, scenePath } = getState();
-  return sources?.scenes.find(item => item.path === scenePath);
-}
-
 // 选定场景或其修订变化后自动读取一次输入声明，换场景时放弃上一次读取；失败后由界面的重新读取按钮重试。
 let inputsController: AbortController | null = null;
 let inputsKey: string | null = null;
 useWorkbench.subscribe((state, previous) => {
-  if (state.scenePath === previous.scenePath && state.sources === previous.sources) return;
-  const scene = selectedScene();
+  if (state.contentSelection === previous.contentSelection && state.sources === previous.sources) return;
+  const scene = selectedScene(state);
   const key = scene ? `${scene.path}\n${scene.revision}` : null;
   if (key === inputsKey) return;
   inputsKey = key;

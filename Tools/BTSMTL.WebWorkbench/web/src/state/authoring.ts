@@ -10,7 +10,7 @@ import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
-import { consoleActions, selectionActions, useWorkbench, type SelectionSlice } from './store';
+import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
 import type { DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
@@ -250,7 +250,7 @@ export function useInputContext(documentId: string | null) {
   const scheme = schemes.find(item => item.documentId === documentId);
   const actorId = useAuthoring(state => state.inputActorId);
   const { catalog, scene, reading, failure } = useWorkbench(useShallow(state => ({
-    catalog: state.inputCatalog, scene: state.sources?.scenes.find(item => item.path === state.scenePath),
+    catalog: state.inputCatalog, scene: selectedScene(state),
     reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
   })));
   if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;

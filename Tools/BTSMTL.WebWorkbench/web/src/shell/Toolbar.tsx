@@ -4,19 +4,19 @@ import { useShallow } from 'zustand/react/shallow';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
-import { contentActions, inputRootKey, runActions, useWorkbench } from '../state/store';
+import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
 import { Button, MenuButton, Select, Tip, type MenuEntry } from '../ui/controls';
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
 
-// 顶部工具栏（D7，只有一行）：左侧内容（场景 › 技能）与运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
+// 顶部工具栏（D7，只有一行）：左侧内容与技能、运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
 // 右侧预览档位、布局与连接圆点。面板不再各自放播放按钮。
 export function Toolbar() {
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
-        <SceneChoice />
+        <ContentChoice />
         <SkillChoice />
         <AuthoringStatus />
         <RunMenu />
@@ -34,16 +34,14 @@ export function Toolbar() {
   );
 }
 
-const sceneName = (path: string) => path.replace(/\/scene\.json$/, '');
-
-function SceneChoice() {
-  const { scenes, scenePath } = useWorkbench(useShallow(state => ({ scenes: state.sources?.scenes, scenePath: state.scenePath })));
-  if (!scenes) return null;
+function ContentChoice() {
+  const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
+  if (!sources) return null;
+  const options = previewContentChoices(sources);
   return (
-    <Select variant="ghost" label="场景" placeholder="选择场景" value={scenePath} disabled={!scenes.length}
-      tip={scenes.length ? '新建运行使用的场景' : '宿主尚未提供场景'}
-      options={scenes.map(scene => ({ value: scene.path, label: sceneName(scene.path) }))}
-      onChange={path => contentActions.selectScene(path)} />
+    <Select variant="ghost" label="内容" placeholder="选择内容" value={contentSelectionKey(selection)} disabled={!options.length}
+      tip={options.length ? '选择要载入的场景或 Timeline' : '宿主尚未提供正式内容'} options={options}
+      onChange={value => contentActions.selectContent(options.find(option => option.value === value)!.selection)} />
   );
 }
 

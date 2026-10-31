@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
+import type { PlayerPreviewContent } from '../../api/playerRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { session } from '../../state/session';
-import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, getState, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import styles from './player.module.css';
@@ -34,7 +35,7 @@ function PlayerView({ frameName }: { frameName: string }) {
   const [params, setParams] = usePanelParams<Params>({ build: null, overlay: false, stats: false });
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
-    runId: current.runId, archiveImage: current.archiveImage, scenePath: current.scenePath, sources: current.sources, selection: current.selection,
+    runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
   })));
   const stage = useRef<HTMLDivElement>(null);
   const [captureEnabled, setCaptureEnabled] = useState(false);
@@ -50,9 +51,15 @@ function PlayerView({ frameName }: { frameName: string }) {
   }, []);
 
   const build = state.builds?.find(item => item.buildId === params.build) ?? null;
-  const scene = state.sources?.scenes.find(item => item.path === state.scenePath) ?? null;
+  const scene = selectedScene(state);
+  const contentSelection = state.contentSelection;
+  const timeline = contentSelection?.kind === 'timeline'
+    ? state.sources?.timelines.find(item => item.content.package === contentSelection.package) : undefined;
+  const content: PlayerPreviewContent | null = scene
+    ? { kind: 'scene', scene: scene.path, revision: scene.revision, source: { kind: 'device', lastSdkFrame: 0 } }
+    : timeline?.content ?? null;
   const loading = player?.state === 'loading';
-  const loadSceneBlocked = !state.viewerOpen ? '尚未连接播放器画面' : !scene ? '先选择内容' : loading ? '正在载入' : null;
+  const loadBlocked = !state.viewerOpen ? '尚未连接播放器画面' : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
   const overlayReason = !state.runId ? '档案回看可叠加同次表现的角色根位置'
     : !state.archiveImage ? '正在读取画面'
@@ -73,12 +80,11 @@ function PlayerView({ frameName }: { frameName: string }) {
           onChange={value => playerService.attach(value)} />
         <Button variant="ghost" disabled={!state.liveId} onClick={() => void playerService.stop()}>停止</Button>
         <BarSeparator />
-        <Button variant="ghost" disabled={!!loadSceneBlocked} tip={loadSceneBlocked ?? '载入当前内容的离线包，接管输入试玩'}
+        <Button variant="ghost" disabled={!!loadBlocked} tip={loadBlocked ?? '载入所选内容'}
           onClick={async () => {
-            const result = await playerService.loadContent({ kind: 'scene', scene: scene!.path, revision: scene!.revision,
-              source: { kind: 'device', lastSdkFrame: 0 } });
+            const result = await playerService.loadContent(content!);
             if (result?.stage === 'applied') session.selectRun(null);
-          }}>离线包试玩</Button>
+          }}>载入</Button>
       </PanelBar>}
       <PanelBar wrap>
         {state.runId ? <Button variant="ghost" onClick={() => session.selectRun(null)}>退出回看</Button> : <>
