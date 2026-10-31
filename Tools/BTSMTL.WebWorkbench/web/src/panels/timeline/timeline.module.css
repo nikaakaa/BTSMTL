@@ -948,66 +948,70 @@
   pointer-events: none;
 }
 
-/* 标记（照 UE Sequencer 事件键，KeyRenderer）：12×12 菱形在行内居中；平时浅灰填充近黑描边，悬停全白，
-   选中为近黑填充、选中蓝描边并压在其它标记之上；未绑定（UE 无 Endpoint）只留轮廓、填充 20% 白 */
+/* 标记：时刻处 2 像素类别色立杆贯穿整行（两侧各留 2 像素好点中），贴着立杆挂片段底色的标签，白字黑影同片段名；
+   悬停标签提亮，选中同片段（选中底色、白框、立杆变白）并压在其它标记之上；标签为空时只剩 6 像素小旗头 */
 .marker {
   all: unset;
   position: absolute;
+  top: 0;
   z-index: 3;
-  display: flex;
-  margin-left: -6px;
+  width: 0;
   cursor: default;
 }
 
-.marker path {
-  fill: #c0c0c0;
-  stroke: #0d0d0d;
-  stroke-width: 1.5;
-  stroke-linejoin: miter;
+.marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  background: linear-gradient(90deg, transparent 2px, var(--stem, var(--tc)) 2px 4px, transparent 4px);
 }
 
-.marker[data-unbound] path {
-  fill: rgb(255 255 255 / 20%);
+.markerTag {
+  position: absolute;
+  top: 6px;
+  left: 1px;
+  box-sizing: border-box;
+  height: 18px;
+  max-width: var(--max);
+  padding: 0 6px;
+  overflow: hidden;
+  border-radius: 0 3px 3px 0;
+  background: var(--tl-clip);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-shadow: 1px 1px 0 #000;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.marker:hover path {
-  fill: #fff;
-  stroke: #fff;
+.markerTag:empty {
+  width: 6px;
+  padding: 0;
+}
+
+.marker[data-flip] .markerTag {
+  left: auto;
+  right: 1px;
+  border-radius: 3px 0 0 3px;
+}
+
+.marker:hover .markerTag {
+  background: var(--tl-clip-blend);
 }
 
 .marker[data-selected] {
   z-index: 4;
+  --stem: #fff;
 }
 
-.marker[data-selected] path {
-  fill: #0d0d0d;
-  stroke: #18a0fb;
-  stroke-width: 2;
-}
-
-/* 事件名框（照 UE EventSection::PaintEventName）：离菱形中心 10px，半透明黑底、4×2 内边距、选中蓝粗体字；
-   靠近右边界时画到左侧 */
-.markerText {
-  position: absolute;
-  top: 50%;
-  left: var(--offset);
-  max-width: var(--max);
-  overflow: hidden;
-  padding: 2px 4px;
-  transform: translateY(-50%);
-  background: rgb(0 0 0 / 50%);
-  color: #18a0fb;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 14px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-.marker[data-flip] .markerText {
-  left: auto;
-  right: var(--offset);
+.marker[data-selected] .markerTag {
+  outline: 1px solid #fff;
+  outline-offset: -1px;
+  background: var(--tl-clip-selected);
 }
 
 /* 轨道头双击改名 */
