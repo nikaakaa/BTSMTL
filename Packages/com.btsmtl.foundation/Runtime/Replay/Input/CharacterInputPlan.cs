@@ -33,6 +33,29 @@ namespace BTSMTL.Replay.Input
         public bool Request { get; }
     }
 
+    public readonly struct CharacterInputPlanClock
+    {
+        CharacterInputPlanClock(long firstFrame, int tickRate)
+        {
+            FirstFrame = firstFrame;
+            TickRate = tickRate;
+        }
+
+        public long FirstFrame { get; }
+        public int TickRate { get; }
+
+        public static CharacterInputPlanClock AfterFrame(long effectiveAfterFrame, int tickRate) =>
+            new CharacterInputPlanClock(effectiveAfterFrame + 1, tickRate);
+
+        public long FrameAt(long absoluteFrame) => absoluteFrame - FirstFrame;
+
+        public double? SecondsAt(long absoluteFrame)
+        {
+            long frame = FrameAt(absoluteFrame);
+            return frame < 0 ? (double?)null : frame / (double)TickRate;
+        }
+    }
+
     public static class CharacterInputPlan
     {
         public static IReadOnlyList<CharacterInputPlanPoint> Read(CharacterInputKeyLayout keys,
