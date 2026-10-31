@@ -15,14 +15,14 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomain, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
-  clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
-  trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
+  clipGraph, clipSelectId, documentSegments, domainLabel, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  toneColors, trackTone, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
@@ -40,7 +40,8 @@ import styles from './timeline.module.css';
 // 轨道头宽度，照 Timeline Editor 约占窗口三分之一，面板窄时收窄让出时间区；CSS 经 --sidebar 读取。
 const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, width * 0.3)));
 const minSpan = 0.05;
-const rowHeights = { group: 30, anim: 46, motion: 46, act: 42, in: 42, other: 42, inputGroup: 30 } as const;
+// 分组行与轨道行等高排列；片段在轨道行内上下各留 3 像素。
+const rowHeights = { group: 26, track: 28 } as const;
 const overscan = 120;
 // 窄于此宽度的片段把名字画在片段后面。
 const labelInside = 46;
@@ -121,14 +122,9 @@ const segmentRange = (segment: RouteSegment) => fitRange({ start: segment.origin
 
 function rowHeight(row: Row): number {
   switch (row.kind) {
-    case 'group': return rowHeights.group;
-    case 'inputGroup': return rowHeights.inputGroup;
-    case 'inputTrack': return rowHeights.in;
-    case 'curves': return rowHeights.inputGroup;
+    case 'group': case 'inputGroup': case 'curves': case 'receivedGroup': return rowHeights.group;
+    case 'track': case 'inputTrack': case 'received': return rowHeights.track;
     case 'curve': return 64;
-    case 'receivedGroup': return rowHeights.inputGroup;
-    case 'received': return 28;
-    case 'track': return rowHeights[row.trackKind];
   }
 }
 
@@ -951,7 +947,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   );
 }
 
-function Line({ id, height, head, headClass, children, laneClass, track }: {
+function Line({ id, height, head, headClass, children, laneClass, track, color }: {
   id: string;
   height: number;
   head: ReactNode;
@@ -960,10 +956,12 @@ function Line({ id, height, head, headClass, children, laneClass, track }: {
   laneClass?: string;
   // 作者轨道（`Timeline/轨道`），拖片段换轨时按松手处查找。
   track?: string;
+  // 类别色：轨道头色条、片段与标记共用。
+  color?: string;
 }) {
   const { setNodeRef, rowWrapperStyle, rowStyle, rowSidebarStyle } = useRow({ id, disabled: true });
   return (
-    <div className={styles.line} style={{ ...rowWrapperStyle, height }}>
+    <div className={styles.line} style={{ ...rowWrapperStyle, height, ['--tc' as string]: color }}>
       <div className={headClass} style={rowSidebarStyle}>{head}</div>
       <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane data-track={track}>
         {children}
@@ -1182,6 +1180,8 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const menu = useTrackMenu(row, at, () => setNaming(true));
   const documentId = row.timeline.documentId;
+  // 执行域取当前作者文档，改域后随编辑版本刷新。
+  const domain = useAuthoring(() => trackDomain(documentId, row.track.id));
   const step = useContext(SnapContext) ?? 1 / 60;
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
@@ -1202,9 +1202,9 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select);
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) selectTimelineObject(clock, 'track', row.selectId);
     }}>
-    <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} track={`${documentId}/${row.track.id}`} head={naming ? (
-      <span className={styles.headButton} style={{ ['--tc' as string]: trackColors[row.trackKind] }}>
-        <span className={styles.slot} />
+    <Line id={row.id} height={rowHeights.track} color={toneColors[trackTone(row.trackKind, domain)]} headClass={styles.trackHead}
+      track={`${documentId}/${row.track.id}`} head={naming ? (
+      <span className={styles.headButton}>
         <TextInput autoFocus defaultValue={row.track.displayName} aria-label="轨道名称" className={styles.nameInput}
           onBlur={event => {
             setNaming(false);
@@ -1219,13 +1219,12 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
       </span>
     ) : (
       <button className={styles.headButton} data-selected={selected || undefined}
-        style={{ ['--tc' as string]: trackColors[row.trackKind] }}
         title={author ? '单击选中 · 双击改名 · 右键轨道菜单' : undefined}
         onClick={() => selectTimelineObject(clock, 'track', row.selectId)}
         onDoubleClick={() => { if (author) setNaming(true); }}>
-        <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
         {row.track.muted && <span className={styles.muted}>静音</span>}
+        {domain && <span className={styles.domain}>{domainLabel(domain)}</span>}
       </button>
     )}>
       <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
@@ -1361,14 +1360,14 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
   return (
     <div ref={setNodeRef} style={itemStyle} className={styles.item} {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
-        <button className={styles.clip} data-box={boxKey} data-select={selectId} data-kind={kind} data-active={active || undefined}
+        <button className={styles.clip} data-box={boxKey} data-select={selectId} data-active={active || undefined}
           data-selected={selected || undefined} data-dim={dimmed || undefined} data-editable={edit ? true : undefined}
           data-changed={changed || undefined}
           title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           {inside && <span className={styles.clipLabel}>{label}</span>}
-          {band && (ease ? <EaseHandles ease={ease} start={start} end={end} /> : <><i className={styles.easeIn} /><i className={styles.easeOut} /></>)}
+          {band && ease && <EaseHandles ease={ease} start={start} end={end} />}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
         </button>
         {!inside && outsideWidth > 12 && (
@@ -1450,7 +1449,7 @@ function CurveGroupLine({ open, toggle }: { open: boolean; toggle(id: string): v
     kind: 'check', label: `${curve.actorId ? `${curve.actorId} · ` : ''}${curve.displayName}`,
     checked: selected.includes(curve.id), onChange: checked => runActions.selectCurve(curve.id, checked),
   }));
-  return <Line id="curves" height={30} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
+  return <Line id="curves" height={rowHeights.group} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
     <button className={styles.fold} onClick={() => toggle('curves')} aria-expanded={open} aria-label={open ? '折叠曲线' : '展开曲线'}>
       <Triangle open={open} />
     </button>
@@ -1481,11 +1480,10 @@ function CurveLine({ row }: { row: CurveRow }) {
     : record?.kind === 'sampled' ? record.availability.find(item =>
       (item.channel === row.curve.channel || item.channel === 'data-curves') && !item.available)?.reason ?? null : '正在读取曲线';
   const select = () => { if (selectId !== null) selectionActions.select({ kind: 'track', id: selectId }); };
-  return <Line id={row.id} height={64} headClass={styles.trackHead} head={
-    <button className={styles.headButton} data-selected={selected || undefined}
-      style={{ ['--tc' as string]: 'var(--track-motion)' }} disabled={selectId === null}
+  return <Line id={row.id} height={64} color="var(--track-motion)" headClass={styles.trackHead} head={
+    <button className={styles.headButton} data-selected={selected || undefined} disabled={selectId === null}
       title={`${row.curve.clock} · ${row.curve.coordinates} · ${row.curve.unit}`} onClick={select}>
-      <span className={styles.slot} /><span className={styles.name}>{row.curve.displayName}</span>
+      <span className={styles.name}>{row.curve.displayName}</span>
     </button>
   }>
     {reason ? <span className={styles.curveNotice} title={reason}>{reason}</span> : <>
@@ -1513,7 +1511,7 @@ function CurveLine({ row }: { row: CurveRow }) {
 function ReceivedGroupLine({ received, open, toggle }: { received: ReceivedInput; open: boolean; toggle(id: string): void }) {
   const notice = !received.keys.length && !received.missing.length ? '已读帧内没有非中性输入' : null;
   const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
-  return <Line id="received" height={rowHeights.inputGroup} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
+  return <Line id="received" height={rowHeights.group} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
     <button className={styles.fold} onClick={() => toggle('received')} aria-expanded={open} aria-label={open ? '折叠实际输入' : '展开实际输入'}>
       <Triangle open={open} />
     </button>
@@ -1526,7 +1524,8 @@ function ReceivedGroupLine({ received, open, toggle }: { received: ReceivedInput
 function ReceivedLine({ row }: { row: ReceivedRow }) {
   const { range } = useTimelineContext();
   const visible = (span: ReceivedSpan) => span.end >= range.start && span.start <= range.end;
-  return <Line id={row.id} height={28} headClass={styles.trackHead} head={<span className={styles.name}>{row.name}</span>}>
+  return <Line id={row.id} height={rowHeights.track} color="var(--track-in)" headClass={styles.trackHead}
+    head={<span className={styles.headButton}><span className={styles.name}>{row.name}</span></span>}>
     {row.spans.filter(visible).map(span => (
       <Positioned key={`s${span.start}`} start={span.start} end={span.end} title={`${span.label} · ${span.start.toFixed(3)}—${span.end.toFixed(3)} s`}
         className={row.missing ? styles.receivedMissing : styles.receivedSpan} />
@@ -1545,7 +1544,7 @@ function InputGroupLine({ open, toggle, roots }: {
   const reason = useWorkbench(state => state.inputTimeline?.availability[0]?.reason ?? '');
   const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: `方案：${root.displayName}` }));
   return (
-    <Line id="input" height={rowHeights.inputGroup} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+    <Line id="input" height={rowHeights.group} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <button className={styles.fold} onClick={() => toggle('input')} aria-expanded={open} disabled={!options.length}
           aria-label={open ? '折叠' : '展开'}>
@@ -1578,10 +1577,9 @@ const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRo
   }, [clips]);
   if (routeEnd === null) return null;
   return (
-    <Line id={row.id} height={rowHeights.in} headClass={styles.trackHead} head={
+    <Line id={row.id} height={rowHeights.track} color={toneColors.in} headClass={styles.trackHead} head={
       <button className={styles.headButton} data-selected={selected || undefined}
-        style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
-        <span className={styles.slot} />
+        onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
         <span className={styles.name}>{row.track.displayName}</span>
       </button>
     }>
@@ -1627,10 +1625,14 @@ function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
         const span = range.end - range.start;
         onRangeChanged(() => ({ start: seconds - span * 0.1, end: seconds + span * 0.9 }));
       }
-      const x = valueToPixels(seconds - range.start);
+      const x = Math.round(valueToPixels(seconds - range.start));
       lineElement.hidden = tagElement.hidden = false;
-      lineElement.style.transform = tagElement.style.transform = `translateX(${x}px)`;
-      tagElement.textContent = `${(seconds - origin).toFixed(6)} s`;
+      lineElement.style.transform = `translateX(${x}px)`;
+      // 时刻牌居中于游标，贴近时间区两端时收在区内，不被轨道头挡住。
+      tagElement.textContent = `${(seconds - origin).toFixed(3)} s`;
+      const tagWidth = tagElement.offsetWidth;
+      const laneWidth = lineElement.parentElement?.clientWidth ?? tagWidth;
+      tagElement.style.transform = `translateX(${Math.max(0, Math.min(laneWidth - tagWidth, x - tagWidth / 2))}px)`;
     }
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
     if (visible && !pending.current) {

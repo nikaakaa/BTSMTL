@@ -787,6 +787,13 @@ export function trackContract(documentId: string, trackId: string): string | nul
   return (document ? tracksOf(document).find(track => track.m_AuthoringId === trackId)?.ContractKind as string | undefined : undefined) ?? null;
 }
 
+// 轨道的执行域（m_ExecutionDomain），同样取当前 Timeline 文档；没有作者文档时为 null。
+export function trackDomain(documentId: string, trackId: string): string | null {
+  const document = currentDocument(timelinePath(documentId));
+  const domain = document ? tracksOf(document).find(track => track.m_AuthoringId === trackId)?.m_ExecutionDomain : undefined;
+  return typeof domain === 'string' ? domain : null;
+}
+
 // 新轨道的执行域：Unity 取放置目录里该轨道合同的默认域，.NET 侧没有目录，
 // 按技能现有同种轨道用过的域给出；没有先例时列出枚举的全部域。由作者在添加时选择。
 export function trackDomains(template: ElementTemplate): string[] {
