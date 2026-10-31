@@ -303,8 +303,8 @@ function loadTypes(skill: AuthoringTarget) {
   return typeCatalog.items;
 }
 
-function NodeTypePicker({ graph, at, onClose }: {
-  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onClose(): void;
+function NodeTypePicker({ graph, at, onCreated, onClose }: {
+  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onCreated(id: string): void; onClose(): void;
 }) {
   const skill = useAuthoring(state => state.target)!;
   const [types, setTypes] = useState<NodeTypeInfo[] | null>(null);
@@ -327,7 +327,8 @@ function NodeTypePicker({ graph, at, onClose }: {
       const ports = (description.ports.items ?? []).map(entry => ({
         id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
       }));
-      graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      const id = graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      onCreated(id);
       onClose();
     } catch (reason) {
       consoleActions.error('作者', reason);
@@ -637,6 +638,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const selectedFlowNodes = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
   const copySelected = () => graphAuthoring.copy(graph.id, selectedFlowNodes.map(node => node.id),
     Object.fromEntries(selectedFlowNodes.map(node => [node.id, node.position])), portsOf(selectedFlowNodes.map(node => node.id)));
+  const selectCreated = (id: string) => {
+    selectCanvas([id], []);
+    selectionActions.select({ kind: 'node', id: nodeSelectId(graph, { id, invocationPath: path }) });
+  };
   const paste = () => {
     const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
     const [first] = pasted;
@@ -660,7 +665,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
       const elementsNow = elements ?? await skillElements();
-      selectCanvas([graphAuthoring.addState(graph.id, elementsNow, description.configuration, position)], []);
+      selectCreated(graphAuthoring.addState(graph.id, elementsNow, description.configuration, position));
     } catch (error) {
       consoleActions.error('作者', error);
     }
@@ -727,7 +732,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
-        {picker && <NodeTypePicker graph={graph} at={picker} onClose={() => setPicker(null)} />}
+        {picker && <NodeTypePicker graph={graph} at={picker} onCreated={selectCreated} onClose={() => setPicker(null)} />}
       </div>
       </ContextMenu>
     </ViewContext.Provider>
