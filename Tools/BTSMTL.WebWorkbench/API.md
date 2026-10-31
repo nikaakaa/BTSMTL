@@ -161,7 +161,7 @@ Load 的 `content` 是二选一：
 
 实时采样与档案使用同一公共 `PreviewFrameSource`，完整字段见下文公共合同表；执行身份取 `execution`，载入和画面分别保留 `loadCommandId/sequence`，内容保留正式 `content` 及绑定修订。实际位置、秒数和显示名取 `clock.position.hostFrame/seconds/positionDisplayName`；请求位置独立保存在 `clock.requestedPosition`。网页不解读运行端时钟种类或换算帧率。
 
-`Live/status.player.transport` 为 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。`seek` 描述任意位置定位资格；`first/previous/next/last` 的目标由 Host 按原运行规则提供；`play/pause/step` 同样使用实际状态的资格。网页按其原因禁用操作，缺少操作项时明确提示资格未提供，不从时钟种类推断。上一帧、首末帧只使用正式目标，下一帧仍向原入口发送 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
+`Live/status.player.transport` 为可空 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。旧运行端未提供资格时，Host 保留实际状态和来源，返回 `transport=null` 与明确 `transportUnavailableReason`，不能补造数组或阻断其它实例目录；网页显示原原因并禁用控制。数组存在时，`seek` 描述任意位置定位资格，`first/previous/next/last` 的目标由 Host 按原规则提供，`play/pause/step` 同样使用实际状态的资格。网页不从时钟种类推断；上一帧、首末帧只使用正式目标，下一帧仍发原 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
 
 画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON][图像字节]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip,mediaType`。直接复用 `openViewer` 解析，不能在浏览器消费 Native Player 的内部二进制头。
 

@@ -138,11 +138,18 @@ export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
-const viewerPlayer = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
+const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
     error: nullable(text), source: nullable(readPreviewSampleSource),
-    transport: array(object({ action: text, available: boolean, reason: text, target: nullable(position) })),
+    transport: nullable(array(object({ action: text, available: boolean, reason: text, target: nullable(position) }))),
+    transportUnavailableReason: nullable(text),
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
     fields: array(field), rawJson: text });
+function viewerPlayer(value: unknown, path = 'Player.status') {
+  const player = viewerPlayerFields(value, path);
+  if (player.transport !== null) return { ...player, transport: player.transport };
+  if (player.transportUnavailableReason === null) throw new Error(`${path}.transport 缺少不可用原因`);
+  return { ...player, transport: null, transportUnavailableReason: player.transportUnavailableReason };
+}
 const liveIdentity = object({
   liveId, playerBuildId: buildId, width: number, height: number, running: boolean,
   liveProtocol: nullable(text), observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),

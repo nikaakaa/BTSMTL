@@ -188,10 +188,12 @@ export const transport = {
   },
 
   action(name: string) {
-    return getState().live?.player?.transport.find(item => item.action === name);
+    return getState().live?.player?.transport?.find(item => item.action === name);
   },
 
   unavailableReason(name: string) {
+    const player = getState().live?.player;
+    if (player?.transport === null) return player.transportUnavailableReason;
     const action = transport.action(name);
     return action === undefined ? '宿主未提供此操作的资格' : action.available ? null : action.reason;
   },
