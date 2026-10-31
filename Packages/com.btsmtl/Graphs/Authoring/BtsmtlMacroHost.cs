@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+#if UNITY_EDITOR
+using FlowCanvas;
+using UnityEditor;
+#endif
 
 namespace BTSMTL.Graphs
 {
@@ -26,6 +30,48 @@ namespace BTSMTL.Graphs
             FlowCanvas.Port context, UnityEngine.Object instance) { }
         // 新建子图的出入口锚点已创建；宿主领域可按自身作者合同配置锚点身份。
         public virtual void OnMacroCreated(BtsmtlMacroGraph macro) { }
+
+        public virtual BtsmtlMacroGraph CreatePrivateMacro(FlowGraph owner, string name)
+        {
+            string path = AssetDatabase.GetAssetPath(owner);
+            if (string.IsNullOrEmpty(path))
+                throw new InvalidOperationException("所属图保存为资产后才能创建私有子图。");
+            BtsmtlMacroGraph macro = BtsmtlMacroGraph.Create(name, this);
+            AssetDatabase.AddObjectToAsset(macro, path);
+            Undo.RegisterCreatedObjectUndo(macro, "创建私有子图");
+            return macro;
+        }
+
+        public virtual IEnumerable<BtsmtlMacroGraph> SharedMacros(FlowGraph caller)
+        {
+            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(BtsmtlMacroGraph)))
+                if (AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GUIDToAssetPath(guid)) is BtsmtlMacroGraph macro)
+                    yield return macro;
+        }
+
+        public virtual IEnumerable<FlowGraph> CallerGraphs(BtsmtlMacroGraph macro)
+        {
+            string macroPath = AssetDatabase.GetAssetPath(macro);
+            if (string.IsNullOrEmpty(macroPath))
+                yield break;
+            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(FlowGraph)))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path == macroPath || Array.IndexOf(AssetDatabase.GetDependencies(path, false), macroPath) >= 0)
+                    foreach (FlowGraph graph in AssetDatabase.LoadAllAssetsAtPath(path).OfType<FlowGraph>())
+                        yield return graph;
+            }
+        }
+
+        public virtual string AuthoringPath(FlowGraph graph) => AssetDatabase.GetAssetPath(graph);
+        public virtual string SharedMacroLabel(BtsmtlMacroGraph macro) => macro.name;
+        public virtual bool IsShared(BtsmtlMacroGraph macro) => AssetDatabase.IsMainAsset(macro);
+
+        public virtual void Edit(FlowGraph graph, string title, FlowGraph[] affectedGraphs, Action mutation) =>
+            BtsmtlFlowGraphAuthoring.EditAssets(graph, title, affectedGraphs, mutation);
+
+        public virtual void DrawAuthoringToolbar(BtsmtlMacroGraph macro) =>
+            GUILayout.Label((IsShared(macro) ? "共享子图 · " : "私有子图 · ") + DisplayName, EditorStyles.miniLabel);
 #endif
     }
 

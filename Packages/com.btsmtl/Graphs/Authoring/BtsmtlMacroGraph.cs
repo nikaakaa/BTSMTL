@@ -136,10 +136,13 @@ namespace BTSMTL.Graphs
         {
             var macro = CreateInstance<BtsmtlMacroGraph>();
             macro.name = name;
-            macro.ConfigureHost(host);
-            macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
-            macro.EnsureAnchors();
-            host.OnMacroCreated(macro);
+            macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
+            macro.Authoring.Initialize(() =>
+            {
+                macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
+                macro.EnsureAnchors();
+                host.OnMacroCreated(macro);
+            });
             return macro;
         }
 
@@ -240,8 +243,10 @@ namespace BTSMTL.Graphs
 
         protected override void OnGraphEditorToolbar()
         {
-            GUILayout.Label((AssetDatabase.IsMainAsset(this) ? "共享子图 · " : "私有子图 · ") +
-                (m_Host?.DisplayName ?? "未声明宿主"), EditorStyles.miniLabel);
+            if (m_Host == null)
+                GUILayout.Label("未声明宿主", EditorStyles.miniLabel);
+            else
+                m_Host.DrawAuthoringToolbar(this);
             if (GUILayout.Button("编辑接口", EditorStyles.toolbarButton))
                 BtsmtlMacroInterface.OpenEditor(this);
         }
