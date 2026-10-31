@@ -6,6 +6,29 @@ namespace BTSMTL.Preview
     public enum PreviewExecutionMode : byte { Interactive, Batch }
     public enum PreviewPlaybackState : byte { Idle, Loading, Paused, Playing, Stepping, Seeking, Failed }
 
+    public readonly struct PreviewPlaybackAvailability
+    {
+        readonly bool m_ArgumentFailure;
+
+        internal PreviewPlaybackAvailability(string reason, bool argumentFailure)
+        {
+            Reason = reason;
+            m_ArgumentFailure = argumentFailure;
+        }
+
+        public bool Available => Reason.Length == 0;
+        public string Reason { get; }
+
+        internal void Require(string parameterName)
+        {
+            if (Available)
+                return;
+            if (m_ArgumentFailure)
+                throw new ArgumentOutOfRangeException(parameterName, Reason);
+            throw new InvalidOperationException(Reason);
+        }
+    }
+
     [Serializable]
     public class PreviewAgentCommand
     {
@@ -42,11 +65,38 @@ namespace BTSMTL.Preview
         public PreviewExecutionMode Mode { get; private set; }
         public PreviewPlaybackState State { get; private set; }
         public int Frame { get; private set; } = -1;
+        public int? InitialFrame { get; private set; }
         public int? EndFrame { get; private set; }
         public int SeekTarget { get; private set; } = -1;
         public bool CanStream => Mode == PreviewExecutionMode.Interactive;
         public bool NeedsFrame => State == PreviewPlaybackState.Playing ||
             State == PreviewPlaybackState.Stepping || State == PreviewPlaybackState.Seeking;
+
+        public PreviewPlaybackAvailability ContentAvailability =>
+            State == PreviewPlaybackState.Idle || State == PreviewPlaybackState.Loading ||
+            State == PreviewPlaybackState.Failed
+                ? new PreviewPlaybackAvailability("预览尚未载入可运行内容。", false)
+                : new PreviewPlaybackAvailability(string.Empty, false);
+
+        public PreviewPlaybackAvailability StepAvailability(int count)
+        {
+            PreviewPlaybackAvailability content = ContentAvailability;
+            if (!content.Available)
+                return content;
+            return count <= 0
+                ? new PreviewPlaybackAvailability("逐帧前进次数必须大于零。", true)
+                : content;
+        }
+
+        public PreviewPlaybackAvailability SeekForwardAvailability(int frame)
+        {
+            PreviewPlaybackAvailability content = ContentAvailability;
+            if (!content.Available)
+                return content;
+            return frame < Frame || EndFrame.HasValue && frame > EndFrame.Value
+                ? new PreviewPlaybackAvailability("目标帧须位于当前恢复帧与本次输入结束帧之间。", true)
+                : content;
+        }
 
         public void BeginLoad(PreviewExecutionMode mode, int tickRate, int? endFrame)
         {
@@ -56,6 +106,7 @@ namespace BTSMTL.Preview
             m_TickRate = tickRate;
             EndFrame = endFrame;
             Frame = -1;
+            InitialFrame = null;
             SeekTarget = -1;
             m_RemainingSteps = 0;
             SetState(PreviewPlaybackState.Loading);
@@ -64,12 +115,13 @@ namespace BTSMTL.Preview
         public void Loaded(int frame)
         {
             Frame = frame;
+            InitialFrame = frame;
             SetState(PreviewPlaybackState.Paused);
         }
 
         public void RestoreCompleted(int frame, int? endFrame)
         {
-            RequireLoaded();
+            ContentAvailability.Require(null);
             Frame = frame;
             EndFrame = endFrame;
             SeekTarget = -1;
@@ -79,31 +131,27 @@ namespace BTSMTL.Preview
 
         public void Play()
         {
-            RequireLoaded();
+            ContentAvailability.Require(null);
             SetState(EndFrame.HasValue && Frame >= EndFrame.Value
                 ? PreviewPlaybackState.Paused : PreviewPlaybackState.Playing);
         }
 
         public void Pause()
         {
-            RequireLoaded();
+            ContentAvailability.Require(null);
             SetState(PreviewPlaybackState.Paused);
         }
 
         public void Step(int count)
         {
-            RequireLoaded();
-            if (count <= 0)
-                throw new ArgumentOutOfRangeException(nameof(count), "逐帧前进次数必须大于零。");
+            StepAvailability(count).Require(nameof(count));
             m_RemainingSteps = count;
             SetState(PreviewPlaybackState.Stepping);
         }
 
         public void SeekForward(int frame)
         {
-            RequireLoaded();
-            if (frame < Frame || EndFrame.HasValue && frame > EndFrame.Value)
-                throw new ArgumentOutOfRangeException(nameof(frame), "目标帧须位于当前恢复帧与本次输入结束帧之间。");
+            SeekForwardAvailability(frame).Require(nameof(frame));
             SeekTarget = frame;
             SetState(frame == Frame ? PreviewPlaybackState.Paused : PreviewPlaybackState.Seeking);
         }
@@ -132,11 +180,5 @@ namespace BTSMTL.Preview
                 ? -1 : m_TickRate;
         }
 
-        void RequireLoaded()
-        {
-            if (State == PreviewPlaybackState.Idle || State == PreviewPlaybackState.Loading ||
-                State == PreviewPlaybackState.Failed)
-                throw new InvalidOperationException("预览尚未载入可运行内容。");
-        }
     }
 }
