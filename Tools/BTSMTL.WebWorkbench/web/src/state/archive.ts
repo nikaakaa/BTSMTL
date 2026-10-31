@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchive, PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
+import type { PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -19,7 +19,6 @@ interface OpenArchive {
   kind: 'ready';
   jobId: PlayerJobId;
   generation: number;
-  metadata: PlayerArchive;
   summary: PlayerSummary;
   timebase: ArchiveTimebase;
   controller: AbortController;
@@ -211,7 +210,7 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
   let image = images.get(id);
   try {
     if (!image) {
-      const imageChannel = context.metadata.availability.find(item => item.channel === 'images');
+      const imageChannel = context.summary.availability.find(item => item.channel === 'images');
       if (imageChannel?.available) {
         const records = await readAll(offset => playerApi.frameImages(context.jobId, {
           firstFrame: hostFrame, lastFrame: hostFrame, offset, limit: 128,
@@ -222,9 +221,7 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
             playerApi.frameImage(context.jobId, metadata.imageIndex, signal), imageObservations(context, metadata, signal),
           ]);
           image = { kind: 'frame', metadata, image: blob, ...observations };
-        } else image = { kind: 'unavailable', hostFrame, reason: `Player 档案未录制 SDK ${hostFrame} 帧的画面` };
-      } else if (!context.metadata.captures.some(item => String(item.sdkFrame) === hostFrame)) {
-        image = { kind: 'unavailable', hostFrame, reason: `Player 档案未提供 SDK ${hostFrame} 帧的画面` };
+        } else image = { kind: 'unavailable', hostFrame, reason: `档案未记录${context.summary.frameDisplayName} ${hostFrame}的画面` };
       } else {
         const metadata = await playerApi.archiveImageMetadata(context.jobId, hostFrame, signal);
         if (metadata.available) {
@@ -305,7 +302,7 @@ export const archive = {
       ]);
       if (!isCurrent(generation)) { controller.abort(); return; }
       const timebase: ArchiveTimebase = new Map();
-      current = { kind: 'ready', jobId, generation, metadata, summary, timebase, controller };
+      current = { kind: 'ready', jobId, generation, summary, timebase, controller };
       transport.setTimebase(jobId, timebase);
       runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,
         metadataAvailability: summary.availability, archiveCurves: curves.items, curveAvailability: curves.availability });

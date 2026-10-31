@@ -180,7 +180,7 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 | `GET /api/preview/player-jobs` | 作业列表与队列情况 | `capacity,concurrency,queued,archiveCacheCapacity,items` |
 | `GET /api/preview/player-jobs/{id}` | 当前作业及可用档案 | `{receipt,archive}` |
 | `POST /api/preview/player-jobs/{id}/cancel` | `{}` | `{jobId,cancellationRequested,jobStage,reason}`；发出取消不等于已结束 |
-| `GET /api/preview/player-jobs/{id}/archive` | 原正式档案清单 | `PlayerArchive` |
+| `GET /api/preview/player-jobs/{id}/archive` | 原正式档案清单 | 原 Host JSON；网页只读取已消费的 `jobId,inputMode`，不要求项目协议名、Player 构建号或私有时钟 |
 | `GET /api/preview/player-jobs/{id}/files/{path}` | 清单内的原文件路径 | 原文件正文 |
 | `GET /api/preview/player-jobs/{id}/summary` | 档案概况 | `PlayerSummary`，含实际帧范围、场景／输入／内容修订及通道可用性 |
 
@@ -216,6 +216,8 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 | `/api/preview/player-jobs/{id}/images/{sdkFrame}` | 明确捕获的 PNG 字节；没有捕获则保留不可用结果 |
 
 观察通道为 `logic,bones,camera,physics,graph,stateMachine,timeline,blackboard,ports,input,images`。`available=false`、`complete=false` 和空数组含义不同；按原 `reason` 展示，不能以静态默认值或其它帧补齐。检查器同时消费摘要与当前帧的 availability，同一缺项原因只列一次。通用 sections 是宿主提供的显示名、字段和来源定位，前端无需为每种内部运行值新增硬编码页签。
+
+画面通道能力取同一 Summary。明确捕获的图片沿原 `/images/{宿主帧键}/metadata` 查询实际可用性和原因，不解析项目清单的 captures 或 SDK 成员来猜画面是否存在；仅 metadata.available 为 true 时再取字节。Editor 的原画面构建号可以为 null，真实执行身份仍来自 Summary／Source。
 
 档案游标使用通用帧的 `hostFrame/seconds`，总时长使用实际首末帧秒数之差；通过既有 `/frames` 按需读取首末各一条，复用同一时间基准，不从项目清单反算。通用帧的 `source` 可按正式合同为 null，几何接触 `kind` 使用宿主给出的文本分类。截图就绪标记的帧号与可选一致性值也直接取当前通用帧；缺少项目逻辑通道不阻止已完成绘制的面板报告就绪。
 
