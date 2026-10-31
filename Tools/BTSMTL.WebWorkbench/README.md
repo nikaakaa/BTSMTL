@@ -1,6 +1,6 @@
 # BTSMTL 网页工作台
 
-本地 .NET 服务提供预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页要直接编辑技能 JSON（Inspector、节点图、FSM、Timeline、黑板与输入方案，见 3C `add-shared-document-authoring-and-web-workbench` 第 9 节），当前前端尚未接入编辑，只查看运行结果与资源；技能读取、查询与保存接口由项目宿主提供（3C 见 `Tools/CharacterWorkbench/Host/Authoring/README.md`）。
+本地 .NET 服务提供预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页通过项目宿主直接编辑技能 JSON，覆盖 Inspector、节点图、FSM、Timeline、黑板与输入方案；作者数据、动态类型与字段、保存编译和运行由正式宿主处理。UI worktree 对接见[前端接口](API.md)，3C 实际部署与检查见 `Tools/CharacterWorkbench/Host/Authoring/README.md`。
 
 ## 环境
 
@@ -34,7 +34,7 @@
 | --- | --- |
 | `src/shell/` | 停靠外壳、主工具栏、布局保存与弹出窗口、快捷键、地址同步、就绪标记、唯一主题文件 `theme.css` |
 | `src/state/` | 全局 store、会话与播放、帧缓存、各面板数据模型、播放器连接 |
-| `src/api/` | 宿主 HTTP、SSE 与 WebSocket 读取 |
+| `src/api/` | 作者、Player 与档案 HTTP，以及画面 WebSocket 的类型和读取入口 |
 | `src/panels/` | 各面板；`registry.tsx` 登记面板类型与组件 |
 | `src/ui/` | 基础控件、组件头、空状态、身份折叠、虚拟列表 |
 | `src/workers/` | 记录查询与格式化的 Worker |
@@ -83,10 +83,10 @@
 
 ## 接口与职责
 
-`WorkbenchApplication.Create` 提供默认文件、静态文件与动画资源接口，不做未知路径回退。`PreviewApi` 消费项目实现的 `IPreviewHost`：来源与正式输入、开始／控制／取消、运行回执、帧分页、图定义、路线观察、SSE 与比较。`GET /api/preview/host` 返回可用状态与各预览档位声明。
+`WorkbenchApplication.Create` 提供默认文件、静态文件与动画资源接口，不做未知路径回退。`PreviewApi` 消费项目实现的 `IPreviewHost`，提供 `/api/preview/host`、`/sources` 和 `/inputs`；运行、控制、作业和档案读取由项目 Host 沿正式 Player 链提供。`GET /api/preview/host` 返回可用状态与各预览档位声明。逐功能路由、请求、返回类型、保存阶段、调用身份、时钟和错误处理统一见[前端接口](API.md)。
 
 `Contracts/PreviewObservationContracts.cs` 定义宿主无关的帧：无损文本帧号、运行相对秒数、Actor 根变换、通道及可选一致性值。根与几何采用右手坐标、Y 轴向上、米，旋转为 `[x,y,z,w]`；项目负责正式数值和坐标换算。`RawJson` 保留正式读取模型的无损 JSON 文本，页面不重新解析其中的大整数。
 
-可选 `IPreviewImageSource` 提供画面来源、构建显示字段，以及按运行、来源作业和宿主帧读取的图片与元数据。`PreviewImageApi` 持有 `/api/preview/players`、`/runs/{runId}/player/{sourceId}/frames/{hostFrame}` 与常驻 `/live/{id}/view`。视频正文为 4 字节小端元数据长度、UTF-8 JSON 和图像字节；元数据提供无损帧号、尺寸、方向、媒体类型及适配公共坐标的列主序 `worldToClip`。
+可选 `IPreviewImageSource` 提供画面来源、构建显示字段，以及按正式作业和实际图像索引读取的图片。`PreviewImageApi` 持有 `/api/preview/players`、`/api/preview/player-jobs/{jobId}/frame-images/{imageIndex}` 与常驻 `/api/preview/live/{id}/view`。视频正文为 4 字节小端元数据长度、UTF-8 JSON 和图像字节；元数据提供实际采样来源与时钟、尺寸、方向、媒体类型及适配公共坐标的列主序 `worldToClip`。
 
 `AnimationResourceApi` 按清单哈希核对 glb 后按内容版本提供 `/api/resources/animations` 与分段文件读取。
