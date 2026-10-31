@@ -8,6 +8,8 @@ namespace BTSMTL.Timeline.Unity
     [DisallowMultipleComponent]
     public sealed class ScenePresentationPanelTarget : MonoBehaviour, ITimelineScenePresentationSink
     {
+        public const string PanelDomain = "ui.panel";
+
         [SerializeField]
         string m_TargetIdentity = string.Empty;
 
@@ -17,31 +19,28 @@ namespace BTSMTL.Timeline.Unity
         float m_OpenAmount;
         bool m_Visible = true;
 
-        public string TargetIdentity => m_TargetIdentity ?? string.Empty;
+        public string TargetIdentity => m_TargetIdentity;
         public float OpenAmount => m_OpenAmount;
         public bool Visible => m_Visible;
 
+        public void Prepare()
+        {
+            if (string.IsNullOrWhiteSpace(m_TargetIdentity))
+                throw new InvalidOperationException($"场景面板 '{name}' 未配置 TargetIdentity。");
+            if (!m_Graphic)
+                throw new InvalidOperationException($"场景面板 '{name}' 未配置 Graphic。");
+        }
+
         public void WriteScalar(TimelineScenePresentationSample sample)
         {
-            Validate(sample, "openAmount");
             m_OpenAmount = Mathf.Clamp01(sample.Value);
             ApplyGraphic();
         }
 
         public void WriteBoolean(TimelineScenePresentationSample sample)
         {
-            Validate(sample, "visible");
             m_Visible = sample.Value >= 0.5f;
             ApplyGraphic();
-        }
-
-        void Validate(TimelineScenePresentationSample sample, string parameterId)
-        {
-            if (string.IsNullOrWhiteSpace(TargetIdentity) || !m_Graphic)
-                throw new InvalidOperationException($"Scene presentation target '{name}' is not configured.");
-            if (!string.Equals(sample.TargetIdentity, TargetIdentity, StringComparison.Ordinal) ||
-                !string.Equals(sample.ParameterId, parameterId, StringComparison.Ordinal))
-                throw new InvalidOperationException($"Scene presentation sample does not belong to target '{TargetIdentity}'.");
         }
 
         void ApplyGraphic()
