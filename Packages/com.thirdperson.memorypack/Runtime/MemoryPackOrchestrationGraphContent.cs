@@ -67,10 +67,30 @@ namespace ThirdPersonSimulation.Serialization
 
         public byte[] Write(OrchestrationGraphContent<FPValue> content) => WriteGraphContent(content);
 
-        static byte[] WriteGraphContent<TValue>(OrchestrationGraphContent<TValue> content) where TValue : unmanaged =>
-            MemoryPackContent.Serialize((OrchestrationEnvelopeContract, content.Identity,
-                EncodeGraphBlock(content.Structure).Bytes, EncodeGraphBlock(content.Parameters).Bytes,
-                EncodeGraphBlock(content.Sources).Bytes));
+        public OrchestrationGraphContentBlocks WriteBlocks(OrchestrationGraphContent<Float32Value> content) =>
+            PublishGraphBlocks(content);
+
+        public OrchestrationGraphContentBlocks WriteBlocks(OrchestrationGraphContent<FPValue> content) =>
+            PublishGraphBlocks(content);
+
+        static OrchestrationGraphContentBlocks PublishGraphBlocks<TValue>(OrchestrationGraphContent<TValue> content)
+            where TValue : unmanaged => new(content.Identity, EncodeGraphBlock(content.Structure).Bytes,
+                EncodeGraphBlock(content.Parameters).Bytes, EncodeGraphBlock(content.Sources).Bytes);
+
+        static byte[] WriteGraphContent<TValue>(OrchestrationGraphContent<TValue> content) where TValue : unmanaged
+        {
+            OrchestrationGraphContentBlocks blocks = PublishGraphBlocks(content);
+            return MemoryPackContent.Serialize((OrchestrationEnvelopeContract, blocks.Identity,
+                blocks.Structure, blocks.Parameters, blocks.Sources));
+        }
+
+        OrchestrationGraphContent<Float32Value> IOrchestrationGraphContentEncoding<Float32Value>.ReadBlocks(
+            OrchestrationGraphContentBlocks blocks, GraphExecutionIdentity expected) =>
+            ReadGraphBlocks<Float32Value>(blocks, expected, Float32OrchestrationContractIdentity, "Float32");
+
+        OrchestrationGraphContent<FPValue> IOrchestrationGraphContentEncoding<FPValue>.ReadBlocks(
+            OrchestrationGraphContentBlocks blocks, GraphExecutionIdentity expected) =>
+            ReadGraphBlocks<FPValue>(blocks, expected, FPOrchestrationContractIdentity, "FP");
 
         OrchestrationGraphContent<Float32Value> IOrchestrationGraphContentEncoding<Float32Value>.Read(
             byte[] bytes, GraphExecutionIdentity expected)
@@ -91,16 +111,23 @@ namespace ThirdPersonSimulation.Serialization
                 byte[] Structure, byte[] Parameters, byte[] Sources)>(bytes);
             if (envelope.Contract != OrchestrationEnvelopeContract)
                 throw new InvalidDataException("图产物不是当前分块格式，请沿正式入口重新发布。");
-            RequireOrchestrationIdentity(envelope.Identity, expected, encodingContract, numericTarget);
-            OrchestrationGraphStructure structure = MemoryPackContent.Deserialize<OrchestrationGraphStructure>(envelope.Structure);
-            OrchestrationGraphParameters<TValue> parameters = MemoryPackContent.Deserialize<OrchestrationGraphParameters<TValue>>(envelope.Parameters);
-            OrchestrationGraphSourceMap sources = MemoryPackContent.Deserialize<OrchestrationGraphSourceMap>(envelope.Sources);
-            s_GraphBlocks.Add(structure, new EncodedGraphBlock(envelope.Structure));
-            s_GraphBlocks.Add(parameters, new EncodedGraphBlock(envelope.Parameters));
-            s_GraphBlocks.Add(sources, new EncodedGraphBlock(envelope.Sources));
-            OrchestrationGraphContent<TValue> content = CreateGraphContent(envelope.Identity.Source, structure, parameters, sources, null,
+            return ReadGraphBlocks<TValue>(new OrchestrationGraphContentBlocks(envelope.Identity,
+                envelope.Structure, envelope.Parameters, envelope.Sources), expected, encodingContract, numericTarget);
+        }
+
+        static OrchestrationGraphContent<TValue> ReadGraphBlocks<TValue>(OrchestrationGraphContentBlocks blocks,
+            GraphExecutionIdentity expected, string encodingContract, string numericTarget) where TValue : unmanaged
+        {
+            RequireOrchestrationIdentity(blocks.Identity, expected, encodingContract, numericTarget);
+            OrchestrationGraphStructure structure = MemoryPackContent.Deserialize<OrchestrationGraphStructure>(blocks.Structure);
+            OrchestrationGraphParameters<TValue> parameters = MemoryPackContent.Deserialize<OrchestrationGraphParameters<TValue>>(blocks.Parameters);
+            OrchestrationGraphSourceMap sources = MemoryPackContent.Deserialize<OrchestrationGraphSourceMap>(blocks.Sources);
+            s_GraphBlocks.Add(structure, new EncodedGraphBlock(blocks.Structure));
+            s_GraphBlocks.Add(parameters, new EncodedGraphBlock(blocks.Parameters));
+            s_GraphBlocks.Add(sources, new EncodedGraphBlock(blocks.Sources));
+            OrchestrationGraphContent<TValue> content = CreateGraphContent(blocks.Identity.Source, structure, parameters, sources, null,
                 MemoryPackContent.GetSchemaHash<OrchestrationGraphParameters<TValue>>());
-            content.Identity.RequireMatches(envelope.Identity);
+            content.Identity.RequireMatches(blocks.Identity);
             return content;
         }
 
