@@ -72,6 +72,8 @@ namespace ThirdPersonSimulation
         SemanticGraphStructure Structure => Tables.Structure;
         readonly SemanticStateLayout m_StateLayout;
         readonly int[] m_StateSlotByOperation;
+        readonly ReadOnlyCollection<ProgramOutputChannelLayout> m_OutputChannels;
+        readonly ReadOnlyCollection<ProgramProducer> m_Producers;
 
         public GameplayAbilitySemanticIr(
             GameplayAbilitySemanticIrManifest manifest,
@@ -94,15 +96,18 @@ namespace ThirdPersonSimulation
                 m_Operations[0].ParameterValues);
             var callFrames = Indexed(graphCallFrames, value => value.Index, "graph call frame");
             var contracts = new OperationValuePortContract[m_Operations.Count];
-            var structure = new SemanticGraphStructure(m_Operations,
+            var layouts = new SemanticOperationLayout[m_Operations.Count];
+            for (int i = 0; i < layouts.Length; i++)
+                layouts[i] = m_Operations[i].Layout;
+            var structure = new SemanticGraphStructure(Array.AsReadOnly(layouts),
                 SortConstantInputs(constantInputBindings, m_Operations, callFrames, contracts),
                 ByIdentity(controlFlow, value => value.Identity, "control-flow edge"),
                 ByIdentity(references, value => value.Identity, "reference"),
                 new SemanticStateTables(Indexed(stateDeclarations, value => value.Index, "state declaration"),
                     ByIdentity(scopes, value => value.Identity, "scope"), callFrames),
-                Indexed(outputChannels, value => value.Index, "output channel"),
-                Indexed(catalogEntries, value => value.Index, "catalog entry"),
-                Indexed(producers, value => value.Index, "producer"));
+                Indexed(catalogEntries, value => value.Index, "catalog entry"));
+            m_OutputChannels = Indexed(outputChannels, value => value.Index, "output channel");
+            m_Producers = Indexed(producers, value => value.Index, "producer");
             Tables = new SemanticGraphTables(structure, parameters);
             m_StateLayout = new SemanticStateLayout(Structure.StateTables, m_Operations);
             GraphSources = graphSources;
@@ -136,6 +141,8 @@ namespace ThirdPersonSimulation
             }
             m_StateLayout = structure.m_StateLayout;
             m_StateSlotByOperation = structure.m_StateSlotByOperation;
+            m_OutputChannels = structure.m_OutputChannels;
+            m_Producers = structure.m_Producers;
             GraphSources = sources;
         }
 
@@ -156,14 +163,14 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<ProgramGraphCallFrame> GraphCallFrames => m_StateLayout.GraphCallFrames;
         public IReadOnlyList<ProgramStateSlot> StateDeclarations => m_StateLayout.Slots;
         public IReadOnlyList<ProgramScopeLayout> Scopes => m_StateLayout.Scopes;
-        public IReadOnlyList<ProgramOutputChannelLayout> OutputChannels => Structure.OutputChannels;
+        public IReadOnlyList<ProgramOutputChannelLayout> OutputChannels => m_OutputChannels;
         public IReadOnlyList<ProgramCatalogEntry> CatalogEntries => Structure.CatalogEntries;
         public ProgramGraphSources GraphSources { get; }
         public IReadOnlyList<ProgramSourceMapEntry> SourceMap => GraphSources.Diagnostics;
         public ProgramExecutionSourceLayout ExecutionSourceLayout => GraphSources.Layout;
         public IReadOnlyList<ProgramExecutionSource> ExecutionSources => GraphSources.Layout.Entries;
         public ProgramGraphSourceRevisionTable GraphSourceRevisions => GraphSources.Revisions;
-        public IReadOnlyList<ProgramProducer> Producers => Structure.Producers;
+        public IReadOnlyList<ProgramProducer> Producers => m_Producers;
         public SemanticStateLayout StateLayout => m_StateLayout;
         public SemanticGraphTables Tables { get; }
 
@@ -403,50 +410,4 @@ namespace ThirdPersonSimulation
         }
 
     }
-    [ValueStorage]
-    public sealed partial class SemanticGraphStructure
-    {
-        internal SemanticGraphStructure(IReadOnlyList<SemanticOperation> operations,
-            ReadOnlyCollection<SemanticConstantInputBinding> constantInputBindings,
-            ReadOnlyCollection<ProgramControlFlowEdge> controlFlow, ReadOnlyCollection<ProgramReference> references,
-            SemanticStateTables stateTables, ReadOnlyCollection<ProgramOutputChannelLayout> outputChannels,
-            ReadOnlyCollection<ProgramCatalogEntry> catalogEntries,
-            ReadOnlyCollection<ProgramProducer> producers)
-        {
-            var layouts = new SemanticOperationLayout[operations.Count];
-            for (int i = 0; i < layouts.Length; i++)
-                layouts[i] = operations[i].Layout;
-            OperationLayouts = Array.AsReadOnly(layouts);
-            ConstantInputBindings = constantInputBindings;
-            ControlFlow = controlFlow;
-            References = references;
-            StateTables = stateTables;
-            OutputChannels = outputChannels;
-            CatalogEntries = catalogEntries;
-            Producers = producers;
-        }
-
-        public IReadOnlyList<SemanticOperationLayout> OperationLayouts { get; }
-        public ReadOnlyCollection<SemanticConstantInputBinding> ConstantInputBindings { get; }
-        public ReadOnlyCollection<ProgramControlFlowEdge> ControlFlow { get; }
-        public ReadOnlyCollection<ProgramReference> References { get; }
-        public SemanticStateTables StateTables { get; }
-        public ReadOnlyCollection<ProgramOutputChannelLayout> OutputChannels { get; }
-        public ReadOnlyCollection<ProgramCatalogEntry> CatalogEntries { get; }
-        public ReadOnlyCollection<ProgramProducer> Producers { get; }
-    }
-
-    [ValueStorage]
-    public sealed partial class SemanticGraphTables
-    {
-        internal SemanticGraphTables(SemanticGraphStructure structure, SemanticGraphParameters parameters)
-        {
-            Structure = structure;
-            Parameters = parameters;
-        }
-
-        public SemanticGraphStructure Structure { get; }
-        public SemanticGraphParameters Parameters { get; }
-    }
-
 }
