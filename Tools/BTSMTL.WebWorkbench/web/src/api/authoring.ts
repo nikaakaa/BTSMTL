@@ -152,11 +152,25 @@ export interface ElementTemplate {
   shape: StorageShape;
 }
 
+// 轨道重叠策略（TimelineTrackOverlapPolicy）：禁止重叠、并行、重叠处混合。
+export type TrackOverlap = 'Reject' | 'Parallel' | 'Blend';
+
+// 轨道与片段带正式 Timeline 合同，与 Unity 合同目录同一份定义。
+export interface TrackTemplate extends ElementTemplate {
+  kind: string;
+  contract: { overlap: TrackOverlap; domain: string; domains: string[]; clipKinds: string[] };
+}
+
+export interface ClipTemplate extends ElementTemplate {
+  kind: string;
+  contract: { trackKind: string; domains: string[] };
+}
+
 export interface SkillElements {
   anchors: Record<string, GraphAnchor[]>;
   transition: ElementTemplate;
-  tracks: ElementTemplate[];
-  clips: ElementTemplate[];
+  tracks: TrackTemplate[];
+  clips: ClipTemplate[];
   marker: ElementTemplate;
   previewInput: { nodeType: string; keyPath: string[]; valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。

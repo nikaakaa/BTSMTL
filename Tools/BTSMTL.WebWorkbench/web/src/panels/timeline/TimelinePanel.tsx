@@ -1,11 +1,11 @@
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import {
   TimelineContext, useItem, useRow, useTimelineContext, useTimelineMonitor, type DragItemData, type Range,
-  type ResizeEndEvent, type ResizeItemData, type UsePanStrategy,
+  type ResizeEndEvent, type ResizeItemData, type ResizeMoveEvent, type UsePanStrategy,
 } from 'dnd-timeline';
 import {
   createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent,
-  type PointerEvent, type ReactNode,
+  type PointerEvent, type ReactNode, type RefObject,
 } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,14 +15,14 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, trackContract, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, clipMoveIssue, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
-  clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
-  trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
+  clipGraph, clipMix, clipSelectId, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  trackColors, type ClipInstance, type GroupRow, type RouteSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
@@ -46,6 +46,8 @@ const minSpan = 0.05;
 const trackHeight = 30;
 const curveHeight = 64;
 const rowSpacing = 3;
+// 行列表顶部内边距（.rows 的 padding-top）。
+const rowsPadding = 3;
 const overscan = 120;
 // 片段名左右各留 6，剩余宽度不超过 10 时不画名字（ClipDrawer）。
 const clipLabelPadding = 6;
@@ -235,7 +237,6 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
       <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} sensors={sensors}
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
         <SnapContext.Provider value={step}>
-          {step !== null && <ClipEditing step={step} />}
           <TimelineBody params={params} setParams={setParams} bounds={bounds} rate={rate} frames={frames} onRangeChanged={onRangeChanged} />
         </SnapContext.Provider>
       </TimelineContext>
@@ -243,64 +244,196 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   );
 }
 
-// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按吸附步长取整，
-// 再减去本段零点得到 Timeline 本地秒数。拖到同一 Timeline 的另一条轨道时换轨（目标轨道须能放该种片段）；
-// 拖动框选中的片段时，框选的同一 Timeline 片段整体平移。
-function ClipEditing({ step }: { step: number }) {
+// 拖动中的片段（照 MoveItemHandler）：原位置隐藏，Rows 在目标行按吸附后的时间画虚影，不合规时虚影变红、松手放回原处；
+// 拖片段两端不合规时片段原地变红、松手恢复原长。tip 为虚影上方的提示：不合规或指到不能放的轨道时写明原因，否则为起点时刻。
+interface DropGhost { box: string; row: string; start: number; end: number; label: string; kind: TrackKind }
+const useClipEditing = create<{
+  drag: { panelId: string; ghosts: DropGhost[]; invalid: boolean; tip: string } | null;
+  resize: { panelId: string; box: string } | null;
+}>(() => ({ drag: null, resize: null }));
+
+interface DragSession {
+  edit: ClipEdit;
+  // 一起移动的片段与原轨道，第一个是拖动的片段；框选多个时各自留在原轨道。
+  moving: { clip: ClipInstance; track: string }[];
+  multi: boolean;
+  target: string;
+  activator: { x: number; y: number };
+  // 拖动中的指针位置；尚未移动时按拖动位移推算。
+  pointer: { x: number; y: number } | null;
+  release(): void;
+}
+
+// 作者模式拖动、拖端写回片段时间：原起止加上拖动距离换成的秒数，按吸附步长取整，再减去本段零点得到 Timeline 本地秒数。
+// 单个片段可拖到同一 Timeline 的另一条轨道（照 TimelineData.MoveClip：轨道能放这种片段且执行域相同），
+// 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段整体平移、不换轨。
+// 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合。
+function ClipEditing({ step, rows, offsets, scroller }: {
+  step: number; rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>;
+}) {
   const panelId = usePanelId();
-  const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
+  const panelWindow = usePanelWindow();
+  const { range, timelineRef, sidebarWidth: sidebar, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const elements = useSkillElements(useAuthoring(state => state.author && state.target !== null));
+  const drag = useClipEditing(state => state.drag?.panelId === panelId ? state.drag : null);
+  const session = useRef<DragSession | null>(null);
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
     return width > 0 ? pixels * (range.end - range.start) / width : 0;
   };
-  const write = (edit: ClipEdit | undefined, span: Range, direction: ResizeEndEvent['direction'], delta: number) => {
-    if (!edit) return;
-    const originalStart = span.start - edit.origin;
-    const originalEnd = span.end - edit.origin;
-    const start = direction === 'start' ? Math.max(0, Math.min(originalEnd - step, snapTo(originalStart + delta, step))) : originalStart;
-    const end = direction === 'end' ? Math.max(start + step, snapTo(originalEnd + delta, step)) : originalEnd;
-    authoringActions.setClipTime(edit.documentId, edit.clipId, start, end);
+  const trackRow = (segmentId: string, trackId: string) =>
+    rows.find((row): row is TrackRow => row.kind === 'track' && row.segment.id === segmentId && row.track.id === trackId);
+  // 指针所在的行：按各行累计高度查找，与该行是否已渲染无关。
+  const rowAt = (clientY: number) => {
+    const element = scroller.current;
+    if (!element) return undefined;
+    const y = clientY - element.getBoundingClientRect().top + element.scrollTop - rowsPadding;
+    const index = rows.findIndex((_, i) => y >= offsets[i] && y < offsets[i + 1]);
+    return index < 0 ? undefined : rows[index];
   };
-  // 松手处所在的作者轨道（`Timeline/轨道`）。
-  const trackAt = (x: number, y: number) =>
-    (timelineRef.current?.ownerDocument ?? document).elementsFromPoint(x, y)
-      .map(element => element.closest<HTMLElement>('[data-track]')?.dataset.track).find(Boolean) ?? null;
+  // 一条轨道上的片段（本地秒数）放下后的重叠是否合规。
+  const placementIssue = (documentId: string, track: TrackRow, spans: Span[]) => {
+    if (!elements) return '正在读取轨道合同';
+    const policy = trackOverlap(elements, documentId, track.track.id);
+    return policy === null ? '轨道种类不在元素查询里' : overlapIssue(policy, spans);
+  };
+  const preview = (current: DragSession, delta: { x: number; y: number }) => {
+    const { edit } = current;
+    const pointer = current.pointer ?? { x: current.activator.x + delta.x, y: current.activator.y + delta.y };
+    const anchor = current.moving[0].clip.clip;
+    const moved = getValueFromScreenX(pointer.x) - getValueFromScreenX(current.activator.x);
+    const shift = Math.max(snapTo(anchor.startSeconds + moved, step) - anchor.startSeconds,
+      -Math.min(...current.moving.map(item => item.clip.clip.startSeconds)));
+    let hover: string | null = null;
+    if (!current.multi) {
+      const row = rowAt(pointer.y);
+      if (row?.kind === 'track' && row.segment.id === edit.segmentId && row.track.id !== current.target) {
+        const reason = row.track.id === edit.trackId ? null
+          : elements ? clipMoveIssue(elements, edit.documentId, anchor.contract, edit.trackId, row.track.id) : '正在读取轨道合同';
+        if (reason === null) current.target = row.track.id;
+        else hover = reason;
+      }
+    }
+    const trackOf = (item: DragSession['moving'][number]) => current.multi ? item.track : current.target;
+    const ids = new Set(current.moving.map(item => item.clip.clip.id));
+    let issue: string | null = null;
+    for (const trackId of new Set(current.moving.map(trackOf))) {
+      const track = trackRow(edit.segmentId, trackId);
+      issue = !track ? '目标轨道不在当前视图' : placementIssue(edit.documentId, track, [
+        ...track.track.clips.filter(clip => !ids.has(clip.id)).map(clip => ({ start: clip.startSeconds, end: clip.endSeconds })),
+        ...current.moving.filter(item => trackOf(item) === trackId)
+          .map(item => ({ start: item.clip.clip.startSeconds + shift, end: item.clip.clip.endSeconds + shift })),
+      ]);
+      if (issue) break;
+    }
+    const ghosts = current.moving.map((item): DropGhost => ({
+      box: item.clip.key, row: `track:${edit.segmentId}/${trackOf(item)}`, start: item.clip.start + shift, end: item.clip.end + shift,
+      label: item.clip.label, kind: item.clip.kind,
+    }));
+    return { shift, issue, ghosts, tip: issue ?? hover ?? `${(anchor.startSeconds + shift).toFixed(3)} s` };
+  };
+  const publish = ({ ghosts, issue, tip }: ReturnType<typeof preview>) =>
+    useClipEditing.setState({ drag: { panelId, ghosts, invalid: issue !== null, tip } });
+  // 拖端：起点不早于 0、不晚于终点前一步，终点不早于起点后一步。
+  const resized = (event: ResizeMoveEvent | ResizeEndEvent) => {
+    const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
+    const edit = data.edit;
+    const track = edit && trackRow(edit.segmentId, edit.trackId);
+    if (!edit || !track) return null;
+    const delta = pixelsToValue(event.delta.x);
+    const originalStart = data.span.start - edit.origin;
+    const originalEnd = data.span.end - edit.origin;
+    const start = event.direction === 'start' ? Math.max(0, Math.min(originalEnd - step, snapTo(originalStart + delta, step))) : originalStart;
+    const end = event.direction === 'end' ? Math.max(start + step, snapTo(originalEnd + delta, step)) : originalEnd;
+    const issue = placementIssue(edit.documentId, track, track.track.clips.map(clip =>
+      clip.id === edit.clipId ? { start, end } : { start: clip.startSeconds, end: clip.endSeconds }));
+    return { edit, box: String(event.active.id), start, end, issue, changed: delta !== 0 };
+  };
   useTimelineMonitor({
+    onDragStart(event) {
+      const edit = (event.active.data.current as (DragItemData & { edit?: ClipEdit }) | undefined)?.edit;
+      const own = edit && trackRow(edit.segmentId, edit.trackId)?.clips.find(clip => clip.clip.id === edit.clipId);
+      if (!edit || !own) return;
+      const boxed = new Set((getState().timelineSelections[panelId] ?? []).map(item => item.box));
+      const multi = boxed.size > 1 && boxed.has(own.key);
+      const others = multi ? rows.flatMap(row => row.kind === 'track' && row.segment.id === edit.segmentId
+        ? row.clips.filter(clip => clip !== own && boxed.has(clip.key)).map(clip => ({ clip, track: row.track.id })) : []) : [];
+      const activator = event.activatorEvent as globalThis.PointerEvent;
+      const current: DragSession = {
+        edit, moving: [{ clip: own, track: edit.trackId }, ...others], multi, target: edit.trackId,
+        activator: { x: activator.clientX, y: activator.clientY }, pointer: null, release: () => {},
+      };
+      // 捕获阶段记录指针：先于拖动库的处理，且不受行列表自动滚动影响。
+      const follow = (move: globalThis.PointerEvent) => { current.pointer = { x: move.clientX, y: move.clientY }; };
+      panelWindow.addEventListener('pointermove', follow, true);
+      current.release = () => {
+        panelWindow.removeEventListener('pointermove', follow, true);
+        if (session.current === current) session.current = null;
+        useClipEditing.setState({ drag: null });
+      };
+      session.current = current;
+      publish(preview(current, { x: 0, y: 0 }));
+    },
+    onDragMove(event) {
+      if (session.current) publish(preview(session.current, event.delta));
+    },
+    onDragCancel() {
+      session.current?.release();
+    },
     onDragEnd(event) {
-      const data = event.active.data.current as (DragItemData & { edit?: ClipEdit }) | undefined;
-      const edit = data?.edit;
-      if (!data || !edit) return;
-      const delta = pixelsToValue(event.delta.x);
-      const local = snapTo(data.span.start + delta - edit.origin, step) - (data.span.start - edit.origin);
-      const boxed = (getState().timelineSelections[panelId] ?? []).map(item => item.id).filter(id => id.startsWith(`${edit.documentId}/`));
-      if (boxed.length > 1 && boxed.includes(`${edit.documentId}/${edit.clipId}`)) {
-        if (local) authoringActions.moveClips(edit.documentId, boxed.map(id => id.split('/')[1]), local, null);
+      const current = session.current;
+      if (!current) return;
+      const result = preview(current, event.delta);
+      current.release();
+      if (result.issue) {
+        consoleActions.log('warn', 'Timeline', `${result.issue}，片段放回原处`);
         return;
       }
-      const pointer = event.activatorEvent as PointerEvent | MouseEvent | null;
-      const target = pointer ? trackAt(pointer.clientX + event.delta.x, pointer.clientY + event.delta.y) : null;
-      const [targetDocument, targetTrack] = target?.split('/') ?? [];
-      if (targetDocument === edit.documentId && targetTrack !== edit.trackId) {
-        const kind = currentClip(edit.documentId, edit.clipId)?.clip.contract;
-        const allowed = !!elements && clipTemplatesFor(elements, trackContract(edit.documentId, targetTrack)).some(template => template.kind === kind);
-        if (allowed) {
-          authoringActions.moveClips(edit.documentId, [edit.clipId], local, targetTrack);
-          return;
-        }
-        consoleActions.log('warn', 'Timeline', `目标轨道不能放 ${kind ?? '该'} 片段，只按时间平移`);
-      }
-      // 平移只按起点吸附，保持时长。
-      if (local) authoringActions.moveClips(edit.documentId, [edit.clipId], local, null);
+      // 平移只按拖动片段的起点吸附，保持时长。
+      const retarget = !current.multi && current.target !== current.edit.trackId;
+      if (result.shift || retarget)
+        authoringActions.moveClips(current.edit.documentId, current.moving.map(item => item.clip.clip.id), result.shift, retarget ? current.target : null);
+    },
+    onResizeMove(event: ResizeMoveEvent) {
+      const result = resized(event);
+      const invalid = result?.issue ? { panelId, box: result.box } : null;
+      const previous = useClipEditing.getState().resize;
+      if (previous?.box !== invalid?.box || previous?.panelId !== invalid?.panelId) useClipEditing.setState({ resize: invalid });
     },
     onResizeEnd(event: ResizeEndEvent) {
-      const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
-      const delta = pixelsToValue(event.delta.x);
-      if (delta) write(data.edit, data.span, event.direction, delta);
+      const result = resized(event);
+      useClipEditing.setState({ resize: null });
+      if (!result?.changed) return;
+      if (result.issue) consoleActions.log('warn', 'Timeline', `${result.issue}，片段恢复原长`);
+      else authoringActions.setClipTime(result.edit.documentId, result.edit.clipId, result.start, result.end);
     },
   });
-  return null;
+  if (!drag) return null;
+  const rowIndex = new Map(rows.map((row, index) => [row.id, index]));
+  return (
+    <div className={styles.dropLayer} style={{ height: offsets[rows.length] }}>
+      {drag.ghosts.map((ghost, index) => {
+        const row = rowIndex.get(ghost.row);
+        if (row === undefined) return null;
+        const top = offsets[row] + rowSpacing;
+        const left = valueToPixels(ghost.start - range.start);
+        const width = valueToPixels(ghost.end - ghost.start);
+        return (
+          <Fragment key={ghost.box}>
+            <div className={styles.dropGhost} data-invalid={drag.invalid || undefined}
+              style={{ top, left, width: Math.max(1, width), ['--tc' as string]: trackColors[ghost.kind] }}>
+              {width - clipLabelPadding * 2 > clipLabelMinWidth && <span className={styles.clipLabel}>{ghost.label}</span>}
+            </div>
+            {index === 0 && (
+              <span className={styles.dropTip} data-invalid={drag.invalid || undefined}
+                style={{ left: Math.max(0, left), top: top >= 18 ? top - 18 : top + trackHeight + 2 }}>{drag.tip}</span>
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
 }
 
 // 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；中键拖动横移。
@@ -671,8 +804,8 @@ function AddTrack({ documentId, caret }: { documentId: string | null; caret?: bo
   const schemes = useInputSchemes();
   if (!author || !documentId) return null;
   if (schemes.some(scheme => scheme.documentId === documentId)) return <AddInput documentId={documentId} caret={caret} />;
-  // 每种轨道按可用执行域各列一项。
-  const entries: MenuEntry[] = elements ? elements.tracks.flatMap(template => trackDomains(template).map((domain): MenuEntry => ({
+  // 每种轨道按轨道合同允许的执行域各列一项。
+  const entries: MenuEntry[] = elements ? elements.tracks.flatMap(template => template.contract.domains.map((domain): MenuEntry => ({
     label: `${template.kind ?? template.clrType} · ${domain}`,
     onSelect: () => {
       const id = authoringActions.addTrack(documentId, { ...template.value, m_ExecutionDomain: domain }, template.kind ?? '新轨道');
@@ -918,6 +1051,7 @@ function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
   const clock = useContext(PreviewClockContext);
+  const step = useContext(SnapContext);
   const panelId = usePanelId();
   const scroller = useRef<HTMLDivElement>(null);
   const selectedClips = useWorkbench(state => state.timelineSelections[panelId]);
@@ -1036,6 +1170,7 @@ function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
       })}
       <div style={{ height: total - offsets[last] }} />
       </BoxedContext.Provider>
+      {step !== null && <ClipEditing step={step} rows={rows} offsets={offsets} scroller={scroller} />}
       {box && (
         <div className={styles.selectBox} style={{
           left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1),
@@ -1048,7 +1183,7 @@ function Rows({ rows, collapsed, toggle, enter, frameAll, inputRoots }: {
 
 // 一行：上方 3 像素行间隔，左侧轨道头（缩进 15，分组内再缩进 15），右侧时间区。
 // 静音时照 Unity 压暗时间区并在中间写明状态。
-function Line({ id, height = trackHeight, nest, head, headClass, children, laneClass, track, selected, muted }: {
+function Line({ id, height = trackHeight, nest, head, headClass, children, laneClass, selected, muted }: {
   id: string;
   height?: number;
   nest: Nest | undefined;
@@ -1056,8 +1191,6 @@ function Line({ id, height = trackHeight, nest, head, headClass, children, laneC
   headClass: string;
   children?: ReactNode;
   laneClass?: string;
-  // 作者轨道（`Timeline/轨道`），拖片段换轨时按松手处查找。
-  track?: string;
   selected?: boolean;
   muted?: boolean;
 }) {
@@ -1066,7 +1199,7 @@ function Line({ id, height = trackHeight, nest, head, headClass, children, laneC
     <div className={styles.line} data-nest={nest} data-selected={selected || undefined} data-muted={muted || undefined}
       style={{ ...rowWrapperStyle, height: height + rowSpacing }}>
       <div className={styles.head} style={rowSidebarStyle}><div className={headClass}>{head}</div></div>
-      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane data-track={track}>
+      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane>
         {children}
         {muted && <span className={styles.stateBox}>已静音</span>}
       </div>
@@ -1222,7 +1355,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const input = useInputContext(row.timeline.documentId);
   const elements = useSkillElements(author);
   const documentId = row.timeline.documentId;
-  const templates = useMemo(() => elements ? clipTemplatesFor(elements, trackContract(documentId, row.track.id)) : [],
+  const templates = useMemo(() => elements ? clipTemplatesFor(elements, documentId, row.track.id) : [],
     // version：轨道与片段的配对随编辑变化。
     [elements, documentId, row.track.id, version]);
   if (!author) return [{ label: '进入作者模式后可编辑', disabled: true, onSelect: () => {} }];
@@ -1310,7 +1443,10 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
-  const mixes = useMemo(() => clipMixes(row.clips), [row.clips]);
+  // 照 Clip.UpdateMix 只给可混合的片段算混合：轨道合同为 Blend 的动画与位移曲线轨。
+  const elements = useSkillElements(useAuthoring(state => state.target !== null));
+  const blend = elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
+  const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
   const muted = row.track.muted;
@@ -1329,7 +1465,7 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
       if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select);
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) select();
     }}>
-    <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead} track={`${documentId}/${row.track.id}`} head={
+    <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead} head={
       <TrackHead kind={row.trackKind} selected={selected} name={row.track.displayName} onSelect={select}
         onRename={author ? () => setNaming(true) : undefined} title={author ? '单击选中 · 双击改名 · 右键打开轨道菜单' : undefined}
         rename={naming ? (
@@ -1359,7 +1495,7 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
       </TrackHead>
     }>
       {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
-        documentId={row.timeline.documentId} trackId={row.track.id} />)}
+        documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
         <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId}
           selectId={marker.selectId}
@@ -1372,21 +1508,9 @@ const TrackLine = memo(function TrackLine({ row, nest }: { row: TrackRow; nest: 
   );
 });
 
-// 同轨重叠的片段照 Timeline 的混合（Mix）：后一个的开头混入、前一个的结尾混出，时长为重叠秒数。
+// 片段两端与同轨片段的混合（Mix）秒数。
 interface ClipMix { in: number; out: number }
-function clipMixes(clips: ClipInstance[]) {
-  const sorted = [...clips].sort((left, right) => left.start - right.start);
-  const result = new Map<string, ClipMix>(sorted.map(clip => [clip.key, { in: 0, out: 0 }]));
-  for (let index = 1; index < sorted.length; index++) {
-    const previous = sorted[index - 1], current = sorted[index];
-    const overlap = Math.min(previous.end, current.end) - current.start;
-    if (overlap > 0) {
-      result.get(current.key)!.in = overlap;
-      result.get(previous.key)!.out = overlap;
-    }
-  }
-  return result;
-}
+const noMix: ClipMix = { in: 0, out: 0 };
 
 function Positioned({ start, end, className, children, style, title }: {
   start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; title?: string;
@@ -1400,12 +1524,12 @@ function Positioned({ start, end, className, children, style, title }: {
   );
 }
 
-const Clip = memo(function Clip({ clip, kind, mix, documentId, trackId }: {
-  clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; trackId: string;
+const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackId }: {
+  clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
-  const edit = useMemo<ClipEdit>(() => ({ documentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
-    [documentId, trackId, clip]);
+  const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
+    [documentId, segmentId, trackId, clip]);
   // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
   const ease = useMemo(() => author && clip.clip.easeInSeconds !== undefined ? {
     in: clip.clip.easeInSeconds, out: clip.clip.easeOutSeconds ?? 0,
@@ -1417,8 +1541,8 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, trackId }: {
   );
 });
 
-// 片段拖动写回作者 JSON 所需的位置：所属 Timeline、轨道、片段身份，以及本段的运行秒数零点。
-interface ClipEdit { documentId: string; trackId: string; clipId: string; origin: number }
+// 片段拖动写回作者 JSON 所需的位置：所属 Timeline、所在路线段、轨道、片段身份，以及本段的运行秒数零点。
+interface ClipEdit { documentId: string; segmentId: string; trackId: string; clipId: string; origin: number }
 
 interface ClipEase { in: number; out: number; set(easeIn: number | null, easeOut: number | null): void }
 type EaseDraft = { side: 'in' | 'out'; seconds: number };
@@ -1502,6 +1626,10 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   });
   const { valueToPixels } = useTimelineContext();
   const clock = useContext(PreviewClockContext);
+  const panelId = usePanelId();
+  // 拖动中由虚影代替；拖端不合规时原地变红。
+  const moving = useClipEditing(state => state.drag?.panelId === panelId && state.drag.ghosts.some(ghost => ghost.box === boxKey));
+  const invalid = useClipEditing(state => state.resize?.panelId === panelId && state.resize.box === boxKey);
   const boxed = useContext(BoxedContext).has(boxKey);
   const selected = useSelected(selectId, 'clip') || boxed;
   const [easeDraft, setEaseDraft] = useState<EaseDraft | null>(null);
@@ -1509,25 +1637,28 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const dimmed = start >= exit;
   const cut = !dimmed && end > exit ? valueToPixels(exit - start) : null;
   const mixIn = mix?.in ?? 0, mixOut = mix?.out ?? 0;
-  const easeIn = easeDraft?.side === 'in' ? easeDraft.seconds : ease?.in ?? 0;
-  const easeOut = easeDraft?.side === 'out' ? easeDraft.seconds : ease?.out ?? 0;
+  // 照 Clip.UpdateMix：自身淡入不超过时长减去混出，淡出不超过时长减去混入。
+  const selfIn = Math.min(ease?.in ?? 0, end - start - mixOut), selfOut = Math.min(ease?.out ?? 0, end - start - mixIn);
+  const easeIn = easeDraft?.side === 'in' ? easeDraft.seconds : selfIn;
+  const easeOut = easeDraft?.side === 'out' ? easeDraft.seconds : selfOut;
   const blendIn: ClipBlend = mixIn > 0 ? { kind: 'mix', width: valueToPixels(mixIn) } : easeIn > 0 ? { kind: 'ease', width: valueToPixels(easeIn) } : null;
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
   const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
   return (
-    <div ref={setNodeRef} style={itemStyle} className={styles.item} {...(edit ? { ...listeners, ...attributes } : {})}>
+    <div ref={setNodeRef} style={moving ? { ...itemStyle, visibility: 'hidden' } : itemStyle} className={styles.item}
+      {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
-          data-dim={dimmed || undefined} data-editable={edit ? true : undefined}
+          data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
           title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
           {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel}>{label}</span>}
-          {ease && <EaseHandles ease={ease} start={start} end={end} draft={easeDraft} setDraft={setEaseDraft}
-            sides={{ in: mixIn <= 0, out: mixOut <= 0 }} />}
+          {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
+            start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }} />}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
         </button>
       </div>

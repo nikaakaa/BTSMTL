@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -785,32 +785,34 @@ const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as J
 
 let clipClipboard: JsonObject | null = null;
 
-// 轨道的合同种类（ContractKind），取当前（可能未保存的）Timeline 文档。
-export function trackContract(documentId: string, trackId: string): string | null {
+// 轨道的正式合同与当前（可能未保存的）执行域；轨道种类不在元素查询里时为 null。
+function trackPlacement(elements: SkillElements, documentId: string, trackId: string) {
   const document = currentDocument(timelinePath(documentId));
-  return (document ? tracksOf(document).find(track => track.m_AuthoringId === trackId)?.ContractKind as string | undefined : undefined) ?? null;
+  const track = document ? tracksOf(document).find(item => item.m_AuthoringId === trackId) : undefined;
+  const template = track && elements.tracks.find(item => item.kind === track.ContractKind);
+  return template ? { template, domain: track!.m_ExecutionDomain as string } : null;
 }
 
-// 新轨道的执行域：Unity 取放置目录里该轨道合同的默认域，.NET 侧没有目录，
-// 按技能现有同种轨道用过的域给出；没有先例时列出枚举的全部域。由作者在添加时选择。
-export function trackDomains(template: ElementTemplate): string[] {
-  const used = new Set<string>();
-  for (const path of livePaths().filter(item => item.startsWith('timelines/')))
-    for (const track of tracksOf(currentDocument(path)!))
-      if (track.ContractKind === template.kind && typeof track.m_ExecutionDomain === 'string') used.add(track.m_ExecutionDomain);
-  const all = template.shape.members?.find(member => member.member === 'm_ExecutionDomain')?.enumValues ?? [];
-  return used.size ? all.filter(domain => used.has(domain)) : all;
+export const trackOverlap = (elements: SkillElements, documentId: string, trackId: string): TrackOverlap | null =>
+  trackPlacement(elements, documentId, trackId)?.template.contract.overlap ?? null;
+
+// 轨道可放的片段种类（照 TimelineDefinitionCatalog.RequireClipPlacement）：轨道合同允许、片段属于这种轨道，
+// 且轨道与片段都支持轨道的执行域。
+export function clipTemplatesFor(elements: SkillElements, documentId: string, trackId: string): ClipTemplate[] {
+  const placement = trackPlacement(elements, documentId, trackId);
+  if (!placement) return [];
+  const { template, domain } = placement;
+  return elements.clips.filter(clip => template.contract.clipKinds.includes(clip.kind) && clip.contract.trackKind === template.kind &&
+    template.contract.domains.includes(domain) && clip.contract.domains.includes(domain));
 }
 
-// 轨道可放的片段种类：Unity 的放置目录（TimelineContractCatalog）在 .NET 侧不可得，
-// 按技能现有 Timeline 中同种轨道已放过的片段种类给出；没有先例的轨道列出全部种类，由保存时的正式编译判断。
-export function clipTemplatesFor(elements: SkillElements, contract: string | null): ElementTemplate[] {
-  const paired = new Set<string>();
-  for (const path of livePaths().filter(item => item.startsWith('timelines/')))
-    for (const track of tracksOf(currentDocument(path)!))
-      if (track.ContractKind === contract)
-        for (const clip of track.m_Clips as JsonObject[]) paired.add(clip.ContractKind as string);
-  return paired.size ? elements.clips.filter(template => paired.has(template.kind ?? '')) : elements.clips;
+// 片段换轨（照 TimelineData.MoveClip）：目标轨道能放这种片段，且执行域与原轨道相同；可以时为 null，否则给出原因。
+export function clipMoveIssue(elements: SkillElements, documentId: string, clipKind: string, fromTrackId: string, toTrackId: string): string | null {
+  const from = trackPlacement(elements, documentId, fromTrackId), to = trackPlacement(elements, documentId, toTrackId);
+  if (!from || !to) return '轨道种类不在元素查询里';
+  if (!clipTemplatesFor(elements, documentId, toTrackId).some(template => template.kind === clipKind))
+    return `${to.template.kind} 轨道不能放 ${clipKind} 片段`;
+  return from.domain === to.domain ? null : `跨轨道移动必须保持执行域（${from.domain} → ${to.domain}）`;
 }
 
 export const hasChanges = () => Object.keys(get().edited).length + get().removed.length > 0;

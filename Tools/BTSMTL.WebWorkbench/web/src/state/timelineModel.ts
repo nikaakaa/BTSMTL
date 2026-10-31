@@ -1,3 +1,4 @@
+import type { TrackOverlap } from '../api/authoring';
 import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition, RouteFrame } from '../api/types';
 import { inputRootKey } from './store';
 
@@ -79,6 +80,41 @@ export function trackKind(track: AuthorTrack): TrackKind {
 
 export function clipKind(clip: AuthorClip): TrackKind {
   return clipKinds[clip.contract] ?? 'other';
+}
+
+export interface Span { start: number; end: number }
+
+// 照 Clip.UpdateMix：与同轨片段部分重叠的一端混合，时长为重叠秒数；遇到盖住它或被它盖住的片段即停止，保留已算出的值。
+export function clipMix(clip: Span, track: readonly Span[]): { in: number; out: number } {
+  const mix = { in: 0, out: 0 };
+  for (const other of track) {
+    if (other === clip) continue;
+    if ((other.start < clip.start && other.end > clip.end) || (other.start > clip.start && other.end < clip.end)) return mix;
+    if (other.start < clip.start && other.end > clip.start) mix.in = other.end - clip.start;
+    if (other.start > clip.start && other.start < clip.end) mix.out = clip.end - other.start;
+    if (other.start === clip.start) {
+      if (other.end < clip.end) mix.in = other.end - clip.start;
+      else if (other.end > clip.end) mix.out = clip.end - clip.start;
+    }
+  }
+  return mix;
+}
+
+// 同轨片段的重叠是否合规：Reject 轨道照 TimelineClipTimeEditBuffer 不许任何重叠；Blend 轨道只许两两部分重叠，
+// 即 Clip.UpdateMix 能混合的形状，不许盖住整段、共用起点或终点，也不许三个片段叠在一处。合规时为 null。
+export function overlapIssue(policy: TrackOverlap, spans: readonly Span[]): string | null {
+  if (policy === 'Parallel') return null;
+  for (let i = 0; i < spans.length; i++)
+    for (let j = i + 1; j < spans.length; j++) {
+      const a = spans[i], b = spans[j];
+      if (!(a.end > b.start && b.end > a.start)) continue;
+      if (policy === 'Reject') return '这条轨道不允许片段重叠';
+      if ((a.start <= b.start && a.end >= b.end) || (b.start <= a.start && b.end >= a.end)) return '片段不能盖住同轨的另一片段';
+    }
+  if (policy === 'Blend')
+    for (const at of spans)
+      if (spans.filter(span => span.start <= at.start && at.start < span.end).length > 2) return '同一时刻至多两个片段混合';
+  return null;
 }
 
 export function playSegments(frames: RouteFrame[]): Map<string, PlaySegment[]> {
