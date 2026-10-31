@@ -125,14 +125,11 @@ export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
-export const readViewerStatus = object({ type: choice('status'), live: object({
-  liveId: text, buildId: text, state: text, exitCode: nullable(number), rawJson: text,
-  player: nullable(object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
+const viewerPlayer = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
     error: nullable(text), source: nullable(readPreviewSampleSource),
     transport: array(object({ action: text, available: boolean, reason: text, target: nullable(position) })),
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
-    fields: array(field), rawJson: text })),
-}) });
+    fields: array(field), rawJson: text });
 const liveIdentity = object({
   liveId, playerBuildId: buildId, width: number, height: number, running: boolean,
   liveProtocol: nullable(text), observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),
@@ -140,11 +137,12 @@ const liveIdentity = object({
 });
 export const readLivePlayer = object({
   liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
-  width: nullable(number), height: nullable(number), hello: opaque, player: opaque,
+  width: nullable(number), height: nullable(number), hello: opaque, player: nullable(viewerPlayer),
   identity: liveIdentity,
   previewTarget: nullable(previewTarget), viewers: number, latestSample: nullable(readPreviewSampleSource),
 });
 export const readLivePlayers = array(readLivePlayer);
+export const readViewerStatus = object({ type: choice('status'), live: readLivePlayer });
 export const readPlayerCreationOptions = object({
   requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
@@ -168,21 +166,16 @@ export const readPlayerJobReceipt = object({
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
 });
-const nativeAck = object({
+export const readPlayerAck = object({
   type: choice('ack'), commandId: text, ok: boolean,
-  playerBuildId: optional(nullable(text)), content: optional(nullable(contentIdentity)), clock: optional(nullable(readPreviewClock)),
-  error: optional(nullable(text)), path: optional(nullable(text)),
+  playerBuildId: optional(nullable(text)), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
+  source: nullable(source), hostFrame: nullable(text),
+  error: optional(nullable(text)), path: optional(nullable(text)), rawJson: text,
 });
 export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
   const receipt = readPlayerCommandReceipt(value, path);
   if (receipt.ack === null) return { ...receipt, ack: null };
-  const ack = nativeAck(receipt.ack, `${path}.ack`);
-  const clock = ack.clock ?? null;
-  return { ...receipt, ack: {
-    type: ack.type, commandId: ack.commandId, ok: ack.ok, clock, content: ack.content ?? null,
-    playerBuildId: ack.playerBuildId ?? null, hostFrame: clock === null ? null : clockPosition(clock),
-    error: ack.error ?? undefined, path: ack.path ?? undefined, rawJson: JSON.stringify(receipt.ack),
-  } };
+  return { ...receipt, ack: readPlayerAck(receipt.ack, `${path}.ack`) };
 }
 export const readPlayerJobs = object({
   capacity: number, concurrency: number, queued: number, archiveCacheCapacity: number,
@@ -197,6 +190,24 @@ export const readPlayerSummary = object({
   availability: array(availability),
 });
 const vector3 = tuple(number, number, number);
+const viewerFrames = object({ type: choice('frames'),
+  items: array(object({ hostFrame: text, consistency: object({ displayName: text, value: text }) })), rawJson: text });
+const viewerPick = object({ type: choice('pick'), commandId: text, ok: boolean, hostFrame: nullable(text),
+  actorId: text, position: vector3, hitCollider: optional(text), rawJson: text });
+const viewerError = object({ type: choice('error'), error: text, displayName: optional(text), rawJson: optional(text) });
+const viewerExtension = object({ type: choice('extension'), displayName: text, error: nullable(text), rawJson: text });
+export function readViewerMessage(value: unknown, path = 'Player.view') {
+  const { type } = object({ type: text })(value, path);
+  switch (type) {
+    case 'status': return readViewerStatus(value, path);
+    case 'ack': return readPlayerAck(value, path);
+    case 'frames': return viewerFrames(value, path);
+    case 'pick': return viewerPick(value, path);
+    case 'error': return viewerError(value, path);
+    case 'extension': return viewerExtension(value, path);
+    default: throw new Error(`${path} 不支持消息 ${type}`);
+  }
+}
 const quaternion = tuple(number, number, number, number);
 const call = object({
   actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),

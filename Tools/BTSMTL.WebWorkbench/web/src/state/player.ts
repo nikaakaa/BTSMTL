@@ -138,6 +138,12 @@ export const playerService = {
       open: () => { if (socket === opened) useWorkbench.setState({ viewerOpen: true }); },
       message: message => { if (socket === opened) onMessage(message); },
       video: frame => { if (socket === opened) acceptVideo(frame); },
+      error: error => {
+        if (socket !== opened) return;
+        setVideo(null);
+        useWorkbench.setState({ live: null, ...initialPlayerTarget });
+        consoleActions.error(source, error);
+      },
       close: () => {
         if (socket !== opened) return;
         socket = null;

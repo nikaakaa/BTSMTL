@@ -1,6 +1,6 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
-import type { PlayerSceneContent, PlayerTimelineContent, PreviewClock, PreviewContentIdentity, PreviewPosition,
-  PreviewSampleSource, readPlayerHost, readViewerStatus } from './playerRecords';
+import type { PlayerSceneContent, PlayerTimelineContent, PreviewPosition,
+  PreviewSampleSource, readPlayerAck, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
 
 export interface Field {
   displayName: string;
@@ -473,18 +473,7 @@ export type PlayerState = 'idle' | 'loading' | 'paused' | 'playing' | 'stepping'
 export type ViewerLive = ReturnType<typeof readViewerStatus>['live'];
 export type ViewerPlayer = NonNullable<ViewerLive['player']>;
 
-export interface PlayerAck {
-  type: 'ack';
-  commandId: string;
-  ok: boolean;
-  error?: string;
-  hostFrame?: string | null;
-  clock?: PreviewClock | null;
-  content?: PreviewContentIdentity | null;
-  playerBuildId?: string | null;
-  path?: string;
-  rawJson: string;
-}
+export type PlayerAck = ReturnType<typeof readPlayerAck>;
 
 export interface PlayerPick {
   type: 'pick';
@@ -497,13 +486,7 @@ export interface PlayerPick {
   rawJson: string;
 }
 
-export type ViewerMessage =
-  | { type: 'status'; live: ViewerLive }
-  | { type: 'frames'; items: { hostFrame: string }[]; rawJson: string }
-  | PlayerAck
-  | PlayerPick
-  | { type: 'error'; error: string; displayName?: string; rawJson?: string }
-  | { type: 'extension'; error: string | null; displayName: string; rawJson: string };
+export type ViewerMessage = ReturnType<typeof readViewerMessage>;
 
 export interface VideoFrame {
   hostFrame: string;

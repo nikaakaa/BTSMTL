@@ -1,7 +1,7 @@
 import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
-  readPlayerVideoMetadata, readPreviewClock, readPreviewSampleSource, readViewerStatus,
+  readPlayerVideoMetadata, readPreviewSampleSource, readViewerMessage,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
   readPlayerCommandResult,
   readPlayerCancellation,
@@ -98,6 +98,7 @@ export interface ViewerHandlers {
   open(): void;
   message(message: ViewerMessage): void;
   video(frame: VideoFrame): void;
+  error(error: unknown): void;
   close(event: CloseEvent): void;
 }
 
@@ -109,18 +110,16 @@ export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket 
   socket.onopen = () => handlers.open();
   socket.onclose = event => handlers.close(event);
   socket.onmessage = event => {
+    try {
     if (typeof event.data === 'string') {
-      const message = JSON.parse(event.data) as ViewerMessage;
-      if (message.type === 'status') handlers.message(readViewerStatus(message));
-      else if (message.type === 'ack') handlers.message({ ...message,
-        clock: message.clock == null ? null : readPreviewClock(message.clock) });
-      else handlers.message(message);
+      handlers.message(readViewerMessage(JSON.parse(event.data)));
       return;
     }
     const buffer = event.data as ArrayBuffer;
     const length = new DataView(buffer, 0, 4).getInt32(0, true);
     const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
     handlers.video({ ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) });
+    } catch (error) { handlers.error(error); }
   };
   return socket;
 }

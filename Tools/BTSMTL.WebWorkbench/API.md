@@ -165,6 +165,8 @@ Load 的 `content` 是二选一：
 
 画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON][图像字节]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip,mediaType`。直接复用 `openViewer` 解析，不能在浏览器消费 Native Player 的内部二进制头。
 
+HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.source/transport`、`latestSample` 与实际内容／绑定身份；Live 顶层没有 `rawJson`，原状态文本位于 `player.rawJson`。HTTP 和 WS 的 ACK 也共用读取器，保留 Host 的 `clock/content/source/hostFrame/rawJson`，允许正式空值，不在客户端重建帧号或原始记录。文本与视频均在原 `openViewer` 边界解码；协议字段缺失会清除当前时钟、目标与画面并进入已有错误记录，不继续显示旧样本为当前成功结果。
+
 新 Load 后清除旧画面；接收图像时核对该图自身的 Load、Player build、内容／绑定修订及对应时钟。图片角标显示图片自身采样，不借另一次状态消息的帧号。只有 `frame.jpg` 的图像与 `X-Preview-Source` 或同一 WS 包里的图像与 source 能组成同次画面。
 
 ## 正式作业与档案
