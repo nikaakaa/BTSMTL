@@ -67,11 +67,11 @@ const rowSpacing = 3;
 // 行列表顶部内边距（.rows 的 padding-top）。
 const rowsPadding = 3;
 const overscan = 120;
-// 片段与标记共用一套名字（ItemLabel）：从本项起点后 6 像素起左对齐写，最多写到同行下一项起点前 4 像素，
-// 片段窄于名字时照常写出框外；可写宽度不超过 10 时不画（ClipDrawer）。
-const labelPadding = 6;
+// 片段与标记共用同一个名牌（ItemLabel）：从本项起点后 4 像素起，最多到同行下一项起点前 4 像素；
+// 宽片段的名牌落在框内，窄片段照常伸出框外；可用宽度不足 24 时不画。
+const labelPadding = 4;
 const labelGap = 4;
-const labelMinWidth = 10;
+const labelMinWidth = 24;
 
 interface InputGroupRow { kind: 'inputGroup'; id: string }
 interface InputTrackRow { kind: 'inputTrack'; id: string; selectId: string; track: FrozenInputTimeline['tracks'][number] }
@@ -1645,7 +1645,7 @@ function labelLimits(starts: number[], rangeEnd: number): number[] {
     other > start || (other === start && j > i) ? Math.min(limit, other) : limit, rangeEnd));
 }
 
-// 片段与标记共用的名字：白字黑影左对齐，超出可写宽度省略；不接鼠标，单击仍落在片段或标记上。
+// 片段与标记共用的名牌：深色半透明小圆角底白字，超出可用宽度省略；不接鼠标，单击仍落在片段或标记上。
 function ItemLabel({ left, width, text, dim }: { left: number; width: number; text: string; dim?: boolean }) {
   return width > labelMinWidth
     ? <span className={styles.itemLabel} data-dim={dim || undefined} style={{ left, maxWidth: width }}>{text}</span>
@@ -2199,7 +2199,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色；exit 之后的部分压暗。片段名用通用的 ItemLabel，写到同行下一项（next 秒）之前，
-// 不受片段框宽度限制。作者模式下给出 edit 时可拖动平移、拖两端改起止。
+// 可伸出片段框，但不越过本段终点（exit）。作者模式下给出 edit 时可拖动平移、拖两端改起止。
 function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId, edit, ease, mix }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number; next: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
@@ -2248,7 +2248,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
       </div>
-      <ItemLabel left={labelLeft} width={valueToPixels(next - start) - labelLeft - labelGap} text={label} dim={dimmed} />
+      <ItemLabel left={labelLeft} width={valueToPixels(Math.min(next, Math.max(end, exit)) - start) - labelLeft - labelGap} text={label} dim={dimmed} />
     </div>
   );
 }
