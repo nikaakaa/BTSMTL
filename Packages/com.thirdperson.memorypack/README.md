@@ -2,6 +2,8 @@
 
 核心状态和图类型只声明中立的成员用途，不引用 MemoryPack。本包从这些原成员生成外部 native formatter，内容发布使用宿主已经提供的 `MemoryPack.Core.dll`。Fantasy 及其它网络的同步策略归各后端。
 
+`Graphs/ThirdPersonSimulation.MemoryPack.Graphs` 提供正式 Float32 图入口 `Float32GraphRuntime` 与 `Float32GraphRuntime<TContext>`，内部固定使用本 publisher 作为内容编码，宿主不再自己传编码；用法见 BTSMTL README 的图宿主入口。
+
 `MemoryPackGraphContentPublisher` 供正式图构建入口使用。它保留结构、参数、来源三块：联合分支种类属于结构，活动分支数据和 `ValuePayload` 成员属于参数；参数或来源更新复用原结构块。`ReadTables` 用同一生成结果合并结构与参数，没有另一份业务字段表。
 
 Float32 图产物的 `WriteGraph`、`ReadGraph` 和身份校验保留在同一 publisher 的领域 partial 中；`MemoryPackGameplayAbilityContent` 发布和读取两数值域的技能产物。`MemoryPackTimelineContent` 直接从原时间区间计算内容版本。这些入口只装配原内容对象，字段读写由外部 formatter 统一生成。
