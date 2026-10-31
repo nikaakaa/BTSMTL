@@ -66,13 +66,15 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             bool character = slot.ScopeKind == OrchestrationScopeKind.Character;
+            bool action = slot.ScopeKind == OrchestrationScopeKind.ActionInstance;
+            ReadOnlySpan<OrchestrationExecutionFrameState> frame = character ? default : m_Blackboards.ReadBlackboardFrame(valueSlot);
             return new OrchestrationValueOverrideAddress
             {
                 Kind = OrchestrationValueOverrideKind.Blackboard,
-                Slot = character ? m_Blackboards.CharacterSlot(valueSlot) : valueSlot,
+                Slot = character ? m_Blackboards.CharacterSlot(valueSlot) :
+                    action ? m_Program.ExecutionStorage.Values[valueSlot].ValueIndex : valueSlot,
                 Owner = character ? default : OrchestrationExecutionOwnerToken.Create(
-                    in ReadExecutionFrame(slot.ExecutionFrameOwnerOperationIndex)[0],
-                    slot.OwnerOperationIndex, owner.Generation)
+                    in frame[0], action ? frame[0].OwnerOperationIndex : slot.OwnerOperationIndex, owner.Generation)
             };
         }
 
@@ -84,7 +86,7 @@ namespace BTSMTL.Orchestration
             if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
                 Fail(OrchestrationExecutionErrorCode.BlackboardReadOnly, operationIndex, valueSlot);
             if (slot.ScopeKind != OrchestrationScopeKind.Character &&
-                !address.Owner.MatchesFrame(in ReadExecutionFrame(slot.ExecutionFrameOwnerOperationIndex)[0]))
+                !address.Owner.MatchesFrame(in m_Blackboards.ReadBlackboardFrame(valueSlot)[0]))
                 return false;
             if (slot.ScopeKind == OrchestrationScopeKind.State && !IsActive(slot.OwnerOperationIndex) ||
                 slot.ScopeKind == OrchestrationScopeKind.Graph &&

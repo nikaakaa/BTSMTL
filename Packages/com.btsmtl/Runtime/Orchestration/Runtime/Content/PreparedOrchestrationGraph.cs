@@ -43,7 +43,8 @@ namespace BTSMTL.Orchestration
         public static PreparedOrchestrationGraph<TValue, TNumerics> Prepare(
             OrchestrationGraphContent<TValue> source,
             FrozenOrchestrationIdentities identities, int contentTableIndex,
-            ReadOnlySpan<OrchestrationDefaultValue<TValue>> defaults)
+            ReadOnlySpan<OrchestrationDefaultValue<TValue>> defaults,
+            OrchestrationProgramStorageLayout storage)
         {
             ReadOnlyMemory<int> mapping = identities.LocalToShared(contentTableIndex);
             OrchestrationGraphStructure structure = source.Structure;
@@ -74,7 +75,7 @@ namespace BTSMTL.Orchestration
                 finalDefaultValues[value.ValueSlot] = value.Value;
             var program = new OrchestrationProgramContent(
                 data.Operations, cold, edges, MapStructure(data.Structure, mapping),
-                data.ValueSchedule, data.WorkspaceCapacity, data.ExecutionStorage, data.ValueInputs,
+                data.ValueSchedule, data.WorkspaceCapacity, storage, data.ValueInputs,
                 data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks, data.HookInputs,
                 data.BlackboardSlots, data.BlackboardOutputs, data.OutputTemplates, mappedPorts,
                 data.RootOperationIndex, data.MaximumOperationEvaluations);

@@ -1001,7 +1001,8 @@ namespace BTSMTL.Compilation
                         ? OrchestrationBlackboardLifetime.GraphInstance
                         : (OrchestrationBlackboardLifetime)CatalogInt(Declaration(i), "Lifetime");
                     m_Blackboards.Add(new OrchestrationBlackboardSlot((OrchestrationScopeKind)scope.Kind,
-                        lifetime, scope.Kind == ProgramScopeKind.Character ? 0 : scope.CompiledOwnerIndex, scope.OwnerOperation.Value,
+                        lifetime, scope.Kind is ProgramScopeKind.Character or ProgramScopeKind.ActionInstance ? 0 : scope.CompiledOwnerIndex,
+                        scope.OwnerOperation.Value,
                         ExecutionFrameOwner(scope), kind, inputParameters.Contains(i)));
                 }
                 m_OutputOffsets = EmptyIndexes(m_Operations.Count);

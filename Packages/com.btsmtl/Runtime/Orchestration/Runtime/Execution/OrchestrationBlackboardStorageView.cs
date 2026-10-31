@@ -50,11 +50,13 @@ namespace BTSMTL.Orchestration
 
         internal void ReadValue(int valueSlot, ref TValue destination) =>
             m_Reader.ReadValue<TStorage>(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
-                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot], ref destination);
+                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
+                m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
 
         internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot) =>
             ref m_Reader.ReadMetadata(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
-                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot]);
+                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
+                m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance);
 
         internal void WriteValue(int valueSlot, in TValue value)
         {
@@ -66,8 +68,7 @@ namespace BTSMTL.Orchestration
             }
             else
             {
-                int frameSlot = m_Frames.OwnerFrame(m_FrameSlot,
-                    m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
+                int frameSlot = ValueFrame(valueSlot);
                 OrchestrationValueAddress address = m_Frames.Plan.PrivateAddress(m_ProgramIndex, frameSlot, valueSlot);
                 default(TStorage).Write(m_Frames.Memory, in address, in value);
             }
@@ -78,12 +79,20 @@ namespace BTSMTL.Orchestration
             int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
             if (characterSlot >= 0)
                 return ref m_Frames.CharacterMetadata[characterSlot];
-            int frameSlot = m_Frames.OwnerFrame(m_FrameSlot,
-                m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
-            return ref m_Frames.Payload<OrchestrationBlackboardMetadata>(frameSlot,
-                OrchestrationStateSegmentRole.PrivateMetadata, m_ProgramIndex)[
+            int frameSlot = ValueFrame(valueSlot);
+            return ref m_Frames.BlackboardMetadata(frameSlot)[
                 m_Program.ExecutionStorage.Values[valueSlot].MetadataIndex];
         }
+
+        int ValueFrame(int valueSlot) =>
+            m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance
+                ? m_Frames.ActionFrame(m_FrameSlot)
+                : m_Frames.OwnerFrame(m_FrameSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
+
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadBlackboardFrame(int valueSlot) =>
+            m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance
+                ? m_Reader.ReadActionExecutionFrame()
+                : m_Reader.ReadExecutionFrame(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
 
         internal ref readonly OrchestrationOperationState ReadOperation(int operationIndex) =>
             ref m_Reader.ReadOperation(operationIndex, m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);

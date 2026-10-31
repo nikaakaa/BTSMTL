@@ -69,5 +69,14 @@ namespace BTSMTL.Orchestration
                 frameSlot = m_Frames[frameSlot].ParentFrameIndex;
             return frameSlot;
         }
+
+        public int ActionFrame(int frameSlot)
+        {
+            ulong action = m_Frames[frameSlot].ActionInstanceId;
+            while (m_Frames[frameSlot].ParentFrameIndex >= 0 &&
+                m_Frames[m_Frames[frameSlot].ParentFrameIndex].ActionInstanceId == action)
+                frameSlot = m_Frames[frameSlot].ParentFrameIndex;
+            return frameSlot;
+        }
     }
 }

@@ -115,7 +115,7 @@ namespace BTSMTL.Orchestration
             int candidateOwnerOperationIndex, int operationIndex, int valueSlot)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref program.Blackboard(valueSlot);
-            if (slot.ScopeKind == OrchestrationScopeKind.Character ||
+            if (slot.ScopeKind is OrchestrationScopeKind.Character or OrchestrationScopeKind.ActionInstance ||
                 slot.ExecutionFrameOwnerOperationIndex != candidateOwnerOperationIndex)
                 throw new InvalidOperationException($"Operation '{operationIndex}' writes source Blackboard '{valueSlot}' ({slot.ScopeKind}/{slot.CompiledOwnerIndex}); source-bound execution may only write its candidate owner '{candidateOwnerOperationIndex}'.");
         }

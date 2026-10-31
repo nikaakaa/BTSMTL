@@ -33,13 +33,20 @@ namespace BTSMTL.Orchestration
         internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
-            int characterSlot, ref TValue destination)
+            int characterSlot, bool actionInstance, ref TValue destination)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             if (characterSlot >= 0)
             {
-                ReadOnlyOrchestrationExecutionFrames<TValue> frames = m_HasSource ? m_Source.CharacterFrames : m_Frames;
+                ReadOnlyOrchestrationExecutionFrames<TValue> frames = m_HasSource ? m_Source.SharedFrames : m_Frames;
                 OrchestrationValueAddress address = frames.Plan.CharacterAddress(characterSlot);
+                default(TStorage).Read(frames.Memory, in address, ref destination);
+            }
+            else if (actionInstance)
+            {
+                ReadOnlyOrchestrationExecutionFrames<TValue> frames = SharedFrames;
+                OrchestrationValueAddress address = frames.Plan.PrivateAddress(
+                    m_CandidateProgramIndex, ActionFrameIndex, valueSlot);
                 default(TStorage).Read(frames.Memory, in address, ref destination);
             }
             else
@@ -53,16 +60,23 @@ namespace BTSMTL.Orchestration
         }
 
         public ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot,
-            int ownerOperationIndex, int characterSlot)
+            int ownerOperationIndex, int characterSlot, bool actionInstance)
         {
             if (characterSlot >= 0)
-                return ref (m_HasSource ? m_Source.CharacterFrames.CharacterMetadata : m_Frames.CharacterMetadata)[characterSlot];
+                return ref SharedFrames.CharacterMetadata[characterSlot];
+            if (actionInstance)
+                return ref SharedFrames.BlackboardMetadata(ActionFrameIndex)[m_CandidateStorage.Values[valueSlot].MetadataIndex];
             FrameAddress owner = Owner(ownerOperationIndex);
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             return ref frames.Payload<OrchestrationBlackboardMetadata>(owner.Index,
                 OrchestrationStateSegmentRole.PrivateMetadata, ProgramIndex(owner))[
                 Storage(owner).Values[valueSlot].MetadataIndex];
         }
+
+        ReadOnlyOrchestrationExecutionFrames<TValue> SharedFrames => m_HasSource ? m_Source.SharedFrames : m_Frames;
+        int ActionFrameIndex => SharedFrames.ActionFrame(m_HasSource ? m_Source.SharedFrameSlot : m_FrameSlot);
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadActionExecutionFrame() =>
+            SharedFrames.HeaderSpan(ActionFrameIndex);
 
         public ref readonly OrchestrationOperationState ReadOperation(int operationIndex, int ownerOperationIndex)
         {
