@@ -223,7 +223,8 @@ namespace BTSMTL.Graphs
             foreach (BtsmtlMacroGraph macro in host.SharedMacros(m_Graph))
             {
                 if (macro == m_Graph || !macro.allNodes.All(node =>
-                        node is BtsmtlMacroInputNode || node is BtsmtlMacroOutputNode || m_Graph.CanAuthorNodeType(node.GetType())))
+                        node is BtsmtlMacroInputNode || node is BtsmtlMacroOutputNode ||
+                        m_Graph.CanAuthorNodeType(macro.Host.AuthoringNodeType(node))))
                     continue;
                 menu.AddItem(new GUIContent("子图/调用共享子图/" + host.SharedMacroLabel(macro)), false,
                     () => Run(() => Edit("调用共享子图", () => AddCall(macro, position, context))));
