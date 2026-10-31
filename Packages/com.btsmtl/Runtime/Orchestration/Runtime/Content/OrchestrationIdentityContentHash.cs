@@ -9,7 +9,7 @@ namespace BTSMTL.Orchestration
     {
         internal static StableHash Actor<TValue>(StableHash identities, StableHash defaults,
             int defaultIdentityTableIndex,
-            ReadOnlySpan<OrchestrationActorProgramSource<TValue>> sources,
+            ReadOnlySpan<OrchestrationProgramSource<TValue>> sources,
             ReadOnlySpan<int> dependencyIdentityTableIndices,
             ReadOnlySpan<OrchestrationGraphBlackboardBinding> characterBlackboards,
             ReadOnlySpan<OrchestrationBlackboardSlot> descriptors,

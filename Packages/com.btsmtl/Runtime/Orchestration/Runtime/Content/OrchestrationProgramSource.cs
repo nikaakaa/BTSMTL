@@ -2,9 +2,9 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public readonly struct OrchestrationActorProgramSource<TValue> where TValue : unmanaged
+    public readonly struct OrchestrationProgramSource<TValue> where TValue : unmanaged
     {
-        public OrchestrationActorProgramSource(OrchestrationGraphContent<TValue> content,
+        public OrchestrationProgramSource(OrchestrationGraphContent<TValue> content,
             StableHash contentIdentity, int identityTableIndex)
         {
             Content = content;
