@@ -2,13 +2,13 @@ import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
   ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
-  InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
+  InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
-  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition, PreviewSampleSource,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewPosition, PreviewSampleSource,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -132,13 +132,7 @@ export interface CursorSlice {
 }
 
 // ── player ──
-export interface PlayerCommandRecord {
-  type: string;
-  commandId: string | null;
-  stage: LiveCommandStage;
-  clock: PreviewClock | null;
-  error: string | null;
-}
+export type PlayerCommandRecord = LiveCommandResult & { type: string };
 export interface PlayerSlice {
   playerBuilds: PlayerBuild[] | null;
   lives: LivePlayer[];
@@ -147,7 +141,7 @@ export interface PlayerSlice {
   viewerOpen: boolean;
   playerViewport: { width: number; height: number } | null;
   targetPosition: PreviewPosition | null;
-  pendingSeek: { commandId: string; loadCommandId: PreviewSampleSource['loadCommandId']; position: PreviewPosition } | null;
+  pendingSeek: { commandId: string; source: PreviewSampleSource; position: PreviewPosition } | null;
   lastCommand: PlayerCommandRecord | null;
   // 画面面板正在接管键鼠时，运行快捷键不响应。
   capturing: boolean;

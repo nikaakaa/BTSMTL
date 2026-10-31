@@ -1,8 +1,9 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
-import type { PlayerPreviewContent, PreviewSampleSource } from '../api/playerRecords';
-import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerMessage } from '../api/types';
+import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
+import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
+import { transport } from './transport';
 
 // 播放器服务（D12）：画面 WebSocket、命令与回执由这里持有，随“载入／停止播放器”开关；
 // 画面面板只在挂载时绘制最新画面，未挂载时只保留最新一帧，不解码。
@@ -22,17 +23,6 @@ function setVideo(frame: VideoFrame | null) {
   videoListeners.forEach(listener => listener());
 }
 
-function sameLoad(left: PreviewSampleSource, right: PreviewSampleSource) {
-  if (left.loadCommandId !== right.loadCommandId || left.execution.kind !== right.execution.kind ||
-    left.execution.identity !== right.execution.identity || left.execution.playerBuildId !== right.execution.playerBuildId ||
-    left.execution.editorAssemblyMvid !== right.execution.editorAssemblyMvid || left.contentRevision !== right.contentRevision ||
-    left.sceneRevision !== right.sceneRevision || left.inputSource !== right.inputSource || left.inputRevision !== right.inputRevision) return false;
-  if (left.content === null || right.content === null) return left.content === right.content;
-  return left.content.kind === right.content.kind && left.content.revision === right.content.revision &&
-    left.content.documentId === right.content.documentId && left.content.contentIdentity === right.content.contentIdentity &&
-    left.content.contentRevision === right.content.contentRevision && left.content.bindingRevision === right.content.bindingRevision;
-}
-
 function matchesRequestedLoad(sample: PreviewSampleSource) {
   const request = requestedLoad;
   const content = sample.content;
@@ -42,21 +32,27 @@ function matchesRequestedLoad(sample: PreviewSampleSource) {
 
 function acceptVideo(frame: VideoFrame) {
   const source = getState().live?.player?.source;
-  if (source && matchesRequestedLoad(frame.source) && sameLoad(frame.source, source)) setVideo(frame);
+  if (source && matchesRequestedLoad(frame.source) && samePreviewLoad(frame.source, source)) setVideo(frame);
+}
+
+function acceptStatus(live: ViewerLive) {
+  if (getState().liveId !== live.liveId) return;
+  const previous = getState().live?.player?.source ?? null;
+  const sample = live.player?.source ?? null;
+  if (sample !== null && !matchesRequestedLoad(sample)) return;
+  if (sample !== null) requestedLoad = null;
+  useWorkbench.setState({ live, ...(samePreviewLoad(previous, sample) ? {} : initialPlayerTarget) });
+  if (latest && !samePreviewLoad(latest.source, sample)) setVideo(null);
 }
 
 function onMessage(message: ViewerMessage) {
   switch (message.type) {
     case 'status': {
-      const previous = getState().live?.player?.source;
-      const source = message.live.player?.source;
-      if (source && requestedLoad && matchesRequestedLoad(source)) requestedLoad = null;
-      useWorkbench.setState({ live: message.live,
-        ...(previous?.loadCommandId === source?.loadCommandId ? {} : initialPlayerTarget) });
-      if (latest && (!source || !sameLoad(latest.source, source))) setVideo(null);
+      acceptStatus(message.live);
       break;
     }
     case 'ack':
+      transport.acceptAck(message);
       if (!message.ok) consoleActions.log('error', source, `命令被拒绝：${message.error ?? ''}`, message.rawJson);
       else {
         if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
@@ -82,12 +78,14 @@ function close() {
   setVideo(null);
 }
 
-async function command(type: string, send: (liveId: string) => Promise<LiveCommandResult>) {
+async function command(type: string, send: (liveId: string) => Promise<LiveCommandResult | null>) {
   const liveId = getState().liveId;
+  const context = getState().live?.player?.source ?? null;
   if (!liveId) return null;
   try {
     const result = await send(liveId);
-    if (getState().liveId !== liveId) return null;
+    if (result === null || getState().liveId !== liveId ||
+      type !== 'load' && !samePreviewLoad(context, getState().live?.player?.source ?? null)) return null;
     if (result.stage === 'rejected' || result.stage === 'not-applied')
       consoleActions.log('error', source, `${type}：${result.ack?.error ?? '播放器未执行'}`, result.ack?.rawJson);
     else if (result.stage === 'submitted')
@@ -124,6 +122,8 @@ export const playerService = {
     try {
       const [builds, lives] = await Promise.all([playerApi.builds(), playerApi.lives()]);
       useWorkbench.setState({ playerBuilds: builds.items, lives });
+      const state = getState(), selected = lives.find(live => live.liveId === state.liveId);
+      if (!state.viewerOpen && selected) acceptStatus(selected);
     } catch (error) {
       consoleActions.error(source, error);
     }
@@ -147,7 +147,8 @@ export const playerService = {
       close: () => {
         if (socket !== opened) return;
         socket = null;
-        useWorkbench.setState({ viewerOpen: false });
+        setVideo(null);
+        useWorkbench.setState({ viewerOpen: false, live: null, ...initialPlayerTarget });
         consoleActions.log('warn', source, '与播放器画面的连接已断开');
       },
     });
@@ -156,6 +157,7 @@ export const playerService = {
 
   // 启动请求身份先存入本页会话，结果未确认时刷新页面按原身份重查。
   async start(playerBuildId: string, width: number) {
+    const selectedLiveId = getState().liveId;
     let pending = sessionStorage.getItem(pendingStartKey);
     if (!pending) {
       const evenWidth = Math.max(640, Math.round(width / 16) * 16);
@@ -166,7 +168,7 @@ export const playerService = {
       const live = await playerApi.start(JSON.parse(pending));
       sessionStorage.removeItem(pendingStartKey);
       await playerService.refresh();
-      playerService.attach(live.liveId);
+      if (getState().liveId === selectedLiveId) playerService.attach(live.liveId);
     } catch (error) {
       if (!(error instanceof ApiError && error.status === 0)) sessionStorage.removeItem(pendingStartKey);
       consoleActions.error(source, error);
@@ -186,18 +188,21 @@ export const playerService = {
     } catch (error) {
       consoleActions.error(source, error);
     }
-    playerService.attach(null);
+    if (getState().liveId === liveId) playerService.attach(null);
     await playerService.refresh();
   },
 
   loadContent: (content: PlayerPreviewContent) =>
     command('load', async liveId => {
       const commandId = crypto.randomUUID();
-      requestedLoad = { commandId, content };
+      const request = requestedLoad = { commandId, content };
       setVideo(null);
+      useWorkbench.setState({ live: null, ...initialPlayerTarget });
       const live = await playerApi.live(liveId);
-      return playerApi.load(liveId, { commandId, content,
+      if (getState().liveId !== liveId || requestedLoad !== request) return null;
+      const result = await playerApi.load(liveId, { commandId, content,
         executionMode: 'interactive', channels: live.identity.channels });
+      return requestedLoad === request || getState().live?.player?.source?.loadCommandId === commandId ? result : null;
     }),
   async capture() {
     const liveId = getState().liveId;

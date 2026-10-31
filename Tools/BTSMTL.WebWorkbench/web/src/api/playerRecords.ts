@@ -121,6 +121,19 @@ const previewTarget = object({
   channels: nullable(array(observationChannel)),
 });
 export const readPreviewSampleSource = source;
+export function samePreviewContent(left: PreviewContentIdentity | null, right: PreviewContentIdentity | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.kind === right.kind && left.revision === right.revision && left.documentId === right.documentId &&
+    left.contentIdentity === right.contentIdentity && left.contentRevision === right.contentRevision && left.bindingRevision === right.bindingRevision;
+}
+export function samePreviewLoad(left: PreviewSampleSource | null, right: PreviewSampleSource | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.loadCommandId === right.loadCommandId && left.execution.kind === right.execution.kind &&
+    left.execution.identity === right.execution.identity && left.execution.playerBuildId === right.execution.playerBuildId &&
+    left.execution.editorAssemblyMvid === right.execution.editorAssemblyMvid && left.contentRevision === right.contentRevision &&
+    left.sceneRevision === right.sceneRevision && left.inputSource === right.inputSource && left.inputRevision === right.inputRevision &&
+    samePreviewContent(left.content, right.content);
+}
 export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
