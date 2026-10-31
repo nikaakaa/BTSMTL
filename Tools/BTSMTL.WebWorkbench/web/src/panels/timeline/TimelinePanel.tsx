@@ -1194,10 +1194,11 @@ function Line({ id, height = trackHeight, nest, head, headClass, children, laneC
   selected?: boolean;
   muted?: boolean;
 }) {
-  const { setNodeRef, rowWrapperStyle, rowStyle, rowSidebarStyle } = useRow({ id, disabled: true });
+  const { setNodeRef, rowStyle, rowSidebarStyle } = useRow({ id, disabled: true });
+  // 行是块级 flex：拖动库默认的 inline-flex 会落在文字行上，行距多出行高余量，与按 rowHeight 累计的偏移不符。
   return (
     <div className={styles.line} data-nest={nest} data-selected={selected || undefined} data-muted={muted || undefined}
-      style={{ ...rowWrapperStyle, height: height + rowSpacing }}>
+      style={{ display: 'flex', height: height + rowSpacing }}>
       <div className={styles.head} style={rowSidebarStyle}><div className={headClass}>{head}</div></div>
       <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane>
         {children}
