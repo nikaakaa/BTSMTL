@@ -23,7 +23,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationExecutionSource(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
             ReadOnlyOrchestrationExecutionFrames<TValue> characterFrames, int frameSlot, ulong tick,
-            in OrchestrationStopContext stopContext)
+            OrchestrationStopContext stopContext)
         {
             Frames = frames;
             CharacterFrames = characterFrames;
