@@ -3,20 +3,10 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
+    public ref partial struct OrchestrationExecutionCursor<TValue, TNumerics, THost>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
         readonly struct ScheduledSelection
         {
@@ -51,7 +41,7 @@ namespace BTSMTL.Orchestration
 
         ScheduledSelection RunValueSchedule(in OrchestrationValueScheduleEntry entry, int excludedTarget = -1)
         {
-            int pc = m_Diagnostics.ScheduleEntry(in entry);
+            int pc = m_Host.ScheduleEntry(in entry);
             Span<TValue> values = m_ScheduledValues;
             int depth = m_InputDepth++;
             while (true)
@@ -75,9 +65,8 @@ namespace BTSMTL.Orchestration
                         values[instruction.Destination] = values[instruction.Operand];
                         break;
                     case OrchestrationValueScheduleCode.ConvertInput:
-                        OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion,
-                            TMath, TValues>.Unary((OrchestrationValueOpcode)instruction.Operand,
-                                in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
+                        default(TNumerics).Unary((OrchestrationValueOpcode)instruction.Operand,
+                            in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.Compute:
                         EvaluateCoreValue(instruction.Operation, instruction.Operand,
@@ -94,7 +83,7 @@ namespace BTSMTL.Orchestration
                     case OrchestrationValueScheduleCode.OverrideInput:
                     case OrchestrationValueScheduleCode.OverrideOutput:
                     {
-                        int supplied = m_Diagnostics.FindOverride(ref this, instruction.Operation, instruction.Operand,
+                        int supplied = m_Host.FindOverride(ref this, instruction.Operation, instruction.Operand,
                             instruction.Code == OrchestrationValueScheduleCode.OverrideInput
                                 ? OrchestrationValueOverrideKind.Input : OrchestrationValueOverrideKind.Output, default);
                         if (supplied >= 0)
@@ -109,14 +98,14 @@ namespace BTSMTL.Orchestration
                         ObserveOutput(instruction.Operation, instruction.Operand, in values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.BranchBoolean:
-                        pc = default(TValues).Boolean(in values[instruction.Destination]) ? instruction.Next : instruction.Alternative;
+                        pc = default(TNumerics).Boolean(in values[instruction.Destination]) ? instruction.Next : instruction.Alternative;
                         continue;
                     case OrchestrationValueScheduleCode.BranchExcludedTarget:
                         pc = instruction.Operand == excludedTarget ? instruction.Next : instruction.Alternative;
                         continue;
                     case OrchestrationValueScheduleCode.BranchCondition:
                     {
-                        bool passed = default(TValues).Boolean(in values[instruction.Destination]);
+                        bool passed = default(TNumerics).Boolean(in values[instruction.Destination]);
                         TraceEdge(instruction.Operand, false, passed);
                         pc = passed ? instruction.Next : instruction.Alternative;
                         continue;
@@ -129,7 +118,7 @@ namespace BTSMTL.Orchestration
                         break;
                     case OrchestrationValueScheduleCode.WritePrediction:
                         m_CurrentOperationIndex = instruction.Operation;
-                        values[instruction.Destination] = default(TValues).FromInt32(instruction.Operand < 0
+                        values[instruction.Destination] = default(TNumerics).FromInt32(instruction.Operand < 0
                             ? -1 : m_Program.Edge(instruction.Operand).TargetOperationIndex);
                         break;
                     default:

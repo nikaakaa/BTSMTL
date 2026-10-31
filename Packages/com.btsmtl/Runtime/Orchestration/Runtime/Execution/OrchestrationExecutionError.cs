@@ -97,4 +97,51 @@ namespace BTSMTL.Orchestration
             error.Code == OrchestrationExecutionErrorCode.None
                 ? exception.Message : Format(in error, graphId, sourceRevision);
     }
+
+    // Burst 只接受字面量异常文字；完整信息由宿主读取错误记录后经 Formatter 组织。
+    static class OrchestrationExecutionErrorText
+    {
+        internal static void Throw(OrchestrationExecutionErrorCode code)
+        {
+            switch (code)
+            {
+                case OrchestrationExecutionErrorCode.WorkspaceRowDepth:
+                case OrchestrationExecutionErrorCode.WorkspaceInputWidth:
+                case OrchestrationExecutionErrorCode.WorkspaceOutputWidth:
+                case OrchestrationExecutionErrorCode.WorkspaceStateDepth:
+                case OrchestrationExecutionErrorCode.WorkspaceGraphCallDepth:
+                    throw new InvalidOperationException("编排工作区容量不足。");
+                case OrchestrationExecutionErrorCode.CompleteEntryWaiting:
+                    throw new InvalidOperationException("同次完成的图入口不能返回跨次等待。");
+                case OrchestrationExecutionErrorCode.CompleteOutputWaiting:
+                    throw new InvalidOperationException("同次完成的图输出不能返回跨次等待。");
+                case OrchestrationExecutionErrorCode.BlackboardReadOnly:
+                    throw new InvalidOperationException("黑板槽是只读配置。");
+                case OrchestrationExecutionErrorCode.BlackboardScope:
+                    throw new InvalidOperationException("黑板槽声明了不支持的作用域。");
+                case OrchestrationExecutionErrorCode.HookFailed:
+                    throw new InvalidOperationException("生命周期钩子返回失败。");
+                case OrchestrationExecutionErrorCode.HookInput:
+                    throw new InvalidOperationException("生命周期钩子输入来源不受支持。");
+                case OrchestrationExecutionErrorCode.TimelineForceStop:
+                    throw new InvalidOperationException("Timeline 强制停止未完成。");
+                case OrchestrationExecutionErrorCode.ActionForceStop:
+                    throw new InvalidOperationException("动作强制停止未完成。");
+                case OrchestrationExecutionErrorCode.ActionStopResult:
+                    throw new InvalidOperationException("动作返回了无效的停止结果。");
+                case OrchestrationExecutionErrorCode.OutputBudget:
+                    throw new InvalidOperationException("编排输出超出发布预算。");
+                case OrchestrationExecutionErrorCode.TimelineInvocation:
+                    throw new InvalidOperationException("Timeline 调用失败。");
+                case OrchestrationExecutionErrorCode.OperationNotExecutable:
+                    throw new InvalidOperationException("操作不可执行。");
+                case OrchestrationExecutionErrorCode.ReadOnlyExtension:
+                    throw new InvalidOperationException("只读扩展返回失败。");
+                case OrchestrationExecutionErrorCode.ValueScheduleInstruction:
+                    throw new InvalidOperationException("未知的值调度指令。");
+                default:
+                    throw new InvalidOperationException("编排推进失败。");
+            }
+        }
+    }
 }

@@ -3,20 +3,10 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
+    public ref partial struct OrchestrationExecutionCursor<TValue, TNumerics, THost>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
         public bool CurrentStateRootCompleted()
         {
@@ -288,7 +278,7 @@ namespace BTSMTL.Orchestration
             if (m_StateDepth + 1 > m_States.Length)
                 Fail(OrchestrationExecutionErrorCode.WorkspaceStateDepth, stateOperationIndex,
                     required: m_StateDepth + 1, capacity: m_States.Length);
-            int trace = m_Diagnostics.CaptureState(ref this, stateOperationIndex, hasRootCompletedOverride);
+            int trace = m_Host.CaptureState(ref this, stateOperationIndex, hasRootCompletedOverride);
             m_States[m_StateDepth++] = new OrchestrationStateContext
             {
                 ExecutionFrameIndex = OperationFrame(stateOperationIndex),
@@ -301,27 +291,6 @@ namespace BTSMTL.Orchestration
         }
 
         void PopState() => m_StateDepth--;
-
-        internal int CaptureDiagnosticState(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
-            int operationIndex, bool rootCompletedOverride) =>
-            m_Input.CaptureTrace && !rootCompletedOverride && !IsPredictiveEvaluation
-                ? CaptureStatePath(storage, operationIndex) : -1;
-
-        int CaptureStatePath(OrchestrationWorkbenchDiagnosticStorage<TValue> storage,
-            int stateOperationIndex, bool lifecycleOwner = false)
-        {
-            int parentState = m_Program.Operation(stateOperationIndex).ParentStateOperationIndex;
-            int parent = parentState >= 0 ? CaptureStatePath(storage, parentState) : -1;
-            int index = storage.StateFrameCount++;
-            storage.StateFrames[index] = new OrchestrationStateTraceFrame
-            {
-                ParentIndex = parent,
-                StateOperationIndex = stateOperationIndex,
-                Generation = ReadGeneration(stateOperationIndex),
-                ContextIndex = CaptureTraceContext(storage, stateOperationIndex, lifecycleOwner)
-            };
-            return index;
-        }
 
         static int MapExitCause(uint cause) => cause switch
         {

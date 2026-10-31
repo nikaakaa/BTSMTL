@@ -1,6 +1,6 @@
 import { playerApi } from '../api/player';
 import { isAbort } from '../api/http';
-import type { PlayerJobId } from '../api/playerRecords';
+import { clockPosition, positionValue, type PlayerJobId, type PreviewPosition } from '../api/playerRecords';
 import type { LiveCommand, LiveCommandResult } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
@@ -20,7 +20,7 @@ let review: { generation: number; origin: number; started: number; handle: numbe
 export function transportSource(): TransportSource | null {
   const { liveId, live, runId, sealed } = getState();
   if (runId) return sealed ? 'sealed' : null;
-  if (liveId && live?.player?.inputMode === 'device') return 'player-live';
+  if (liveId && live?.player?.source && ['paused', 'playing', 'stepping', 'seeking'].includes(live.player.state)) return 'player-live';
   return null;
 }
 
@@ -123,7 +123,7 @@ function record(type: string, result: LiveCommandResult): PlayerCommandRecord {
   const ack = result.ack;
   const entry: PlayerCommandRecord = {
     type, commandId: result.commandId, stage: result.stage,
-    hostFrame: ack?.hostFrame ?? null, error: ack && !ack.ok ? ack.error ?? '播放器拒绝' : null,
+    clock: ack?.clock ?? null, error: ack && !ack.ok ? ack.error ?? '播放器拒绝' : null,
   };
   useWorkbench.setState({ lastCommand: entry });
   if (entry.stage === 'rejected' || entry.stage === 'not-applied')
@@ -135,33 +135,39 @@ function record(type: string, result: LiveCommandResult): PlayerCommandRecord {
 
 async function playerCommand(command: LiveCommand): Promise<PlayerCommandRecord | null> {
   const liveId = getState().liveId;
+  const loadCommandId = getState().live?.player?.source?.loadCommandId;
   if (!liveId) return null;
   try {
-    const entry = record(command.type, await playerApi.command(liveId, command));
-    if (entry.stage === 'applied' && entry.hostFrame !== null) useWorkbench.setState({ actualFrame: entry.hostFrame });
-    return entry;
+    const result = await playerApi.command(liveId, command);
+    if (getState().liveId !== liveId || getState().live?.player?.source?.loadCommandId !== loadCommandId) return null;
+    return record(command.type, result);
   } catch (error) {
     consoleActions.error(source, error);
     return null;
   }
 }
 
-// 跳帧合并：只保留最新目标帧；上一条未回执时不发送，回执后与实际帧不同再补发。
+// 定位合并绑定本次载入，上一条回执后只补发更新的目标。
 function seekPlayer(frame: number) {
-  useWorkbench.setState({ targetFrame: frame });
+  const clock = getState().live!.player!.source!.clock;
+  const position: PreviewPosition = clock.kind === 'quantumSdk' ? { kind: 'quantumSdk', sdkFrame: frame } : { kind: 'timeline', tick: frame };
+  useWorkbench.setState({ targetPosition: position });
   if (getState().pendingSeek) return;
-  void sendSeek(frame);
+  void sendSeek(position);
 }
 
-async function sendSeek(frame: number) {
+async function sendSeek(position: PreviewPosition) {
   const liveId = getState().liveId;
+  const loadCommandId = getState().live!.player!.source!.loadCommandId;
   const commandId = crypto.randomUUID();
-  useWorkbench.setState({ pendingSeek: { commandId, frame } });
-  await playerCommand({ type: 'seek', commandId, frame });
-  if (getState().liveId !== liveId) return;
-  useWorkbench.setState({ pendingSeek: null });
-  const { targetFrame, actualFrame } = getState();
-  if (targetFrame !== null && String(targetFrame) !== actualFrame && targetFrame !== frame) void sendSeek(targetFrame);
+  useWorkbench.setState({ pendingSeek: { commandId, loadCommandId, position } });
+  await playerCommand({ type: 'seek', commandId, position });
+  if (getState().liveId !== liveId || getState().pendingSeek?.commandId !== commandId ||
+    getState().live?.player?.source?.loadCommandId !== loadCommandId) return;
+  const { targetPosition } = getState();
+  if (targetPosition !== null && (targetPosition.kind !== position.kind || positionValue(targetPosition) !== positionValue(position)))
+    void sendSeek(targetPosition);
+  else useWorkbench.setState({ pendingSeek: null, targetPosition: null });
 }
 
 // ── 公开入口 ──
@@ -195,7 +201,7 @@ export const transport = {
     stopReview();
     timeSeek?.abort();
     timebase = null;
-    useWorkbench.setState({ targetFrame: null, pendingSeek: null });
+    useWorkbench.setState({ targetPosition: null, pendingSeek: null });
   },
 
   isPlaying(): boolean {
@@ -236,11 +242,15 @@ export const transport = {
         break;
       case 'player-live':
         if (delta > 0) void playerCommand({ type: 'step', commandId: crypto.randomUUID(), count: 1 });
+        else {
+          const clock = getState().live!.player!.source!.clock;
+          if (clock.kind === 'timeline') seekPlayer(Math.max(0, Number(clockPosition(clock)) - 1));
+        }
         break;
     }
   },
 
-  // 档案按记录序号；实时试玩按播放器 SDK 帧。
+  // 档案按记录序号；实时定位保留实际时钟种类。
   seek(frame: number) {
     timeSeek?.abort();
     switch (transportSource()) {
@@ -255,7 +265,12 @@ export const transport = {
   },
 
   home() { transport.seek(0); },
-  end() { transport.seek(transportSource() === 'player-live' ? Number(getState().live?.player?.lastFrame ?? 0) : frameCount() - 1); },
+  end() {
+    if (transportSource() === 'player-live') {
+      const end = getState().live!.player!.endPosition;
+      if (end !== null) transport.seek(positionValue(end));
+    } else transport.seek(frameCount() - 1);
+  },
 
 };
 

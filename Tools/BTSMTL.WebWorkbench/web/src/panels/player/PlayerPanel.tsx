@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
+import { clockPosition, positionValue, type PlayerPreviewContent } from '../../api/playerRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { session } from '../../state/session';
-import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, getState, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import styles from './player.module.css';
@@ -26,15 +27,14 @@ export function PlayerPanel() {
   const hostAvailable = useWorkbench(state => state.hostAvailable);
   const runId = useWorkbench(state => state.runId);
   if (hostAvailable === false) return <Empty text="未接入运行宿主" />;
-  if (runId) return <PlayerView frameName="SDK 帧" />;
-  return images ? <PlayerView frameName={images.frameDisplayName} /> : <Empty text="未接入画面来源" />;
+  return runId || images ? <PlayerView /> : <Empty text="未接入画面来源" />;
 }
 
-function PlayerView({ frameName }: { frameName: string }) {
+function PlayerView() {
   const [params, setParams] = usePanelParams<Params>({ build: null, overlay: false, stats: false });
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
-    runId: current.runId, archiveImage: current.archiveImage, scenePath: current.scenePath, sources: current.sources, selection: current.selection,
+    runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
   })));
   const stage = useRef<HTMLDivElement>(null);
   const [captureEnabled, setCaptureEnabled] = useState(false);
@@ -50,9 +50,18 @@ function PlayerView({ frameName }: { frameName: string }) {
   }, []);
 
   const build = state.builds?.find(item => item.buildId === params.build) ?? null;
-  const scene = state.sources?.scenes.find(item => item.path === state.scenePath) ?? null;
+  const scene = selectedScene(state);
+  const contentSelection = state.contentSelection;
+  const timeline = contentSelection?.kind === 'timeline'
+    ? state.sources?.timelines.find(item => item.content.package === contentSelection.package) : undefined;
+  const content: PlayerPreviewContent | null = scene
+    ? { kind: 'scene', scene: scene.path, revision: scene.revision, source: { kind: 'device', lastSdkFrame: 0 } }
+    : timeline?.content ?? null;
   const loading = player?.state === 'loading';
-  const loadSceneBlocked = !state.viewerOpen ? '尚未连接播放器画面' : !scene ? '先选择内容' : loading ? '正在载入' : null;
+  const selectedLive = state.lives.find(item => item.liveId === state.liveId);
+  const loadBlocked = !state.viewerOpen ? '尚未连接播放器画面' : !selectedLive || selectedLive.hello === null ? '正在读取播放器能力'
+    : selectedLive.identity.liveProtocol !== 'btsmtl.preview-live/1' ? '所选播放器需要更新到支持当前预览协议的构建'
+    : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
   const overlayReason = !state.runId ? '档案回看可叠加同次表现的角色根位置'
     : !state.archiveImage ? '正在读取画面'
@@ -73,11 +82,11 @@ function PlayerView({ frameName }: { frameName: string }) {
           onChange={value => playerService.attach(value)} />
         <Button variant="ghost" disabled={!state.liveId} onClick={() => void playerService.stop()}>停止</Button>
         <BarSeparator />
-        <Button variant="ghost" disabled={!!loadSceneBlocked} tip={loadSceneBlocked ?? '载入当前内容的离线包，接管输入试玩'}
+        <Button variant="ghost" disabled={!!loadBlocked} tip={loadBlocked ?? '载入所选内容'}
           onClick={async () => {
-            const result = await playerService.loadScene(scene!.path, scene!.revision);
+            const result = await playerService.loadContent(content!);
             if (result?.stage === 'applied') session.selectRun(null);
-          }}>离线包试玩</Button>
+          }}>载入</Button>
       </PanelBar>}
       <PanelBar wrap>
         {state.runId ? <Button variant="ghost" onClick={() => session.selectRun(null)}>退出回看</Button> : <>
@@ -97,19 +106,18 @@ function PlayerView({ frameName }: { frameName: string }) {
           tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>
       </PanelBar>
       <Stage stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
-        captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} frameName={frameName} />
+        captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />
     </div>
   );
 }
 
-function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameName }: {
+function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   stageRef: RefObject<HTMLDivElement | null>;
   ready: boolean;
   orbit: boolean;
   overlay: boolean;
   stats: boolean;
   captureEnabled: boolean;
-  frameName: string;
 }) {
   const video = useRef<HTMLCanvasElement>(null);
   const layer = useRef<HTMLCanvasElement>(null);
@@ -338,7 +346,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled, frameNa
       {!view.runId && !view.liveId && <Empty text="启动或选择一个播放器" />}
       <canvas ref={video} className={styles.video} hidden={!!view.runId && (!view.archiveImage || view.archiveImage.kind === 'unavailable') || !view.runId && !view.liveId} />
       <canvas ref={layer} className={styles.video} hidden={!!view.runId && (!view.archiveImage || view.archiveImage.kind === 'unavailable') || !view.runId && !view.liveId} />
-      {(view.runId || view.liveId) && <Corner frameName={frameName} stats={stats} />}
+      {(view.runId || view.liveId) && <Corner stats={stats} />}
       {captured && <div className={styles.hint}>已接管键鼠 · Esc 释放</div>}
     </div>
   );
@@ -350,7 +358,7 @@ function queueCamera(camera: { current: CameraCommand | null }, delta: Partial<R
   camera.current = pending;
 }
 
-type Picture = Omit<VideoFrame, 'worldToClip'> & {
+type Picture = Omit<VideoFrame, 'worldToClip' | 'source'> & {
   worldToClip: number[] | null;
   actors: { actorId: string; position: Vec3 }[];
 };
@@ -408,23 +416,35 @@ function inputMessage(view: Window, state: { keys: Set<string>; dx: number; dy: 
   return message;
 }
 
-function Corner({ frameName, stats }: { frameName: string; stats: boolean }) {
+function Corner({ stats }: { stats: boolean }) {
+  const video = useSyncExternalStore(playerService.subscribeVideo, playerService.latestVideo);
   const view = useWorkbench(useShallow(state => ({
     player: state.live?.player ?? null, process: state.live?.state ?? null, runId: state.runId, archiveImage: state.archiveImage,
     hostFrame: state.hostFrame,
-    targetFrame: state.targetFrame, actualFrame: state.actualFrame, pending: !!state.pendingSeek,
+    targetPosition: state.targetPosition,
   })));
-  const mismatch = !view.runId && view.targetFrame !== null && view.actualFrame !== null && String(view.targetFrame) !== view.actualFrame;
+  const actual = view.player?.source?.clock;
+  const picture = !view.runId ? video?.source.clock : undefined;
+  const notices = [
+    !view.runId && view.targetPosition !== null && actual
+      ? `定位 ${positionValue(view.targetPosition)} / 实际 ${clockPosition(actual)} …` : null,
+    picture && actual && clockPosition(picture) !== clockPosition(actual)
+      ? `画面 ${picture.kind === 'timeline' ? 'Tick' : 'SDK 帧'} ${clockPosition(picture)}` : null,
+  ].filter(text => text !== null);
   return (
     <>
-      {mismatch && <div className={styles.badge}>{view.targetFrame} / {view.actualFrame}{view.pending ? ' …' : ''}</div>}
+      {notices.length !== 0 && <div className={styles.badge}>{notices.join(' · ')}</div>}
       {stats && (
         <div className={styles.stats}>
           <b>Statistics</b>
           <div><span>来源</span><span>{view.runId ? 'Player 档案' : '实时 Player'}</span></div>
           {view.runId ? <div><span>SDK 帧</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
             <div><span>播放器</span><span>{view.player ? playerStates[view.player.state] : view.process}</span></div>
-            {view.player && <div><span>{frameName}</span><span>{view.player.hostFrame}</span></div>}
+            {actual && <div><span>{actual.kind === 'timeline' ? 'Timeline Tick' : 'SDK 帧'}</span><span>{clockPosition(actual)}</span></div>}
+            {picture && <>
+              <div><span>画面{picture.kind === 'timeline' ? ' Tick' : ' SDK 帧'}</span><span>{clockPosition(picture)}</span></div>
+              <div><span>采样序号</span><span>{video!.source.sequence}</span></div>
+            </>}
             {view.player?.error && <div className={styles.error}><span>错误</span><span>{view.player.error}</span></div>}
           </>}
           {view.archiveImage && view.archiveImage.kind !== 'unavailable' && <>

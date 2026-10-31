@@ -1,5 +1,6 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
-import type { readPlayerHost } from './playerRecords';
+import type { PlayerSceneContent, PlayerTimelineContent, PreviewClock, PreviewContentIdentity, PreviewPosition,
+  PreviewSampleSource, readPlayerHost, readViewerStatus } from './playerRecords';
 
 export interface Field {
   displayName: string;
@@ -33,10 +34,7 @@ export type NumberInput = HostDescription['inputLimit'];
 
 // ── 来源与输入 ──
 
-export type RunSource =
-  | { kind: 'replay'; path: string; revision: string }
-  | { kind: 'recording'; runId: string; revision: string }
-  | { kind: 'local'; lastSdkFrame: number; players: PlayerInputChoice[] };
+export type RunSource = Exclude<PlayerSceneContent['source'], { kind: 'device' }>;
 
 export interface PlayerInputChoice {
   actorId: string;
@@ -58,10 +56,21 @@ export interface ReplayChoice {
 
 export interface Sources {
   scenes: SourceFile[];
+  timelines: TimelineSource[];
   replays: ReplayChoice[];
   sceneDirectory: string;
   replayDirectory: string;
   runDirectory: string;
+}
+
+export interface TimelineSource {
+  content: PlayerTimelineContent;
+  contentIdentity: string;
+  contentRevision: string;
+  bindingRevision: string;
+  tickRate: number;
+  scene: unknown;
+  bindings: unknown;
 }
 
 export type { PlayerInputCatalog as InputCatalog } from './playerRecords';
@@ -451,7 +460,7 @@ export interface InputCommand {
 export type LiveCommand =
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
   | { type: 'step'; commandId: string; count: number }
-  | { type: 'seek'; commandId: string; frame: number }
+  | { type: 'seek'; commandId: string; position: PreviewPosition }
   | { type: 'pick'; commandId: string; x: number; y: number }
   | ({ type: 'camera' } & CameraCommand)
   | ({ type: 'input' } & InputCommand)
@@ -459,32 +468,18 @@ export type LiveCommand =
 
 export type PlayerState = 'idle' | 'loading' | 'paused' | 'playing' | 'stepping' | 'seeking' | 'failed';
 
-export interface ViewerPlayer {
-  state: PlayerState;
-  error: string | null;
-  hostFrame: string;
-  lastFrame: string | null;
-  inputMode: string | null;
-  cameraMode: string | null;
-  fields: Field[];
-  rawJson: string;
-}
-
-export interface ViewerLive {
-  liveId: string;
-  buildId: string;
-  state: LiveProcessState;
-  exitCode: number | null;
-  player: ViewerPlayer | null;
-  rawJson: string;
-}
+export type ViewerLive = ReturnType<typeof readViewerStatus>['live'];
+export type ViewerPlayer = NonNullable<ViewerLive['player']>;
 
 export interface PlayerAck {
   type: 'ack';
   commandId: string;
   ok: boolean;
   error?: string;
-  hostFrame?: string;
+  hostFrame?: string | null;
+  clock?: PreviewClock | null;
+  content?: PreviewContentIdentity | null;
+  playerBuildId?: string | null;
   path?: string;
   rawJson: string;
 }
@@ -493,7 +488,7 @@ export interface PlayerPick {
   type: 'pick';
   commandId: string;
   ok: boolean;
-  hostFrame?: string;
+  hostFrame?: string | null;
   actorId: string;
   position: Vec3;
   hitCollider?: string;
@@ -510,6 +505,7 @@ export type ViewerMessage =
 
 export interface VideoFrame {
   hostFrame: string;
+  source: PreviewSampleSource;
   width: number;
   height: number;
   flipY: boolean;

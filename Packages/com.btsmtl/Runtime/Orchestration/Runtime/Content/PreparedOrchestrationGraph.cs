@@ -4,14 +4,9 @@ using System.Runtime.InteropServices;
 
 namespace BTSMTL.Orchestration
 {
-    public sealed class PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>
+    public sealed class PreparedOrchestrationGraph<TValue, TNumerics>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
     {
         PreparedOrchestrationGraph(
             OrchestrationGraphContent<TValue> source,
@@ -43,7 +38,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationGraphSource> Sources { get; }
         public ReadOnlyMemory<OrchestrationExtensionReference> Extensions => Source.Extensions;
 
-        public static PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> Prepare(
+        public static PreparedOrchestrationGraph<TValue, TNumerics> Prepare(
             OrchestrationGraphContent<TValue> source,
             FrozenOrchestrationIdentities identities, int contentTableIndex,
             ReadOnlySpan<OrchestrationDefaultValue<TValue>> defaults)
@@ -130,11 +125,11 @@ namespace BTSMTL.Orchestration
                     execution.InvocationEntry, Map(execution.SourceIdentityId, mapping)),
                     item.SourceType, item.DisplayPathSegments);
             }
-            return new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+            return new PreparedOrchestrationGraph<TValue, TNumerics>(
                 source, identities, mapping, program, entries, variables, hostInputs, graphPorts, sources);
         }
 
-        public PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> PrepareParameterCandidate(
+        public PreparedOrchestrationGraph<TValue, TNumerics> PrepareParameterCandidate(
             OrchestrationGraphContent<TValue> candidate,
             Func<OrchestrationGraphContent<TValue>, byte[]> encode,
             out string rejection)
@@ -176,7 +171,7 @@ namespace BTSMTL.Orchestration
                 prepared.GraphCalls, prepared.Hooks, prepared.HookInputs, prepared.BlackboardSlots,
                 prepared.BlackboardOutputs, prepared.OutputTemplates, prepared.CorePorts,
                 prepared.RootOperationIndex, prepared.MaximumOperationEvaluations);
-            return new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+            return new PreparedOrchestrationGraph<TValue, TNumerics>(
                 candidate, Identities, LocalToShared, program, Entries, Variables, HostInputs, Ports, Sources);
         }
 
@@ -255,27 +250,7 @@ namespace BTSMTL.Orchestration
             return result;
         }
 
-        internal static TValue MapValue(
-            in TValue value,
-            ReadOnlyMemory<int> mapping)
-        {
-            TValues values = default;
-            OrchestrationValueKind kind = values.Kind(in value);
-            if (kind == OrchestrationValueKind.Identity)
-                return values.FromIdentity(Map(values.Identity(in value), mapping));
-            if (kind == OrchestrationValueKind.Enum)
-            {
-                OrchestrationEnumValue enumValue = values.Enum(in value);
-                return values.FromEnum(new OrchestrationEnumValue(Map(enumValue.TypeContentId, mapping), enumValue.Value));
-            }
-            if (kind == OrchestrationValueKind.SpatialIdentity)
-            {
-                OrchestrationSpatialIdentity<TVector3, TYaw> spatial = values.SpatialIdentity(in value);
-                return values.FromSpatialIdentity(
-                    new OrchestrationSpatialIdentity<TVector3, TYaw>(Map(spatial.Identity, mapping),
-                        spatial.Position, spatial.Yaw));
-            }
-            return value;
-        }
+        internal static TValue MapValue(in TValue value, ReadOnlyMemory<int> mapping) =>
+            default(TNumerics).MapContentIdentities(in value, mapping.Span);
     }
 }

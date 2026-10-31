@@ -18,7 +18,7 @@ import {
   applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, trackContract, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
-  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type WorkbenchState,
+  consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
   clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
@@ -191,7 +191,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
     const scheme = schemes.find(item => item.documentId === focusId);
-    return scheme?.scene === state.scenePath && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
+    return scheme !== undefined && scheme.scene === selectedScene(state)?.path && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
       ? state.inputCatalog.tickRate : null;
   });
   const sdkTickRate = useWorkbench(state => state.archiveMetadata?.sdkTickRate ?? null);

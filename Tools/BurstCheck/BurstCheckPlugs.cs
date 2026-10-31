@@ -2,6 +2,8 @@ using System;
 using BTSMTL.Orchestration;
 using BTSMTL.Timeline.Runtime;
 using ThirdPersonSimulation;
+using Dispatch = BTSMTL.Timeline.Runtime.OrchestrationTimelineDispatch<BTSMTL.Orchestration.Float32OrchestrationValue,
+    BTSMTL.BurstCheck.BurstCheckContext, BTSMTL.Orchestration.OrchestrationTime, BTSMTL.Orchestration.OrchestrationTimeClock>;
 
 namespace BTSMTL.BurstCheck
 {
@@ -121,21 +123,16 @@ namespace BTSMTL.BurstCheck
         }
     }
 
-    public unsafe struct BurstCheckHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TProjection> :
-        IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, BurstCheckContext>
-        where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TProjection : struct, IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar>
+    public unsafe struct BurstCheckHost : IOrchestrationHost<Float32OrchestrationValue>
     {
         readonly BurstCheckMemory* m_Memory;
+        BurstCheckContext m_Context;
 
-        public BurstCheckHost(BurstCheckMemory* memory) => m_Memory = memory;
+        public BurstCheckHost(BurstCheckMemory* memory)
+        {
+            m_Memory = memory;
+            m_Context = default;
+        }
 
         OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock> Runtime =>
             new OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>(
@@ -145,92 +142,115 @@ namespace BTSMTL.BurstCheck
                 new OrchestrationTimelineWorkspaceView<OrchestrationTime>(
                     new Span<byte>(m_Memory->TimelineWorkspace, m_Memory->TimelineWorkspaceLength)));
 
-        public int Count => 0;
+        public void Read(ReadOnlySpan<byte> memory, in OrchestrationValueAddress address,
+            ref Float32OrchestrationValue destination) =>
+            default(OrchestrationArrayValueStorage<Float32OrchestrationValue>).Read(memory, in address, ref destination);
+
+        public void Write(Span<byte> memory, in OrchestrationValueAddress address, in Float32OrchestrationValue value) =>
+            default(OrchestrationArrayValueStorage<Float32OrchestrationValue>).Write(memory, in address, in value);
 
         public OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex) =>
             throw new InvalidOperationException("检查插头不提供扩展。");
 
-        public bool ShouldExecute(int bindingIndex, in BurstCheckContext context) => false;
+        public bool ShouldExecute(int bindingIndex) => false;
 
-        public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in BurstCheckContext context,
-            in OrchestrationExtensionArguments<TValue> invocation) => OrchestrationExtensionResult.Success;
+        public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex,
+            in OrchestrationExtensionArguments<Float32OrchestrationValue> invocation) => OrchestrationExtensionResult.Success;
 
-        public OrchestrationExtensionResult InvokeCandidate(int bindingIndex, ref BurstCheckContext context,
-            in OrchestrationExtensionArguments<TValue> invocation) => OrchestrationExtensionResult.Success;
+        public OrchestrationExtensionResult InvokeCandidate(int bindingIndex,
+            in OrchestrationExtensionArguments<Float32OrchestrationValue> invocation) => OrchestrationExtensionResult.Success;
 
-        public OrchestrationOperationResult Tick<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, TDiagnostics, TStorage, THost> cursor,
+        public OrchestrationOperationResult Tick<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
-            ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
-            ulong tick, ref BurstCheckContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, BurstCheckContext>
+            ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<Float32OrchestrationValue> inputs, ulong tick)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue>
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            var samples = new BurstCheckLogicSamples<TValue, TScalar, TMath, TValues, TProjection>(m_Memory);
-            return OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.Tick(Runtime, ref bindings, ref samples, ref cursor, candidate, operationIndex,
-                contentIdentityId, operationGeneration, ref playbackIdentity, inputs, tick, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            var samples = new BurstCheckLogicSamples<Float32OrchestrationValue, Float32Scalar, Float32SimulationMath,
+                Float32OrchestrationValueAccess, BurstCheckFloat32Projection>(m_Memory);
+            return Dispatch.Tick(Runtime, ref bindings, ref samples, ref cursor, candidate, operationIndex,
+                contentIdentityId, operationGeneration, ref playbackIdentity, inputs, tick, ref m_Context);
         }
 
-        public OrchestrationStopStatus Stop<TDiagnostics, TStorage, THost>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, TDiagnostics, TStorage, THost> cursor,
+        public OrchestrationStopStatus Stop<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext, bool force, ulong tick, ref BurstCheckContext context)
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-            where TStorage : struct, IOrchestrationValueStorage<TValue>
-            where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, BurstCheckContext>
+            in OrchestrationStopContext stopContext, bool force, ulong tick)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue>
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            return OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.Stop(Runtime, ref bindings, ref cursor, candidate, operationIndex, ref playbackIdentity,
-                in stopContext, force, tick, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            return Dispatch.Stop(Runtime, ref bindings, ref cursor, candidate, operationIndex, ref playbackIdentity,
+                in stopContext, force, tick, ref m_Context);
         }
 
-        public TValue ReadTime() => OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.ReadTime(Runtime);
+        public OrchestrationTime ReadTime() => Dispatch.ReadTime(Runtime);
 
-        public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
-            ref ulong playbackIdentity, in BurstCheckContext context) =>
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
+        public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity) =>
+            Dispatch.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
 
-        public int EnterInvocation(int playbackSlot, int invocationIndex, ref BurstCheckContext context)
+        public int EnterInvocation(int playbackSlot, int invocationIndex)
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            return OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.EnterInvocation(Runtime, ref bindings, playbackSlot, invocationIndex, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            return Dispatch.EnterInvocation(Runtime, ref bindings, playbackSlot, invocationIndex, ref m_Context);
         }
 
-        public OrchestrationTimelineInvocationFacts ReadInvocationFacts() => OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.ReadInvocationFacts(Runtime);
+        public OrchestrationTimelineInvocationFacts ReadInvocationFacts() => Dispatch.ReadInvocationFacts(Runtime);
 
-        public void SelectExecutionFrame(int frameSlot, ref BurstCheckContext context) =>
-            context.FrameSlot = frameSlot;
+        public void SelectExecutionFrame(int frameSlot) => m_Context.FrameSlot = frameSlot;
 
-        public OrchestrationOperationResult ReleaseInvocation(ref BurstCheckContext context)
+        public OrchestrationOperationResult ReleaseInvocation()
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            return OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.ReleaseInvocation(Runtime, ref bindings, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            return Dispatch.ReleaseInvocation(Runtime, ref bindings, ref m_Context);
         }
 
-        public void LeaveInvocation(ref BurstCheckContext context)
+        public void LeaveInvocation()
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.LeaveInvocation(Runtime, ref bindings, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            Dispatch.LeaveInvocation(Runtime, ref bindings, ref m_Context);
         }
 
-        public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate,
-            int operationIndex, ulong tick, ref BurstCheckContext context)
+        public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick)
         {
-            var bindings = new BurstCheckTimelineBindings<TValue>();
-            return OrchestrationTimelineDispatch<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
-                BurstCheckContext, OrchestrationTime, OrchestrationTimeClock, TProjection>.RequestClipExit(Runtime, ref bindings, candidate, ref context);
+            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
+            return Dispatch.RequestClipExit(Runtime, ref bindings, candidate, ref m_Context);
         }
+
+        public int ScheduleEntry(in OrchestrationValueScheduleEntry entry) => entry.Product;
+
+        public void Lifecycle<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            OrchestrationDiagnosticLifecycle lifecycle, int operation, int frame)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> { }
+
+        public int FindOverride<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            int operation, int slot, OrchestrationValueOverrideKind kind, in OrchestrationBlackboardOwnerToken owner)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> => -1;
+
+        public void Observe<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            int operation, int slot, bool input, in Float32OrchestrationValue value)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> { }
+
+        public void Trace<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            OrchestrationTraceKind kind, int operation, int edge, OrchestrationOperationResult result,
+            uint stopCause, OrchestrationWaitReason waitReason, int valueSlot, bool selected, bool passed,
+            in OrchestrationBlackboardSourceContext blackboardSource)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> { }
+
+        public int CaptureState<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            int operation, bool rootCompletedOverride)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> => -1;
+
+        public void ReadEntryContext<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
+            in OrchestrationExecutionEntry entry, out OrchestrationTraceContext context)
+            where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
+            where THost : struct, IOrchestrationHost<Float32OrchestrationValue> => context = default;
     }
 }

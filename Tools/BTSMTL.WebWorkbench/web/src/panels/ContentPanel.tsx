@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import type { Sources } from '../api/types';
 import { ErrorLine } from '../ui/ErrorLine';
 import { session } from '../state/session';
-import { contentActions, useWorkbench } from '../state/store';
+import { contentActions, contentSelectionKey, previewContentChoices, selectedScene, useWorkbench } from '../state/store';
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { openPanel } from '../shell/layout';
 import { BarSeparator, Empty, Facts, Fold, PanelBar } from '../ui/blocks';
@@ -11,7 +12,9 @@ import styles from './panel.module.css';
 
 // 内容面板：场景与录像列表、输入声明；选择结果写入 content 分片，工具栏新建运行使用。
 export function ContentPanel() {
-  const { sources, hostAvailable } = useWorkbench(useShallow(state => ({ sources: state.sources, hostAvailable: state.hostAvailable })));
+  const { sources, hostAvailable, contentKind } = useWorkbench(useShallow(state => ({
+    sources: state.sources, hostAvailable: state.hostAvailable, contentKind: state.contentSelection?.kind,
+  })));
   const startBlocked = useWorkbench(() => session.canStart());
   return (
     <div className={styles.root}>
@@ -23,10 +26,12 @@ export function ContentPanel() {
       <div className={styles.scroll}>
         {!sources ? <Empty text={hostAvailable === false ? '未接入运行宿主' : '读取中'} /> : (
           <>
-            <Fold title="内容" kind="var(--node-anim)" defaultOpen><Scenes /></Fold>
-            <Fold title="场景方案" kind="var(--track-in)" defaultOpen><ScenarioFolders /></Fold>
-            <Fold title="运行来源" kind="var(--track-in)" defaultOpen><RunSources /></Fold>
-            <Fold title="输入声明" kind="var(--node-event)"><InputDeclarations /></Fold>
+            <Fold title="内容" kind="var(--node-anim)" defaultOpen><Contents sources={sources} /></Fold>
+            {contentKind !== 'timeline' && <>
+              <Fold title="场景方案" kind="var(--track-in)" defaultOpen><ScenarioFolders /></Fold>
+              <Fold title="运行来源" kind="var(--track-in)" defaultOpen><RunSources /></Fold>
+              <Fold title="输入声明" kind="var(--node-event)"><InputDeclarations /></Fold>
+            </>}
           </>
         )}
       </div>
@@ -34,15 +39,16 @@ export function ContentPanel() {
   );
 }
 
-function Scenes() {
-  const { scenes, scenePath } = useWorkbench(useShallow(state => ({ scenes: state.sources?.scenes ?? [], scenePath: state.scenePath })));
-  if (!scenes.length) return <Empty text="宿主尚未提供正式内容" />;
+function Contents({ sources }: { sources: Sources }) {
+  const selection = useWorkbench(state => state.contentSelection);
+  const choices = previewContentChoices(sources);
+  if (!choices.length) return <Empty text="宿主尚未提供正式内容" />;
   return (
     <div className={styles.list} role="listbox" aria-label="内容">
-      {scenes.map(scene => (
-        <button key={scene.path} className={styles.row} role="option" aria-selected={scene.path === scenePath}
-          onClick={() => contentActions.selectScene(scene.path)}>
-          <span className={styles.rowText}>{scene.path}</span>
+      {choices.map(choice => (
+        <button key={choice.value} className={styles.row} role="option" aria-selected={choice.value === contentSelectionKey(selection)}
+          onClick={() => contentActions.selectContent(choice.selection)}>
+          <span className={styles.rowText}>{choice.label}</span>
         </button>
       ))}
     </div>
@@ -77,7 +83,7 @@ function RunSources() {
 function ScenarioFolders() {
   const { scenarios, target } = useAuthoring(useShallow(state => ({ scenarios: state.scenarios, target: state.target })));
   const [creating, setCreating] = useState(false);
-  const scenePath = useWorkbench(state => state.scenePath);
+  const scenePath = useWorkbench(state => selectedScene(state)?.path ?? null);
   useEffect(() => { if (scenarios === null) void authoringActions.listSkills(); }, [scenarios]);
   if (scenarios === null) return <Empty text="正在读取场景方案" />;
   return <>
@@ -95,7 +101,7 @@ function ScenarioFolders() {
 
 function NewScenario({ onCreated }: { onCreated(): void }) {
   const { scene, catalog, failure } = useWorkbench(useShallow(state => ({
-    scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
+    scene: selectedScene(state), catalog: state.inputCatalog,
     failure: state.inputCatalogFailure,
   })));
   const [name, setName] = useState('');
@@ -127,7 +133,7 @@ function NewScenario({ onCreated }: { onCreated(): void }) {
 
 function LocalInputChoices() {
   const { scene, catalog, choices, lastSdkFrame, error } = useWorkbench(useShallow(state => ({
-    scene: state.sources?.scenes.find(item => item.path === state.scenePath), catalog: state.inputCatalog,
+    scene: selectedScene(state), catalog: state.inputCatalog,
     choices: state.inputChoices, lastSdkFrame: state.localLastSdkFrame, error: state.inputCatalogFailure,
   })));
   if (!scene) return <Empty text="先选择场景" />;
@@ -161,12 +167,12 @@ function LocalInputChoices() {
 
 // 输入声明在选定场景后自动读取；这里显示结果，失败后可重新读取。
 function InputDeclarations() {
-  const { catalog, scenePath, reading, failure } = useWorkbench(useShallow(state => ({
-    catalog: state.inputCatalog, scenePath: state.scenePath, reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
+  const { catalog, scene, reading, failure } = useWorkbench(useShallow(state => ({
+    catalog: state.inputCatalog, scene: selectedScene(state), reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
   })));
   return (
     <>
-      {!scenePath && <Empty text="先选择内容" />}
+      {!scene && <Empty text="先选择内容" />}
       {reading && <Empty text="正在读取输入声明" />}
       {failure !== null && !catalog && <>
         <ErrorLine text="输入声明读取失败" entryId={failure} />

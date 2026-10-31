@@ -8,7 +8,7 @@ import type {
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
-  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -21,10 +21,12 @@ export interface ConnectionSlice {
 }
 
 // ── content ──
+export type ContentSelection = { kind: 'scene'; path: string } | { kind: 'timeline'; package: string };
+
 export interface ContentSlice {
   sources: Sources | null;
   previewMode: PlayerPreviewMode | null;
-  scenePath: string | null;
+  contentSelection: ContentSelection | null;
   inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
   localLastSdkFrame: number | null;
   inputCatalog: InputCatalog | null;
@@ -32,6 +34,23 @@ export interface ContentSlice {
   inputCatalogReading: boolean;
   inputCatalogFailure: number | null;
   inputChoices: PlayerInputChoice[];
+}
+
+export const contentSelectionKey = (selection: ContentSelection | null) => selection === null ? null
+  : selection.kind === 'scene' ? `scene:${selection.path}` : `timeline:${selection.package}`;
+
+export function previewContentChoices(sources: Sources) {
+  return [
+    ...sources.scenes.map(scene => ({ value: `scene:${scene.path}`,
+      label: scene.path.replace(/\/scene\.json$/, ''), selection: { kind: 'scene', path: scene.path } as const })),
+    ...sources.timelines.map(item => ({ value: `timeline:${item.content.package}`,
+      label: `Timeline · ${item.content.package}`, selection: { kind: 'timeline', package: item.content.package } as const })),
+  ];
+}
+
+export function selectedScene(state: Pick<ContentSlice, 'sources' | 'contentSelection'>) {
+  const selection = state.contentSelection;
+  return selection?.kind === 'scene' ? state.sources?.scenes.find(scene => scene.path === selection.path) : undefined;
 }
 
 // ── run ──
@@ -117,7 +136,7 @@ export interface PlayerCommandRecord {
   type: string;
   commandId: string | null;
   stage: LiveCommandStage;
-  hostFrame: string | null;
+  clock: PreviewClock | null;
   error: string | null;
 }
 export interface PlayerSlice {
@@ -127,9 +146,8 @@ export interface PlayerSlice {
   live: ViewerLive | null;
   viewerOpen: boolean;
   playerViewport: { width: number; height: number } | null;
-  targetFrame: number | null;
-  actualFrame: string | null;
-  pendingSeek: { commandId: string; frame: number } | null;
+  targetPosition: PreviewPosition | null;
+  pendingSeek: { commandId: string; loadCommandId: string; position: PreviewPosition } | null;
   lastCommand: PlayerCommandRecord | null;
   // 画面面板正在接管键鼠时，运行快捷键不响应。
   capturing: boolean;
@@ -197,13 +215,13 @@ export const consoleLimit = 500;
 export const initialCursor: CursorSlice = { frameIndex: 0, hostFrame: null, seconds: null };
 
 export const initialPlayerTarget = {
-  targetFrame: null, actualFrame: null, pendingSeek: null, lastCommand: null,
+  targetPosition: null, pendingSeek: null, lastCommand: null,
 } satisfies Partial<PlayerSlice>;
 
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, previewMode: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null,
+  sources: null, previewMode: null, contentSelection: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
@@ -262,14 +280,13 @@ export const contentActions = {
   },
   setSources(sources: Sources) {
     const state = getState();
-    const before = state.sources?.scenes.find(scene => scene.path === state.scenePath)?.revision;
-    const after = sources.scenes.find(scene => scene.path === state.scenePath)?.revision;
+    const before = selectedScene(state)?.revision;
+    const after = selectedScene({ sources, contentSelection: state.contentSelection })?.revision;
     set({ sources, ...(before === after ? {} : { inputCatalog: null, inputCatalogFailure: null, inputChoices: [] }) });
   },
-  // 场景只决定新建运行的内容，不打断当前运行；输入声明按场景路径丢弃旧结果。
-  selectScene(scenePath: string | null) {
-    if (getState().scenePath === scenePath) return;
-    set({ scenePath, inputCatalog: null, inputCatalogFailure: null, inputChoices: [] });
+  selectContent(contentSelection: ContentSelection | null) {
+    if (contentSelectionKey(getState().contentSelection) === contentSelectionKey(contentSelection)) return;
+    set({ contentSelection, inputCatalog: null, inputCatalogFailure: null, inputChoices: [] });
   },
   selectInputSource(inputSource: ContentSlice['inputSource']) {
     set({ inputSource });
@@ -279,8 +296,8 @@ export const contentActions = {
   },
   setInputCatalog(scenePath: string, inputCatalog: InputCatalog) {
     const state = getState();
-    const scene = state.sources?.scenes.find(item => item.path === scenePath);
-    if (state.scenePath !== scenePath || scene?.revision !== inputCatalog.revision) return;
+    const scene = selectedScene(state);
+    if (scene?.path !== scenePath || scene.revision !== inputCatalog.revision) return;
     const inputChoices = state.inputChoices.flatMap(choice => {
       const plan = inputCatalog.players.find(player => player.actorId === choice.actorId)?.localPlans
         .find(item => item.path === choice.inputPlanRoot && item.schemes.some(scheme => scheme.index === choice.schemeIndex));

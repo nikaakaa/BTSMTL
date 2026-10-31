@@ -3,20 +3,10 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage, THost>
+    public ref partial struct OrchestrationExecutionCursor<TValue, TNumerics, THost>
         where TValue : unmanaged
-        where TScalar : unmanaged
-        where TVector2 : unmanaged
-        where TVector3 : unmanaged
-        where TYaw : unmanaged
-        where TQuaternion : unmanaged
-        where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
-        where TContext : struct
-        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics<TValue>
-        where TStorage : struct, IOrchestrationValueStorage<TValue>
-        where THost : struct, IOrchestrationHost<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
+        where TNumerics : struct, IOrchestrationNumerics<TValue>
+        where THost : struct, IOrchestrationHost<TValue>
     {
         void InvokeHooks(int operationIndex, OrchestrationLifecycleHook phase,
             int machineOperationIndex = -1, int stateOperationIndex = -1,
@@ -45,7 +35,7 @@ namespace BTSMTL.Orchestration
                         arguments, Span<TValue>.Empty, in m_TimelineInvocation);
                     m_CurrentOperationIndex = operationIndex;
                     OrchestrationExtensionResult result = m_Host.InvokeCandidate(
-                        hook.ExtensionBindingIndex, ref m_Context, in invocation);
+                        hook.ExtensionBindingIndex, in invocation);
                     if (result != OrchestrationExtensionResult.Success)
                         Fail(OrchestrationExecutionErrorCode.HookFailed, operationIndex, hook.ExtensionBindingIndex,
                             (int)phase, (int)result);
@@ -61,7 +51,7 @@ namespace BTSMTL.Orchestration
             int machineOperationIndex, int stateOperationIndex, int exitingStateOperationIndex, int targetStateOperationIndex,
             ref TValue value)
         {
-            TValues values = default;
+            TNumerics values = default;
             switch (input.Source)
             {
                 case OrchestrationHookInputSource.Constant:
@@ -158,8 +148,8 @@ namespace BTSMTL.Orchestration
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
-            OrchestrationExtensionResult result = m_Host.InvokeCandidate(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex,
-                ref m_Context, in invocation);
+            OrchestrationExtensionResult result = m_Host.InvokeCandidate(
+                m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex, in invocation);
             switch (result)
             {
                 case OrchestrationExtensionResult.Running: return OrchestrationStopStatus.Running;

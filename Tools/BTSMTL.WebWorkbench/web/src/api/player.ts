@@ -1,6 +1,7 @@
 import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
+  readPlayerVideoMetadata, readPreviewClock, readPreviewSampleSource, readViewerStatus,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
   readPlayerCommandResult,
   readPlayerCancellation,
@@ -87,7 +88,9 @@ export const playerApi = {
   capturePath: (id: string, commandId: string) => `${live(id)}/captures/${commandId.replaceAll('-', '')}.png`,
   latestImage: async (id: string, signal?: AbortSignal) => {
     const response = await getBlob(`${live(id)}/frame.jpg`, signal);
-    return { hostFrame: response.headers.get('X-Q3-Frame') ?? '', image: await response.blob() };
+    const source = response.headers.get('X-Preview-Source');
+    if (source === null) throw new Error('实时画面缺少 X-Preview-Source 采样身份');
+    return { source: readPreviewSampleSource(JSON.parse(source)), image: await response.blob() };
   },
 };
 
@@ -107,12 +110,16 @@ export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket 
   socket.onclose = event => handlers.close(event);
   socket.onmessage = event => {
     if (typeof event.data === 'string') {
-      handlers.message(JSON.parse(event.data) as ViewerMessage);
+      const message = JSON.parse(event.data) as ViewerMessage;
+      if (message.type === 'status') handlers.message(readViewerStatus(message));
+      else if (message.type === 'ack') handlers.message({ ...message,
+        clock: message.clock == null ? null : readPreviewClock(message.clock) });
+      else handlers.message(message);
       return;
     }
     const buffer = event.data as ArrayBuffer;
     const length = new DataView(buffer, 0, 4).getInt32(0, true);
-    const metadata = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))) as Omit<VideoFrame, 'image'>;
+    const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
     handlers.video({ ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) });
   };
   return socket;
