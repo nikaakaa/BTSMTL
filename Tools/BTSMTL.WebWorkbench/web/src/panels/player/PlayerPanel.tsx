@@ -2,22 +2,24 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
-import { clockPosition, positionValue, type PlayerPreviewContent } from '../../api/playerRecords';
+import { clockPosition, positionValue, type LivePlayer, type PlayerPreviewContent } from '../../api/playerRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { session } from '../../state/session';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench } from '../../state/store';
-import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
-import { Button, Select } from '../../ui/controls';
+import { Empty, PanelBar } from '../../ui/blocks';
+import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import styles from './player.module.css';
 
 const playerStates: Record<PlayerState, string> = {
   idle: '空闲', loading: '载入中', paused: '已暂停', playing: '播放中', stepping: '单步中', seeking: '跳帧中', failed: '失败',
 };
 
+const processStates: Record<string, string> = { starting: '启动中', running: '运行中', exited: '已退出' };
+const liveLabel = (live: LivePlayer) => `${processStates[live.state] ?? live.state} · ${new Date(live.startedAt).toLocaleTimeString()}`;
+
 interface Params {
-  build: string | null;
   overlay: boolean;
   stats: boolean;
 }
@@ -31,7 +33,7 @@ export function PlayerPanel() {
 }
 
 function PlayerView() {
-  const [params, setParams] = usePanelParams<Params>({ build: null, overlay: false, stats: false });
+  const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false });
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
     runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
@@ -49,7 +51,6 @@ function PlayerView() {
     return () => clearInterval(timer);
   }, []);
 
-  const build = state.builds?.find(item => item.buildId === params.build) ?? null;
   const scene = selectedScene(state);
   const contentSelection = state.contentSelection;
   const timeline = contentSelection?.kind === 'timeline'
@@ -63,47 +64,55 @@ function PlayerView() {
     : selectedLive.identity.liveProtocol !== 'btsmtl.preview-live/1' ? '所选播放器需要更新到支持当前预览协议的构建'
     : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
-  const overlayReason = !state.runId ? '档案回看可叠加同次表现的角色根位置'
-    : !state.archiveImage ? '正在读取画面'
+  const overlayReason = !state.archiveImage ? '正在读取画面'
     : state.archiveImage.kind === 'unavailable' ? state.archiveImage.reason : state.archiveImage.overlayReason;
+
+  // 照 Game 视图的 Display 下拉：在用的播放器、启动与停止合成一个菜单。
+  const playerMenu: MenuEntry[] = [
+    { kind: 'label', label: '播放器' },
+    ...(state.lives.length ? state.lives.map((live): MenuEntry => ({
+      kind: 'radio', label: liveLabel(live), checked: live.liveId === state.liveId, onSelect: () => playerService.attach(live.liveId),
+    })) : [{ label: '尚未启动播放器', disabled: true, onSelect: () => {} }]),
+    { kind: 'separator' },
+    { kind: 'label', label: '启动常驻播放器' },
+    ...(state.builds?.length ? state.builds.map((build): MenuEntry => ({
+      label: build.displayName, tip: build.fields.map(field => `${field.displayName} ${field.value}`).join('\n'),
+      onSelect: () => void playerService.start(build.buildId, stage.current!.clientWidth),
+    })) : [{ label: state.builds ? '画面来源尚未提供可用构建' : '正在读取构建', disabled: true, onSelect: () => {} }]),
+  ];
+  if (state.liveId) playerMenu.push({ kind: 'separator' }, { label: '停止播放器', onSelect: () => void playerService.stop() });
+  const orbitMenu: MenuEntry[] = [
+    { label: '重置视角', disabled: !orbit, tip: orbit ? undefined : '环绕相机下可用',
+      onSelect: () => playerService.camera({ mode: 'orbit', reset: true }) },
+    { label: '环绕所选角色', disabled: !focusActor, tip: focusActor ? undefined : '先在画面中点选角色',
+      onSelect: () => playerService.camera({ mode: 'orbit', focusActorId: focusActor! }) },
+  ];
 
   return (
     <div className={styles.root}>
-      {!state.runId && <PanelBar wrap>
-        <Select label="播放器构建" placeholder="播放器构建" value={build?.buildId ?? null} disabled={!state.builds?.length}
-          tip={state.builds && !state.builds.length ? '画面来源尚未提供可用构建' : build?.fields.map(field => `${field.displayName} ${field.value}`).join('\n')}
-          options={(state.builds ?? []).map(item => ({ value: item.buildId, label: item.displayName }))}
-          onChange={value => setParams({ build: value })} />
-        <Button variant="ghost" disabled={!build} tip={build ? '启动常驻播放器' : '没有可用构建'}
-          onClick={() => { if (build) void playerService.start(build.buildId, stage.current!.clientWidth); }}>启动</Button>
-        <Select label="播放器" placeholder="播放器" value={state.liveId} disabled={!state.lives.length}
-          tip={state.lives.length ? undefined : '尚未启动播放器'}
-          options={state.lives.map(live => ({ value: live.liveId, label: `${live.state} · ${new Date(live.startedAt).toLocaleTimeString()}` }))}
-          onChange={value => playerService.attach(value)} />
-        <Button variant="ghost" disabled={!state.liveId} onClick={() => void playerService.stop()}>停止</Button>
-        <BarSeparator />
-        <Button variant="ghost" disabled={!!loadBlocked} tip={loadBlocked ?? '载入所选内容'}
-          onClick={async () => {
-            const result = await playerService.loadContent(content!);
-            if (result?.stage === 'applied') session.selectRun(null);
-          }}>载入</Button>
-      </PanelBar>}
       <PanelBar wrap>
         {state.runId ? <Button variant="ghost" onClick={() => session.selectRun(null)}>退出回看</Button> : <>
-          <Button variant="ghost" pressed={orbit} disabled={!ready} onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>
-          <Button variant="ghost" disabled={!ready || !orbit} onClick={() => playerService.camera({ mode: 'orbit', reset: true })}>重置</Button>
-          <Button variant="ghost" disabled={!ready || !focusActor} tip={focusActor ? '环绕所选角色' : '点选画面中的角色'}
-            onClick={() => playerService.camera({ mode: 'orbit', focusActorId: focusActor! })}>环绕所选</Button>
-          <BarSeparator />
-          <Button variant="ghost" pressed={captureEnabled} disabled={!ready || player?.inputMode !== 'device'}
-            tip={player?.inputMode === 'device' ? '点击画面接管键鼠，Esc 释放' : '离线包试玩时可接管'}
-            onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>
-          <Button variant="ghost" disabled={!ready} onClick={() => void playerService.capture()}>截图</Button>
+          <MenuButton label="播放器" variant="ghost" caret entries={playerMenu}>
+            <span className={styles.dim}>播放器</span>{selectedLive ? liveLabel(selectedLive) : '无'}
+          </MenuButton>
+          {state.liveId && <Button variant="ghost" disabled={!!loadBlocked} tip={loadBlocked ?? '载入所选内容'}
+            onClick={async () => {
+              const result = await playerService.loadContent(content!);
+              if (result?.stage === 'applied') session.selectRun(null);
+            }}>载入</Button>}
+          {ready && <span className={styles.split}>
+            <Button variant="ghost" pressed={orbit} tip="左键拖动旋转 · 右键或 Shift 拖动平移 · 滚轮缩放"
+              onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>
+            <MenuButton label="环绕选项" variant="ghost" className={styles.splitCaret} iconOnly caret entries={orbitMenu}>{null}</MenuButton>
+          </span>}
         </>}
         <span className={styles.grow} />
+        {ready && player!.inputMode === 'device' && <Button variant="ghost" pressed={captureEnabled} tip="点击画面接管键鼠，Esc 释放"
+          onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>}
+        {ready && <Button variant="ghost" onClick={() => void playerService.capture()}>截图</Button>}
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
-        <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
-          tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>
+        {state.runId && <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
+          tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>}
       </PanelBar>
       <Stage stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
         captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />

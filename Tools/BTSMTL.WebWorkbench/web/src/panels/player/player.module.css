@@ -10,6 +10,31 @@
   flex: 1;
 }
 
+.dim {
+  color: var(--text-dim);
+}
+
+/* 环绕照 Gizmos：左半开关，右侧小三角单独打开选项 */
+.split {
+  display: inline-flex;
+}
+
+.split > :first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.splitCaret {
+  min-width: 0;
+  padding: 0 4px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.splitCaret > span {
+  margin-left: 0;
+}
+
 .stage {
   position: relative;
   flex: 1;
