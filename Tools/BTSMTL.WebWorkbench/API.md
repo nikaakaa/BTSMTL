@@ -231,7 +231,11 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 | `PreviewFrameSource` | `execution,contentRevision,sceneRevision?,inputSource?,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null。独立 Timeline 没有场景修订或 Quantum 输入来源时保留 null，不猜方案或场景身份；未记录不补身份。 |
 | `PreviewSummary` | 原摘要字段保留，原 `playerBuildId` 改为必填 `execution`；构建 ID 从 `execution.playerBuildId` 读取。 |
 
-曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。档案上下文保留原 Summary，范围和帧数只从它读取；不再读取项目清单来重建范围。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。上述公共来源、实时控制与通道范围尚未完成运行采用检查；已部署的旧形状不会在前端兼容解码。
+曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。档案上下文保留原 Summary，范围和帧数只从它读取；档案网格／吸附使用 Summary 的可空 `frameStepSeconds`，不从项目清单或平均 FPS 推算。
+
+`/input` 每条记录的 `inputTimeSeconds` 为正式方案时间，开始前为 null；页级 `inputTimeOriginSeconds` 是输入零点在档案中的实际秒数，`inputTimeStepSeconds` 是原时钟提供的样本步长。旧缺实际生效边界时三项为 null，原因取页级 `inputTimeUnavailableReason`。输入观察仍须匹配角色、方案路径、修订和 scheme；时间不能代替关联。定位沿既有 `seekTime(origin+方案秒)` 查实际帧记录，最后只发送原宿主帧键；显示和输入持续区间只用正式时间／步长，连续区间按原缓存记录序号判定，不做 SDK 算术。方案开始前不制造零秒样本，但已知真实零点时仍可定位后续方案位置。
+
+上述公共来源、实时控制与通道范围尚未完成运行采用检查；已部署的旧形状不会在前端兼容解码。
 
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 

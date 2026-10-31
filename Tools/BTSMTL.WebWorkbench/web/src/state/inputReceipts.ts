@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
-import type { PlayerArchive, PlayerJobId, readPlayerInputCatalog } from '../api/playerRecords';
+import type { PlayerJobId, readPlayerInputCatalog } from '../api/playerRecords';
 import { archive } from './archive';
-import { scheduleZeroFrame } from './inputModel';
 import { useWorkbench } from './store';
 
 type FrameInput = ReturnType<typeof archive.inputFrames>[number];
@@ -33,28 +32,28 @@ function neutral(value: InputValue) {
 const shown = (value: InputValue) => value.runtimeValue?.kind === 'boolean' || (value.value?.length === 1 && value.value[0] === 1)
   ? value.inputId : `${value.inputId} ${JSON.stringify(value.value ?? value.runtimeValue)}`;
 
-function spans(records: FrameInput[], keys: KeyDeclaration[], metadata: PlayerArchive) {
-  const tick = 1 / metadata.sdkTickRate;
-  const zeroFrame = BigInt(scheduleZeroFrame(metadata));
-  const at = (frame: string) => Number(BigInt(frame) - zeroFrame) / metadata.sdkTickRate;
-  const extend = (list: ReceivedSpan[], start: number, label: string) => {
+function spans(records: FrameInput[], keys: KeyDeclaration[], tick: number) {
+  const extend = (list: ReceivedSpan[], start: number, label: string, consecutive: boolean) => {
     const last = list.at(-1);
-    if (last && last.label === label && Math.abs(last.end - start) < tick / 2) last.end = start + tick;
+    if (consecutive && last && last.label === label && Math.abs(last.end - start) < tick / 2) last.end = start + tick;
     else list.push({ start, end: start + tick, label });
   };
   const result = keys.map(key => ({ name: key.name, spans: [] as ReceivedSpan[], requests: [] as ReceivedSpan[] }));
   const missing: ReceivedSpan[] = [];
   const ranges: ReceivedInput['ranges'] = [];
   const seen = new Set<string>();
-  for (const { frame, input: record } of records) {
+  let previousIndex: number | null = null;
+  for (const { frame, index, seconds: start, input: record } of records) {
+    if (start === null) continue;
+    const consecutive = previousIndex !== null && previousIndex + 1 === index;
+    previousIndex = index;
     const last = ranges.at(-1);
-    if (last && BigInt(last.last) + 1n === BigInt(frame)) last.last = frame;
+    if (last && consecutive) last.last = frame;
     else ranges.push({ first: frame, last: frame });
-    const start = at(frame);
-    if (!record.received) { extend(missing, start, '未收到输入'); continue; }
+    if (!record.received) { extend(missing, start, '未收到输入', consecutive); continue; }
     keys.forEach((key, index) => {
       const active = record.values.filter(value => key.valueIds.includes(value.inputId) && !neutral(value));
-      if (active.length) extend(result[index].spans, start, active.map(shown).join(' · '));
+      if (active.length) extend(result[index].spans, start, active.map(shown).join(' · '), consecutive);
       for (const request of record.requests)
         if (key.requestIds.includes(request.requestId) && !seen.has(`${request.requestId}/${request.sequence}`)) {
           seen.add(`${request.requestId}/${request.sequence}`);
@@ -65,9 +64,9 @@ function spans(records: FrameInput[], keys: KeyDeclaration[], metadata: PlayerAr
   return { keys: result.filter(key => key.spans.length || key.requests.length), missing, ranges };
 }
 
-export function useReceivedInput(source: { jobId: PlayerJobId; actorId: string; metadata: PlayerArchive;
+export function useReceivedInput(source: { jobId: PlayerJobId; actorId: string; stepSeconds: number;
   keys: KeyDeclaration[] } | null): ReceivedInput | null {
   const frame = useWorkbench(state => state.archiveFrame);
   return useMemo(() => source === null ? null
-    : spans(archive.inputFrames(source.jobId, source.actorId), source.keys, source.metadata), [source, frame]);
+    : spans(archive.inputFrames(source.jobId, source.actorId), source.keys, source.stepSeconds), [source, frame]);
 }

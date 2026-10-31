@@ -198,7 +198,7 @@ export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: nu
 export const readPlayerCancellation = object({ jobId, cancellationRequested: boolean, jobStage, reason: text });
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
-  frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
+  frameCount: number, frameStepSeconds: nullable(number), channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
   execution: executionIdentity, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   availability: array(availability),
 });
@@ -321,14 +321,15 @@ function runtimeValue(value: unknown, path = 'Player.runtimeValue') {
 }
 export const readPlayerInput = object({
   page: page(object({
-    source, actors: array(object({
+    source, inputTimeSeconds: nullable(number), actors: array(object({
       actorId: text, rosterIndex: number, received: boolean, inputSequence: text, sourceTick: text,
       values: array(object({ inputId: text, kind: text, value: nullable(array(number)), runtimeValue: nullable(runtimeValue) })),
       requests: array(object({ requestId: text, sequence: text, sourceTick: text, expireTick: text, priority: number })),
     })),
   })),
   plans: array(object({ actorId: text, plan: text, planRevision: text, schemeIndex: number })),
-  valueEncoding: nullable(text), availability: array(availability),
+  valueEncoding: nullable(text), inputTimeOriginSeconds: nullable(number), inputTimeStepSeconds: nullable(number),
+  inputTimeUnavailableReason: nullable(text), availability: array(availability),
 });
 const dataCurve = object({
   id: text, displayName: text, channel: text, clock: text, actorId: text, targetId: text, component: text,
@@ -357,7 +358,6 @@ export const readPlayerFrameImages = observationPage(frameImage);
 export const readPlayerArchive = object({
   protocol: choice('q3-preview-observation/1'), jobId: identity<'archive'>(), status: text,
   playerBuildId: buildId, contentRevision: text, sceneRevision: text, inputMode: text, inputSource: text, inputRevision: nullable(text),
-  firstRecordedSdkFrame: number, lastRecordedSdkFrame: number, sdkTickRate: number, scheduleStartFrame: number,
   captures: array(object({ sdkFrame: number })), availability: array(availability),
 });
 

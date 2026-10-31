@@ -88,7 +88,7 @@ export interface ArchiveFrame {
   presentations: ArchivePresentationRecord[];
   cameras: PlayerCameraPage['page']['items'];
   input: PlayerInputPage['page']['items'][number] | null;
-  inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null;
+  inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding' | 'inputTimeOriginSeconds' | 'inputTimeStepSeconds' | 'inputTimeUnavailableReason'> | null;
   curves: Record<string, { kind: 'sampled'; samples: PlayerCurveSample[]; availability: Availability[] }
     | { kind: 'failed'; reason: string; entryId: number }>;
   unavailable: PlayerUnavailablePage['page']['items'];

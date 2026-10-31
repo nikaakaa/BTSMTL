@@ -29,7 +29,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
+import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
 import { useAnimationFrameRates } from '../../state/resources';
@@ -154,8 +154,7 @@ const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, 
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
 const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'archive'
   ? state.seconds : clock.kind === 'input'
-    ? author ?? (state.hostFrame !== null && state.archiveMetadata !== null
-      ? Number(BigInt(state.hostFrame) - BigInt(scheduleZeroFrame(state.archiveMetadata))) / state.archiveMetadata.sdkTickRate : null)
+    ? author ?? state.archiveFrame?.input?.inputTimeSeconds ?? null
     : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
 // 游标秒数：运行档案、运行观察或编辑游标。
 function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
@@ -259,9 +258,9 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
     return scheme !== undefined && scheme.scene === selectedScene(state)?.path && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
       ? state.inputCatalog.tickRate : null;
   });
-  const sdkTickRate = useWorkbench(state => state.archiveMetadata?.sdkTickRate ?? null);
-  const rate = frames ? sdkTickRate : scenario ? inputRate : tickRate;
-  const frameStep = rate === null ? null : 1 / rate;
+  const recordedFrameStep = useWorkbench(state => state.summary?.frameStepSeconds ?? null);
+  const rate = frames ? recordedFrameStep === null ? null : 1 / recordedFrameStep : scenario ? inputRate : tickRate;
+  const frameStep = frames ? recordedFrameStep : rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
   const clipGrid = useClipGrid(params.snap ?? defaults.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
@@ -625,9 +624,9 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const receivedSource = useMemo(() => runId !== null && inputObservation.kind === 'ready' ? {
-    jobId: runId, actorId: inputObservation.input.actorId, metadata: inputObservation.metadata, keys: inputObservation.declarations.keys,
+    jobId: runId, actorId: inputObservation.input.actorId, stepSeconds: inputObservation.stepSeconds, keys: inputObservation.declarations.keys,
   } : null, [runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
-    inputObservation.kind === 'ready' ? inputObservation.metadata : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
+    inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
@@ -788,9 +787,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
-    if (inputScheme && inputObservation.kind === 'ready') {
-      const metadata = inputObservation.metadata;
-      void transport.seekTime((scheduleZeroFrame(metadata) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
+    if (inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
+      void transport.seekTime(inputObservation.originSeconds + seconds);
       return;
     }
     if (!observed) {

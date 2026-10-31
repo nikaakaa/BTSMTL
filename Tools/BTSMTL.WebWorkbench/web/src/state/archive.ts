@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchive, PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerInputPage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
+import type { PlayerArchive, PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -102,13 +102,15 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
       firstFrame: first.source.clock.position.hostFrame, lastFrame: last.source.clock.position.hostFrame,
       offset: pageOffset, limit: 128,
     });
-    let inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null = null;
+    let inputContext: ArchiveFrame['inputContext'] = null;
     const [presentation, camera, input, unavailable] = await Promise.all([
       channel('presentation', readAll(pageOffset => playerApi.presentation(context.jobId, range(pageOffset), signal))),
       channel('camera', readAll(pageOffset => playerApi.camera(context.jobId, range(pageOffset), signal))),
       channel('input', readAll(async pageOffset => {
         const result = await playerApi.input(context.jobId, range(pageOffset), signal);
-        if (pageOffset === 0) inputContext = { plans: result.plans, valueEncoding: result.valueEncoding };
+        if (pageOffset === 0) inputContext = { plans: result.plans, valueEncoding: result.valueEncoding,
+          inputTimeOriginSeconds: result.inputTimeOriginSeconds, inputTimeStepSeconds: result.inputTimeStepSeconds,
+          inputTimeUnavailableReason: result.inputTimeUnavailableReason };
         return result;
       })),
       channel('unavailable', readAll(pageOffset => playerApi.unavailable(context.jobId, range(pageOffset), signal))),
@@ -253,9 +255,9 @@ export const archive = {
     const prefix = `${jobId}:`;
     return [...cache.entries()].filter(([id]) => id.startsWith(prefix))
       .sort(([left], [right]) => Number(left.slice(prefix.length)) - Number(right.slice(prefix.length)))
-      .flatMap(([, frame]) => {
-      const input = frame.input?.actors.find(actor => actor.actorId === actorId);
-      return input ? [{ frame: frame.hostFrame, input }] : [];
+      .flatMap(([id, frame]) => {
+      const record = frame.input, input = record?.actors.find(actor => actor.actorId === actorId);
+      return record && input ? [{ frame: frame.hostFrame, index: Number(id.slice(prefix.length)), input, seconds: record.inputTimeSeconds }] : [];
     });
   },
 

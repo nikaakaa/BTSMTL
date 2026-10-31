@@ -4,9 +4,6 @@ import { currentDocument, timelinePath, useAuthoring, useInputSchemes } from './
 import type { JsonObject } from './skillJson';
 import { useWorkbench } from './store';
 
-// 方案时间零点：Player 在玩家加入帧（scheduleStartFrame）设置日程，日程第 0 tick 落在其下一帧（Quantum3InputSchedule.Apply）。
-export const scheduleZeroFrame = (metadata: { scheduleStartFrame: number }) => metadata.scheduleStartFrame + 1;
-
 export function useInputObservation(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
@@ -15,7 +12,7 @@ export function useInputObservation(documentId: string | null) {
     edited: state.edited, files: state.files, removed: state.removed,
   })));
   const state = useWorkbench(useShallow(current => ({
-    catalog: current.inputCatalog, metadata: current.archiveMetadata, frame: current.archiveFrame,
+    catalog: current.inputCatalog, frame: current.archiveFrame,
     runId: current.runId, hostFrame: current.hostFrame,
   })));
   const dirty = useMemo(() => {
@@ -43,8 +40,8 @@ export function useInputObservation(documentId: string | null) {
   if (author.revision.kind === 'rejected') return { kind: 'stale', reason: author.revision.reason } as const;
   const revision = author.revision.kind === 'catalog' ? plan : author.revision.items.find(item => item.planId === scheme.planId);
   if (!revision) return { kind: 'unavailable', reason: '尚未取得本方案的正式输入修订' } as const;
-  const metadata = state.metadata, frame = state.frame;
-  if (!metadata || !frame || frame.hostFrame !== state.hostFrame)
+  const frame = state.frame;
+  if (!frame || frame.hostFrame !== state.hostFrame)
     return { kind: 'unavailable', reason: '正在读取当前帧输入' } as const;
   const context = frame.inputContext;
   if (context === null) return { kind: 'unavailable', reason: '当前档案没有输入方案来源信息' } as const;
@@ -53,11 +50,14 @@ export function useInputObservation(documentId: string | null) {
   if (!recorded) return { kind: 'stale', reason: '当前档案没有采用此角色的输入方案' } as const;
   if (recorded.planRevision !== revision.revision)
     return { kind: 'stale', reason: '输入修订不一致，旧观察层已过期' } as const;
-  const input = frame.input?.actors.find(item => item.actorId === actorId);
-  if (!input) return { kind: 'unavailable', reason: frame.availability.find(item => item.channel === 'input' && !item.available)?.reason
+  const record = frame.input, input = record?.actors.find(item => item.actorId === actorId);
+  if (!record || !input) return { kind: 'unavailable', reason: frame.availability.find(item => item.channel === 'input' && !item.available)?.reason
     ?? '当前帧没有该角色的原生输入记录' } as const;
-  return { kind: 'ready', metadata, frame, input, plan: recorded, declarations: actor,
-    seconds: Number(BigInt(frame.hostFrame) - BigInt(scheduleZeroFrame(metadata))) / metadata.sdkTickRate,
+  if (context.inputTimeOriginSeconds === null || context.inputTimeStepSeconds === null)
+    return { kind: 'unavailable', reason: context.inputTimeUnavailableReason ?? '宿主未提供正式输入时间' } as const;
+  if (record.inputTimeSeconds === null) return { kind: 'before-start', reason: '输入方案尚未开始', originSeconds: context.inputTimeOriginSeconds } as const;
+  return { kind: 'ready', frame, input, plan: recorded, declarations: actor,
+    seconds: record.inputTimeSeconds, originSeconds: context.inputTimeOriginSeconds, stepSeconds: context.inputTimeStepSeconds,
     valueEncoding: context.valueEncoding,
   } as const;
 }
