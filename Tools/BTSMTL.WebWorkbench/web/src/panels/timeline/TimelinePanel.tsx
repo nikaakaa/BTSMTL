@@ -84,7 +84,7 @@ const observationKey = (observation: TimelineObservation) => JSON.stringify([cal
 type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'input'; documentId: string; observing: boolean };
 const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
-const CurveClockContext = createContext<{ sourceFrame: string; seconds: number; sdkTickRate: number } | null>(null);
+const CurveClockContext = createContext<{ sourceSeconds: number; seconds: number } | null>(null);
 function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   if (clock.kind !== 'document' || clock.observation === null) return undefined;
   const { documentId, observation } = clock;
@@ -586,9 +586,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
   [frames, focused?.documentId, observed, inputScheme, inputObservation.kind]);
   const curveClock = useWorkbench(useShallow(state => {
-    if (state.hostFrame === null || state.archiveMetadata === null || (clock.kind === 'input' && !clock.observing)) return null;
+    if (state.seconds === null || (clock.kind === 'input' && !clock.observing)) return null;
     const seconds = previewSeconds(state, clock, null);
-    return seconds === null ? null : { sourceFrame: state.hostFrame, seconds, sdkTickRate: state.archiveMetadata.sdkTickRate };
+    return seconds === null ? null : { sourceSeconds: state.seconds, seconds };
   }));
 
   return (
@@ -1465,14 +1465,14 @@ function CurveGroupLine({ open, toggle }: { open: boolean; toggle(id: string): v
 function CurveLine({ row }: { row: CurveRow }) {
   const clock = useContext(CurveClockContext);
   const { range } = useTimelineContext();
-  const { runId, frame, hostFrame, image, metadata } = useWorkbench(useShallow(state => ({
+  const { runId, frame, hostFrame, image } = useWorkbench(useShallow(state => ({
     runId: state.runId, frame: state.archiveFrame, hostFrame: state.hostFrame,
-    image: state.archiveImage, metadata: state.archiveMetadata,
+    image: state.archiveImage,
   })));
   const selectId = runId === null ? null : `curve/${runId}/${row.curve.id}`;
   const selected = useSelected(selectId ?? '', 'track');
   const samples = useMemo(() => !runId || !clock ? [] : archive.curveSamples(runId, row.curve.id).map(sample => ({
-    sample, seconds: clock.seconds + Number(BigInt(sample.source.sdkFrame) - BigInt(clock.sourceFrame)) / clock.sdkTickRate,
+    sample, seconds: clock.seconds + sample.source.clock.seconds - clock.sourceSeconds,
   })).filter(point => point.seconds >= range.start && point.seconds <= range.end), [runId, row.curve.id, frame, clock, range]);
   const min = samples.length ? Math.min(...samples.map(point => point.sample.value)) : 0;
   const max = samples.length ? Math.max(...samples.map(point => point.sample.value)) : 0;
@@ -1493,15 +1493,15 @@ function CurveLine({ row }: { row: CurveRow }) {
         {samples.map(({ sample, seconds }, index) => {
           const matchingImage = sample.presentationSequence === null || image !== null && image.kind !== 'unavailable' &&
             sample.presentationSequence === image.metadata.presentationSequence;
-          return <circle key={`${sample.source.sdkFrame}/${sample.presentationSequence ?? 'logic'}/${index}`}
+          return <circle key={`${sample.source.clock.position.hostFrame}/${sample.presentationSequence ?? 'logic'}/${index}`}
             cx={(seconds - range.start) / (range.end - range.start) * 1000}
             cy={max === min ? 32 : 57 - (sample.value - min) / (max - min) * 50} r={2.5}
-            data-current={sample.source.sdkFrame === hostFrame && matchingImage || undefined}
+            data-current={sample.source.clock.position.hostFrame === hostFrame && matchingImage || undefined}
             onClick={() => {
               select();
-              if (metadata) void transport.seekTime(Number(BigInt(sample.source.sdkFrame) - BigInt(metadata.firstRecordedSdkFrame)) / metadata.sdkTickRate);
+              void transport.seekTime(sample.source.clock.seconds);
             }}>
-            <title>{`${sample.value} ${row.curve.unit}\nSDK ${sample.source.sdkFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}</title>
+            <title>{`${sample.value} ${row.curve.unit}\n${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}</title>
           </circle>;
         })}
       </svg>

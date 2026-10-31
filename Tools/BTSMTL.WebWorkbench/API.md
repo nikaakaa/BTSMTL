@@ -218,6 +218,19 @@ Load 的 `content` 是二选一：
 
 档案游标使用通用帧的 `hostFrame/seconds`，总时长使用实际首末帧秒数之差；通过既有 `/frames` 按需读取首末各一条，复用同一时间基准，不从项目清单反算。通用帧的 `source` 可按正式合同为 null，几何接触 `kind` 使用宿主给出的文本分类。截图就绪标记的帧号与可选一致性值也直接取当前通用帧；缺少项目逻辑通道不阻止已完成绘制的面板报告就绪。
 
+档案来源和摘要使用 [PreviewObservationContracts.cs](Contracts/PreviewObservationContracts.cs) 的公共合同，JSON 字段采用 camelCase：
+
+| 公共类型 | 字段与消费要求 |
+| --- | --- |
+| `PreviewExecutionIdentity` | `kind,identity,playerBuildId?,editorAssemblyMvid?`；后两项明确可为 null。保留真实 Player 或 Editor 执行身份，不为 Editor 制造构建 ID。 |
+| `PreviewPosition` | `hostFrame,request`；前者是 Host 查询 key，后者为 Host 提供的 `JsonElement` 原生命令请求，消费者不解析或拼接。 |
+| `PreviewClock` | `position,seconds,positionDisplayName,requestedPosition?,fields`；请求位置与实际位置分开，显示字段直接取 Host，seconds 使用所属真实时间轴。 |
+| `PreviewContentIdentity` | `kind,revision,documentId?,contentIdentity?,contentRevision?,bindingRevision?`；除前两项外均可为 null，实际内容和绑定修订随来源保留。 |
+| `PreviewFrameSource` | `execution,contentRevision,sceneRevision,inputSource,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null，未记录不补身份。 |
+| `PreviewSummary` | 原摘要字段保留，原 `playerBuildId` 改为必填 `execution`；构建 ID 从 `execution.playerBuildId` 读取。 |
+
+曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。实时 WS／ACK、任意数字目标定位和通道范围的公共投影尚待原 Host 交付，当前不表示已采用新合同。
+
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 
 ## 动画资源与专用扩展

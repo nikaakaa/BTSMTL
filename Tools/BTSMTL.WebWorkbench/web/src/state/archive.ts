@@ -99,7 +99,7 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
     const last = logic.page.items.at(-1);
     if (!first || !last) return;
     const range = (pageOffset: number) => ({
-      firstSdkFrame: Number(first.source.sdkFrame), lastSdkFrame: Number(last.source.sdkFrame),
+      firstSdkFrame: Number(first.source.clock.position.hostFrame), lastSdkFrame: Number(last.source.clock.position.hostFrame),
       offset: pageOffset, limit: 128,
     });
     let inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null = null;
@@ -116,13 +116,13 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
     signal.throwIfAborted();
     logic.page.items.forEach((record, index) => {
       remember(context.jobId, offset + index, {
-        hostFrame: record.source.sdkFrame, logic: record,
-        presentations: presentation.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
-        cameras: camera.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
-        input: input.items.find(item => item.source.sdkFrame === record.source.sdkFrame) ?? null,
+        hostFrame: record.source.clock.position.hostFrame, logic: record,
+        presentations: presentation.items.filter(item => item.source.clock.position.hostFrame === record.source.clock.position.hostFrame),
+        cameras: camera.items.filter(item => item.source.clock.position.hostFrame === record.source.clock.position.hostFrame),
+        input: input.items.find(item => item.source.clock.position.hostFrame === record.source.clock.position.hostFrame) ?? null,
         inputContext,
         curves: cache.get(key(context.jobId, offset + index))?.curves ?? {},
-        unavailable: unavailable.items.filter(item => item.source.sdkFrame === record.source.sdkFrame),
+        unavailable: unavailable.items.filter(item => item.source.clock.position.hostFrame === record.source.clock.position.hostFrame),
         availability: [...logic.availability, ...presentation.availability, ...camera.availability,
           ...input.availability, ...unavailable.availability],
       });
@@ -152,7 +152,7 @@ function loadCurvePage(context: OpenArchive, page: number, curveId: string): Pro
       const id = key(context.jobId, index);
       const frame = cache.get(id)!;
       cache.set(id, { ...frame, curves: { ...frame.curves, [curveId]: {
-        kind: 'sampled', samples: result.items.filter(sample => sample.source.sdkFrame === frame.hostFrame), availability: result.availability,
+        kind: 'sampled', samples: result.items.filter(sample => sample.source.clock.position.hostFrame === frame.hostFrame), availability: result.availability,
       } } });
     }
     publishFrame(context);
@@ -261,11 +261,10 @@ export const archive = {
       const curve = frame.curves[curveId];
       return id.startsWith(jobId + ':') && curve?.kind === 'sampled' ? curve.samples : [];
     })
-      .sort((left, right) => BigInt(left.source.sdkFrame) < BigInt(right.source.sdkFrame) ? -1
-        : BigInt(left.source.sdkFrame) > BigInt(right.source.sdkFrame) ? 1
-          : left.presentationSequence !== null && right.presentationSequence !== null
+      .sort((left, right) => left.source.clock.seconds - right.source.clock.seconds ||
+          (left.presentationSequence !== null && right.presentationSequence !== null
             ? BigInt(left.presentationSequence) < BigInt(right.presentationSequence) ? -1 : BigInt(left.presentationSequence) > BigInt(right.presentationSequence) ? 1 : 0
-            : 0);
+            : 0));
   },
 
   loadCurves() {

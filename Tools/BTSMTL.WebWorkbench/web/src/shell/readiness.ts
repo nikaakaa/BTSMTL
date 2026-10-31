@@ -90,7 +90,11 @@ function evaluate() {
   data.previewFrameIndex = String(state.frameIndex);
   if (frame.consistency) data.previewConsistency = frame.consistency.value;
   data.previewContent = state.summary.contentRevision;
-  data.previewPlayerBuild = state.summary.playerBuildId;
+  const execution = state.summary.execution;
+  data.previewExecutionKind = execution.kind;
+  data.previewExecutionIdentity = execution.identity;
+  if (execution.playerBuildId !== null) data.previewPlayerBuild = execution.playerBuildId;
+  if (execution.editorAssemblyMvid !== null) data.previewEditorAssemblyMvid = execution.editorAssemblyMvid;
   data.previewSceneRevision = state.summary.sceneRevision;
   data.previewInputSource = state.summary.inputSource;
   if (state.summary.inputRevision !== null) data.previewInputRevision = state.summary.inputRevision;

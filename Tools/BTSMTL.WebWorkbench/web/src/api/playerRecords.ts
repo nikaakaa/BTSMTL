@@ -66,9 +66,15 @@ export const readPlayerHost = object({
 });
 const field = object({ displayName: text, value: text });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
+const executionIdentity = object({ kind: text, identity: text, playerBuildId: nullable(text), editorAssemblyMvid: nullable(text) });
+const framePosition = object({ hostFrame: text, request: opaque });
+const frameClock = object({ position: framePosition, seconds: number, positionDisplayName: text,
+  requestedPosition: nullable(framePosition), fields: array(field) });
+const frameContentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
+  contentIdentity: nullable(text), contentRevision: nullable(text), bindingRevision: nullable(text) });
 const source = object({
-  playerBuildId: text, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
-  sdkFrame: text, gameplayTick: text,
+  execution: executionIdentity, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  clock: frameClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(frameContentIdentity),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
 const observationPage = <T>(item: Decoder<T>) => object({ page: page(item), availability: array(availability) });
@@ -213,7 +219,7 @@ export const readPlayerCancellation = object({ jobId, cancellationRequested: boo
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
   frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
-  playerBuildId: buildId, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  execution: executionIdentity, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   availability: array(availability),
 });
 const vector3 = tuple(number, number, number);
