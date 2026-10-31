@@ -569,12 +569,14 @@ export const authoringActions = {
 
   // ── Timeline ──
 
-  setClipTime(documentId: string, clipId: string, startSeconds: number, endSeconds: number) {
+  // 改起止；给出 clipInSeconds 时一并写 ClipIn（照 Slate 裁剪可设 ClipIn 片段的起点）。
+  setClipTime(documentId: string, clipId: string, startSeconds: number, endSeconds: number, clipInSeconds?: number) {
     authoringActions.edit(timelinePath(documentId), document => {
       const clip = findTimelineClip(document as JsonObject, clipId);
       if (!clip) throw new Error(`Timeline ${documentId} 中没有片段 ${clipId}`);
       clip.m_StartTimeFPRawValue = fpRaw(startSeconds);
       clip.m_EndTimeFPRawValue = fpRaw(endSeconds);
+      if (clipInSeconds !== undefined) clip.m_ClipInTimeFPRawValue = fpRaw(clipInSeconds);
     });
   },
 
@@ -821,6 +823,18 @@ export function clipCurves(elements: SkillElements, documentId: string, clipId: 
     const value = clip[channel.member];
     return { channel, curve: value && typeof value === 'object' && Array.isArray((value as JsonObject).keys) ? value as JsonObject : null };
   });
+}
+
+// 片段吸附所需的作者数据：合同模板、起点与 ClipIn 秒数、片段直接引用的资源（"guid:localFileId" 字符串字段）。
+export function clipSnapSource(elements: SkillElements, documentId: string, clipId: string) {
+  const document = currentDocument(timelinePath(documentId));
+  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
+  const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
+  if (!clip || !template) return null;
+  const references = Object.values(clip).filter((value): value is string => typeof value === 'string' && /^[0-9a-f]{32}:-?\d+$/.test(value));
+  return {
+    template, references, start: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), clipIn: fpSeconds(numberOf(clip.m_ClipInTimeFPRawValue ?? 0)),
+  };
 }
 
 // 通道的默认曲线（两端线性切线，非权重），与 Unity 目录的 AnimationCurve.Linear 相同。

@@ -16,7 +16,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipTemplatesFor, currentDocument, defaultChannelCurve, graphPath, inputAuthoring,
+  applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve, graphPath, inputAuthoring,
   trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import {
@@ -31,6 +31,7 @@ import { transport } from '../../state/transport';
 import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
+import { useAnimationFrameRates } from '../../state/resources';
 import { sampleCurve } from '../../state/curveSplit';
 import { JsonFloat, cloneJson, numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -86,15 +87,41 @@ interface Params {
   pin: { runId: PlayerJobId; documentId: string; observation: TimelineObservation } | null;
   caller: { runId: PlayerJobId; call: ExecutionCall } | null;
 }
-type Snap = 'tick' | '0.1' | '0.01' | '0.001' | 'none';
+type Snap = 'tick' | 'frame' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], curveTracks: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null, pin: null, caller: null,
+  range: null, collapsed: [], curveTracks: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'frame', call: null, pin: null, caller: null,
 };
 
-// 吸附步长（秒）；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
+// 标记与游标的吸附步长（秒）；素材帧只属于片段，标记按逻辑 tick；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
 const snapStep = (snap: Snap | undefined, frameStep: number | null) =>
-  snap === 'none' ? 1 / 65536 : snap && snap !== 'tick' ? Number(snap) : frameStep;
+  snap === 'none' ? 1 / 65536 : snap && snap !== 'tick' && snap !== 'frame' ? Number(snap) : frameStep;
 const SnapContext = createContext<number | null>(null);
+const minimumStep = 1 / 65536;
+
+// 片段吸附网格（照 TimelineEditorSessionContext.SnapTime）：网格点为 offset + k·step，null 为不吸附。
+// 起止按逻辑 tick 量化的片段（TickQuantized）始终按 tick；其余片段按所选网格，素材帧取片段所引用动画资源的帧率，
+// 偏移为起点减 ClipIn，使网格对齐素材帧；没有素材帧的片段在素材帧模式下不吸附。
+interface Grid { step: number; offset: number }
+type ClipGridOf = (documentId: string, clipId: string) => Grid | null;
+const ClipGridContext = createContext<ClipGridOf>(() => null);
+const snapGrid = (seconds: number, grid: Grid | null) =>
+  grid ? grid.offset + Math.round((seconds - grid.offset) / grid.step) * grid.step : seconds;
+
+function useClipGrid(snap: Snap, tick: number | null): ClipGridOf {
+  const enabled = useAuthoring(state => state.author && state.target !== null);
+  const elements = useSkillElements(enabled);
+  const rates = useAnimationFrameRates(enabled && snap === 'frame');
+  return useCallback((documentId: string, clipId: string): Grid | null => {
+    const source = elements && clipSnapSource(elements, documentId, clipId);
+    if (!source) return null;
+    const tickGrid = tick === null ? null : { step: tick, offset: 0 };
+    if (source.template.tickQuantized || snap === 'tick') return tickGrid;
+    if (snap === 'none') return null;
+    if (snap !== 'frame') return { step: Number(snap), offset: 0 };
+    const rate = source.template.clipInable ? source.references.map(reference => rates?.get(reference)).find(value => value) : undefined;
+    return rate ? { step: 1 / rate, offset: source.start - source.clipIn } : null;
+  }, [elements, rates, snap, tick]);
+}
 type TimelineObservation = { call: ExecutionCall; domain: string };
 const observationKey = (observation: TimelineObservation) => JSON.stringify([callKey(observation.call), observation.domain]);
 type PreviewClock = { kind: 'archive' } | { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
@@ -209,6 +236,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const rate = frames ? sdkTickRate : scenario ? inputRate : tickRate;
   const frameStep = rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
+  const clipGrid = useClipGrid(params.snap ?? defaults.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
     : { start: 0, end: Math.max(minSpan, documentLength) }, [frames, documentLength]);
   const range = params.range && params.range.end > bounds.start && params.range.start < bounds.end ? params.range : fitRange(bounds);
@@ -246,7 +274,9 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
       <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} sensors={sensors}
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
         <SnapContext.Provider value={step}>
-          <TimelineBody params={params} setParams={setParams} bounds={bounds} rate={rate} frames={frames} onRangeChanged={onRangeChanged} />
+          <ClipGridContext.Provider value={clipGrid}>
+            <TimelineBody params={params} setParams={setParams} bounds={bounds} rate={rate} frames={frames} onRangeChanged={onRangeChanged} />
+          </ClipGridContext.Provider>
         </SnapContext.Provider>
       </TimelineContext>
     </div>
@@ -277,14 +307,15 @@ interface DragSession {
 // 单个片段可拖到同一 Timeline 的另一条轨道（照 TimelineData.MoveClip：轨道能放这种片段且执行域相同），
 // 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段整体平移、不换轨。
 // 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合。
-function ClipEditing({ step, rows, offsets, scroller }: {
-  step: number; rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>;
+function ClipEditing({ rows, offsets, scroller }: {
+  rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>;
 }) {
   const panelId = usePanelId();
   const panelWindow = usePanelWindow();
   const { range, timelineRef, sidebarWidth: sidebar, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const elements = useSkillElements(useAuthoring(state => state.author && state.target !== null));
   const drag = useClipEditing(state => state.drag?.panelId === panelId ? state.drag : null);
+  const clipGrid = useContext(ClipGridContext);
   const session = useRef<DragSession | null>(null);
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
@@ -312,7 +343,7 @@ function ClipEditing({ step, rows, offsets, scroller }: {
     const pointer = current.pointer ?? { x: current.activator.x + delta.x, y: current.activator.y + delta.y };
     const anchor = current.moving[0].clip.clip;
     const moved = getValueFromScreenX(pointer.x) - getValueFromScreenX(current.activator.x);
-    const shift = Math.max(snapTo(anchor.startSeconds + moved, step) - anchor.startSeconds,
+    const shift = Math.max(snapGrid(anchor.startSeconds + moved, clipGrid(edit.documentId, anchor.id)) - anchor.startSeconds,
       -Math.min(...current.moving.map(item => item.clip.clip.startSeconds)));
     let hover: string | null = null;
     if (!current.multi) {
@@ -344,20 +375,25 @@ function ClipEditing({ step, rows, offsets, scroller }: {
   };
   const publish = ({ ghosts, issue, tip }: ReturnType<typeof preview>) =>
     useClipEditing.setState({ drag: { panelId, ghosts, invalid: issue !== null, tip } });
-  // 拖端：起点不早于 0、不晚于终点前一步，终点不早于起点后一步。
+  // 拖端：起点不早于 0、不晚于终点前一步，终点不早于起点后一步；按片段网格吸附。
+  // 可设 ClipIn 的片段裁起点时 ClipIn 随起点移动同样秒数（不小于 0），画面内容留在原处。
   const resized = (event: ResizeMoveEvent | ResizeEndEvent) => {
     const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
     const edit = data.edit;
     const track = edit && trackRow(edit.segmentId, edit.trackId);
     if (!edit || !track) return null;
+    const grid = clipGrid(edit.documentId, edit.clipId);
+    const unit = grid?.step ?? minimumStep;
     const delta = pixelsToValue(event.delta.x);
     const originalStart = data.span.start - edit.origin;
     const originalEnd = data.span.end - edit.origin;
-    const start = event.direction === 'start' ? Math.max(0, Math.min(originalEnd - step, snapTo(originalStart + delta, step))) : originalStart;
-    const end = event.direction === 'end' ? Math.max(start + step, snapTo(originalEnd + delta, step)) : originalEnd;
+    const start = event.direction === 'start' ? Math.max(0, Math.min(originalEnd - unit, snapGrid(originalStart + delta, grid))) : originalStart;
+    const end = event.direction === 'end' ? Math.max(start + unit, snapGrid(originalEnd + delta, grid)) : originalEnd;
     const issue = placementIssue(edit.documentId, track, track.track.clips.map(clip =>
       clip.id === edit.clipId ? { start, end } : { start: clip.startSeconds, end: clip.endSeconds }));
-    return { edit, box: String(event.active.id), start, end, issue, changed: delta !== 0 };
+    const source = elements && start !== originalStart ? clipSnapSource(elements, edit.documentId, edit.clipId) : null;
+    const clipIn = source?.template.clipInable ? Math.max(0, source.clipIn + start - originalStart) : undefined;
+    return { edit, box: String(event.active.id), start, end, clipIn, issue, changed: delta !== 0 };
   };
   useTimelineMonitor({
     onDragStart(event) {
@@ -415,7 +451,7 @@ function ClipEditing({ step, rows, offsets, scroller }: {
       useClipEditing.setState({ resize: null });
       if (!result?.changed) return;
       if (result.issue) consoleActions.log('warn', 'Timeline', `${result.issue}，片段恢复原长`);
-      else authoringActions.setClipTime(result.edit.documentId, result.edit.clipId, result.start, result.end);
+      else authoringActions.setClipTime(result.edit.documentId, result.edit.clipId, result.start, result.end, result.clipIn);
     },
   });
   if (!drag) return null;
@@ -729,14 +765,15 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
 
   // 显示全部（照 Timeline 的 Frame All，快捷键 A）：所看的 Timeline，否则整条时间轴。
   const frameAll = useCallback(() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) }), [setParams, focused, bounds]);
-  const snap = params.snap ?? 'tick';
+  const snap = params.snap ?? defaults.snap;
   // 齿轮菜单（照 Timeline 窗口右上角的设置）：显示范围、游标跟随、编辑吸附、分组展开。
   const settings: MenuEntry[] = [
     { label: <>显示全部<kbd className={styles.shortcut}>A</kbd></>, onSelect: frameAll },
     { kind: 'check', label: '游标离开视图时跟随', checked: params.follow, onChange: follow => setParams({ follow }) },
     { kind: 'separator' },
     { kind: 'label', label: '编辑吸附' },
-    ...([['tick', '逻辑 tick'], ['0.1', '0.1 秒'], ['0.01', '0.01 秒'], ['0.001', '0.001 秒'], ['none', '关闭吸附']] as const)
+    // 逻辑树等按 tick 量化的片段在任何模式下都按逻辑 tick；素材帧模式下标记与游标按逻辑 tick。
+    ...([['frame', '素材帧（动画按源帧）'], ['tick', '逻辑 tick'], ['0.1', '0.1 秒'], ['0.01', '0.01 秒'], ['0.001', '0.001 秒'], ['none', '关闭吸附']] as const)
       .map(([value, label]): MenuEntry => ({ kind: 'radio', label, checked: snap === value, onSelect: () => setParams({ snap: value }) })),
     { kind: 'separator' },
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
@@ -1199,7 +1236,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
       })}
       <div style={{ height: total - offsets[last] }} />
       </BoxedContext.Provider>
-      {step !== null && <ClipEditing step={step} rows={rows} offsets={offsets} scroller={scroller} />}
+      {step !== null && <ClipEditing rows={rows} offsets={offsets} scroller={scroller} />}
       {box && (
         <div className={styles.selectBox} style={{
           left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1),
@@ -1713,14 +1750,13 @@ type EaseDraft = { side: 'in' | 'out'; seconds: number };
 // 片段一端的过渡：与相邻片段重叠为混合，否则有淡入淡出时为淡变（BlendKind）；width 为像素宽。
 type ClipBlend = { kind: 'mix' | 'ease'; width: number } | null;
 
-// 淡入淡出手柄（作者模式）：顶边两端的小方块左右拖动改时长，按吸附步长取整；悬停或选中片段时显示。
+// 淡入淡出手柄（作者模式）：顶边两端的小方块左右拖动改时长，按片段网格的步长取整（时长不带偏移）；悬停或选中片段时显示。
 // 拖动中的草稿由片段持有，片段按草稿画淡变形状；已与相邻片段混合的一端没有手柄。
-function EaseHandles({ ease, start, end, draft, setDraft, sides }: {
+function EaseHandles({ ease, start, end, draft, setDraft, sides, step }: {
   ease: ClipEase; start: number; end: number; draft: EaseDraft | null; setDraft(draft: EaseDraft | null): void;
-  sides: { in: boolean; out: boolean };
+  sides: { in: boolean; out: boolean }; step: number;
 }) {
   const { valueToPixels, getValueFromScreenX } = useTimelineContext();
-  const step = useContext(SnapContext) ?? 1 / 60;
   const easeIn = draft?.side === 'in' ? draft.seconds : ease.in;
   const easeOut = draft?.side === 'out' ? draft.seconds : ease.out;
   const width = valueToPixels(end - start);
@@ -1797,6 +1833,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const boxed = useContext(BoxedContext).has(boxKey);
   const selected = useSelected(selectId, 'clip') || boxed;
   const [easeDraft, setEaseDraft] = useState<EaseDraft | null>(null);
+  const clipGrid = useContext(ClipGridContext);
   const width = valueToPixels(end - start);
   const dimmed = start >= exit;
   const cut = !dimmed && end > exit ? valueToPixels(exit - start) : null;
@@ -1823,7 +1860,8 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
           {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel}>{label}</span>}
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
-            start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }} />}
+            start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }}
+            step={(edit && clipGrid(edit.documentId, edit.clipId)?.step) ?? minimumStep} />}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>

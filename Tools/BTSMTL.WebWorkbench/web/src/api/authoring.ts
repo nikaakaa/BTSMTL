@@ -172,6 +172,9 @@ export interface ClipTemplate extends ElementTemplate {
   kind: string;
   contract: { trackKind: string; domains: string[] };
   curves: ClipCurveChannel[];
+  // 正式 ClipCapabilities：起止按逻辑 tick 量化；可设 ClipIn（素材时间按 ClipIn 映射）。
+  tickQuantized: boolean;
+  clipInable: boolean;
 }
 
 export interface SkillElements {
