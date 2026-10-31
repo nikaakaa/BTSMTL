@@ -30,12 +30,7 @@ function evaluate(keys: Key[], time: number): number {
   return last.value;
 }
 
-// 曲线在 [0, 1] 上均匀取 count + 1 个点（Timeline 片段曲线按片段或缓动区间归一化）；权重切线按非权重近似。
-export function sampleCurve(curve: JsonObject, count: number): [number, number][] {
-  const keys = keysOf(curve);
-  return Array.from({ length: count + 1 }, (_, index) => [index / count, evaluate(keys, index / count)]);
-}
-
+// 曲线在某时刻的值；权重切线按非权重近似。
 export const evaluateCurve = (curve: JsonObject, time: number) => evaluate(keysOf(curve), time);
 
 // 在归一化时间处加关键帧（照 Slate 参数 AddKey）：值取曲线在该处的值，切线取两侧求值的斜率，曲线形状不变。

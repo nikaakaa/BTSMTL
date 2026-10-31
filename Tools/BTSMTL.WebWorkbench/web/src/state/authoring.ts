@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ReferenceCurves, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -809,9 +809,9 @@ export function clipTemplatesFor(elements: SkillElements, documentId: string, tr
     template.contract.domains.includes(domain) && clip.contract.domains.includes(domain));
 }
 
-// 轨道能放带曲线通道的片段时可展开曲线。
+// 轨道能放带曲线通道或参考曲线的片段时可展开曲线。
 export const trackHasCurves = (elements: SkillElements, documentId: string, trackId: string) =>
-  clipTemplatesFor(elements, documentId, trackId).some(template => template.curves.length > 0);
+  clipTemplatesFor(elements, documentId, trackId).some(template => template.curves.length > 0 || template.referenceCurves !== null);
 
 // 片段各曲线通道的当前曲线；字段未设置（null）时 curve 为 null，运行时该通道不起作用。
 export function clipCurves(elements: SkillElements, documentId: string, clipId: string): { channel: ClipCurveChannel; curve: JsonObject | null }[] {
@@ -835,6 +835,30 @@ export function clipSnapSource(elements: SkillElements, documentId: string, clip
   return {
     template, references, start: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), clipIn: fpSeconds(numberOf(clip.m_ClipInTimeFPRawValue ?? 0)),
   };
+}
+
+// 片段的参考曲线源：模板 referenceCurves 成员引用的资源身份与片段的源区间（SampledClip 源起止秒数）。
+export function clipReferenceSource(elements: SkillElements, documentId: string, clipId: string) {
+  const document = currentDocument(timelinePath(documentId));
+  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
+  const member = clip && elements.clips.find(item => item.kind === clip.ContractKind)?.referenceCurves;
+  const identity = member ? clip[member] : null;
+  return typeof identity === 'string'
+    ? { identity, sourceStart: numberOf(clip!.m_SourceStartTime), sourceEnd: numberOf(clip!.m_SourceEndTime) } : null;
+}
+
+// 参考曲线按资源身份缓存（源资产只在 Unity 里改，刷新网页重读）；读失败记一次控制台错误。
+export type ReferenceEntry = ReferenceCurves | { failed: string };
+export const useReferenceCurves = create<Record<string, ReferenceEntry>>(() => ({}));
+const referenceRequests = new Set<string>();
+export function requestReferenceCurves(identity: string) {
+  const target = get().target;
+  if (!target || referenceRequests.has(identity)) return;
+  referenceRequests.add(identity);
+  authoringApi.referenceCurves(target, identity).then(result => useReferenceCurves.setState({ [identity]: result }), (error: unknown) => {
+    consoleActions.error('作者', error);
+    useReferenceCurves.setState({ [identity]: { failed: error instanceof Error ? error.message : String(error) } });
+  });
 }
 
 // 通道的默认曲线（两端线性切线，非权重），与 Unity 目录的 AnimationCurve.Linear 相同。

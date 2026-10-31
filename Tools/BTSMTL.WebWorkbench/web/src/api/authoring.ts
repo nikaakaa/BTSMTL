@@ -175,6 +175,14 @@ export interface ClipTemplate extends ElementTemplate {
   // 正式 ClipCapabilities：起止按逻辑 tick 量化；可设 ClipIn（素材时间按 ClipIn 映射）。
   tickQuantized: boolean;
   clipInable: boolean;
+  // 引用源曲线资产的成员（有只读参考曲线的片段，如位移曲线的 m_SourceCurve）；没有为 null。
+  referenceCurves: string | null;
+}
+
+// 片段参考曲线（queries/reference-curves，照 MotionCurveClip.ReferenceCurves）：源资产名、源时长与按源时间的曲线。
+export interface ReferenceCurves {
+  identity: string; label: string; duration: number;
+  curves: { id: string; name: string; keys: { time: number; value: number; inTangent: number | string; outTangent: number | string }[] }[];
 }
 
 export interface SkillElements {
@@ -348,6 +356,8 @@ export const authoringApi = {
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
   identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
   blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
+  referenceCurves: (target: AuthoringTarget, identity: string, signal?: AbortSignal) =>
+    getJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves${query({ identity })}`, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
   elements: async (target: AuthoringTarget, signal?: AbortSignal) => {
     const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements;
