@@ -66,8 +66,8 @@ export interface TrackRow {
   trackKind: TrackKind;
   clips: ClipInstance[];
   markers: { key: string; selectId: string; seconds: number; graphId: string }[];
-  // Timeline 面板展开了这条轨道的片段曲线。
-  curves?: boolean;
+  // Timeline 面板展开了这条轨道的片段曲线：片段下方参数区的高度。
+  curves?: number;
 }
 
 export interface GroupRow {

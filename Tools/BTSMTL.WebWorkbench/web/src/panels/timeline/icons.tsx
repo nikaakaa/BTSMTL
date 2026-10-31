@@ -47,3 +47,14 @@ export const PlayheadShape = () => (
     <path d="M1.5 0h8A1.5 1.5 0 0 1 11 1.5v12L5.5 20 0 13.5v-12A1.5 1.5 0 0 1 1.5 0z" />
   </svg>
 );
+
+// 曲线参数的关键帧按钮（12×12，照 Slate prevKey / key / nextKey）：菱形为关键帧，两侧为跳到上一个、下一个关键帧。
+const keyIcons = {
+  previous: <path d="M1 1.5h1.6v9H1zM10.5 1.5v9L4 6z" />,
+  key: <path d="M6 1 11 6 6 11 1 6z" />,
+  next: <path d="M9.4 1.5H11v9H9.4zM1.5 1.5v9L8 6z" />,
+};
+
+export const KeyIcon = ({ kind }: { kind: keyof typeof keyIcons }) => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden focusable="false">{keyIcons[kind]}</svg>
+);

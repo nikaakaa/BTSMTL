@@ -401,48 +401,133 @@
   min-width: 0;
 }
 
-.curveLegend {
+/* 曲线参数列表（照 TrackEditorGUI.DrawParametersInfoGUI）：轨道头下部的深色区，参数行高 18、间距 2，
+   左侧通道色条；查看中的参数提亮加粗 */
+.curveParams {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding: 4px 8px 0 26px;
-  color: var(--text-dim);
-  font-size: 11px;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  margin: 0 3px 3px 5px;
+  padding: 5px 4px 0;
+  background: #383838;
+  border-radius: 2px;
 }
 
-.curveChannel {
+.curveParam {
   all: unset;
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  flex: none;
+  height: 18px;
+  padding: 0 6px 0 0;
+  border-radius: 2px;
+  background: rgb(0 128 128 / 28%);
+  color: var(--text);
+  font-size: 11px;
   white-space: nowrap;
+  overflow: hidden;
 }
 
-.curveChannel::before {
+.curveParam::before {
   content: '';
   flex: none;
-  width: 12px;
-  height: 2px;
-  border-radius: 1px;
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px 0 0 2px;
   background: var(--cc);
 }
 
-.curveChannel[data-unset] {
-  color: var(--text-disabled);
+.curveParam:hover {
+  background: rgb(0 128 128 / 40%);
 }
 
-.curveChannel[data-unset]::before {
-  opacity: .4;
-}
-
-button.curveChannel:hover {
+.curveParam[aria-pressed='true'] {
+  background: rgb(128 128 255 / 34%);
   color: var(--text-strong);
+  font-weight: 600;
 }
 
-button.curveChannel:focus-visible {
+.curveParam:focus-visible {
   outline: 1px solid var(--accent);
+}
+
+.curveParamName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.curveParam small {
+  color: var(--text-disabled);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.curveNote {
+  color: var(--text-disabled);
+  font-size: 11px;
+}
+
+/* 查看参数时的关键帧控制行：上一关键帧、在游标处加删关键帧（游标在关键帧上时为红色）、下一关键帧、游标处的值 */
+.curveKeys {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: rgb(0 0 0 / 20%);
+}
+
+.curveKeyButton {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--glyph);
+  border-radius: 2px;
+}
+
+.curveKeyButton:hover:not(:disabled) {
+  background: var(--button-hover);
+  color: var(--glyph-strong);
+}
+
+.curveKeyButton:disabled {
+  opacity: .35;
+}
+
+.curveKeyButton[data-on] {
+  color: #e05454;
+}
+
+.curveValue {
+  margin-left: auto;
+  font: var(--mono);
+  color: var(--value);
+}
+
+/* 底边拖动改曲线区高度 */
+.curveResize {
+  position: absolute;
+  left: -5px;
+  right: -3px;
+  bottom: -3px;
+  height: 4px;
+  background: #5a5a5a;
+  cursor: ns-resize;
+}
+
+.curveResize:hover {
+  background: var(--accent);
 }
 
 .headSelect {
@@ -968,51 +1053,86 @@ button.curveChannel:focus-visible {
 }
 
 /* 片段曲线区：片段下方，选中片段的区间提亮、曲线全亮，其余压暗 */
+/* 片段下方的参数区（照 TrackEditorGUI.DrawClipCurves）：整条压暗，只在选中片段的范围内画参数行或完整曲线 */
 .clipCurves {
   position: absolute;
   left: 0;
   width: 100%;
   overflow: hidden;
+  background: rgb(0 0 0 / 40%);
   border-top: 1px solid rgb(0 0 0 / 25%);
   box-sizing: border-box;
 }
 
-.clipCurveGuide {
-  stroke: rgb(255 255 255 / 9%);
+.curveHint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgb(255 255 255 / 30%);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.curveClipArea {
+  fill: rgb(64 64 64 / 90%);
+  stroke: rgb(255 255 255 / 6%);
+}
+
+.curveRow {
+  cursor: pointer;
+}
+
+.curveRowBand {
+  fill: rgb(0 0 0 / 12%);
+  stroke: rgb(0 0 0 / 25%);
+}
+
+.curveRow:hover .curveRowBand {
+  fill: rgb(255 255 255 / 5%);
+}
+
+.curveDope {
+  fill: var(--cc);
+  stroke: rgb(0 0 0 / 55%);
+  stroke-width: 1;
+}
+
+.curveRow[data-unset] .curveRowBand {
+  fill: rgb(0 0 0 / 28%);
+}
+
+.curvePlotEdge {
+  stroke: rgb(0 0 0 / 50%);
+}
+
+.curveGuide {
+  stroke: rgb(255 255 255 / 10%);
   stroke-dasharray: 3 3;
 }
 
-.clipCurveSpan {
-  fill: rgb(0 0 0 / 16%);
-  stroke: rgb(255 255 255 / 5%);
+.curveScaleText {
+  fill: var(--text-disabled);
+  font-size: 10px;
+  pointer-events: none;
 }
 
-g[data-selected] > .clipCurveSpan {
-  fill: rgb(255 255 255 / 4%);
-  stroke: rgb(255 255 255 / 22%);
-}
-
-.clipCurveLine {
+.curvePlotLine {
   fill: none;
   stroke: var(--cc);
   stroke-width: 1.5;
   stroke-linejoin: round;
-  opacity: .4;
   pointer-events: none;
 }
 
-g[data-selected] .clipCurveLine {
-  opacity: 1;
-}
-
-.clipCurveKey {
+.curvePlotKey {
   fill: #1e1e1e;
   stroke: var(--cc);
   stroke-width: 1.5;
   cursor: grab;
 }
 
-.clipCurveKey:hover, .clipCurveKey[data-active] {
+.curvePlotKey:hover, .curvePlotKey[data-active] {
   fill: var(--cc);
 }
 

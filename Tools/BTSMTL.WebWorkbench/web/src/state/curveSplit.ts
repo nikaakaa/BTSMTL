@@ -1,4 +1,4 @@
-import { JsonFloat, numberOf, type JsonObject, type JsonValue } from './skillJson';
+import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from './skillJson';
 
 // 片段切分时的归一化曲线拆分（照 Unity BtsmtlSlateTimelineBinding.SplitNormalizedCurve）：
 // 取 [start, end] 内的关键帧换到 0–1，切线乘区间长度，两端缺关键帧时按原曲线求值补一帧。
@@ -35,6 +35,21 @@ export function sampleCurve(curve: JsonObject, count: number): [number, number][
   const keys = keysOf(curve);
   return Array.from({ length: count + 1 }, (_, index) => [index / count, evaluate(keys, index / count)]);
 }
+
+export const evaluateCurve = (curve: JsonObject, time: number) => evaluate(keysOf(curve), time);
+
+// 在归一化时间处加关键帧（照 Slate 参数 AddKey）：值取曲线在该处的值，切线取两侧求值的斜率，曲线形状不变。
+export function curveWithKey(curve: JsonObject, time: number): JsonObject {
+  const keys = keysOf(curve);
+  const before = Math.max(0, time - 1e-3), after = Math.min(1, time + 1e-3);
+  const tangent = new JsonFloat((evaluate(keys, after) - evaluate(keys, before)) / (after - before));
+  const added = keyJson(time, evaluate(keys, time), tangent, tangent);
+  return { ...cloneJson(curve), keys: [...(cloneJson(curve.keys) as JsonObject[]), added].sort((left, right) => numberOf(left.time) - numberOf(right.time)) };
+}
+
+// 删去归一化时间 tolerance 以内的关键帧。
+export const curveWithoutKey = (curve: JsonObject, time: number, tolerance: number): JsonObject =>
+  ({ ...cloneJson(curve), keys: (cloneJson(curve.keys) as JsonObject[]).filter(key => Math.abs(numberOf(key.time) - time) > tolerance) });
 
 // 边界切线：落在关键帧之间取前一关键帧的出切线（照 Unity BoundaryTangent）。
 function boundaryTangent(keys: Key[], time: number): number {

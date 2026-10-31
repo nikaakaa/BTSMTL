@@ -32,12 +32,12 @@ import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
 import { useAnimationFrameRates } from '../../state/resources';
-import { sampleCurve } from '../../state/curveSplit';
+import { curveWithKey, curveWithoutKey, evaluateCurve, sampleCurve } from '../../state/curveSplit';
 import { JsonFloat, cloneJson, numberOf, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
-import { MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
+import { KeyIcon, MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
@@ -50,8 +50,14 @@ const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
 const curveHeight = 64;
-// 轨道展开片段曲线时，片段下方的曲线区高度（BtsmtlSlateTimelineBinding 的 ShowCurves）。
-const clipCurveHeight = 72;
+// 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
+// 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
+const curveParamTop = 5;
+const curveParamPitch = 20;
+const curveParamHeight = 18;
+const curveListHeight = (count: number) => Math.max(50, curveParamTop * 2 + count * curveParamPitch);
+const curveInspectHeight = (count: number) => curveParamTop * 2 + count * curveParamPitch + 30 + 120;
+const curveMaxHeight = 600;
 const rowSpacing = 3;
 // 行列表顶部内边距（.rows 的 padding-top）。
 const rowsPadding = 3;
@@ -71,8 +77,10 @@ type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow |
 interface Params {
   range: Range | null;
   collapsed: string[];
-  // 展开片段曲线的轨道行。
+  // 展开片段曲线的轨道行；正在查看完整曲线的参数（同一时间一个，照 Slate inspectedParameterId）；查看时拖动加高的参数区高度。
   curveTracks: string[];
+  curveParam: { track: string; parameter: string } | null;
+  curveHeights: Record<string, number>;
   follow: boolean;
   filter: string;
   // 顶栏所选技能（programId）；null 为路线上第一个技能。
@@ -89,7 +97,7 @@ interface Params {
 }
 type Snap = 'tick' | 'frame' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], curveTracks: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'frame', call: null, pin: null, caller: null,
+  range: null, collapsed: [], curveTracks: [], curveParam: null, curveHeights: {}, follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'frame', call: null, pin: null, caller: null,
 };
 
 // 标记与游标的吸附步长（秒）；素材帧只属于片段，标记按逻辑 tick；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
@@ -163,7 +171,16 @@ function playbackAt(segments: RouteSegment[], documentId: string, frameIndex: nu
 const segmentRange = (segment: RouteSegment) => fitRange({ start: segment.origin, end: segment.origin + segment.length });
 
 const rowHeight = (row: Row) =>
-  (row.kind === 'curve' ? curveHeight : row.kind === 'track' && row.curves ? trackHeight + clipCurveHeight : trackHeight) + rowSpacing;
+  (row.kind === 'curve' ? curveHeight : row.kind === 'track' && row.curves ? trackHeight + row.curves : trackHeight) + rowSpacing;
+
+// 曲线参数区的查看状态与游标跳转（轨道行是 memo 组件，经上下文取）。seek 不按吸附取整，跳到关键帧本身。
+interface CurveView {
+  inspected: Params['curveParam'];
+  inspect(track: string, parameter: string | null): void;
+  resize(track: string, height: number): void;
+  seek(value: number): void;
+}
+const CurveViewContext = createContext<CurveView>({ inspected: null, inspect: () => {}, resize: () => {}, seek: () => {} });
 
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
@@ -559,6 +576,7 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
   const edited = useAuthoring(state => state.edited);
   const files = useAuthoring(state => state.files);
   const timelines = useAuthorTimelines();
+  const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
     return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds) } : segment;
@@ -678,7 +696,16 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     const filter = params.filter.trim().toLowerCase();
     const collapsed = new Set(params.collapsed);
     const curveTracks = new Set(params.curveTracks);
-    const expand = (row: TrackRow): TrackRow => curveTracks.has(row.id) ? { ...row, curves: true } : row;
+    // 参数区按这条轨道能放的片段中曲线参数最多的一种定高，换选片段时行高不跳。
+    const expand = (row: TrackRow): TrackRow => {
+      if (!curveTracks.has(row.id) || !elements) return row;
+      const count = Math.max(0, ...clipTemplatesFor(elements, row.timeline.documentId, row.track.id).map(template => template.curves.length));
+      if (!count) return row;
+      return {
+        ...row, curves: params.curveParam?.track === row.id
+          ? Math.min(curveMaxHeight, Math.max(curveInspectHeight(count), params.curveHeights[row.id] ?? 0)) : curveListHeight(count),
+      };
+    };
     const result: Row[] = [];
     const addCurves = () => {
       if (curves === null) return;
@@ -725,7 +752,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     }
     addCurves();
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed, params.curveTracks]);
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed,
+    params.curveTracks, params.curveParam, params.curveHeights, elements]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
@@ -734,17 +762,18 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
   }, [params.collapsed, setParams]);
   const toggleCurves = useCallback((id: string) => {
     const expanded = new Set(params.curveTracks);
-    if (!expanded.delete(id)) expanded.add(id);
-    setParams({ curveTracks: [...expanded] });
-  }, [params.curveTracks, setParams]);
+    const collapsing = expanded.delete(id);
+    if (!collapsing) expanded.add(id);
+    setParams({ curveTracks: [...expanded], ...(collapsing && params.curveParam?.track === id ? { curveParam: null } : {}) });
+  }, [params.curveTracks, params.curveParam, setParams]);
 
   const step = useContext(SnapContext);
   // 游标跳到时间轴上的一点（运行档案为运行秒数，技能文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
-  const seek = useCallback((value: number) => {
+  const seek = useCallback((value: number, exact = false) => {
     if (frames) { void transport.seekTime(value); return; }
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, value));
-    const seconds = step ? Math.min(focused.length, snapTo(raw, step)) : raw;
+    const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
     if (inputScheme && inputObservation.kind === 'ready') {
       const metadata = inputObservation.metadata;
       void transport.seekTime((scheduleZeroFrame(metadata) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
@@ -762,6 +791,12 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
   }, [frames, observed, focused, step, inputScheme, inputObservation]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
+  const curveView = useMemo<CurveView>(() => ({
+    inspected: params.curveParam,
+    inspect: (track, parameter) => setParams({ curveParam: parameter === null ? null : { track, parameter } }),
+    resize: (track, height) => setParams({ curveHeights: { ...params.curveHeights, [track]: Math.round(height) } }),
+    seek: value => seek(value, true),
+  }), [params.curveParam, params.curveHeights, setParams, seek]);
 
   // 显示全部（照 Timeline 的 Frame All，快捷键 A）：所看的 Timeline，否则整条时间轴。
   const frameAll = useCallback(() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) }), [setParams, focused, bounds]);
@@ -839,7 +874,9 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
           </div>
           <Ruler bounds={bounds} origin={origin} rate={rate} marks={marks} seekAt={seekAt} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+        <CurveViewContext.Provider value={curveView}>
+          <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+        </CurveViewContext.Provider>
         <div className={styles.footer}>
           <div className={styles.footHead} />
           <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
@@ -1507,7 +1544,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
   const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
-  const curves = hasCurves && !!row.curves;
+  const curves = hasCurves && row.curves ? row.curves : 0;
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
   const muted = row.track.muted;
@@ -1527,9 +1564,9 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) select();
     }}>
     <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead}
-      height={curves ? trackHeight + clipCurveHeight : trackHeight} head={
+      height={trackHeight + curves} head={
       <TrackHead kind={row.trackKind} selected={selected} name={row.track.displayName} onSelect={select}
-        below={curves && elements ? <CurveLegend row={row} elements={elements} mixes={mixes} author={author} /> : undefined}
+        below={curves && elements ? <CurveParameters row={row} elements={elements} mixes={mixes} author={author} height={curves} /> : undefined}
         onRename={author ? () => setNaming(true) : undefined} title={author ? '单击选中 · 双击改名 · 右键打开轨道菜单' : undefined}
         rename={naming ? (
           <TextInput autoFocus defaultValue={row.track.displayName} aria-label="轨道名称" className={styles.nameInput}
@@ -1545,7 +1582,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
             }} />
         ) : undefined}>
         {(author || hasCurves) && <span className={styles.suite}>
-          {hasCurves && <button className={styles.suiteButton} aria-pressed={curves} title={curves ? '收起片段曲线' : '展开片段曲线'}
+          {hasCurves && <button className={styles.suiteButton} aria-pressed={curves > 0} title={curves ? '收起片段曲线' : '展开片段曲线'}
             onClick={() => toggleCurves(row.id)}>
             <CurveIcon />
           </button>}
@@ -1561,7 +1598,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
     }>
       {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
         documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
-      {curves && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} />}
+      {curves > 0 && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} height={curves} />}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
         <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId}
           selectId={marker.selectId}
@@ -1590,126 +1627,210 @@ function channelSpan(role: ClipCurveChannel['role'], clip: ClipInstance, mix: Cl
   return role === 'EaseIn' ? { start: clip.start, end: clip.start + ease } : { start: clip.end - ease, end: clip.end };
 }
 
-const curvePad = 8;
 const roundCurve = (value: number) => Math.round(value * 1e4) / 1e4;
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const curveDiamond = (x: number, y: number, r: number) => `M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`;
 
-type CurveDraft = { clipId: string; member: string; index: number; t: number; v: number; span: Span; channel: ClipCurveChannel };
+// 片段的一个曲线参数（照 BtsmtlTimelineParameterBinding）：正式曲线通道，归一化时间映射到通道生效的时间段。
+interface CurveParameter { id: string; channel: ClipCurveChannel; curve: JsonObject | null; span: Span | null }
+const curveKeys = (curve: JsonObject | null) => curve ? curve.keys as JsonObject[] : [];
 
-// 展开的片段曲线（BtsmtlSlateTimelineBinding.ShowCurves）：片段下方按正式通道颜色画各片段的曲线，选中片段高亮，
-// 其余压暗；作者模式下拖动选中片段的关键帧改时间与值，时间限在 0–1，值限在通道取值范围，取到万分位写回。
-function ClipCurves({ row, elements, mixes, author }: {
-  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean;
-}) {
-  const clock = useContext(PreviewClockContext);
-  const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
+// 展开曲线的轨道只看本轨选中的片段（照 IEmbeddedTimelineTrackBinding.SelectedClip）。
+function useCurveClip(row: TrackRow, elements: SkillElements, mixes: Map<string, ClipMix>) {
   useAuthoring(state => state.version);
   const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
+  const view = useContext(CurveViewContext);
+  const clip = row.clips.find(item => item.selectId === selection) ?? null;
+  const parameters: CurveParameter[] = clip ? clipCurves(elements, row.timeline.documentId, clip.clip.id).map(({ channel, curve }) => ({
+    id: channel.member, channel, curve, span: channelSpan(channel.role, clip, mixes.get(clip.key) ?? noMix),
+  })) : [];
+  const inspected = view.inspected?.track === row.id ? parameters.find(item => item.id === view.inspected!.parameter) ?? null : null;
+  return { clip, parameters, inspected, view };
+}
+
+// 展开曲线的轨道头下部（照 TrackEditorGUI.DrawParametersInfoGUI）：本轨选中片段的各曲线参数，单击查看完整曲线，再次单击收起。
+// 查看时下方是上一关键帧、在游标处加或删关键帧、下一关键帧与游标处的值；拖动底边加高曲线区。
+function CurveParameters({ row, elements, mixes, author, height }: {
+  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
+}) {
+  const clock = useContext(PreviewClockContext);
+  const tick = useContext(SnapContext) ?? 1 / 60;
+  const { clip, parameters, inspected, view } = useCurveClip(row, elements, mixes);
+  const cursor = usePreviewSelect(clock, seconds => seconds === null ? null : clock.kind === 'archive' ? seconds : row.segment.origin + seconds);
+  const drag = useRef<{ y: number; height: number } | null>(null);
+  if (!clip) return <div className={styles.curveParams}><span className={styles.curveNote}>未选中本轨片段</span></div>;
+  const write = (parameter: CurveParameter, curve: JsonObject) =>
+    authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [parameter.channel.member], curve);
+  let controls: ReactNode = null;
+  if (inspected) {
+    const { span, curve } = inspected;
+    if (!curve) controls = author
+      ? <Button variant="ghost" onClick={() => write(inspected, defaultChannelCurve(inspected.channel))}>按默认直线创建</Button>
+      : <span className={styles.curveNote}>未设置，运行时不起作用</span>;
+    else if (!span) controls = <span className={styles.curveNote}>片段没有淡入淡出或混合，不取值</span>;
+    else {
+      // 游标在参数区间里的归一化时间；离关键帧不到半个 tick 视为在关键帧上。
+      const length = span.end - span.start;
+      const t = cursor === null ? null : (cursor - span.start) / length;
+      const tolerance = tick / 2 / length;
+      const times = curveKeys(curve).map(key => numberOf(key.time));
+      const atKey = t !== null && times.some(time => Math.abs(time - t) <= tolerance);
+      const previous = t === null ? undefined : times.filter(time => time < t - tolerance).at(-1);
+      const next = t === null ? undefined : times.find(time => time > t + tolerance);
+      const jump = (time: number) => view.seek(span.start + time * length);
+      const inside = t !== null && t >= -tolerance && t <= 1 + tolerance;
+      controls = <>
+        <button className={styles.curveKeyButton} disabled={previous === undefined} title="上一关键帧" onClick={() => jump(previous!)}>
+          <KeyIcon kind="previous" />
+        </button>
+        <button className={styles.curveKeyButton} data-on={atKey || undefined} disabled={!author || !inside}
+          title={atKey ? '删除游标处的关键帧' : '在游标处添加关键帧'}
+          onClick={() => write(inspected, atKey ? curveWithoutKey(curve, t!, tolerance) : curveWithKey(curve, clamp01(t!)))}>
+          <KeyIcon kind="key" />
+        </button>
+        <button className={styles.curveKeyButton} disabled={next === undefined} title="下一关键帧" onClick={() => jump(next!)}>
+          <KeyIcon kind="next" />
+        </button>
+        <span className={styles.curveValue} title="游标处的值">{t === null ? '—' : evaluateCurve(curve, clamp01(t)).toFixed(3)}</span>
+      </>;
+    }
+  }
+  return (
+    <div className={styles.curveParams}>
+      {parameters.map(parameter => (
+        <button key={parameter.id} className={styles.curveParam} aria-pressed={parameter === inspected}
+          style={{ ['--cc' as string]: parameter.channel.color }}
+          title={`${parameter.channel.name} · ${parameter === inspected ? '单击收起' : '单击查看完整曲线'}`}
+          onClick={() => view.inspect(row.id, parameter === inspected ? null : parameter.id)}>
+          <span className={styles.curveParamName}>{parameter.channel.name}</span>
+          {!parameter.curve ? <small>未设置</small> : !parameter.span ? <small>无缓动</small> : null}
+        </button>
+      ))}
+      {inspected && <div className={styles.curveKeys}>{controls}</div>}
+      {inspected && <div className={styles.curveResize} title="拖动改变曲线区高度"
+        onPointerDown={event => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          drag.current = { y: event.clientY, height };
+        }}
+        onPointerMove={event => { if (drag.current) view.resize(row.id, Math.min(curveMaxHeight, drag.current.height + event.clientY - drag.current.y)); }}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} />}
+    </div>
+  );
+}
+
+interface CurveScale { min: number; max: number }
+type CurveDraft = { index: number; t: number; v: number; from: { t: number; v: number }; scale: CurveScale };
+
+// 曲线的纵向范围（照 Slate FrameAllCurvesOf）：通道取值域与曲线实际取值的并集，上下留白。
+function curveScale(parameter: CurveParameter): CurveScale {
+  let min = parameter.channel.min, max = parameter.channel.max;
+  if (parameter.curve) for (const [, value] of sampleCurve(parameter.curve, 64)) { min = Math.min(min, value); max = Math.max(max, value); }
+  for (const key of curveKeys(parameter.curve)) { min = Math.min(min, numberOf(key.value)); max = Math.max(max, numberOf(key.value)); }
+  if (!(max > min)) { min -= 0.5; max += 0.5; }
+  const pad = (max - min) * 0.08;
+  return { min: min - pad, max: max + pad };
+}
+
+// 片段下方的参数区（照 TrackEditorGUI.DrawClipCurves）：只在选中片段的时间范围内画。未查看参数时每个参数一行，
+// 菱形为关键帧，单击一行查看该参数；查看时上方一行关键帧，下面是完整曲线，作者模式下拖动关键帧改时间与值，
+// 时间限在 0–1，值限在通道取值域，取到万分位写回。
+function ClipCurves({ row, elements, mixes, author, height }: {
+  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
+}) {
+  const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
+  const { clip, parameters, inspected, view } = useCurveClip(row, elements, mixes);
   const [draft, setDraft] = useState<CurveDraft | null>(null);
   const svg = useRef<SVGSVGElement>(null);
-  const documentId = row.timeline.documentId;
-  const plotHeight = clipCurveHeight - curvePad * 2;
   const x = (seconds: number) => valueToPixels(seconds - range.start);
-  const y = (value: number, channel: ClipCurveChannel) => curvePad + (channel.max - value) / (channel.max - channel.min) * plotHeight;
-  const keysOf = (curve: JsonObject) => curve.keys as JsonObject[];
+  if (!clip) return (
+    <div className={styles.clipCurves} style={{ top: trackHeight, height }}>
+      <span className={styles.curveHint}>选中本轨片段后在这里查看它的曲线</span>
+    </div>
+  );
+  const left = x(clip.start), width = Math.max(1, x(clip.end) - left);
+  const spanX = (span: Span, t: number) => x(span.start + t * (span.end - span.start));
+  const times = (parameter: CurveParameter) => curveKeys(parameter.curve).map(key => clamp01(numberOf(key.time)));
 
-  const move = (event: PointerEvent<SVGSVGElement>) => {
-    if (!draft) return;
-    const box = svg.current!.getBoundingClientRect();
-    const { span, channel } = draft;
-    const t = Math.max(0, Math.min(1, (getValueFromScreenX(event.clientX) - span.start) / (span.end - span.start)));
-    const v = channel.max - (event.clientY - box.top - curvePad) / plotHeight * (channel.max - channel.min);
-    setDraft({ ...draft, t: roundCurve(t), v: roundCurve(Math.max(channel.min, Math.min(channel.max, v))) });
-  };
-  const release = () => {
-    if (!draft) return;
-    setDraft(null);
-    const curve = clipCurves(elements, documentId, draft.clipId).find(item => item.channel.member === draft.member)?.curve;
-    if (!curve) return;
-    const keys = keysOf(curve).map((key, index) => index === draft.index
-      ? { ...cloneJson(key) as JsonObject, time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : cloneJson(key));
-    keys.sort((left, right) => numberOf((left as JsonObject).time) - numberOf((right as JsonObject).time));
-    authoringActions.setClipValue(documentId, draft.clipId, [draft.member], { ...cloneJson(curve) as JsonObject, keys });
-  };
-
-  return (
-    <svg ref={svg} className={styles.clipCurves} style={{ top: trackHeight, height: clipCurveHeight }}
-      onPointerMove={move} onPointerUp={release} onPointerCancel={() => setDraft(null)}>
-      {/* 取值上下限的参考线（通道同为 0–1）。 */}
-      <line className={styles.clipCurveGuide} x1={0} x2="100%" y1={curvePad} y2={curvePad} />
-      <line className={styles.clipCurveGuide} x1={0} x2="100%" y1={curvePad + plotHeight} y2={curvePad + plotHeight} />
-      {row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end).map(clip => {
-        const chosen = selection === clip.selectId;
-        const mix = mixes.get(clip.key) ?? noMix;
+  if (!inspected) return (
+    <svg className={styles.clipCurves} style={{ top: trackHeight, height }}>
+      <rect className={styles.curveClipArea} x={left} y={1} width={width} height={height - 4} />
+      {parameters.map((parameter, index) => {
+        const y = curveParamTop + index * curveParamPitch;
+        const span = parameter.span;
         return (
-          <g key={clip.key} data-selected={chosen || undefined}>
-            <rect className={styles.clipCurveSpan} x={x(clip.start)} y={1} width={Math.max(1, x(clip.end) - x(clip.start))} height={clipCurveHeight - 2}
-              onPointerDown={event => { if (event.button === 0) selectTimelineObject(clock, 'clip', clip.selectId); }} />
-            {clipCurves(elements, documentId, clip.clip.id).map(({ channel, curve }) => {
-              const span = channelSpan(channel.role, clip, mix);
-              if (!span || !curve) return null;
-              const dragging = draft?.clipId === clip.clip.id && draft.member === channel.member ? draft : null;
-              const shown = dragging ? { ...curve, keys: keysOf(curve).map((key, index) => index === dragging.index
-                ? { ...key, time: new JsonFloat(dragging.t), value: new JsonFloat(dragging.v) } : key)
-                .sort((left, right) => numberOf((left as JsonObject).time) - numberOf((right as JsonObject).time)) } : curve;
-              const px = x(span.end) - x(span.start);
-              const at = (t: number) => x(span.start + t * (span.end - span.start));
-              const points = sampleCurve(shown, Math.max(8, Math.min(96, Math.round(px / 4))))
-                .map(([t, v]) => `${at(t)},${y(Math.max(channel.min, Math.min(channel.max, v)), channel)}`).join(' ');
-              return (
-                <g key={channel.member} style={{ ['--cc' as string]: channel.color }}>
-                  <title>{`${channel.name} · ${clip.label}`}</title>
-                  <polyline className={styles.clipCurveLine} points={points} />
-                  {chosen && author && keysOf(curve).map((key, index) => {
-                    const t = dragging?.index === index ? dragging.t : numberOf(key.time);
-                    const v = dragging?.index === index ? dragging.v : numberOf(key.value);
-                    return (
-                      <circle key={index} className={styles.clipCurveKey} cx={at(Math.max(0, Math.min(1, t)))} cy={y(v, channel)} r={3.5}
-                        data-active={dragging?.index === index || undefined}
-                        onPointerDown={event => {
-                          if (event.button !== 0) return;
-                          event.stopPropagation();
-                          svg.current!.setPointerCapture(event.pointerId);
-                          setDraft({ clipId: clip.clip.id, member: channel.member, index, t, v, span, channel });
-                        }}>
-                        <title>{`${channel.name} 关键帧 ${index} · ${t.toFixed(3)}, ${v.toFixed(3)} · 拖动修改`}</title>
-                      </circle>
-                    );
-                  })}
-                </g>
-              );
-            })}
+          <g key={parameter.id} className={styles.curveRow} style={{ ['--cc' as string]: parameter.channel.color }}
+            data-unset={!parameter.curve || !span || undefined}
+            onPointerDown={event => { if (event.button === 0) view.inspect(row.id, parameter.id); }}>
+            <title>{`${parameter.channel.name} · 单击查看完整曲线`}</title>
+            <rect className={styles.curveRowBand} x={left} y={y} width={width} height={curveParamHeight} />
+            {span && times(parameter).map((time, key) => (
+              <path key={key} className={styles.curveDope} d={curveDiamond(spanX(span, time), y + curveParamHeight / 2, 4)} />
+            ))}
           </g>
         );
       })}
     </svg>
   );
-}
 
-// 展开曲线的轨道头下部：选中片段（不在本轨时取第一个片段）的曲线通道；未设置的通道运行时不起作用，
-// 作者模式下单击按通道默认直线创建；没有缓动区间的缓动曲线不取值，标明无缓动。
-function CurveLegend({ row, elements, mixes, author }: { row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean }) {
-  useAuthoring(state => state.version);
-  const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
-  const documentId = row.timeline.documentId;
-  const clip = row.clips.find(item => item.selectId === selection) ?? row.clips[0];
-  if (!clip) return <div className={styles.curveLegend}>轨道上没有片段</div>;
-  const chosen = clip.selectId === selection;
+  const { span, curve, channel } = inspected;
+  const plotTop = 26, plotBottom = height - 6;
+  const scale = draft?.scale ?? curveScale(inspected);
+  const y = (value: number) => plotTop + (scale.max - value) / (scale.max - scale.min) * (plotBottom - plotTop);
+  const shown = curve && draft ? { ...curve, keys: curveKeys(curve).map((key, index) => index === draft.index
+    ? { ...key, time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : key)
+    .sort((a, b) => numberOf(a.time) - numberOf(b.time)) } : curve;
+  const move = (event: PointerEvent<SVGSVGElement>) => {
+    if (!draft || !span) return;
+    const box = svg.current!.getBoundingClientRect();
+    const t = clamp01((getValueFromScreenX(event.clientX) - span.start) / (span.end - span.start));
+    const v = draft.scale.max - (event.clientY - box.top - plotTop) / (plotBottom - plotTop) * (draft.scale.max - draft.scale.min);
+    setDraft({ ...draft, t: roundCurve(t), v: roundCurve(Math.max(channel.min, Math.min(channel.max, v))) });
+  };
+  const release = () => {
+    if (!draft || !curve) return;
+    setDraft(null);
+    if (draft.t === draft.from.t && draft.v === draft.from.v) return;
+    const keys = curveKeys(curve).map((key, index) => index === draft.index
+      ? { ...cloneJson(key), time: new JsonFloat(draft.t), value: new JsonFloat(draft.v) } : cloneJson(key));
+    keys.sort((a, b) => numberOf(a.time) - numberOf(b.time));
+    authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [channel.member], { ...cloneJson(curve), keys });
+  };
+  const points = span && shown ? sampleCurve(shown, Math.max(16, Math.min(240, Math.round((spanX(span, 1) - spanX(span, 0)) / 3))))
+    .map(([t, v]) => `${spanX(span, t)},${y(v)}`).join(' ') : null;
   return (
-    <div className={styles.curveLegend} title={chosen ? `${clip.label} 的曲线` : '选中片段后可拖动它的关键帧'}>
-      {clipCurves(elements, documentId, clip.clip.id).map(({ channel, curve }) => curve
-        ? channelSpan(channel.role, clip, mixes.get(clip.key) ?? noMix)
-          ? <span key={channel.member} className={styles.curveChannel} style={{ ['--cc' as string]: channel.color }}>{channel.name}</span>
-          : <span key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
-            title="片段没有淡入淡出或混合，这条缓动曲线不取值">{channel.name} · 无缓动</span>
-        : author && chosen
-          ? <button key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
-            title="未设置，运行时不起作用；单击按默认直线创建"
-            onClick={() => authoringActions.setClipValue(documentId, clip.clip.id, [channel.member], defaultChannelCurve(channel))}>
-            {channel.name} · 创建
-          </button>
-          : <span key={channel.member} className={styles.curveChannel} data-unset style={{ ['--cc' as string]: channel.color }}
-            title="未设置，运行时不起作用">{channel.name} · 未设置</span>)}
-    </div>
+    <svg ref={svg} className={styles.clipCurves} style={{ top: trackHeight, height, ['--cc' as string]: channel.color }}
+      onPointerMove={move} onPointerUp={release} onPointerCancel={() => setDraft(null)}>
+      <rect className={styles.curveClipArea} x={left} y={1} width={width} height={height - 4} />
+      <rect className={styles.curveRowBand} x={left} y={4} width={width} height={16} />
+      {span && times(inspected).map((time, key) => <path key={key} className={styles.curveDope} d={curveDiamond(spanX(span, time), 12, 4)} />)}
+      <line className={styles.curvePlotEdge} x1={left} x2={left + width} y1={plotTop - 3} y2={plotTop - 3} />
+      {[channel.max, channel.min].map(value => (
+        <g key={value}>
+          <line className={styles.curveGuide} x1={left} x2={left + width} y1={y(value)} y2={y(value)} />
+          <text className={styles.curveScaleText} x={left + 4} y={y(value) - 3}>{value}</text>
+        </g>
+      ))}
+      {points && <polyline className={styles.curvePlotLine} points={points} />}
+      {span && shown && author && curveKeys(curve).map((key, index) => {
+        const t = draft?.index === index ? draft.t : numberOf(key.time);
+        const v = draft?.index === index ? draft.v : numberOf(key.value);
+        return (
+          <circle key={index} className={styles.curvePlotKey} cx={spanX(span, clamp01(t))} cy={y(v)} r={3.5}
+            data-active={draft?.index === index || undefined}
+            onPointerDown={event => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              svg.current!.setPointerCapture(event.pointerId);
+              setDraft({ index, t, v, from: { t, v }, scale });
+            }}>
+            <title>{`${channel.name} 关键帧 ${index} · ${t.toFixed(3)}, ${v.toFixed(3)} · 拖动修改`}</title>
+          </circle>
+        );
+      })}
+      {!curve ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>未设置，运行时不起作用</text>
+        : !span ? <text className={styles.curveScaleText} x={left + 4} y={plotTop + 12}>片段没有淡入淡出或混合，这条缓动曲线不取值</text> : null}
+    </svg>
   );
 }
 
