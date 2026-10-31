@@ -95,11 +95,6 @@ function loadPage(context: OpenArchive, page: number): Promise<void> {
       offset, limit: pageFrames,
     }, signal);
     signal.throwIfAborted();
-    logic.page.items.forEach((record, index) => context.timebase.set(offset + index, {
-      hostFrame: record.source.sdkFrame,
-      seconds: (Number(record.source.sdkFrame) - context.metadata.firstRecordedSdkFrame) / context.metadata.sdkTickRate,
-    }));
-    transport.setTimebase(context.jobId, context.timebase);
     const first = logic.page.items.at(0);
     const last = logic.page.items.at(-1);
     if (!first || !last) return;
@@ -144,8 +139,11 @@ function loadCurvePage(context: OpenArchive, page: number, curveId: string): Pro
   return loadArchivePage(context, page, curveId, async signal => {
     if (frames.some(frame => frame === undefined)) await loadPage(context, page);
     signal.throwIfAborted();
+    await readFrame(offset, { kind: 'pinned', signal });
+    await readFrame(indices[indices.length - 1], { kind: 'pinned', signal });
+    signal.throwIfAborted();
     const first = context.timebase.get(offset), last = context.timebase.get(indices[indices.length - 1]);
-    if (!first || !last) throw new Error('当前页没有正式 SDK 时钟，曲线未读取');
+    if (!first || !last) throw new Error('当前页没有正式宿主帧时间，曲线未读取');
     const result = await channel('data-curves', readAll(pageOffset => playerApi.curveSamples(context.jobId, curveId, {
       firstSdkFrame: Number(first.hostFrame), lastSdkFrame: Number(last.hostFrame), offset: pageOffset, limit: 128,
     }, signal)));
@@ -303,10 +301,6 @@ export const archive = {
       ]);
       if (!isCurrent(generation)) { controller.abort(); return; }
       const timebase: ArchiveTimebase = new Map();
-      for (const [id, frame] of cache) if (id.startsWith(jobId + ':')) timebase.set(Number(id.slice(jobId.length + 1)), {
-        hostFrame: frame.hostFrame,
-        seconds: (Number(frame.hostFrame) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate,
-      });
       current = { kind: 'ready', jobId, generation, metadata, frameCount: summary.frameCount, timebase, controller };
       transport.setTimebase(jobId, timebase);
       runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,

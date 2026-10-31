@@ -1,7 +1,7 @@
 import { playerApi } from '../api/player';
 import { isAbort } from '../api/http';
 import { clockPosition, positionValue, type PlayerJobId, type PreviewPosition } from '../api/playerRecords';
-import type { LiveCommand, LiveCommandResult } from '../api/types';
+import type { Frame, LiveCommand, LiveCommandResult } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
 export type TransportSource = 'sealed' | 'player-live';
@@ -189,6 +189,13 @@ export const transport = {
   setTimebase(runId: PlayerJobId, frames: ArchiveTimebase) {
     timebase = { runId, frames };
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
+  },
+
+  recordFrames(runId: PlayerJobId, offset: number, frames: ReadonlyArray<Pick<Frame, 'hostFrame' | 'seconds'>>) {
+    if (timebase?.runId !== runId) return;
+    for (const [index, frame] of frames.entries())
+      timebase.frames.set(offset + index, { hostFrame: frame.hostFrame, seconds: frame.seconds });
+    if (frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 
   // 运行载入或地址恢复时定位到指定帧序号，不改变跟随状态。

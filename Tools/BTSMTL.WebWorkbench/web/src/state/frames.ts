@@ -3,6 +3,7 @@ import type { PlayerJobId } from '../api/playerRecords';
 import type { Frame } from '../api/types';
 import { queryService } from './query';
 import { consoleActions, getState, isCurrent, runActions } from './store';
+import { transport } from './transport';
 
 export const frameCacheLimit = 512;
 export const framePageSize = 64;
@@ -42,6 +43,7 @@ function loadPage(runId: PlayerJobId, page: number, generation: number, signal: 
   return queryService.framesPage(runId, page * framePageSize, framePageSize, signal).then(result => {
     if (!result || !isCurrent(generation)) return;
     result.items.forEach((frame, offset) => remember(runId, page * framePageSize + offset, frame));
+    transport.recordFrames(runId, page * framePageSize, result.items);
     publishRoutes(runId, generation);
   });
 }
@@ -70,7 +72,10 @@ export async function readFrame(index: number, scope: { kind: 'cursor' } | { kin
     }
   }
   const hit = cachedFrame(runId, index);
-  if (hit) publishRoutes(runId, generation);
+  if (hit) {
+    transport.recordFrames(runId, index, [hit]);
+    publishRoutes(runId, generation);
+  }
   else if (scope.kind === 'cursor') await loadCursorPage(runId, page, generation);
   else await loadPage(runId, page, generation, scope.signal);
   if (!isCurrent(generation)) return null;
