@@ -350,7 +350,7 @@ function NodeTypePicker({ graph, at, onClose }: {
           : !types ? <div className={styles.pickerNote}>读取节点类型中</div>
             : !shown.length ? <div className={styles.pickerNote}>没有匹配的类型</div>
               : shown.map(item => (
-                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType}
+                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType ?? undefined}
                   onClick={() => void add(item)}>
                   <span>{item.type}</span>
                   <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
