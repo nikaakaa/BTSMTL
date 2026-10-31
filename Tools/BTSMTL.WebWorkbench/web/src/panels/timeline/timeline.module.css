@@ -954,17 +954,48 @@
   position: absolute;
   z-index: 3;
   display: flex;
-  margin-left: -4.5px;
-  fill: #8c8c8c;
+  margin-left: -5.5px;
   cursor: default;
 }
 
-.marker:hover {
-  fill: #a8a8a8;
+/* 形状照 Slate DrawNativeMarker：浅灰填充、深色描边；选中白底蓝边 */
+.marker path {
+  fill: #c7c7c7;
+  stroke: #161616;
+  stroke-width: 1;
+  stroke-linejoin: round;
 }
 
-.marker[data-selected] {
-  fill: #e6e6e6;
+.marker:hover path {
+  fill: #e4e4e4;
+}
+
+.marker[data-selected] path {
+  fill: #fff;
+  stroke: #4599ff;
+  stroke-width: 1.5;
+}
+
+/* 标记右侧照 UE Sequencer 事件键写所触发的内容 */
+.markerText {
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  max-width: 160px;
+  overflow: hidden;
+  transform: translateY(-50%);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 90%);
+  opacity: .75;
+  pointer-events: none;
+}
+
+.marker:hover .markerText, .marker[data-selected] .markerText {
+  opacity: 1;
 }
 
 /* 轨道头双击改名 */

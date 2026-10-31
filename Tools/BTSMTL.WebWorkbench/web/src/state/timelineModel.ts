@@ -65,7 +65,8 @@ export interface TrackRow {
   track: AuthorTrack;
   trackKind: TrackKind;
   clips: ClipInstance[];
-  markers: { key: string; selectId: string; seconds: number; graphId: string }[];
+  // label：所触发节点图的名称，本次没有这张图时为 null。
+  markers: { key: string; selectId: string; seconds: number; graphId: string; label: string | null }[];
   // Timeline 面板展开了这条轨道的片段曲线：片段下方参数区的高度。
   curves?: number;
 }
@@ -237,7 +238,7 @@ export function segmentRows(segment: RouteSegment, graphNames: Map<string, strin
     })),
     markers: track.markers.map(marker => ({
       key: `${segment.id}/${marker.id}`, selectId: clipSelectId(timeline.documentId, marker.id), seconds: segment.origin + marker.seconds,
-      graphId: marker.graphId,
+      graphId: marker.graphId, label: graphNames.get(marker.graphId.slice(marker.graphId.indexOf(':') + 1)) ?? null,
     })),
   }));
 }

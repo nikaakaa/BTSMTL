@@ -34,10 +34,10 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
-// 标记（TimelineMarkerItem，9×16）：上圆下尖的水滴。
+// 标记（照 Slate 嵌入 Timeline 的 DrawNativeMarker，11×24）：上方圆角方块、下方 40% 收成尖角，尖端对准时刻。
 export const MarkerShape = () => (
-  <svg width="9" height="16" viewBox="0 0 9 16" aria-hidden focusable="false">
-    <path d="M4.5 15.6C3.3 12.3.4 8.9.4 4.6a4.1 4.1 0 0 1 8.2 0c0 4.3-2.9 7.7-4.1 11z" />
+  <svg width="11" height="24" viewBox="0 0 11 24" aria-hidden focusable="false">
+    <path d="M.5 2.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12l-5 9-5-9z" />
   </svg>
 );
 

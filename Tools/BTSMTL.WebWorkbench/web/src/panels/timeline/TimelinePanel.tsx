@@ -54,8 +54,8 @@ const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, wid
 const minSpan = 0.05;
 // 照 Unity Timeline：轨道与分组默认高 30，行间隔 3；数据曲线行自定 64。
 const trackHeight = 30;
-// 标记高度（MarkerShape 9×16），在轨道行内上下居中。
-const markerHeight = 16;
+// 标记高度（MarkerShape 11×24），在轨道行内上下居中。
+const markerHeight = 24;
 const curveHeight = 64;
 // 轨道展开片段曲线时片段下方的参数区（照 BtsmtlTimelineTrackBinding.GetFinalHeight 与 TrackEditorGUI）：
 // 参数行高 18、间距 2、顶部留 5；查看某个参数时加控制行与完整曲线，可拖动底边加高。
@@ -1622,7 +1622,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
         documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
       {curves > 0 && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} height={curves} />}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId}
+        <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
           selectId={marker.selectId}
           move={author ? seconds => authoringActions.setMarkerTime(documentId, marker.selectId.split('/')[1], snapLocal(seconds)) : undefined}
           snap={author ? seconds => segment.origin + snapLocal(seconds) : undefined} />
@@ -2244,10 +2244,10 @@ function openClipGraph(graphId: string | null, label: string) {
   openPanel('graph');
 }
 
-// 标记（Unity 的水滴形标记）：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
-// 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回。
-function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
-  seconds: number; label: string; graphId: string; selectId?: string; move?(seconds: number): void; snap?(seconds: number): number;
+// 标记（照 Slate 嵌入 Timeline 的标记形状）：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
+// 右侧照 UE Sequencer 事件键直接写所触发的内容（text）。作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回。
+function Marker({ seconds: shown, label, text, graphId, selectId, move, snap }: {
+  seconds: number; label: string; text: string | null; graphId: string; selectId?: string; move?(seconds: number): void; snap?(seconds: number): number;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const [dragging, setDragging] = useState<{ x: number; seconds: number } | null>(null);
@@ -2277,6 +2277,7 @@ function Marker({ seconds: shown, label, graphId, selectId, move, snap }: {
       onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)}>
       <MarkerShape />
+      {text && <span className={styles.markerText}>{text}</span>}
     </button>
   );
 }
@@ -2418,7 +2419,8 @@ const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputT
         );
       })}
       {row.track.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.id} seconds={marker.seconds} label={inputLabel(marker.writes, false)} graphId={marker.graphId}
+        <Marker key={marker.id} seconds={marker.seconds} label={inputLabel(marker.writes, false)} text={inputLabel(marker.writes, false)}
+          graphId={marker.graphId}
           selectId={inputClipSelectId(row.track.id, marker.id)} />
       ))}
     </Line>
