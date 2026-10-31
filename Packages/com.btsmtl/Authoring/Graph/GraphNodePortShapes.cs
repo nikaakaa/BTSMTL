@@ -78,6 +78,10 @@ namespace BTSMTL.Authoring.Graph
 
         // 节点类型级解析；返回按节点数据产出端口的函数。声明错误直接抛出，由目录建立时报告。
         protected internal abstract Func<object, GraphNodePort> Bind(Type nodeType);
+
+        // 领域特性按成员名（nameof）读取节点数据，成员类型须可赋给 expected。
+        protected static Func<object, object> Member(Type nodeType, string name, Type expected) =>
+            GraphNodeMembers.Reader(nodeType, name, expected);
     }
 
     public sealed class FlowInputAttribute : GraphNodePortAttribute
@@ -187,6 +191,13 @@ namespace BTSMTL.Authoring.Graph
             }
             return node => new GraphNodePort(GraphAuthoringPortDirection.Output, false, Id, DisplayName, valueType(node), 0);
         }
+    }
+
+    // 领域端口集合：一个类级声明按节点类型产出多个端口，用于由领域字段特性逐项展开的端口（如 Rig 参数）。
+    [AttributeUsage(AttributeTargets.Class, Inherited = true)]
+    public abstract class GraphNodePortSetAttribute : Attribute
+    {
+        protected internal abstract Func<object, IEnumerable<GraphNodePort>> Bind(Type nodeType);
     }
 
     // 节点执行的扩展操作：合同类型上类型为 IOrchestrationExtensionDefinition 的静态成员给出扩展定义。
@@ -350,6 +361,12 @@ namespace BTSMTL.Authoring.Graph
                             return (node, _) => new[] { port(node) };
                         Func<object, object> enabled = GraphNodeMembers.Reader(nodeType, attribute.EnabledBy, typeof(bool));
                         return (node, _) => (bool)enabled(node) ? new[] { port(node) } : Array.Empty<GraphNodePort>();
+                    }));
+                foreach (GraphNodePortSetAttribute set in nodeType.GetCustomAttributes<GraphNodePortSetAttribute>(true))
+                    sources.Add(Declare(nodeType, set.GetType().Name, () =>
+                    {
+                        Func<object, IEnumerable<GraphNodePort>> ports = set.Bind(nodeType);
+                        return (node, _) => ports(node);
                     }));
                 foreach (MemberInfo member in GraphNodeMembers.Ordered(nodeType))
                 {
