@@ -9,7 +9,7 @@ export function PanelTab({ api }: IDockviewPanelHeaderProps) {
     return () => subscription.dispose();
   }, [api]);
   return (
-    <div className="dv-default-tab" title="中键单击关闭"
+    <div className="dv-default-tab"
       // 中键按下不触发浏览器的自动滚动。
       onPointerDown={event => { if (event.button === 1) event.preventDefault(); }}
       onAuxClick={event => {

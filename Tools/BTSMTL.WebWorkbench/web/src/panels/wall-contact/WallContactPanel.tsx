@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkbench } from '../../state/store';
 import { Empty, Facts, Fold, PanelBar } from '../../ui/blocks';
-import { Button, Select } from '../../ui/controls';
+import { Button, Select, Tip } from '../../ui/controls';
 import { PendingWallCommand, wallContactApi, type WallField, type WallHand, type WallPlane, type WallSnapshot, type WallSource } from './protocol';
 import styles from './wall-contact.module.css';
 
@@ -190,7 +190,7 @@ export function WallContactPanel() {
       {Array.from(groups, ([group, members]) => <Fold key={group} title={group} defaultOpen={group === '进出与曲线'}>
         <fieldset className={styles.fields} disabled={disabled}>
           {members.map(field => <label key={field.id} className={styles.field}>
-            <span title={field.id}>{field.displayName}</span>
+            <Tip name={field.displayName} content={field.id}><span data-name>{field.displayName}</span></Tip>
             {field.kind === 'boolean' ? <input type="checkbox" checked={draft[field.id].toLowerCase() === 'true'}
               onChange={event => setDraft(current => ({ ...current, [field.id]: String(event.target.checked) }))} />
               : <input type="number" step={field.kind === 'integer' ? '1' : 'any'} value={draft[field.id]}

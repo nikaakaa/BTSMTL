@@ -6,7 +6,7 @@ import { Menu as BaseMenu } from '@base-ui/react/menu';
 import { NumberField } from '@base-ui/react/number-field';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { Tooltip } from '@base-ui/react/tooltip';
-import type { ComponentProps, ReactElement, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import styles from './controls.module.css';
 import { CheckIcon } from './icons';
 import { usePortalContainer } from './portal';
@@ -14,9 +14,9 @@ import { usePortalContainer } from './portal';
 const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
 // ── 悬停提示：工作台唯一的悬停提示，同一外观与时机；不用系统 title ──
-// content 为解释或不可用原因，不写进面板正文；name 为元素的名字：只给 name 时为补全名字，名字被截断或没写出来时才提示，
-// 同时给 content 时提示名字加说明。名字所在元素标 data-name（触发元素自身或其内部）；没有该元素视为没写出来。
-// 第一次悬停等 500 毫秒，之后 400 毫秒内移到相邻元素立即显示（Tooltip.Provider 的分组）。
+// content 为解释或不可用原因，不写进面板正文，总是提示；name 为元素的名字，只在被截断或没写出来时补在提示首行，
+// 只有 name 时名字完整可见就不提示。名字所在元素标 data-name（触发元素自身或其内部）；没有该元素视为没写出来。
+// 第一次悬停等 500 毫秒，之后 400 毫秒内移到相邻元素立即显示（Tooltip.Provider 的分组）。触发元素不嵌套。
 
 export function TipProvider({ children }: { children: ReactNode }) {
   return <Tooltip.Provider delay={500} closeDelay={0}>{children}</Tooltip.Provider>;
@@ -39,17 +39,23 @@ function TipPopup({ children }: { children: ReactNode }) {
 }
 
 export function Tip({ content, name, children }: { content?: ReactNode; name?: string; children: ReactElement }) {
+  const [cut, setCut] = useState(false);
   const explained = content !== null && content !== undefined && content !== '';
   if (!explained && !name) return children;
   return (
-    <Tooltip.Root onOpenChange={explained ? undefined : (open, details) => { if (open && !nameCut(details.trigger)) details.cancel(); }}>
+    <Tooltip.Root onOpenChange={name ? (open, details) => {
+      if (!open) return;
+      const hidden = nameCut(details.trigger);
+      if (!hidden && !explained) details.cancel();
+      else setCut(hidden);
+    } : undefined}>
       <Tooltip.Trigger render={children} />
-      <TipPopup>{name && explained ? <>{name}{'\n'}{content}</> : explained ? content : name}</TipPopup>
+      <TipPopup>{name && cut ? explained ? <>{name}{'\n'}{content}</> : name : content}</TipPopup>
     </Tooltip.Root>
   );
 }
 
-// 表单字段名：写不下时悬停补全；有 tip 时提示名字加说明。
+// 表单字段名：写不下时悬停补全；有 tip 时提示说明，名字写不下时补在首行。
 export function FieldLabel({ label, tip }: { label: string; tip?: string }) {
   return <Tip name={label} content={tip}><label data-name>{label}</label></Tip>;
 }
@@ -194,11 +200,13 @@ export function MenuButton({ label, entries, children, variant = 'default', care
   const container = usePortalContainer();
   return (
     <BaseMenu.Root>
-      <BaseMenu.Trigger aria-label={label} title={iconOnly ? label : undefined}
-        className={join(styles.button, variant === 'icon' && styles.icon, variant === 'ghost' && styles.ghost, className)}>
-        {children}
-        {caret && <span className={styles.caret} />}
-      </BaseMenu.Trigger>
+      <Tip content={iconOnly ? label : undefined}>
+        <BaseMenu.Trigger aria-label={label}
+          className={join(styles.button, variant === 'icon' && styles.icon, variant === 'ghost' && styles.ghost, className)}>
+          {children}
+          {caret && <span className={styles.caret} />}
+        </BaseMenu.Trigger>
+      </Tip>
       <BaseMenu.Portal container={container}>
         <BaseMenu.Positioner className={styles.positioner} sideOffset={2} align="start">
           <BaseMenu.Popup className={styles.popup}>
@@ -235,14 +243,18 @@ export function ObjectField({ text, kind, className, onOpen, tip }: {
   const content = (
     <>
       <i className={styles.objectIcon} />
-      <span className={styles.objectText}>{text}</span>
+      <span className={styles.objectText} data-name>{text}</span>
       <i className={styles.objectPick} />
     </>
   );
   const style = kind ? { ['--kind' as string]: kind } : undefined;
-  return onOpen
-    ? <button type="button" className={join(styles.objectField, styles.objectLink, className)} style={style} title={tip} onClick={onOpen}>{content}</button>
-    : <span className={join(styles.objectField, className)} style={style} title={tip}>{content}</span>;
+  return (
+    <Tip name={typeof text === 'string' ? text : undefined} content={tip}>
+      {onOpen
+        ? <button type="button" className={join(styles.objectField, styles.objectLink, className)} style={style} onClick={onOpen}>{content}</button>
+        : <span className={join(styles.objectField, className)} style={style}>{content}</span>}
+    </Tip>
+  );
 }
 
 export function CheckMark({ checked }: { checked: boolean }) {

@@ -3,7 +3,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { consoleActions, getState, useWorkbench } from '../../state/store';
 import { BarLabel, BarSeparator, Empty, PanelBar } from '../../ui/blocks';
-import { Button } from '../../ui/controls';
+import { Button, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { LogicScene, type CameraView } from './logicScene';
 import styles from './viewport.module.css';
@@ -86,9 +86,9 @@ function LogicView() {
         <Button variant="ghost" onClick={() => scene.current?.fit()}>适配角色</Button>
         <BarSeparator />
         {frame && <>
-          {!contacts?.available && <span title={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}>
+          {!contacts?.available && <Tip content={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}><span>
             <BarLabel>{contacts ? '实际接触不可用' : '实际接触未声明'}</BarLabel>
-          </span>}
+          </span></Tip>}
           {actualContacts && <span className={styles.legend} data-kind="kcc-contact"><i aria-hidden="true" />实际接触</span>}
           {queryCandidates && <span className={styles.legend} data-kind="query-candidate"><i aria-hidden="true" />查询候选</span>}
           {unknownContacts && <span className={styles.legend}><i aria-hidden="true" />来源未记录</span>}

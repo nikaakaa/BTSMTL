@@ -226,14 +226,16 @@ function FrameField() {
   }));
   if (!view) return null;
   return (
-    <div className={styles.frame}>
-      <NumberField.Root value={view.frame} min={view.first} max={view.last} disabled={view.blocked !== null}
-        onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
-        <NumberField.Input className={styles.frameInput} aria-label={view.label} title={view.blocked ?? view.label} />
-      </NumberField.Root>
-      {view.last !== undefined && <span className={styles.frameLast}>/ {view.last}</span>}
-      {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
-    </div>
+    <Tip content={view.blocked ?? view.label}>
+      <div className={styles.frame}>
+        <NumberField.Root value={view.frame} min={view.first} max={view.last} disabled={view.blocked !== null}
+          onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
+          <NumberField.Input className={styles.frameInput} aria-label={view.label} />
+        </NumberField.Root>
+        {view.last !== undefined && <span className={styles.frameLast}>/ {view.last}</span>}
+        {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
+      </div>
+    </Tip>
   );
 }
 

@@ -27,7 +27,7 @@ import {
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
@@ -230,23 +230,23 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         <PanelBar wrap>
           {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
             onChange={value => enter(programs.get(value)!.root)} />}
-          <span className={styles.crumbs} title={callCrumbs === null ? '作者层级' : '档案实际调用路径'}>
+          <span className={styles.crumbs}>
             {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>
                 {callCrumbs.choices.length > 1 && enterCall ? <MenuButton label="选择父调用" entries={callCrumbs.choices.map(item => ({
                   label: `${graphName(item.graph)} · ${callLabel(item.call)}`, onSelect: () => enterCall(item),
                 }))}>选择父调用</MenuButton>
-                  : <span title={`路径：${callCrumbs.parent.parentInvocationPath}\n代次：${callCrumbs.parent.parentInvocationGeneration ?? '未记录'}`}>
+                  : <Tip content={`路径：${callCrumbs.parent.parentInvocationPath}\n代次：${callCrumbs.parent.parentInvocationGeneration ?? '未记录'}`}><span>
                     {callCrumbs.parent.parentInvocationGeneration === null ? '父调用代次未记录' : '已加载记录中没有父调用'}
-                  </span>}
+                  </span></Tip>}
                 <i className={styles.crumbArrow} />
               </span>}
-              {callCrumbs.items.map((item, index) => <span key={callKey(item.call)} className={styles.crumb} title={callLabel(item.call)}>
+              {callCrumbs.items.map((item, index) => <Tip key={callKey(item.call)} content={callLabel(item.call)}><span className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}
                 {index < callCrumbs.items.length - 1 && enterCall
                   ? <button className={styles.crumbLink} onClick={() => enterCall(item)}>{graphName(item.graph)}</button>
                   : <span data-current>{graphName(item.graph)}</span>}
-              </span>)}
+              </span></Tip>)}
             </> : crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}
@@ -351,11 +351,12 @@ function NodeTypePicker({ graph, at, onCreated, onClose }: {
           : !types ? <div className={styles.pickerNote}>读取节点类型中</div>
             : !shown.length ? <div className={styles.pickerNote}>没有匹配的类型</div>
               : shown.map(item => (
-                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType ?? undefined}
-                  onClick={() => void add(item)}>
-                  <span>{item.type}</span>
-                  <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
-                </button>
+                <Tip key={item.type} content={item.clrType}>
+                  <button className={styles.pickerItem} disabled={busy} onClick={() => void add(item)}>
+                    <span>{item.type}</span>
+                    <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
+                  </button>
+                </Tip>
               ))}
       </div>
     </div>
@@ -762,19 +763,20 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const timelineName = useWorkbench(current => timeline ? current.timelines.find(item => item.documentId === timeline)?.displayName ?? null : null);
   const faded = related !== null && !related.has(laid.node.id);
   return (
+    <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
     <div className={styles.state} data-system={system || undefined} data-running={running || undefined}
-      data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}
-      title={`${nodeName(laid.node)}\n${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
+      data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}>
       <span className={styles.stateId}>#{index}</span>
       {/* 作者模式：从右侧圆点拖出转移，松开在目标状态任意位置 */}
       <Handle id="in:@node" type="target" position={Position.Left} isConnectable={!!editable} isConnectableStart={false}
         className={editable && connecting ? styles.stateTarget : styles.hiddenHandle} />
       <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
         className={editable ? styles.stateSource : styles.hiddenHandle} />
-      <div className={styles.stateTitle}>{running && <i className={styles.clock} />}{nodeName(laid.node)}</div>
+      <div className={styles.stateTitle} data-name>{running && <i className={styles.clock} />}{nodeName(laid.node)}</div>
       {running && local !== null && <div className={styles.stateBody}>本地 {local.toFixed(2)} s</div>}
       {timelineName && <span className={styles.stateCaption}>{timelineName}</span>}
     </div>
+    </Tip>
   );
 }
 
@@ -819,16 +821,18 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const triggerIn = laid.inputs.some(port => port.isTrigger), triggerOut = laid.outputs.some(port => port.isTrigger);
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
-      data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
-      title={`${nodeName(laid.node)}\n${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
-      <div className={styles.header}>
-        {triggerIn && <i className={styles.flowIn} />}
-        <b>{nodeName(laid.node)}</b>
-        {triggerOut && <i className={styles.flowOut} />}
-        {(children.length > 0 || timeline) && <i className={styles.subgraphMark} />}
-        <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
-        <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
-      </div>
+      data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}>
+      <Tip name={nodeName(laid.node)}
+        content={`${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
+        <div className={styles.header}>
+          {triggerIn && <i className={styles.flowIn} />}
+          <b data-name>{nodeName(laid.node)}</b>
+          {triggerOut && <i className={styles.flowOut} />}
+          {(children.length > 0 || timeline) && <i className={styles.subgraphMark} />}
+          <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
+          <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
+        </div>
+      </Tip>
       {rows > 0 && (
         <div className={styles.body}>
           {laid.inputs.filter(port => port.isTrigger).map(port => <HiddenPort key={`i${port.id}`} port={port} />)}
@@ -864,14 +868,15 @@ function PortCell({ port, state, values }: {
   const sample = state.ports[`${port.direction}:${port.id}`];
   const color = portColor(sample?.valueType);
   return (
-    <span className={input ? styles.portIn : styles.portOut} title={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : port.id}
-      style={{ ['--pc' as string]: color }}>
-      <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
-        position={input ? Position.Left : Position.Right} isConnectable={!!editable}
-        className={styles.valuePort} data-filled={sample ? true : undefined} />
-      <span className={styles.portName}>{port.displayName}</span>
-      {values && sample && <span className={styles.portValue}>{sample.value}</span>}
-    </span>
+    <Tip name={port.displayName} content={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : port.id}>
+      <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
+        <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
+          position={input ? Position.Left : Position.Right} isConnectable={!!editable}
+          className={styles.valuePort} data-filled={sample ? true : undefined} />
+        <span className={styles.portName} data-name>{port.displayName}</span>
+        {values && sample && <span className={styles.portValue}>{sample.value}</span>}
+      </span>
+    </Tip>
   );
 }
 
@@ -882,10 +887,10 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   const status = state.passed ? 'passed' : state.rejected ? 'rejected' : 'idle';
   const faded = related !== null && !related.has(id);
   return (
-    <path d={path} className={styles.edge} data-status={status} data-faded={faded || undefined}
-      data-selected={state.selected || undefined} data-picked={selected || undefined}>
-      <title>{`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}</title>
-    </path>
+    <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
+      <path d={path} className={styles.edge} data-status={status} data-faded={faded || undefined}
+        data-selected={state.selected || undefined} data-picked={selected || undefined} />
+    </Tip>
   );
 }
 
@@ -926,11 +931,12 @@ function TransitionEdgeView({ id, source, target, data }: EdgeProps<FlowEdge>) {
       <path d={arrow} className={styles.arrow} />
       {showLabel && (
         <EdgeLabelRenderer>
-          <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined}
-            style={{ transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)` }}
-            title={`${data!.label}\n双击进入条件图`}>
-            {data!.label}
-          </div>
+          <Tip name={data!.label} content="双击进入条件图">
+            <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name
+              style={{ transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)` }}>
+              {data!.label}
+            </div>
+          </Tip>
         </EdgeLabelRenderer>
       )}
     </g>
