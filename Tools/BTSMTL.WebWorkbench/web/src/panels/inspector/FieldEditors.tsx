@@ -265,7 +265,8 @@ function shapeAt(item: StoredField, path: string[]): StorageShape | null {
   return shape;
 }
 
-export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: string }) {
+// 节点一栏：名称与按合同描述的字段；children 为同栏的引用行（状态体、子图、转移等）。
+export function NodeFields({ graphId, nodeId, children }: { graphId: string; nodeId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
@@ -284,7 +285,7 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
   return (
     <>
-      <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+      <Fold title="节点" defaultOpen>
         <IdentityList id={listId} />
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
         {issues.map((issue, index) => <div key={index} className={styles.issue} title={issue.path}>{issue.path ? `${issue.path}：` : ''}{issue.message}</div>)}
@@ -293,9 +294,10 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
             blackboards={blackboards} identities={listId} onSet={set} />
         ))}
+        {children}
       </Fold>
       {inputs.length > 0 && (
-        <Fold title="端口默认值" kind="var(--port-float)" defaultOpen>
+        <Fold title="端口默认值" defaultOpen>
           {inputs.map(port => {
             const keys = ['_inputPortValues', port.port.ID];
             const current = getIn(node, keys) ?? (port.port.serializedValue as JsonValue);
@@ -305,7 +307,7 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
         </Fold>
       )}
       {!!description?.computed.length && (
-        <Fold title="推导" kind="var(--value)">
+        <Fold title="推导">
           {description.computed.map(field => (
             <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
               <span className={styles.readOnly}>{field.value === null ? '空' : typeof field.value === 'object' ? stringifySkillJson(field.value, ' ') : String(field.value)}</span>
@@ -352,7 +354,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
       ? { ...field, choices: keys.map(item => item.name) } : field),
   })).filter(item => item.fields.length) ?? [];
   const set: SetValue = (path, value) => inputAuthoring.setNodeValue(graphId, node.UID as string, path, value, contract);
-  return <Fold title="输入" kind="var(--track-in)" defaultOpen>
+  return <Fold title="输入" defaultOpen>
     {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
     {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
       blackboards={[]} identities="" onSet={set} />)}
@@ -364,7 +366,9 @@ export const isState = (node: JsonObject) => typeof node.type === 'string' && /^
 
 // ── 转移：Payload 按原 C# 存储形状编辑；条件图由检查器单独新建与移除 ──
 
-export function TransitionFields({ graphId, connectionId, shape }: { graphId: string; connectionId: string; shape: StorageShape }) {
+export function TransitionFields({ graphId, connectionId, shape, children }: {
+  graphId: string; connectionId: string; shape: StorageShape; children?: ReactNode;
+}) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
@@ -373,11 +377,12 @@ export function TransitionFields({ graphId, connectionId, shape }: { graphId: st
   const payload = connection.Payload as JsonObject;
   const set: SetValue = (keys, value) => graphAuthoring.setTransitionValue(graphId, connectionId, keys, value);
   return (
-    <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+    <Fold title="转移" defaultOpen>
       {(shape.members ?? []).filter(member => member.member !== 'm_Condition').map(member => (
         <ValueEditor key={member.member} label={memberLabel(member.member)} value={payload[member.member]} shape={member}
           keys={[member.member]} onSet={set} />
       ))}
+      {children}
     </Fold>
   );
 }
@@ -494,7 +499,7 @@ function useElementShape(kind: 'tracks' | 'clips', contract: JsonValue | undefin
 
 const memberShape = (shape: StorageShape | null, member: string) => shape?.members?.find(item => item.member === member) ?? null;
 
-export function TrackFields({ documentId, trackId }: { documentId: string; trackId: string }) {
+export function TrackFields({ documentId, trackId, children }: { documentId: string; trackId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
@@ -503,11 +508,12 @@ export function TrackFields({ documentId, trackId }: { documentId: string; track
   const listId = `identities-${documentId}-${trackId}`;
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
   return (
-    <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+    <Fold title="轨道" defaultOpen>
       <IdentityList id={listId} />
       {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
         <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />
       ))}
+      {children}
     </Fold>
   );
 }
@@ -600,7 +606,10 @@ const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_St
 // 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
-export function ClipFields({ documentId, clipId, timeOnly = false }: { documentId: string; clipId: string; timeOnly?: boolean }) {
+// 片段一栏：起止与片段的序列化字段；children 为同栏的引用行（节点图）。
+export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
+  documentId: string; clipId: string; timeOnly?: boolean; children?: ReactNode;
+}) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
@@ -611,8 +620,9 @@ export function ClipFields({ documentId, clipId, timeOnly = false }: { documentI
   const set: SetValue = (keys, value) => authoringActions.setClipValue(documentId, clipId, keys, value);
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
   return (
-    <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+    <Fold title="片段" defaultOpen>
       <IdentityList id={listId} />
+      {children}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}

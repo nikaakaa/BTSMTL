@@ -26,7 +26,7 @@ export function FrameSections({ frame }: { frame: Frame }) {
   return (
     <>
       {frame.sections.map((section, index) => (
-        <Fold key={index} title={section.displayName} kind="var(--node-flow)" defaultOpen={index === 0}>
+        <Fold key={index} title={section.displayName} defaultOpen={index === 0}>
           {section.records.length ? section.records.map((record, recordIndex) => (
             <Fold key={recordIndex} title={record.displayName}>
               <Facts fields={record.fields} />
@@ -43,11 +43,11 @@ export function FrameFull({ frame }: { frame: Frame }) {
   const contacts = frame.availability.find(item => item.channel === 'physics-contacts');
   return (
     <>
-      <Fold title="本帧" kind="var(--value)" defaultOpen>
+      <Fold title="本帧" defaultOpen>
         <Facts fields={[{ displayName: '秒数', value: frame.seconds.toFixed(3) }, ...frame.fields]} />
       </Fold>
       {frame.actors.map(actor => (
-        <Fold key={actor.id} title={actor.displayName} kind="var(--track-anim)" defaultOpen>
+        <Fold key={actor.id} title={actor.displayName} defaultOpen>
           <Facts fields={[
             { displayName: '位置', value: actor.root.position.map(value => value.toFixed(3)).join(', ') },
             { displayName: '旋转', value: actor.root.rotation.map(value => value.toFixed(3)).join(', ') },
@@ -55,7 +55,7 @@ export function FrameFull({ frame }: { frame: Frame }) {
           ]} />
         </Fold>
       ))}
-      <Fold title="几何" kind="var(--logic-sweep-end)">
+      <Fold title="几何">
         <Facts fields={[
           { displayName: '扫掠', value: String(frame.geometry.sweeps.length) },
           { displayName: '实际KCC接触', value: contacts?.available

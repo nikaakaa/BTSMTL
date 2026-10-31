@@ -71,7 +71,7 @@ export function QueryPanel() {
             {item ? (
               <>
                 <FrameSections frame={item} />
-                <Fold title="宿主记录" kind="var(--node-flow)">
+                <Fold title="宿主记录">
                   <div className={styles.rawBox}><JsonLines text={item.rawJson} /></div>
                 </Fold>
               </>

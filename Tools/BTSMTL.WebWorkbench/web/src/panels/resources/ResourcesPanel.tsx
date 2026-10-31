@@ -4,15 +4,15 @@ import type { AnimationLibrary } from '../../api/types';
 import { usePanelAnimationFrame, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { writeResourceReady } from '../../shell/readiness';
 import { resourceCache } from '../../state/resources';
-import { consoleActions, getState, resourceActions, useWorkbench } from '../../state/store';
-import { BarSeparator, Empty, Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
+import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
+import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from './resourceScene';
 import styles from './resources.module.css';
 
-// 动画资源面板：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色、资源版本信息。
+// 动画资源面板：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色；单击片段在检查器显示资源信息（照 Unity 选中资产）。
 // 素材时间只改 resource 分片，不经过 transport、不移动运行游标（D6）；按 D8 写入 resource* 就绪标记。
 
 export function ResourcesPanel() {
@@ -74,7 +74,10 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
           const item = clips[index];
           return (
             <button className={styles.clip} aria-selected={item.resource.identity === identity}
-              onClick={() => resourceActions.select(item.resource.identity)}>
+              onClick={() => {
+                resourceActions.select(item.resource.identity);
+                selectionActions.select({ kind: 'resource', id: item.resource.identity });
+              }}>
               <span>{item.name}</span>
               <small>{item.category} · {item.duration.toFixed(3)} s · {item.frameRate} fps</small>
             </button>
@@ -97,26 +100,6 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
           <FitButton />
         </PanelBar>
         <ResourceCanvas library={library} />
-        {clip && (
-          <div className={styles.details}>
-            <Fold title={clip.name} kind="var(--track-anim)">
-              <Facts fields={[
-                { displayName: '分类', value: clip.category },
-                { displayName: 'Unity 来源', value: clip.unityAsset },
-                { displayName: '素材时长', value: `${clip.duration} s` },
-                { displayName: 'glb 时长', value: `${clip.exportedDuration} s` },
-                { displayName: '源帧率', value: `${clip.frameRate} fps` },
-                { displayName: '来源说明', value: clip.provenance.description },
-              ]} />
-            </Fold>
-            <IdentityFold fields={[
-              { displayName: '资源身份', value: clip.resource.identity }, { displayName: 'GUID', value: clip.resource.guid },
-              { displayName: 'Local file ID', value: clip.resource.localFileId },
-              { displayName: '来源资产 SHA-256', value: clip.resource.contentRevision },
-              { displayName: '来源 Blend SHA-256', value: library.sourceSha256 }, { displayName: 'glb SHA-256', value: library.sha256 },
-            ]} />
-          </div>
-        )}
       </div>
     </div>
   );

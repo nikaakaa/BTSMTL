@@ -26,11 +26,11 @@ export function ContentPanel() {
       <div className={styles.scroll}>
         {!sources ? <Empty text={hostAvailable === false ? '未接入运行宿主' : '读取中'} /> : (
           <>
-            <Fold title="内容" kind="var(--node-anim)" defaultOpen><Contents sources={sources} /></Fold>
+            <Fold title="内容" defaultOpen><Contents sources={sources} /></Fold>
             {contentKind !== 'timeline' && <>
-              <Fold title="场景方案" kind="var(--track-in)" defaultOpen><ScenarioFolders /></Fold>
-              <Fold title="运行来源" kind="var(--track-in)" defaultOpen><RunSources /></Fold>
-              <Fold title="输入声明" kind="var(--node-event)"><InputDeclarations /></Fold>
+              <Fold title="场景方案" defaultOpen><ScenarioFolders /></Fold>
+              <Fold title="运行来源" defaultOpen><RunSources /></Fold>
+              <Fold title="输入声明"><InputDeclarations /></Fold>
             </>}
           </>
         )}
@@ -186,7 +186,7 @@ function InputDeclarations() {
             { displayName: '目标角色', value: catalog.actorTargets.join('、') || '无' },
           ]} />
           {catalog.players.map(player => (
-            <Fold key={player.actorId} title={player.actorId} kind="var(--track-in)" defaultOpen>
+            <Fold key={player.actorId} title={player.actorId} defaultOpen>
               <Facts fields={[
                 ...player.values.map(value => ({ displayName: value.inputId, value: `${value.kind} · ${value.encoding}` })),
                 ...player.requests.map(request => ({

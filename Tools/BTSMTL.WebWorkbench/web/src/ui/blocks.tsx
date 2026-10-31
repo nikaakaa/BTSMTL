@@ -11,9 +11,8 @@ export function Empty({ text }: { text: string }) {
 }
 
 // 折叠按 Unity 组件头画；kind 为类别色变量，如 'var(--node-anim)'。
-export function Fold({ title, kind, defaultOpen = false, children }: {
+export function Fold({ title, defaultOpen = false, children }: {
   title: ReactNode;
-  kind?: string;
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
@@ -21,7 +20,6 @@ export function Fold({ title, kind, defaultOpen = false, children }: {
     <Collapsible.Root defaultOpen={defaultOpen} className={styles.fold}>
       <Collapsible.Trigger className={styles.foldTrigger}>
         <span className={styles.foldArrow} />
-        {kind && <span className={styles.foldKind} style={{ ['--kind' as string]: kind }} />}
         {title}
         <OptionsIcon className={styles.foldMore} />
       </Collapsible.Trigger>

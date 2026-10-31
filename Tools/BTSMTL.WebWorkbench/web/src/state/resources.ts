@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getBlob } from '../api/http';
 import { resourceApi } from '../api/resources';
 import type { AnimationLibrary } from '../api/types';
@@ -25,16 +25,20 @@ export const resourceCache = {
   },
 };
 
-// 动画资源身份（guid:localFileId）到素材帧率；资源清单未读到时为 null。
-export function useAnimationFrameRates(enabled: boolean): ReadonlyMap<string, number> | null {
-  const [rates, setRates] = useState<ReadonlyMap<string, number> | null>(null);
+// 动画资源清单；未读到时为 null。
+export function useAnimationLibrary(enabled: boolean): AnimationLibrary | null {
+  const [value, setValue] = useState<AnimationLibrary | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    resourceCache.library().then(value => {
-      if (alive) setRates(new Map(value.clips.map(clip => [clip.resource.identity, clip.frameRate])));
-    }, (error: unknown) => consoleActions.error('动画资源', error));
+    resourceCache.library().then(next => { if (alive) setValue(next); }, (error: unknown) => consoleActions.error('动画资源', error));
     return () => { alive = false; };
   }, [enabled]);
-  return enabled ? rates : null;
+  return enabled ? value : null;
+}
+
+// 动画资源身份（guid:localFileId）到素材帧率；资源清单未读到时为 null。
+export function useAnimationFrameRates(enabled: boolean): ReadonlyMap<string, number> | null {
+  const value = useAnimationLibrary(enabled);
+  return useMemo(() => value && new Map(value.clips.map(clip => [clip.resource.identity, clip.frameRate])), [value]);
 }

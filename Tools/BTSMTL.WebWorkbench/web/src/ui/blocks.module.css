@@ -52,14 +52,6 @@
   border-bottom: 0;
 }
 
-.foldKind {
-  width: 14px;
-  height: 14px;
-  border-radius: 2px;
-  background: var(--kind);
-  flex: none;
-}
-
 .foldMore {
   margin-left: auto;
   color: var(--text-disabled);

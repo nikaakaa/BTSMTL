@@ -10,20 +10,21 @@ import {
 import {
   applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
+import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
 import { selectionActions, useWorkbench, type Selection } from '../../state/store';
-import {
-  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackColors, trackKind,
-} from '../../state/timelineModel';
+import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, NumberInput, ObjectField } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
+import { TrackIcon } from '../timeline/icons';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
+// 每个对象一栏自身的序列化字段，引用（节点图、条件图等）作为同栏的对象字段；运行记录只在有运行时附在后面。
 // 不选中时显示技能本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
 
 interface Params {
@@ -43,7 +44,9 @@ export function InspectorPanel() {
     locked: !!params.locked,
     toggle: params.locked ? unlock : selection ? () => setParams({ locked: selection }) : null,
   };
-  const content = !target ? <Empty text="选择要编辑的内容" />
+  // 动画资源不属于技能，没有打开技能时同样可检查。
+  const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
+    : !target ? <Empty text="选择要编辑的内容" />
       : shown ? <Content key={`${target.kind}/${target.name}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
         : <SkillSummary />;
   return (
@@ -73,16 +76,18 @@ function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean;
       : <TrackInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
     case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
+    case 'resource': return null;
   }
 }
 
 // ── 通用部件 ──
 
-function Head({ kind, name, sub }: { kind: string; name: ReactNode; sub?: ReactNode }) {
+// 对象头：有真实矢量图标的对象（轨道、片段、动画资源）在左侧显示类型图标。
+function Head({ icon, name, sub }: { icon?: ReactNode; name: ReactNode; sub?: ReactNode }) {
   const lock = useContext(LockContext);
   return (
     <div className={styles.head}>
-      <span className={styles.big} style={{ ['--kind' as string]: kind }} />
+      {icon && <span className={styles.icon}>{icon}</span>}
       <span className={`${styles.box} ${styles.name}`}>{name}</span>
       <span className={styles.subline}>{sub}</span>
       <Button variant="ghost" className={styles.lock} pressed={lock.locked} disabled={!lock.toggle} aria-label="锁定检查器"
@@ -133,7 +138,7 @@ function Raw({ value }: { value: unknown }) {
 function HostRecords({ records }: { records: HostRecord[] }) {
   if (!records.length) return null;
   return (
-    <Fold title="宿主记录" kind="var(--node-cmp)" defaultOpen>
+    <Fold title="宿主记录" defaultOpen>
       {records.map((record, index) => (
         <Fold key={index} title={record.displayName}>
           <Values fields={record.fields} />
@@ -187,14 +192,12 @@ function SkillSummary() {
   const paths = plans ? plans.split('\n') : [];
   return (
     <>
-      <Head kind="var(--accent)" name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
-      {paths.length ? paths.map((path, index) => (
-        <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} kind="var(--track-in)" defaultOpen>
+      <Head name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
+      {paths.map((path, index) => (
+        <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} defaultOpen>
           <InputPlanFields path={path} editable={editable} />
         </Fold>
-      )) : (
-        <Fold title="预览输入" kind="var(--track-in)" defaultOpen><div className={styles.note}>此技能没有预览输入方案</div></Fold>
-      )}
+      ))}
       <Identity extra={paths.map(path => ({ displayName: '预览输入文件', value: path }))} />
     </>
   );
@@ -211,7 +214,7 @@ function useAuthorGraphs() {
 
 function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
-  const { graphs, frame } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame })));
+  const { graphs, frame, runId } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame, runId: state.runId })));
   const author = useAuthorGraphs();
   const found = useMemo(() => {
     if (author.program === null) return findGraphNode(graphs, id);
@@ -229,15 +232,18 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const events = records.filter(isNodeOccurrence).sort(compareSequence);
   const samples = records.filter(isPortSample);
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
-  const entry = !graph.edges.some(edge => edge.target?.nodeId === node.id && edge.invocationPath === node.invocationPath);
-  const kind = entry ? 'var(--node-event)' : 'var(--node-flow)';
-  return (
+  const references = (
     <>
-      <Head kind={kind} name={nodeName(node)} sub={graphName(graph)} />
-      {editable && <NodeFields graphId={graph.id} nodeId={node.id} />}
       {editable && <StateBody graph={graph} nodeId={node.id} />}
       <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
-      <Fold title="本帧" kind={kind} defaultOpen>
+    </>
+  );
+  return (
+    <>
+      <Head name={nodeName(node)} sub={graphName(graph)} />
+      {editable ? <NodeFields graphId={graph.id} nodeId={node.id}>{references}</NodeFields>
+        : <Fold title="节点" defaultOpen>{references}</Fold>}
+      {runId && <Fold title="本帧" defaultOpen>
         <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
         {observedCall && <Value label="角色" value={observedCall.actorId} />}
         {events.length ? (
@@ -250,25 +256,23 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
             ))}
           </div>
         ) : null}
-      </Fold>
-      <Fold title="端口" kind="var(--port-float)" defaultOpen>
-        {ports.length ? (
-          <div className={styles.list}>
-            {ports.map(port => {
-              const sample = samples.filter(item => item.portId === port.id && item.direction === port.direction).at(-1);
-              return (
-                <div key={`${port.direction}:${port.id}`} className={styles.listRow} title={sample ? `${sample.valueType} · ${sample.sequence}` : undefined}>
-                  {port.isTrigger ? <i className={styles.exec} /> : <i className={styles.dot} style={{ ['--pc' as string]: portColor(sample?.valueType) }} />}
-                  <span className={styles.listText}>{port.displayName}{port.direction === 'input' ? '' : ' →'}</span>
-                  <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample?.value ?? ''}</span>
-                </div>
-              );
-            })}
-          </div>
-        ) : <div className={styles.note}>没有端口</div>}
-      </Fold>
+      </Fold>}
+      {runId && ports.length > 0 && <Fold title="端口取值" defaultOpen>
+        <div className={styles.list}>
+          {ports.map(port => {
+            const sample = samples.filter(item => item.portId === port.id && item.direction === port.direction).at(-1);
+            return (
+              <div key={`${port.direction}:${port.id}`} className={styles.listRow} title={sample ? `${sample.valueType} · ${sample.sequence}` : undefined}>
+                {port.isTrigger ? <i className={styles.exec} /> : <i className={styles.dot} style={{ ['--pc' as string]: portColor(sample?.valueType) }} />}
+                <span className={styles.listText}>{port.displayName}{port.direction === 'input' ? '' : ' →'}</span>
+                <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample?.value ?? ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      </Fold>}
       <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
-      {records.length > 0 && <Fold title="原始记录" kind="var(--node-flow)"><Raw value={records} /></Fold>}
+      {records.length > 0 && <Fold title="原始记录"><Raw value={records} /></Fold>}
       <Identity extra={[
         { displayName: '节点', value: node.id }, { displayName: '图', value: graph.id },
         { displayName: '调用路径', value: node.invocationPath }, { displayName: '程序', value: graph.programId },
@@ -278,7 +282,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-// 节点的引用：所在图、子图（状态体或调用的状态机）、播放的 Timeline、出去的转移及其条件图。
+// 节点的引用字段：子图（状态体或调用的状态机）、播放的 Timeline、出去的转移及其条件图；所在图写在对象头。
 function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
   const graphs = useWorkbench(state => state.graphs);
   const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
@@ -289,8 +293,7 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
     edge.invocationPath === invocationPath);
   return (
-    <Fold title="引用" kind="var(--node-cmp)" defaultOpen>
-      <Link label="所在图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+    <>
       {children.map(child => (
         <Link key={child.id} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)" tip="在节点图面板打开"
           onOpen={() => openGraph(child)} />
@@ -307,7 +310,7 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
           ))
           : <Value key={edge.id} label={`→ ${target}`} mono={false} value="无条件" />;
       })}
-    </Fold>
+    </>
   );
 }
 
@@ -340,11 +343,9 @@ function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }
   // 只有普通状态带状态体；入口、任意状态与出口是系统锚点。
   if (node?.type !== 'BtsmtlSkillNativeState') return null;
   return (
-    <Fold title="状态体" kind="var(--node-flow)" defaultOpen>
-      <OwnedGraph label="状态体" owner={graph} id={(node.m_Body as string | null) ?? null} createText="新建状态体"
-        onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
-        onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
-    </Fold>
+    <OwnedGraph label="状态体" owner={graph} id={(node.m_Body as string | null) ?? null} createText="新建状态体"
+      onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
+      onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
   );
 }
 
@@ -369,27 +370,19 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
     .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === edge.id);
   const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
+  const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
+  const conditionRows = editable ? (
+    <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
+      onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
+      onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
+  ) : conditions.length ? conditions.map(item => (
+    <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
+  )) : <Value label="条件图" mono={false} value="无条件" />;
   return (
     <>
-      <Head kind="var(--port-bool)" name={name} sub={graphName(graph)} />
-      {editable && elements && <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape} />}
-      <Fold title="条件" kind="var(--port-bool)" defaultOpen>
-        {editable ? (
-          <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
-            onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
-            onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
-        ) : edgeChildGraphs(hierarchy, graph, edge.id).map(item => (
-          <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
-        ))}
-        {!editable && !edgeChildGraphs(hierarchy, graph, edge.id).length && <Value label="条件图" mono={false} value="无条件" />}
-        <Link label="所在图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-      </Fold>
-      {editable && (
-        <div className={styles.actions}>
-          <Button variant="ghost" tip="删除这条转移；不再被引用的条件图保存时删除"
-            onClick={() => graphAuthoring.disconnect(graph.id, [edge.id])}>删除转移</Button>
-        </div>
-      )}
+      <Head name={name} sub={graphName(graph)} />
+      {editable && elements ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
+        : <Fold title="转移" defaultOpen>{conditionRows}</Fold>}
       <Identity extra={[
         { displayName: '转移', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
         { displayName: '程序', value: graph.programId },
@@ -436,34 +429,26 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
-  const kind = trackColors[input ? 'in' : clipKind(clip)];
   const graph = clipGraph(graphs, clip.graphId);
   const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
+  const graphRow = input || !clip.graphId ? null : graph
+    ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+    : <Value label="节点图" mono={false} value="当前技能没有这张图" />;
   return (
     <>
-      <Head kind={kind} sub={`${timeline.displayName} · ${track.displayName}`}
+      <Head icon={<TrackIcon kind={input ? 'in' : clipKind(clip)} />} sub={`${timeline.displayName} · ${track.displayName}`}
         name={input ? (inputGraph as JsonObject | null)?.name as string ?? track.displayName
           : clip.displayName ?? (graph ? graphName(graph) : track.displayName)} />
-      <Fold title="片段" kind={kind} defaultOpen>
-        <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
-          onOpen={() => openTimeline(timeline.documentId)} />
-        {input ? null : graph
-          ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-          : <Value label="节点图" mono={false} value={clip.graphId ? '当前技能没有这张图' : '无'} />}
-        {!editable && <Value label="起点" value={clip.startSeconds.toFixed(3)} />}
-        {!editable && <Value label="终点" value={clip.endSeconds.toFixed(3)} />}
-        <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
-      </Fold>
-      {editable && input && clip.graphId && <InputClipFields documentId={timeline.documentId} graphId={clip.graphId} />}
-      {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} timeOnly={input} />}
-      {input && <NativeInputInspector documentId={timeline.documentId} />}
-      {editable && (
-        <div className={styles.actions}>
-          <Button variant="ghost" tip="删除片段；不再被引用的片段图保存时删除"
-            onClick={() => authoringActions.deleteClips(timeline.documentId, [clip.id])}>删除片段</Button>
-        </div>
+      {editable ? <ClipFields documentId={timeline.documentId} clipId={clip.id} timeOnly={input}>{graphRow}</ClipFields> : (
+        <Fold title="片段" defaultOpen>
+          {graphRow}
+          <Value label="起点（秒）" value={clip.startSeconds.toFixed(3)} />
+          <Value label="终点（秒）" value={clip.endSeconds.toFixed(3)} />
+        </Fold>
       )}
-      {runId && !input && <Fold title="已读取的活动记录" kind="var(--value)" defaultOpen>
+      {editable && input && clip.graphId && <InputClipFields documentId={timeline.documentId} graphId={clip.graphId} />}
+      {input && <NativeInputInspector documentId={timeline.documentId} />}
+      {runId && !input && <Fold title="已读取的活动记录" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
@@ -494,19 +479,17 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-// 标记：时刻与触发图；作者模式可改时刻、删除。输入标记与输入片段一样直接读触发图文件，编辑写入的按键与值。
+// 标记：时刻与触发图；作者模式可改时刻。输入标记与输入片段一样直接读触发图文件，编辑写入的按键与值。
 function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<typeof findTimelineMarker>>; editable: boolean }) {
   const { timeline, track, marker } = found;
   const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
   const input = useInputSchemes().some(scheme => scheme.documentId === timeline.documentId);
   const tickRate = useAuthoring(state => state.tickRate);
   const step = tickRate ? 1 / tickRate : 1 / 60;
-  const kind = 'var(--track-act)';
   return (
     <>
-      <Head kind={kind} name={`${track.displayName} 标记`} sub={timeline.displayName} />
-      <Fold title="标记" kind={kind} defaultOpen>
-        <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入" onOpen={() => openTimeline(timeline.documentId)} />
+      <Head icon={<TrackIcon kind={input ? 'in' : trackKind(track)} />} name={`${track.displayName} 标记`} sub={timeline.displayName} />
+      <Fold title="标记" defaultOpen>
         {input ? null : graph
           ? <Link label="触发图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="触发图" mono={false} value="未保存，保存后可进入" />}
@@ -516,15 +499,9 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
             <NumberInput wide label="时刻" value={marker.seconds} min={0} step={step}
               onChange={next => { if (next !== null) authoringActions.setMarkerTime(timeline.documentId, marker.id, Math.round(next / step) * step); }} />
           </div>
-        ) : <Value label="时刻" value={`${marker.seconds.toFixed(3)} s`} />}
+        ) : <Value label="时刻（秒）" value={marker.seconds.toFixed(3)} />}
       </Fold>
       {editable && input && marker.graphId && <InputClipFields documentId={timeline.documentId} graphId={marker.graphId} />}
-      {editable && (
-        <div className={styles.actions}>
-          <Button variant="ghost" tip="删除标记；不再被引用的触发图保存时删除"
-            onClick={() => authoringActions.deleteClips(timeline.documentId, [marker.id])}>删除标记</Button>
-        </div>
-      )}
       <Identity extra={[{ displayName: '标记', value: marker.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
     </>
   );
@@ -540,35 +517,43 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
   if (!found) return missing;
   const { timeline, track } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
-  const kind = trackColors[input ? 'in' : trackKind(track)];
   return (
     <>
-      <Head kind={kind} name={track.displayName} sub={timeline.displayName} />
-      <Fold title="轨道" kind={kind} defaultOpen>
-        <Value label="静音" mono={false} value={track.muted ? '是' : '否'} />
-        <Value label="片段数" value={String(track.clips.length)} />
-        <Value label="标记数" value={String(track.markers.length)} />
-      </Fold>
-      {editable && <TrackFields documentId={timeline.documentId} trackId={track.id} />}
-      {input && <NativeInputInspector documentId={timeline.documentId} />}
-      {editable && (
-        <div className={styles.actions}>
-          <Button variant="ghost" tip="删除轨道及其片段与标记；不再被引用的图保存时删除"
-            onClick={() => authoringActions.deleteTracks(timeline.documentId, [track.id])}>删除轨道</Button>
-        </div>
+      <Head icon={<TrackIcon kind={input ? 'in' : trackKind(track)} />} name={track.displayName} sub={timeline.displayName} />
+      {editable ? <TrackFields documentId={timeline.documentId} trackId={track.id} /> : (
+        <Fold title="轨道" defaultOpen><Value label="静音" mono={false} value={track.muted ? '是' : '否'} /></Fold>
       )}
-      <Fold title="片段" kind={kind} defaultOpen>
-        <div className={styles.list}>
-          {track.clips.map(clip => (
-            <div key={clip.id} className={styles.listRow}>
-              <span className={styles.listText}>{clip.displayName ?? clip.contract}</span>
-              <span className={styles.listValue}>{clip.startSeconds.toFixed(3)} — {clip.endSeconds.toFixed(3)}</span>
-            </div>
-          ))}
-        </div>
-      </Fold>
+      {input && <NativeInputInspector documentId={timeline.documentId} />}
       {!input && <HostRecords records={locatedRecords(frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
       <Identity extra={[{ displayName: '轨道', value: track.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
+    </>
+  );
+}
+
+// ── 动画资源 ──
+
+// 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放身份折叠。
+function ResourceInspector({ identity }: { identity: string }) {
+  const library = useAnimationLibrary(true);
+  const clip = library?.clips.find(item => item.resource.identity === identity) ?? null;
+  if (!library) return <Empty text="读取中" />;
+  if (!clip) return <div className={styles.missing}>资源清单不包含所选资源</div>;
+  return (
+    <>
+      <Head icon={<TrackIcon kind="anim" />} name={clip.name} sub={`动画 · ${clip.category}`} />
+      <Fold title="动画" defaultOpen>
+        <Value label="Unity 来源" value={clip.unityAsset} />
+        <Value label="素材时长（秒）" value={clip.duration.toFixed(3)} />
+        <Value label="glb 时长（秒）" value={clip.exportedDuration.toFixed(3)} />
+        <Value label="源帧率" value={String(clip.frameRate)} />
+        <Value label="来源说明" mono={false} value={clip.provenance.description} />
+      </Fold>
+      <IdentityFold fields={[
+        { displayName: '资源身份', value: clip.resource.identity }, { displayName: 'GUID', value: clip.resource.guid },
+        { displayName: 'Local file ID', value: clip.resource.localFileId },
+        { displayName: '来源资产 SHA-256', value: clip.resource.contentRevision },
+        { displayName: '来源 Blend SHA-256', value: library.sourceSha256 }, { displayName: 'glb SHA-256', value: library.sha256 },
+      ]} />
     </>
   );
 }
@@ -588,14 +573,14 @@ function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const unavailable = record?.kind === 'sampled' ? record.availability.find(item =>
     (item.channel === curve.channel || item.channel === 'data-curves') && !item.available)?.reason : null;
   return <>
-    <Head kind="var(--track-motion)" name={curve.displayName} />
-    <Fold title="曲线" kind="var(--track-motion)" defaultOpen>
+    <Head name={curve.displayName} />
+    <Fold title="曲线" defaultOpen>
       <Value label="通道 / 时钟" value={`${curve.channel} / ${curve.clock}`} />
       <Value label="坐标 / 单位" value={`${curve.coordinates} / ${curve.unit}`} />
       <Value label="分量" value={curve.component} />
       <Value label="编码" value={curve.encoding} />
     </Fold>
-    <Fold title="当前 SDK 帧样本" kind="var(--value)" defaultOpen>
+    <Fold title="当前 SDK 帧样本" defaultOpen>
       {record === undefined ? <div className={styles.note}>正在读取曲线</div>
         : record.kind === 'failed' ? <ErrorLine text={record.reason} entryId={record.entryId} />
           : unavailable ? <div className={styles.note}>{unavailable}</div>
@@ -624,11 +609,11 @@ function NativeInputInspector({ documentId }: { documentId: string }) {
   const observation = useInputObservation(documentId);
   const runId = useWorkbench(state => state.runId);
   if (!runId) return null;
-  if (observation.kind !== 'ready') return <Fold title="实际采用输入" kind="var(--track-in)" defaultOpen>
+  if (observation.kind !== 'ready') return <Fold title="实际采用输入" defaultOpen>
     <div className={styles.note}>{observation.reason}</div>
   </Fold>;
   const { input } = observation;
-  return <Fold title="实际采用输入" kind="var(--track-in)" defaultOpen>
+  return <Fold title="实际采用输入" defaultOpen>
     <Value label="SDK 帧" value={observation.frame.hostFrame} />
     <Value label="已收到" value={input.received ? '是' : '否'} />
     {input.received && <>
@@ -659,33 +644,28 @@ function useInputTrack(trackId: string) {
 function InputItemInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const [, trackId, itemId] = id.split('/');
   const found = useInputTrack(trackId);
-  const seconds = useWorkbench(state => state.seconds);
   const graphs = useWorkbench(state => state.graphs);
   const clip = found?.track.clips.find(item => item.id === itemId);
   const marker = found?.track.markers.find(item => item.id === itemId);
   if (!found || (!clip && !marker)) return missing;
   const writes = (clip ?? marker)!.writes;
-  const kind = 'var(--track-in)';
   const graph = clipGraph(graphs, (clip ?? marker)!.graphId);
-  const at = clip ? clip.startSeconds : marker!.seconds;
   return (
     <>
-      <Head kind={kind} name={[...new Set(writes.map(write => write.keyId))].join(' / ') || '输入'} sub={`${found.root.displayName} · ${found.track.displayName}`} />
-      <Fold title={clip ? '按住段' : '输入标记'} kind={kind} defaultOpen>
+      <Head icon={<TrackIcon kind="in" />} name={[...new Set(writes.map(write => write.keyId))].join(' / ') || '输入'}
+        sub={`${found.root.displayName} · ${found.track.displayName}`} />
+      <Fold title={clip ? '按住段' : '输入标记'} defaultOpen>
         {graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value="当前技能没有这张图" />}
-        <Link label="跳到" text={`${at.toFixed(3)} s`} kind={kind} tip="游标跳到这里"
-          onOpen={() => void transport.seekTime(at)} />
         {clip ? (
           <>
-            <Value label="开始" value={`${clip.startSeconds.toFixed(3)} s`} />
-            <Value label="结束" value={`${clip.endSeconds.toFixed(3)} s`} />
-            <Value label="游标所在" mono={false} value={seconds !== null && clip.startSeconds <= seconds && seconds <= clip.endSeconds ? '是' : '否'} />
+            <Value label="起点（秒）" value={clip.startSeconds.toFixed(3)} />
+            <Value label="终点（秒）" value={clip.endSeconds.toFixed(3)} />
           </>
-        ) : <Value label="时刻" value={`${marker!.seconds.toFixed(3)} s`} />}
+        ) : <Value label="时刻（秒）" value={marker!.seconds.toFixed(3)} />}
       </Fold>
-      <Fold title="写入" kind="var(--port-enum)" defaultOpen>
+      <Fold title="写入" defaultOpen>
         <div className={styles.list}>
           {writes.map((write, index) => (
             <div key={index} className={styles.listRow} title={write.fields.map(field => `${field.displayName}=${field.value}`).join('\n')}>
@@ -707,15 +687,12 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
 function InputTrackInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const found = useInputTrack(id.split('/')[1]);
   if (!found) return missing;
-  const kind = 'var(--track-in)';
   return (
     <>
-      <Head kind={kind} name={found.track.displayName} sub={found.root.displayName} />
-      <Fold title="输入轨" kind={kind} defaultOpen>
-        <Value label="按住段" value={String(found.track.clips.length)} />
-        <Value label="标记" value={String(found.track.markers.length)} />
+      <Head icon={<TrackIcon kind="in" />} name={found.track.displayName} sub={found.root.displayName} />
+      <Fold title="输入轨" defaultOpen>
         <Value label="角色" value={found.root.actorId} />
-        <Value label="方案零点" value={`${found.root.timeOriginSeconds.toFixed(3)} s`} />
+        <Value label="方案零点（秒）" value={found.root.timeOriginSeconds.toFixed(3)} />
       </Fold>
       <Identity extra={[{ displayName: '输入轨', value: found.track.id }]} />
     </>
@@ -729,13 +706,13 @@ function ActorInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (!actor) return missing;
   return (
     <>
-      <Head kind="var(--track-anim)" name={actor.displayName} />
-      <Fold title="变换" kind="var(--track-anim)" defaultOpen>
+      <Head name={actor.displayName} />
+      <Fold title="变换" defaultOpen>
         <Value label="位置" value={actor.root.position.map(value => value.toFixed(3)).join(', ')} />
         <Value label="旋转" value={actor.root.rotation.map(value => value.toFixed(3)).join(', ')} />
       </Fold>
-      <Fold title="本帧" kind="var(--value)" defaultOpen><Values fields={actor.fields} /></Fold>
-      <Fold title="原始记录" kind="var(--node-flow)"><Raw value={actor.rawJson} /></Fold>
+      <Fold title="本帧" defaultOpen><Values fields={actor.fields} /></Fold>
+      <Fold title="原始记录"><Raw value={actor.rawJson} /></Fold>
       <Identity extra={[{ displayName: '角色', value: actor.id }]} />
     </>
   );

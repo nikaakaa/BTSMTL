@@ -128,9 +128,3 @@
   height: 100%;
   display: block;
 }
-
-.details {
-  max-height: 40%;
-  overflow: auto;
-  flex: none;
-}
