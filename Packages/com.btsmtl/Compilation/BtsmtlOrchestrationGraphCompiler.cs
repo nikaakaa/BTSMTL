@@ -256,6 +256,7 @@ namespace BTSMTL.Compilation
             readonly Dictionary<int, TValue> m_LoweredValues = new();
             readonly Dictionary<int, GameplayAbilityCurve<TScalar>> m_LoweredCurves = new();
             readonly HashSet<int> m_ParameterSlots = new();
+            readonly HashSet<int> m_StructureLiteralIndexes = new();
             readonly Dictionary<string, GraphInvocationFrame> m_GraphInvocationFrames = new(StringComparer.Ordinal);
             OrchestrationIdentityTable m_Identities;
             Dictionary<string, int> m_IdentityIds;
@@ -1375,7 +1376,10 @@ namespace BTSMTL.Compilation
             {
                 foreach (ProgramCatalogField field in declaration.Fields)
                     if (field.Name == name)
+                    {
+                        m_StructureLiteralIndexes.Add(field.ConstantIndex);
                         return m_Literals[field.ConstantIndex];
+                    }
                 throw Invariant(ProgramSourceTargetKind.CatalogEntry, declaration.Index,
                     $"黑板声明 '{declaration.Dependency.Identity}' 缺少字段 '{name}'。");
             }
@@ -1395,6 +1399,7 @@ namespace BTSMTL.Compilation
                     foreach (ProgramCatalogField field in declaration.Fields)
                         if (field.Name == "GeneratedField")
                         {
+                            m_StructureLiteralIndexes.Add(field.ConstantIndex);
                             result.Add(new OrchestrationGraphBlackboardBinding(ValueSlot(slot), Bind(Scope(slot).Identity),
                                 Bind(CatalogText(declaration, "GeneratedContract")),
                                 m_Literals[field.ConstantIndex].Int32));
@@ -1560,7 +1565,10 @@ namespace BTSMTL.Compilation
             {
                 foreach (ProgramCatalogField field in declaration.Fields)
                     if (field.Name == "Public")
+                    {
+                        m_StructureLiteralIndexes.Add(field.ConstantIndex);
                         return m_Literals[field.ConstantIndex].Boolean;
+                    }
                 return false;
             }
 

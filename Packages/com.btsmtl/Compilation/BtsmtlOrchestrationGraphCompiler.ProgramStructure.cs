@@ -21,7 +21,7 @@ namespace BTSMTL.Compilation
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts,
                 object domain, Type compilationType, OrchestrationExecutionContract contract, string encoderIdentity,
                 string[] structureIdentityTexts, int[] valueLiteralIndexes, int[] curveLiteralIndexes,
-                int[] constantLiteralIndexes, int[] defaultLiteralIndexes,
+                int[] constantLiteralIndexes, int[] defaultLiteralIndexes, IReadOnlyCollection<int> structureLiteralIndexes,
                 Dictionary<string, int> identityIds, IdentityCache executionIdentities)
             {
                 Content = content;
@@ -46,6 +46,7 @@ namespace BTSMTL.Compilation
                 CurveLiteralIndexes = curveLiteralIndexes;
                 ConstantLiteralIndexes = constantLiteralIndexes;
                 DefaultLiteralIndexes = defaultLiteralIndexes;
+                StructureLiteralIndexes = structureLiteralIndexes;
                 IdentityIds = identityIds;
                 ExecutionIdentities = executionIdentities;
             }
@@ -72,6 +73,7 @@ namespace BTSMTL.Compilation
             internal readonly int[] CurveLiteralIndexes;
             internal readonly int[] ConstantLiteralIndexes;
             internal readonly int[] DefaultLiteralIndexes;
+            internal readonly IReadOnlyCollection<int> StructureLiteralIndexes;
             internal readonly Dictionary<string, int> IdentityIds;
             internal readonly IdentityCache ExecutionIdentities;
         }
@@ -106,7 +108,8 @@ namespace BTSMTL.Compilation
                     m_ControlFlow, m_References, m_GraphCalls, m_StateSlots, m_Scopes, m_Catalog, m_SourceMap,
                     m_StateTransitionHooks, entryContracts, m_Domain, GetType(), m_Contract,
                     m_Domain.ContentEncoder?.ContractIdentity, m_StructureIdentityTexts,
-                    m_ValueLiteralIndexes, m_CurveLiteralIndexes, constants, defaults, m_IdentityIds, identities);
+                    m_ValueLiteralIndexes, m_CurveLiteralIndexes, constants, defaults,
+                    previous == null ? m_StructureLiteralIndexes : previous.StructureLiteralIndexes, m_IdentityIds, identities);
             }
 
             BtsmtlOrchestrationCompilation<TValue> CompleteCompilation(OrchestrationGraphContent<TValue> content,
@@ -180,10 +183,9 @@ namespace BTSMTL.Compilation
                         m_Literals[i].Kind == SemanticLiteralKind.Enum &&
                         m_Literals[i].Enum.TypeIdentity != previous.Literals[i].Enum.TypeIdentity)
                         return false;
-                foreach (ProgramCatalogEntry entry in m_Catalog)
-                    foreach (ProgramCatalogField field in entry.Fields)
-                        if (field.ConstantIndex >= 0 && !SameLiteral(m_Literals[field.ConstantIndex], previous.Literals[field.ConstantIndex]))
-                            return false;
+                foreach (int index in previous.StructureLiteralIndexes)
+                    if (!SameLiteral(m_Literals[index], previous.Literals[index]))
+                        return false;
                 for (int i = 0; i < m_StateTransitionHooks.Count; i++)
                 {
                     OrchestrationExtensionReference current = m_StateTransitionHooks[i];
@@ -326,7 +328,7 @@ namespace BTSMTL.Compilation
                         continue;
                     SemanticLiteral current = m_Literals[literal];
                     if (SameLiteral(current, previous.Literals[literal]) &&
-                        !(identitiesChanged && current.Kind is SemanticLiteralKind.String or SemanticLiteralKind.Enum))
+                        !(identitiesChanged && (current.Kind is SemanticLiteralKind.String or SemanticLiteralKind.Enum)))
                         continue;
                     changed ??= original.ToArray();
                     changed[i] = m_LoweredValues[literal];
