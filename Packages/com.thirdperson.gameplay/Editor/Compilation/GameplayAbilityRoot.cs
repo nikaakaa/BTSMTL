@@ -98,6 +98,8 @@ namespace ThirdPersonSimulation
 
     public static class GameplayAbilityRootValidation
     {
+        public const string EntryReferenceIdentity = "ability:root-operation";
+
         public static ProgramReference RequireEntryReference(
             GameplayAbilityRootDescriptor root,
             IReadOnlyList<ProgramReference> references,
@@ -116,7 +118,7 @@ namespace ThirdPersonSimulation
                 if (reference != null &&
                     !reference.HasSourceOperation &&
                     reference.Kind == ProgramReferenceKind.Operation &&
-                    string.Equals(reference.Identity, "ability:root-operation", StringComparison.Ordinal))
+                    string.Equals(reference.Identity, EntryReferenceIdentity, StringComparison.Ordinal))
                 {
                     if (match != null)
                         throw new InvalidDataException("Ability root operation reference is duplicated.");
