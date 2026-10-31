@@ -26,6 +26,12 @@
   gap: 2px;
 }
 
+.groupButton {
+  min-width: 0;
+  padding: 0 2px;
+  color: var(--glyph);
+}
+
 .watermark {
   display: flex;
   flex-direction: column;

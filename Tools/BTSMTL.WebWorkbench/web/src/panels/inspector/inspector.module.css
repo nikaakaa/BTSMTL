@@ -320,6 +320,13 @@
   color: var(--text-disabled);
 }
 
+/* 只有图标的添加、删除按钮 */
+.iconButton {
+  min-width: 0;
+  padding: 0 2px;
+  color: var(--glyph);
+}
+
 .listItem {
   display: grid;
   grid-template-columns: 1fr auto;

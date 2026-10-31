@@ -4,6 +4,7 @@ import { usePanelApi, usePanelVisible } from '../shell/panel';
 import { panelInfo } from '../shell/panelTypes';
 import { Button } from '../ui/controls';
 import { Empty } from '../ui/blocks';
+import { FoldoutIcon } from '../ui/icons';
 import styles from './console.module.css';
 
 export const sourceNames: Record<string, string> = {
@@ -29,7 +30,7 @@ function Entry({ entry, focused }: { entry: ConsoleEntry; focused: boolean }) {
   return (
     <div ref={element} className={styles.entry} data-level={entry.level} data-focused={focused || undefined}>
       <button className={styles.line} disabled={!entry.raw} onClick={() => setOpen(!open)} aria-expanded={entry.raw ? open : undefined}>
-        <span className={styles.arrow}>{entry.raw ? (open ? '▾' : '▸') : ''}</span>
+        <span className={styles.arrow}>{entry.raw && <FoldoutIcon open={open} />}</span>
         <span className={styles.time}>{time(entry.time)}</span>
         <span className={styles.source}>{sourceNames[entry.source] ?? entry.source}</span>
         <span className={styles.reason}>{entry.reason}</span>

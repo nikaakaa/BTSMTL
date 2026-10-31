@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Button, NumberInput, Select } from '../../ui/controls';
+import { CloseIcon } from '../../ui/icons';
 import styles from './inspector.module.css';
 
 // 曲线字段（Unity AnimationCurve 的 JSON：keys 与前后循环方式）。图上拖动关键帧改时间与值，
@@ -162,7 +163,7 @@ function KeyRow({ label, keyValue, removable, onChange, onRemove }: {
   return (
     <>
       {cell('time')}{cell('value')}{cell('inTangent')}{cell('outTangent')}
-      <Button variant="ghost" disabled={!removable} tip="删除关键帧" onClick={onRemove}>×</Button>
+      <Button variant="ghost" className={styles.iconButton} disabled={!removable} tip="删除关键帧" aria-label="删除关键帧" onClick={onRemove}><CloseIcon /></Button>
     </>
   );
 }

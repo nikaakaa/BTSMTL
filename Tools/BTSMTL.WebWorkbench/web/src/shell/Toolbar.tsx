@@ -7,6 +7,7 @@ import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
 import { Button, MenuButton, Select, Tip, type MenuEntry } from '../ui/controls';
+import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
 
@@ -54,7 +55,7 @@ function SkillChoice() {
   if (available === false) return null;
   return (
     <>
-      <span className={styles.crumbSeparator} aria-hidden>›</span>
+      <CrumbArrow className={styles.crumbSeparator} />
       {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.name}</span> : (
         <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.name ?? null} disabled={!skills?.length}
           options={(skills ?? []).map(item => ({ value: item, label: item }))}
@@ -81,9 +82,9 @@ function AuthoringStatus() {
   return (
     <div className={styles.authoring}>
       <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={!state.undoDepth} tip="撤销（Ctrl+Z）"
-        onClick={() => authoringActions.undo()}>↶</Button>
+        onClick={() => authoringActions.undo()}><UndoIcon /></Button>
       <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）"
-        onClick={() => authoringActions.redo()}>↷</Button>
+        onClick={() => authoringActions.redo()}><RedoIcon /></Button>
       {state.externalChange && (
         <Tip content="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">
           <span className={styles.warn} tabIndex={0}>外部已修改</span>

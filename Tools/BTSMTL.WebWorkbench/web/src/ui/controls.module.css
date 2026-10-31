@@ -165,7 +165,7 @@
 .indicator {
   position: absolute;
   left: 7px;
-  font-size: 10px;
+  display: flex;
 }
 
 .separator {
@@ -267,8 +267,6 @@
   border-radius: 2px;
   background: var(--field);
   color: var(--text-strong);
-  font-size: 11px;
-  line-height: 1;
   flex: none;
 }
 

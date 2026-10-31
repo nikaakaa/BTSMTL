@@ -63,8 +63,7 @@
 .foldMore {
   margin-left: auto;
   color: var(--text-disabled);
-  font-weight: 400;
-  letter-spacing: 2px;
+  flex: none;
 }
 
 .foldPanel {

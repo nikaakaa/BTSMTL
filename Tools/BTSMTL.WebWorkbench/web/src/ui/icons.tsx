@@ -50,6 +50,42 @@ export const FoldoutIcon = ({ open, ...props }: IconProps & { open: boolean }) =
   <Icon box={13} {...props}><path d={open ? 'M2.5 4.5h8l-4 4.5z' : 'M4.5 2.5v8l4.5-4z'} /></Icon>
 );
 
+// 菜单与复选框的对勾（10×10）。
+export const CheckIcon = (props: IconProps) => (
+  <Icon box={10} {...props}>
+    <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M1.6 5.3 4 7.6l4.4-5.2" />
+  </Icon>
+);
+
+// 关闭与删除。
+export const CloseIcon = (props: IconProps) => (
+  <Icon {...props}><path fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" d="m4.5 4.5 7 7m0-7-7 7" /></Icon>
+);
+
+// 拆到独立窗口：前后错开的两个窗口。
+export const PopoutIcon = (props: IconProps) => (
+  <Icon {...props}><path fill="none" stroke="currentColor" d="M5.5 2.5h8v8h-8zm0 3h-3v8h8v-3" /></Icon>
+);
+
+export const UndoIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" d="M5.5 3 2.5 6l3 3m-3-3h7a3.5 3.5 0 0 1 0 7H6" />
+  </Icon>
+);
+
+export const RedoIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" d="m10.5 3 3 3-3 3m3-3h-7a3.5 3.5 0 0 0 0 7H10" />
+  </Icon>
+);
+
+// 面包屑层级之间的细长箭头（7×20）。
+export const CrumbArrow = (props: IconProps) => (
+  <svg width="7" height="20" viewBox="0 0 7 20" fill="none" stroke="currentColor" aria-hidden focusable="false" {...props}>
+    <path d="M1 3.5 6 10l-5 6.5" />
+  </svg>
+);
+
 // Timeline 选择器（TimelineSelector）：左侧短竖条加方框。
 export const SelectorIcon = (props: IconProps) => (
   <Icon {...props}>

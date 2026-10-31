@@ -3,6 +3,7 @@ import { Tabs as BaseTabs } from '@base-ui/react/tabs';
 import { Fragment, type ReactNode } from 'react';
 import type { Field } from '../api/types';
 import styles from './blocks.module.css';
+import { OptionsIcon } from './icons';
 
 // 面板空状态：只接受一句话。
 export function Empty({ text }: { text: string }) {
@@ -22,7 +23,7 @@ export function Fold({ title, kind, defaultOpen = false, children }: {
         <span className={styles.foldArrow} />
         {kind && <span className={styles.foldKind} style={{ ['--kind' as string]: kind }} />}
         {title}
-        <span className={styles.foldMore}>⋮</span>
+        <OptionsIcon className={styles.foldMore} />
       </Collapsible.Trigger>
       <Collapsible.Panel className={styles.foldPanel}>{children}</Collapsible.Panel>
     </Collapsible.Root>

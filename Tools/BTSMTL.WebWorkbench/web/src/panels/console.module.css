@@ -43,8 +43,13 @@
   background: var(--bg-3);
 }
 
+/* 折叠三角对齐首行文字 */
 .arrow {
-  width: 10px;
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  width: 13px;
+  height: 16px;
   color: var(--text-dim);
   flex: none;
 }

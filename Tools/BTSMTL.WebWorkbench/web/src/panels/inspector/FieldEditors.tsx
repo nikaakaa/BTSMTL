@@ -12,6 +12,7 @@ import {
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, NumberInput, Select, TextInput } from '../../ui/controls';
+import { AddIcon, CloseIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import styles from './inspector.module.css';
 
@@ -188,12 +189,12 @@ function ListEditor({ label, value, shape, keys, onSet, identities }: {
     <div className={styles.group}>
       <div className={styles.groupHead}>
         {label}<span className={styles.count}>{value.length}</span>
-        <Button variant="ghost" tip="添加一项" onClick={add}>＋</Button>
+        <Button variant="ghost" className={styles.iconButton} tip="添加一项" aria-label="添加一项" onClick={add}><AddIcon /></Button>
       </div>
       {value.map((item, index) => (
         <div key={index} className={styles.listItem}>
           <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} onSet={onSet} identities={identities} />
-          <Button variant="ghost" tip="删除这一项" onClick={() => remove(index)}>×</Button>
+          <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项" onClick={() => remove(index)}><CloseIcon /></Button>
         </div>
       ))}
     </div>
@@ -409,7 +410,8 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
           <div key={id} className={styles.group}>
             <div className={styles.groupHead}>
               {variable.name as string}<span className={styles.count}>{variable.varType as string}</span>
-              {editable && <Button variant="ghost" tip="删除变量与声明；引用它的节点保存时由编译报告" onClick={() => graphAuthoring.removeVariable(graphId, id)}>×</Button>}
+              {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
+                onClick={() => graphAuthoring.removeVariable(graphId, id)}><CloseIcon /></Button>}
             </div>
             {editable ? (
               <>

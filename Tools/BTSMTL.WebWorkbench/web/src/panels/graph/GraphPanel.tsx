@@ -28,6 +28,7 @@ import {
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { CloseIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
@@ -342,7 +343,7 @@ function NodeTypePicker({ graph, at, onClose }: {
       <div className={styles.pickerHead}>
         <TextInput autoFocus placeholder="搜索节点类型" value={search} onChange={event => setSearch(event.currentTarget.value)}
           aria-label="搜索节点类型" className={styles.pickerSearch} />
-        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭">×</button>
+        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭"><CloseIcon /></button>
       </div>
       <div className={styles.pickerList}>
         {error ? <div className={styles.pickerNote}>{error}</div>
@@ -368,7 +369,7 @@ function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose()
     <div className={styles.blackboard}>
       <div className={styles.pickerHead}>
         <b>黑板 · {graphName(graph)}</b>
-        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭">×</button>
+        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭"><CloseIcon /></button>
       </div>
       <div className={styles.blackboardBody}>
         {author.own ? <BlackboardFields graphId={graph.id} shape={elements?.blackboard ?? null} editable={author.editable && !!elements} />

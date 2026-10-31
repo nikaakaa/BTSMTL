@@ -34,13 +34,6 @@ export const TimelineAssetIcon = (props: ShapeProps) => (
   </svg>
 );
 
-// 面包屑层级之间的细长箭头（7×20）。
-export const CrumbArrow = (props: ShapeProps) => (
-  <svg width="7" height="20" viewBox="0 0 7 20" fill="none" stroke="currentColor" aria-hidden focusable="false" {...props}>
-    <path d="M1 3.5 6 10l-5 6.5" />
-  </svg>
-);
-
 // 标记（TimelineMarkerItem，9×16）：上圆下尖的水滴。
 export const MarkerShape = () => (
   <svg width="9" height="16" viewBox="0 0 9 16" aria-hidden focusable="false">

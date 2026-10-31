@@ -31,8 +31,8 @@ import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSp
 import { archive } from '../../state/archive';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
-import { AddIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
-import { CrumbArrow, MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
+import { AddIcon, CrumbArrow, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
+import { MarkerShape, PlayheadShape, TimelineAssetIcon, TrackIcon } from './icons';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。

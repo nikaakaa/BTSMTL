@@ -8,6 +8,7 @@ import { Select as BaseSelect } from '@base-ui/react/select';
 import { Tooltip } from '@base-ui/react/tooltip';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
 import styles from './controls.module.css';
+import { CheckIcon } from './icons';
 import { usePortalContainer } from './portal';
 
 const join = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
@@ -96,7 +97,7 @@ export function Select<T extends string>({ value, options, onChange, placeholder
             <BaseSelect.List>
               {options.map(option => (
                 <BaseSelect.Item key={option.value} value={option.value} disabled={option.disabled} className={styles.item}>
-                  <BaseSelect.ItemIndicator className={styles.indicator}>✓</BaseSelect.ItemIndicator>
+                  <BaseSelect.ItemIndicator className={styles.indicator}><CheckIcon /></BaseSelect.ItemIndicator>
                   <BaseSelect.ItemText>{option.label}</BaseSelect.ItemText>
                 </BaseSelect.Item>
               ))}
@@ -131,14 +132,14 @@ function MenuEntries({ parts, entries }: { parts: MenuParts; entries: MenuEntry[
         return (
           <parts.CheckboxItem key={index} className={styles.item} checked={entry.checked}
             onCheckedChange={entry.onChange} disabled={entry.disabled}>
-            <parts.CheckboxItemIndicator className={styles.indicator}>✓</parts.CheckboxItemIndicator>
+            <parts.CheckboxItemIndicator className={styles.indicator}><CheckIcon /></parts.CheckboxItemIndicator>
             {entry.label}
           </parts.CheckboxItem>
         );
       default: {
         const item = (
           <parts.Item key={index} className={styles.item} onClick={entry.onSelect} disabled={entry.disabled}>
-            {entry.kind === 'radio' && entry.checked && <span className={styles.indicator}>✓</span>}
+            {entry.kind === 'radio' && entry.checked && <span className={styles.indicator}><CheckIcon /></span>}
             {entry.label}
           </parts.Item>
         );
@@ -213,13 +214,13 @@ export function ObjectField({ text, kind, className, onOpen, tip }: {
 }
 
 export function CheckMark({ checked }: { checked: boolean }) {
-  return <span className={styles.check} aria-hidden>{checked ? '✓' : ''}</span>;
+  return <span className={styles.check} aria-hidden>{checked && <CheckIcon />}</span>;
 }
 
 export function Checkbox({ checked, onChange, disabled, label }: { checked: boolean; onChange(checked: boolean): void; disabled?: boolean; label: string }) {
   return (
     <BaseCheckbox.Root className={styles.check} checked={checked} onCheckedChange={next => onChange(next)} disabled={disabled} aria-label={label}>
-      <BaseCheckbox.Indicator>✓</BaseCheckbox.Indicator>
+      <BaseCheckbox.Indicator render={<CheckIcon />} />
     </BaseCheckbox.Root>
   );
 }

@@ -1,6 +1,7 @@
 import type { IDockviewHeaderActionsProps, IWatermarkPanelProps } from 'dockview-react';
 import { useEffect, useState } from 'react';
 import { Button, MenuButton, type MenuEntry } from '../ui/controls';
+import { OptionsIcon, PopoutIcon } from '../ui/icons';
 import { PortalContainerProvider } from '../ui/portal';
 import { openNewInstance, openPanel, popoutGroup, resetLayout } from './layout';
 import { panelInfo, panelTypes } from './panelTypes';
@@ -35,10 +36,10 @@ export function GroupActions({ group, api }: IDockviewHeaderActionsProps) {
     <PortalContainerProvider value={groupWindow.document.body}>
       <div className={styles.groupActions}>
         {location !== 'popout' && (
-          <Button variant="ghost" tip="拆到独立窗口" aria-label="拆到独立窗口"
-            onClick={() => void popoutGroup(group)}>⧉</Button>
+          <Button variant="ghost" className={styles.groupButton} tip="拆到独立窗口" aria-label="拆到独立窗口"
+            onClick={() => void popoutGroup(group)}><PopoutIcon /></Button>
         )}
-        <MenuButton label="面板菜单" variant="ghost" entries={panelMenu()}>⋮</MenuButton>
+        <MenuButton label="面板菜单" variant="ghost" className={styles.groupButton} iconOnly entries={panelMenu()}><OptionsIcon /></MenuButton>
       </div>
     </PortalContainerProvider>
   );
