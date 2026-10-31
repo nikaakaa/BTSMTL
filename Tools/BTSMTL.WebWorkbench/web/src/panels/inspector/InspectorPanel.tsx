@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { openPanel } from '../../shell/layout';
@@ -8,57 +8,62 @@ import {
   isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
-import { stageNames } from '../../state/session';
-import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
+import { selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
   clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
-import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
+import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, NumberInput, ObjectField } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
-// 检查器（D7）：按 selection 显示所选对象在当前帧的记录；不选中时显示运行摘要。
-// 锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
+// 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
+// 不选中时显示技能本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
 
 interface Params {
   locked: Selection | null;
 }
 
-const kindNames: Record<Selection['kind'], string> = { node: '节点', edge: '连线', clip: '片段', track: '轨道', actor: '角色' };
+// 对象头右上角的锁：toggle 为 null 时没有可锁定的对象。
+const LockContext = createContext<{ locked: boolean; toggle: (() => void) | null }>({ locked: false, toggle: null });
 
 export function InspectorPanel() {
   const [params, setParams] = usePanelParams<Params>({ locked: null });
   const selection = useWorkbench(state => state.selection);
   const target = useAuthoring(state => state.target);
   const shown = params.locked ?? selection;
+  const unlock = () => setParams({ locked: null });
+  const lock = {
+    locked: !!params.locked,
+    toggle: params.locked ? unlock : selection ? () => setParams({ locked: selection }) : null,
+  };
   const content = !target ? <Empty text="选择要编辑的内容" />
-      : shown ? <Content key={`${target.kind}/${target.name}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} /> : <SkillSummary />;
+      : shown ? <Content key={`${target.kind}/${target.name}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
+        : <SkillSummary />;
   return (
     <div className={styles.root}>
-      <PanelBar>
-        <Button variant="ghost" pressed={!!params.locked} disabled={!params.locked && !selection}
-          tip={params.locked ? '解除锁定，跟随选中对象' : selection ? '锁定当前对象' : '没有选中对象'}
-          onClick={() => setParams({ locked: params.locked ? null : selection })}>锁定</Button>
-        <BarSeparator />
-        <BarLabel>{shown ? kindNames[shown.kind] : '技能'}</BarLabel>
-      </PanelBar>
-      <div className={styles.scroll}>
-        {content}
-      </div>
+      <LockContext.Provider value={lock}>
+        <div className={styles.scroll}>
+          {content}
+        </div>
+      </LockContext.Provider>
     </div>
   );
 }
 
-function Content({ shown, locked }: { shown: Selection | null; locked: boolean }) {
-  const missing = <Empty text={shown?.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前技能' : '所选对象不属于当前技能'} />;
-  if (!shown) return <RunSummary />;
+function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean; unlock(): void }) {
+  const missing = (
+    <div className={styles.missing}>
+      {shown.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前技能' : '所选对象不属于当前技能'}
+      {locked && <Button variant="ghost" onClick={unlock}>解除锁定</Button>}
+    </div>
+  );
   switch (shown.kind) {
     case 'node': return <NodeInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'clip': return shown.id.startsWith('input/') ? <InputItemInspector id={shown.id} missing={missing} />
@@ -74,11 +79,17 @@ function Content({ shown, locked }: { shown: Selection | null; locked: boolean }
 // ── 通用部件 ──
 
 function Head({ kind, name, sub }: { kind: string; name: ReactNode; sub?: ReactNode }) {
+  const lock = useContext(LockContext);
   return (
     <div className={styles.head}>
       <span className={styles.big} style={{ ['--kind' as string]: kind }} />
       <span className={`${styles.box} ${styles.name}`}>{name}</span>
       <span className={styles.subline}>{sub}</span>
+      <Button variant="ghost" className={styles.lock} pressed={lock.locked} disabled={!lock.toggle} aria-label="锁定检查器"
+        tip={lock.locked ? '解除锁定，跟随选中对象' : lock.toggle ? '锁定：固定显示这个对象' : '没有选中对象'}
+        onClick={lock.toggle ?? undefined}>
+        <i className={styles.padlock} data-locked={lock.locked || undefined} />
+      </Button>
     </div>
   );
 }
@@ -110,9 +121,6 @@ function openTimeline(documentId: string) {
 function useTimelineName(documentId: string | null) {
   return useWorkbench(state => documentId ? state.timelines.find(item => item.documentId === documentId)?.displayName ?? documentId.slice(0, 8) : null);
 }
-
-// 哈希类身份值（十六进制长串）只放身份折叠。
-const isIdentityValue = (field: Field) => /^[0-9a-f]{16,}$/i.test(field.value);
 
 function Values({ fields }: { fields: Field[] }) {
   return <>{fields.map((field, index) => <Value key={index} label={field.displayName} value={field.value} />)}</>;
@@ -166,78 +174,29 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   return <IdentityFold fields={fields} />;
 }
 
-// ── 运行摘要 ──
+// ── 技能 ──
 
-function RunSummary() {
-  const { summary, receipt, frame, failure } = useWorkbench(useShallow(state => ({
-    summary: state.summary, receipt: state.receipt, frame: state.frame, failure: state.failure,
-  })));
-  if (!summary) return <><Empty text={failure?.reason ?? (receipt ? stageNames[receipt.stage] : '读取中')} /><Identity /></>;
-  return (
-    <>
-      <Head kind="var(--accent)" name="运行" sub={receipt ? `${stageNames[receipt.stage]} · ${new Date(receipt.acceptedAt).toLocaleString()}` : null} />
-      <Fold title="运行" kind="var(--accent)" defaultOpen>
-        <Value label="确认帧数" value={String(summary.frameCount)} />
-        <Value label="起止帧" value={`${summary.firstFrame} — ${summary.lastFrame}`} />
-        <Values fields={summary.fields.filter(field => !isIdentityValue(field) && field.value !== summary.runId)} />
-      </Fold>
-      {frame && (
-        <Fold title="本帧" kind="var(--value)" defaultOpen>
-          <Value label="秒数" value={frame.seconds.toFixed(3)} />
-          <Values fields={frame.fields} />
-        </Fold>
-      )}
-      <PlayerStatus />
-      {frame?.actors.map(actor => (
-        <Fold key={actor.id} title={actor.displayName} kind="var(--track-anim)">
-          <Value label="根位置" value={actor.root.position.map(value => value.toFixed(3)).join(', ')} />
-          <Values fields={actor.fields} />
-        </Fold>
-      ))}
-      {frame?.sections.map((section, index) => (
-        <Fold key={index} title={section.displayName} kind="var(--node-flow)">
-          {section.records.length ? section.records.map((record, recordIndex) => (
-            <Fold key={recordIndex} title={record.displayName}><Values fields={record.fields} /></Fold>
-          )) : <div className={styles.note}>{section.emptyMessage}</div>}
-        </Fold>
-      ))}
-      <Identity extra={summary.fields.filter(field => isIdentityValue(field) && field.value !== summary.runId)} />
-    </>
-  );
-}
-
-// 打开技能、没有选中对象时：技能的预览输入方案（作者模式可编辑）。
+// 打开技能、没有选中对象时（照 Unity 选中资产本身）：技能名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
 function SkillSummary() {
   const { skill, plans, editable } = useAuthoring(useShallow(state => ({
     skill: state.target?.name ?? null, editable: state.author,
     plans: [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])]
       .filter(path => path.startsWith('inputs/') && !state.removed.includes(path)).sort().join('\n'),
   })));
+  const timelines = useAuthorTimelines().length;
+  const paths = plans ? plans.split('\n') : [];
   return (
     <>
-      <Head kind="var(--accent)" name={skill ?? '技能'} sub="在节点图或 Timeline 中选中对象查看与编辑" />
-      {plans ? plans.split('\n').map(path => (
-        <Fold key={path} title={`预览输入 · ${path.slice('inputs/'.length, -'.json'.length).slice(0, 8)}`} kind="var(--track-in)" defaultOpen>
+      <Head kind="var(--accent)" name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
+      {paths.length ? paths.map((path, index) => (
+        <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} kind="var(--track-in)" defaultOpen>
           <InputPlanFields path={path} editable={editable} />
         </Fold>
-      )) : <div className={styles.note}>此技能没有预览输入方案</div>}
+      )) : (
+        <Fold title="预览输入" kind="var(--track-in)" defaultOpen><div className={styles.note}>此技能没有预览输入方案</div></Fold>
+      )}
+      <Identity extra={paths.map(path => ({ displayName: '预览输入文件', value: path }))} />
     </>
-  );
-}
-
-function PlayerStatus() {
-  const { live, targetFrame, actualFrame, lastCommand } = useWorkbench(useShallow(state => ({
-    live: state.live, targetFrame: state.targetFrame, actualFrame: state.actualFrame,
-    lastCommand: state.lastCommand,
-  })));
-  if (!live) return null;
-  return (
-    <Fold title="播放器" kind="var(--track-cam)" defaultOpen>
-      <Value label="播放器进程" mono={false} value={live.state} />
-      {live.player && <Values fields={live.player.fields} />}
-      {targetFrame !== null && <Value label="目标帧 / 实际帧" value={`${targetFrame} / ${actualFrame ?? '—'}`} />}
-      {lastCommand && <Value label="最后命令" value={`${lastCommand.type} · ${lastCommand.stage}${lastCommand.error ? ` · ${lastCommand.error}` : ''}`} />}
-    </Fold>
   );
 }
 
@@ -274,7 +233,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const kind = entry ? 'var(--node-event)' : 'var(--node-flow)';
   return (
     <>
-      <Head kind={kind} name={nodeName(node)} sub={`${graph.programId} · ${graphName(graph)}`} />
+      <Head kind={kind} name={nodeName(node)} sub={graphName(graph)} />
       {editable && <NodeFields graphId={graph.id} nodeId={node.id} />}
       {editable && <StateBody graph={graph} nodeId={node.id} />}
       <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
@@ -312,7 +271,8 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       {records.length > 0 && <Fold title="原始记录" kind="var(--node-flow)"><Raw value={records} /></Fold>}
       <Identity extra={[
         { displayName: '节点', value: node.id }, { displayName: '图', value: graph.id },
-        { displayName: '调用路径', value: node.invocationPath }, { displayName: '程序修订', value: graph.programRevision },
+        { displayName: '调用路径', value: node.invocationPath }, { displayName: '程序', value: graph.programId },
+        { displayName: '程序修订', value: graph.programRevision },
       ]} />
     </>
   );
@@ -411,7 +371,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
   return (
     <>
-      <Head kind="var(--port-bool)" name={name} sub={`${graph.programId} · ${graphName(graph)}`} />
+      <Head kind="var(--port-bool)" name={name} sub={graphName(graph)} />
       {editable && elements && <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape} />}
       <Fold title="条件" kind="var(--port-bool)" defaultOpen>
         {editable ? (
@@ -432,6 +392,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
       )}
       <Identity extra={[
         { displayName: '转移', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
+        { displayName: '程序', value: graph.programId },
       ]} />
     </>
   );
@@ -480,15 +441,15 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
   return (
     <>
-      <Head kind={kind} name={input ? (inputGraph as JsonObject | null)?.name as string ?? track.displayName : clip.displayName ?? clip.contract}
-        sub={`${timeline.displayName} · ${track.displayName}`} />
+      <Head kind={kind} sub={`${timeline.displayName} · ${track.displayName}`}
+        name={input ? (inputGraph as JsonObject | null)?.name as string ?? track.displayName
+          : clip.displayName ?? (graph ? graphName(graph) : track.displayName)} />
       <Fold title="片段" kind={kind} defaultOpen>
         <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
           onOpen={() => openTimeline(timeline.documentId)} />
         {input ? null : graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value={clip.graphId ? '当前技能没有这张图' : '无'} />}
-        <Value label="合同" value={clip.contract} />
         {!editable && <Value label="起点" value={clip.startSeconds.toFixed(3)} />}
         {!editable && <Value label="终点" value={clip.endSeconds.toFixed(3)} />}
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
@@ -525,7 +486,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       </Fold>}
       {!input && <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
       <Identity extra={[
-        { displayName: '片段', value: clip.id }, { displayName: 'Timeline', value: timeline.documentId },
+        { displayName: '片段', value: clip.id }, { displayName: '合同', value: clip.contract }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),
         { displayName: 'Timeline 来源修订', value: timeline.contentRevision ?? '未保存或尚未读取来源修订' },
       ]} />

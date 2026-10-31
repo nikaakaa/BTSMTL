@@ -27,7 +27,12 @@ const getIn = (value: JsonValue | undefined, keys: JsonKey[]): JsonValue | undef
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
 
-const memberLabel = (member: string) => member.replace(/^m_|^_/, '');
+// 字段显示名照 Unity ObjectNames.NicifyVariableName：去掉 m_／_／k 前缀，按大小写断词，首字母大写（HasStart → Has Start）。
+const memberLabel = (member: string) => {
+  const words = member.replace(/^(m_|_|k(?=[A-Z]))/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 // ── 身份表与黑板（每个技能修订读一次） ──
 
@@ -387,7 +392,6 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
   const variables = Object.values(((graph.localBlackboard as JsonObject | undefined)?.variables ?? {}) as JsonObject) as JsonObject[];
   const declarations = graph.BlackboardDeclarations as JsonObject[];
   const members = shape?.members ?? [];
-  const member = (name: string) => members.find(item => item.member === name) ?? null;
   const add = () => {
     const name = draft.name.trim();
     if (!name) return;
@@ -470,8 +474,8 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
         </Row>
       )}
       {scheme && Object.keys(scheme).filter(key => key !== 'InputTimeline').map(key => editable
-        ? <ValueEditor key={key} label={key} value={scheme[key]} shape={null} keys={['Schemes', selected, key]} onSet={set} />
-        : <Row key={key} label={key}><span className={styles.readOnly}>{stringifySkillJson(scheme[key] ?? null, ' ')}</span></Row>)}
+        ? <ValueEditor key={key} label={memberLabel(key)} value={scheme[key]} shape={null} keys={['Schemes', selected, key]} onSet={set} />
+        : <Row key={key} label={memberLabel(key)}><span className={styles.readOnly}>{stringifySkillJson(scheme[key] ?? null, ' ')}</span></Row>)}
     </>
   );
 }
@@ -612,7 +616,7 @@ export function ClipFields({ documentId, clipId, timeOnly = false }: { documentI
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
       {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
-        <Row key={key} label={`${memberLabel(key).replace(/FPRawValue$/, '')}（秒）`}>
+        <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
