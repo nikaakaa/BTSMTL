@@ -252,9 +252,11 @@ const frame = object({
   actors: array(object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text })),
   channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
   sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
-  geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment) })),
+  geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment),
+    objectSlot: number, executionObjectHandle: text, settlementObjectHandle: text, actorId: nullable(text) })),
     contacts: array(object({ point: vector3, normal: vector3,
       kind: optional(nullable(text)),
+      objectSlot: nullable(number), executionObjectHandle: nullable(text), settlementObjectHandle: nullable(text),
       actorId: optional(nullable(text)), purpose: optional(nullable(text)) })) }), rawJson: text, route: nullable(routeFrame),
 });
 export const readPlayerFrames = page(frame);

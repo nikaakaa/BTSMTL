@@ -64,6 +64,13 @@ export function FrameFull({ frame }: { frame: Frame }) {
           { displayName: '查询候选', value: String(frame.geometry.contacts.filter(hit => hit.kind === 'query-candidate').length) },
           { displayName: '来源未记录', value: String(frame.geometry.contacts.filter(hit => hit.kind == null).length) },
         ]} />
+        {frame.geometry.sweeps.map((query, index) => <Fold key={index} title={`扫掠 ${index + 1} · 对象槽 ${query.objectSlot}`}>
+          <Facts fields={[
+            ...(query.actorId === null ? [] : [{ displayName: '角色', value: query.actorId }]),
+            { displayName: '执行对象句柄', value: query.executionObjectHandle },
+            { displayName: '结算对象句柄', value: query.settlementObjectHandle },
+          ]} />
+        </Fold>)}
       </Fold>
       <FrameSections frame={frame} />
     </>

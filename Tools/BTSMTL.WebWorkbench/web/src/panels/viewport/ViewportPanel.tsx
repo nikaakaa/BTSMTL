@@ -32,6 +32,7 @@ function LogicView() {
   const contacts = frame?.availability.find(item => item.channel === 'physics-contacts');
   const actualContacts = frame?.geometry.contacts.some(hit => hit.kind === 'kcc-contact');
   const queryCandidates = frame?.geometry.contacts.some(hit => hit.kind === 'query-candidate');
+  const objectQueries = frame?.geometry.sweeps.filter(query => query.actorId === null).length;
   const unknownContacts = frame?.geometry.contacts.some(hit => hit.kind == null);
   const [failure, setFailure] = useState<number | null>(null);
   const camera = useRef(params.camera);
@@ -91,6 +92,7 @@ function LogicView() {
           </span></Tip>}
           {actualContacts && <span className={styles.legend} data-kind="kcc-contact"><i aria-hidden="true" />实际接触</span>}
           {queryCandidates && <span className={styles.legend} data-kind="query-candidate"><i aria-hidden="true" />查询候选</span>}
+          {objectQueries !== undefined && objectQueries > 0 && <BarLabel>{objectQueries} 个查询未关联角色</BarLabel>}
           {unknownContacts && <span className={styles.legend}><i aria-hidden="true" />来源未记录</span>}
         </>}
       </PanelBar>
