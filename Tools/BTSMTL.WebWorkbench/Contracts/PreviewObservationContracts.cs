@@ -55,6 +55,7 @@ public sealed record PreviewFrameSource(PreviewExecutionIdentity Execution, stri
     public Guid? LoadCommandId { get; init; }
     public string? Sequence { get; init; }
     public PreviewContentIdentity? Content { get; init; }
+    public string? AdoptedMode { get; init; }
 }
 public sealed record PreviewSummary(string RunId, string ContentRevision, string FrameDisplayName,
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
@@ -66,6 +67,7 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     public string InputSource { get; init; } = string.Empty;
     public string? InputRevision { get; init; }
     public PreviewObservationAvailability[] Availability { get; init; } = [];
+    public string? AdoptedMode { get; init; }
 }
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
 public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status)
