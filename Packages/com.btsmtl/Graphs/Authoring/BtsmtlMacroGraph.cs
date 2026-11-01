@@ -15,7 +15,7 @@ using UnityEditor;
 namespace BTSMTL.Graphs
 {
     // BTSMTL 通用参数化子图。不独立运行：每个调用位置由调用方编译器按出现路径展开。
-    public sealed class BtsmtlMacroGraph : Macro, IBtsmtlGraphVariableOwner, IBtsmtlGraphVariableSource,
+    public sealed partial class BtsmtlMacroGraph : Macro, IBtsmtlGraphVariableOwner, IBtsmtlGraphVariableSource,
         IBtsmtlGraphCompilationInputs, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
         , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter
@@ -139,7 +139,8 @@ namespace BTSMTL.Graphs
             macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
             macro.Authoring.Initialize(() =>
             {
-                macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
+                foreach (var input in CreateDefaultInputInterface())
+                    macro.inputDefinitions.Add(new DynamicParameterDefinition(input.Id, input.DisplayName, typeof(Flow)));
                 macro.EnsureAnchors();
                 host.OnMacroCreated(macro);
             });
