@@ -65,6 +65,8 @@ interface ViewOptions {
   enter(graph: GraphDefinition): void;
   hierarchy: GraphHierarchy;
   graph: GraphDefinition;
+  // 连了线的端口：`节点|方向:端口`。
+  connected: Set<string>;
   // 作者模式下端口可拖出连线。
   editable?: boolean;
   // 按住分组标题拖动前选中分组及其中的节点，一起拖动。
@@ -540,9 +542,11 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     return result;
   }, [params.relations, machine, selectedNode, layout, graph]);
 
+  const connected = useMemo(() => new Set(layout.edges.flatMap(edge =>
+    [`${edge.source!.nodeId}|output:${edge.source!.portId}`, `${edge.target!.nodeId}|input:${edge.target!.portId}`])), [layout]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph,
-  }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph]);
+    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph, connected,
+  }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph, connected]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -910,19 +914,22 @@ function PortCell({ port, state, values }: {
   state: ReturnType<RouteStore['node']>;
   values: boolean;
 }) {
-  const { editable } = useView();
+  const { editable, connected } = useView();
   if (!port) return <span className={styles.portEmpty} />;
   const input = port.direction === 'input';
   const sample = state.ports[`${port.direction}:${port.id}`];
   const color = portColor(sample?.valueType);
+  // 照 Shader Graph：连了线实心；没连线的输入在旁边写当前值。
+  const linked = connected.has(`${port.nodeId}|${port.direction}:${port.id}`);
+  const inline = input && !linked;
   return (
     <Tip name={port.displayName} content={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : port.id}>
       <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
         <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
           position={input ? Position.Left : Position.Right} isConnectable={!!editable}
-          className={styles.valuePort} data-filled={sample ? true : undefined} />
+          className={styles.valuePort} data-filled={linked || undefined} />
         <span className={styles.portName} data-name>{port.displayName}</span>
-        {values && sample && <span className={styles.portValue}>{sample.value}</span>}
+        {sample && (values || inline) && <span className={styles.portValue} data-inline={inline || undefined}>{sample.value}</span>}
       </span>
     </Tip>
   );

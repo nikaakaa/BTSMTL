@@ -415,6 +415,15 @@
   text-overflow: ellipsis;
 }
 
+/* 没连线的输入：当前值写在小深色框里 */
+.portValue[data-inline] {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--field);
+  color: var(--text);
+  line-height: 16px;
+}
+
 .valuePort, .hiddenHandle, .triggerIn, .triggerOut {
   position: absolute;
   top: 50%;
@@ -425,7 +434,7 @@
   background: transparent;
 }
 
-/* 数据端口把手：按值类型着色的 9px 圆圈，有值时实心 */
+/* 数据端口把手：按值类型着色的 9px 圆圈，连了线实心 */
 .valuePort {
   width: 9px;
   height: 9px;
