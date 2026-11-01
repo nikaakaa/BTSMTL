@@ -316,6 +316,9 @@ export interface ReferenceCurves {
   curves: { id: string; name: string; keys: { time: number; value: number; inTangent: number | string; outTangent: number | string }[] }[];
 }
 
+export type InputPlanContext = { kind: 'skill' } | { kind: 'timeline'; timeline: string }
+  | { kind: 'scene'; scene: string; actor: string };
+
 export interface SkillElements {
   graphs: GraphTemplate[];
   anchors: Record<string, GraphAnchor[]>;
@@ -325,7 +328,8 @@ export interface SkillElements {
   clips: ClipTemplate[];
   marker: ElementTemplate;
   referenceNodes: ReferenceNodeTemplate[];
-  previewInput: { plan: ElementTemplate; scheme: ElementTemplate; nodeType: string; keyPath: string[];
+  previewInput: { plan: ElementTemplate | null; availability: { available: boolean; reason: string | null };
+    scheme: ElementTemplate; nodeType: string; keyPath: string[];
     valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
@@ -591,8 +595,10 @@ export const authoringApi = {
   referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
-  elements: async (target: AuthoringTarget, signal?: AbortSignal) => {
-    const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements;
+  elements: async (target: AuthoringTarget, signal?: AbortSignal, context?: InputPlanContext) => {
+    const parameters = context?.kind === 'timeline' ? { timeline: context.timeline }
+      : context?.kind === 'scene' ? { scene: context.scene, actor: context.actor } : {};
+    const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements${query(parameters)}`, signal)) as unknown as SkillElements;
     for (const clip of elements.clips)
       clip.curves = clip.curves.map(channel => ({
         ...channel, min: numberOf(channel.min), max: numberOf(channel.max),

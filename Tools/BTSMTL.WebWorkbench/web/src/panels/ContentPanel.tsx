@@ -4,10 +4,11 @@ import type { Sources } from '../api/types';
 import { ErrorLine } from '../ui/ErrorLine';
 import { session } from '../state/session';
 import { contentActions, contentSelectionKey, previewContentChoices, selectedScene, useWorkbench } from '../state/store';
-import { authoringActions, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, useAuthoring } from '../state/authoring';
 import { openPanel } from '../shell/layout';
 import { BarSeparator, Empty, Facts, Fold, PanelBar } from '../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../ui/controls';
+import { InputPlanCreationForm } from './project/InputPlanCreationForm';
 import styles from './panel.module.css';
 
 // 内容面板：场景与录像列表、输入声明；选择结果写入 content 分片，工具栏新建运行使用。
@@ -81,14 +82,19 @@ function RunSources() {
 }
 
 function ScenarioFolders() {
-  const { scenarios, target } = useAuthoring(useShallow(state => ({ scenarios: state.scenarios, target: state.target })));
+  const { scenarios, target, editable } = useAuthoring(useShallow(state => ({ scenarios: state.scenarios, target: state.target,
+    editable: state.author && state.target?.kind === 'scenario' && !authoringDocument(state).loading })));
   const [creating, setCreating] = useState(false);
+  const [creatingInput, setCreatingInput] = useState(false);
   const scenePath = useWorkbench(state => selectedScene(state)?.path ?? null);
   useEffect(() => { if (scenarios === null) void authoringActions.listSkills(); }, [scenarios]);
   if (scenarios === null) return <Empty text="正在读取场景方案" />;
   return <>
     <Button onClick={() => setCreating(!creating)}>新建场景方案</Button>
     {creating && <NewScenario key={scenePath} onCreated={() => setCreating(false)} />}
+    {editable && <Button onClick={() => setCreatingInput(!creatingInput)}>新建输入方案</Button>}
+    {creatingInput && editable && <InputPlanCreationForm key={target!.name} onCancel={() => setCreatingInput(false)}
+      onCreated={() => { setCreatingInput(false); openPanel('timeline'); }} />}
     <div className={styles.list} role="listbox" aria-label="场景方案">
     {scenarios.map(name => <button key={name} className={styles.row} role="option"
       aria-selected={target?.kind === 'scenario' && target.name === name}

@@ -12,6 +12,7 @@ import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { SkillCreationForm } from './SkillCreationForm';
+import { InputPlanCreationForm } from './InputPlanCreationForm';
 import styles from './project.module.css';
 
 const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案' };
@@ -31,7 +32,7 @@ export function AuthoringProject() {
   const [kind, setKind] = useState<ProjectItem['kind'] | null>(null);
   const [ownership, setOwnership] = useState<ProjectItem['ownership'] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [creating, setCreating] = useState<'skill' | 'timeline' | 'macro' | null>(null);
+  const [creating, setCreating] = useState<'skill' | 'timeline' | 'macro' | 'input' | null>(null);
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [name, setName] = useState('');
   const elements = useSkillElements(editable && available !== false);
@@ -70,13 +71,19 @@ export function AuthoringProject() {
         <Button variant="ghost" disabled={creatingBusy} onClick={() => setCreating('skill')}>新建技能</Button>
         <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('timeline')}>新建 Timeline</Button>
         <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('macro')}>新建共享子图</Button>
+        <Button variant="ghost" disabled={!editable || creatingBusy} onClick={() => setCreating('input')}>新建输入方案</Button>
       </PanelBar>
       {creating === 'skill' && <SkillCreationForm onCancel={() => setCreating(null)} onCreated={() => {
         setCreating(null);
         setSelected(null);
         openPanel('inspector');
       }} />}
-      {creating !== null && creating !== 'skill' && skill !== null && <div className={styles.facts}>
+      {creating === 'input' && <InputPlanCreationForm key={skill} onCancel={() => setCreating(null)} onCreated={id => {
+        setCreating(null);
+        setSelected(JSON.stringify([skill, 'input-plan', id]));
+        openPanel('timeline');
+      }} />}
+      {creating !== null && creating !== 'skill' && creating !== 'input' && skill !== null && <div className={styles.facts}>
         <TextInput autoFocus aria-label="新内容名称" placeholder={creating === 'timeline' ? 'Timeline 名称' : '共享子图名称'} value={name} disabled={creatingBusy}
           onChange={event => setName(event.currentTarget.value)} />
         <PanelBar><Button disabled={!editable || elements === null || !name.trim() || creatingBusy} onClick={() => {

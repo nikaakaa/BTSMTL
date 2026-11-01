@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
@@ -1307,6 +1307,24 @@ const declarationsOf = (document: JsonValue) => (document as JsonObject).Blackbo
 // ── 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline ──
 
 export const inputAuthoring = {
+  async createPlan(name: string, context: InputPlanContext) {
+    const elements = await skillElements(context);
+    const template = elements.previewInput.plan;
+    if (!elements.previewInput.availability.available)
+      throw new Error(elements.previewInput.availability.reason!);
+    const plan = cloneJson(template!.value);
+    const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
+    const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
+    scheme.Name = name;
+    scheme.InputTimeline = timeline;
+    const id = crypto.randomUUID();
+    authoringActions.create(`inputs/${id}.json`, plan);
+    setDocument({ inputActorId: plan.Actor as string | null });
+    selectionActions.select(null);
+    selectionActions.showTimeline(timeline, null);
+    return id;
+  },
+
   async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {
     const target = get().target;
     const fragment = await authoringApi.inputFragment(request);
@@ -1368,11 +1386,11 @@ export const inputAuthoring = {
   },
 };
 
-export function skillElements(): Promise<SkillElements> {
+export function skillElements(context?: InputPlanContext): Promise<SkillElements> {
   const target = get().target;
   if (!target) return Promise.reject(new Error('没有打开的作者目录'));
   const signal = loadController!.signal;
-  return authoringApi.elements(target, signal).then(elements => { signal.throwIfAborted(); return elements; });
+  return authoringApi.elements(target, signal, context).then(elements => { signal.throwIfAborted(); return elements; });
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {
