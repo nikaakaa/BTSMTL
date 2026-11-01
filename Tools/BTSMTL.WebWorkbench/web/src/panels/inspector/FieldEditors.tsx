@@ -317,7 +317,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   const fields = description?.stored.map(item => ({ ...item, fields: item.fields
     .filter(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/') ||
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
-    .map(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
+    .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
       ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
         choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
@@ -474,13 +474,11 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
   const shape = useElementShape('tracks', track?.ContractKind);
   if (!track) return null;
-  const listId = `identities-${documentId}-${trackId}`;
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
   return (
     <Fold title="轨道" defaultOpen>
-      <IdentityList id={listId} />
       {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
-        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />
+        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />
       ))}
       {children}
     </Fold>
