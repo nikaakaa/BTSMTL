@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Graphs;
 using NodeCanvas.Framework;
 using UnityEditor;
@@ -14,6 +15,8 @@ namespace BTSMTL.Timeline.Editor
         sealed class AssetGraphs
         {
             internal Dictionary<string, ScriptableObject> ById;
+            internal TimelineAssetAuthoringDocument Document;
+            internal IGraphNodeInterfaceResolver AuthoringContext;
         }
 
         static readonly Dictionary<string, AssetGraphs> s_LocalGraphs = new(StringComparer.Ordinal);
@@ -21,8 +24,8 @@ namespace BTSMTL.Timeline.Editor
         static readonly Dictionary<string, (string Id, ScriptableObject Graph)> s_SharedSources = new(StringComparer.Ordinal);
         static readonly SynchronizationContext s_EditorContext = SynchronizationContext.Current;
 
-        readonly UnityEngine.Object m_Source;
-        AssetGraphs m_Graphs;
+        readonly AssetGraphs m_Graphs;
+        readonly Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> m_CreateAuthoringContext;
 
         static TimelineAssetAuthoringDocument()
         {
@@ -39,13 +42,37 @@ namespace BTSMTL.Timeline.Editor
             TimelineAssetGraphChanges.Changed += OnAssetsChanged;
         }
 
-        public TimelineAssetAuthoringDocument(UnityEngine.Object source)
+        TimelineAssetAuthoringDocument(string sourcePath, AssetGraphs graphs,
+            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext)
         {
-            m_Source = source;
+            SourcePath = sourcePath;
+            m_Graphs = graphs;
+            m_CreateAuthoringContext = createAuthoringContext;
         }
 
-        public string SourcePath => AssetDatabase.GetAssetPath(m_Source);
+        public static TimelineAssetAuthoringDocument Open(UnityEngine.Object source,
+            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext)
+        {
+            string path = AssetDatabase.GetAssetPath(source);
+            if (s_LocalGraphs.TryGetValue(path, out AssetGraphs graphs))
+                return graphs.Document;
+            graphs = new AssetGraphs { ById = new Dictionary<string, ScriptableObject>(StringComparer.Ordinal) };
+            graphs.Document = new TimelineAssetAuthoringDocument(path, graphs, createAuthoringContext);
+            s_LocalGraphs.Add(path, graphs);
+            return graphs.Document;
+        }
+
+        public string SourcePath { get; private set; }
         public bool HasUnsavedChanges => AssetDatabase.LoadAllAssetsAtPath(SourcePath).Any(EditorUtility.IsDirty);
+        public IGraphNodeInterfaceResolver PrepareAuthoringContext(ScriptableObject graph)
+        {
+            UnityEngine.Object[] assets = ReadLocalGraphs(SourcePath);
+            foreach (TimelineAsset timeline in assets.OfType<TimelineAsset>())
+                timeline.Data.BindAuthoringDocument(this);
+            m_Graphs.AuthoringContext = m_CreateAuthoringContext(this,
+                assets.OfType<Graph>().Cast<ScriptableObject>().Append(graph).Distinct().ToArray());
+            return m_Graphs.AuthoringContext;
+        }
 
         public void Prepare(TimelineData timeline, ScriptableObject graph = null)
         {
@@ -61,7 +88,6 @@ namespace BTSMTL.Timeline.Editor
                 if (AssetDatabase.IsMainAsset(graph))
                     SetSharedGraph(AssetDatabase.GetAssetPath(graph), graph);
             }
-            m_Graphs = s_LocalGraphs[path];
             timeline.BindAuthoringDocument(this);
         }
 
@@ -89,10 +115,7 @@ namespace BTSMTL.Timeline.Editor
                     (graph.IsTimelineTree || graph.IsTimelineTrigger) &&
                     (destroyed == null || !destroyed.Contains(asset.GetInstanceID())))
                     AddLocalGraph(path, graphs, scriptable, graph.AuthoringId);
-            if (s_LocalGraphs.TryGetValue(path, out AssetGraphs scope))
-                scope.ById = graphs;
-            else
-                s_LocalGraphs.Add(path, new AssetGraphs { ById = graphs });
+            s_LocalGraphs[path].ById = graphs;
             return assets;
         }
 
@@ -156,7 +179,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             foreach (UnityEngine.Object asset in ReadLocalGraphs(path, destroyed))
                 if (asset is TimelineAsset timeline && (destroyed == null || !destroyed.Contains(asset.GetInstanceID())))
-                    timeline.Data.BindAuthoringDocument(new TimelineAssetAuthoringDocument(timeline) { m_Graphs = s_LocalGraphs[path] });
+                    timeline.Data.BindAuthoringDocument(s_LocalGraphs[path].Document);
         }
 
         static void OnGraphChanged(Graph source) =>
@@ -205,7 +228,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 string path = AssetDatabase.GetAssetPath(timeline);
                 if (!paths.Contains(path) && s_LocalGraphs.ContainsKey(path) && !destroyed.Contains(timeline.GetInstanceID()))
-                    timeline.Data.BindAuthoringDocument(new TimelineAssetAuthoringDocument(timeline) { m_Graphs = s_LocalGraphs[path] });
+                    timeline.Data.BindAuthoringDocument(s_LocalGraphs[path].Document);
             }
         }
 
@@ -219,7 +242,10 @@ namespace BTSMTL.Timeline.Editor
             for (int index = 0; index < moved.Length; index++)
             {
                 if (s_LocalGraphs.Remove(movedFrom[index], out AssetGraphs graphs))
+                {
                     s_LocalGraphs[moved[index]] = graphs;
+                    graphs.Document.SourcePath = moved[index];
+                }
                 RemoveSharedGraph(movedFrom[index]);
             }
             foreach (string path in imported.Concat(moved).Distinct(StringComparer.Ordinal))
