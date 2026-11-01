@@ -74,13 +74,31 @@
   --node-cmp: #5c9c5c;
   --node-skill: #8a6cb8;
   --node-flow: #8c8c8c;
-  --graph-bg: #202020;
-  --graph-grid: #272727;
-  --graph-grid-major: #2e2e2e;
-  --node-bg: rgb(38 38 38 / 97%);
-  --node-header: #3a3a3a;
-  --node-line: #111111;
   --edge-idle: #5a5a5a;
+
+  /* 节点图：照 Unity GraphView（Shader Graph、Visual Scripting）深色皮肤。
+     状态色在节点描边、连线与标签上同义：本帧经过、已走过、失败；选中统一 --select-graph。 */
+  --graph-bg: #202020;
+  --graph-grid: #262626;
+  --graph-grid-major: #2c2c2c;
+  --graph-edge: #6a6a6a;
+  --graph-edge-hi: #b4b4b4;
+  --graph-note: var(--text-disabled);
+  --graph-faded: 0.35;
+  --graph-now: var(--cursor);
+  --graph-route: #b8953e;
+  --graph-radius: 6px;
+  --node-head: #393939;
+  --node: #2b2b2b;
+  --node-line: #161616;
+  --node-title: #dcdcdc;
+  --node-shadow: 0 2px 6px rgb(0 0 0 / 40%);
+  --state: #505050;
+  --state-title: #e8e8e8;
+  --state-system: #343434;
+  --state-system-title: #a8a8a8;
+  --group: rgb(0 0 0 / 18%);
+  --group-line: rgb(255 255 255 / 8%);
 
   --port-float: #6cc4d8;
   --port-bool: #a98ad8;
@@ -88,6 +106,7 @@
   --port-asset: #d88a8a;
   --port-exec: #d6d6d6;
   --port-exec-off: #626262;
+  --port-unknown: #7a7a7a;
 
   --viewport-bg: #111111;
   --logic-bg: #10171d;

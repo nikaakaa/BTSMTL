@@ -281,5 +281,6 @@ export function portColor(valueType: string | undefined): string {
   if (/single|double|float|int|fp|number|vector|quaternion/.test(type)) return 'var(--port-float)';
   if (/enum|tag/.test(type)) return 'var(--port-enum)';
   if (type) return 'var(--port-asset)';
-  return 'var(--port-float)';
+  // 没有采样值时不知道类型，不冒充浮点。
+  return 'var(--port-unknown)';
 }

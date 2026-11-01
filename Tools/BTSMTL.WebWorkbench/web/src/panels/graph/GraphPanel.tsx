@@ -76,7 +76,6 @@ const useView = () => useContext(ViewContext)!;
 
 interface NodeData extends Record<string, unknown> {
   laid: LaidNode;
-  index: number;
   selectId: string;
   system: boolean;
   timeline: string | null;
@@ -447,14 +446,14 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       width: group.rect.width, height: group.rect.height, zIndex: -1, selected: selected.has(groupNodeId(group)),
       dragHandle: `.${styles.groupHead}`, className: styles.groupNode, data: { group },
     }));
-    return [...groupNodes, ...layout.nodes.map((laid, index): FlowNode => {
+    return [...groupNodes, ...layout.nodes.map((laid): FlowNode => {
       const children = childGraphs(hierarchy, graph, laid.node.id);
       const timeline = playedTimeline(hierarchy, graph, laid.node.id);
       return {
         id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
         measured: measured.get(laid.node.id),
         data: {
-          laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
+          laid, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
           timeline, children,
         },
       };
@@ -721,9 +720,9 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           <Background id="major" variant={BackgroundVariant.Lines} gap={200} patternClassName={styles.gridMajor} />
           {params.minimap && minimapWidth > 0 && (
             <MiniMap className={styles.minimap} style={{ width: minimapWidth, height: minimapWidth * 104 / 204 }} pannable zoomable
-              bgColor="#181818" maskColor="rgb(255 255 255 / 4%)"
-              maskStrokeColor="#9a9a9a" nodeColor={node => node.type === 'canvasGroup' ?'rgb(255 255 255 / 6%)'
-                : (node.data as NodeData).system ? '#8a8a8a' : machine ? '#f0634f' : '#5a5a5a'}
+              bgColor={themeColor('--bg-0')} maskColor="rgb(255 255 255 / 4%)" maskStrokeColor={themeColor('--graph-edge')}
+              nodeColor={node => themeColor(node.type === 'canvasGroup' ? '--group-line'
+                : (node.data as NodeData).system ? '--state-system' : machine ? '--state' : '--node-head')}
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
@@ -733,6 +732,9 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     </ViewContext.Provider>
   );
 }
+
+// 小地图画在 SVG 属性里，属性不解析 CSS 变量，取主题的实际值。
+const themeColor = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 // 首次显示照本项目 NodeCanvas 的 FocusReadableGraph：缩放 1、以全部节点的中心居中，字号可读；看全图用“全部居中”。
 const readableFocus = { minZoom: 1, maxZoom: 1 };
@@ -747,9 +749,9 @@ function useNodeState(store: RouteStore, id: string) {
   return useSyncExternalStore(store.subscribe(`node:${id}`), () => store.node(id));
 }
 
-// 状态机的状态：NodeCanvas 状态块，正在运行的加黄框，走过的加金色外框。
+// 状态机的状态：照 Animator 的圆角块，本帧所在的状态描黄并写本地秒数，走过的描金。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
-  const { laid, index, selectId, system, timeline, children } = data;
+  const { laid, selectId, system, timeline, children } = data;
   const { store, related, editable } = useView();
   // 拖转移时整个状态块都是落点；平时不挡状态的拖动。
   const connecting = useConnection(connection => connection.inProgress);
@@ -766,14 +768,13 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
     <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
     <div className={styles.state} data-system={system || undefined} data-running={running || undefined}
       data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}>
-      <span className={styles.stateId}>#{index}</span>
       {/* 作者模式：从右侧圆点拖出转移，松开在目标状态任意位置 */}
       <Handle id="in:@node" type="target" position={Position.Left} isConnectable={!!editable} isConnectableStart={false}
         className={editable && connecting ? styles.stateTarget : styles.hiddenHandle} />
       <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
         className={editable ? styles.stateSource : styles.hiddenHandle} />
-      <div className={styles.stateTitle} data-name>{running && <i className={styles.clock} />}{nodeName(laid.node)}</div>
-      {running && local !== null && <div className={styles.stateBody}>本地 {local.toFixed(2)} s</div>}
+      <div className={styles.stateTitle} data-name>{nodeName(laid.node)}</div>
+      {running && local !== null && <div className={styles.stateBody}>{local.toFixed(2)} s</div>}
       {timelineName && <span className={styles.stateCaption}>{timelineName}</span>}
     </div>
     </Tip>
@@ -816,28 +817,28 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
-  const rows = Math.max(laid.inputs.length, laid.outputs.length);
   const inputs = laid.inputs.filter(port => !port.isTrigger), outputs = laid.outputs.filter(port => !port.isTrigger);
-  const triggerIn = laid.inputs.some(port => port.isTrigger), triggerOut = laid.outputs.some(port => port.isTrigger);
+  const triggerIns = laid.inputs.filter(port => port.isTrigger), triggerOuts = laid.outputs.filter(port => port.isTrigger);
+  const rows = Math.max(inputs.length, outputs.length);
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}>
       <Tip name={nodeName(laid.node)}
         content={`${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
         <div className={styles.header}>
-          {triggerIn && <i className={styles.flowIn} />}
+          {triggerIns.length > 0 && <i className={styles.flowIn} />}
           <b data-name>{nodeName(laid.node)}</b>
-          {triggerOut && <i className={styles.flowOut} />}
           {(children.length > 0 || timeline) && <i className={styles.subgraphMark} />}
+          {triggerOuts.length > 0 && <i className={styles.flowOut} />}
           <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
           <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
+          {triggerIns.map(port => <HiddenPort key={`i${port.id}`} port={port} />)}
+          {triggerOuts.map(port => <HiddenPort key={`o${port.id}`} port={port} />)}
         </div>
       </Tip>
       {rows > 0 && (
         <div className={styles.body}>
-          {laid.inputs.filter(port => port.isTrigger).map(port => <HiddenPort key={`i${port.id}`} port={port} />)}
-          {laid.outputs.filter(port => port.isTrigger).map(port => <HiddenPort key={`o${port.id}`} port={port} />)}
-          {Array.from({ length: Math.max(inputs.length, outputs.length) }, (_, index) => (
+          {Array.from({ length: rows }, (_, index) => (
             <div key={index} className={styles.portRow}>
               <PortCell port={inputs[index]} state={state} values={values} />
               <PortCell port={outputs[index]} state={state} values={values} />
@@ -895,7 +896,7 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
 }
 
 // 转移：从源状态边框指向目标状态边框的曲线箭头，标签取条件图名称。
-function TransitionEdgeView({ id, source, target, data }: EdgeProps<FlowEdge>) {
+function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<FlowEdge>) {
   const { store, related, labels } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
   const from = useInternalNode(source), to = useInternalNode(target);
@@ -926,6 +927,7 @@ function TransitionEdgeView({ id, source, target, data }: EdgeProps<FlowEdge>) {
   const showLabel = labels !== 'none' && data!.label && (labels === 'all' || highlighted || status !== 'idle');
   return (
     <g className={styles.transition} data-status={status} data-hi={highlighted || undefined} data-faded={faded || undefined}
+      data-picked={selected || undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <BaseEdge path={path} interactionWidth={12} />
       <path d={arrow} className={styles.arrow} />
