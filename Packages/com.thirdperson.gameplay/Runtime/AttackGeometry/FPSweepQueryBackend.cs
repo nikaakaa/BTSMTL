@@ -34,6 +34,12 @@ namespace ThirdPersonSimulation.AttackGeometry
                 m_Parts[i] = PrepareShape(i);
         }
 
+        public void SetSphereRadius(int shapeIndex, FP radius)
+        {
+            m_Shapes[shapeIndex] = SweepShape.Sphere(m_Shapes[shapeIndex].Id, radius);
+            ((SphereShape)m_Parts[shapeIndex][0].Shape).SetRadius(radius);
+        }
+
         public FP AngularContactTolerance => AngularSweepToolbox.ContactTolerance;
         public SweepBackendDescriptor Descriptor { get; } = new SweepBackendDescriptor(
             ImplementationId, QuantumSimulationNumericProfile.Value,

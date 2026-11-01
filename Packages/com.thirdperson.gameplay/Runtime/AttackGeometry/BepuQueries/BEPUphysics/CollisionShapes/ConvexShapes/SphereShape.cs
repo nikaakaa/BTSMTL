@@ -4,7 +4,9 @@ namespace BEPUphysics.CollisionShapes.ConvexShapes
 {
     public sealed class SphereShape : ConvexShape
     {
-        public SphereShape(FP radius)
+        public SphereShape(FP radius) => SetRadius(radius);
+
+        internal void SetRadius(FP radius)
         {
             collisionMargin = radius;
             MaximumRadius = radius;
