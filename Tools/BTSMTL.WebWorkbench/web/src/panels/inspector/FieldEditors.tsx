@@ -10,6 +10,7 @@ import {
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
+import { selectedScene, useWorkbench } from '../../state/store';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
@@ -290,6 +291,7 @@ const configurationOf = (node: JsonObject): JsonObject =>
 function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
   const version = useAuthoring(state => authoringDocument(state).version);
   const carrierRevision = useAuthoring(state => state.carrierRevision);
+  const scene = useWorkbench(state => selectedScene(state));
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
@@ -322,7 +324,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, type, key, graphId, version, carrierRevision]);
+  }, [skill, type, key, graphId, version, carrierRevision, scene]);
   return { description, issues };
 }
 

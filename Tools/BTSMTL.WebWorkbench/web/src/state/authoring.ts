@@ -348,6 +348,7 @@ useWorkbench.subscribe((state, previous) => {
     if (get().target !== null) setDocument({ saveRun: null });
   }
   if (state.generation !== previous.generation) publishDocument();
+  if (JSON.stringify(selectedScene(state)) !== JSON.stringify(selectedScene(previous))) scheduleDocumentReload(get().target);
   if (state.archiveJobs === previous.archiveJobs) return;
   const saved = get().saveRun;
   if (saved?.kind !== 'waiting') return;
@@ -359,20 +360,24 @@ useWorkbench.subscribe((state, previous) => {
 
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
   const { revision, version } = authoringDocument(useAuthoring.getState(), target);
+  const editingView = authoringActions.editingView();
+  const isCurrentRequest = () => {
+    const current = authoringDocument(useAuthoring.getState(), target);
+    return current.revision === revision && current.version === version &&
+      JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
+  };
   if (target.kind === 'scenario') {
     setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
     return;
   }
   try {
-    const document = await authoringApi.document(target.name, authoringActions.editingView(), signal);
-    const current = authoringDocument(useAuthoring.getState(), target);
-    if (current.revision !== revision || current.version !== version) return;
+    const document = await authoringApi.document(target.name, editingView, signal);
+    if (!isCurrentRequest()) return;
     setDocument({ documentGraphs: document.graphs, documentRelations: document.relations, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
   } catch (error) {
     if (isAbort(error)) throw error;
-    const current = authoringDocument(useAuthoring.getState(), target);
-    if (current.revision !== revision || current.version !== version) return;
+    if (!isCurrentRequest()) return;
     setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
     consoleActions.error('作者', error);
   }
@@ -406,6 +411,15 @@ async function reloadDocument(target = get().target, signal?: AbortSignal) {
 
 let documentTimer: ReturnType<typeof setTimeout> | null = null;
 let documentController: AbortController | null = null;
+function scheduleDocumentReload(target: AuthoringTarget | null) {
+  if (target?.kind !== 'skill') return;
+  if (documentTimer !== null) clearTimeout(documentTimer);
+  documentController?.abort();
+  const controller = documentController = new AbortController();
+  documentTimer = setTimeout(() => {
+    void reloadDocument(target, controller.signal).catch(error => consoleActions.error('作者', error));
+  }, 150);
+}
 useAuthoring.subscribe((state, previous) => {
   if (state.target !== previous.target) {
     if (documentTimer !== null) clearTimeout(documentTimer);
@@ -414,12 +428,7 @@ useAuthoring.subscribe((state, previous) => {
   }
   const target = state.target;
   if (target?.kind !== 'skill' || authoringDocument(state).version === authoringDocument(previous).version) return;
-  if (documentTimer !== null) clearTimeout(documentTimer);
-  documentController?.abort();
-  const controller = documentController = new AbortController();
-  documentTimer = setTimeout(() => {
-    void reloadDocument(target, controller.signal).catch(error => consoleActions.error('作者', error));
-  }, 150);
+  scheduleDocumentReload(target);
 });
 
 export const authoringActions = {
@@ -550,6 +559,7 @@ export const authoringActions = {
         return [name, { files: authoringActions.changedFiles({ kind: 'skill', name }), removedFiles: document.removed }];
       })),
       previewDefinitionGuid: state.previewDefinitionGuid,
+      scene: selectedScene(useWorkbench.getState()),
     };
   },
 

@@ -6,7 +6,7 @@ import { openPanel } from '../../shell/layout';
 import { authoringActions, authoringDocument, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
-import { consoleActions, selectionActions } from '../../state/store';
+import { consoleActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -34,6 +34,7 @@ export function AuthoringProject() {
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [name, setName] = useState('');
   const elements = useSkillElements(editable && available !== false);
+  const scene = useWorkbench(state => selectedScene(state));
   useEffect(() => { setCreating(null); setName(''); }, [skill]);
   const field = useReferenceSelection(state => state.field);
   useEffect(() => { setSearch(''); setKind(null); setOwnership(null); }, [field?.id]);
@@ -48,7 +49,7 @@ export function AuthoringProject() {
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, stamp, refresh, available]);
+  }, [skill, stamp, refresh, available, scene]);
   const shown = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (items ?? []).filter(item => (kind === null || kind === item.kind) && (ownership === null || ownership === item.ownership) &&
@@ -124,7 +125,7 @@ export function AuthoringProject() {
         }} />}
       <div className={styles.note}>{shown.length} / {items?.length ?? 0} 项 · 双击打开</div>
     </div>
-    {item ? <ProjectItemDetails key={keyOf(item)} item={item} items={items!} stamp={stamp} onChanged={() => setRefresh(value => value + 1)} />
+    {item ? <ProjectItemDetails key={keyOf(item)} item={item} items={items!} stamp={JSON.stringify([stamp, scene])} onChanged={() => setRefresh(value => value + 1)} />
       : <Empty text="选择内容查看名称、引用者及编辑操作" />}
   </div>;
 }

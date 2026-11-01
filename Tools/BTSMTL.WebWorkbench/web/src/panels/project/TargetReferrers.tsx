@@ -5,7 +5,7 @@ import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
 import { authoringActions, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
-import { consoleActions } from '../../state/store';
+import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Empty } from '../../ui/blocks';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
@@ -23,7 +23,8 @@ export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) =>
       [key, document.revision, document.version, document.previewDefinitionGuid])]),
   })));
-  const key = JSON.stringify([skill, target, stamp]);
+  const scene = useWorkbench(state => selectedScene(state));
+  const key = JSON.stringify([skill, target, stamp, scene]);
   const [result, setResult] = useState<Result | null>(null);
   useEffect(() => {
     if (skill === null) return;

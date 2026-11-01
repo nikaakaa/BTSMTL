@@ -1,5 +1,5 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
-import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
+import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget, SourceFile } from './types';
 import { getJson, getText, postJson, postText, putJson, query } from './http';
 import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
 
@@ -14,6 +14,7 @@ export type SkillFile = {
 export type SkillEditingView = {
   skills: Record<string, SkillSaveRequest['content']>;
   previewDefinitionGuid: string | null;
+  scene?: SourceFile;
 };
 
 export interface SkillSnapshot {
