@@ -8,7 +8,7 @@ import {
   authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type JsonKey, type JsonMutation,
 } from '../../state/authoring';
-import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, NumberInput, Select, TextInput } from '../../ui/controls';
@@ -67,6 +67,30 @@ function NumberValue({ value, label, integer, onSet }: { value: JsonValue | unde
   );
 }
 
+function IntegerValue({ value, label, onSet }: { value: JsonValue | undefined; label: string; onSet(value: JsonValue): void }) {
+  const text = value == null ? '' : String(value);
+  const [draft, setDraft] = useState(text);
+  const [issue, setIssue] = useState<string | null>(null);
+  useEffect(() => { setDraft(text); setIssue(null); }, [text]);
+  const commit = () => {
+    if (draft === text) return;
+    if (!/^-?(0|[1-9]\d*)$/.test(draft)) {
+      setIssue('请输入十进制整数');
+      return;
+    }
+    onSet(parseSkillJson(draft));
+    setIssue(null);
+  };
+  return <>
+    <TextInput aria-label={label} inputMode="numeric" value={draft} onChange={event => setDraft(event.currentTarget.value)}
+      onBlur={commit} onKeyDown={event => {
+        if (event.key === 'Enter') commit();
+        if (event.key === 'Escape') { setDraft(text); setIssue(null); }
+      }} />
+    {issue && <span role="alert" className={styles.issue}>{issue}</span>}
+  </>;
+}
+
 function VectorValue({ value, axes, label, onSet }: { value: JsonValue | undefined; axes: string[]; label: string; onSet: SetValue }) {
   const vector = (value ?? {}) as JsonObject;
   return (
@@ -84,6 +108,7 @@ function VectorValue({ value, axes, label, onSet }: { value: JsonValue | undefin
 // ── 按存储形状推出的通用编辑（嵌套结构、列表与没有作者字段的成员） ──
 
 const integerTypes = new Set(['System.Int32', 'System.Int64', 'System.Int16', 'System.Byte', 'System.UInt32', 'System.UInt64', 'System.UInt16', 'System.SByte']);
+const preciseIntegerTypes = new Set(['System.Int64', 'System.UInt64']);
 const floatTypes = new Set(['System.Single', 'System.Double', 'System.Decimal']);
 
 export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
@@ -111,6 +136,8 @@ function ValueEditor({ label, value, shape, keys, onSet }: {
       options={shape.enumValues.map(name => ({ value: name, label: name }))} onChange={next => set(next)} /></Row>;
   if (typeof value === 'boolean' || (value == null && shape?.clrType === 'System.Boolean'))
     return <Row label={label}><Checkbox label={label} checked={value === true} onChange={next => set(next)} /></Row>;
+  if (typeof value === 'bigint' || preciseIntegerTypes.has(shape?.clrType ?? ''))
+    return <Row label={label}><IntegerValue label={label} value={value} onSet={set} /></Row>;
   if (value instanceof JsonFloat || (typeof value === 'number' && !Number.isInteger(value)) || (value == null && floatTypes.has(shape?.clrType ?? '')))
     return <Row label={label}><NumberValue label={label} value={value} integer={false} onSet={set} /></Row>;
   if (typeof value === 'number' || (value == null && integerTypes.has(shape?.clrType ?? '')))
@@ -538,7 +565,9 @@ function FieldEditor({ id, field, item, node, onSet, onSetFields }: {
     case 'Boolean':
       return <Row label={label}><Checkbox label={label} checked={value === true} onChange={set} /></Row>;
     case 'Integer':
-      return <Row label={label}><NumberValue label={label} value={value} integer onSet={set} /></Row>;
+      return <Row label={label}>{preciseIntegerTypes.has(field.clrType)
+        ? <IntegerValue label={label} value={value} onSet={set} />
+        : <NumberValue label={label} value={value} integer onSet={set} />}</Row>;
     case 'Float':
       return <Row label={label}><NumberValue label={label} value={value} integer={false} onSet={set} /></Row>;
     case 'Enum': {

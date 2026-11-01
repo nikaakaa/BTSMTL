@@ -377,11 +377,11 @@ export const authoringApi = {
     getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
   describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)) as unknown as TypeDescription,
+    readTypeDescription(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)),
   // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
   describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${targetPath(target)}/queries/type`,
-      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)) as unknown as TypeDescription,
+    readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
+      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<IdentityItem>(`${targetPath(target)}/queries/references`, editingView, signal),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
@@ -399,6 +399,22 @@ export const authoringApi = {
     return elements;
   },
 };
+
+function readTypeDescription(text: string): TypeDescription {
+  const description = parseSkillJson(text) as unknown as TypeDescription;
+  const fields = description.fields.items.flatMap(item => item.computed ? [item] : item.fields);
+  const valueOf = (value: JsonValue, clrType: string) =>
+    typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
+  for (const field of fields) {
+    if (field.choices === null) continue;
+    field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),
+      associated: choice.associated.map(associated => ({ ...associated,
+        value: valueOf(associated.value, fields.find(target => target.fieldId === associated.fieldId)!.clrType),
+      })),
+    }));
+  }
+  return description;
+}
 
 async function allPages<T>(path: string, editingView: SkillEditingView, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
