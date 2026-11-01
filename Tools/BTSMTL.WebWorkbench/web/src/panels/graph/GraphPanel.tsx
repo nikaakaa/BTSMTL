@@ -1,5 +1,5 @@
 import {
-  Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
+  Background, BackgroundVariant, BaseEdge, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
   ReactFlowProvider, SelectionMode, applyNodeChanges, useConnection, useInternalNode, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps, type Node, type NodeChange,
   type Connection, type NodeProps, type Viewport,
 } from '@xyflow/react';
@@ -14,18 +14,18 @@ import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
-  useDocumentObservationBinding, type CanvasGroup,
+  useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
-import { openPanel } from '../../shell/layout';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  belongsTo, callKey, callLabel, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentCallMatches, parentGraphCalls, playedTimeline, portColor,
-  recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
+  belongsTo, callKey, callLabel, edgeSelectId, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeGraphs, nodeName, nodeSelectId, parentCallMatches, parentGraphCalls, portColor,
+  recordedGraphCalls, type GraphHierarchy, type GraphNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
-import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
+import { projectActions } from '../../state/project';
+import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
@@ -33,26 +33,22 @@ import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
 
-// 节点图面板（D4）：照 NodeCanvas Canvas。状态机画成状态块与转移箭头，流图画成带端口的节点。
-// 双击节点进入子图（调用的状态机、状态体），双击转移进入条件图，双击播放 Timeline 的节点跳到 Timeline；
-// 顶部面包屑逐级返回。路线状态只更新状态变了的节点与连线（D9）。
-
 interface Params {
   graph: string | null;
   call: string | null;
   path: string | null;
   pin: { runId: PlayerJobId; graph: string; call: ExecutionCall } | null;
   caller: { runId: PlayerJobId; call: ExecutionCall } | null;
+  origin: GraphNavigationOrigin | null;
   // 视图位置按所看的图与图实例保存。
   viewport: (Viewport & { view: string }) | null;
   values: boolean;
   dim: boolean;
   relations: boolean;
   minimap: boolean;
-  labels: 'brief' | 'all' | 'none';
 }
 const defaults: Params = {
-  graph: null, call: null, path: null, pin: null, caller: null, viewport: null, values: true, dim: false, relations: false, minimap: false, labels: 'brief',
+  graph: null, call: null, path: null, pin: null, caller: null, origin: null, viewport: null, values: true, dim: false, relations: false, minimap: false,
 };
 
 interface ViewOptions {
@@ -60,8 +56,7 @@ interface ViewOptions {
   values: boolean;
   dim: boolean;
   related: Set<string> | null;
-  labels: Params['labels'];
-  enter(graph: GraphDefinition): void;
+  enter(graph: GraphNavigationTarget, nodeId?: string): void;
   openNode(data: NodeData): void;
   hierarchy: GraphHierarchy;
   graph: GraphDefinition;
@@ -80,8 +75,7 @@ interface NodeData extends Record<string, unknown> {
   index: number;
   selectId: string;
   system: boolean;
-  timeline: string | null;
-  children: GraphDefinition[];
+  children: GraphNavigationTarget[];
 }
 type FlowNode = Node<NodeData, 'flow' | 'state'>;
 interface GroupData extends Record<string, unknown> {
@@ -97,22 +91,20 @@ const inside = (rect: CanvasGroup['rect'], position: { x: number; y: number }) =
   position.x >= rect.x && position.y >= rect.y && position.x <= rect.x + rect.width && position.y <= rect.y + rect.height;
 interface EdgeData extends Record<string, unknown> {
   edge: GraphEdge;
-  label: string;
-  conditions: GraphDefinition[];
   // 同一对状态之间多条转移时的错开量。
   offset: number;
 }
 type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
 export function GraphPanel() {
-  const graphs = useWorkbench(state => state.graphs);
   const opened = useAuthoring(useShallow(state => ({ target: state.target,
-    loading: authoringDocument(state).loading, error: authoringDocument(state).documentError })));
+    loading: authoringDocument(state).loading, error: authoringDocument(state).documentError,
+    graphs: authoringDocument(state).documentGraphs })));
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
-  if (opened.loading || !graphs) return <Empty text="读取中" />;
-  if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
-  return <GraphView graphs={graphs} />;
+  if (opened.loading || !opened.graphs) return <Empty text="读取中" />;
+  if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
+  return <GraphView graphs={opened.graphs} />;
 }
 
 function ReportEmpty({ text }: { text: string }) {
@@ -120,7 +112,6 @@ function ReportEmpty({ text }: { text: string }) {
   return <Empty text={text} />;
 }
 
-const programOf = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision]);
 const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([graphKey(graph), callKey(call)]);
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
@@ -128,24 +119,12 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const [params, setParams] = usePanelParams<Params>(defaults);
-  const hierarchy = useMemo(() => graphHierarchy(graphs), [graphs]);
-  const programs = useMemo(() => {
-    const result = new Map<string, { label: string; root: GraphDefinition }>();
-    for (const graph of graphs) {
-      const key = programOf(graph);
-      const crumbs = graphCrumbs(hierarchy, graph);
-      const root = crumbs[0]?.graph ?? graph;
-      // 取程序里第一张根图（技能入口图在前，激活规则等根图在后）。
-      const existing = result.get(key);
-      if (!existing || (root === graph && graphCrumbs(hierarchy, existing.root)[0]?.graph !== existing.root))
-        result.set(key, { label: `${graph.actorId} · ${graph.programId}`, root });
-    }
-    return result;
-  }, [graphs, hierarchy]);
+  const hierarchy = useDocumentGraphHierarchy();
+  const programId = useAuthoring(state => authoringDocument(state).programId);
 
   const currentCalls = useMemo(() => recordedGraphCalls([], observation.current, graphs, binding), [observation.current, graphs, binding]);
   const followed = params.graph === null && currentCalls.length === 1 ? graphKey(currentCalls[0].graph) : null;
-  const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? programs.values().next().value!.root;
+  const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? graphs.find(item => item.id === programId)!;
   const key = graphKey(graph);
 
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
@@ -177,7 +156,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return { items, parent: current.parentInvocationPath ? current : null, choices: parents };
   }, [graph, observedCall, recorded]);
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
-    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, caller: null, viewport: null });
+    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, caller: null, origin: null, viewport: null });
 
   const selectCall = (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
@@ -194,9 +173,11 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     }
   }, [graph, observedCall]);
 
-  const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, path: null, pin: null,
-    caller: observedCall !== null && runId !== null ? { runId, call: observedCall } : null, viewport: null }),
-  [setParams, observedCall, runId]);
+  const enter = useCallback((target: GraphNavigationTarget, nodeId?: string) => {
+    const source = hierarchy.graphs.get(key)!;
+    const origin = nodeId === undefined ? null : { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId };
+    void projectActions.openGraph(target, undefined, origin).catch(reason => consoleActions.error('作者', reason));
+  }, [hierarchy, key]);
 
   // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
   const request = useWorkbench(state => state.graphRequest);
@@ -206,18 +187,15 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     handled.current = request.sequence;
     if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key,
       call: request.observation ? callKey(request.observation.call) : null, path: null,
-      pin: request.observation ? { ...request.observation, graph: request.key } : null, caller: null, viewport: null });
+      pin: request.observation ? { ...request.observation, graph: request.key } : null, caller: null, origin: request.origin, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
+  const referrers = useMemo(() => graphReferrers(hierarchy, graph), [hierarchy, graph]);
   const [blackboard, setBlackboard] = useState(false);
-  const programOptions = [...programs].map(([value, item]) => ({ value, label: item.label }));
+  const graphOptions = [...hierarchy.graphs].map(([value, item]) => ({ value, label: `${item.ownerName} · ${graphName(item)}` }));
 
   const settings: MenuEntry[] = [
-    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null, caller: null }) },
-    { kind: 'separator' },
-    { kind: 'check', label: '连线标签：简写', checked: params.labels === 'brief', onChange: () => setParams({ labels: 'brief' }) },
-    { kind: 'check', label: '连线标签：全文', checked: params.labels === 'all', onChange: () => setParams({ labels: 'all' }) },
-    { kind: 'check', label: '连线标签：隐藏', checked: params.labels === 'none', onChange: () => setParams({ labels: 'none' }) },
+    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null, caller: null, origin: null }) },
     { kind: 'separator' },
     { kind: 'check', label: '端口值', checked: params.values, onChange: values => setParams({ values }) },
     { kind: 'check', label: '压暗本帧没走到的节点', checked: params.dim, onChange: dim => setParams({ dim }) },
@@ -230,8 +208,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
-          {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
-            onChange={value => enter(programs.get(value)!.root)} />}
+          {graphOptions.length > 1 && <Select label="作者图" value={key} options={graphOptions}
+            onChange={value => enter(hierarchy.graphs.get(value)!)} />}
           <span className={styles.crumbs} title={callCrumbs === null ? '作者层级' : '档案实际调用路径'}>
             {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>
@@ -252,12 +230,24 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
             </> : crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}
-                {crumb.graph && crumb.graph !== graph
-                  ? <button className={styles.crumbLink} onClick={() => enter(crumb.graph!)}>{crumb.label}</button>
+                {crumb.graph !== graph
+                  ? <button className={styles.crumbLink} onClick={() => enter(crumb.graph)}>{crumb.label}</button>
                   : <span data-current={crumb.graph === graph || undefined}>{crumb.label}</span>}
               </span>
             ))}
           </span>
+          {params.origin !== null && <Button variant="ghost" tip={`${params.origin.ownerName} · ${params.origin.nodeId}`} onClick={() => {
+            const source = params.origin!;
+            void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId)
+              .catch(reason => consoleActions.error('作者', reason));
+          }}>返回引用节点</Button>}
+          {referrers.length > 0 && <MenuButton label="已加载引用" caret entries={referrers.map(({ source }) => ({
+            label: `${source.ownerName} · ${source.file} · ${source.nodeId} · ${source.fieldId}`,
+            onSelect: () => {
+              void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId)
+                .catch(reason => consoleActions.error('作者', reason));
+            },
+          }))}>已加载引用（{referrers.length}）</MenuButton>}
           {callOptions.length > 1 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
             options={callOptions} placeholder="选择实际调用"
             tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
@@ -392,9 +382,8 @@ function FitButton() {
 const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView), canvasGroup: memo(GroupView) };
 const edgeTypes = { route: memo(RouteEdgeView), transition: memo(TransitionEdgeView) };
 
-// 状态机里没有入边且没有子图、也不播放 Timeline 的节点（入口、出口、任意状态）画成灰色。
 function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: LaidNode) {
-  return !childGraphs(hierarchy, graph, laid.node.id).length && !nodeTimeline(hierarchy, graph, laid.node.id);
+  return !nodeGraphs(hierarchy, graph, laid.node.id).length;
 }
 
 // 作者模式：当前技能的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
@@ -421,7 +410,7 @@ interface GraphCanvasProps {
   path: string;
   call: ExecutionCall | null;
   hierarchy: GraphHierarchy;
-  enter(graph: GraphDefinition): void;
+  enter(graph: GraphNavigationTarget, nodeId?: string): void;
   params: Params;
   setParams(patch: Partial<Params>): void;
   editable: boolean;
@@ -452,14 +441,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       dragHandle: `.${styles.groupHead}`, className: styles.groupNode, data: { group },
     }));
     return [...groupNodes, ...layout.nodes.map((laid, index): FlowNode => {
-      const children = childGraphs(hierarchy, graph, laid.node.id);
-      const timeline = playedTimeline(hierarchy, graph, laid.node.id);
+      const children = nodeGraphs(hierarchy, graph, laid.node.id);
       return {
         id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
         measured: measured.get(laid.node.id),
         data: {
           laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
-          timeline, children,
+          children,
         },
       };
     })];
@@ -478,7 +466,6 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     const pairKey = (edge: GraphEdge) => [edge.source!.nodeId, edge.target!.nodeId].sort().join('|');
     for (const edge of layout.edges) counts.set(pairKey(edge), (counts.get(pairKey(edge)) ?? 0) + 1);
     return layout.edges.map(edge => {
-      const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
       if (machine) {
         const pair = pairKey(edge);
         const index = pairs.get(pair) ?? 0;
@@ -486,7 +473,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         return {
           id: edge.id, type: 'transition', source: edge.source!.nodeId, target: edge.target!.nodeId,
           sourceHandle: 'out:@node', targetHandle: 'in:@node',
-          data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: (index - (counts.get(pair)! - 1) / 2) * 16 },
+          data: { edge, offset: (index - (counts.get(pair)! - 1) / 2) * 16 },
         };
       }
       const source = layout.nodes.find(item => item.node.id === edge.source!.nodeId)!;
@@ -495,10 +482,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         id: edge.id, type: 'route', source: edge.source!.nodeId, target: edge.target!.nodeId,
         sourceHandle: source.outputs.some(port => port.id === edge.source!.portId) ? `out:${edge.source!.portId}` : 'out:@node',
         targetHandle: target.inputs.some(port => port.id === edge.target!.portId) ? `in:${edge.target!.portId}` : 'in:@node',
-        data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: 0 },
+        data: { edge, offset: 0 },
       };
     });
-  }, [layout, hierarchy, graph, machine]);
+  }, [layout, graph, machine]);
 
   // 帧变化时只更新路线状态，节点数组不重建；状态机另按到本帧为止的路线标出走过的状态与转移。
   useEffect(() => {
@@ -538,12 +525,11 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   }, [params.relations, machine, selectedNode, layout, graph]);
 
   const openNode = useCallback((data: NodeData) => {
-    if (data.children.length) enter(data.children[0]);
-    else if (data.timeline) showTimeline(data.timeline, call !== null && runId !== null ? { runId, call } : null);
-  }, [enter, call, runId]);
+    if (data.children.length === 1) enter(data.children[0], data.laid.node.id);
+  }, [enter]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openNode, hierarchy, graph,
-  }), [store, params.values, params.dim, related, params.labels, enter, openNode, hierarchy, graph]);
+    store, values: params.values, dim: params.dim, related, enter, openNode, hierarchy, graph,
+  }), [store, params.values, params.dim, related, enter, openNode, hierarchy, graph]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -564,9 +550,6 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     if (isGroupNode(node)) return;
     openNode(node.data);
   }, [openNode]);
-  const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
-    if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
-  }, [enter]);
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
@@ -715,7 +698,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
+          onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onReconnect={onReconnect} edgesReconnectable={editable && !machine}
           onNodeDragStop={onNodeDragStop} nodesDraggable
@@ -744,30 +727,19 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
 // 首次显示照本项目 NodeCanvas 的 FocusReadableGraph：缩放 1、以全部节点的中心居中，字号可读；看全图用“全部居中”。
 const readableFocus = { minZoom: 1, maxZoom: 1 };
 
-// 跳到该 Timeline 第一次播放的帧并显示 Timeline 面板。
-function showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
-  selectionActions.showTimeline(documentId, observation);
-  openPanel('timeline');
-}
-
 function useNodeState(store: RouteStore, id: string) {
   return useSyncExternalStore(store.subscribe(`node:${id}`), () => store.node(id));
 }
 
 // 状态机的状态：NodeCanvas 状态块，正在运行的加黄框，走过的加金色外框。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
-  const { laid, index, selectId, system, timeline, children } = data;
+  const { laid, index, selectId, system, children } = data;
   const { store, related, editable } = useView();
   // 拖转移时整个状态块都是落点；平时不挡状态的拖动。
   const connecting = useConnection(connection => connection.inProgress);
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const running = state.occurred > 0;
-  const local = useWorkbench(current => {
-    if (!running || !timeline) return null;
-    return current.frame?.route?.playbacks.find(item => item.documentId === timeline)?.cursorSeconds ?? null;
-  });
-  const timelineName = useWorkbench(current => timeline ? current.timelines.find(item => item.documentId === timeline)?.displayName ?? null : null);
   const faded = related !== null && !related.has(laid.node.id);
   return (
     <div className={styles.state} data-system={system || undefined} data-running={running || undefined}
@@ -780,8 +752,7 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
         className={editable ? styles.stateSource : styles.hiddenHandle} />
       <div className={styles.stateTitle}>{running && <i className={styles.clock} />}{nodeName(laid.node)}</div>
-      {running && local !== null && <div className={styles.stateBody}>本地 {local.toFixed(2)} s</div>}
-      {timelineName && <span className={styles.stateCaption}>{timelineName}</span>}
+      <NodeGraphLinks data={data} />
     </div>
   );
 }
@@ -817,8 +788,8 @@ function GroupView({ data, selected }: NodeProps<GroupNode>) {
 
 // 流图节点：NodeCanvas 节点，标题下按行列出输入与输出端口。
 function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
-  const { laid, selectId, children, timeline } = data;
-  const { store, values, dim, related, openNode } = useView();
+  const { laid, selectId, children } = data;
+  const { store, values, dim, related } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
@@ -828,20 +799,12 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
-      title={`${nodeName(laid.node)}\n${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
+      title={`${nodeName(laid.node)}\n${laid.node.id}${children.length === 1 ? '\n双击打开引用图' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
       <div className={styles.header}>
         {triggerIn && <i className={styles.flowIn} />}
         <b>{nodeName(laid.node)}</b>
         {triggerOut && <i className={styles.flowOut} />}
-        {(children.length > 0 || timeline) && <button type="button" className={`${styles.openNode} nodrag nopan`}
-          title={children.length ? '进入子图' : '打开 Timeline'}
-          aria-label={`${children.length ? '进入子图' : '打开 Timeline'}：${nodeName(laid.node)}`}
-          onPointerDown={event => event.stopPropagation()}
-          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }}
-          onDoubleClick={event => event.stopPropagation()}
-          onClick={event => { event.stopPropagation(); if (event.detail < 2) openNode(data); }}>
-          {children.length ? '进入子图' : '打开 Timeline'}
-        </button>}
+        <NodeGraphLinks data={data} />
         <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
         <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
       </div>
@@ -859,6 +822,23 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       )}
     </div>
   );
+}
+
+function NodeGraphLinks({ data }: { data: NodeData }) {
+  const { enter, openNode } = useView();
+  const { children, laid } = data;
+  if (children.length === 0) return null;
+  return <span className="nodrag nopan" onPointerDown={event => event.stopPropagation()}
+    onDoubleClick={event => event.stopPropagation()}
+    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }}>
+    {children.length === 1 ? <button type="button" className={styles.openNode}
+      title={`打开图：${children[0].ownerName} · ${graphName(children[0])}`}
+      aria-label={`打开图：${nodeName(laid.node)}`}
+      onClick={event => { event.stopPropagation(); if (event.detail < 2) openNode(data); }}>打开图</button>
+      : <MenuButton label="选择引用图" className={styles.openNode} entries={children.map(target => ({
+        label: `${target.ownerName} · ${graphName(target)}`, onSelect: () => enter(target, laid.node.id),
+      }))}>打开图（{children.length}）</MenuButton>}
+  </span>;
 }
 
 // 执行端口画在标题两侧的箭头上，连线仍接到对应端口。
@@ -905,9 +885,9 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   );
 }
 
-// 转移：从源状态边框指向目标状态边框的曲线箭头，标签取条件图名称。
+// 转移：从源状态边框指向目标状态边框的曲线箭头。
 function TransitionEdgeView({ id, source, target, data }: EdgeProps<FlowEdge>) {
-  const { store, related, labels } = useView();
+  const { store, related } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
   const from = useInternalNode(source), to = useInternalNode(target);
   const [hover, setHover] = useState(false);
@@ -934,21 +914,11 @@ function TransitionEdgeView({ id, source, target, data }: EdgeProps<FlowEdge>) {
   const status = state.passed ? 'live' : state.traveled ? 'route' : 'idle';
   const highlighted = hover || (related !== null && related.has(id));
   const faded = related !== null && !related.has(id) && status === 'idle';
-  const showLabel = labels !== 'none' && data!.label && (labels === 'all' || highlighted || status !== 'idle');
   return (
     <g className={styles.transition} data-status={status} data-hi={highlighted || undefined} data-faded={faded || undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <BaseEdge path={path} interactionWidth={12} />
       <path d={arrow} className={styles.arrow} />
-      {showLabel && (
-        <EdgeLabelRenderer>
-          <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined}
-            style={{ transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)` }}
-            title={`${data!.label}\n双击进入条件图`}>
-            {data!.label}
-          </div>
-        </EdgeLabelRenderer>
-      )}
     </g>
   );
 }

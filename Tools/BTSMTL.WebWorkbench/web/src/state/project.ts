@@ -1,19 +1,29 @@
 import { authoringApi, type ProjectItem, type ProjectReferrer } from '../api/authoring';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
-import { graphKey } from './graphModel';
+import { graphKey, nodeSelectId, type GraphNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
-import { selectionActions } from './store';
+import { selectionActions, type GraphNavigationOrigin } from './store';
 
-const ownerOf = (item: ProjectItem) => ({ kind: 'skill', name: item.owner } as const);
+const ownerOf = (item: Pick<ProjectItem, 'owner'>) => ({ kind: 'skill', name: item.owner } as const);
 
-async function openOwner(item: ProjectItem) {
+async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
   const target = ownerOf(item);
   if (!await authoringActions.open(target)) throw new Error(`未打开 ${item.ownerName}，具体原因见作者读取记录`);
   return authoringDocument(useAuthoring.getState(), target);
 }
 
+async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'ownerName'>, nodeId?: string,
+  origin: GraphNavigationOrigin | null = null): Promise<void> {
+  const document = await openOwner(target);
+  const graph = document.documentGraphs?.find(value => value.id === target.id);
+  if (!graph) throw new Error(document.documentError ?? '此作者图引用已失效，原身份已保留');
+  selectionActions.showGraph(graphKey(graph), null, origin);
+  selectionActions.select(nodeId === undefined ? null : { kind: 'node', id: nodeSelectId(graph, graph.nodes.find(node => node.id === nodeId)!) });
+}
+
 export const projectActions = {
+  openGraph,
   async open(item: ProjectItem, schemeIndex?: number): Promise<'graph' | 'timeline'> {
     const document = await openOwner(item);
     selectionActions.select(null);

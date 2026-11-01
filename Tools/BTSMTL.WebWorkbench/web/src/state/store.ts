@@ -168,12 +168,18 @@ export interface CanvasSelection {
   nodes: readonly string[];
   edges: readonly string[];
 }
+export interface GraphNavigationOrigin {
+  owner: string;
+  ownerName: string;
+  graphId: string;
+  nodeId: string;
+}
 export interface SelectionSlice {
   selection: Selection | null;
   canvasSelections: Record<string, CanvasSelection>;
   timelineSelections: Record<string, readonly { box: string; id: string }[]>;
   // 其它面板请求节点图面板显示的图（graphKey）；sequence 让同一张图可重复请求。
-  graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
+  graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
   // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
   timelineRequest: { documentId: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
 }
@@ -360,8 +366,8 @@ export const selectionActions = {
   selectTimelineClips(panelId: string, selection: SelectionSlice['timelineSelections'][string]) {
     set({ timelineSelections: { ...getState().timelineSelections, [panelId]: selection } });
   },
-  showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
-    set({ graphRequest: { key, observation, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
+  showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null, origin: GraphNavigationOrigin | null = null) {
+    set({ graphRequest: { key, observation, origin, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
   },
   showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
     set({ timelineRequest: { documentId, observation, sequence: (getState().timelineRequest?.sequence ?? 0) + 1 } });

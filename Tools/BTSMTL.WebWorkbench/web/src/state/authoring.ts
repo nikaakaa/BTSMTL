@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
-  type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillEditingView, type SkillElements,
+  type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
@@ -16,7 +16,7 @@ import {
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
-import type { DocumentObservationBinding } from './graphModel';
+import { graphHierarchy, type DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session, stageNames } from './session';
@@ -63,6 +63,7 @@ export interface AuthoringDocument {
   lastSave: SaveOutcome | null;
   // 作者 JSON 与当前未保存修改的图投影；来源被拒时给出原因。
   documentGraphs: SkillDocumentGraph[] | null;
+  documentRelations: SkillDocumentRelation[];
   documentError: string | null;
   tickRate: number | null;
   previewDefinitionGuid: string | null;
@@ -94,7 +95,7 @@ const newDocument = (): AuthoringDocument => ({
   files: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  documentGraphs: null, documentError: null, tickRate: null, previewDefinitionGuid: null,
+  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, previewDefinitionGuid: null,
 });
 
 const closedDocument = newDocument();
@@ -130,6 +131,13 @@ export const useDocumentObservationBinding = (): DocumentObservationBinding => u
   programId: authoringDocument(state).programId, sourceRevision: authoringDocument(state).sourceRevision,
   dirty: Object.keys(authoringDocument(state).edited).length > 0 || authoringDocument(state).removed.length > 0,
 })));
+
+export function useDocumentGraphHierarchy() {
+  const { graphs, relations } = useAuthoring(useShallow(state => ({
+    graphs: authoringDocument(state).documentGraphs, relations: authoringDocument(state).documentRelations,
+  })));
+  return useMemo(() => graphHierarchy(graphs ?? [], relations), [graphs, relations]);
+}
 
 export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
 
@@ -352,20 +360,20 @@ useWorkbench.subscribe((state, previous) => {
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
   const { revision, version } = authoringDocument(useAuthoring.getState(), target);
   if (target.kind === 'scenario') {
-    setDocument({ documentGraphs: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
+    setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
     return;
   }
   try {
     const document = await authoringApi.document(target.name, authoringActions.editingView(), signal);
     const current = authoringDocument(useAuthoring.getState(), target);
     if (current.revision !== revision || current.version !== version) return;
-    setDocument({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
+    setDocument({ documentGraphs: document.graphs, documentRelations: document.relations, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
   } catch (error) {
     if (isAbort(error)) throw error;
     const current = authoringDocument(useAuthoring.getState(), target);
     if (current.revision !== revision || current.version !== version) return;
-    setDocument({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
+    setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
     consoleActions.error('作者', error);
   }
 }

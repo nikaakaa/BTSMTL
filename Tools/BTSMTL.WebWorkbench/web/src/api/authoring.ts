@@ -371,6 +371,18 @@ export interface SkillDocumentGraph extends GraphDefinition {
   ownerName: string;
   file: string;
   role: string;
+  declaredOwner: { graphId: string; nodeId: string } | null;
+}
+
+export interface SkillDocumentRelation {
+  source: {
+    owner: string; ownerName: string; file: string; graphId: string; nodeId: string;
+    fieldId: string; serializedMemberPath: string[];
+  };
+  target: {
+    kind: 'graph'; id: string; displayName: string | null; role: string;
+    owner: string; ownerName: string; file: string; ownership: 'Private' | 'Shared' | null;
+  };
 }
 
 export interface SkillDocument {
@@ -379,6 +391,7 @@ export interface SkillDocument {
   sourceRevision: string;
   tickRate: number;
   graphs: SkillDocumentGraph[];
+  relations: SkillDocumentRelation[];
 }
 
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;

@@ -4,15 +4,17 @@ import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRe
 import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
-  childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
+  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  type GraphNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
+import { projectActions } from '../../state/project';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
-import { selectionActions, useWorkbench, type Selection } from '../../state/store';
+import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin, type Selection } from '../../state/store';
 import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
@@ -113,18 +115,9 @@ function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNo
   return <div className={styles.field}><label title={label}>{label}</label><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
 }
 
-function openGraph(graph: GraphDefinition) {
-  selectionActions.showGraph(graphKey(graph), null);
-  openPanel('graph');
-}
-
-function openTimeline(documentId: string) {
-  selectionActions.showTimeline(documentId, null);
-  openPanel('timeline');
-}
-
-function useTimelineName(documentId: string | null) {
-  return useWorkbench(state => documentId ? state.timelines.find(item => item.documentId === documentId)?.displayName ?? documentId.slice(0, 8) : null);
+function openGraph(graph: Pick<GraphDefinition, 'id'>, origin: GraphNavigationOrigin | null = null) {
+  const target = authoringDocument(useAuthoring.getState()).documentGraphs!.find(item => item.id === graph.id)!;
+  void projectActions.openGraph(target, undefined, origin).then(() => { openPanel('graph'); }, reason => consoleActions.error('作者', reason));
 }
 
 function Values({ fields }: { fields: Field[] }) {
@@ -292,13 +285,10 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-// 节点的引用字段：子图（状态体或调用的状态机）、播放的 Timeline、出去的转移及其条件图；所在图写在对象头。
 function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
-  const graphs = useWorkbench(state => state.graphs);
-  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
-  const children = childGraphs(hierarchy, graph, nodeId);
-  const timeline = playedTimeline(hierarchy, graph, nodeId);
-  const timelineName = useTimelineName(timeline);
+  const hierarchy = useDocumentGraphHierarchy();
+  const children = nodeGraphs(hierarchy, graph, nodeId);
+  const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
     edge.invocationPath === invocationPath);
@@ -306,19 +296,11 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
     <>
       {children.map(child => (
         <Link key={child.id} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)" tip="在节点图面板打开"
-          onOpen={() => openGraph(child)} />
+          onOpen={() => openGraph(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId })} />
       ))}
-      {timeline && <Link label="Timeline" text={timelineName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
-        onOpen={() => openTimeline(timeline)} />}
       {transitions.map(edge => {
-        const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
         const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
-        return conditions.length
-          ? conditions.map(condition => (
-            <Link key={`${edge.id}/${condition.id}`} label={`→ ${target}`} text={graphName(condition)} kind="var(--port-bool)"
-              tip="转移条件图，在节点图面板打开" onOpen={() => openGraph(condition)} />
-          ))
-          : <Value key={edge.id} label={`→ ${target}`} mono={false} value="无条件" />;
+        return <Value key={edge.id} label={`→ ${target}`} mono={false} value="条件图声明尚未提供" />;
       })}
     </>
   );
@@ -370,7 +352,6 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
     const edge = located?.graph.edges.find(item => item.id === located.id && item.invocationPath === located.path);
     return located && edge ? { graph: located.graph, edge } : null;
   }, [graphs, id, author]);
-  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
   const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   const elements = useSkillElements(editable);
   const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
@@ -381,14 +362,11 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
     .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === edge.id);
   const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
-  const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
   const conditionRows = editable ? (
     <OwnedGraph label="条件图" id={condition} createText="新建条件"
       onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
       onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
-  ) : conditions.length ? conditions.map(item => (
-    <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
-  )) : <Value label="条件图" mono={false} value="无条件" />;
+  ) : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
   return (
     <>
       <Head name={name} sub={graphName(graph)} />
@@ -402,7 +380,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   );
 }
 
-const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kind === 'Transition') ? '子状态机' : '子图';
+const childLabel = (graph: GraphNavigationTarget) => graph.role === 'StateMachine' ? '状态机' : '图引用';
 
 // ── Timeline 片段与轨道 ──
 
