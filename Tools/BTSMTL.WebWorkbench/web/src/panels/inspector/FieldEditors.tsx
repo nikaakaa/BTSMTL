@@ -5,7 +5,7 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
-  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
+  authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type JsonKey, type JsonMutation,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -189,7 +189,7 @@ const configurationOf = (node: JsonObject): JsonObject =>
   Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
 
 function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
-  const version = useAuthoring(state => state.version);
+  const version = useAuthoring(state => authoringDocument(state).version);
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。

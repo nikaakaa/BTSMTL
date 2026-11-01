@@ -25,8 +25,14 @@ export interface AuthoringState {
   unavailableReason: string | null;
   // 作者模式：Timeline、节点图可编辑；运行观察时只读。
   author: boolean;
-  programId: string | null;
   target: AuthoringTarget | null;
+  documents: Record<string, AuthoringDocument>;
+  skills: string[] | null;
+  scenarios: string[] | null;
+}
+
+export interface AuthoringDocument {
+  programId: string | null;
   inputActorId: string | null;
   inputRevision: { kind: 'catalog' } | { kind: 'saved'; items: InputRevision[] } | { kind: 'rejected'; reason: string };
   saveRun: { kind: 'waiting' | 'terminal'; receipt: PlayerJobReceipt } | null;
@@ -38,9 +44,9 @@ export interface AuthoringState {
   // 待删除的原文件（删除状态、节点或片段后不再被引用的专属图与 Timeline）。
   removed: string[];
   version: number;
-  // 可撤销与可重做的步数。
-  undoDepth: number;
-  redoDepth: number;
+  undo: Snapshot[];
+  redo: Snapshot[];
+  recording: boolean;
   loading: boolean;
   // 外部修改了技能文件而本地有未保存修改。
   externalChange: boolean;
@@ -49,13 +55,11 @@ export interface AuthoringState {
   saving: boolean;
   // 最近一次保存的编译结论；文件写入后由正式编译器判断。
   lastSave: SaveOutcome | null;
-  // 技能文件夹；null 为尚未读取。
-  skills: string[] | null;
-  scenarios: string[] | null;
   // 不经运行从 JSON 展开的全部图实例（未叠加网页修改）；严格读取被拒时为空并给出原因。
   documentGraphs: GraphDefinition[] | null;
   documentError: string | null;
   tickRate: number | null;
+  previewDefinitionGuid: string | null;
 }
 
 interface SaveOutcomeMessage {
@@ -78,20 +82,42 @@ export interface AddedPort {
   isTrigger: boolean;
 }
 
-export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, programId: null, target: null, inputActorId: null,
+const newDocument = (): AuthoringDocument => ({
+  programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null,
-  files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
+  files: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
+  loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  skills: null, scenarios: null, documentGraphs: null, documentError: null, tickRate: null,
+  documentGraphs: null, documentError: null, tickRate: null, previewDefinitionGuid: null,
+});
+
+const closedDocument = newDocument();
+
+export const useAuthoring = create<AuthoringState>()(() => ({
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, skills: null, scenarios: null,
 }));
 
-const get = useAuthoring.getState;
+export const authoringDocument = (state: AuthoringState, target = state.target): AuthoringDocument =>
+  target === null ? closedDocument : state.documents[authoringTargetKey(target)];
+
+const get = () => {
+  const state = useAuthoring.getState();
+  return { ...state, ...authoringDocument(state) };
+};
 const set = useAuthoring.setState;
+const setDocument = (patch: Partial<AuthoringDocument>, target = get().target!) => {
+  const state = useAuthoring.getState();
+  const key = authoringTargetKey(target);
+  set({ documents: { ...state.documents, [key]: { ...state.documents[key], ...patch } } });
+};
+const isActiveTarget = (target: AuthoringTarget) => {
+  const current = get().target;
+  return current !== null && authoringTargetKey(current) === authoringTargetKey(target);
+};
 
 export const useDocumentObservationBinding = (): DocumentObservationBinding => useAuthoring(useShallow(state => ({
-  programId: state.programId, sourceRevision: state.sourceRevision,
-  dirty: Object.keys(state.edited).length > 0 || state.removed.length > 0,
+  programId: authoringDocument(state).programId, sourceRevision: authoringDocument(state).sourceRevision,
+  dirty: Object.keys(authoringDocument(state).edited).length > 0 || authoringDocument(state).removed.length > 0,
 })));
 
 export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
@@ -149,12 +175,12 @@ function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt
 function acceptSaveJob(receipt: PlayerJobReceipt) {
   const waiting = receipt.stage === 'queued' || receipt.stage === 'running';
   const outcome = get().lastSave;
-  set({ saveRun: { kind: waiting ? 'waiting' : 'terminal', receipt } });
+  setDocument({ saveRun: { kind: waiting ? 'waiting' : 'terminal', receipt } });
   if (outcome) {
     const source = outcome.compilationState === 'succeeded'
       ? savedOutcome(outcome, outcome.preview, '').message
       : `输入方案已保存${outcome.preview === null ? '' : `；所选 Player 重载：${outcome.preview.stage}`}`;
-    set({ lastSave: { ...outcome, ok: waiting || receipt.stage === 'completed',
+    setDocument({ lastSave: { ...outcome, ok: waiting || receipt.stage === 'completed',
       message: `${source}；封存作业${stageNames[receipt.stage]}${receipt.error === null ? '' : `：${receipt.error}`}`,
     } });
   }
@@ -174,7 +200,7 @@ async function trackPreview(input: {
       input.controller.signal.throwIfAborted();
       if (next.stage !== receipt.stage) {
         const outcome = savedOutcome(input.save, next, '');
-        set({ lastSave: outcome });
+        setDocument({ lastSave: outcome });
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(next));
       }
       receipt = next;
@@ -190,7 +216,7 @@ async function trackPreview(input: {
     if (input.viewport === null || target.channels === null || content.source.kind === 'device') {
       const reason = input.viewport === null ? '没有本次画面尺寸' : target.channels === null ? 'Player 未声明录制通道'
         : '设备输入没有固定修订';
-      set({ lastSave: { ...savedOutcome(input.save, receipt, ''), message: `已保存、编译并采用；${reason}，未提交封存作业` } });
+      setDocument({ lastSave: { ...savedOutcome(input.save, receipt, ''), message: `已保存、编译并采用；${reason}，未提交封存作业` } });
       session.selectRun(null);
       await playerService.refresh();
       return;
@@ -201,12 +227,12 @@ async function trackPreview(input: {
     input.controller.signal.throwIfAborted();
     const job = await playerApi.startJob(request, input.controller.signal);
     input.controller.signal.throwIfAborted();
-    set({ lastSave: savedOutcome(input.save, receipt, '') });
+    setDocument({ lastSave: savedOutcome(input.save, receipt, '') });
     acceptSaveJob(job);
     await Promise.all([playerService.refresh(), session.refresh()]);
   } catch (error) {
     if (isAbort(error)) return;
-    set({ lastSave: {
+    setDocument({ lastSave: {
       ...savedOutcome(input.save, receipt, ''), ok: false,
       message: `已保存，编译通过；${receipt.stage === 'adopted' ? '采用后封存' : '预览状态读取'}失败：${error instanceof Error ? error.message : String(error)}`,
     } });
@@ -232,7 +258,10 @@ export interface AuthorInputScheme {
 }
 
 export function useInputSchemes(): AuthorInputScheme[] {
-  const { files, edited, removed } = useAuthoring(useShallow(state => ({ files: state.files, edited: state.edited, removed: state.removed })));
+  const { files, edited, removed } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { files: document.files, edited: document.edited, removed: document.removed };
+  }));
   return useMemo(() => [...new Set([...Object.keys(files), ...Object.keys(edited)])]
     .filter(path => path.startsWith('inputs/') && path.endsWith('.json') && !removed.includes(path))
     .flatMap(path => {
@@ -248,7 +277,7 @@ export function useInputSchemes(): AuthorInputScheme[] {
 export function useInputContext(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
-  const actorId = useAuthoring(state => state.inputActorId);
+  const actorId = useAuthoring(state => authoringDocument(state).inputActorId);
   const { catalog, scene, reading, failure } = useWorkbench(useShallow(state => ({
     catalog: state.inputCatalog, scene: selectedScene(state),
     reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
@@ -297,7 +326,7 @@ function publishDocument() {
 useWorkbench.subscribe((state, previous) => {
   if (state.liveId !== previous.liveId) {
     previewController?.abort();
-    set({ saveRun: null });
+    if (get().target !== null) setDocument({ saveRun: null });
   }
   if (state.generation !== previous.generation) publishDocument();
   if (state.archiveJobs === previous.archiveJobs) return;
@@ -310,20 +339,20 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
-  const revision = get().revision;
+  const revision = authoringDocument(useAuthoring.getState(), target).revision;
   if (target.kind === 'scenario') {
-    set({ documentGraphs: [], sourceRevision: null, documentError: null, programId: null, tickRate: null });
+    setDocument({ documentGraphs: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
     return;
   }
   try {
     const document = await authoringApi.document(target.name, signal);
-    if (get().target !== target || get().revision !== revision) return;
-    set({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
-      documentError: null, tickRate: document.tickRate, programId: document.programId });
+    if (authoringDocument(useAuthoring.getState(), target).revision !== revision) return;
+    setDocument({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
+      documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
   } catch (error) {
     if (isAbort(error)) throw error;
-    if (get().target !== target || get().revision !== revision) return;
-    set({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) });
+    if (authoringDocument(useAuthoring.getState(), target).revision !== revision) return;
+    setDocument({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
     consoleActions.error('作者', error);
   }
 }
@@ -348,21 +377,19 @@ function reconcileSelection() {
 }
 
 // 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
-async function reloadDocument() {
-  const target = get().target;
+async function reloadDocument(target = get().target) {
   if (!target) return;
   await readDocument(target);
-  if (get().target === target) publishDocument();
+  if (isActiveTarget(target)) publishDocument();
 }
 
 export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
-    if (hasChanges()) throw new Error('先保存或放弃当前修改，再新建场景方案');
     const target = { kind: 'scenario', name } as const;
     const draft = await authoringApi.scenarioDraft(name, request);
     await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, preview: null });
     await authoringActions.open(target);
-    set({ inputActorId: request.actorId });
+    setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listSkills(), session.loadInputs()]);
   },
 
@@ -380,27 +407,30 @@ export const authoringActions = {
   async open(target: AuthoringTarget) {
     const current = get().target;
     if (current && authoringTargetKey(current) === authoringTargetKey(target) && get().documentGraphs) return;
-    if (hasChanges()) {
-      consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${target.name}`);
-      return;
-    }
     loadController?.abort();
     const controller = loadController = new AbortController();
-    clearHistory();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
-    set({ target: null, inputActorId: null, inputRevision: { kind: 'catalog' }, saveRun: null, programId: null, revision: null, sourceRevision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
-      loading: true, externalChange: false, lastSave: null });
+    const state = useAuthoring.getState();
+    const key = authoringTargetKey(target);
+    const opened = state.documents[key];
+    set({ target, author: true, documents: opened ? state.documents
+      : { ...state.documents, [key]: { ...newDocument(), loading: true } } });
+    publishDocument();
+    if (opened && opened.documentGraphs !== null) return;
+    setDocument({ loading: true }, target);
     try {
-      const snapshot = await authoringApi.read(target, controller.signal);
-      controller.signal.throwIfAborted();
-      set({ target, revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
+      if (!opened || opened.revision === null) {
+        const snapshot = await authoringApi.read(target, controller.signal);
+        controller.signal.throwIfAborted();
+        setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
+      }
       await readDocument(target, controller.signal);
       controller.signal.throwIfAborted();
-      set({ loading: false, author: true });
+      setDocument({ loading: false }, target);
       publishDocument();
     } catch (error) {
+      setDocument({ loading: false }, target);
       if (isAbort(error)) return;
-      set({ loading: false });
       consoleActions.error('作者', error);
     }
   },
@@ -411,7 +441,7 @@ export const authoringActions = {
     if (current === null || authoringTargetKey(current) !== authoringTargetKey(target)) return;
     const plan = currentDocument(path) as JsonObject;
     const scheme = (plan.Schemes as JsonObject[])[schemeIndex];
-    set({ inputActorId: actorId });
+    setDocument({ inputActorId: actorId });
     selectionActions.select(null);
     selectionActions.showTimeline(scheme.InputTimeline as string, null);
   },
@@ -432,14 +462,14 @@ export const authoringActions = {
       consoleActions.error('作者', error);
       return;
     }
-    set({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
+    setDocument({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
   },
 
   // 新建技能文件（状态体、条件图、Timeline 片段图）；保存时一并写出。
   create(path: string, document: JsonValue) {
     record();
     const state = get();
-    set({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
+    setDocument({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
   },
 
   // 删除文件：网页新建的直接丢弃，原有的保存时删除。
@@ -449,23 +479,23 @@ export const authoringActions = {
     const state = get();
     const edited = { ...state.edited };
     for (const path of paths) delete edited[path];
-    set({
+    setDocument({
       edited, removed: [...new Set([...state.removed, ...paths.filter(path => state.files[path] !== undefined)])], version: state.version + 1,
     });
   },
 
   revert() {
     clearHistory();
-    set({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
+    setDocument({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
     reconcileSelection();
   },
 
-  undo() { step(undoStack, redoStack); },
-  redo() { step(redoStack, undoStack); },
+  undo() { step('undo', 'redo'); },
+  redo() { step('redo', 'undo'); },
 
   // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
-  changedFiles(): { path: string; content: string }[] {
-    const state = get();
+  changedFiles(target = get().target): { path: string; content: string }[] {
+    const state = authoringDocument(useAuthoring.getState(), target);
     const fallback = shapeOf(state.files['skill.json'] ?? '\n');
     return Object.entries(state.edited).filter(([path]) => !state.removed.includes(path)).map(([path, document]) => ({
       path, content: writeSkillJson(document, state.files[path] !== undefined ? shapeOf(state.files[path]) : fallback),
@@ -473,10 +503,14 @@ export const authoringActions = {
   },
 
   editingView(): SkillEditingView {
-    const { target, removed } = get();
+    const state = get();
     return {
-      skills: target?.kind === 'skill' ? { [target.name]: { files: authoringActions.changedFiles(), removedFiles: removed } } : {},
-      previewDefinitionGuid: null,
+      skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('skill/')).map(key => {
+        const name = key.slice('skill/'.length);
+        const document = state.documents[key];
+        return [name, { files: authoringActions.changedFiles({ kind: 'skill', name }), removedFiles: document.removed }];
+      })),
+      previewDefinitionGuid: state.previewDefinitionGuid,
     };
   },
 
@@ -488,19 +522,16 @@ export const authoringActions = {
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;
-    set({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null });
+    setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
-      if (get().target !== target) {
-        set({ saving: false });
-        return false;
-      }
-      clearHistory();
-      set({
+      clearHistory(target);
+      setDocument({
         revision: content.revision, sourceRevision: null, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
-        edited: {}, removed: [], addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
-      });
-      void reloadDocument();
-      return true;
+        edited: {}, removed: [], addedPorts: {}, externalChange: false,
+        version: authoringDocument(useAuthoring.getState(), target).version + 1, saving: false, lastSave,
+      }, target);
+      void reloadDocument(target);
+      return isActiveTarget(target);
     };
     try {
       const jobBlocked = session.canStart();
@@ -520,7 +551,7 @@ export const authoringActions = {
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
           ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
         consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
-        if (currentSkill) set({ inputRevision: { kind: 'saved', items: result.inputs } });
+        setDocument({ inputRevision: { kind: 'saved', items: result.inputs } }, target);
         if (currentSkill && result.job !== null && !controller.signal.aborted) acceptSaveJob(result.job);
         if (currentSkill && stage === 'applied') await playerService.refresh();
         if (currentSkill) await session.loadInputs();
@@ -544,15 +575,15 @@ export const authoringActions = {
         accept(rejection.content, {
           ok: false, message, errors, saved: rejection.saved, compilationState: rejection.compilationState, preview: null,
         });
-        if (rejection.compilationState === 'not-required') set({ inputRevision: { kind: 'rejected', reason: message } });
+        if (rejection.compilationState === 'not-required') setDocument({ inputRevision: { kind: 'rejected', reason: message } }, target);
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           rejection.error ?? ''].filter(Boolean).join('\n'));
         return;
       }
-      set({ saving: false, lastSave: {
+      setDocument({ saving: false, lastSave: {
         ok: false, message: error instanceof Error ? error.message : String(error), errors: [],
         saved: null, compilationState: null, preview: null,
-      } });
+      } }, target);
       consoleActions.error('作者', error);
     }
   },
@@ -564,11 +595,11 @@ export const authoringActions = {
     try {
       const changes = await authoringApi.changes(target, revision);
       if (!changes.changed) return;
-      if (hasChanges()) set({ externalChange: true });
+      if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
         const snapshot = await authoringApi.read(target);
-        set({ revision: snapshot.revision, sourceRevision: null, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
-        await reloadDocument();
+        setDocument({ revision: snapshot.revision, sourceRevision: null, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
+        await reloadDocument(target);
       }
     } catch (error) {
       consoleActions.error('作者', error);
@@ -889,7 +920,10 @@ export function clipMoveIssue(elements: SkillElements, documentId: string, clipK
   return from.domain === to.domain ? null : `跨轨道移动必须保持执行域（${from.domain} → ${to.domain}）`;
 }
 
-export const hasChanges = () => Object.keys(get().edited).length + get().removed.length > 0;
+export const hasChanges = (target = get().target) => {
+  const document = authoringDocument(useAuthoring.getState(), target);
+  return Object.keys(document.edited).length + document.removed.length > 0;
+};
 
 // ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
 
@@ -899,10 +933,7 @@ interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections'
   addedPorts: Record<string, AddedPort[]>;
 }
 
-const undoStack: Snapshot[] = [];
-const redoStack: Snapshot[] = [];
 const historyLimit = 100;
-let recording = false;
 
 const snapshot = (): Snapshot => {
   const state = get();
@@ -913,29 +944,28 @@ const snapshot = (): Snapshot => {
 };
 
 function record() {
-  if (recording) return;
-  recording = true;
-  queueMicrotask(() => { recording = false; reconcileSelection(); });
-  undoStack.push(snapshot());
-  if (undoStack.length > historyLimit) undoStack.shift();
-  redoStack.length = 0;
-  set({ undoDepth: undoStack.length, redoDepth: 0 });
+  const state = get();
+  if (state.recording) return;
+  const target = state.target!;
+  setDocument({ undo: [...state.undo, snapshot()].slice(-historyLimit), redo: [], recording: true }, target);
+  queueMicrotask(() => {
+    setDocument({ recording: false }, target);
+    if (isActiveTarget(target)) reconcileSelection();
+  });
 }
 
-function step(from: Snapshot[], to: Snapshot[]) {
-  const target = from.pop();
-  if (!target) return;
-  to.push(snapshot());
-  const { selection, canvasSelections, timelineSelections, ...content } = target;
-  set({ ...content, version: get().version + 1, undoDepth: undoStack.length, redoDepth: redoStack.length });
+function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
+  const state = get();
+  const previous = state[from].at(-1);
+  if (!previous) return;
+  const { selection, canvasSelections, timelineSelections, ...content } = previous;
+  setDocument({ ...content, [from]: state[from].slice(0, -1), [to]: [...state[to], snapshot()], version: state.version + 1 });
   useWorkbench.setState({ selection, canvasSelections, timelineSelections });
   reconcileSelection();
 }
 
-function clearHistory() {
-  undoStack.length = 0;
-  redoStack.length = 0;
-  set({ undoDepth: 0, redoDepth: 0 });
+function clearHistory(target = get().target!) {
+  setDocument({ undo: [], redo: [] }, target);
 }
 
 // ── 专属内容：图与 Timeline 文件以文件名为身份，被删除的元素引用、且别处不再引用的文件随之删除 ──
@@ -1024,10 +1054,11 @@ export function currentDocument(path: string): JsonValue | null {
 
 // 编辑在原文档对象上原地修改，version 变化即重新读取。
 export function useCurrentDocument(path: string | null): { document: JsonValue | null; version: number } {
-  const { edited, text, removed, version } = useAuthoring(useShallow(state => ({
-    edited: path ? state.edited[path] : undefined, text: path ? state.files[path] : undefined,
-    removed: !!path && state.removed.includes(path), version: state.version,
-  })));
+  const { edited, text, removed, version } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { edited: path ? document.edited[path] : undefined, text: path ? document.files[path] : undefined,
+      removed: !!path && document.removed.includes(path), version: document.version };
+  }));
   return useMemo(() => ({ document: removed ? null : edited ?? (text !== undefined ? parseSkillJson(text) : null), version }),
     [edited, text, removed, version]);
 }
@@ -1228,7 +1259,7 @@ export const graphAuthoring = {
       nodesOf(document).push(sortedObject({ ...cloneJson(configuration), UID: uid, outConnections: [], type }));
     });
     authoringActions.edit(layoutPath, document => { layoutNodes(document, graphId)[uid] = positionValue(position); });
-    set({ addedPorts: { ...get().addedPorts, [uid]: ports } });
+    setDocument({ addedPorts: { ...get().addedPorts, [uid]: ports } });
     return uid;
   },
 
@@ -1474,7 +1505,7 @@ export const graphAuthoring = {
     });
     const ports = { ...get().addedPorts };
     for (const [from, to] of ids) ports[to] = source.ports[from] ?? [];
-    set({ addedPorts: ports });
+    setDocument({ addedPorts: ports });
     return [...ids.values()];
   },
 };
@@ -1573,7 +1604,9 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
 
 export function useAuthorTimelines(): AuthorTimeline[] {
   const timelines = useWorkbench(state => state.timelines);
-  const { edited, removed } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed })));
+  const { edited, removed } = useAuthoring(useShallow(state => ({
+    edited: authoringDocument(state).edited, removed: authoringDocument(state).removed,
+  })));
   return useMemo(() => applyTimelineEdits(timelines, edited, removed), [timelines, edited, removed]);
 }
 

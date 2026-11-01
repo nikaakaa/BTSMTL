@@ -13,7 +13,7 @@ import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeIn
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
@@ -105,7 +105,8 @@ type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
 export function GraphPanel() {
   const graphs = useWorkbench(state => state.graphs);
-  const opened = useAuthoring(useShallow(state => ({ target: state.target, loading: state.loading, error: state.documentError })));
+  const opened = useAuthoring(useShallow(state => ({ target: state.target,
+    loading: authoringDocument(state).loading, error: authoringDocument(state).documentError })));
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
   if (opened.loading || !graphs) return <Empty text="读取中" />;
@@ -364,7 +365,9 @@ function NodeTypePicker({ graph, at, onCreated, onClose }: {
 
 // 黑板浮层：读打开技能里这张图的文件；作者模式可增删、改名、改默认值与声明。
 function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose(): void }) {
-  const author = useAuthoring(useShallow(state => ({ own: state.target?.kind === 'skill' && state.programId === graph.programId, editable: state.author })));
+  const author = useAuthoring(useShallow(state => ({
+    own: state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId, editable: state.author,
+  })));
   const elements = useSkillElements(author.own && author.editable);
   return (
     <div className={styles.blackboard}>
@@ -397,8 +400,9 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
   const { graph, path } = props;
   const author = useAuthoring(useShallow(state => ({
-    on: state.author && state.target?.kind === 'skill' && state.programId === graph.programId, edited: state.edited, ports: state.addedPorts,
-    own: state.target?.kind === 'skill' && state.programId === graph.programId,
+    on: state.author && state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId,
+    edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
+    own: state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId,
   })));
   const editable = author.on;
   const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,

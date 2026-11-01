@@ -1,16 +1,17 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { currentDocument, timelinePath, useAuthoring, useInputSchemes } from './authoring';
+import { authoringDocument, currentDocument, timelinePath, useAuthoring, useInputSchemes } from './authoring';
 import type { JsonObject } from './skillJson';
 import { useWorkbench } from './store';
 
 export function useInputObservation(documentId: string | null) {
   const schemes = useInputSchemes();
   const scheme = schemes.find(item => item.documentId === documentId);
-  const author = useAuthoring(useShallow(state => ({
-    target: state.target, actorId: state.inputActorId, revision: state.inputRevision,
-    edited: state.edited, files: state.files, removed: state.removed,
-  })));
+  const author = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { target: state.target, actorId: document.inputActorId, revision: document.inputRevision,
+      edited: document.edited, files: document.files, removed: document.removed };
+  }));
   const state = useWorkbench(useShallow(current => ({
     catalog: current.inputCatalog, frame: current.archiveFrame,
     runId: current.runId, hostFrame: current.hostFrame,

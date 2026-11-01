@@ -16,7 +16,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
+  applyTimelineEdits, authoringActions, authoringDocument, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
   graphPath, inputAuthoring, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
   useReferenceCurves, useSkillElements, useDocumentObservationBinding, type ReferenceEntry,
 } from '../../state/authoring';
@@ -216,8 +216,8 @@ export function TimelinePanel() {
 // 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
   const { target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
-    target: state.target, loading: state.loading, available: state.available,
-    reason: state.unavailableReason, error: state.documentError,
+    target: state.target, loading: authoringDocument(state).loading, available: state.available,
+    reason: state.unavailableReason, error: authoringDocument(state).documentError,
   })));
   const count = useAuthorTimelines().length;
   if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
@@ -252,7 +252,7 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
     return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
       Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
   }, [frames, authorTimelines, focusId, schemes]);
-  const tickRate = useAuthoring(state => state.tickRate);
+  const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
     const scheme = schemes.find(item => item.documentId === focusId);
@@ -583,8 +583,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     curves: state.archiveCurves, selectedCurves: state.selectedCurves,
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
-  const edited = useAuthoring(state => state.edited);
-  const files = useAuthoring(state => state.files);
+  const edited = useAuthoring(state => authoringDocument(state).edited);
+  const files = useAuthoring(state => authoringDocument(state).files);
   const timelines = useAuthorTimelines();
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
@@ -1431,7 +1431,7 @@ function selectedClip(): { documentId: string; clipId: string } | null {
 }
 
 const currentClip = (documentId: string, clipId: string) =>
-  applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId)
+  applyTimelineEdits(getState().timelines, authoringDocument(useAuthoring.getState()).edited, authoringDocument(useAuthoring.getState()).removed).find(item => item.documentId === documentId)
     ?.tracks.flatMap(track => track.clips.map(clip => ({ track, clip }))).find(item => item.clip.id === clipId) ?? null;
 
 // Ctrl+C 复制选中片段；Ctrl+V 粘贴到选中片段所在轨道、紧接其后（选中轨道时接在轨道末尾）。
@@ -1445,7 +1445,8 @@ function pasteAfterSelection() {
   const selection = getState().selection;
   if (!selection || selection.id.startsWith('input/') || !authoringActions.canPasteClip()) return false;
   const [documentId, itemId] = selection.id.split('/');
-  const timeline = applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId);
+  const document = authoringDocument(useAuthoring.getState());
+  const timeline = applyTimelineEdits(getState().timelines, document.edited, document.removed).find(item => item.documentId === documentId);
   const track = selection.kind === 'track' ? timeline?.tracks.find(item => item.id === itemId)
     : timeline?.tracks.find(item => item.clips.some(clip => clip.id === itemId));
   if (!track) return false;
@@ -1460,7 +1461,7 @@ function pasteAfterSelection() {
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
 function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void): MenuEntry[] {
   const author = useAuthoring(state => state.author && state.target !== null);
-  const version = useAuthoring(state => state.version);
+  const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
   const snap = useContext(SnapContext);
@@ -1705,7 +1706,7 @@ function clipParameters(elements: SkillElements, documentId: string, clip: ClipI
 
 // 展开曲线的轨道只看本轨选中的片段（照 IEmbeddedTimelineTrackBinding.SelectedClip）。
 function useCurveClip(row: TrackRow, elements: SkillElements, mixes: Map<string, ClipMix>) {
-  useAuthoring(state => state.version);
+  useAuthoring(state => authoringDocument(state).version);
   const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const view = useContext(CurveViewContext);
   const clip = row.clips.find(item => item.selectId === selection) ?? null;
@@ -2109,7 +2110,7 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
-  useAuthoring(state => state.version);
+  useAuthoring(state => authoringDocument(state).version);
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
   const animation = source?.choiceKind === animationReferenceKind ? source : null;

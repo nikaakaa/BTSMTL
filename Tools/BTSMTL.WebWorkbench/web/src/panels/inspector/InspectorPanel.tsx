@@ -8,7 +8,7 @@ import {
   isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
@@ -191,11 +191,12 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 
 // 打开技能、没有选中对象时（照 Unity 选中资产本身）：技能名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
 function SkillSummary() {
-  const { skill, plans, editable } = useAuthoring(useShallow(state => ({
-    skill: state.target?.name ?? null, editable: state.author,
-    plans: [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])]
-      .filter(path => path.startsWith('inputs/') && !state.removed.includes(path)).sort().join('\n'),
-  })));
+  const { skill, plans, editable } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { skill: state.target?.name ?? null, editable: state.author,
+      plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
+        .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };
+  }));
   const timelines = useAuthorTimelines().length;
   const paths = plans ? plans.split('\n') : [];
   return (
@@ -216,7 +217,8 @@ function SkillSummary() {
 // 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
 function useAuthorGraphs() {
   return useAuthoring(useShallow(state => ({
-    program: state.author && state.target?.kind === 'skill' ? state.programId : null, edited: state.edited, ports: state.addedPorts,
+    program: state.author && state.target?.kind === 'skill' ? authoringDocument(state).programId : null,
+    edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
   })));
 }
 
@@ -411,7 +413,9 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
-  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({
+    edited: authoringDocument(state).edited, removed: authoringDocument(state).removed, editable: state.author && state.target !== null,
+  })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const { document: inputGraph } = useCurrentDocument(found?.clip.graphId ? graphPath(found.clip.graphId) : null);
@@ -492,7 +496,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
   const { timeline, track, marker } = found;
   const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
   const input = useInputSchemes().some(scheme => scheme.documentId === timeline.documentId);
-  const tickRate = useAuthoring(state => state.tickRate);
+  const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
   const step = tickRate ? 1 / tickRate : 1 / 60;
   return (
     <>
@@ -519,7 +523,9 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
   const binding = useDocumentObservationBinding();
   const schemes = useInputSchemes();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
-  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({
+    edited: authoringDocument(state).edited, removed: authoringDocument(state).removed, editable: state.author && state.target !== null,
+  })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;

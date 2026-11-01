@@ -2,7 +2,7 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
-import { authoringActions, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
@@ -66,11 +66,12 @@ function SkillChoice() {
 }
 
 function AuthoringStatus() {
-  const state = useAuthoring(useShallow(current => ({
-    open: current.author && current.target !== null, edited: current.edited, removed: current.removed,
-    externalChange: current.externalChange, saving: current.saving, lastSave: current.lastSave,
-    undoDepth: current.undoDepth, redoDepth: current.redoDepth,
-  })));
+  const state = useAuthoring(useShallow(current => {
+    const document = authoringDocument(current);
+    return { open: current.author && current.target !== null, edited: document.edited, removed: document.removed,
+      externalChange: document.externalChange, saving: document.saving, lastSave: document.lastSave,
+      undoDepth: document.undo.length, redoDepth: document.redo.length };
+  }));
   useEffect(() => {
     if (!state.open) return;
     const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
