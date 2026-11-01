@@ -82,6 +82,7 @@ namespace BTSMTL.Orchestration
         public int RowWidth => m_Rows.RowWidth;
         public int Count => m_Rows.Count;
         public int OriginalCount => m_Rows.OriginalCount;
+        public ReadOnlySpan<TValue> Row(int index) => m_Rows.Row(index);
 
         public ref readonly TValue Read(in OrchestrationExtensionInputPort<TOperation> port, int rowIndex = 0) =>
             ref m_Rows.Values[rowIndex * m_Rows.RowWidth + port.Index];

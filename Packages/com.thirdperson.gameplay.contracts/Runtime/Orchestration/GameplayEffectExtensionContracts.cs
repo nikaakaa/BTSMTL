@@ -3,6 +3,12 @@ using BTSMTL.Orchestration;
 
 namespace ThirdPersonGameplay.Orchestration
 {
+    public enum GameplayAttributeReadTarget : byte
+    {
+        Self = 0,
+        ObjectHandle = 1
+    }
+
     public static class GameplayEffectExtensionContracts
     {
         public const string DomainId = "gameplay.effects";
@@ -17,6 +23,8 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Identity("Effect", "gameplay.effect");
             public static readonly OrchestrationExtensionContentField Attribute =
                 OrchestrationExtensionContentField.Identity("Attribute", "gameplay.attribute");
+            public static readonly OrchestrationExtensionContentField AttributeTarget =
+                OrchestrationExtensionContentField.Enum<GameplayAttributeReadTarget>("AttributeTarget");
             public static readonly OrchestrationExtensionContentField DefinitionRevision =
                 OrchestrationExtensionContentField.Value("DefinitionRevision", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionContentField SuccessEvent =
@@ -125,6 +133,8 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct AttributeRead
         {
+            public static readonly OrchestrationExtensionInputPort<AttributeRead> ObjectHandle =
+                new OrchestrationExtensionInputPort<AttributeRead>("object-handle", OrchestrationValueKind.ObjectHandle, 0);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> Valid =
                 new OrchestrationExtensionOutputPort<AttributeRead>("valid", OrchestrationValueKind.Boolean, 0);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> BaseValue =
@@ -134,15 +144,16 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<AttributeRead> Definition = new OrchestrationExtensionDefinition<AttributeRead>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-attribute-read"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
+                        ObjectHandle.Declaration,
                         Valid.Declaration,
                         BaseValue.Declaration,
                         CurrentValue.Declaration
-                    }, new[] { Fields.Attribute, GameplayOrchestrationPayloadContract.ProviderOwner }));
+                    }, new[] { Fields.Attribute, Fields.AttributeTarget, GameplayOrchestrationPayloadContract.ProviderOwner }));
         }
 
         public readonly struct Apply

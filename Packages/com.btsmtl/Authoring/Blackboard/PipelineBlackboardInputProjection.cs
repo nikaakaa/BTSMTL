@@ -5,6 +5,7 @@ namespace BTSMTL.Authoring.Blackboard
         Direct,
         ActionTargetIdentity,
         ActionTargetPosition,
-        ActionTargetYaw
+        ActionTargetYaw,
+        ActionTargetObjectHandle
     }
 }

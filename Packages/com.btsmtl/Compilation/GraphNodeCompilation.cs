@@ -39,7 +39,8 @@ namespace BTSMTL.Compilation
             IEnumerable<GraphOrchestrationConstantPort> constantInputs = null,
             IEnumerable<GraphOrchestrationConstantPort> constantOutputs = null,
             IEnumerable<GraphOrchestrationDerivedInput> derivedInputs = null,
-            IEnumerable<string> requiredInputConnections = null)
+            IEnumerable<string> requiredInputConnections = null,
+            IEnumerable<OrchestrationExtensionPort> additionalPorts = null)
         {
             Payload = payload?.ToArray() ?? Array.Empty<KeyValuePair<string, object>>();
             ReadBindings = readBindings?.ToArray() ?? Array.Empty<GraphOrchestrationBlackboardPort>();
@@ -48,6 +49,7 @@ namespace BTSMTL.Compilation
             ConstantOutputs = constantOutputs?.ToArray() ?? Array.Empty<GraphOrchestrationConstantPort>();
             DerivedInputs = derivedInputs?.ToArray() ?? Array.Empty<GraphOrchestrationDerivedInput>();
             RequiredInputConnections = requiredInputConnections?.ToArray() ?? Array.Empty<string>();
+            AdditionalPorts = additionalPorts?.ToArray() ?? Array.Empty<OrchestrationExtensionPort>();
         }
 
         public static GraphNodeCompileDescription Fields(params (OrchestrationExtensionContentField Field, object Value)[] payload) =>
@@ -67,6 +69,7 @@ namespace BTSMTL.Compilation
         public IReadOnlyList<GraphOrchestrationBlackboardPort> WriteBindings { get; }
         public IReadOnlyList<GraphOrchestrationConstantPort> ConstantInputs { get; }
         public IReadOnlyList<GraphOrchestrationConstantPort> ConstantOutputs { get; }
+        public OrchestrationExtensionPort[] AdditionalPorts { get; }
         public IReadOnlyList<GraphOrchestrationDerivedInput> DerivedInputs { get; }
         public IReadOnlyList<string> RequiredInputConnections { get; }
     }

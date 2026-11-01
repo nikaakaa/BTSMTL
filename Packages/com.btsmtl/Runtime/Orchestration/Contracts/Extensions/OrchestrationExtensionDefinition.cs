@@ -1,3 +1,5 @@
+using System;
+
 namespace BTSMTL.Orchestration
 {
     public interface IOrchestrationExtensionDefinition
@@ -38,6 +40,16 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionIdentity Identity { get; }
         public uint SemanticVersion { get; }
         public OrchestrationExtensionContract Contract { get; }
+
+        public OrchestrationExtensionDefinition WithAdditionalPorts(ReadOnlySpan<OrchestrationExtensionPort> additionalPorts)
+        {
+            var ports = new OrchestrationExtensionPort[Contract.Ports.Length + additionalPorts.Length];
+            Contract.Ports.Span.CopyTo(ports);
+            additionalPorts.CopyTo(ports.AsSpan(Contract.Ports.Length));
+            return new OrchestrationExtensionDefinition(Identity, SemanticVersion,
+                new OrchestrationExtensionContract(Contract.Kind, Contract.Access, Contract.Invocations,
+                    Contract.Completion, ports, Contract.Fields));
+        }
 
         public OrchestrationExtensionReference CreateReference(int contentIndex, string sourcePath) =>
             new OrchestrationExtensionReference(Identity, SemanticVersion, contentIndex,

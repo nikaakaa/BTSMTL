@@ -256,9 +256,12 @@ namespace BTSMTL.Authoring.Graph
         string Name { get; }
     }
 
-    // 子图引用成员：端口由被引用图的接口声明推导，调用端口 identity 与接口端口 identity 一致。
+    // 引用成员：端口由正式内容接口推导，调用端口 identity 与接口端口 identity 一致。
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
-    public sealed class PortsFromGraphAttribute : Attribute { }
+    public sealed class PortsFromGraphAttribute : Attribute
+    {
+        public string EnabledBy { get; set; }
+    }
 
     // 接口声明节点的接口项列表：列表项自身给出作者编辑的端口项。
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
@@ -269,7 +272,7 @@ namespace BTSMTL.Authoring.Graph
         GraphNodePort Port { get; }
     }
 
-    // 被引用图接口的解析由领域提供；未绑定被引用图时抛出并说明缺少的绑定。
+    // 被引用内容的接口解析由领域提供。
     public interface IGraphNodeInterfaceResolver
     {
         IReadOnlyList<GraphNodePort> Interface(object reference);
@@ -372,8 +375,8 @@ namespace BTSMTL.Authoring.Graph
                 {
                     if (member.GetCustomAttribute<FlowOutputListAttribute>(true) is { } list)
                         sources.Add(Declare(nodeType, $"FlowOutputList({member.Name})", () => FlowOutputs(nodeType, member, list.Numbered)));
-                    if (member.IsDefined(typeof(PortsFromGraphAttribute), true))
-                        sources.Add(Declare(nodeType, $"PortsFromGraph({member.Name})", () => FromGraph(nodeType, member)));
+                    if (member.GetCustomAttribute<PortsFromGraphAttribute>(true) is { } referencedInterface)
+                        sources.Add(Declare(nodeType, $"PortsFromGraph({member.Name})", () => FromGraph(nodeType, member, referencedInterface.EnabledBy)));
                     if (member.IsDefined(typeof(GraphInterfaceListAttribute), true))
                         sources.Add(Declare(nodeType, $"GraphInterfaceList({member.Name})", () => InterfaceItems(nodeType, member)));
                 }
@@ -411,11 +414,20 @@ namespace BTSMTL.Authoring.Graph
                         $"成员 '{member.Name}' 的列表项未实现 {nameof(IGraphNodePortItem)}。"));
             }
 
-            static Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> FromGraph(Type nodeType, MemberInfo member)
+            static Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> FromGraph(Type nodeType,
+                MemberInfo member, string enabledBy)
             {
                 Func<object, object> read = GraphNodeMembers.Reader(nodeType, member.Name, typeof(object));
-                return (node, resolver) => (resolver ?? throw new InvalidOperationException(
-                    $"节点 '{nodeType.FullName}' 的端口来自被引用图，读取时必须提供接口解析。")).Interface(read(node));
+                if (!string.IsNullOrEmpty(enabledBy))
+                {
+                    Func<object, object> enabled = GraphNodeMembers.Reader(nodeType, enabledBy, typeof(bool));
+                    return (node, resolver) => (bool)enabled(node) ? Resolve(node, resolver) : Array.Empty<GraphNodePort>();
+                }
+                return Resolve;
+
+                IEnumerable<GraphNodePort> Resolve(object node, IGraphNodeInterfaceResolver resolver) =>
+                    (resolver ?? throw new InvalidOperationException(
+                        $"节点 '{nodeType.FullName}' 的端口来自被引用接口，读取时必须提供接口解析。")).Interface(read(node));
             }
 
             static Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> InterfaceItems(Type nodeType, MemberInfo member)
