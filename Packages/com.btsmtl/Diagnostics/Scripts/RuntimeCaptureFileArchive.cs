@@ -10,14 +10,14 @@ using Unity.Profiling;
 
 namespace BTSMTL.Diagnostics
 {
-    public sealed class RuntimeCaptureFileArchive : IRuntimeCaptureArchive
+    public sealed partial class RuntimeCaptureFileArchive : IRuntimeCaptureArchive
     {
         const int EventsPerPage = 1024;
         const int PageCount = 8;
         const int StateCapacity = 4096;
         const int CheckpointPageInterval = 16;
         const int ReadChunkSize = 128;
-        const int PageIndexSize = 60;
+        internal const int EventIndexSize = sizeof(ulong) + sizeof(long);
         enum ReadResult { Found, NotFound, Cancelled }
 #if UNITY_5_3_OR_NEWER
         static readonly ProfilerMarker s_Write = new("Workbench.EventHistory.WritePage");
@@ -68,11 +68,15 @@ namespace BTSMTL.Diagnostics
         RuntimeTraceChannel m_Channels;
         RuntimeDiagnosticsCaptureDetail m_Detail;
         BinaryWriter m_Events;
+        BinaryWriter m_EventIndex;
         BinaryWriter m_PageIndex;
+        BinaryWriter m_PageOffsets;
         BinaryWriter m_Segments;
         BinaryWriter m_Checkpoints;
         BinaryReader m_EventReader;
+        BinaryReader m_EventIndexReader;
         BinaryReader m_PageReader;
+        BinaryReader m_PageOffsetReader;
         BinaryReader m_SegmentReader;
         BinaryReader m_CheckpointReader;
         BinaryReader m_SymbolReader;
@@ -265,7 +269,9 @@ namespace BTSMTL.Diagnostics
             try
             {
                 using var events = Open("events.bin");
+                using var eventIndex = Open("events.idx");
                 using var pages = Open("pages.idx");
+                using var pageOffsets = Open("page-offsets.idx");
                 using var segments = Open("segments.idx");
                 using var checkpoints = Open("states.bin");
                 using var symbols = Open("strings.bin");
@@ -273,18 +279,25 @@ namespace BTSMTL.Diagnostics
                 using var writeCodec = new RuntimeTraceBinaryCodec(symbols, StateCapacity * 3);
                 using var readCodec = new RuntimeTraceBinaryCodec(Stream.Null, StateCapacity * 3);
                 using var eventWriter = new BinaryWriter(events, System.Text.Encoding.UTF8, true);
+                using var eventIndexWriter = new BinaryWriter(eventIndex, System.Text.Encoding.UTF8, true);
                 using var pageWriter = new BinaryWriter(pages, System.Text.Encoding.UTF8, true);
+                using var pageOffsetWriter = new BinaryWriter(pageOffsets, System.Text.Encoding.UTF8, true);
                 using var segmentWriter = new BinaryWriter(segments, System.Text.Encoding.UTF8, true);
                 using var checkpointWriter = new BinaryWriter(checkpoints, System.Text.Encoding.UTF8, true);
                 using var eventReader = new BinaryReader(events, System.Text.Encoding.UTF8, true);
+                using var eventIndexReader = new BinaryReader(eventIndex, System.Text.Encoding.UTF8, true);
                 using var pageReader = new BinaryReader(pages, System.Text.Encoding.UTF8, true);
+                using var pageOffsetReader = new BinaryReader(pageOffsets, System.Text.Encoding.UTF8, true);
                 using var segmentReader = new BinaryReader(segments, System.Text.Encoding.UTF8, true);
                 using var checkpointReader = new BinaryReader(checkpoints, System.Text.Encoding.UTF8, true);
                 using var symbolReader = new BinaryReader(symbols, System.Text.Encoding.UTF8, true);
                 m_Events = eventWriter; m_PageIndex = pageWriter; m_Segments = segmentWriter;
+                m_EventIndex = eventIndexWriter; m_PageOffsets = pageOffsetWriter;
                 m_Checkpoints = checkpointWriter; m_EventReader = eventReader; m_PageReader = pageReader;
+                m_EventIndexReader = eventIndexReader; m_PageOffsetReader = pageOffsetReader;
                 m_SegmentReader = segmentReader; m_CheckpointReader = checkpointReader; m_SymbolReader = symbolReader;
                 m_WriterCodec = writeCodec; m_ReaderCodec = readCodec;
+                RuntimeTraceBinaryCodec.WriteFormat(m_Events);
                 m_SpanIndex = spanIndex;
                 while (true)
                 {
@@ -357,12 +370,15 @@ namespace BTSMTL.Diagnostics
         void ResetFiles()
         {
             m_Events.BaseStream.SetLength(0);
+            m_EventIndex.BaseStream.SetLength(0);
             m_PageIndex.BaseStream.SetLength(0);
+            m_PageOffsets.BaseStream.SetLength(0);
             m_Segments.BaseStream.SetLength(0);
             m_Checkpoints.BaseStream.SetLength(0);
             m_SymbolReader.BaseStream.SetLength(0);
             m_WriterCodec.Reset();
             m_ReaderCodec.Reset();
+            RuntimeTraceBinaryCodec.WriteFormat(m_Events);
             m_SpanIndex.Reset();
             foreach (TimeIndex index in m_Times.Values)
             {
@@ -399,7 +415,8 @@ namespace BTSMTL.Diagnostics
             page.First = m_Written;
             page.Count = m_Counts[pageId];
             page.SymbolOffset = m_WriterCodec.BeginPage();
-            m_Events.BaseStream.Position = m_Written * RuntimeTraceBinaryCodec.EventSize;
+            m_Events.BaseStream.Position = m_Events.BaseStream.Length;
+            m_EventIndex.BaseStream.Position = m_Written * EventIndexSize;
             m_Segments.BaseStream.Position = m_WrittenSegments * sizeof(long);
             for (int i = 0; i < page.Count; i++)
             {
@@ -418,6 +435,8 @@ namespace BTSMTL.Diagnostics
                     m_Times.Add(key, index);
                 }
                 index.Append(value.TimeSeconds, m_Written);
+                m_EventIndex.Write(value.Sequence);
+                m_EventIndex.Write(m_Events.BaseStream.Position);
                 m_WriterCodec.Write(m_Events, in value);
                 m_State.ApplyState(in value);
                 int source = m_Metadata.AppendMetadata(in value);
@@ -432,10 +451,13 @@ namespace BTSMTL.Diagnostics
             m_Pages[pageId].AsSpan(0, page.Count).CopyTo(readEvents);
             m_ReadPageFirst[readSlot] = page.First;
             m_ReadPageCounts[readSlot] = page.Count;
-            m_PageIndex.BaseStream.Position = m_WrittenPages++ * PageIndexSize;
-            WritePageIndex(in page);
+            m_PageOffsets.BaseStream.Position = m_WrittenPages++ * sizeof(long);
+            m_PageOffsets.Write(m_PageIndex.BaseStream.Length);
+            m_PageIndex.BaseStream.Position = m_PageIndex.BaseStream.Length;
+            m_WriterCodec.Write(m_PageIndex, in page);
             BytesWritten = m_Events.BaseStream.Length + m_Checkpoints.BaseStream.Length + m_SymbolReader.BaseStream.Length +
-                m_PageIndex.BaseStream.Length + m_Segments.BaseStream.Length + m_SpanIndex.BytesWritten;
+                m_EventIndex.BaseStream.Length + m_PageIndex.BaseStream.Length + m_PageOffsets.BaseStream.Length +
+                m_Segments.BaseStream.Length + m_SpanIndex.BytesWritten;
             foreach (TimeIndex time in m_Times.Values)
                 BytesWritten += time.BytesWritten;
         }
@@ -476,6 +498,7 @@ namespace BTSMTL.Diagnostics
             m_CheckpointStateFirst = m_Checkpoint.CheckpointFirst;
             for (int i = 0; i < m_StateScratch.Count; i++)
             { RuntimeTraceEvent value = m_StateScratch[i]; m_WriterCodec.Write(m_Checkpoints, in value); }
+            m_Checkpoint.CheckpointMetadataOffset = m_Checkpoints.BaseStream.Position;
             m_Checkpoints.Write(m_Metadata.SamplingLimitCount);
             m_Checkpoints.Write(m_Metadata.LatestLogicTimeSeconds);
             m_Checkpoints.Write(m_Metadata.LatestPresentationTimeSeconds);
@@ -594,7 +617,7 @@ namespace BTSMTL.Diagnostics
             Page timelinePage = ReadPage(timelinePageId);
             if (!ReadSymbols(timelinePage.CheckpointSymbols, timelinePage.CheckpointSymbolCount, request))
                 return ReadResult.Cancelled;
-            m_CheckpointReader.BaseStream.Position = timelinePage.CheckpointOffset + timelinePage.StateCount * RuntimeTraceBinaryCodec.EventSize;
+            m_CheckpointReader.BaseStream.Position = timelinePage.CheckpointMetadataOffset;
             int samplingLimitCount = m_CheckpointReader.ReadInt32();
             double latestLogic = m_CheckpointReader.ReadDouble();
             double latestPresentation = m_CheckpointReader.ReadDouble();
@@ -711,8 +734,8 @@ namespace BTSMTL.Diagnostics
                 if (!IsCurrentRead(request))
                     return false;
                 long middle = first + (end - first) / 2;
-                m_EventReader.BaseStream.Position = middle * RuntimeTraceBinaryCodec.EventSize;
-                if (m_EventReader.ReadUInt64() <= sequence) first = middle + 1; else end = middle;
+                m_EventIndexReader.BaseStream.Position = middle * EventIndexSize;
+                if (m_EventIndexReader.ReadUInt64() <= sequence) first = middle + 1; else end = middle;
             }
             found = first - 1;
             return true;
@@ -773,7 +796,8 @@ namespace BTSMTL.Diagnostics
                     return false;
                 long end = pageId + 1 == m_WrittenPages ? m_Written : ReadPage(pageId + 1).First;
                 int count = (int)(end - page.First);
-                m_EventReader.BaseStream.Position = page.First * RuntimeTraceBinaryCodec.EventSize;
+                m_EventIndexReader.BaseStream.Position = page.First * EventIndexSize + sizeof(ulong);
+                m_EventReader.BaseStream.Position = m_EventIndexReader.ReadInt64();
                 for (int i = 0; i < count; i++)
                 {
                     if (i % ReadChunkSize == 0 && !IsCurrentRead(request))
@@ -787,21 +811,11 @@ namespace BTSMTL.Diagnostics
             value = m_ReadPages[m_ReadSlot * EventsPerPage + (int)(ordinal - m_ReadPageFirst[m_ReadSlot])];
             return true;
         }
-        void WritePageIndex(in Page p)
-        {
-            m_PageIndex.Write(p.First); m_PageIndex.Write(p.SymbolOffset); m_PageIndex.Write(p.CheckpointOffset);
-            m_PageIndex.Write(p.CheckpointSymbols); m_PageIndex.Write(p.CheckpointFirst); m_PageIndex.Write(p.EvictedStates);
-            m_PageIndex.Write(p.SymbolCount); m_PageIndex.Write(p.CheckpointSymbolCount);
-            m_PageIndex.Write(p.StateCount);
-        }
         Page ReadPage(long index)
         {
-            m_PageReader.BaseStream.Position = index * PageIndexSize;
-            return new Page { First = m_PageReader.ReadInt64(), SymbolOffset = m_PageReader.ReadInt64(),
-                CheckpointOffset = m_PageReader.ReadInt64(), CheckpointSymbols = m_PageReader.ReadInt64(),
-                CheckpointFirst = m_PageReader.ReadInt64(), EvictedStates = m_PageReader.ReadInt64(),
-                SymbolCount = m_PageReader.ReadInt32(), CheckpointSymbolCount = m_PageReader.ReadInt32(),
-                StateCount = m_PageReader.ReadInt32() };
+            m_PageOffsetReader.BaseStream.Position = index * sizeof(long);
+            m_PageReader.BaseStream.Position = m_PageOffsetReader.ReadInt64();
+            return m_ReaderCodec.Read<Page>(m_PageReader);
         }
 
         void ClearPageStates()
@@ -826,10 +840,12 @@ namespace BTSMTL.Diagnostics
             Volatile.Read(ref m_Failure)?.Throw();
         }
 
-        struct Page
+        [ThirdPersonSimulation.ValueStorage]
+        internal partial struct Page
         {
-            internal long First, SymbolOffset, CheckpointOffset, CheckpointSymbols, CheckpointFirst, EvictedStates;
-            internal int Count, SymbolCount, CheckpointSymbolCount, StateCount;
+            public long First, SymbolOffset, CheckpointOffset, CheckpointSymbols, CheckpointFirst, EvictedStates,
+                CheckpointMetadataOffset;
+            public int Count, SymbolCount, CheckpointSymbolCount, StateCount;
         }
 
         sealed class TimeIndex : IDisposable

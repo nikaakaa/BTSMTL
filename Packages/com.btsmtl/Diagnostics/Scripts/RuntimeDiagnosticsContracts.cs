@@ -9,7 +9,8 @@ using System.Numerics;
 
 namespace BTSMTL.Diagnostics
 {
-    public readonly struct RuntimeContentRevision : IEquatable<RuntimeContentRevision>
+    [ValueStorage]
+    public readonly partial struct RuntimeContentRevision : IEquatable<RuntimeContentRevision>
     {
         public RuntimeContentRevision(string runtimeId, string sourceRevision, string contentHash)
         {
@@ -266,6 +267,7 @@ namespace BTSMTL.Diagnostics
         public ulong InvocationGeneration { get; }
         public int SourceOperationIndex { get; }
         public int TreeClipOperationIndex { get; }
+        [ValuePresence] internal bool HasValueStorage => StateId != null;
         public bool IsValid => Kind != RuntimeInstanceKind.None && CharacterRuntimeId != Guid.Empty;
 
         public static RuntimeInstanceKey Character(Guid characterId) => new RuntimeInstanceKey(RuntimeInstanceKind.Character, characterId, Guid.Empty, string.Empty, 0, 0, -1);
@@ -500,7 +502,8 @@ namespace BTSMTL.Diagnostics
         FPQuaternion
     }
 
-    public readonly struct DebugValueSnapshot
+    [ValueStorage]
+    public readonly partial struct DebugValueSnapshot
     {
         public DebugValueSnapshot(DebugValueKind kind, bool boolean, long signed, ulong unsigned, double number, string text, Vector4 vector)
         {
@@ -649,7 +652,8 @@ namespace BTSMTL.Diagnostics
         }
     }
 
-    public readonly struct RuntimeTimelinePlaybackProvenance
+    [ValueStorage]
+    public readonly partial struct RuntimeTimelinePlaybackProvenance
     {
         public RuntimeTimelinePlaybackProvenance(
             string sourceGraphAuthoringId,
@@ -756,7 +760,8 @@ namespace BTSMTL.Diagnostics
         public EventId SourceEventId;
     }
 
-    public readonly struct RuntimeTraceEvent
+    [ValueStorage]
+    public readonly partial struct RuntimeTraceEvent
     {
         public RuntimeTraceEvent(
             Guid sessionId,

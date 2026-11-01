@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>9.0</LangVersion>
+    <LangVersion>11.0</LangVersion>
     <AssemblyName>BTSMTL.Diagnostics</AssemblyName>
     <RootNamespace>BTSMTL.Diagnostics</RootNamespace>
     <Nullable>disable</Nullable>
@@ -12,6 +12,13 @@
     <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.MemoryPack\ThirdPersonSimulation.MemoryPack.csproj" />
+    <ProjectReference Include="..\..\Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\Tools\MemoryPackAdapter.Generator\MemoryPackAdapter.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Reference Include="MemoryPack.Core" HintPath="$(MemoryPackCorePath)" Private="false" />
     <Compile Include="..\..\Packages\com.btsmtl\Diagnostics\Scripts\**\*.cs" />
   </ItemGroup>
+  <Target Name="RequireMemoryPack" BeforeTargets="ResolveReferences" Condition="!Exists('$(MemoryPackCorePath)')">
+    <Error Text="请通过 MemoryPackCorePath 指定宿主现有的 MemoryPack.Core.dll。" />
+  </Target>
 </Project>

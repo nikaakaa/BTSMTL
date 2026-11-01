@@ -16,13 +16,15 @@ namespace ThirdPerson.MemoryPackAdapters
             readonly string m_Library;
             readonly IDictionary<string, LogicalStoragePlan> m_LogicalStorages;
             readonly Func<ITypeSymbol, ITypeSymbol, bool> m_ImplicitReference;
+            readonly string m_StringFormat;
 
             internal MemoryPackSchemas(Compilation compilation, IDictionary<string, LogicalStoragePlan> logicalStorages,
-                Func<ITypeSymbol, ITypeSymbol, bool> implicitReference)
+                Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, string stringFormat)
             {
                 m_Library = compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer").ContainingAssembly.Identity.ToString();
                 m_LogicalStorages = logicalStorages;
                 m_ImplicitReference = implicitReference;
+                m_StringFormat = stringFormat;
             }
 
             internal string Hash(ITypeSymbol type) => Build((code, visited) => AppendType(code, type, visited));
@@ -53,6 +55,8 @@ namespace ThirdPerson.MemoryPackAdapters
                     }
                     return;
                 }
+                if (type.SpecialType == SpecialType.System_String && m_StringFormat != null)
+                    code.Append("string-codec ").Append(m_StringFormat).Append('\n');
                 if (type.SpecialType != SpecialType.None) return;
                 if (NullableElement(type) is ITypeSymbol nullable)
                 {

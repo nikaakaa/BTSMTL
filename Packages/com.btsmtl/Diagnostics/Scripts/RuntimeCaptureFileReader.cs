@@ -1,35 +1,34 @@
 using System;
 using System.IO;
+using Page = BTSMTL.Diagnostics.RuntimeCaptureFileArchive.Page;
 
 namespace BTSMTL.Diagnostics
 {
     public sealed class RuntimeCaptureFileReader : IDisposable
     {
-        public const string Protocol = "btsmtl.runtime-trace/12";
+        public const string Protocol = RuntimeTraceBinaryCodec.Protocol;
         readonly BinaryReader m_Events;
+        readonly BinaryReader m_EventIndex;
         readonly BinaryReader m_Symbols;
         readonly RuntimeTraceBinaryCodec m_Codec;
         readonly Page[] m_Pages;
 
         public RuntimeCaptureFileReader(string directory)
         {
+            using (var format = new BinaryReader(File.OpenRead(Path.Combine(directory, "events.bin"))))
+                RuntimeTraceBinaryCodec.ReadFormat(format);
             m_Events = new BinaryReader(File.OpenRead(Path.Combine(directory, "events.bin")));
+            m_EventIndex = new BinaryReader(File.OpenRead(Path.Combine(directory, "events.idx")));
             m_Symbols = new BinaryReader(File.OpenRead(Path.Combine(directory, "strings.bin")));
             m_Codec = new RuntimeTraceBinaryCodec(Stream.Null, 1024);
             using var pages = new BinaryReader(File.OpenRead(Path.Combine(directory, "pages.idx")));
-            m_Pages = new Page[pages.BaseStream.Length / 60];
+            using var offsets = File.OpenRead(Path.Combine(directory, "page-offsets.idx"));
+            m_Pages = new Page[offsets.Length / sizeof(long)];
             for (int i = 0; i < m_Pages.Length; i++)
-            {
-                long first = pages.ReadInt64();
-                long symbols = pages.ReadInt64();
-                pages.BaseStream.Position += 32;
-                int symbolCount = pages.ReadInt32();
-                pages.BaseStream.Position += 8;
-                m_Pages[i] = new Page(first, symbols, symbolCount);
-            }
+                m_Pages[i] = m_Codec.Read<Page>(pages);
         }
 
-        public long Count => m_Events.BaseStream.Length / RuntimeTraceBinaryCodec.EventSize;
+        public long Count => m_EventIndex.BaseStream.Length / RuntimeCaptureFileArchive.EventIndexSize;
 
         public RuntimeTraceEvent[] Read(long offset, int limit)
         {
@@ -38,12 +37,13 @@ namespace BTSMTL.Diagnostics
             int written = 0;
             for (int page = 0; page < m_Pages.Length && written < count; page++)
             {
-                long end = page + 1 == m_Pages.Length ? Count : m_Pages[page + 1].First;
+                long end = m_Pages[page].First + m_Pages[page].Count;
                 if (offset >= end)
                     continue;
-                m_Codec.BeginReadSymbols(m_Symbols, m_Pages[page].Symbols);
+                m_Codec.BeginReadSymbols(m_Symbols, m_Pages[page].SymbolOffset);
                 m_Codec.ReadSymbols(m_Symbols, m_Pages[page].SymbolCount);
-                m_Events.BaseStream.Position = offset * RuntimeTraceBinaryCodec.EventSize;
+                m_EventIndex.BaseStream.Position = offset * RuntimeCaptureFileArchive.EventIndexSize + sizeof(ulong);
+                m_Events.BaseStream.Position = m_EventIndex.ReadInt64();
                 while (offset < end && written < count)
                 {
                     result[written++] = m_Codec.Read(m_Events);
@@ -57,20 +57,8 @@ namespace BTSMTL.Diagnostics
         {
             m_Codec.Dispose();
             m_Symbols.Dispose();
+            m_EventIndex.Dispose();
             m_Events.Dispose();
-        }
-
-        readonly struct Page
-        {
-            internal Page(long first, long symbols, int symbolCount)
-            {
-                First = first;
-                Symbols = symbols;
-                SymbolCount = symbolCount;
-            }
-            internal long First { get; }
-            internal long Symbols { get; }
-            internal int SymbolCount { get; }
         }
     }
 }

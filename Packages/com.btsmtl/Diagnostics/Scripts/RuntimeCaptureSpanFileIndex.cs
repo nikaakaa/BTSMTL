@@ -50,11 +50,14 @@ namespace BTSMTL.Diagnostics
         readonly long[] m_IntervalRoots = new long[64];
         readonly IntervalQueryNode[] m_QueryNodes = new IntervalQueryNode[64];
         readonly byte[] m_Guid = new byte[16];
+        readonly RuntimeTraceBinaryCodec m_KeyCodec = new(Stream.Null, 0, inlineText: true);
+        readonly byte[] m_KeyReadBuffer = new byte[4096];
         readonly byte[] m_ZeroPage = new byte[65536];
         long m_BucketCount = 256;
         long m_CandidateCount;
         long m_SpanCount;
         long m_CurrentCandidate;
+        ulong m_CurrentKeyHash;
         RuntimeCaptureSpanSlot m_CurrentSlot;
         long m_QuerySpanCount;
         long m_QueryTreeCount;
@@ -255,7 +258,7 @@ namespace BTSMTL.Diagnostics
             in RuntimeCaptureSpanToken current)
         {
             if (m_CurrentCandidate < 0)
-                m_CurrentCandidate = CreateCandidate(in key);
+                m_CurrentCandidate = CreateCandidate();
             m_CurrentSlot = slot;
             WriteCurrent(current.Location, current.EndPosition, current.EndCycle);
         }
@@ -437,17 +440,19 @@ namespace BTSMTL.Diagnostics
 
         long FindCandidate(in RuntimeCaptureSpanKey key)
         {
-            ulong hash = Hash(in key);
+            m_KeyCodec.Encode(in key);
+            ulong hash = m_CurrentKeyHash = Hash(m_KeyCodec.Encoded);
             long offset = ReadBucket(hash);
             while (offset >= 0)
             {
                 m_CandidateReader.BaseStream.Position = offset;
                 long next = m_CandidateReader.ReadInt64();
                 ulong storedHash = m_CandidateReader.ReadUInt64();
+                int size = m_CandidateReader.ReadInt32();
                 if (storedHash == hash)
                 {
                     m_CandidateReader.BaseStream.Position = offset + CandidateHeaderSize;
-                    if (Matches(in key))
+                    if (Matches(m_KeyCodec.Encoded, size - CandidateHeaderSize))
                         return offset;
                 }
                 offset = next;
@@ -455,107 +460,40 @@ namespace BTSMTL.Diagnostics
             return -1;
         }
 
-        long CreateCandidate(in RuntimeCaptureSpanKey key)
+        long CreateCandidate()
         {
             if (m_CandidateCount * 4 >= m_BucketCount * 3)
                 GrowBuckets();
-            ulong hash = Hash(in key);
+            ulong hash = m_CurrentKeyHash;
             long next = ReadBucket(hash);
             long offset = m_CandidateWriter.BaseStream.Length;
             m_CandidateWriter.BaseStream.Position = offset;
             m_CandidateWriter.Write(next);
             m_CandidateWriter.Write(hash);
-            m_CandidateWriter.Write(0);
+            m_CandidateWriter.Write(checked(CandidateHeaderSize + m_KeyCodec.Encoded.Length));
             m_CandidateWriter.Write(-1L);
             m_CandidateWriter.Write(0UL);
             m_CandidateWriter.Write(0);
             m_CandidateWriter.Write(-1L);
             m_CandidateWriter.Write(0UL);
             m_CandidateWriter.Write(0);
-            WriteKey(in key);
-            int size = (int)(m_CandidateWriter.BaseStream.Position - offset);
-            m_CandidateWriter.BaseStream.Position = offset + 16;
-            m_CandidateWriter.Write(size);
+            m_CandidateWriter.Write(m_KeyCodec.Encoded);
             WriteBucket(hash, offset);
             m_CandidateCount++;
             return offset;
         }
 
-        void WriteKey(in RuntimeCaptureSpanKey key)
+        bool Matches(ReadOnlySpan<byte> expected, int length)
         {
-            var writer = m_CandidateWriter;
-            writer.Write((int)key.Domain);
-            WriteGuid(writer, key.ExecutionBranchId);
-            writer.Write(key.RuntimeEpoch);
-            writer.Write(key.Source.Value);
-            writer.Write((int)key.Source.Kind);
-            writer.Write((int)key.Instance.Kind);
-            WriteGuid(writer, key.Instance.CharacterRuntimeId);
-            WriteGuid(writer, key.Instance.GraphRuntimeId);
-            WriteString(key.Instance.StateId);
-            writer.Write(key.Instance.ActivationGeneration);
-            writer.Write(key.Instance.TimelinePlaybackId);
-            writer.Write(key.Instance.TreeClipCycle);
-            writer.Write(key.Instance.ActionInstanceId);
-            WriteString(key.Instance.CallSiteId);
-            writer.Write(key.Instance.InvocationGeneration);
-            writer.Write(key.Instance.SourceOperationIndex);
-            writer.Write(key.Instance.TreeClipOperationIndex);
-            WriteString(key.ContentRevision.RuntimeId);
-            WriteString(key.ContentRevision.SourceRevision);
-            WriteString(key.ContentRevision.ContentHash);
-        }
-
-        bool Matches(in RuntimeCaptureSpanKey key)
-        {
-            var reader = m_CandidateReader;
-            bool match = reader.ReadInt32() == (int)key.Domain;
-            match &= ReadGuid(reader) == key.ExecutionBranchId;
-            match &= reader.ReadUInt64() == key.RuntimeEpoch;
-            match &= reader.ReadInt32() == key.Source.Value;
-            match &= reader.ReadInt32() == (int)key.Source.Kind;
-            match &= reader.ReadInt32() == (int)key.Instance.Kind;
-            match &= ReadGuid(reader) == key.Instance.CharacterRuntimeId;
-            match &= ReadGuid(reader) == key.Instance.GraphRuntimeId;
-            match &= MatchString(key.Instance.StateId);
-            match &= reader.ReadUInt64() == key.Instance.ActivationGeneration;
-            match &= reader.ReadUInt64() == key.Instance.TimelinePlaybackId;
-            match &= reader.ReadInt32() == key.Instance.TreeClipCycle;
-            match &= reader.ReadUInt64() == key.Instance.ActionInstanceId;
-            match &= MatchString(key.Instance.CallSiteId);
-            match &= reader.ReadUInt64() == key.Instance.InvocationGeneration;
-            match &= reader.ReadInt32() == key.Instance.SourceOperationIndex;
-            match &= reader.ReadInt32() == key.Instance.TreeClipOperationIndex;
-            match &= MatchString(key.ContentRevision.RuntimeId);
-            match &= MatchString(key.ContentRevision.SourceRevision);
-            match &= MatchString(key.ContentRevision.ContentHash);
-            return match;
-        }
-
-        void WriteString(string value)
-        {
-            int length = value == null ? -1 : value.Length;
-            m_CandidateWriter.Write(length);
-            ReadOnlySpan<char> characters = value.AsSpan();
-            for (int i = 0; i < length; i++)
-                m_CandidateWriter.Write((ushort)characters[i]);
-        }
-
-        bool MatchString(string value)
-        {
-            int length = m_CandidateReader.ReadInt32();
-            int expected = value == null ? -1 : value.Length;
-            if (length != expected)
+            if (length != expected.Length) return false;
+            for (int offset = 0; offset < expected.Length;)
             {
-                if (length > 0)
-                    m_CandidateReader.BaseStream.Position += length * sizeof(char);
-                return false;
+                int read = m_CandidateReader.Read(m_KeyReadBuffer, 0, Math.Min(expected.Length - offset, m_KeyReadBuffer.Length));
+                if (read == 0) throw new EndOfStreamException("Trace 范围索引中的键不完整。");
+                if (!expected.Slice(offset, read).SequenceEqual(m_KeyReadBuffer.AsSpan(0, read))) return false;
+                offset += read;
             }
-            bool match = true;
-            ReadOnlySpan<char> characters = value.AsSpan();
-            for (int i = 0; i < length; i++)
-                match &= m_CandidateReader.ReadUInt16() == characters[i];
-            return match;
+            return true;
         }
 
         void WriteGuid(BinaryWriter writer, Guid value)
@@ -571,57 +509,12 @@ namespace BTSMTL.Diagnostics
             return new Guid(m_Guid);
         }
 
-        ulong Hash(in RuntimeCaptureSpanKey key)
+        static ulong Hash(ReadOnlySpan<byte> value)
         {
             ulong hash = HashBasis;
-            AddHash(ref hash, (ulong)key.Domain);
-            AddHash(ref hash, key.ExecutionBranchId);
-            AddHash(ref hash, key.RuntimeEpoch);
-            AddHash(ref hash, (ulong)key.Source.Value);
-            AddHash(ref hash, (ulong)key.Source.Kind);
-            AddHash(ref hash, (ulong)key.Instance.Kind);
-            AddHash(ref hash, key.Instance.CharacterRuntimeId);
-            AddHash(ref hash, key.Instance.GraphRuntimeId);
-            AddHash(ref hash, key.Instance.StateId);
-            AddHash(ref hash, key.Instance.ActivationGeneration);
-            AddHash(ref hash, key.Instance.TimelinePlaybackId);
-            AddHash(ref hash, (ulong)key.Instance.TreeClipCycle);
-            AddHash(ref hash, key.Instance.ActionInstanceId);
-            AddHash(ref hash, key.Instance.CallSiteId);
-            AddHash(ref hash, key.Instance.InvocationGeneration);
-            AddHash(ref hash, (ulong)key.Instance.SourceOperationIndex);
-            AddHash(ref hash, (ulong)key.Instance.TreeClipOperationIndex);
-            AddHash(ref hash, key.ContentRevision.RuntimeId);
-            AddHash(ref hash, key.ContentRevision.SourceRevision);
-            AddHash(ref hash, key.ContentRevision.ContentHash);
+            for (int i = 0; i < value.Length; i++)
+                hash = unchecked((hash ^ value[i]) * HashPrime);
             return hash;
-        }
-
-        static void AddHash(ref ulong hash, ulong value)
-        {
-            for (int i = 0; i < sizeof(ulong); i++)
-            {
-                hash = unchecked((hash ^ (byte)value) * HashPrime);
-                value >>= 8;
-            }
-        }
-
-        void AddHash(ref ulong hash, Guid value)
-        {
-            value.TryWriteBytes(m_Guid);
-            for (int i = 0; i < m_Guid.Length; i++)
-                hash = unchecked((hash ^ m_Guid[i]) * HashPrime);
-        }
-
-        static void AddHash(ref ulong hash, string value)
-        {
-            AddHash(ref hash, value == null ? ulong.MaxValue : (ulong)value.Length);
-            if (value != null)
-            {
-                ReadOnlySpan<char> characters = value.AsSpan();
-                for (int i = 0; i < value.Length; i++)
-                    AddHash(ref hash, characters[i]);
-            }
         }
 
         internal void Reset()
@@ -639,6 +532,7 @@ namespace BTSMTL.Diagnostics
 
         public void Dispose()
         {
+            m_KeyCodec.Dispose();
             m_BucketReader.Dispose();
             m_BucketWriter.Dispose();
             m_CandidateReader.Dispose();

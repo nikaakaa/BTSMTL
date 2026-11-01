@@ -182,7 +182,7 @@ namespace ThirdPerson.MemoryPackAdapters
         }
 
         static void EmitPreparedRead(StringBuilder code, INamedTypeSymbol type, Member[] members,
-            PreparedReadPlan plan, Func<ITypeSymbol, bool> hasPayload)
+            PreparedReadPlan plan, Func<ITypeSymbol, bool> hasPayload, bool stringCodec)
         {
             code.Append("public ").Append(TypeName(type)).Append(" ReadInto(ref global::MemoryPack.MemoryPackReader reader, ")
                 .Append(TypeName(plan.Storage)).AppendLine(" storage) {");
@@ -198,14 +198,14 @@ namespace ThirdPerson.MemoryPackAdapters
                         .AppendLine(")) throw new global::MemoryPack.MemoryPackSerializationException(\"prepared 原输入集合不可为 null。\");");
                     code.Append("for (int index = 0; index < count_").Append(member.Name).AppendLine("; index++) {");
                     code.Append(TypeName(SequenceElement(member.Type))).AppendLine(" item = default;");
-                    EmitPreparedValueRead(code, member, plan, "item", true, hasPayload);
+                    EmitPreparedValueRead(code, member, plan, "item", true, hasPayload, stringCodec);
                     code.Append("storage.").Append(Escape(add.Name)).Append('(')
                         .Append(add.Parameters.Length == 2 ? "index, " : "").AppendLine("item); }");
                 }
                 else
                 {
                     code.Append(TypeName(member.Type)).Append(" member_").Append(member.Name).AppendLine(" = default;");
-                    EmitPreparedValueRead(code, member, plan, "member_" + member.Name, false, hasPayload);
+                    EmitPreparedValueRead(code, member, plan, "member_" + member.Name, false, hasPayload, stringCodec);
                 }
             }
             if (plan.Complete == null)
@@ -222,7 +222,7 @@ namespace ThirdPerson.MemoryPackAdapters
         }
 
         static void EmitPreparedValueRead(StringBuilder code, Member member, PreparedReadPlan plan, string target,
-            bool element, Func<ITypeSymbol, bool> hasPayload)
+            bool element, Func<ITypeSymbol, bool> hasPayload, bool stringCodec)
         {
             if (plan.Nested.TryGetValue(member.Name, out IMethodSymbol prepare))
             {
@@ -232,9 +232,9 @@ namespace ThirdPerson.MemoryPackAdapters
                     .Append(valueType).Append(">()).ReadInto(ref reader, storage.").Append(Escape(prepare.Name)).AppendLine("());");
             }
             else if (element)
-                EmitValueRead(code, SequenceElement(member.Type), target);
+                EmitValueRead(code, SequenceElement(member.Type), target, stringCodec);
             else
-                EmitMemberRead(code, member, target, false, hasPayload);
+                EmitMemberRead(code, member, target, false, hasPayload, stringCodec);
         }
     }
 }
