@@ -522,6 +522,25 @@
   opacity: var(--graph-faded);
 }
 
+/* 连线的点击区：比线宽得多的透明描边，单击选中、双击进入条件图 */
+.edgeHit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+}
+
+/* 步骤条件：线中点的条件图名，带布尔端口色的细边 */
+.edgeLabel[data-condition] {
+  border: 1px solid color-mix(in srgb, var(--port-bool) 55%, transparent);
+  color: var(--text);
+  cursor: default;
+}
+
+.edgeLabel[data-faded] {
+  opacity: var(--graph-faded);
+}
+
 /* 作者模式：执行与数据端口都可拖出连线 */
 .canvas[data-author] .valuePort, .canvas[data-author] .flowPort {
   cursor: crosshair;

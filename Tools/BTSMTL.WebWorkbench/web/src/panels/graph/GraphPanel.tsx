@@ -589,15 +589,14 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
   const menuAt = useRef({ x: 0, y: 0 });
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
-  // 单击连线选中（Ctrl／Shift 加选）；状态机的转移同时交给检查器。
+  // 单击连线选中（Ctrl／Shift 加选，预览与作者模式都可选）；状态机的转移同时交给检查器。
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
     if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
-    if (!editable) return;
     const additive = event.ctrlKey || event.shiftKey;
     const next = new Set(additive ? selectedEdges : []);
     if (!next.delete(edge.id)) next.add(edge.id);
     selectCanvas(additive ? nodes.filter(node => node.selected).map(node => node.id) : [], [...next]);
-  }, [editable, machine, graph, call, nodes, selectCanvas, selectedEdges]);
+  }, [machine, graph, call, nodes, selectCanvas, selectedEdges]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -992,17 +991,35 @@ function ConnectionLineView({ fromNode, fromHandle, fromX, fromY, toX, toY, from
 
 // 流图连线：执行线用执行色，数据线与源端口同色（Shader Graph）。
 function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
-  const { store, related } = useView();
+  const { store, related, labels, enter } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
   const color = usePortColor(source, data!.trigger ? null : `out:${data!.edge.source!.portId}`);
-  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const status = state.passed ? 'passed' : state.rejected ? 'rejected' : 'idle';
   const faded = related !== null && !related.has(id);
+  // 组合节点步骤的条件挂在从该步骤出发的线上：线中点写条件图名，双击线或名字进入条件图。
+  const condition = data!.conditions[0];
   return (
-    <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
-      <path d={path} className={styles.edge} style={{ ['--ec' as string]: color }} data-status={status} data-faded={faded || undefined}
-        data-selected={state.selected || undefined} data-picked={selected || undefined} />
-    </Tip>
+    <>
+      <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
+        <g>
+          <path d={path} className={styles.edgeHit} />
+          <path d={path} className={styles.edge} style={{ ['--ec' as string]: color }} data-status={status} data-faded={faded || undefined}
+            data-selected={state.selected || undefined} data-picked={selected || undefined} />
+        </g>
+      </Tip>
+      {condition && labels !== 'none' && (
+        <EdgeLabelRenderer>
+          <Tip name={data!.label} content="双击进入条件图">
+            <div className={styles.edgeLabel} data-condition data-faded={faded || undefined} data-name
+              style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+              onDoubleClick={() => enter(condition)}>
+              {data!.label}
+            </div>
+          </Tip>
+        </EdgeLabelRenderer>
+      )}
+    </>
   );
 }
 
@@ -1046,7 +1063,7 @@ function LinkPreview({ source, at }: { source: string; at: XYPosition }) {
 // 转移：从源状态边框到目标状态边框的曲线，照 Animator 把箭头画在线的中点，多条转移汇到同一状态时箭头不堆在一起；
 // 标签取条件图名称，放在靠源状态的三分之一处，不盖住箭头。
 function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<FlowEdge>) {
-  const { store, related, labels } = useView();
+  const { store, related, labels, enter } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
   const from = useInternalNode(source), to = useInternalNode(target);
   const [hover, setHover] = useState(false);
@@ -1082,7 +1099,8 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
         <EdgeLabelRenderer>
           <Tip name={data!.label} content="双击进入条件图">
             <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name
-              style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}>
+              style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
+              onDoubleClick={() => { if (data!.conditions[0]) enter(data!.conditions[0]); }}>
               {data!.label}
             </div>
           </Tip>
