@@ -456,7 +456,7 @@ export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
     const target = { kind: 'scenario', name } as const;
     const draft = await authoringApi.scenarioDraft(name, request);
-    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, preview: null });
+    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, expectedRevision: null, preview: null });
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listSkills(), session.loadInputs()]);
@@ -599,9 +599,8 @@ export const authoringActions = {
     setDocument({ previewDefinitionGuid: identity, version: get().version + 1 });
   },
 
-  // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。
   async save() {
-    const { target, saving, removed, previewDefinitionGuid } = get();
+    const { target, saving, removed, previewDefinitionGuid, revision } = get();
     const files = authoringActions.changedFiles();
     if (!target || saving || (target.kind === 'scenario' && !files.length && !removed.length)) return;
     previewController?.abort();
@@ -619,6 +618,7 @@ export const authoringActions = {
         lastSave: currentScene ? lastSave : { ...lastSave,
           message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
       }, target);
+      if (revision === null) void authoringActions.listSkills();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
     try {
@@ -627,7 +627,8 @@ export const authoringActions = {
         selectedPreview(), jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]);
       const result = await authoringApi.save(target, {
-        content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
+        content: { files, removedFiles: removed }, expectedRevision: revision,
+        preview: selection.kind === 'selected' ? selection.target : null,
         job, previewDefinitionGuid: previewDefinitionGuid ?? undefined, scene,
       });
       if (result.compilationState === 'not-required') {

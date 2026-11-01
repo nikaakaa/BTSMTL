@@ -87,7 +87,7 @@ function AuthoringStatus() {
       <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）"
         onClick={() => authoringActions.redo()}><RedoIcon /></Button>
       {state.externalChange && (
-        <Tip content="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">
+        <Tip content="磁盘来源在别处被修改；保存会拒绝旧修订，还原会丢弃网页修改">
           <span className={styles.warn} tabIndex={0}>外部已修改</span>
         </Tip>
       )}
@@ -102,7 +102,7 @@ function AuthoringStatus() {
       {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存并应用当前载体配置（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>}
-      {dirty === 0 && lastSave && (
+      {lastSave && (dirty === 0 || !lastSave.ok) && (
         <Tip content={lastSave.message}>
           <span className={lastSave.ok ? styles.dim : styles.warn} tabIndex={0}>
             {lastSave.ok ? '已保存' : lastSave.compilationState === 'failed' ? '编译未通过' : lastSave.saved ? '已保存，尚未应用' : '保存未完成'}
