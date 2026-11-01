@@ -278,11 +278,13 @@ export interface ReferenceCurves {
 export interface SkillElements {
   anchors: Record<string, GraphAnchor[]>;
   transition: ElementTemplate;
+  timeline: ElementTemplate;
   tracks: TrackTemplate[];
   clips: ClipTemplate[];
   marker: ElementTemplate;
   referenceNodes: ReferenceNodeTemplate[];
-  previewInput: { nodeType: string; keyPath: string[]; valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
+  previewInput: { plan: ElementTemplate; scheme: ElementTemplate; nodeType: string; keyPath: string[];
+    valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
 }

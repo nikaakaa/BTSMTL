@@ -651,6 +651,12 @@ export const authoringActions = {
 
   // ── Timeline ──
 
+  createTimeline(template: ElementTemplate, name: string): string {
+    const id = crypto.randomUUID();
+    authoringActions.create(timelinePath(id), sortedObject({ ...cloneJson(template.value), m_AuthoringId: id, m_Name: name }));
+    return id;
+  },
+
   // 改起止；给出 clipInSeconds 时一并写 ClipIn（照 Slate 裁剪可设 ClipIn 片段的起点）。
   setClipTime(documentId: string, clipId: string, startSeconds: number, endSeconds: number, clipInSeconds?: number) {
     authoringActions.edit(timelinePath(documentId), document => {
