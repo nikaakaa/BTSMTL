@@ -41,6 +41,7 @@ namespace BTSMTL.Authoring.Graph
 
         public string FieldId { get; }
         public string MemberName { get; set; }
+        public string FormerName { get; set; }
         public GraphAuthoringDocumentMember DocumentMember { get; set; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldCompilationImpact CompilationImpact { get; set; }

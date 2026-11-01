@@ -127,7 +127,7 @@ namespace BTSMTL.Authoring.Graph
                 visibility: string.IsNullOrEmpty(field.VisibleWhenField) ? null : new GraphAuthoringFieldVisibilityCondition(
                     new GraphAuthoringFieldId(field.VisibleWhenField), field.VisibleWhenValue),
                 compilation: new GraphAuthoringFieldCompilation(field.CompilationImpact, field.Unit),
-                documentMember: field.DocumentMember, subtypes: Subtypes);
+                documentMember: field.DocumentMember, subtypes: Subtypes, formerName: field.FormerName);
         }
     }
 

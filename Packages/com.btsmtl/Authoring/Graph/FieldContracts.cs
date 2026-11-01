@@ -154,7 +154,8 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringFieldCompilation compilation = default,
             GraphAuthoringResourceReference resourceReference = null,
             GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field,
-            IReadOnlyList<GraphAuthoringSubtypeDescriptor> subtypes = null)
+            IReadOnlyList<GraphAuthoringSubtypeDescriptor> subtypes = null,
+            string formerName = null)
         {
             FieldId = fieldId.IsValid ? fieldId : throw new ArgumentException("Field identity is missing.", nameof(fieldId));
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? throw new ArgumentException("Field display name is missing.", nameof(displayName)) : displayName;
@@ -180,9 +181,11 @@ namespace BTSMTL.Authoring.Graph
             ResourceReference = resourceReference;
             DocumentMember = documentMember;
             Subtypes = subtypes ?? Array.Empty<GraphAuthoringSubtypeDescriptor>();
+            FormerName = formerName;
         }
 
         public GraphAuthoringFieldId FieldId { get; }
+        public string FormerName { get; }
         public GraphAuthoringDocumentMember DocumentMember { get; }
         public string DisplayName { get; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
