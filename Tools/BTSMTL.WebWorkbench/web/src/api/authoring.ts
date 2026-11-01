@@ -451,7 +451,7 @@ export interface SkillDocumentRelation {
 
 export interface SkillDocument {
   skill: string;
-  programId: string;
+  programId: string | null;
   sourceRevision: string;
   tickRate: number;
   graphs: SkillDocumentGraph[];

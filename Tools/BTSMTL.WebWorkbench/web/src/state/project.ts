@@ -24,11 +24,12 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 
 export const projectActions = {
   openGraph,
-  async open(item: ProjectItem, schemeIndex?: number): Promise<'graph' | 'timeline'> {
+  async open(item: ProjectItem, schemeIndex?: number): Promise<'graph' | 'timeline' | 'inspector'> {
     const document = await openOwner(item);
     selectionActions.select(null);
     if (item.kind === 'skill' || item.kind === 'graph') {
       const id = item.kind === 'skill' ? document.programId : item.identity;
+      if (item.kind === 'skill' && id === null && document.documentError === null) return 'inspector';
       const graph = document.documentGraphs?.find(value => value.id === id);
       if (!graph) throw new Error(document.documentError ?? '此作者图引用已失效，目录中的原身份已保留');
       selectionActions.showGraph(graphKey(graph), null);

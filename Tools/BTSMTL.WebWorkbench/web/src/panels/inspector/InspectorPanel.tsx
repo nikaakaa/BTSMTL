@@ -186,9 +186,10 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 
 // 打开技能、没有选中对象时（照 Unity 选中资产本身）：技能名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
 function SkillSummary() {
-  const { skill, plans, editable } = useAuthoring(useShallow(state => {
+  const { skill, plans, editable, noProgram } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
     return { skill: state.target?.name ?? null, editable: state.author,
+      noProgram: state.target?.kind === 'skill' && document.documentGraphs !== null && document.programId === null && document.documentError === null,
       plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
         .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };
   }));
@@ -197,6 +198,7 @@ function SkillSummary() {
   return (
     <>
       <Head name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
+      {noProgram && <div className={styles.note}>当前技能没有执行图</div>}
       {paths.map((path, index) => (
         <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} defaultOpen>
           <InputPlanFields path={path} editable={editable} />
