@@ -46,15 +46,6 @@ namespace BTSMTL.Timeline
         public UnityEngine.Object SerializedOwner => m_SerializedOwner;
         public string SerializedPropertyPath => m_SerializedPropertyPath ?? string.Empty;
 
-        public static TimelineData CreateDefault(string name)
-        {
-            return new TimelineData
-            {
-                m_AuthoringId = AuthoringIdentity.Create(),
-                Name = string.IsNullOrEmpty(name) ? "Timeline" : name
-            };
-        }
-
         public TimelineData Clone()
         {
             TimelineData clone = ManagedReferenceCloneUtility.Clone(this);
@@ -72,13 +63,6 @@ namespace BTSMTL.Timeline
             TimelineData clone = Clone();
             clone.RegenerateAuthoringIdentities();
             return clone;
-        }
-
-        public void ConfigureAuthoringIdentity(string authoringId)
-        {
-            if (!AuthoringIdentity.IsValid(authoringId))
-                throw new ArgumentException("Timeline authoring identity is invalid.", nameof(authoringId));
-            m_AuthoringId = authoringId;
         }
 
         public bool EnsureAuthoringIdentities()

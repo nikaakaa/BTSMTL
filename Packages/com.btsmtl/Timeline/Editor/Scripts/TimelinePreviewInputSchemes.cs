@@ -123,7 +123,7 @@ namespace BTSMTL.Timeline.Editor
                 return current.InputTimeline;
             }
             var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
-            timeline.Data.EnsureAuthoringIdentities();
+            timeline.SetData(TimelineData.CreateDefault(null));
             timeline.name = current.Name + " 输入";
             m_Storage.AddInputTimeline(m_Asset, timeline);
             TimelineAuthoringGraphBindings.Prepare(timeline.Data);
@@ -198,9 +198,7 @@ namespace BTSMTL.Timeline.Editor
 
         TimelinePreviewInputSchemes Create()
         {
-            var schemes = ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
-            schemes.Owner = m_Root.Owner;
-            schemes.Timeline = m_Root.Timeline;
+            var schemes = TimelinePreviewInputSchemes.CreateDefault(m_Root.Owner, m_Root.Timeline, m_Default);
             m_Storage.AddSchemes(m_Source, m_Label, schemes);
             return schemes;
         }

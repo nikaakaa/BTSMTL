@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using BTSMTL.Diagnostics;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
 #endif
@@ -27,6 +29,35 @@ namespace BTSMTL.Timeline
         [SerializeField]
 #endif
         bool m_Loop;
+
+        public static TimelineData CreateDefault(string name) => new TimelineData
+        {
+            m_AuthoringId = AuthoringIdentity.Create(),
+            m_Name = string.IsNullOrEmpty(name) ? "Timeline" : name
+        };
+
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        public static TimelineData CreateDefault(string identity, string name)
+        {
+            var data = new TimelineData();
+            data.ConfigureAuthoringDefaults(identity, name);
+            return data;
+        }
+
+        public void ConfigureAuthoringDefaults(string identity, string name)
+        {
+            ConfigureAuthoringIdentity(identity);
+            m_Name = name;
+            m_Loop = false;
+        }
+
+        public void ConfigureAuthoringIdentity(string authoringId)
+        {
+            if (!AuthoringIdentity.IsValid(authoringId))
+                throw new ArgumentException("Timeline authoring identity is invalid.", nameof(authoringId));
+            m_AuthoringId = authoringId;
+        }
+#endif
     }
 
     public abstract partial class Track
