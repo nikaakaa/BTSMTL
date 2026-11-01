@@ -256,7 +256,8 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
 }
 
 const visible = (field: FieldMetadata, values: Map<string, JsonValue | undefined>) =>
-  !field.visibleWhenField || String(values.get(field.visibleWhenField) ?? '').toLowerCase() === (field.visibleWhenValue ?? '').toLowerCase();
+  field.authoringVisible && (!field.visibleWhenField ||
+    String(values.get(field.visibleWhenField) ?? '').toLowerCase() === (field.visibleWhenValue ?? '').toLowerCase());
 
 // 作者字段对应的存储形状：一层成员路径取 item 自身形状，更深的沿 members 找。
 function shapeAt(item: StoredField, path: string[]): StorageShape | null {
@@ -280,6 +281,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   for (const item of description?.stored ?? [])
     for (const field of item.fields) values.set(field.fieldId, getIn(node, field.serializedMemberPath));
   for (const field of description?.computed ?? []) values.set(field.fieldId, field.value);
+  const computed = description?.computed.filter(field => visible(field, values)) ?? [];
   const connected = new Set(((document as JsonObject).allNodes as JsonObject[]).flatMap(item =>
     (item.outConnections as JsonObject[]).filter(connection => connection.targetNode === nodeId).map(connection => connection.targetPortID as string)));
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
@@ -306,9 +308,9 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
           })}
         </Fold>
       )}
-      {!!description?.computed.length && (
+      {computed.length > 0 && (
         <Fold title="推导">
-          {description.computed.map(field => (
+          {computed.map(field => (
             <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
               <span className={styles.readOnly}>{field.value === null ? '空' : typeof field.value === 'object' ? stringifySkillJson(field.value, ' ') : String(field.value)}</span>
             </Row>
@@ -530,7 +532,7 @@ function StoredItem({ item, node, values, blackboards, identities, onSet }: {
   identities: string; onSet: SetValue;
 }) {
   if (!item.fields.length)
-    return <ValueEditor label={memberLabel(item.member)} value={item.value} shape={item.shape} keys={[item.member]} onSet={onSet} identities={identities} />;
+    return null;
   // 黑板变量选择器同时写声明与所属图，所属字段不单独编辑。
   const owners = new Set(item.fields.filter(field => field.pickerKind === 'blackboard-variable' && field.pickerOwnerField)
     .map(field => field.pickerOwnerField!));

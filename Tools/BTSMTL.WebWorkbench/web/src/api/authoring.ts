@@ -86,6 +86,7 @@ export interface FieldMetadata {
   clrType: string;
   valueKind: string;
   serializedMemberPath: string[];
+  authoringVisible: boolean;
   readOnly: boolean;
   optional: boolean;
   allowedValues: string[] | null;
