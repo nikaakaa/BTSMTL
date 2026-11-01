@@ -140,6 +140,7 @@ export interface TypeDescription {
   configuration: JsonObject;
   fields: { hasMore: boolean; items: FieldItem[] };
   ports: DescribedPorts;
+  references: { fieldId: string; serializedMemberPath: string[]; identity: string; owner: string; role: string; ownership: 'Private' | 'Shared' }[];
 }
 
 // 身份表（references.json）一项：作者 JSON 中引用的资产身份。
@@ -264,9 +265,19 @@ export interface SkillElements {
   tracks: TrackTemplate[];
   clips: ClipTemplate[];
   marker: ElementTemplate;
+  referenceNodes: ReferenceNodeTemplate[];
   previewInput: { nodeType: string; keyPath: string[]; valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
+}
+
+export interface ReferenceNodeTemplate {
+  type: string;
+  referenceKind: string;
+  fieldId: string;
+  serializedMemberPath: string[];
+  pickerOwnerField: string | null;
+  configuration: JsonObject;
 }
 
 interface Page<T> {

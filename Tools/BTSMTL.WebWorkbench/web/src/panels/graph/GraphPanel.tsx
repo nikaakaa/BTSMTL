@@ -6,17 +6,19 @@ import {
 import '@xyflow/react/dist/base.css';
 import {
   createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
-  type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
+  type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillElements } from '../../api/authoring';
+import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
-import type { JsonObject } from '../../state/skillJson';
+import { cloneJson, setIn, type JsonObject } from '../../state/skillJson';
+import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
@@ -295,34 +297,86 @@ function loadTypes(skill: AuthoringTarget) {
   return typeCatalog.items;
 }
 
-function NodeTypePicker({ graph, at, onCreated, onClose }: {
-  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onCreated(id: string): void; onClose(): void;
+interface ReferenceNodeDrop {
+  reference: Extract<ReferenceDrag, { kind: 'reference' }>;
+  templates: ReferenceNodeTemplate[];
+}
+
+interface NodeCreationChoice {
+  key: string;
+  type: string;
+  detail: string;
+  clrType: string | null;
+  configuration: JsonObject | null;
+}
+
+function referenceConfiguration(template: ReferenceNodeTemplate, reference: ReferenceNodeDrop['reference']): JsonObject {
+  const configuration = cloneJson(template.configuration);
+  setIn(configuration, template.serializedMemberPath, reference.value);
+  return configuration;
+}
+
+function useNodeCreator(graphId: string) {
+  const skill = useAuthoring(state => state.target)!;
+  const pending = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const abort = () => { for (const controller of pending.current) controller.abort(); };
+    const unsubscribe = useAuthoring.subscribe((state, previous) => {
+      if (state.target !== previous.target || state.author !== previous.author) abort();
+    });
+    return () => { unsubscribe(); abort(); };
+  }, []);
+  return async (type: string, configuration: JsonObject | null, position: { x: number; y: number }) => {
+    const controller = new AbortController();
+    pending.current.add(controller);
+    try {
+      const description = configuration === null
+        ? await authoringApi.describeType(skill, type, graphId, authoringActions.editingView(), controller.signal)
+        : await authoringApi.describeNode(skill, type, configuration, graphId, authoringActions.editingView(), controller.signal);
+      controller.signal.throwIfAborted();
+      if (!description.availability.available) throw new Error(description.availability.reason ?? `${type} 不可创建`);
+      if (!description.ports.availability.available) throw new Error(description.ports.availability.reason);
+      const ports = description.ports.items.map(entry => ({
+        id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
+      }));
+      return graphAuthoring.addNode(graphId, type, description.configuration, ports, position);
+    } finally { pending.current.delete(controller); }
+  };
+}
+
+function NodeTypePicker({ graph, at, referenceDrop, onCreated, onClose }: {
+  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; referenceDrop?: ReferenceNodeDrop;
+  onCreated(id: string): void; onClose(): void;
 }) {
   const skill = useAuthoring(state => state.target)!;
+  const createNode = useNodeCreator(graph.id);
   const [types, setTypes] = useState<NodeTypeInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    loadTypes(skill).then(setTypes, (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)));
-  }, [skill]);
+    if (referenceDrop) return;
+    const controller = new AbortController();
+    loadTypes(skill).then(items => { if (!controller.signal.aborted) setTypes(items); }, (reason: unknown) => {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));
+    });
+    return () => controller.abort();
+  }, [skill, referenceDrop]);
+  const choices: NodeCreationChoice[] | null = referenceDrop
+    ? referenceDrop.templates.map(template => ({ key: `${template.type}/${template.fieldId}`, type: template.type, detail: template.fieldId,
+      clrType: null, configuration: referenceConfiguration(template, referenceDrop.reference) }))
+    : types?.map(item => ({ key: item.type, type: item.type, detail: [item.kind, item.family, item.timelineDomains].filter(Boolean).join(' · '),
+      clrType: item.clrType, configuration: null })) ?? null;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = (types ?? []).filter(item => words.every(word =>
-    `${item.type} ${item.kind ?? ''} ${item.family} ${item.timelineDomains ?? ''}`.toLowerCase().includes(word)));
-  const add = async (item: NodeTypeInfo) => {
+  const shown = (choices ?? []).filter(item => words.every(word => `${item.type} ${item.detail}`.toLowerCase().includes(word)));
+  const add = async (item: NodeCreationChoice) => {
     setBusy(true);
     try {
-      const description = await authoringApi.describeType(skill, item.type, graph.id, authoringActions.editingView());
-      if (!description.availability.available) throw new Error(description.availability.reason ?? `${item.type} 不可创建`);
-      if (!description.ports.availability.available)
-        consoleActions.log('warn', '作者', `${item.type} 的端口暂不可用：${description.ports.availability.reason ?? ''}`);
-      const ports = (description.ports.items ?? []).map(entry => ({
-        id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
-      }));
-      const id = graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      const id = await createNode(item.type, item.configuration, at.flow);
       onCreated(id);
       onClose();
     } catch (reason) {
+      if (isAbort(reason)) return;
       consoleActions.error('作者', reason);
       setBusy(false);
     }
@@ -340,13 +394,13 @@ function NodeTypePicker({ graph, at, onCreated, onClose }: {
       </div>
       <div className={styles.pickerList}>
         {error ? <div className={styles.pickerNote}>{error}</div>
-          : !types ? <div className={styles.pickerNote}>读取节点类型中</div>
+          : !choices ? <div className={styles.pickerNote}>读取节点类型中</div>
             : !shown.length ? <div className={styles.pickerNote}>没有匹配的类型</div>
               : shown.map(item => (
-                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType ?? undefined}
+                <button key={item.key} className={styles.pickerItem} disabled={busy} title={item.clrType ?? undefined}
                   onClick={() => void add(item)}>
                   <span>{item.type}</span>
-                  <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
+                  <em>{item.detail}</em>
                 </button>
               ))}
       </div>
@@ -561,7 +615,9 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
 
   // ── 作者编辑（照 NodeCanvas）：右键添加节点、拖端口连线、Delete 删除、Ctrl+C／Ctrl+V 复制粘贴、拖动写布局 ──
   const selectedEdges = useMemo(() => new Set(canvasSelection?.view === view ? canvasSelection.edges : []), [canvasSelection, view]);
-  const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
+  const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number }; referenceDrop?: ReferenceNodeDrop } | null>(null);
+  const createNode = useNodeCreator(graph.id);
+  useEffect(() => { if (!editable) setPicker(null); }, [editable]);
   const menuAt = useRef({ x: 0, y: 0 });
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
   // 单击连线选中（Ctrl／Shift 加选）；状态机的转移同时交给检查器。
@@ -625,6 +681,27 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const selectCreated = (id: string) => {
     selectCanvas([id], []);
     selectionActions.select({ kind: 'node', id: nodeSelectId(graph, { id, invocationPath: path }) });
+  };
+  const dropTemplates = (event: ReactDragEvent) => !editable || machine || !elements ||
+    (event.target as Element).closest(`.react-flow__node, .react-flow__edge, .react-flow__panel, .${styles.picker}, button, input, textarea`)
+    ? [] : elements.referenceNodes.filter(template => acceptsReferenceDrag(event.dataTransfer, template.referenceKind));
+  const onReferenceDrop = (event: ReactDragEvent) => {
+    const templates = dropTemplates(event);
+    if (templates.length === 0) return;
+    event.preventDefault();
+    const reference = readReferenceDrag(event.dataTransfer);
+    if (reference.kind === 'rejected') { consoleActions.error('作者', new Error(reference.reason)); return; }
+    const offered = templates.filter(template => template.referenceKind === reference.referenceKind);
+    if (offered.length === 0) { consoleActions.error('作者', new Error('拖放标记与引用类型不一致，未创建节点')); return; }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const at = { x: event.clientX - bounds.left, y: event.clientY - bounds.top,
+      flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }) };
+    if (offered.length > 1) { setPicker({ ...at, referenceDrop: { reference, templates: offered } }); return; }
+    setPicker(null);
+    const template = offered[0];
+    void createNode(template.type, referenceConfiguration(template, reference), at.flow).then(selectCreated, reason => {
+      if (!isAbort(reason)) consoleActions.error('作者', reason);
+    });
   };
   const paste = () => {
     const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
@@ -694,6 +771,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     <ViewContext.Provider value={viewOptions}>
       <ContextMenu entries={menu}>
       <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined}
+        onDragOver={event => { if (dropTemplates(event).length > 0) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+        onDrop={onReferenceDrop}
         onContextMenuCapture={event => { menuAt.current = { x: event.clientX, y: event.clientY }; }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -717,7 +796,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
-        {picker && <NodeTypePicker graph={graph} at={picker} onCreated={selectCreated} onClose={() => setPicker(null)} />}
+        {picker && <NodeTypePicker graph={graph} at={picker} referenceDrop={picker.referenceDrop} onCreated={selectCreated} onClose={() => setPicker(null)} />}
       </div>
       </ContextMenu>
     </ViewContext.Provider>

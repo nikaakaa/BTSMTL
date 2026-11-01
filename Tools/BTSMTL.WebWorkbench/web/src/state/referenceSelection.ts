@@ -22,7 +22,7 @@ export const referenceValueKey = (value: JsonValue | undefined) =>
 const referenceMime = 'application/x-btsmtl-authoring-reference';
 const kindMime = (kind: string) => `${referenceMime}.${encodeURIComponent(kind).toLowerCase()}`;
 
-export function writeReferenceDrag(transfer: DataTransfer, kind: string, choice: ReferenceChoice) {
+export function writeReferenceDrag(transfer: DataTransfer, kind: string, choice: Pick<ReferenceChoice, 'value' | 'source'>) {
   transfer.effectAllowed = 'copy';
   transfer.setData(referenceMime, JSON.stringify({ kind, value: referenceValueKey(choice.value), source: choice.source }));
   transfer.setData(kindMime(kind), '');

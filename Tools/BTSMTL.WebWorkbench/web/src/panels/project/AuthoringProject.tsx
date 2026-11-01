@@ -77,9 +77,10 @@ export function AuthoringProject() {
           revealKey={field?.id} revealIndex={referencedIndex < 0 ? undefined : referencedIndex} render={index => {
           const value = shown[index];
           const choices = field?.catalog.kind === 'ready' ? field.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(value.identity)) : [];
-          return <button className={styles.row} aria-selected={referencedItem ? keyOf(referencedItem) === keyOf(value) : selected === keyOf(value)} draggable={choices.length === 1}
+          return <button className={styles.row} aria-selected={referencedItem ? keyOf(referencedItem) === keyOf(value) : selected === keyOf(value)} draggable={choices.length === 1 || value.kind === 'graph'}
             onDragStart={event => {
               if (field?.catalog.kind === 'ready' && choices.length === 1) writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choices[0]);
+              else if (value.kind === 'graph') writeReferenceDrag(event.dataTransfer, value.kind, { value: value.identity, source: `${value.owner}/${value.file}` });
             }}
             onClick={event => { setSelected(keyOf(value)); if (event.detail < 2 && choices.length === 1) field!.choose(choices[0]); }}
             onDoubleClick={() => { void projectActions.open(value).then(openPanel, error => consoleActions.error('Project', error)); }}>
