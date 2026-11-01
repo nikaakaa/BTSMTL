@@ -689,6 +689,28 @@ function CreateOwnedGraph({ owner, path, target }: {
   }}>{creating ? '正在创建' : `新建 ${target.role}`}</Button>;
 }
 
+function PolymorphicValue({ id, label, field, value, owner, onSet }: {
+  id: string; label: string; field: FieldMetadata; value: JsonValue | undefined;
+  owner: ReferenceOwner; onSet(value: JsonValue): void;
+}) {
+  const selected = field.subtypes.find(subtype => subtype.identity === field.selectedSubtype);
+  return <fieldset className={styles.authorFields} disabled={field.readOnly}>
+    <Row label={label}><Select label={`${label} 类型`} value={field.selectedSubtype}
+      options={field.subtypes.map(subtype => ({ value: subtype.identity, label: subtype.identity }))}
+      placeholder="选择类型" onChange={identity => {
+        const index = field.subtypes.findIndex(subtype => subtype.identity === identity);
+        onSet(cloneJson(field.subtypes[index].defaultValue));
+      }} /></Row>
+    {selected && <div className={styles.note}>{selected.comment}</div>}
+    {selected && value !== null && typeof value === 'object' && !Array.isArray(value) &&
+      <AuthoringValueFields key={selected.identity} label={selected.identity} type={selected.clrType} value={value as JsonObject}
+        graphId={owner.graphId} identity={`${id}/${selected.identity}`} onSet={onSet} />}
+    {field.optional && value !== null && <Row label="">
+      <Button variant="ghost" onClick={() => onSet(null)}>移除 {label}</Button>
+    </Row>}
+  </fieldset>;
+}
+
 function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields }: {
   id: string; field: FieldMetadata; item: StoredField; node: JsonObject; owner: ReferenceOwner;
   outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
@@ -698,6 +720,8 @@ function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields
   const value = getIn(node, path);
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
+  if (field.valueKind === 'Polymorphic')
+    return <PolymorphicValue id={id} label={label} field={field} value={value} owner={owner} onSet={set} />;
   if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (owner.kind === 'node' && Array.isArray(value) && field.flowOutputList)

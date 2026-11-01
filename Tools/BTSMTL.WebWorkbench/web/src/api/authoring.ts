@@ -119,6 +119,13 @@ export type GraphReferenceTarget =
   | { role: string; ownership: 'PrivateOrShared' | 'Private' | 'AbilityLocal' | 'Shared'; ownerBinding: 'None' }
   | { role: string; ownership: 'Private'; ownerBinding: 'ReferenceNode' };
 
+export interface AuthoringSubtype {
+  identity: string;
+  comment: string;
+  clrType: string;
+  defaultValue: JsonValue;
+}
+
 export type FieldMetadata = FieldChoices & {
   fieldId: string;
   displayName: string | null;
@@ -138,6 +145,8 @@ export type FieldMetadata = FieldChoices & {
   references: FieldReference[];
   graphTargets: GraphReferenceTarget[];
   flowOutputList: boolean;
+  selectedSubtype: string | null;
+  subtypes: AuthoringSubtype[];
 };
 
 // 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。
