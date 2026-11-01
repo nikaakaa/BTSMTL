@@ -76,7 +76,7 @@ export function AuthoringProject() {
         setSelected(null);
         openPanel('inspector');
       }} />}
-      {creating !== null && creating !== 'skill' && <div className={styles.facts}>
+      {creating !== null && creating !== 'skill' && skill !== null && <div className={styles.facts}>
         <TextInput autoFocus aria-label="新内容名称" placeholder={creating === 'timeline' ? 'Timeline 名称' : '共享子图名称'} value={name} disabled={creatingBusy}
           onChange={event => setName(event.currentTarget.value)} />
         <PanelBar><Button disabled={!editable || elements === null || !name.trim() || creatingBusy} onClick={() => {
