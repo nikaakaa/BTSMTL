@@ -26,6 +26,7 @@ import {
   recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
+import { timelineLength } from '../../state/timelineModel';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
@@ -798,6 +799,10 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
     return current.frame?.route?.playbacks.find(item => item.documentId === timeline)?.cursorSeconds ?? null;
   });
   const timelineName = useWorkbench(current => timeline ? current.timelines.find(item => item.documentId === timeline)?.displayName ?? null : null);
+  const length = useWorkbench(current => {
+    const played = running && timeline ? current.timelines.find(item => item.documentId === timeline) : undefined;
+    return played ? timelineLength(played) : 0;
+  });
   const faded = related !== null && !related.has(laid.node.id);
   return (
     <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
@@ -811,6 +816,10 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       {timelineName && <div className={styles.stateCaption}>
         {timelineName}{running && local !== null && <b>{local.toFixed(2)} s</b>}
       </div>}
+      {/* 照 Animator 播放时的状态进度条：本地秒数占 Timeline 总长 */}
+      {local !== null && length > 0 && (
+        <div className={styles.stateProgress}><i style={{ width: `${Math.min(100, local / length * 100)}%` }} /></div>
+      )}
     </div>
     </Tip>
   );
