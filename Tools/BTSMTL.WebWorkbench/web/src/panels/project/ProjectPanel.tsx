@@ -8,7 +8,7 @@ import { animationChoice, animationReferenceKind, resourceCache } from '../../st
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
-import { Button, NumberInput, TextInput } from '../../ui/controls';
+import { Button, MenuButton, NumberInput, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from '../resources/resourceScene';
@@ -36,11 +36,16 @@ export function ProjectPanel() {
 function ResourceView({ library }: { library: AnimationLibrary }) {
   const { identity, time, playing } = useWorkbench(useShallow(state => ({ identity: state.identity, time: state.time, playing: state.playing })));
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const field = useReferenceSelection(state => state.field);
+  const selectedValue = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind
+    ? field.value : identity;
+  const categories = useMemo(() => [...new Set(library.clips.map(item => item.category))].sort(), [library]);
   const clips = useMemo(() => {
     const text = search.trim().toLowerCase();
-    return text ? library.clips.filter(clip => `${clip.name} ${clip.category}`.toLowerCase().includes(text)) : library.clips;
-  }, [library, search]);
+    return library.clips.filter(clip => (category === null || clip.category === category) &&
+      `${clip.name} ${clip.category}`.toLowerCase().includes(text));
+  }, [library, search, category]);
   const clip = library.clips.find(item => item.resource.identity === identity) ?? null;
 
   useEffect(() => {
@@ -74,13 +79,17 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
           <TextInput className={styles.searchInput} placeholder="搜索片段" value={search} aria-label="搜索片段"
             onChange={event => setSearch(event.currentTarget.value)} />
         </div>
+        <PanelBar>
+          <MenuButton label="筛选动画类别" caret entries={[
+            { label: '全部类别', onSelect: () => setCategory(null) },
+            ...categories.map(value => ({ label: value || '未分类', onSelect: () => setCategory(value) })),
+          ]}>{category ?? '全部类别'}</MenuButton>
+        </PanelBar>
         <VirtualList className={styles.list} count={clips.length} rowHeight={36} label="动画片段" render={index => {
           const item = clips[index];
           return (
             <button className={styles.clip} draggable
-              aria-selected={item.resource.identity === identity ||
-                (field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind &&
-                  referenceValueKey(field.value) === referenceValueKey(item.resource.identity))}
+              aria-selected={referenceValueKey(selectedValue) === referenceValueKey(item.resource.identity)}
               onDragStart={event => writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(item))}
               onClick={() => {
                 resourceActions.select(item.resource.identity);
