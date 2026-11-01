@@ -3,10 +3,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type ProjectItem, type ProjectReferrer } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
-import { authoringActions, useAuthoring } from '../../state/authoring';
+import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
-import { consoleActions } from '../../state/store';
+import { consoleActions, selectionActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -17,10 +17,11 @@ const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph:
 const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kind, item.identity]);
 
 export function AuthoringProject() {
-  const { skill, stamp, available, reason } = useAuthoring(useShallow(state => ({
+  const { skill, stamp, available, reason, editable } = useAuthoring(useShallow(state => ({
     skill: state.target?.kind === 'skill' ? state.target.name : state.skills?.[0] ?? null,
     stamp: JSON.stringify(Object.entries(state.documents).map(([key, document]) => [key, document.revision, document.version])),
     available: state.available, reason: state.unavailableReason,
+    editable: state.author && state.target?.kind === 'skill' && !authoringDocument(state).loading,
   })));
   const [items, setItems] = useState<ProjectItem[] | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
@@ -29,6 +30,10 @@ export function AuthoringProject() {
   const [kind, setKind] = useState<ProjectItem['kind'] | null>(null);
   const [ownership, setOwnership] = useState<ProjectItem['ownership'] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [creatingTimeline, setCreatingTimeline] = useState(false);
+  const [name, setName] = useState('');
+  const elements = useSkillElements(editable && available !== false);
+  useEffect(() => { setCreatingTimeline(false); setName(''); }, [skill]);
   const field = useReferenceSelection(state => state.field);
   useEffect(() => { setSearch(''); setKind(null); setOwnership(null); }, [field?.id]);
   useEffect(() => {
@@ -60,7 +65,20 @@ export function AuthoringProject() {
         <TextInput aria-label="搜索作者内容" placeholder="搜索名称、所属技能" value={search} className={styles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => setRefresh(value => value + 1)}>刷新</Button>
+        <Button variant="ghost" disabled={!editable || elements === null} onClick={() => setCreatingTimeline(true)}>新建 Timeline</Button>
       </PanelBar>
+      {creatingTimeline && <div className={styles.facts}>
+        <TextInput autoFocus aria-label="新 Timeline 名称" placeholder="Timeline 名称" value={name}
+          onChange={event => setName(event.currentTarget.value)} />
+        <PanelBar><Button disabled={!editable || elements === null || !name.trim()} onClick={() => {
+          const id = authoringActions.createTimeline(elements!.timeline, name);
+          setSelected(JSON.stringify([skill, 'timeline', id]));
+          setCreatingTimeline(false);
+          setName('');
+          selectionActions.showTimeline(id, null);
+          openPanel('timeline');
+        }}>创建</Button><Button variant="ghost" onClick={() => setCreatingTimeline(false)}>取消</Button></PanelBar>
+      </div>}
       <PanelBar>
         <MenuButton label="作者内容类型" caret entries={[
           { label: '全部类型', onSelect: () => setKind(null) },

@@ -22,6 +22,8 @@ namespace ThirdPersonGameplay.Orchestration
                 new OrchestrationExtensionInputPort<Read>("position", OrchestrationValueKind.Vector3, 1);
             public static readonly OrchestrationExtensionInputPort<Read> YawInput =
                 new OrchestrationExtensionInputPort<Read>("yaw", OrchestrationValueKind.Scalar, 2);
+            public static readonly OrchestrationExtensionInputPort<Read> ObjectHandleInput =
+                new OrchestrationExtensionInputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 3);
             public static readonly OrchestrationExtensionOutputPort<Read> HasTarget =
                 new OrchestrationExtensionOutputPort<Read>("has-target", OrchestrationValueKind.Boolean, 0);
             public static readonly OrchestrationExtensionOutputPort<Read> Position =
@@ -30,10 +32,12 @@ namespace ThirdPersonGameplay.Orchestration
                 new OrchestrationExtensionOutputPort<Read>("yaw", OrchestrationValueKind.Scalar, 2);
             public static readonly OrchestrationExtensionOutputPort<Read> PlanarDistance =
                 new OrchestrationExtensionOutputPort<Read>("planar-distance", OrchestrationValueKind.Scalar, 3);
+            public static readonly OrchestrationExtensionOutputPort<Read> ObjectHandle =
+                new OrchestrationExtensionOutputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 4);
 
             public static readonly OrchestrationExtensionDefinition<Read> Definition = new OrchestrationExtensionDefinition<Read>(
                 new OrchestrationExtensionIdentity(DomainId, "action-target"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
@@ -41,10 +45,12 @@ namespace ThirdPersonGameplay.Orchestration
                         TargetIdInput.Declaration,
                         PositionInput.Declaration,
                         YawInput.Declaration,
+                        ObjectHandleInput.Declaration,
                         HasTarget.Declaration,
                         Position.Declaration,
                         Yaw.Declaration,
-                        PlanarDistance.Declaration
+                        PlanarDistance.Declaration,
+                        ObjectHandle.Declaration
                     }, new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
         }
 
@@ -56,17 +62,20 @@ namespace ThirdPersonGameplay.Orchestration
                 new OrchestrationExtensionOutputPort<Capture>("position", OrchestrationValueKind.Vector3, 1);
             public static readonly OrchestrationExtensionOutputPort<Capture> Yaw =
                 new OrchestrationExtensionOutputPort<Capture>("yaw", OrchestrationValueKind.Scalar, 2);
+            public static readonly OrchestrationExtensionOutputPort<Capture> ObjectHandle =
+                new OrchestrationExtensionOutputPort<Capture>("object-handle", OrchestrationValueKind.ObjectHandle, 3);
 
             public static readonly OrchestrationExtensionDefinition<Capture> Definition = new OrchestrationExtensionDefinition<Capture>(
                 new OrchestrationExtensionIdentity(DomainId, "capture-action-target"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         TargetId.Declaration,
                         Position.Declaration,
-                        Yaw.Declaration
+                        Yaw.Declaration,
+                        ObjectHandle.Declaration
                     }, new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
         }
     }

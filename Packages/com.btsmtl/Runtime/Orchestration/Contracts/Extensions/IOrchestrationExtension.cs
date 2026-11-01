@@ -20,7 +20,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExtensionIdentity Identity => m_Definition.Identity;
         public uint SemanticVersion => m_Definition.SemanticVersion;
-        public OrchestrationExtensionContract Describe(int contentIndex) => m_Definition.Contract;
+        public virtual OrchestrationExtensionContract Describe(int contentIndex) => m_Definition.Contract;
 
         public abstract OrchestrationExtensionResult Dispatch(int contentIndex, in TReadContext context,
             in OrchestrationExtensionArguments<TValue> arguments);
@@ -39,7 +39,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExtensionIdentity Identity => m_Definition.Identity;
         public uint SemanticVersion => m_Definition.SemanticVersion;
-        public OrchestrationExtensionContract Describe(int contentIndex) => m_Definition.Contract;
+        public virtual OrchestrationExtensionContract Describe(int contentIndex) => m_Definition.Contract;
 
         public abstract OrchestrationExtensionResult Dispatch(int contentIndex, ref TCandidateContext context,
             in OrchestrationExtensionArguments<TValue> arguments);

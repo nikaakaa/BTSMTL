@@ -31,7 +31,7 @@ namespace BTSMTL.Compilation
             {
                 GraphNodeCompileDescription description = describe();
                 emission = new SimulationNodeEmission(OrchestrationOperationCode.Extension,
-                    constants: description.Payload, extension: extension.Definition,
+                    constants: description.Payload, extension: extension.Definition.WithAdditionalPorts(description.AdditionalPorts),
                     blackboardInputs: Blackboards(description.ReadBindings),
                     blackboardOutputs: Blackboards(description.WriteBindings),
                     constantInputs: Constants(description.ConstantInputs),

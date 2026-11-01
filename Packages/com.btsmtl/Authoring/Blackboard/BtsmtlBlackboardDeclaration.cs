@@ -68,6 +68,7 @@ namespace BTSMTL.Graphs
             PipelineBlackboardInputProjection.ActionTargetIdentity => (SemanticValueKind.Identity, TypeCode.String),
             PipelineBlackboardInputProjection.ActionTargetPosition => (SemanticValueKind.Vector3, TypeCode.Object),
             PipelineBlackboardInputProjection.ActionTargetYaw => (SemanticValueKind.Number, TypeCode.Single),
+            PipelineBlackboardInputProjection.ActionTargetObjectHandle => (SemanticValueKind.ObjectHandle, TypeCode.Object),
             _ => throw new InvalidOperationException("角色目标输入必须声明其基础投影。")
         };
     }

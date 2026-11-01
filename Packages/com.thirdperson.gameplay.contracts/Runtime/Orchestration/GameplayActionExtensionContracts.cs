@@ -29,6 +29,8 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Value("DefaultTargetPosition", OrchestrationValueKind.Vector3, false);
             public static readonly OrchestrationExtensionContentField DefaultTargetYaw =
                 OrchestrationExtensionContentField.Value("DefaultTargetYaw", OrchestrationValueKind.Scalar, false);
+            public static readonly OrchestrationExtensionContentField DefaultTargetObjectHandle =
+                OrchestrationExtensionContentField.Value("DefaultTargetObjectHandle", OrchestrationValueKind.ObjectHandle, false);
         }
 
         public readonly struct BlackboardFacts
@@ -164,12 +166,14 @@ namespace ThirdPersonGameplay.Orchestration
                 new OrchestrationExtensionInputPort<CanActivateAction>("target-position", OrchestrationValueKind.Vector3, 1);
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetYaw =
                 new OrchestrationExtensionInputPort<CanActivateAction>("target-yaw", OrchestrationValueKind.Scalar, 2);
+            public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetObjectHandle =
+                new OrchestrationExtensionInputPort<CanActivateAction>("target-object-handle", OrchestrationValueKind.ObjectHandle, 3);
             public static readonly OrchestrationExtensionOutputPort<CanActivateAction> Result =
                 new OrchestrationExtensionOutputPort<CanActivateAction>("result", OrchestrationValueKind.Boolean, 0);
 
             public static readonly OrchestrationExtensionDefinition<CanActivateAction> Definition = new OrchestrationExtensionDefinition<CanActivateAction>(
                 new OrchestrationExtensionIdentity(DomainId, "can-activate-action"),
-                5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                6, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
@@ -177,12 +181,13 @@ namespace ThirdPersonGameplay.Orchestration
                         TargetId.Declaration,
                         TargetPosition.Declaration,
                         TargetYaw.Declaration,
+                        TargetObjectHandle.Declaration,
                         Result.Declaration
                     }, new[]
                     {
                         Fields.CandidateAbility,
                         Fields.TargetSnapshotDeclaration, Fields.TargetSnapshotOwner,
-                        Fields.DefaultTargetId, Fields.DefaultTargetPosition, Fields.DefaultTargetYaw
+                        Fields.DefaultTargetId, Fields.DefaultTargetPosition, Fields.DefaultTargetYaw, Fields.DefaultTargetObjectHandle
                     }));
         }
 
