@@ -10,7 +10,7 @@ export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, ca
   call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
 export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
-  (call.objectHandle === null ? '对象（未记录句柄）' : `${call.objectKind} · ${call.objectHandle}`);
+  `${call.objectKind ?? '对象类型未记录'} · ${call.objectHandle ?? '句柄未记录'}`;
 export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
   (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {

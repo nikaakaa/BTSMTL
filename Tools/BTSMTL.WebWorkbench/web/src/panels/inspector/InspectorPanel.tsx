@@ -258,10 +258,10 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           : <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />}
         {observedCall && <>
           {observedCall.actorId !== null && <Value label="角色" value={observedCall.actorId} />}
-          <Value label="对象类型" value={observedCall.objectKind} />
-          <Value label="对象句柄" value={observedCall.objectHandle} />
-          <Value label="对象槽" value={observedCall.objectSlot === null ? null : String(observedCall.objectSlot)} />
-          <Value label="定义索引" value={observedCall.definitionIndex === null ? null : String(observedCall.definitionIndex)} />
+          <Value label="对象类型" value={observedCall.objectKind ?? '未记录'} />
+          <Value label="对象句柄" value={observedCall.objectHandle ?? '未记录'} />
+          <Value label="对象槽" value={observedCall.objectSlot === null ? '未记录' : String(observedCall.objectSlot)} />
+          <Value label="定义索引" value={observedCall.definitionIndex === null ? '未记录' : String(observedCall.definitionIndex)} />
         </>}
         {events.length ? (
           <div className={styles.list}>
