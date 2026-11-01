@@ -270,6 +270,14 @@ namespace BTSMTL.Authoring.Graph
         {
             if (Field.ObjectType != null && !Field.ObjectType.IsInstanceOfType(Value))
                 return false;
+            if (Field.ValueKind == GraphAuthoringFieldValueKind.Polymorphic)
+            {
+                Type valueType = Value.GetType();
+                for (int index = 0; index < Field.Subtypes.Count; index++)
+                    if (Field.Subtypes[index].Type == valueType)
+                        return true;
+                return false;
+            }
             return Field.ValueKind switch
             {
                 GraphAuthoringFieldValueKind.String => Value is string,
@@ -283,7 +291,6 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.AssetReference => Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.IdentityReference => Value is string || Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Object => true,
-                GraphAuthoringFieldValueKind.Polymorphic => Field.Subtypes.Any(subtype => subtype.Type == Value.GetType()),
                 _ => false
             };
         }
