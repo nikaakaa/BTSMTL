@@ -35,6 +35,7 @@ namespace BTSMTL.Graphs
         // 准入与菜单判断读取画布节点所承载的作者类型。
         public virtual Type CanvasNodeType(Type authoringType) => authoringType;
         public virtual void InitializeNode(Node node, Type authoringType) { }
+        public virtual bool authoringValidationManagedByOwner => false;
         public virtual void PrepareAuthoringValidation(BtsmtlMacroGraph macro) { }
         public virtual Type AuthoringNodeType(Node node) => node.GetType();
 
