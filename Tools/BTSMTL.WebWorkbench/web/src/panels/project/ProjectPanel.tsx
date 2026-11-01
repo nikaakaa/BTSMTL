@@ -13,6 +13,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from '../resources/resourceScene';
 import { AuthoringProject } from './AuthoringProject';
+import { CarrierProject } from './CarrierProject';
 import styles from '../resources/resources.module.css';
 import projectStyles from './project.module.css';
 
@@ -23,13 +24,14 @@ export function ProjectPanel() {
   const panel = usePanelApi();
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const field = useReferenceSelection(state => state.field);
-  const [section, setSection] = useState<'authoring' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
+  const [section, setSection] = useState<'authoring' | 'carriers' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
   const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
   useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
     {field && <ProjectFieldChoices key={field.id} field={field} />}
-    <div className={projectStyles.body}><Tabs<'authoring' | 'animations'> value={section} onChange={setSection} items={[
+    <div className={projectStyles.body}><Tabs<'authoring' | 'carriers' | 'animations'> value={section} onChange={setSection} items={[
       { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
+      { value: 'carriers', label: '载体与资源', content: <CarrierProject /> },
       { value: 'animations', label: '动画库', content: <AnimationProject /> },
     ]} /></div>
   </div>;
