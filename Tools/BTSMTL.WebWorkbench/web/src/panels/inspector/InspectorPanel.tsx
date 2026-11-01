@@ -164,6 +164,7 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   const fields: Field[] = [...extra];
   if (state.summary) {
     fields.push({ displayName: '运行', value: state.summary.runId }, { displayName: '内容修订', value: state.summary.contentRevision });
+    fields.push({ displayName: '实际采用档位', value: state.summary.adoptedMode ?? 'Unavailable：该档案未记录实际采用档位' });
     const execution = state.summary.execution;
     fields.push({ displayName: '执行类型', value: execution.kind ?? '不可用' }, { displayName: '执行身份', value: execution.identity ?? '不可用' });
     if (execution.playerBuildId !== null) fields.push({ displayName: 'Player 构建', value: execution.playerBuildId });

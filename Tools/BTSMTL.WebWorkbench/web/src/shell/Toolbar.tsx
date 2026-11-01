@@ -273,20 +273,24 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
 
 // 预览档位：只列宿主声明可用的档位。
 function PreviewModeChoice() {
-  const { modes, selected, observing } = useWorkbench(useShallow(state => ({
+  const { modes, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
     modes: state.host?.modes, selected: state.previewMode, observing: state.runId !== null || state.live?.player?.source != null,
+    adoptedMode: state.runId !== null
+      ? state.sealed ? state.summary?.adoptedMode ?? null : state.receipt?.adoptedMode ?? null
+      : state.live?.player?.source?.adoptedMode ?? null,
   })));
   const available = modes?.filter(mode => mode.available) ?? [];
-  if (!available.length) return null;
+  if (!available.length && !observing) return null;
+  const adoptedLabel = adoptedMode === null ? 'Unavailable' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
   return (
-    <div className={styles.modes} role="group" aria-label="请求预览档位">
-      <Tip content="用于新建运行；本次实际采用的档位以宿主输出为准"><span className={styles.dim}>请求</span></Tip>
+    <div className={styles.modes} role="group" aria-label="预览档位">
+      {available.length > 0 && <Tip content="用于新建运行；本次实际采用的档位以宿主输出为准"><span className={styles.dim}>请求</span></Tip>}
       {available.map(mode => (
         <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason}
           onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
       ))}
-      {observing && <Tip content="宿主尚未提供本次运行或载入已采用的预览档位">
-        <span className={styles.dim} role="status">实际采用：Unavailable</span>
+      {observing && <Tip content={adoptedMode === null ? '该来源未记录实际采用档位；采用值未知不代表载入失败。' : `宿主记录的实际采用档位：${adoptedMode}`}>
+        <span className={styles.dim} role="status">实际采用：{adoptedLabel}</span>
       </Tip>}
     </div>
   );

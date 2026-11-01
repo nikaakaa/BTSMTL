@@ -1,6 +1,6 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
 import type { PlayerSceneContent, PlayerTimelineContent, PreviewPosition,
-  PreviewSampleSource, readPlayerAck, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
+  PreviewSampleSource, readPlayerAck, readPlayerCommandResult, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
 
 export interface Field {
   displayName: string;
@@ -427,13 +427,8 @@ export interface StartLivePlayerRequest {
   height: number;
 }
 
-export type LiveCommandStage = 'sent' | 'submitted' | 'applied' | 'rejected' | 'not-applied';
-
-export interface LiveCommandResult {
-  stage: LiveCommandStage;
-  commandId: string | null;
-  ack: PlayerAck | null;
-}
+export type LiveCommandResult = ReturnType<typeof readPlayerCommandResult>;
+export type LiveCommandStage = LiveCommandResult['stage'];
 
 export type CameraCommand = {
   mode: 'orbit' | 'game';

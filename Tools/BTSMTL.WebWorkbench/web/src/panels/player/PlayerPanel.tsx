@@ -431,6 +431,7 @@ function Corner({ stats }: { stats: boolean }) {
     hostFrame: state.hostFrame,
     targetPosition: state.targetPosition,
     frameDisplayName: state.summary?.frameDisplayName,
+    adoptedMode: state.runId !== null ? state.summary?.adoptedMode ?? null : state.live?.player?.adoptedMode ?? null,
   })));
   const actual = view.player?.source?.clock;
   const picture = !view.runId ? video?.source.clock : undefined;
@@ -447,12 +448,14 @@ function Corner({ stats }: { stats: boolean }) {
         <div className={styles.stats}>
           <b>Statistics</b>
           <div><span>来源</span><span>{view.runId ? '运行档案' : '实时 Player'}</span></div>
+          <div><span>实际采用档位</span><span>{view.adoptedMode ?? '未记录'}</span></div>
           {view.runId ? <div><span>{view.frameDisplayName}</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
             <div><span>播放器</span><span>{view.player ? playerStates[view.player.state] : view.process}</span></div>
             {actual && <div><span>{actual.positionDisplayName}</span><span>{clockPosition(actual)}</span></div>}
             {picture && <>
               <div><span>画面{picture.positionDisplayName}</span><span>{clockPosition(picture)}</span></div>
               <div><span>采样序号</span><span>{video!.source.sequence}</span></div>
+              <div><span>画面采用档位</span><span>{video!.source.adoptedMode ?? '未记录'}</span></div>
             </>}
             {view.player?.error && <div className={styles.error}><span>错误</span><span>{view.player.error}</span></div>}
           </>}

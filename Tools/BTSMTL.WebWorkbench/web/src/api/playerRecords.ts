@@ -75,6 +75,7 @@ const contentIdentity = object({ kind: text, revision: text, documentId: nullabl
 const source = object({
   execution: executionIdentity, contentRevision: text, sceneRevision: nullable(text), inputSource: nullable(text), inputRevision: nullable(text),
   clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(contentIdentity),
+  adoptedMode: nullable(text),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
 const observationPage = <T>(item: Decoder<T>) => object({ page: page(item), availability: array(availability) });
@@ -139,7 +140,7 @@ export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
 const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
-    error: nullable(text), source: nullable(readPreviewSampleSource),
+    error: nullable(text), source: nullable(readPreviewSampleSource), adoptedMode: nullable(text),
     transport: nullable(array(object({ action: text, available: boolean, reason: text, target: nullable(position) }))),
     transportUnavailableReason: nullable(text),
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
@@ -182,14 +183,16 @@ export const readPlayerJobReceipt = object({
   acceptedAt: text, finishedAt: nullable(text), liveId: nullable(liveId), archivePath: nullable(text),
   load: opaque, result: opaque, error: nullable(text), cachedFrom: nullable(jobId),
   jobId, playerBuildId: buildId, statusPath: text,
+  adoptedMode: nullable(text),
 });
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
+  adoptedMode: nullable(text),
 });
 export const readPlayerAck = object({
   type: choice('ack'), commandId: text, ok: boolean,
   playerBuildId: optional(nullable(text)), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
-  source: nullable(source), hostFrame: nullable(text),
+  source: nullable(source), hostFrame: nullable(text), adoptedMode: nullable(text),
   error: optional(nullable(text)), path: optional(nullable(text)), rawJson: text,
 });
 export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
@@ -207,7 +210,7 @@ export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
   frameCount: number, frameStepSeconds: nullable(number), channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
   execution: executionIdentity, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
-  availability: array(availability),
+  availability: array(availability), adoptedMode: nullable(text),
 });
 const vector3 = tuple(number, number, number);
 const viewerFrames = object({ type: choice('frames'),
