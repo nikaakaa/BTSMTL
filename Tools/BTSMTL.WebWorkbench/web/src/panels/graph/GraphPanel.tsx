@@ -684,7 +684,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   };
   const dropTemplates = (event: ReactDragEvent) => !editable || machine || !elements ||
     (event.target as Element).closest(`.react-flow__node, .react-flow__edge, .react-flow__panel, .${styles.picker}, button, input, textarea`)
-    ? [] : elements.referenceNodes.filter(template => acceptsReferenceDrag(event.dataTransfer, template.referenceKind));
+    ? [] : elements.referenceNodes.filter(template => template.referenceKind === 'graph' && acceptsReferenceDrag(event.dataTransfer, template.referenceKind));
   const onReferenceDrop = (event: ReactDragEvent) => {
     const templates = dropTemplates(event);
     if (templates.length === 0) return;
