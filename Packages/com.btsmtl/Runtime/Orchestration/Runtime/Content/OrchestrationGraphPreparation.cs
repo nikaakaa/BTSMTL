@@ -83,7 +83,7 @@ namespace BTSMTL.Orchestration
                     continue;
                 var shared = actionSlots[(mapping[variable.GraphIdentityId], mapping[variable.DeclarationIdentityId])];
                 values[slot] = new OrchestrationValueStorageSlot(-1, shared.Slot, shared.TypeIndex,
-                    values[slot].SavedOutputIndex, shared.Slot);
+                    values[slot].SavedOutputIndex);
             }
             for (int slot = 0; slot < values.Length; slot++)
             {
@@ -93,7 +93,7 @@ namespace BTSMTL.Orchestration
                 int index = counts[value.OwnerOperationIndex]++;
                 int kind = (int)program.ValueSlotTypes.Span[slot].ValueKind;
                 values[slot] = new OrchestrationValueStorageSlot(value.OwnerOperationIndex,
-                    index, kinds[value.OwnerOperationIndex][kind]++, value.SavedOutputIndex, index);
+                    index, kinds[value.OwnerOperationIndex][kind]++, value.SavedOutputIndex);
             }
             var owners = new OrchestrationExecutionOwnerStorage[original.Owners.Length];
             for (int owner = 0; owner < owners.Length; owner++)

@@ -19,7 +19,6 @@ namespace BTSMTL.Orchestration
             ReadOnlyMemory<int> valueKindSlotCounts,
             ReadOnlyMemory<OrchestrationGraphCall> graphCalls,
             ReadOnlyMemory<OrchestrationHookBinding> hooks,
-            ReadOnlyMemory<OrchestrationHookInput> hookInputs,
             ReadOnlyMemory<OrchestrationBlackboardSlot> blackboardSlots,
             ReadOnlyMemory<OrchestrationBlackboardOutputBinding> blackboardOutputs,
             ReadOnlyMemory<OrchestrationOutputTemplate> outputTemplates,
@@ -39,7 +38,6 @@ namespace BTSMTL.Orchestration
             ValueKindSlotCounts = valueKindSlotCounts;
             GraphCalls = graphCalls;
             Hooks = hooks;
-            HookInputs = hookInputs;
             BlackboardSlots = blackboardSlots;
             BlackboardOutputs = blackboardOutputs;
             OutputTemplates = outputTemplates;
@@ -60,7 +58,6 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> ValueKindSlotCounts { get; }
         public ReadOnlyMemory<OrchestrationGraphCall> GraphCalls { get; }
         public ReadOnlyMemory<OrchestrationHookBinding> Hooks { get; }
-        public ReadOnlyMemory<OrchestrationHookInput> HookInputs { get; }
         public ReadOnlyMemory<OrchestrationBlackboardSlot> BlackboardSlots { get; }
         public ReadOnlyMemory<OrchestrationBlackboardOutputBinding> BlackboardOutputs { get; }
         public ReadOnlyMemory<OrchestrationOutputTemplate> OutputTemplates { get; }

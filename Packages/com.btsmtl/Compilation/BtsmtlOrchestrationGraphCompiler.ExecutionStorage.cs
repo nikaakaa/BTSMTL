@@ -29,7 +29,7 @@ namespace BTSMTL.Compilation
 
                 var values = new OrchestrationValueStorageSlot[valueSlotTypes.Length];
                 for (int valueSlot = 0; valueSlot < values.Length; valueSlot++)
-                    values[valueSlot] = new OrchestrationValueStorageSlot(-1, -1, -1, -1, -1);
+                    values[valueSlot] = new OrchestrationValueStorageSlot(-1, -1, -1, -1);
                 for (int stateSlot = 0; stateSlot < m_StateSlots.Count; stateSlot++)
                 {
                     if (m_StateSlots[stateSlot].Semantic != ProgramStateSemantic.BlackboardValue)
@@ -43,7 +43,7 @@ namespace BTSMTL.Compilation
                     int typeIndex = valueKindCounts[owner][(int)valueSlotTypes[valueSlot].ValueKind]++;
                     OrchestrationValueStorageSlot previous = values[valueSlot];
                     values[valueSlot] = new OrchestrationValueStorageSlot(owner, valueIndex, typeIndex,
-                        previous.SavedOutputIndex, valueIndex);
+                        previous.SavedOutputIndex);
                 }
                 for (int operationIndex = 0; operationIndex < m_OutputOffsets.Length; operationIndex++)
                 {
@@ -57,7 +57,7 @@ namespace BTSMTL.Compilation
                         int valueSlot = start + outputIndex;
                         OrchestrationValueStorageSlot previous = values[valueSlot];
                         values[valueSlot] = new OrchestrationValueStorageSlot(owner, previous.ValueIndex,
-                            previous.TypeIndex, savedOutputCounts[owner]++, previous.MetadataIndex);
+                            previous.TypeIndex, savedOutputCounts[owner]++);
                     }
                 }
 

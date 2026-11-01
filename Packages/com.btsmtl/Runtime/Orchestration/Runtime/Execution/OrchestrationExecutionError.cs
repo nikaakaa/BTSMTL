@@ -15,7 +15,6 @@ namespace BTSMTL.Orchestration
         BlackboardReadOnly,
         BlackboardScope,
         HookFailed,
-        HookInput,
         TimelineForceStop,
         ActionForceStop,
         ActionStopResult,
@@ -68,8 +67,6 @@ namespace BTSMTL.Orchestration
                     return $"{program}Blackboard slot '{error.Slot}' declares unsupported scope '{(OrchestrationScopeKind)error.Detail}'.";
                 case OrchestrationExecutionErrorCode.HookFailed:
                     return $"{program}Lifecycle hook '{(OrchestrationLifecycleHook)error.Detail}' at operation '{op}' returned '{(OrchestrationExtensionResult)error.Aux}'.";
-                case OrchestrationExecutionErrorCode.HookInput:
-                    return $"{program}Lifecycle hook at operation '{op}' has unsupported input '{(OrchestrationHookInputSource)error.Detail}'.";
                 case OrchestrationExecutionErrorCode.TimelineForceStop:
                     return $"{program}Timeline operation '{op}' force stop returned '{(OrchestrationStopStatus)error.Detail}'.";
                 case OrchestrationExecutionErrorCode.ActionForceStop:
@@ -121,8 +118,6 @@ namespace BTSMTL.Orchestration
                     throw new InvalidOperationException("黑板槽声明了不支持的作用域。");
                 case OrchestrationExecutionErrorCode.HookFailed:
                     throw new InvalidOperationException("生命周期钩子返回失败。");
-                case OrchestrationExecutionErrorCode.HookInput:
-                    throw new InvalidOperationException("生命周期钩子输入来源不受支持。");
                 case OrchestrationExecutionErrorCode.TimelineForceStop:
                     throw new InvalidOperationException("Timeline 强制停止未完成。");
                 case OrchestrationExecutionErrorCode.ActionForceStop:

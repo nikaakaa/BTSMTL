@@ -159,9 +159,6 @@ namespace BTSMTL.Orchestration
             return Section<OrchestrationHookBinding>(in Header.Hooks).Slice(range.Offset, range.Count);
         }
 
-        public ReadOnlySpan<OrchestrationHookInput> HookInputs(in OrchestrationHookBinding hook) =>
-            Section<OrchestrationHookInput>(in Header.HookInputs).Slice(hook.Inputs.Offset, hook.Inputs.Count);
-
         public ReadOnlySpan<OrchestrationBlackboardOutputBinding> OutputAssignments(int operationIndex)
         {
             OrchestrationIndexRange range = Payload<OrchestrationExtensionPayload>(operationIndex).OutputAssignments;

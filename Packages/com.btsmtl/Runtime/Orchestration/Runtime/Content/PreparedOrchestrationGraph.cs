@@ -76,7 +76,7 @@ namespace BTSMTL.Orchestration
             var program = new OrchestrationProgramContent(
                 data.Operations, cold, edges, MapStructure(data.Structure, mapping),
                 data.ValueSchedule, data.WorkspaceCapacity, storage, data.ValueInputs,
-                data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks, data.HookInputs,
+                data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks,
                 data.BlackboardSlots, data.BlackboardOutputs, data.OutputTemplates, mappedPorts,
                 data.RootOperationIndex, data.MaximumOperationEvaluations);
             var parameters = new OrchestrationGraphParameters<TValue>(values.SourceIdentity, values.Identities,

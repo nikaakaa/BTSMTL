@@ -306,23 +306,11 @@ namespace BTSMTL.Compilation
                         result.Row(row, 1, 4);
                 }
 
-                void Hooks(Shape result, int operation)
-                {
-                    OrchestrationRange hooks = m_Operations[operation].LifecycleHooks;
-                    for (int i = hooks.Offset; i < hooks.Offset + hooks.Count; i++)
-                        result.Row(0, m_Compiler.m_LifecycleHooks[i].Inputs.Count, 0);
-                }
-
                 Shape Visit(int operation, Phase phase, OrchestrationExecutionContract contract, int inputPort = 0)
                 {
                     if (phase == Phase.Tick && m_Operations[operation].Code == OrchestrationOperationCode.Cycle &&
                         inputPort == m_CycleResetPort)
-                    {
-                        var reset = new Shape();
-                        if (m_Operations[operation].IsRunnable)
-                            Hooks(reset, operation);
-                        return reset;
-                    }
+                        return new Shape();
                     var key = (operation, phase, contract);
                     if (m_Shapes.TryGetValue(key, out Shape cached))
                         return cached;
@@ -392,8 +380,6 @@ namespace BTSMTL.Compilation
                 {
                     var result = new Shape();
                     OperationDraft op = m_Operations[operation];
-                    if (op.IsRunnable)
-                        Hooks(result, operation);
                     switch (op.Code)
                     {
                         case OrchestrationOperationCode.Root:
@@ -514,7 +500,6 @@ namespace BTSMTL.Compilation
                             return result;
                         }
                         case OrchestrationOperationCode.StateMachine:
-                            Hooks(result, operation);
                             foreach (int state in m_States[operation])
                                 result.Merge(Visit(state, Phase.Stop, contract));
                             return result;

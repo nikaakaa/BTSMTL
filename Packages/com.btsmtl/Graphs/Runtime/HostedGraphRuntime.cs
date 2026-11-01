@@ -418,7 +418,7 @@ namespace BTSMTL.Graphs
                 ref readonly OrchestrationBlackboardSlot slot = ref m_Bindings.Program.Blackboard(i);
                 if (slot.ScopeKind == OrchestrationScopeKind.Graph &&
                     slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance && slot.OwnerOperationIndex < 0)
-                    blackboards[m_Bindings.Program.ExecutionStorage.Values.Span[i].MetadataIndex] =
+                    blackboards[m_Bindings.Program.ExecutionStorage.Values.Span[i].ValueIndex] =
                         new OrchestrationBlackboardMetadata
                         {
                             Owner = new OrchestrationBlackboardOwnerToken

@@ -7,20 +7,18 @@ namespace BTSMTL.Orchestration
     public readonly partial struct OrchestrationValueStorageSlot
     {
         public OrchestrationValueStorageSlot(int ownerOperationIndex, int valueIndex, int typeIndex,
-            int savedOutputIndex, int metadataIndex)
+            int savedOutputIndex)
         {
             OwnerOperationIndex = ownerOperationIndex;
             ValueIndex = valueIndex;
             TypeIndex = typeIndex;
             SavedOutputIndex = savedOutputIndex;
-            MetadataIndex = metadataIndex;
         }
 
         public int OwnerOperationIndex { get; }
         public int ValueIndex { get; }
         public int TypeIndex { get; }
         public int SavedOutputIndex { get; }
-        public int MetadataIndex { get; }
     }
 
     [ValueStorage(UseConstructor = true)]

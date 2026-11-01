@@ -424,7 +424,7 @@ namespace BTSMTL.Compilation
                     hotOperations, coldOperations, controlFlow, structure, valueSchedule,
                     workspaceCapacity, executionStorage, m_Inputs.ToArray(),
                     valueSlotTypes, valueKindSlotCounts,
-                    BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
+                    BuildGraphCalls(), m_LifecycleHooks.ToArray(), m_Blackboards.ToArray(),
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
                 var content = CreateContent(program, operationPayloads, m_Constants.ToArray(), m_DefaultValues.ToArray(),
@@ -1155,7 +1155,7 @@ namespace BTSMTL.Compilation
                     OrchestrationExtensionReference reference = m_StateTransitionHooks[i];
                     m_LifecycleHookRanges[reference.ContentIndex] = new OrchestrationRange(m_LifecycleHooks.Count, 1);
                     m_LifecycleHooks.Add(new OrchestrationHookBinding(OrchestrationLifecycleHook.StateTransition,
-                        AddExtension(BindExtensionSource(reference, reference.ContentIndex)), default));
+                        AddExtension(BindExtensionSource(reference, reference.ContentIndex))));
                 }
             }
 
@@ -1344,7 +1344,7 @@ namespace BTSMTL.Compilation
             {
                 var result = new OrchestrationGraphParameter[bindings.Count];
                 for (int i = 0; i < result.Length; i++)
-                    result[i] = new OrchestrationGraphParameter(i, ValueSlot(bindings[i].StateSlot), Kind(bindings[i].ValueKind));
+                    result[i] = new OrchestrationGraphParameter(ValueSlot(bindings[i].StateSlot), Kind(bindings[i].ValueKind));
                 return result;
             }
 

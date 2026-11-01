@@ -99,13 +99,13 @@ namespace BTSMTL.Orchestration
             {
                 machine.ActiveStateIdentityId = 0;
                 InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                    machineOperationIndex, exiting, exiting, target);
+                    exiting, exiting);
                 return OrchestrationOperationResult.Success;
             }
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                machineOperationIndex, exiting, exiting, target);
+                exiting, exiting);
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateTransition,
-                machineOperationIndex, target, exiting, target);
+                target, exiting);
             ActivateState(machineOperationIndex, target);
             return Tick(target) == OrchestrationOperationResult.Failure
                 ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Running;
@@ -203,7 +203,7 @@ namespace BTSMTL.Orchestration
             machine.ActiveStateIdentityId = 0;
             machine.ExitingStateIdentityId = 0;
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                machineOperationIndex, exiting, exiting);
+                exiting, exiting);
             return OrchestrationStopStatus.Completed;
         }
 
@@ -238,7 +238,7 @@ namespace BTSMTL.Orchestration
         {
             OperationState(machineOperationIndex).ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateEntered,
-                machineOperationIndex, stateOperationIndex, targetStateOperationIndex: stateOperationIndex);
+                stateOperationIndex);
         }
 
         int SelectTransition(int sourceOperationIndex, int excludedTarget = -1, int stateContext = -1)

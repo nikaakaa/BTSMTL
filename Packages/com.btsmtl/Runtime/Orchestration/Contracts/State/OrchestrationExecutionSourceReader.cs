@@ -65,12 +65,12 @@ namespace BTSMTL.Orchestration
             if (characterSlot >= 0)
                 return ref SharedFrames.CharacterMetadata[characterSlot];
             if (actionInstance)
-                return ref SharedFrames.BlackboardMetadata(ActionFrameIndex)[m_CandidateStorage.Values[valueSlot].MetadataIndex];
+                return ref SharedFrames.BlackboardMetadata(ActionFrameIndex)[m_CandidateStorage.Values[valueSlot].ValueIndex];
             FrameAddress owner = Owner(ownerOperationIndex);
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             return ref frames.Payload<OrchestrationBlackboardMetadata>(owner.Index,
                 OrchestrationStateSegmentRole.PrivateMetadata, ProgramIndex(owner))[
-                Storage(owner).Values[valueSlot].MetadataIndex];
+                Storage(owner).Values[valueSlot].ValueIndex];
         }
 
         ReadOnlyOrchestrationExecutionFrames<TValue> SharedFrames => m_HasSource ? m_Source.SharedFrames : m_Frames;

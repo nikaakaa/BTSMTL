@@ -9,88 +9,26 @@ namespace BTSMTL.Orchestration
         where THost : struct, IOrchestrationHost<TValue>
     {
         void InvokeHooks(int operationIndex, OrchestrationLifecycleHook phase,
-            int machineOperationIndex = -1, int stateOperationIndex = -1,
-            int exitingStateOperationIndex = -1, int targetStateOperationIndex = -1)
+            int stateOperationIndex = -1, int exitingStateOperationIndex = -1)
         {
             foreach (ref readonly OrchestrationHookBinding hook in m_Program.Hooks(operationIndex))
             {
                 if (hook.Hook != phase)
                     continue;
-                int depth = EnterInputRow(operationIndex);
-                ReadOnlySpan<OrchestrationHookInput> inputs = m_Program.HookInputs(in hook);
-                try
-                {
-                    Span<TValue> arguments = BorrowInputs(operationIndex, depth, inputs.Length);
-                    for (int i = 0; i < inputs.Length; i++)
-                        ReadHookInput(in inputs[i], operationIndex, phase,
-                            machineOperationIndex, stateOperationIndex, exitingStateOperationIndex, targetStateOperationIndex,
-                            ref arguments[i]);
-                    int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
-                        : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
-                            ? exitingStateOperationIndex : -1;
-                    var invocation = new OrchestrationExtensionArguments<TValue>(
-                        OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, 0, StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
-                        ReadExecutionFrame(operationIndex),
-                        arguments, Span<TValue>.Empty, in m_TimelineInvocation);
-                    m_CurrentOperationIndex = operationIndex;
-                    OrchestrationExtensionResult result = m_Host.InvokeCandidate(
-                        hook.ExtensionBindingIndex, in invocation);
-                    if (result != OrchestrationExtensionResult.Success)
-                        Fail(OrchestrationExecutionErrorCode.HookFailed, operationIndex, hook.ExtensionBindingIndex,
-                            (int)phase, (int)result);
-                }
-                finally
-                {
-                    ReleaseInputs();
-                }
-            }
-        }
-
-        void ReadHookInput(in OrchestrationHookInput input, int operationIndex, OrchestrationLifecycleHook phase,
-            int machineOperationIndex, int stateOperationIndex, int exitingStateOperationIndex, int targetStateOperationIndex,
-            ref TValue value)
-        {
-            TNumerics values = default;
-            switch (input.Source)
-            {
-                case OrchestrationHookInputSource.Constant:
-                    value = m_Program.Constant(input.ConstantIndex);
-                    return;
-                case OrchestrationHookInputSource.OperationIndex:
-                    value = values.FromInt32(operationIndex);
-                    return;
-                case OrchestrationHookInputSource.OperationGeneration:
-                    value = values.FromUInt64(ReadGeneration(operationIndex));
-                    return;
-                case OrchestrationHookInputSource.MachineOperationIndex:
-                    value = values.FromInt32(machineOperationIndex);
-                    return;
-                case OrchestrationHookInputSource.StateOperationIndex:
-                    value = values.FromInt32(stateOperationIndex);
-                    return;
-                case OrchestrationHookInputSource.ExitingStateOperationIndex:
-                    value = values.FromInt32(exitingStateOperationIndex);
-                    return;
-                case OrchestrationHookInputSource.TargetStateOperationIndex:
-                    value = values.FromInt32(targetStateOperationIndex);
-                    return;
-                case OrchestrationHookInputSource.Tick:
-                    value = values.FromUInt64(m_Input.Tick);
-                    return;
-                case OrchestrationHookInputSource.StateGeneration:
-                    value = values.FromUInt64(phase == OrchestrationLifecycleHook.StateEntered
-                        ? checked(ReadGeneration(stateOperationIndex) + 1) : ReadGeneration(stateOperationIndex));
-                    return;
-                case OrchestrationHookInputSource.ExitingStateGeneration:
-                    value = values.FromUInt64(ReadGeneration(exitingStateOperationIndex));
-                    return;
-                case OrchestrationHookInputSource.TargetStateGeneration:
-                    value = values.FromUInt64(checked(ReadGeneration(targetStateOperationIndex) + 1));
-                    return;
-                default:
-                    Fail(OrchestrationExecutionErrorCode.HookInput, operationIndex, detail: (int)input.Source);
-                    return;
+                int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
+                    : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
+                        ? exitingStateOperationIndex : -1;
+                var invocation = new OrchestrationExtensionArguments<TValue>(
+                    OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
+                    m_Input.Tick, 0, StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
+                    ReadExecutionFrame(operationIndex),
+                    Span<TValue>.Empty, Span<TValue>.Empty, in m_TimelineInvocation);
+                m_CurrentOperationIndex = operationIndex;
+                OrchestrationExtensionResult result = m_Host.InvokeCandidate(
+                    hook.ExtensionBindingIndex, in invocation);
+                if (result != OrchestrationExtensionResult.Success)
+                    Fail(OrchestrationExecutionErrorCode.HookFailed, operationIndex, hook.ExtensionBindingIndex,
+                        (int)phase, (int)result);
             }
         }
 

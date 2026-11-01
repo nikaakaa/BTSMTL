@@ -35,7 +35,6 @@ namespace BTSMTL.Orchestration
         public OrchestrationMemorySection GraphCalls;
         public OrchestrationMemorySection GraphParameters;
         public OrchestrationMemorySection Hooks;
-        public OrchestrationMemorySection HookInputs;
         public OrchestrationMemorySection BlackboardSlots;
         public OrchestrationMemorySection BlackboardOutputs;
         public OrchestrationMemorySection OutgoingEdgeIndexes;
@@ -101,7 +100,6 @@ namespace BTSMTL.Orchestration
             header.ValueKindSlotCounts = writer.Add(content.ValueKindSlotCounts.Span);
             AddGraphCalls(writer, content.GraphCalls.Span, ref header);
             header.Hooks = writer.Add(content.Hooks.Span);
-            header.HookInputs = writer.Add(content.HookInputs.Span);
             header.BlackboardSlots = writer.Add(content.BlackboardSlots.Span);
             header.BlackboardOutputs = writer.Add(content.BlackboardOutputs.Span);
             header.OutgoingEdgeIndexes = writer.Add(structure.OutgoingEdgeIndexes.Span);

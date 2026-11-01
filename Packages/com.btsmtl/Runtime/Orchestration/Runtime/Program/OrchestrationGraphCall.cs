@@ -4,15 +4,12 @@ namespace BTSMTL.Orchestration
 {
     public readonly struct OrchestrationGraphParameter
     {
-        public OrchestrationGraphParameter(int portIndex, int valueSlot,
-            OrchestrationValueKind valueKind)
+        public OrchestrationGraphParameter(int valueSlot, OrchestrationValueKind valueKind)
         {
-            PortIndex = portIndex;
             ValueSlot = valueSlot;
             ValueKind = valueKind;
         }
 
-        public int PortIndex { get; }
         public int ValueSlot { get; }
         public OrchestrationValueKind ValueKind { get; }
     }
