@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
+import type { ProfileEntryTarget } from '../../api/authoring';
+import { openPanel } from '../../shell/layout';
 import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
 import { writeResourceReady } from '../../shell/readiness';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
+import { authoringDocument, useAuthoring } from '../../state/authoring';
+import { projectActions } from '../../state/project';
 import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, Fold, PanelBar, Tabs } from '../../ui/blocks';
 import { Button, MenuButton, NumberInput, TextInput } from '../../ui/controls';
@@ -25,19 +29,25 @@ export function ProjectPanel() {
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const field = useReferenceSelection(state => state.field);
   const [section, setSection] = useState<'authoring' | 'carriers' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
+  const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
   useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
-    {field && <ProjectFieldChoices key={field.id} field={field} />}
+    {field && <ProjectFieldChoices key={field.id} field={field} onProfileTarget={target => {
+      setProfileTarget(target);
+      setSection('carriers');
+    }} />}
     <div className={projectStyles.body}><Tabs<'authoring' | 'carriers' | 'animations'> value={section} onChange={setSection} items={[
       { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
-      { value: 'carriers', label: '载体与资源', content: <CarrierProject /> },
+      { value: 'carriers', label: '载体与资源', content: <CarrierProject target={profileTarget} /> },
       { value: 'animations', label: '动画库', content: <AnimationProject /> },
     ]} /></div>
   </div>;
 }
 
-function ProjectFieldChoices({ field }: { field: ReferenceFieldSelection }) {
+function ProjectFieldChoices({ field, onProfileTarget }: {
+  field: ReferenceFieldSelection; onProfileTarget(target: ProfileEntryTarget): void;
+}) {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
   const items = field.catalog.kind === 'ready' ? field.catalog.items.filter(choice => `${choice.name} ${choice.detail} ${choice.source}`.toLocaleLowerCase().includes(query)) : [];
@@ -49,13 +59,27 @@ function ProjectFieldChoices({ field }: { field: ReferenceFieldSelection }) {
       <VirtualList className={projectStyles.candidateList} count={items.length} rowHeight={48} label={field.name}
         revealKey={field.id} revealIndex={selected < 0 ? undefined : selected} render={index => {
           const choice = items[index];
-          return <button className={projectStyles.row} draggable
+          return <div className={projectStyles.candidateRow}><button className={projectStyles.row} draggable
           aria-selected={referenceValueKey(choice.value) === referenceValueKey(field.value)}
           onClick={() => field.choose(choice)}
           onDragStart={event => { if (field.catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choice); }}>
           <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>
           {choice.conflict && <span className={projectStyles.issue}>{choice.conflict}</span>}
-        </button>;
+          </button>
+          {choice.targets.length !== 0 && <MenuButton label={`打开${choice.name}的来源`} variant="ghost" entries={choice.targets.map(target => {
+            if (target.kind === 'ProfileEntry') return {
+              label: `${target.domain} · ${target.key} · ${target.carrierIdentity}`,
+              onSelect: () => onProfileTarget(target),
+            };
+            const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(value => value.id === target.graphId);
+            return {
+              label: graph ? `${graph.displayName ?? graph.id} · ${target.nodeId}` : `所属图尚未加载 · ${target.graphId}`,
+              disabled: graph === undefined,
+              onSelect: () => { if (graph) void projectActions.openGraph(graph, target.nodeId)
+                .then(() => { openPanel('graph'); }, error => consoleActions.error('Project', error)); },
+            };
+          })}>来源</MenuButton>}
+        </div>;
       }} />
     </>}
   </Fold></div>;

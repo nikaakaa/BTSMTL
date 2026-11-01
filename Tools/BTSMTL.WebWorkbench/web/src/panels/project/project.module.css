@@ -122,6 +122,17 @@
   height: 120px;
 }
 
+.candidateRow {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.candidateRow .row {
+  flex: 1;
+  min-width: 0;
+}
+
 .issue {
   color: var(--reject);
 }

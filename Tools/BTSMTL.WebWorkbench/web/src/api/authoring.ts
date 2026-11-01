@@ -86,12 +86,25 @@ export interface FieldReference {
 }
 
 // 节点类的作者字段合同：显示名、值种类、所在存储路径、枚举与选择器、条件显示和引用声明。
+export interface ProfileEntryTarget {
+  kind: 'ProfileEntry';
+  carrierIdentity: string;
+  profileSource: string;
+  domain: 'Vfx' | 'Camera' | 'Audio' | 'Input';
+  entryKind: string;
+  key: string;
+  resourceIdentity: string | null;
+}
+
+export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
+
 export interface ReferenceChoice {
   value: JsonValue;
   name: string;
   detail: string;
   source: string;
   conflict: string | null;
+  targets: ReferenceChoiceTarget[];
   associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
 }
 
