@@ -720,24 +720,35 @@ export const authoringActions = {
     return id;
   },
 
-  // 片段平移与换轨：多选时整体移动同一位移（按帧步长取整后不小于 0）；换轨只移到同一 Timeline 的另一轨道。
-  moveClips(documentId: string, clipIds: string[], deltaSeconds: number, targetTrackId: string | null) {
-    const ids = new Set(clipIds);
-    const delta = fpRaw(deltaSeconds);
+  // 片段与标记平移、片段换轨：框选多个时整体移动同一位移，最早的不早于 0；标记落到同轨其它标记的时刻时不写回。
+  // targetTrackId 只用于单个片段换到同一 Timeline 的另一轨道。
+  moveItems(documentId: string, itemIds: string[], deltaSeconds: number, targetTrackId: string | null) {
+    const ids = new Set(itemIds);
+    const source = currentDocument(timelinePath(documentId));
+    if (!source) throw new Error(`没有 Timeline ${documentId}`);
+    const shift = Math.max(fpRaw(deltaSeconds), -Math.min(...tracksOf(source).flatMap(track => [
+      ...(track.m_Clips as JsonObject[]).filter(clip => ids.has(clip.m_AuthoringId as string)).map(clip => numberOf(clip.m_StartTimeFPRawValue)),
+      ...markersOf(track).filter(marker => ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)),
+    ])));
+    if (markersCollide(source, ids, shift)) {
+      consoleActions.log('warn', '作者', '标记落到同轨已有标记的时刻，标记不能重叠');
+      return;
+    }
     authoringActions.edit(timelinePath(documentId), document => {
       const tracks = tracksOf(document);
-      const moving = tracks.flatMap(track => (track.m_Clips as JsonObject[]).filter(clip => ids.has(clip.m_AuthoringId as string))
-        .map(clip => ({ track, clip })));
-      const shift = Math.max(delta, -Math.min(...moving.map(item => numberOf(item.clip.m_StartTimeFPRawValue))));
       const target = targetTrackId === null ? null : tracks.find(track => track.m_AuthoringId === targetTrackId);
       if (targetTrackId !== null && !target) throw new Error(`Timeline ${documentId} 中没有轨道 ${targetTrackId}`);
-      for (const { track, clip } of moving) {
-        clip.m_StartTimeFPRawValue = numberOf(clip.m_StartTimeFPRawValue) + shift;
-        clip.m_EndTimeFPRawValue = numberOf(clip.m_EndTimeFPRawValue) + shift;
-        if (target && target !== track) {
-          track.m_Clips = (track.m_Clips as JsonObject[]).filter(item => item !== clip);
-          (target.m_Clips as JsonObject[]).push(clip);
+      for (const track of tracks) {
+        for (const clip of (track.m_Clips as JsonObject[]).filter(item => ids.has(item.m_AuthoringId as string))) {
+          clip.m_StartTimeFPRawValue = numberOf(clip.m_StartTimeFPRawValue) + shift;
+          clip.m_EndTimeFPRawValue = numberOf(clip.m_EndTimeFPRawValue) + shift;
+          if (target && target !== track) {
+            track.m_Clips = (track.m_Clips as JsonObject[]).filter(item => item !== clip);
+            (target.m_Clips as JsonObject[]).push(clip);
+          }
         }
+        for (const marker of markersOf(track).filter(item => ids.has(item.m_AuthoringId as string)))
+          marker.m_TimeFPRawValue = numberOf(marker.m_TimeFPRawValue) + shift;
       }
     });
   },
@@ -809,6 +820,19 @@ export function markerTimeTaken(documentId: string, trackId: string, seconds: nu
   const document = currentDocument(timelinePath(documentId));
   const track = document ? tracksOf(document).find(item => item.m_AuthoringId === trackId) : undefined;
   return !!track && markersOf(track).some(marker => marker.m_AuthoringId !== except && numberOf(marker.m_TimeFPRawValue) === fpRaw(seconds));
+}
+
+// 一起平移 shift（定点值）的标记是否落到同轨其它标记的时刻；一起移动的标记之间不算。
+function markersCollide(document: JsonValue, ids: ReadonlySet<string>, shift: number): boolean {
+  return tracksOf(document).some(track => {
+    const fixed = new Set(markersOf(track).filter(marker => !ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)));
+    return markersOf(track).some(marker => ids.has(marker.m_AuthoringId as string) && fixed.has(numberOf(marker.m_TimeFPRawValue) + shift));
+  });
+}
+
+export function markersTaken(documentId: string, markerIds: ReadonlySet<string>, deltaSeconds: number): boolean {
+  const document = currentDocument(timelinePath(documentId));
+  return !!document && markersCollide(document, markerIds, fpRaw(deltaSeconds));
 }
 
 let clipClipboard: JsonObject | null = null;

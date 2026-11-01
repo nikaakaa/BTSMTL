@@ -17,7 +17,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
-  graphPath, inputAuthoring, markerTimeTaken, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
+  graphPath, inputAuthoring, markersTaken, markerTimeTaken, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
   useReferenceCurves, useSkillElements, useDocumentObservationBinding, type ReferenceEntry,
 } from '../../state/authoring';
 import {
@@ -314,16 +314,24 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
 
 // 拖动中的片段（照 MoveItemHandler）：原位置隐藏，Rows 在目标行按吸附后的时间画虚影，不合规时虚影变红、松手放回原处；
 // 拖片段两端不合规时片段原地变红、松手恢复原长。tip 为虚影上方的提示：不合规或指到不能放的轨道时写明原因，否则为起点时刻。
+// 框选中一起移动的标记（markers，框选键）不画虚影，原地按 shift 秒平移显示。
 interface DropGhost { box: string; row: string; start: number; end: number; label: string; kind: TrackKind }
 const useClipEditing = create<{
-  drag: { panelId: string; ghosts: DropGhost[]; invalid: boolean; tip: string } | null;
+  drag: { panelId: string; ghosts: DropGhost[]; markers: string[]; shift: number; invalid: boolean; tip: string } | null;
   resize: { panelId: string; box: string } | null;
 }>(() => ({ drag: null, resize: null }));
 
 interface DragSession {
-  edit: ClipEdit;
-  // 一起移动的片段与原轨道，第一个是拖动的片段；框选多个时各自留在原轨道。
+  documentId: string;
+  segmentId: string;
+  // 拖动的片段（单个片段可换轨）；拖动的是框选中的标记时为 null。
+  edit: ClipEdit | null;
+  // 拖动对象的本地起点与吸附：片段按片段网格，标记按吸附步长。
+  start: number;
+  snap(local: number): number;
+  // 一起移动的片段与原轨道（拖动片段时第一个是它）、标记与本地时刻；框选多个时各自留在原轨道。
   moving: { clip: ClipInstance; track: string }[];
+  markers: { key: string; id: string; local: number }[];
   multi: boolean;
   target: string;
   activator: { x: number; y: number };
@@ -334,10 +342,10 @@ interface DragSession {
 
 // 作者模式拖动、拖端写回片段时间：原起止加上拖动距离换成的秒数，按吸附步长取整，再减去本段零点得到 Timeline 本地秒数。
 // 单个片段可拖到同一 Timeline 的另一条轨道（照 TimelineData.MoveClip：轨道能放这种片段且执行域相同），
-// 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段整体平移、不换轨。
-// 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合。
-function ClipEditing({ rows, offsets, scroller }: {
-  rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>;
+// 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段与标记整体平移、不换轨，拖其中的片段或标记都一样。
+// 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合；标记不许落到同轨其它标记的时刻。
+function ClipEditing({ rows, offsets, scroller, step, mover }: {
+  rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>; step: number; mover: RefObject<GroupMove | null>;
 }) {
   const panelId = usePanelId();
   const panelWindow = usePanelWindow();
@@ -368,18 +376,17 @@ function ClipEditing({ rows, offsets, scroller }: {
     return policy === null ? '轨道种类不在元素查询里' : overlapIssue(policy, spans);
   };
   const preview = (current: DragSession, delta: { x: number; y: number }) => {
-    const { edit } = current;
+    const { edit, documentId, segmentId } = current;
     const pointer = current.pointer ?? { x: current.activator.x + delta.x, y: current.activator.y + delta.y };
-    const anchor = current.moving[0].clip.clip;
     const moved = getValueFromScreenX(pointer.x) - getValueFromScreenX(current.activator.x);
-    const shift = Math.max(snapGrid(anchor.startSeconds + moved, clipGrid(edit.documentId, anchor.id)) - anchor.startSeconds,
-      -Math.min(...current.moving.map(item => item.clip.clip.startSeconds)));
+    const shift = Math.max(current.snap(current.start + moved) - current.start,
+      -Math.min(...current.moving.map(item => item.clip.clip.startSeconds), ...current.markers.map(item => item.local)));
     let hover: string | null = null;
-    if (!current.multi) {
+    if (edit && !current.multi) {
       const row = rowAt(pointer.y);
-      if (row?.kind === 'track' && row.segment.id === edit.segmentId && row.track.id !== current.target) {
+      if (row?.kind === 'track' && row.segment.id === segmentId && row.track.id !== current.target) {
         const reason = row.track.id === edit.trackId ? null
-          : elements ? clipMoveIssue(elements, edit.documentId, anchor.contract, edit.trackId, row.track.id) : '正在读取轨道合同';
+          : elements ? clipMoveIssue(elements, documentId, current.moving[0].clip.clip.contract, edit.trackId, row.track.id) : '正在读取轨道合同';
         if (reason === null) current.target = row.track.id;
         else hover = reason;
       }
@@ -388,22 +395,80 @@ function ClipEditing({ rows, offsets, scroller }: {
     const ids = new Set(current.moving.map(item => item.clip.clip.id));
     let issue: string | null = null;
     for (const trackId of new Set(current.moving.map(trackOf))) {
-      const track = trackRow(edit.segmentId, trackId);
-      issue = !track ? '目标轨道不在当前视图' : placementIssue(edit.documentId, track, [
+      const track = trackRow(segmentId, trackId);
+      issue = !track ? '目标轨道不在当前视图' : placementIssue(documentId, track, [
         ...track.track.clips.filter(clip => !ids.has(clip.id)).map(clip => ({ start: clip.startSeconds, end: clip.endSeconds })),
         ...current.moving.filter(item => trackOf(item) === trackId)
           .map(item => ({ start: item.clip.clip.startSeconds + shift, end: item.clip.clip.endSeconds + shift })),
       ]);
       if (issue) break;
     }
+    if (!issue && current.markers.length && markersTaken(documentId, new Set(current.markers.map(item => item.id)), shift))
+      issue = '标记落到同轨已有标记的时刻，标记不能重叠';
     const ghosts = current.moving.map((item): DropGhost => ({
-      box: item.clip.key, row: `track:${edit.segmentId}/${trackOf(item)}`, start: item.clip.start + shift, end: item.clip.end + shift,
+      box: item.clip.key, row: `track:${segmentId}/${trackOf(item)}`, start: item.clip.start + shift, end: item.clip.end + shift,
       label: item.clip.label, kind: item.clip.kind,
     }));
-    return { shift, issue, ghosts, tip: issue ?? hover ?? `${(anchor.startSeconds + shift).toFixed(3)} s` };
+    return { shift, issue, ghosts, tip: issue ?? hover ?? `${(current.start + shift).toFixed(3)} s` };
   };
-  const publish = ({ ghosts, issue, tip }: ReturnType<typeof preview>) =>
-    useClipEditing.setState({ drag: { panelId, ghosts, invalid: issue !== null, tip } });
+  const publish = (current: DragSession, { ghosts, shift, issue, tip }: ReturnType<typeof preview>) =>
+    useClipEditing.setState({ drag: { panelId, ghosts, markers: current.markers.map(item => item.key), shift, invalid: issue !== null, tip } });
+  // 框选中同一次 Timeline 播放里的片段与标记。
+  const boxedIn = (segmentId: string) => {
+    const boxed = new Set((getState().timelineSelections[panelId] ?? []).map(item => item.box));
+    const tracks = rows.filter((row): row is TrackRow => row.kind === 'track' && row.segment.id === segmentId);
+    return {
+      clips: tracks.flatMap(row => row.clips.filter(clip => boxed.has(clip.key)).map(clip => ({ clip, track: row.track.id }))),
+      markers: tracks.flatMap(row => row.markers.filter(marker => boxed.has(marker.key))
+        .map(marker => ({ key: marker.key, id: marker.selectId.split('/')[1], local: marker.seconds - row.segment.origin }))),
+    };
+  };
+  // 开始拖动：捕获阶段记录指针，先于拖动库的处理，且不受行列表自动滚动影响。
+  const begin = (current: DragSession) => {
+    const follow = (move: globalThis.PointerEvent) => { current.pointer = { x: move.clientX, y: move.clientY }; };
+    panelWindow.addEventListener('pointermove', follow, true);
+    current.release = () => {
+      panelWindow.removeEventListener('pointermove', follow, true);
+      if (session.current === current) session.current = null;
+      useClipEditing.setState({ drag: null });
+    };
+    session.current = current;
+    publish(current, preview(current, { x: 0, y: 0 }));
+  };
+  const finish = (current: DragSession, delta: { x: number; y: number }) => {
+    const result = preview(current, delta);
+    current.release();
+    if (result.issue) {
+      consoleActions.log('warn', 'Timeline', `${result.issue}，放回原处`);
+      return;
+    }
+    // 平移只按拖动对象的起点吸附，保持时长与间隔。
+    const retarget = !!current.edit && !current.multi && current.target !== current.edit.trackId;
+    if (result.shift || retarget)
+      authoringActions.moveItems(current.documentId, [...current.moving.map(item => item.clip.clip.id), ...current.markers.map(item => item.id)],
+        result.shift, retarget ? current.target : null);
+  };
+  // 拖动框选中的标记：与拖动框选中的片段同样整体平移，标记由 Marker 转交。
+  useLayoutEffect(() => {
+    mover.current = {
+      start(box, x, y) {
+        const row = rows.find((item): item is TrackRow => item.kind === 'track' && item.markers.some(marker => marker.key === box));
+        const marker = row?.markers.find(item => item.key === box);
+        if (!row || !marker) return;
+        const group = boxedIn(row.segment.id);
+        begin({
+          documentId: row.timeline.documentId, segmentId: row.segment.id, edit: null,
+          start: marker.seconds - row.segment.origin, snap: local => Math.max(0, snapTo(local, step)),
+          moving: group.clips, markers: group.markers, multi: true, target: row.track.id,
+          activator: { x, y }, pointer: null, release: () => {},
+        });
+      },
+      move() { if (session.current) publish(session.current, preview(session.current, { x: 0, y: 0 })); },
+      end() { if (session.current) finish(session.current, { x: 0, y: 0 }); },
+      cancel() { session.current?.release(); },
+    };
+    return () => { mover.current = null; };
+  });
   // 拖端：起点不早于 0、不晚于终点前一步，终点不早于起点后一步；按片段网格吸附。
   // 可设 ClipIn 的片段裁起点时 ClipIn 随起点移动同样秒数（不小于 0），画面内容留在原处。
   const resized = (event: ResizeMoveEvent | ResizeEndEvent) => {
@@ -431,43 +496,23 @@ function ClipEditing({ rows, offsets, scroller }: {
       if (!edit || !own) return;
       const boxed = new Set((getState().timelineSelections[panelId] ?? []).map(item => item.box));
       const multi = boxed.size > 1 && boxed.has(own.key);
-      const others = multi ? rows.flatMap(row => row.kind === 'track' && row.segment.id === edit.segmentId
-        ? row.clips.filter(clip => clip !== own && boxed.has(clip.key)).map(clip => ({ clip, track: row.track.id })) : []) : [];
+      const group = multi ? boxedIn(edit.segmentId) : { clips: [], markers: [] };
       const activator = event.activatorEvent as globalThis.PointerEvent;
-      const current: DragSession = {
-        edit, moving: [{ clip: own, track: edit.trackId }, ...others], multi, target: edit.trackId,
-        activator: { x: activator.clientX, y: activator.clientY }, pointer: null, release: () => {},
-      };
-      // 捕获阶段记录指针：先于拖动库的处理，且不受行列表自动滚动影响。
-      const follow = (move: globalThis.PointerEvent) => { current.pointer = { x: move.clientX, y: move.clientY }; };
-      panelWindow.addEventListener('pointermove', follow, true);
-      current.release = () => {
-        panelWindow.removeEventListener('pointermove', follow, true);
-        if (session.current === current) session.current = null;
-        useClipEditing.setState({ drag: null });
-      };
-      session.current = current;
-      publish(preview(current, { x: 0, y: 0 }));
+      begin({
+        documentId: edit.documentId, segmentId: edit.segmentId, edit,
+        start: own.clip.startSeconds, snap: local => snapGrid(local, clipGrid(edit.documentId, own.clip.id)),
+        moving: [{ clip: own, track: edit.trackId }, ...group.clips.filter(item => item.clip !== own)], markers: group.markers,
+        multi, target: edit.trackId, activator: { x: activator.clientX, y: activator.clientY }, pointer: null, release: () => {},
+      });
     },
     onDragMove(event) {
-      if (session.current) publish(preview(session.current, event.delta));
+      if (session.current) publish(session.current, preview(session.current, event.delta));
     },
     onDragCancel() {
       session.current?.release();
     },
     onDragEnd(event) {
-      const current = session.current;
-      if (!current) return;
-      const result = preview(current, event.delta);
-      current.release();
-      if (result.issue) {
-        consoleActions.log('warn', 'Timeline', `${result.issue}，片段放回原处`);
-        return;
-      }
-      // 平移只按拖动片段的起点吸附，保持时长。
-      const retarget = !current.multi && current.target !== current.edit.trackId;
-      if (result.shift || retarget)
-        authoringActions.moveClips(current.edit.documentId, current.moving.map(item => item.clip.clip.id), result.shift, retarget ? current.target : null);
+      if (session.current) finish(session.current, event.delta);
     },
     onResizeMove(event: ResizeMoveEvent) {
       const result = resized(event);
@@ -1162,8 +1207,12 @@ function Ruler({ bounds, origin, rate, marks, seekAt }: {
 
 // ── 行：只渲染可见行 ──
 
-// 框选中的片段（data-box 键）；照 Timeline Editor 在轨道空白处左键拖出选框。
+// 框选中的片段与标记（data-box 键）；照 Timeline Editor 在轨道空白处左键拖出选框。
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
+
+// 框选多个后拖动其中的标记：由 ClipEditing 按拖动片段的同一流程整体平移（指针位置由它在捕获阶段记录）。
+interface GroupMove { start(box: string, x: number, y: number): void; move(): void; end(): void; cancel(): void }
+const GroupMoveContext = createContext<RefObject<GroupMove | null>>({ current: null });
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
 function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
@@ -1183,7 +1232,8 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
   const boxed = useMemo(() => new Set(selectedClips?.map(item => item.box)), [selectedClips]);
   const [box, setBox] = useState<Box | null>(null);
   const boxStart = useRef<{ x: number; y: number } | null>(null);
-  // 框选后选中的是第一个片段；其它面板或单击换了选中时，框选结果作废。
+  const groupMove = useRef<GroupMove | null>(null);
+  // 框选后选中的是第一个片段或标记；其它面板或单击换了选中时，框选结果作废。
   const selection = useWorkbench(state => state.selection);
   useEffect(() => {
     if (selectedClips?.length && !(selection?.kind === 'clip' && selection.id === selectedClips[0].id))
@@ -1263,7 +1313,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
           if (event.key === 'c' ? copySelection() : pasteAfterSelection()) event.preventDefault();
           return;
         }
-        // 作者模式 Delete：删除框选的片段，否则删除选中的片段、标记或轨道。
+        // 作者模式 Delete：删除框选的片段与标记，否则删除选中的片段、标记或轨道。
         if (event.key !== 'Delete') return;
         event.preventDefault();
         if (!boxed.size) { deleteSelection(); return; }
@@ -1277,6 +1327,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
         setView(previous => previous.top === top ? previous : { ...previous, top });
       }}>
       <BoxedContext.Provider value={boxed}>
+      <GroupMoveContext.Provider value={groupMove}>
       <div style={{ height: offsets[first] }} />
       {rows.slice(first, last).map((row, offset) => {
         const nest = nesting[first + offset];
@@ -1294,8 +1345,9 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
         }
       })}
       <div style={{ height: total - offsets[last] }} />
+      </GroupMoveContext.Provider>
       </BoxedContext.Provider>
-      {step !== null && <ClipEditing rows={rows} offsets={offsets} scroller={scroller} />}
+      {step !== null && <ClipEditing rows={rows} offsets={offsets} scroller={scroller} step={step} mover={groupMove} />}
       {box && (
         <div className={styles.selectBox} style={{
           left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1),
@@ -1632,7 +1684,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
       {markers.map(marker => {
         const markerId = marker.selectId.split('/')[1];
         return (
-          <Marker key={marker.key} seconds={marker.seconds} kind={row.trackKind} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
+          <Marker key={marker.key} boxKey={marker.key} seconds={marker.seconds} kind={row.trackKind} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
             selectId={marker.selectId}
             move={author ? seconds => authoringActions.setMarkerTime(documentId, markerId, snapLocal(seconds)) : undefined}
             snap={author ? seconds => segment.origin + snapLocal(seconds) : undefined}
@@ -2272,38 +2324,59 @@ function openClipGraph(graphId: string | null, label: string) {
 // 时刻处一根 1 像素类别色细线贯穿整行，顶端一个朝下的小三角（MarkerTriangle）尖端对准时刻；所触发的内容（text）
 // 照 Unity 不写名字，悬停提示（Tip name）。未绑定节点图时三角只留轮廓。
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回；标记不许重叠，
-// 拖到同轨已有标记的时刻（taken）时细线变红，松开不写回。
-function Marker({ seconds: shown, kind, label, text, graphId, selectId, move, snap, taken }: {
-  seconds: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
+// 拖到同轨已有标记的时刻（taken）时细线变红，松开不写回。框选中的标记与片段同样显示选中；
+// 框选了多个时拖动它与框选中的片段、标记整体平移（GroupMove），平移中按 shift 原地显示。
+function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, move, snap, taken }: {
+  boxKey: string; seconds: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
   move?(seconds: number): void; snap?(seconds: number): number; taken?(seconds: number): boolean;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
-  const [dragging, setDragging] = useState<{ x: number; seconds: number } | null>(null);
-  const seconds = dragging?.seconds ?? shown;
-  const blocked = !!dragging && dragging.seconds !== shown && !!taken?.(dragging.seconds);
+  const panelId = usePanelId();
+  const boxedSet = useContext(BoxedContext);
+  const boxed = boxedSet.has(boxKey);
+  const group = useContext(GroupMoveContext);
+  const [dragging, setDragging] = useState<{ x: number; y: number; seconds: number; group: boolean; started: boolean } | null>(null);
+  const moving = useClipEditing(useShallow(state => state.drag?.panelId === panelId && state.drag.markers.includes(boxKey)
+    ? { shift: state.drag.shift, invalid: state.drag.invalid } : null));
+  const seconds = moving ? shown + moving.shift : dragging?.seconds ?? shown;
+  const blocked = moving ? moving.invalid : !!dragging && dragging.seconds !== shown && !!taken?.(dragging.seconds);
   const clock = useContext(PreviewClockContext);
-  const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
+  const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId) || boxed;
+  const dragged = useRef(false);
   const left = valueToPixels(seconds - range.start);
   return (
     <Tip name={text ?? '未绑定节点图'}>
-    <button className={styles.marker} data-selected={selected || undefined} data-unbound={!text || undefined}
+    <button className={styles.marker} data-box={boxKey} data-selected={selected || undefined} data-unbound={!text || undefined}
       data-invalid={blocked || undefined} data-select={selectId} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
       onPointerDown={event => {
+        dragged.current = false;
         if (!move || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
-        setDragging({ x: event.clientX, seconds: shown });
+        setDragging({ x: event.clientX, y: event.clientY, seconds: shown, group: boxed && boxedSet.size > 1, started: false });
       }}
       onPointerMove={event => {
         // 按下后移动超过 3 像素才算拖动，单击仍是选中。
-        if (!dragging || !snap || Math.abs(event.clientX - dragging.x) < 3) return;
-        setDragging({ ...dragging, seconds: snap(getValueFromScreenX(event.clientX)) });
+        if (!dragging || !snap || (!dragging.started && Math.abs(event.clientX - dragging.x) < 3)) return;
+        if (!dragging.group) setDragging({ ...dragging, seconds: snap(getValueFromScreenX(event.clientX)), started: true });
+        else if (dragging.started) group.current?.move();
+        else {
+          group.current?.start(boxKey, dragging.x, dragging.y);
+          setDragging({ ...dragging, started: true });
+        }
       }}
       onPointerUp={() => {
-        if (dragging && dragging.seconds !== shown && !blocked) move!(dragging.seconds);
+        if (dragging?.group && dragging.started) {
+          dragged.current = true;
+          group.current?.end();
+        } else if (dragging && dragging.seconds !== shown && !blocked) move!(dragging.seconds);
         setDragging(null);
       }}
-      onPointerCancel={() => setDragging(null)}
-      onClick={() => { if (selectId) selectTimelineObject(clock, 'clip', selectId); }}
+      onPointerCancel={() => {
+        if (dragging?.group && dragging.started) group.current?.cancel();
+        setDragging(null);
+      }}
+      // 整体平移后保留框选，不改成单选这个标记。
+      onClick={() => { if (selectId && !dragged.current) selectTimelineObject(clock, 'clip', selectId); }}
       onDoubleClick={() => openClipGraph(graphId, label)}>
       <MarkerTriangle className={styles.markerHead} />
     </button>
@@ -2451,10 +2524,13 @@ const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputT
             start={clip.startSeconds} end={clip.endSeconds} exit={routeEnd} graphId={clip.graphId} />
         );
       })}
-      {markers.map(marker => (
-        <Marker key={marker.id} seconds={marker.seconds} kind="in" label={inputLabel(marker.writes, false)} text={inputLabel(marker.writes, false)}
-          graphId={marker.graphId} selectId={inputClipSelectId(row.track.id, marker.id)} />
-      ))}
+      {markers.map(marker => {
+        const selectId = inputClipSelectId(row.track.id, marker.id);
+        return (
+          <Marker key={marker.id} boxKey={selectId} seconds={marker.seconds} kind="in" label={inputLabel(marker.writes, false)}
+            text={inputLabel(marker.writes, false)} graphId={marker.graphId} selectId={selectId} />
+        );
+      })}
     </Line>
   );
 });
