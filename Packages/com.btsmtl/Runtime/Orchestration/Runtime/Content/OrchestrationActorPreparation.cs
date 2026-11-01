@@ -17,11 +17,9 @@ namespace BTSMTL.Orchestration
             ReadOnlyMemory<OrchestrationProgram<TValue>> programs,
             ReadOnlyMemory<int>[] characterValueSlots,
             int[] dependencyIdentityTableIndices,
-            OrchestrationGraphBlackboardBinding[] characterBlackboards,
             TValue[] characterValueDefaults,
             OrchestrationBlackboardSlot[] characterValueDescriptors,
             OrchestrationValueSlotType[] characterValueTypes,
-            int[] characterValueKindSlotCounts,
             ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> preparedProgramStorages, StableHash identity)
         {
             Identities = identities;
@@ -30,11 +28,9 @@ namespace BTSMTL.Orchestration
             Programs = programs;
             m_CharacterValueSlots = characterValueSlots;
             m_DependencyIdentityTableIndices = dependencyIdentityTableIndices;
-            CharacterBlackboards = characterBlackboards;
             CharacterValueDefaults = characterValueDefaults;
             CharacterValueDescriptors = characterValueDescriptors;
             CharacterValueTypes = characterValueTypes;
-            CharacterValueKindSlotCounts = characterValueKindSlotCounts;
             PreparedProgramStorages = preparedProgramStorages;
             Identity = identity;
         }
@@ -46,11 +42,9 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationProgramSource<TValue>> Sources { get; }
         public ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TNumerics>> Graphs { get; }
         public ReadOnlyMemory<OrchestrationProgram<TValue>> Programs { get; }
-        public ReadOnlyMemory<OrchestrationGraphBlackboardBinding> CharacterBlackboards { get; }
         public ReadOnlyMemory<TValue> CharacterValueDefaults { get; }
         public ReadOnlyMemory<OrchestrationBlackboardSlot> CharacterValueDescriptors { get; }
         public ReadOnlyMemory<OrchestrationValueSlotType> CharacterValueTypes { get; }
-        public ReadOnlyMemory<int> CharacterValueKindSlotCounts { get; }
         public ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> PreparedProgramStorages { get; }
 
         public ReadOnlyMemory<int> CharacterValueSlots(int programIndex) =>
@@ -179,8 +173,8 @@ namespace BTSMTL.Orchestration
                 characterBlackboards, characterDescriptors, characterSlotTypes, characterKindSlotCounts, characterMappings);
             return new OrchestrationActorPreparation<TValue, TNumerics>(
                 identities, sources.ToArray(), prepared.Graphs, prepared.Programs, characterMappings,
-                dependencyIdentityTableIndices.ToArray(), characterBlackboards,
-                characterDefaults, characterDescriptors, characterSlotTypes, characterKindSlotCounts,
+                dependencyIdentityTableIndices.ToArray(),
+                characterDefaults, characterDescriptors, characterSlotTypes,
                 prepared.PreparedProgramStorages, identity);
         }
 
