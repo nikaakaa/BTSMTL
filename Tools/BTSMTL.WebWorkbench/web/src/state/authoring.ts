@@ -79,7 +79,7 @@ export type SaveOutcome = SaveOutcomeMessage & (
   | { saved: true; compilationState: 'succeeded'; preview: PlayerSkillRefreshReceipt | null }
   | { saved: true; compilationState: 'not-required'; preview: PlayerCommandReceipt | null }
   | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
-  | { saved: null; compilationState: null; preview: null }
+  | { saved: false | null; compilationState: null; preview: null }
 );
 
 export interface AddedPort {
@@ -669,9 +669,10 @@ export const authoringActions = {
           rejection.error ?? ''].filter(Boolean).join('\n'));
         return;
       }
-      setDocument({ saving: false, lastSave: {
+      const revisionConflict = error instanceof ApiError && error.status === 409;
+      setDocument({ saving: false, ...(revisionConflict ? { externalChange: true } : {}), lastSave: {
         ok: false, message: error instanceof Error ? error.message : String(error), errors: [],
-        saved: null, compilationState: null, preview: null,
+        saved: revisionConflict ? false : null, compilationState: null, preview: null,
       } }, target);
       consoleActions.error('作者', error);
     }
