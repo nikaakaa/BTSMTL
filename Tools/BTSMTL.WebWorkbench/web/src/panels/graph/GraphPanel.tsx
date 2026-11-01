@@ -29,7 +29,7 @@ import { consoleActions, getState, selectionActions, useWorkbench } from '../../
 import { timelineLength } from '../../state/timelineModel';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
-import { CloseIcon } from '../../ui/icons';
+import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
@@ -73,6 +73,8 @@ interface ViewOptions {
   grabGroup?(group: CanvasGroup): void;
   renameGroup?(group: CanvasGroup, name: string): void;
   resizeGroup?(group: CanvasGroup, rect: CanvasGroup['rect']): void;
+  // 进入节点的子图或跳到它播放的 Timeline（双击与标题栏按钮共用）。
+  open(data: NodeData): void;
   // 状态机作者模式：在状态上按住右键拖到目标状态建立转移。
   beginLink?(source: string, event: ReactPointerEvent): void;
 }
@@ -544,7 +546,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
 
   const connected = useMemo(() => new Set(layout.edges.flatMap(edge =>
     [`${edge.source!.nodeId}|output:${edge.source!.portId}`, `${edge.target!.nodeId}|input:${edge.target!.portId}`])), [layout]);
-  const options = useMemo<ViewOptions>(() => ({
+  const options = useMemo<Omit<ViewOptions, 'open'>>(() => ({
     store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph, connected,
   }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph, connected]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
@@ -563,11 +565,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     if (editable && !event.ctrlKey && !event.shiftKey) selectCanvas([node.id], []);
     if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call: call ?? undefined });
   }, [call, editable, selectCanvas]);
-  const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
-    if (isGroupNode(node)) return;
-    if (node.data.children.length) enter(node.data.children[0]);
-    else if (node.data.timeline) showTimeline(node.data.timeline, call !== null && runId !== null ? { runId, call } : null);
+  const open = useCallback((data: NodeData) => {
+    if (data.children.length) enter(data.children[0]);
+    else if (data.timeline) showTimeline(data.timeline, call !== null && runId !== null ? { runId, call } : null);
   }, [enter, call, runId]);
+  const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
+    if (!isGroupNode(node)) open(node.data);
+  }, [open]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
     if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
   }, [enter]);
@@ -732,8 +736,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     window.addEventListener('pointerup', up);
   }, [elements, graph.id, screenToFlowPosition]);
   const viewOptions = useMemo(() => ({
-    ...options, editable, grabGroup, renameGroup, resizeGroup, beginLink: editable && machine ? beginLink : undefined,
-  }), [options, editable, grabGroup, renameGroup, resizeGroup, machine, beginLink]);
+    ...options, open, editable, grabGroup, renameGroup, resizeGroup, beginLink: editable && machine ? beginLink : undefined,
+  }), [options, open, editable, grabGroup, renameGroup, resizeGroup, machine, beginLink]);
 
   return (
     <ViewContext.Provider value={viewOptions}>
@@ -864,7 +868,7 @@ function GroupView({ data, selected }: NodeProps<GroupNode>) {
 // 流图节点：NodeCanvas 节点，标题下按行列出输入与输出端口。
 function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, children, timeline } = data;
-  const { store, values, dim, related } = useView();
+  const { store, values, dim, related, open } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
@@ -873,20 +877,25 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const rows = Math.max(inputs.length, outputs.length);
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
-      data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}>
+      data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
+      data-openable={children.length > 0 || timeline !== null || undefined}>
       <Tip name={nodeName(laid.node)}
         content={`${nodeTypeName(laid.node) ? `${nodeTypeName(laid.node)}\n` : ''}${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
         <div className={styles.header}>
-          {triggerIns.length > 0 && <i className={styles.flowIn} />}
           <b data-name>{nodeName(laid.node)}</b>
-          {(children.length > 0 || timeline) && <i className={styles.subgraphMark} />}
-          {triggerOuts.length > 0 && <i className={styles.flowOut} />}
           <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
           <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
-          {triggerIns.map(port => <HiddenPort key={`i${port.id}`} port={port} />)}
-          {triggerOuts.map(port => <HiddenPort key={`o${port.id}`} port={port} />)}
+          {triggerIns.map(port => <FlowPort key={`i${port.id}`} port={port} occurred={state.occurred > 0} />)}
+          {triggerOuts.map(port => <FlowPort key={`o${port.id}`} port={port} occurred={state.occurred > 0} />)}
         </div>
       </Tip>
+      {(children.length > 0 || timeline) && (
+        <Tip content={children.length ? '进入子图' : '跳到 Timeline'}>
+          <button type="button" className={`${styles.openButton} nodrag`} onClick={event => { event.stopPropagation(); open(data); }}>
+            {children.length ? <SubgraphIcon width={12} height={12} /> : <TimelineIcon width={12} height={12} />}
+          </button>
+        </Tip>
+      )}
       {rows > 0 && (
         <div className={styles.body}>
           {Array.from({ length: rows }, (_, index) => (
@@ -901,12 +910,17 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   );
 }
 
-// 执行端口画在标题两侧的箭头上，连线仍接到对应端口。
-function HiddenPort({ port }: { port: GraphPort }) {
+// 执行端口：压在标题栏两侧边框上的三角，连线接在三角中心；与数据端口同一规则，连了线实心，本帧经过变黄。
+function FlowPort({ port, occurred }: { port: GraphPort; occurred: boolean }) {
   const input = port.direction === 'input';
-  const { editable } = useView();
-  return <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
-    position={input ? Position.Left : Position.Right} isConnectable={!!editable} className={input ? styles.triggerIn : styles.triggerOut} />;
+  const { editable, connected } = useView();
+  return (
+    <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
+      position={input ? Position.Left : Position.Right} isConnectable={!!editable} className={styles.flowPort}
+      data-filled={connected.has(`${port.nodeId}|${port.direction}:${port.id}`) || undefined} data-occurred={occurred || undefined}>
+      <svg viewBox="0 0 10 12"><path d="M1.5 1.5 8.5 6l-7 4.5z" /></svg>
+    </Handle>
+  );
 }
 
 function PortCell({ port, state, values }: {

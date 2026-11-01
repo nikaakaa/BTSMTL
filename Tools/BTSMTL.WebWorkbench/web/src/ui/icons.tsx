@@ -94,6 +94,18 @@ export const CrumbArrow = (props: IconProps) => (
   </svg>
 );
 
+// 跳到 Timeline：错开的三条轨道片段。
+export const TimelineIcon = (props: IconProps) => (
+  <Icon {...props}><path d="M1.5 2.5h7v3h-7zm4 4.5h9v3h-9zm-2 4.5h6v3h-6z" /></Icon>
+);
+
+// 进入子图：两个相连的节点。
+export const SubgraphIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path fill="none" stroke="currentColor" strokeWidth="1.3" d="M1.65 2.65h6v4.5h-6zm6.7 6.2h6v4.5h-6zM7.65 4.9h3.2v3.95" />
+  </Icon>
+);
+
 // Timeline 选择器（TimelineSelector）：左侧短竖条加方框。
 export const SelectorIcon = (props: IconProps) => (
   <Icon {...props}>

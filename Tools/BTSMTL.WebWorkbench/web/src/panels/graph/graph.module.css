@@ -345,35 +345,64 @@
   text-overflow: ellipsis;
 }
 
-.flowIn, .flowOut {
+.node[data-openable] .header {
+  padding-right: 36px;
+}
+
+/* 进入子图／跳到 Timeline：标题栏右侧的图标按钮，与双击同效 */
+.openButton {
   position: absolute;
-  top: 50%;
-  width: 0;
-  height: 0;
-  margin-top: -6px;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 7px solid var(--port-exec-off);
+  top: 5px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--glyph);
+  cursor: pointer;
 }
 
-.flowIn {
-  left: 4px;
+.openButton:hover {
+  background: rgb(255 255 255 / 8%);
+  color: var(--glyph-strong);
 }
 
-.flowOut {
-  right: 4px;
+.openButton:focus-visible {
+  outline: 1px solid var(--accent);
 }
 
-.node[data-occurred] .flowIn, .node[data-occurred] .flowOut {
-  border-left-color: var(--graph-now);
+/* 执行端口：压在标题栏两侧边框上的三角，连线接在三角中心；连了线实心，本帧经过变黄 */
+.flowPort {
+  --pc: var(--port-exec);
+  top: 14px;
+  width: 10px;
+  height: 12px;
 }
 
-.subgraphMark {
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid var(--glyph);
-  border-radius: 1px;
-  flex: none;
+.flowPort svg {
+  display: block;
+  width: 10px;
+  height: 12px;
+  overflow: visible;
+}
+
+.flowPort path {
+  fill: var(--node);
+  stroke: var(--pc);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.flowPort[data-filled] path {
+  fill: var(--pc);
+}
+
+.flowPort[data-occurred] {
+  --pc: var(--graph-now);
 }
 
 .body {
@@ -424,7 +453,7 @@
   line-height: 16px;
 }
 
-.valuePort, .hiddenHandle, .triggerIn, .triggerOut {
+.valuePort, .hiddenHandle, .flowPort {
   position: absolute;
   top: 50%;
   min-width: 0;
@@ -463,23 +492,6 @@
   opacity: 0;
 }
 
-.triggerIn, .triggerOut {
-  top: 14px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-/* 执行连线接在节点边框上（React Flow 把手默认以自身中心对齐边框） */
-.triggerIn {
-  left: 0;
-}
-
-.triggerOut {
-  right: 0;
-  left: auto;
-}
-
 /* 流图连线：平时为端口色（执行线浅白、数据线按类型），本帧走过、拒绝与选中换色加粗 */
 .edge {
   fill: none;
@@ -511,16 +523,8 @@
   opacity: var(--graph-faded);
 }
 
-/* 作者模式：执行端口的连线把手覆盖标题两侧箭头，数值端口把手可拖出连线 */
-.canvas[data-author] .triggerIn, .canvas[data-author] .triggerOut {
-  width: 14px;
-  height: 14px;
-  transform: translateY(-50%);
-  opacity: 0;
-  cursor: crosshair;
-}
-
-.canvas[data-author] .valuePort {
+/* 作者模式：执行与数据端口都可拖出连线 */
+.canvas[data-author] .valuePort, .canvas[data-author] .flowPort {
   cursor: crosshair;
 }
 
