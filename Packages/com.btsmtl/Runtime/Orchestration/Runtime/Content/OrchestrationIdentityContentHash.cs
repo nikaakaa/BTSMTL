@@ -6,8 +6,7 @@ namespace BTSMTL.Orchestration
 {
     internal static class OrchestrationIdentityContentHash
     {
-        internal static StableHash Actor<TValue>(StableHash identities, StableHash defaults,
-            int defaultIdentityTableIndex,
+        internal static StableHash Actor<TValue>(StableHash identities,
             ReadOnlySpan<OrchestrationProgramSource<TValue>> sources,
             ReadOnlySpan<int> dependencyIdentityTableIndices,
             ReadOnlySpan<OrchestrationGraphBlackboardBinding> characterBlackboards,
@@ -18,10 +17,8 @@ namespace BTSMTL.Orchestration
             where TValue : unmanaged
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            StableHash.AppendLengthPrefixedText(hash, "btsmtl-orchestration-actor-preparation/3");
+            StableHash.AppendLengthPrefixedText(hash, "btsmtl-orchestration-actor-preparation/4");
             StableHash.AppendLengthPrefixedText(hash, identities.ToString());
-            StableHash.AppendLengthPrefixedText(hash, defaults.ToString());
-            StableHash.AppendInt32(hash, defaultIdentityTableIndex);
             StableHash.AppendInt32(hash, dependencyIdentityTableIndices.Length);
             for (int dependencyIndex = 0; dependencyIndex < dependencyIdentityTableIndices.Length; dependencyIndex++)
                 StableHash.AppendInt32(hash, dependencyIdentityTableIndices[dependencyIndex]);
@@ -41,8 +38,7 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationGraphBlackboardBinding binding = ref characterBlackboards[sharedSlot];
                 ref readonly OrchestrationBlackboardSlot descriptor = ref descriptors[sharedSlot];
                 StableHash.AppendInt32(hash, binding.InstanceIdentityId);
-                StableHash.AppendInt32(hash, binding.ContractIdentityId);
-                StableHash.AppendInt32(hash, binding.Field);
+                StableHash.AppendInt32(hash, binding.DeclarationIdentityId);
                 StableHash.AppendInt32(hash, (int)descriptor.ScopeKind);
                 StableHash.AppendInt32(hash, (int)descriptor.Lifetime);
                 StableHash.AppendInt32(hash, descriptor.CompiledOwnerIndex);

@@ -97,39 +97,42 @@ namespace BTSMTL.Orchestration
             FrozenOrchestrationIdentities identities,
             ReadOnlySpan<OrchestrationProgramSource<TValue>> sources,
             ReadOnlySpan<int> skillContentIds,
-            ReadOnlySpan<int> dependencyIdentityTableIndices,
-            OrchestrationBlackboardDefaults<TValue> defaults,
-            int defaultIdentityTableIndex)
+            ReadOnlySpan<int> dependencyIdentityTableIndices)
         {
             var prepared = OrchestrationGraphPreparation<TValue, TNumerics>.Prepare(
-                identities, sources, skillContentIds, (defaults, defaultIdentityTableIndex));
+                identities, sources, skillContentIds);
 
-            var characters = new SortedDictionary<(int Instance, int Contract, int Field),
-                (OrchestrationBlackboardSlot Descriptor, OrchestrationValueKind Kind, TValue DefaultValue)>();
+            var comparer = EqualityComparer<TValue>.Default;
+            var characters = new SortedDictionary<(int Instance, int Declaration),
+                (OrchestrationBlackboardSlot Descriptor, OrchestrationValueKind Kind, TValue DefaultValue, int Program)>();
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.GeneratedBlackboards.Span)
+                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.BlackboardBindings.Span)
                 {
                     OrchestrationBlackboardSlot descriptor = content.Structure.Program.BlackboardSlots.Span[binding.ValueSlot];
                     if (descriptor.ScopeKind != OrchestrationScopeKind.Character)
                         continue;
                     OrchestrationValueKind kind = content.Structure.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
-                    var key = (Instance: mapping[binding.InstanceIdentityId], Contract: mapping[binding.ContractIdentityId], binding.Field);
+                    TValue defaultValue = prepared.Graphs.Span[programIndex].Parameters.DefaultValues.Span[binding.ValueSlot];
+                    var key = (Instance: mapping[binding.InstanceIdentityId], Declaration: mapping[binding.DeclarationIdentityId]);
                     if (characters.TryGetValue(key, out var existing))
                     {
                         if (existing.Kind != kind || existing.Descriptor.Lifetime != descriptor.Lifetime ||
-                            existing.Descriptor.CompiledOwnerIndex != descriptor.CompiledOwnerIndex)
-                            throw new InvalidOperationException($"Character 黑板字段 '{identities.Table.Resolve(key.Instance)}/{identities.Table.Resolve(key.Contract)}/{key.Field}' 的发布声明不一致。");
+                            existing.Descriptor.CompiledOwnerIndex != descriptor.CompiledOwnerIndex ||
+                            !comparer.Equals(existing.DefaultValue, defaultValue))
+                            throw new InvalidOperationException(
+                                $"Character 黑板声明 '{identities.Table.Resolve(key.Declaration)}' 在图 " +
+                                $"'{sources[existing.Program].Content.Identity.Source.GraphId}' 与 '{content.Identity.Source.GraphId}' " +
+                                "中的类型、生命周期、所属 owner 或默认值不一致。");
                     }
                     else
-                        characters.Add(key, (descriptor, kind,
-                            prepared.Graphs.Span[programIndex].Parameters.DefaultValues.Span[binding.ValueSlot]));
+                        characters.Add(key, (descriptor, kind, defaultValue, programIndex));
                 }
             }
 
-            var sharedSlots = new Dictionary<(int Instance, int Contract, int Field), int>();
+            var sharedSlots = new Dictionary<(int Instance, int Declaration), int>();
             var characterBlackboards = new OrchestrationGraphBlackboardBinding[characters.Count];
             var characterDefaults = new TValue[characters.Count];
             var characterDescriptors = new OrchestrationBlackboardSlot[characters.Count];
@@ -140,7 +143,7 @@ namespace BTSMTL.Orchestration
             {
                 sharedSlots.Add(entry.Key, sharedSlot);
                 characterBlackboards[sharedSlot] = new OrchestrationGraphBlackboardBinding(sharedSlot,
-                    entry.Key.Instance, entry.Key.Contract, entry.Key.Field);
+                    entry.Key.Instance, entry.Key.Declaration);
                 characterDescriptors[sharedSlot] = entry.Value.Descriptor;
                 characterDefaults[sharedSlot] = entry.Value.DefaultValue;
                 OrchestrationValueKind kind = entry.Value.Kind;
@@ -155,12 +158,12 @@ namespace BTSMTL.Orchestration
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
                 var characterMapping = new int[content.Parameters.DefaultValues.Length];
                 Array.Fill(characterMapping, -1);
-                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.GeneratedBlackboards.Span)
+                foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.Structure.BlackboardBindings.Span)
                 {
                     OrchestrationBlackboardSlot descriptor = content.Structure.Program.BlackboardSlots.Span[binding.ValueSlot];
                     if (descriptor.ScopeKind == OrchestrationScopeKind.Character)
                     {
-                        int shared = sharedSlots[(mapping[binding.InstanceIdentityId], mapping[binding.ContractIdentityId], binding.Field)];
+                        int shared = sharedSlots[(mapping[binding.InstanceIdentityId], mapping[binding.DeclarationIdentityId])];
                         characterMapping[binding.ValueSlot] = shared;
                     }
                 }
@@ -171,8 +174,8 @@ namespace BTSMTL.Orchestration
                 characterMappings[programIndex] = characterMapping;
             }
 
-            StableHash identity = OrchestrationIdentityContentHash.Actor(identities.Identity, defaults.ContentIdentity,
-                defaultIdentityTableIndex, sources, dependencyIdentityTableIndices,
+            StableHash identity = OrchestrationIdentityContentHash.Actor(identities.Identity,
+                sources, dependencyIdentityTableIndices,
                 characterBlackboards, characterDescriptors, characterSlotTypes, characterKindSlotCounts, characterMappings);
             return new OrchestrationActorPreparation<TValue, TNumerics>(
                 identities, sources.ToArray(), prepared.Graphs, prepared.Programs, characterMappings,

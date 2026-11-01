@@ -24,22 +24,8 @@ namespace BTSMTL.Orchestration
         public static OrchestrationGraphPreparation<TValue, TNumerics> Prepare(
             FrozenOrchestrationIdentities identities,
             ReadOnlySpan<OrchestrationProgramSource<TValue>> sources,
-            ReadOnlySpan<int> programContentIds,
-            (OrchestrationBlackboardDefaults<TValue> Content, int IdentityTableIndex)? defaults)
+            ReadOnlySpan<int> programContentIds)
         {
-            var projected = new Dictionary<(int Contract, int Field), TValue>();
-            if (defaults.HasValue)
-            {
-                var publication = defaults.Value;
-                ReadOnlyMemory<int> mapping = identities.LocalToShared(publication.IdentityTableIndex);
-                foreach (ref readonly OrchestrationBlackboardDefault<TValue> value in publication.Content.Values.Span)
-                {
-                    TValue sourceValue = value.Value;
-                    projected.Add((mapping.Span[value.ContractIdentityId], value.Field),
-                        PreparedOrchestrationGraph<TValue, TNumerics>.MapValue(in sourceValue, mapping));
-                }
-            }
-
             var graphs = new PreparedOrchestrationGraph<TValue, TNumerics>[sources.Length];
             var programs = new OrchestrationProgram<TValue>[sources.Length];
             var storages = new OrchestrationPreparedProgramStorage<TValue>[sources.Length];
@@ -57,26 +43,13 @@ namespace BTSMTL.Orchestration
             var actionKindCounts = new int[OrchestrationStateLayoutView.KindCount];
             foreach (var entry in actionKinds)
                 actionSlots.Add(entry.Key, (actionSlots.Count, actionKindCounts[(int)entry.Value]++));
-            TNumerics values = default;
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                var overrides = new OrchestrationDefaultValue<TValue>[content.Structure.GeneratedBlackboards.Length];
-                for (int bindingIndex = 0; bindingIndex < overrides.Length; bindingIndex++)
-                {
-                    ref readonly OrchestrationGraphBlackboardBinding binding = ref content.Structure.GeneratedBlackboards.Span[bindingIndex];
-                    int contract = mapping[binding.ContractIdentityId];
-                    if (!projected.TryGetValue((contract, binding.Field), out TValue value))
-                        throw new InvalidOperationException($"当前发布默认值缺少黑板合同 '{identities.Table.Resolve(contract)}' 的字段 '{binding.Field}'。");
-                    OrchestrationValueKind declaredKind = content.Structure.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
-                    OrchestrationValueKind kind = values.Kind(in value);
-                    if (kind != declaredKind)
-                        throw new InvalidOperationException($"图 '{content.Identity.Source.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
-                    overrides[bindingIndex] = new OrchestrationDefaultValue<TValue>(binding.ValueSlot, value);
-                }
                 graphs[programIndex] = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(
-                    content, identities, sources[programIndex].IdentityTableIndex, overrides,
+                    content, identities, sources[programIndex].IdentityTableIndex,
+                    ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty,
                     PrepareStorage(content.Structure, mapping, actionSlots, actionKindCounts));
                 OrchestrationProgramContent program = graphs[programIndex].Program;
                 programs[programIndex] = new OrchestrationProgram<TValue>(program, graphs[programIndex].Parameters);

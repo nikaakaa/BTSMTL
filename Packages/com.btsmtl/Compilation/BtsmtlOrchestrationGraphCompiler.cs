@@ -377,8 +377,8 @@ namespace BTSMTL.Compilation
                     structureTexts.Add(metadata.Key);
                     structureTexts.Add(metadata.ValueType);
                 }
-                foreach (var binding in GeneratedBlackboardDeclarations())
-                    structureTexts.Add(ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field).Contract);
+                foreach (var binding in SharedBlackboardDeclarations())
+                    structureTexts.Add(binding.Declaration.Dependency.Identity);
                 foreach (SemanticOperation operation in m_Operations)
                     if (operation.Code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateExit or OrchestrationOperationCode.EmitOutput)
                         structureTexts.Add(operation.Text0);
@@ -428,7 +428,7 @@ namespace BTSMTL.Compilation
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
                 var content = CreateContent(program, operationPayloads, m_Constants.ToArray(), m_DefaultValues.ToArray(),
-                    m_Extensions.ToArray(), BuildOperationContents(), entries, BuildVariables(), BuildGeneratedBlackboards(),
+                    m_Extensions.ToArray(), BuildOperationContents(), entries, BuildVariables(), BuildBlackboardBindings(),
                     m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources(entries));
                 var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts);
                 return CompleteCompilation(content, CreateBindings(content, identities));
@@ -1521,40 +1521,25 @@ namespace BTSMTL.Compilation
 
             int CatalogInt(ProgramCatalogEntry declaration, string name) => CatalogLiteral(declaration, name).Int32;
 
-            string CatalogText(ProgramCatalogEntry declaration, string name) => CatalogLiteral(declaration, name).String;
-
-            OrchestrationGraphBlackboardBinding[] BuildGeneratedBlackboards()
+            OrchestrationGraphBlackboardBinding[] BuildBlackboardBindings()
             {
                 var result = new List<OrchestrationGraphBlackboardBinding>();
-                foreach (var binding in GeneratedBlackboardDeclarations())
-                {
-                    var metadata = ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
+                foreach (var binding in SharedBlackboardDeclarations())
                     result.Add(new OrchestrationGraphBlackboardBinding(ValueSlot(binding.Slot), Bind(Scope(binding.Slot).Identity),
-                        Bind(metadata.Contract), metadata.Field));
-                }
+                        Bind(binding.Declaration.Dependency.Identity)));
                 return result.ToArray();
             }
 
-            IEnumerable<(int Slot, ProgramCatalogEntry Declaration, ProgramCatalogField Field)> GeneratedBlackboardDeclarations()
+            IEnumerable<(int Slot, ProgramCatalogEntry Declaration)> SharedBlackboardDeclarations()
             {
                 for (int slot = 0; slot < m_StateSlots.Count; slot++)
                 {
                     if (m_StateSlots[slot].Semantic != ProgramStateSemantic.BlackboardValue || m_ParameterSlots.Contains(slot))
                         continue;
-                    ProgramCatalogEntry declaration = Declaration(slot);
-                    foreach (ProgramCatalogField field in declaration.Fields)
-                        if (field.Name == "GeneratedField")
-                        {
-                            yield return (slot, declaration, field);
-                            break;
-                        }
+                    OrchestrationScopeKind scope = m_Blackboards[ValueSlot(slot)].ScopeKind;
+                    if (scope is OrchestrationScopeKind.Character or OrchestrationScopeKind.ActionInstance)
+                        yield return (slot, Declaration(slot));
                 }
-            }
-
-            (string Contract, int Field) ReadGeneratedBlackboardMetadata(ProgramCatalogEntry declaration, ProgramCatalogField field)
-            {
-                m_StructureLiteralIndexes.Add(field.ConstantIndex);
-                return (CatalogText(declaration, "GeneratedContract"), m_Literals[field.ConstantIndex].Int32);
             }
 
             OrchestrationGraphEntry[] BuildEntries()

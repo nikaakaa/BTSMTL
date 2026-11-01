@@ -141,7 +141,7 @@ GraphExecutionResult result = runtime.Adopt();
 | `Packages/com.thirdperson.numerics.quantum` | Quantum 宿主数值策略 |
 | `Packages/com.thirdperson.memorypack` | 按需外部冷数据编码 |
 
-黑板生成工具 `Tools/BlackboardData.Generator` 依赖黑板配置协议，属于宿主工具，程序集名为 `ThirdPersonSimulation.BlackboardData.Generator`，宿主经 `com.thirdperson.gameplay` 包位置定位它；它读取宿主声明的数值类型、Profile、ABI、工厂和已转换默认值，不引用 FP 或具体玩法。3C 的 Gameplay 配置生成器位于宿主项目 `Tools/GameplayConfig/Generator`，由宿主正式脚本调用；它依赖玩法配置及 MemoryPack，属于宿主工具。
+黑板默认值随图编译写入编排内容，不另设生成工具。项目锁定的 Luban 版本、发布包校验与恢复脚本位于 `Tools/Luban`（`luban.lock.json`、`Restore-Luban.ps1`），供宿主配置生成与技能 schema 校验共用。3C 的 Gameplay 配置生成器位于宿主项目 `Tools/GameplayConfig/Generator`，由宿主正式脚本调用；它依赖玩法配置及 MemoryPack，属于宿主工具。
 
 Unity 作者工具要求宿主提供 NodeCanvas、FlowCanvas、ParadoxNotion 与 Slate；其中图插件使用已适配 Shared 文本合同的版本。诊断采样注解由 Shared 的正式包依赖提供。Quantum 数学、运动算法和对应冷编码所需 Photon DLL 属于宿主侧依赖。
 

@@ -38,7 +38,7 @@ namespace BTSMTL.Orchestration
             ReadOnlyMemory<OrchestrationExtensionReference> extensions,
             ReadOnlyMemory<OrchestrationGraphEntry> entries,
             ReadOnlyMemory<OrchestrationGraphVariable> variables,
-            ReadOnlyMemory<OrchestrationGraphBlackboardBinding> generatedBlackboards,
+            ReadOnlyMemory<OrchestrationGraphBlackboardBinding> blackboardBindings,
             ReadOnlyMemory<OrchestrationGraphHostInput> hostInputs,
             ReadOnlyMemory<OrchestrationGraphPort> ports,
             ReadOnlyMemory<OrchestrationGraphExecutionSource> sources)
@@ -50,7 +50,7 @@ namespace BTSMTL.Orchestration
             Extensions = extensions;
             Entries = entries;
             Variables = variables;
-            GeneratedBlackboards = generatedBlackboards;
+            BlackboardBindings = blackboardBindings;
             HostInputs = hostInputs;
             Ports = ports;
             Sources = sources;
@@ -63,7 +63,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationExtensionReference> Extensions { get; }
         public ReadOnlyMemory<OrchestrationGraphEntry> Entries { get; }
         public ReadOnlyMemory<OrchestrationGraphVariable> Variables { get; }
-        public ReadOnlyMemory<OrchestrationGraphBlackboardBinding> GeneratedBlackboards { get; }
+        public ReadOnlyMemory<OrchestrationGraphBlackboardBinding> BlackboardBindings { get; }
         public ReadOnlyMemory<OrchestrationGraphHostInput> HostInputs { get; }
         public ReadOnlyMemory<OrchestrationGraphPort> Ports { get; }
         public ReadOnlyMemory<OrchestrationGraphExecutionSource> Sources { get; }
