@@ -471,11 +471,16 @@
   left: auto;
 }
 
-/* 流图连线：平时灰色，本帧走过、拒绝与选中换色加粗 */
+/* 流图连线：平时为端口色（执行线浅白、数据线按类型），本帧走过、拒绝与选中换色加粗 */
 .edge {
   fill: none;
-  stroke: var(--graph-edge);
+  stroke: var(--ec);
   stroke-width: 1.5;
+  opacity: 0.85;
+}
+
+.edge[data-status='passed'], .edge[data-status='rejected'], .edge[data-picked] {
+  opacity: 1;
 }
 
 .edge[data-status='passed'] {

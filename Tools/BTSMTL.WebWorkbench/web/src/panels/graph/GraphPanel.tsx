@@ -103,6 +103,8 @@ interface EdgeData extends Record<string, unknown> {
   offset: number;
   // 连着入口、出口或任意状态的转移：数量多、信息少，平时画淡。
   minor: boolean;
+  // 流图连线从执行端口出发：画执行色；否则按源端口的值类型着色。
+  trigger: boolean;
 }
 type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
@@ -486,16 +488,17 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           id: edge.id, type: 'transition', source: edge.source!.nodeId, target: edge.target!.nodeId,
           sourceHandle: 'out:@node', targetHandle: 'in:@node',
           data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: (index - (counts.get(pair)! - 1) / 2) * 16,
-            minor: system.has(edge.source!.nodeId) || system.has(edge.target!.nodeId) },
+            minor: system.has(edge.source!.nodeId) || system.has(edge.target!.nodeId), trigger: false },
         };
       }
       const source = layout.nodes.find(item => item.node.id === edge.source!.nodeId)!;
       const target = layout.nodes.find(item => item.node.id === edge.target!.nodeId)!;
+      const output = source.outputs.find(port => port.id === edge.source!.portId);
       return {
         id: edge.id, type: 'route', source: edge.source!.nodeId, target: edge.target!.nodeId,
-        sourceHandle: source.outputs.some(port => port.id === edge.source!.portId) ? `out:${edge.source!.portId}` : 'out:@node',
+        sourceHandle: output ? `out:${edge.source!.portId}` : 'out:@node',
         targetHandle: target.inputs.some(port => port.id === edge.target!.portId) ? `in:${edge.target!.portId}` : 'in:@node',
-        data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: 0, minor: false },
+        data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: 0, minor: false, trigger: output?.isTrigger ?? true },
       };
     });
   }, [layout, hierarchy, graph, machine]);
@@ -925,15 +928,18 @@ function PortCell({ port, state, values }: {
   );
 }
 
-function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
+// 流图连线：执行线用执行色，数据线与源端口同色（Shader Graph）。
+function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
   const { store, related } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
+  const sample = useNodeState(store, source).ports[`output:${data!.edge.source!.portId}`];
+  const color = data!.trigger ? 'var(--port-exec)' : portColor(sample?.valueType);
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const status = state.passed ? 'passed' : state.rejected ? 'rejected' : 'idle';
   const faded = related !== null && !related.has(id);
   return (
     <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
-      <path d={path} className={styles.edge} data-status={status} data-faded={faded || undefined}
+      <path d={path} className={styles.edge} style={{ ['--ec' as string]: color }} data-status={status} data-faded={faded || undefined}
         data-selected={state.selected || undefined} data-picked={selected || undefined} />
     </Tip>
   );
