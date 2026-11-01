@@ -69,6 +69,8 @@ export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
   clrType: string;
+  hasAuthoringFields: boolean;
+  defaultValue?: JsonValue;
   enumValues: string[] | null;
   elementType: string | null;
   element?: StorageShape;
@@ -553,8 +555,8 @@ export const authoringApi = {
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
   describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)),
-  // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
-  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+  // 按当前未保存配置描述节点或普通作者值，保留技能 JSON 的数值格式。
+  describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>

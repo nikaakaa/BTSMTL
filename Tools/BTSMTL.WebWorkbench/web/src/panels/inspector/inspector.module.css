@@ -420,3 +420,10 @@
   gap: 4px;
   margin-top: 4px;
 }
+
+.authorFields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

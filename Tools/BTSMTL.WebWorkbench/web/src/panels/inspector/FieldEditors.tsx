@@ -8,7 +8,7 @@ import {
   authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type EdgeStep, type JsonKey, type JsonMutation,
 } from '../../state/authoring';
-import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Fold } from '../../ui/blocks';
@@ -23,7 +23,8 @@ import styles from './inspector.module.css';
 
 type SetValue = (keys: JsonKey[], value: JsonValue) => void;
 type SetFields = (changes: readonly JsonMutation[]) => void;
-type ReferenceOwner = { graphId: string; nodeId: string };
+type ReferenceOwner = { kind: 'node'; graphId: string; nodeId: string }
+  | { kind: 'value'; graphId: string | null; identity: string };
 
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
@@ -115,6 +116,7 @@ const floatTypes = new Set(['System.Single', 'System.Double', 'System.Decimal'])
 
 export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   if (!shape) return null;
+  if (shape.defaultValue !== undefined) return cloneJson(shape.defaultValue);
   if (shape.clrType === 'BTSMTL.Orchestration.ObjectHandle') return '0';
   if (shape.enumValues?.length) return shape.enumValues[0];
   if (shape.clrType === 'System.Boolean') return false;
@@ -126,8 +128,9 @@ export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   return null;
 }
 
-function ValueEditor({ label, value, shape, keys, onSet }: {
-  label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
+function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', onSet }: {
+  label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[];
+  graphId?: string | null; scope?: string; onSet: SetValue;
 }): ReactNode {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
   if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
@@ -148,9 +151,19 @@ function ValueEditor({ label, value, shape, keys, onSet }: {
   if (typeof value === 'string' || (value == null && shape?.clrType === 'System.String'))
     return <Row label={label}><TextValue label={label} value={value ?? null} onSet={set} /></Row>;
   if (Array.isArray(value))
-    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} onSet={onSet} />;
+    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} graphId={graphId} scope={scope} onSet={onSet} />;
+  if (shape?.hasAuthoringFields) {
+    if (value == null) {
+      const created = shape.defaultValue;
+      return <Row label={label}>{created === undefined
+        ? <span className={styles.issue}>该类型没有正式的创建默认值</span>
+        : <Button variant="ghost" onClick={() => onSet(keys, cloneJson(created))}>添加 {label}</Button>}</Row>;
+    }
+    return <AuthoringValueFields label={label} type={shape.clrType} value={value as JsonObject} graphId={graphId}
+      identity={JSON.stringify([scope, keys])} onSet={next => onSet(keys, next)} />;
+  }
   if (value && typeof value === 'object')
-    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} onSet={onSet} />;
+    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} graphId={graphId} scope={scope} onSet={onSet} />;
   // 空值：有存储形状时可按默认值创建；没有形状的按身份字符串填写。
   const created = defaultFor(shape);
   return created !== null
@@ -158,8 +171,9 @@ function ValueEditor({ label, value, shape, keys, onSet }: {
     : <Row label={label}><TextValue label={label} value={null} nullable onSet={set} /></Row>;
 }
 
-function StructEditor({ label, value, shape, keys, onSet }: {
-  label: string; value: JsonObject; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
+function StructEditor({ label, value, shape, keys, graphId, scope, onSet }: {
+  label: string; value: JsonObject; shape: StorageShape | null | undefined; keys: JsonKey[];
+  graphId: string | null; scope: string; onSet: SetValue;
 }) {
   const members = shape?.members ?? [];
   const names = [...members.map(member => member.member), ...Object.keys(value).filter(key => !members.some(member => member.member === key))];
@@ -171,29 +185,32 @@ function StructEditor({ label, value, shape, keys, onSet }: {
       <div className={styles.groupHead}>{label}</div>
       {names.map(name => (
         <ValueEditor key={name} label={memberLabel(name)} value={value[name]} shape={members.find(member => member.member === name)}
-          keys={[...keys, name]} onSet={onSet} />
+          keys={[...keys, name]} graphId={graphId} scope={scope} onSet={onSet} />
       ))}
     </div>
   );
 }
 
-function ListEditor({ label, value, shape, keys, onSet }: {
-  label: string; value: JsonValue[]; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
+function ListEditor({ label, value, shape, keys, graphId, scope, onSet }: {
+  label: string; value: JsonValue[]; shape: StorageShape | null | undefined; keys: JsonKey[];
+  graphId: string | null; scope: string; onSet: SetValue;
 }) {
-  const add = () => {
-    const created = value.length ? cloneJson(value[value.length - 1]) : defaultFor(shape);
-    onSet(keys, [...value.map(item => cloneJson(item)), created]);
-  };
+  const append = (created: JsonValue) => onSet(keys, [...value.map(item => cloneJson(item)), created]);
+  const created = shape?.defaultValue;
+  const add = shape?.hasAuthoringFields
+    ? created === undefined ? null : () => append(cloneJson(created))
+    : () => append(value.length ? cloneJson(value[value.length - 1]) : defaultFor(shape));
   const remove = (index: number) => onSet(keys, value.filter((_, item) => item !== index).map(item => cloneJson(item)));
   return (
     <div className={styles.group}>
       <div className={styles.groupHead}>
         {label}<span className={styles.count}>{value.length}</span>
-        <Button variant="ghost" className={styles.iconButton} tip="添加一项" aria-label="添加一项" onClick={add}><AddIcon /></Button>
+        <Button variant="ghost" className={styles.iconButton} disabled={add === null}
+          tip={add === null ? '该类型没有正式的创建默认值' : '添加一项'} aria-label="添加一项" onClick={add ?? undefined}><AddIcon /></Button>
       </div>
       {value.map((item, index) => (
         <div key={index} className={styles.listItem}>
-          <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} onSet={onSet} />
+          <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} graphId={graphId} scope={scope} onSet={onSet} />
           <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项" onClick={() => remove(index)}><CloseIcon /></Button>
         </div>
       ))}
@@ -254,7 +271,7 @@ export function StepFields({ graphId, step, children }: { graphId: string; step:
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === step.nodeId) ?? null;
-  const { description } = useDescription(skill, graphId, node);
+  const { description } = useDescription(skill, graphId, node?.type as string | undefined, node ? configurationOf(node) : null);
   const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
   const selector = step.nodeType === 'BtsmtlSkillSelectorFlowNode';
   const set: SetValue = (keys, value) => graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, ...keys], value }]);
@@ -289,15 +306,13 @@ interface DescribeIssue {
 const configurationOf = (node: JsonObject): JsonObject =>
   Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
 
-function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
+function useDescription(skill: AuthoringTarget | null, graphId: string | null, type: string | undefined, configuration: JsonObject | null) {
   const version = useAuthoring(state => authoringDocument(state).version);
   const carrierRevision = useAuthoring(state => state.carrierRevision);
   const scene = useWorkbench(state => selectedScene(state));
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
-  const type = node?.type as string | undefined;
-  const configuration = node ? configurationOf(node) : null;
   const key = configuration ? stringifySkillJson(configuration, '\n') : null;
   const latest = useRef(configuration);
   latest.current = configuration;
@@ -307,7 +322,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
     if (!skill || !type || key === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      authoringApi.describeNode(skill, type, latest.current!, graphId, authoringActions.editingView(), controller.signal).then(result => {
+      authoringApi.describeConfiguration(skill, type, latest.current!, graphId, authoringActions.editingView(), controller.signal).then(result => {
         if (controller.signal.aborted) return;
         const items = result.fields.items;
         setDescription({
@@ -340,19 +355,73 @@ function shapeAt(item: StoredField, path: string[]): StorageShape | null {
   return shape;
 }
 
+function descriptionValues(description: Description | null, value: JsonObject) {
+  const values = new Map<string, JsonValue | undefined>();
+  for (const item of description?.stored ?? [])
+    for (const field of item.fields) values.set(field.fieldId, getIn(value, field.serializedMemberPath));
+  for (const field of description?.computed ?? []) values.set(field.fieldId, field.value);
+  return values;
+}
+
+function DescriptionStatus({ description, issues }: { description: Description | null; issues: DescribeIssue[] }) {
+  return <>
+    {issues.map((issue, index) => {
+      const text = `${issue.path ? `${issue.path}：` : ''}${issue.message}`;
+      return <Tip key={index} name={text}><div className={styles.issue} data-name>{text}</div></Tip>;
+    })}
+    {!description && !issues.length && <div className={styles.note}>读取字段</div>}
+  </>;
+}
+
+function ComputedFields({ fields }: { fields: ComputedField[] }) {
+  return fields.length > 0 && <Fold title="推导">
+    {fields.map(field => <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
+      <span className={styles.readOnly}>{valueText(field.value)}</span>
+    </Row>)}
+  </Fold>;
+}
+
+function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: {
+  label: string; type: string; value: JsonObject; graphId: string | null; identity: string; onSet(value: JsonObject): void;
+}) {
+  const skill = useAuthoring(state => state.target);
+  const { description, issues } = useDescription(skill, graphId, type, value);
+  const values = descriptionValues(description, value);
+  const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.kind, skill?.name, identity]) };
+  const setFields: SetFields = changes => {
+    const next = cloneJson(value);
+    for (const change of changes) setIn(next, change.keys, change.value);
+    onSet(next);
+  };
+  const set: SetValue = (keys, next) => setFields([{ keys, value: next }]);
+  return <Fold title={label} defaultOpen>
+    <DescriptionStatus description={description} issues={issues} />
+    {description?.stored.map(item => <StoredItem key={item.member} item={item} node={value} values={values} owner={owner}
+      onSet={set} onSetFields={setFields} />)}
+    <ComputedFields fields={description?.computed.filter(field => visible(field, values)) ?? []} />
+  </Fold>;
+}
+
+export function SkillFields({ editable }: { editable: boolean }) {
+  const target = useAuthoring(state => state.target);
+  const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
+  if (target?.kind !== 'skill' || document === null) return null;
+  return <fieldset className={styles.authorFields} disabled={!editable}>
+    <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
+      graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value, next); })} />
+  </fieldset>;
+}
+
 // 节点一栏：名称与按合同描述的字段；children 为同栏的引用行（状态体、子图、转移等）。
 export function NodeFields({ graphId, nodeId, children }: { graphId: string; nodeId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
-  const { description, issues } = useDescription(skill, graphId, node);
+  const { description, issues } = useDescription(skill, graphId, node?.type as string | undefined, node ? configurationOf(node) : null);
   if (!node) return null;
   const setFields: SetFields = changes => graphAuthoring.setNodeValues(graphId, nodeId, changes);
   const set: SetValue = (keys, value) => setFields([{ keys, value }]);
-  const values = new Map<string, JsonValue | undefined>();
-  for (const item of description?.stored ?? [])
-    for (const field of item.fields) values.set(field.fieldId, getIn(node, field.serializedMemberPath));
-  for (const field of description?.computed ?? []) values.set(field.fieldId, field.value);
+  const values = descriptionValues(description, node);
   const computed = description?.computed.filter(field => visible(field, values)) ?? [];
   const connected = new Set(((document as JsonObject).allNodes as JsonObject[]).flatMap(item =>
     (item.outConnections as JsonObject[]).filter(connection => connection.targetNode === nodeId).map(connection => connection.targetPortID as string)));
@@ -362,14 +431,10 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
     <>
       <Fold title="节点" defaultOpen>
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
-        {issues.map((issue, index) => {
-          const text = `${issue.path ? `${issue.path}：` : ''}${issue.message}`;
-          return <Tip key={index} name={text}><div className={styles.issue} data-name>{text}</div></Tip>;
-        })}
-        {!description && !issues.length && <div className={styles.note}>读取字段</div>}
+        <DescriptionStatus description={description} issues={issues} />
         {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
-            owner={{ graphId, nodeId }} outputs={outputs} onSet={set} onSetFields={setFields} />
+            owner={{ kind: 'node', graphId, nodeId }} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
         {children}
       </Fold>
@@ -379,19 +444,11 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
             const keys = ['_inputPortValues', port.port.ID];
             const current = getIn(node, keys) ?? (port.port.serializedValue as JsonValue);
             return <ValueEditor key={port.port.ID} label={port.port.name} value={current} shape={portShape(port.port.type)}
-              keys={keys} onSet={set} />;
+              keys={keys} graphId={graphId} scope={`${graphId}/${nodeId}/${port.port.ID}`} onSet={set} />;
           })}
         </Fold>
       )}
-      {computed.length > 0 && (
-        <Fold title="推导">
-          {computed.map(field => (
-            <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
-              <span className={styles.readOnly}>{field.value === null ? '空' : typeof field.value === 'object' ? stringifySkillJson(field.value, ' ') : String(field.value)}</span>
-            </Row>
-          ))}
-        </Fold>
-      )}
+      <ComputedFields fields={computed} />
     </>
   );
 }
@@ -603,7 +660,7 @@ function portShape(type: string): StorageShape {
   const clrType = { Single: 'System.Single', Double: 'System.Double', Int32: 'System.Int32', Int64: 'System.Int64',
     UInt64: 'System.UInt64', Boolean: 'System.Boolean', String: 'System.String',
     ObjectHandle: 'BTSMTL.Orchestration.ObjectHandle', 'object-handle': 'BTSMTL.Orchestration.ObjectHandle' }[type] ?? type;
-  return { clrType, enumValues: null, elementType: null };
+  return { clrType, hasAuthoringFields: false, enumValues: null, elementType: null };
 }
 
 function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetFields }: {
@@ -615,7 +672,7 @@ function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetField
   return (
     <>
       {item.fields.filter(field => visible(field, values)).map(field => (
-        <FieldEditor key={field.fieldId} id={`${owner.graphId}/${owner.nodeId}/${field.fieldId}`} field={field} item={item} node={node} owner={owner}
+        <FieldEditor key={field.fieldId} id={`${owner.kind === 'node' ? `${owner.graphId}/${owner.nodeId}` : owner.identity}/${field.fieldId}`} field={field} item={item} node={node} owner={owner}
           outputs={outputs} onSet={onSet} onSetFields={onSetFields} />
       ))}
     </>
@@ -623,7 +680,7 @@ function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetField
 }
 
 function CreateOwnedGraph({ owner, path, target }: {
-  owner: ReferenceOwner; path: string[]; target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
+  owner: Extract<ReferenceOwner, { kind: 'node' }>; path: string[]; target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
 }) {
   const [creating, setCreating] = useState(false);
   return <Button disabled={creating} onClick={() => {
@@ -645,14 +702,14 @@ function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
   if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
-  if (Array.isArray(value) && isPortList(shape))
+  if (owner.kind === 'node' && Array.isArray(value) && isPortList(shape))
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
   const ownedTargets = field.graphTargets.filter(target => target.ownerBinding === 'ReferenceNode');
-  if (ownedTargets.length !== 0)
+  if (owner.kind === 'node' && ownedTargets.length !== 0)
     return <Row label={label}>{value == null || value === ''
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
-  if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.pickerKind !== null)
+  if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
     return <Row label={label}><ReferencePicker id={id} label={label} value={value}
       catalog={field.choiceKind === null
         ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
@@ -688,8 +745,13 @@ function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields
       <TextValue label={label} value={value ?? null}
         nullable={shape?.clrType !== 'System.String'} onSet={set} />
     </Row>;
-  return <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, enumValues: null, elementType: null } : null)}
-    keys={path} onSet={onSet} />;
+  return <>
+    <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, hasAuthoringFields: false, enumValues: null, elementType: null } : null)}
+      keys={path} graphId={owner.graphId} scope={id} onSet={onSet} />
+    {field.optional && shape?.hasAuthoringFields && value !== null && <Row label="">
+      <Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button>
+    </Row>}
+  </>;
 }
 
 // ── 片段字段：没有类型合同，按 JSON 值本身的类型编辑；FP 时间以秒显示 ──

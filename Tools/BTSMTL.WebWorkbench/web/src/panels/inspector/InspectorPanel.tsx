@@ -22,7 +22,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { ClipFields, InputClipFields, InputPlanFields, NodeFields, StepFields, TrackFields, TransitionFields } from './FieldEditors';
+import { ClipFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -199,6 +199,7 @@ function SkillSummary() {
     <>
       <Head name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
       {documentError !== null && <ErrorLine text={documentError} entryId={null} />}
+      <SkillFields editable={editable} />
       {noProgram && <div className={styles.note}>当前技能没有执行图</div>}
       {paths.map((path, index) => (
         <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} defaultOpen>

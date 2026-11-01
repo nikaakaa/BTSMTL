@@ -340,7 +340,7 @@ function useNodeCreator(graphId: string) {
     try {
       const description = configuration === null
         ? await authoringApi.describeType(skill, type, graphId, authoringActions.editingView(), controller.signal)
-        : await authoringApi.describeNode(skill, type, configuration, graphId, authoringActions.editingView(), controller.signal);
+        : await authoringApi.describeConfiguration(skill, type, configuration, graphId, authoringActions.editingView(), controller.signal);
       controller.signal.throwIfAborted();
       if (!description.availability.available) throw new Error(description.availability.reason ?? `${type} 不可创建`);
       if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
