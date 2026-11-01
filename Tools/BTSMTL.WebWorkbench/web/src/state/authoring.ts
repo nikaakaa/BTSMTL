@@ -10,7 +10,7 @@ import {
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
-import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
+import type { AuthorTimeline, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
@@ -1554,10 +1554,9 @@ export const graphAuthoring = {
   },
 };
 
-// 运行的图叠加未保存修改：节点与连线以编辑后的图文件为准，新节点的端口取 addedPorts，位置取编辑后的布局。
-// 只处理当前显示的图实例（invocationPath）。
-export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Record<string, JsonValue>,
-  addedPorts: Record<string, AddedPort[]>): GraphDefinition {
+export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string, JsonValue>,
+  addedPorts: Record<string, AddedPort[]>): SkillDocumentGraph {
+  const path = graph.authoringPath;
   const document = edited[graphPath(graph.id)] as JsonObject | undefined;
   const layout = (edited[layoutPath] as JsonObject | undefined)?.[graph.id] as JsonObject | undefined;
   if (!document && !layout) return graph;
@@ -1569,13 +1568,13 @@ export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Re
   const sourceNodes = document ? nodesOf(document) : null;
   const sources = new Map((sourceNodes ?? []).map(node => [node.UID as string, node]));
   const kept = sourceNodes ? new Set(sources.keys()) : null;
-  const known = new Set(graph.nodes.filter(node => node.invocationPath === path).map(node => node.id));
-  const nodes: GraphNode[] = graph.nodes.filter(node => node.invocationPath !== path || !kept || kept.has(node.id))
-    .map(node => node.invocationPath === path ? {
+  const known = new Set(graph.nodes.map(node => node.id));
+  const nodes: GraphNode[] = graph.nodes.filter(node => !kept || kept.has(node.id))
+    .map(node => ({
       ...node, position: positionOf(node.id, node.position),
       displayName: (sources.get(node.id)?._name as string | undefined) || node.displayName,
-    } : node);
-  const ports: GraphPort[] = graph.ports.filter(port => port.invocationPath !== path || !kept || kept.has(port.nodeId));
+    }));
+  const ports: GraphPort[] = graph.ports.filter(port => !kept || kept.has(port.nodeId));
   for (const node of sourceNodes ?? []) {
     const id = node.UID as string;
     if (known.has(id)) continue;
@@ -1588,9 +1587,9 @@ export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Re
     const triggers = new Set(ports.filter(port => port.isTrigger).map(port => `${port.nodeId}/${port.direction}/${port.id}`));
     const connections = sourceNodes.flatMap(node => connectionsOf(node).map(connection => ({ node, connection })));
     const ids = new Set(connections.map(item => item.connection.UID as string));
-    const existing = new Set(graph.edges.filter(edge => edge.invocationPath === path).map(edge => edge.id));
+    const existing = new Set(graph.edges.map(edge => edge.id));
     edges = [
-      ...graph.edges.filter(edge => edge.invocationPath !== path || ids.has(edge.id)),
+      ...graph.edges.filter(edge => ids.has(edge.id)),
       // 状态机转移没有端口，带 Payload。
       ...connections.filter(item => !existing.has(item.connection.UID as string)).map(({ node, connection }) => ({
         id: connection.UID as string,
@@ -1604,16 +1603,15 @@ export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Re
   return { ...graph, nodes, ports, edges };
 }
 
-// 检查器按选中身份（角色/调用路径/元素）找图：所在图有未保存修改时先叠加，新建的状态与转移也能检查。
-export function findEditedGraph(graphs: GraphDefinition[] | null, selectId: string, edited: Record<string, JsonValue>,
-  addedPorts: Record<string, AddedPort[]>): { graph: GraphDefinition; path: string; id: string } | null {
-  for (const graph of graphs ?? [])
-    for (const path of new Set(graph.nodes.map(node => node.invocationPath))) {
-      const prefix = `${graph.actorId}/${path}/`;
-      const id = selectId.slice(prefix.length);
-      if (!selectId.startsWith(prefix) || id.includes('/')) continue;
-      return { graph: applyGraphEdits(graph, path, edited, addedPorts), path, id };
-    }
+export function findEditedGraph(graphs: SkillDocumentGraph[] | null, selectId: string, edited: Record<string, JsonValue>,
+  addedPorts: Record<string, AddedPort[]>): { graph: SkillDocumentGraph; path: string; id: string } | null {
+  for (const graph of graphs ?? []) {
+    const path = graph.authoringPath;
+    const prefix = `${graph.actorId}/${path}/`;
+    const id = selectId.slice(prefix.length);
+    if (!selectId.startsWith(prefix) || id.includes('/')) continue;
+    return { graph: applyGraphEdits(graph, edited, addedPorts), path, id };
+  }
   return null;
 }
 

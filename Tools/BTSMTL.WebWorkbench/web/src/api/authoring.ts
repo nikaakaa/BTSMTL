@@ -381,6 +381,7 @@ export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
 );
 
 export interface SkillDocumentGraph extends GraphDefinition {
+  authoringPath: string;
   owner: string;
   ownerName: string;
   file: string;

@@ -9,7 +9,7 @@ import {
   type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillElements } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillDocumentGraph, type SkillElements } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
@@ -38,7 +38,6 @@ import styles from './graph.module.css';
 interface Params {
   graph: string | null;
   call: string | null;
-  path: string | null;
   pin: { runId: PlayerJobId; graph: string; call: ExecutionCall } | null;
   caller: { runId: PlayerJobId; call: ExecutionCall } | null;
   origin: GraphNavigationOrigin | null;
@@ -50,7 +49,7 @@ interface Params {
   minimap: boolean;
 }
 const defaults: Params = {
-  graph: null, call: null, path: null, pin: null, caller: null, origin: null, viewport: null, values: true, dim: false, relations: false, minimap: false,
+  graph: null, call: null, pin: null, caller: null, origin: null, viewport: null, values: true, dim: false, relations: false, minimap: false,
 };
 
 interface ViewOptions {
@@ -116,7 +115,7 @@ function ReportEmpty({ text }: { text: string }) {
 
 const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([graphKey(graph), callKey(call)]);
 
-function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
+function GraphView({ graphs }: { graphs: SkillDocumentGraph[] }) {
   const binding = useDocumentObservationBinding();
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
@@ -132,7 +131,6 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
   const graphCalls = currentCalls.filter(item => graphKey(item.graph) === key && (caller === null || parentCallMatches(caller.call, item.call)));
   const calls = graphCalls.map(item => item.call);
-  const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
   const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
     ? params.pin : null;
   const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
@@ -141,7 +139,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
-  const path = params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null;
+  const path = graph.authoringPath;
   const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
   const recorded = useMemo(() => recordedGraphCalls(observation.frames, observation.current, graphs, binding), [observation, graphs, binding]);
@@ -158,11 +156,11 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return { items, parent: current.parentInvocationPath ? current : null, choices: parents };
   }, [graph, observedCall, recorded]);
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
-    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, caller: null, origin: null, viewport: null });
+    call: callKey(call), pin: { runId, graph: graphKey(graph), call }, caller: null, origin: null, viewport: null });
 
   const selectCall = (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
-    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), path: null, pin: null });
+    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), pin: null });
   };
 
   useEffect(() => {
@@ -188,7 +186,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     if (!request || request.sequence === handled.current) return;
     handled.current = request.sequence;
     if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key,
-      call: request.observation ? callKey(request.observation.call) : null, path: null,
+      call: request.observation ? callKey(request.observation.call) : null,
       pin: request.observation ? { ...request.observation, graph: request.key } : null, caller: null, origin: request.origin, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
@@ -197,7 +195,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const graphOptions = [...hierarchy.graphs].map(([value, item]) => ({ value, label: `${item.ownerName} · ${graphName(item)}` }));
 
   const settings: MenuEntry[] = [
-    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null, caller: null, origin: null }) },
+    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, pin: null, caller: null, origin: null }) },
     { kind: 'separator' },
     { kind: 'check', label: '端口值', checked: params.values, onChange: values => setParams({ values }) },
     { kind: 'check', label: '压暗本帧没走到的节点', checked: params.dim, onChange: dim => setParams({ dim }) },
@@ -256,9 +254,6 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
           {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
             tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(observedCall)}`}
             onClick={togglePin}>固定调用</Button>}
-          {paths.length > 1 && <Select label="图实例" value={path}
-            options={paths.map((value, index) => ({ value, label: `图实例 ${index + 1}` }))}
-            placeholder="选择图实例" onChange={path => setParams({ path })} />}
           {caller !== null && calls.length === 0 && pin === null && <span className={styles.notice}>此帧没有精确匹配的子调用记录</span>}
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
@@ -267,10 +262,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         {/* 图名只在面包屑里出现一次；黑板浮层贴在画布右上 */}
         <div className={styles.stage}>
           {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
-          {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
-            : path === null ? <ReportEmpty text="选择要显示的图实例" />
-              : <AuthoredCanvas graph={graph} path={path} call={observedCall}
-                hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
+          <AuthoredCanvas graph={graph} call={observedCall}
+            hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />
         </div>
       </ReactFlowProvider>
     </div>
@@ -442,15 +435,15 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
 
 // 作者模式：当前技能的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
-  const { graph, path } = props;
+  const { graph } = props;
   const author = useAuthoring(useShallow(state => ({
     on: state.author && ownsAuthoringGraph(state, graph.id),
     edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
     own: ownsAuthoringGraph(state, graph.id),
   })));
   const editable = author.on;
-  const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,
-    [editable, graph, path, author.edited, author.ports]);
+  const shown = useMemo(() => editable ? applyGraphEdits(graph, author.edited, author.ports) : graph,
+    [editable, graph, author.edited, author.ports]);
   const { document: layout } = useCurrentDocument(author.own ? layoutPath : null);
   const groupsText = JSON.stringify(graphGroups(layout, graph.id));
   const groups = useMemo(() => JSON.parse(groupsText) as CanvasGroup[], [groupsText]);
@@ -460,8 +453,7 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
 }
 
 interface GraphCanvasProps {
-  graph: GraphDefinition;
-  path: string;
+  graph: SkillDocumentGraph;
   call: ExecutionCall | null;
   hierarchy: GraphHierarchy;
   enter(graph: GraphNavigationTarget, nodeId?: string): void;
@@ -472,7 +464,8 @@ interface GraphCanvasProps {
   elements: SkillElements | null;
 }
 
-function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+  const path = graph.authoringPath;
   const binding = useDocumentObservationBinding();
   const panelId = usePanelId();
   const view = `${graphKey(graph)}|${path}`;

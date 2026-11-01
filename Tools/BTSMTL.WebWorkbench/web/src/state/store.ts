@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
+  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, HostDescription, ImageSourceAvailability,
   InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
+import type { SkillDocumentGraph } from '../api/authoring';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
@@ -59,7 +60,7 @@ export interface RunData {
   routeFrames: RouteFrame[];
   routeProtocol: string | null;
   routeAvailability: Availability[];
-  graphs: GraphDefinition[] | null;
+  graphs: SkillDocumentGraph[] | null;
   graphAvailability: Availability[];
   inputTimeline: InputTimeline | null;
   // Timeline 输入组与工具栏共同显示的已采用输入方案（inputRootKey）。
