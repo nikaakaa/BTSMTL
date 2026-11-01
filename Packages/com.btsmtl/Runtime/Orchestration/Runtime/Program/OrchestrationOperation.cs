@@ -59,4 +59,16 @@ namespace BTSMTL.Orchestration
         public int BranchThen { get; }
         public int CycleReset { get; }
     }
+
+    public static class OrchestrationCorePortNames
+    {
+        public const string AnyState = "AnyState";
+        public const string StateOnEnter = "OnEnter";
+        public const string StateRoot = "Root";
+        public const string StateOnExit = "OnExit";
+        public const string BranchTrue = "True";
+        public const string BranchFalse = "False";
+        public const string BranchThen = "Then";
+        public const string CycleReset = "Reset";
+    }
 }

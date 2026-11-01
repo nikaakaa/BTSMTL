@@ -456,11 +456,11 @@ namespace BTSMTL.Compilation
                         int index = edgeIndexes[j];
                         ref readonly OrchestrationFlowEdge edge = ref edges[index];
                         if (edge.Kind == OrchestrationFlowKind.Enter && edge.SourcePortId == ports.StateOnEnter)
-                            StateEdge(onEnter, i, index, "OnEnter");
+                            StateEdge(onEnter, i, index, OrchestrationCorePortNames.StateOnEnter);
                         else if (edge.Kind == OrchestrationFlowKind.Enter && edge.SourcePortId == ports.StateRoot)
-                            StateEdge(roots, i, index, "Root");
+                            StateEdge(roots, i, index, OrchestrationCorePortNames.StateRoot);
                         else if (edge.Kind == OrchestrationFlowKind.Exit && edge.SourcePortId == ports.StateOnExit)
-                            StateEdge(onExit, i, index, "OnExit");
+                            StateEdge(onExit, i, index, OrchestrationCorePortNames.StateOnExit);
                     }
                 }
                 for (int i = 0; i < count; i++)

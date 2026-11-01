@@ -402,8 +402,10 @@ namespace BTSMTL.Compilation
                 BuildOutputAssignments();
                 OperationDraft[] operations = BuildOperations(parents);
                 OrchestrationFlowEdge[] controlFlow = BuildControlFlow();
-                var corePorts = new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
-                    Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset"));
+                var corePorts = new OrchestrationCorePorts(Bind(OrchestrationCorePortNames.AnyState), Bind(OrchestrationCorePortNames.StateOnEnter),
+                    Bind(OrchestrationCorePortNames.StateRoot), Bind(OrchestrationCorePortNames.StateOnExit),
+                    Bind(OrchestrationCorePortNames.BranchTrue), Bind(OrchestrationCorePortNames.BranchFalse),
+                    Bind(OrchestrationCorePortNames.BranchThen), Bind(OrchestrationCorePortNames.CycleReset));
                 OrchestrationGraphEntry[] entries = BuildEntries();
                 OrchestrationProgramStructure structure = BuildProgramStructure(operations, controlFlow, corePorts);
                 ValidateValueDependencies(operations, controlFlow, structure);
@@ -695,12 +697,12 @@ namespace BTSMTL.Compilation
             IEnumerable<string> StructureIdentityTexts()
             {
                 yield return m_Identity.GraphId;
-                yield return "AnyState";
-                yield return "OnEnter";
-                yield return "Root";
-                yield return "OnExit";
-                yield return "True";
-                yield return "False";
+                yield return OrchestrationCorePortNames.AnyState;
+                yield return OrchestrationCorePortNames.StateOnEnter;
+                yield return OrchestrationCorePortNames.StateRoot;
+                yield return OrchestrationCorePortNames.StateOnExit;
+                yield return OrchestrationCorePortNames.BranchTrue;
+                yield return OrchestrationCorePortNames.BranchFalse;
                 yield return "Then";
                 yield return "Reset";
                 foreach (ProgramScopeLayout scope in m_Scopes)
