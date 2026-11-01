@@ -14,7 +14,7 @@ export type SkillFile = {
 export type SkillEditingView = {
   skills: Record<string, SkillSaveRequest['content']>;
   previewDefinitionGuid: string | null;
-  scene?: SourceFile;
+  scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
 
 export interface SkillSnapshot {
