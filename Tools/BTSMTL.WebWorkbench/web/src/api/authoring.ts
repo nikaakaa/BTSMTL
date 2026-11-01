@@ -28,10 +28,9 @@ export interface SkillChanges {
 }
 
 // 按需查询的统一外壳：availability 表示作者来源是否可读，items 为原分页结果。
-export interface QueryAvailability {
-  available: boolean;
-  reason: string | null;
-}
+export type QueryAvailability =
+  | { available: true; reason: null }
+  | { available: false; reason: string };
 
 // 可创建的节点类型（原 Types）：按实际 C# 类型与原生节点声明发现。
 export interface NodeTypeInfo {
@@ -79,7 +78,20 @@ export interface FieldReference {
 }
 
 // 节点类的作者字段合同：显示名、值种类、所在存储路径、枚举与选择器、条件显示和引用声明。
-export interface FieldMetadata {
+export interface ReferenceChoice {
+  value: JsonValue;
+  name: string;
+  detail: string;
+  source: string;
+  conflict: string | null;
+  associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
+}
+
+type FieldChoices =
+  | { choiceKind: null; choicesAvailability: null; choices: null }
+  | { choiceKind: string; choicesAvailability: QueryAvailability; choices: ReferenceChoice[] };
+
+export type FieldMetadata = FieldChoices & {
   fieldId: string;
   displayName: string | null;
   type: string;
@@ -95,9 +107,8 @@ export interface FieldMetadata {
   objectType: string | null;
   visibleWhenField: string | null;
   visibleWhenValue: string | null;
-  choices: JsonValue;
   references: FieldReference[];
-}
+};
 
 // 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。
 export interface StoredField {
@@ -108,10 +119,10 @@ export interface StoredField {
   computed?: undefined;
 }
 
-export interface ComputedField extends FieldMetadata {
+export type ComputedField = FieldMetadata & {
   computed: true;
   value: JsonValue;
-}
+};
 
 export type FieldItem = StoredField | ComputedField;
 

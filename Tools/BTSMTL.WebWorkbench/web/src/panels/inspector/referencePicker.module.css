@@ -1,0 +1,10 @@
+.root { position: relative; min-width: 0; }
+.trigger, .invalid { width: 100%; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.invalid { border-color: #d98a58; }
+.popup { position: absolute; z-index: 20; top: 100%; right: 0; width: max(100%, 300px); max-width: 440px; display: grid; gap: 6px; padding: 8px; background: var(--bg-panel, #25282d); border: 1px solid var(--border, #444a52); border-radius: 5px; box-shadow: 0 8px 24px #0006; }
+.list { max-height: 300px; overflow: auto; display: grid; gap: 3px; }
+.item { display: grid; gap: 3px; padding: 7px; text-align: left; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+.item:hover, .item:focus-visible { background: #ffffff0d; border-color: #739ec2; }
+.item[aria-selected="true"] { background: #739ec220; }
+.item span, .item small, .note { color: #abb3bf; overflow-wrap: anywhere; font-size: 11px; }
+.issue { color: #edb084; font-size: 11px; overflow-wrap: anywhere; margin-top: 3px; }

@@ -994,6 +994,7 @@ function dropOrphans(seeds: string[]) {
 }
 
 export type JsonKey = string | number;
+export interface JsonMutation { keys: JsonKey[]; value: JsonValue }
 
 // 按键路径写值；路径上缺的对象按需建出。
 function setIn(target: JsonValue, keys: JsonKey[], value: JsonValue) {
@@ -1124,18 +1125,19 @@ export const inputAuthoring = {
     selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
   },
 
-  setNodeValue(graphId: string, nodeId: string, keys: JsonKey[], value: JsonValue, contract: SkillElements['previewInput']) {
+  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: SkillElements['previewInput']) {
     authoringActions.edit(graphPath(graphId), document => {
       const nodes = (document as JsonObject).allNodes as JsonObject[];
       const node = nodes.find(item => item.UID === nodeId)!;
-      if (keys.join('/') !== contract.keyPath.join('/')) {
-        setIn(node, keys, value);
-        return;
-      }
       const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);
-      const previous = at(node);
-      for (const writer of nodes.filter(item => item.type === contract.nodeType && at(item) === previous))
-        setIn(writer, contract.keyPath, value);
+      for (const { keys, value } of changes) {
+        if (keys.join('/') !== contract.keyPath.join('/')) setIn(node, keys, value);
+        else {
+          const previous = at(node);
+          for (const writer of nodes.filter(item => item.type === contract.nodeType && at(item) === previous))
+            setIn(writer, contract.keyPath, value);
+        }
+      }
     });
   },
 
@@ -1286,7 +1288,7 @@ export const graphAuthoring = {
   // 给状态建状态体、给转移建条件图；移除时原图不再被引用就删除。
   createStateBody(graphId: string, elements: SkillElements, nodeId: string) {
     const body = createGraph(elements, 'StateBody', '状态内容');
-    graphAuthoring.setNodeValue(graphId, nodeId, ['m_Body'], body);
+    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: body }]);
   },
 
   createCondition(graphId: string, elements: SkillElements, connectionId: string) {
@@ -1295,7 +1297,7 @@ export const graphAuthoring = {
   },
 
   removeStateBody(graphId: string, nodeId: string, body: string) {
-    graphAuthoring.setNodeValue(graphId, nodeId, ['m_Body'], null);
+    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: null }]);
     dropOrphans([body]);
   },
 
@@ -1349,11 +1351,11 @@ export const graphAuthoring = {
   },
 
   // 检查器字段：节点对象内按键路径写值（成员、端口默认值或节点名）。
-  setNodeValue(graphId: string, nodeId: string, keys: JsonKey[], value: JsonValue) {
+  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[]) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = nodesOf(document).find(item => item.UID === nodeId);
       if (!node) throw new Error(`图 ${graphId} 中没有节点 ${nodeId}`);
-      setIn(node, keys, value);
+      for (const { keys, value } of changes) setIn(node, keys, value);
     });
   },
 
