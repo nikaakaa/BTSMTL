@@ -836,7 +836,8 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
         {(children.length > 0 || timeline) && <button type="button" className={`${styles.openNode} nodrag nopan`}
           title={children.length ? '进入子图' : '打开 Timeline'}
           aria-label={`${children.length ? '进入子图' : '打开 Timeline'}：${nodeName(laid.node)}`}
-          onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}
+          onPointerDown={event => event.stopPropagation()}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }}
           onDoubleClick={event => event.stopPropagation()}
           onClick={event => { event.stopPropagation(); if (event.detail < 2) openNode(data); }}>
           {children.length ? '进入子图' : '打开 Timeline'}
