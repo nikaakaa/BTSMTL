@@ -25,7 +25,17 @@ export const compareSequence = (left: { sequence: string }, right: { sequence: s
 };
 export const graphName = (graph: GraphDefinition) =>
   graph.displayName === null ? '未命名图' : graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
-export const nodeName = (node: GraphNode) => node.displayName ?? '未命名节点';
+// 作者没起名字时宿主给的是 C# 类型名（如 BtsmtlSkillConditionResultFlowNode）：照 Unity 显示类型名的习惯拆成单词，
+// 去掉项目前缀 Btsmtl 与 FlowNode／Node 后缀；完整类型名由 nodeTypeName 给提示用。
+const typeNamePattern = /^[A-Z][A-Za-z0-9]*Node$/;
+export const nodeTypeName = (node: GraphNode) =>
+  node.displayName !== null && typeNamePattern.test(node.displayName) ? node.displayName : null;
+export function nodeName(node: GraphNode) {
+  const type = nodeTypeName(node);
+  if (type === null) return node.displayName ?? '未命名节点';
+  return type.replace(/^Btsmtl/, '').replace(/(Flow)?Node$/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') || type;
+}
 export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'LoopIterationEntered' || item.kind === 'LoopIterationCompleted'
   ? `${item.kind} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : item.kind;
 

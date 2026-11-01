@@ -22,7 +22,7 @@ import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, callLabel, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentCallMatches, parentGraphCalls, playedTimeline, portColor,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTypeName, nodeTimeline, parentCallMatches, parentGraphCalls, playedTimeline, portColor,
   recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
@@ -830,7 +830,7 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}>
       <Tip name={nodeName(laid.node)}
-        content={`${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
+        content={`${nodeTypeName(laid.node) ? `${nodeTypeName(laid.node)}\n` : ''}${laid.node.id}${children.length ? '\n双击进入子图' : timeline ? '\n双击跳到 Timeline' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
         <div className={styles.header}>
           {triggerIns.length > 0 && <i className={styles.flowIn} />}
           <b data-name>{nodeName(laid.node)}</b>
