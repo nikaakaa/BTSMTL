@@ -108,19 +108,6 @@
   pointer-events: none;
 }
 
-/* 刻度上的转移标记：与段分隔线同色的下指三角 */
-.routeMark {
-  position: absolute;
-  top: 0;
-  width: 0;
-  height: 0;
-  margin-left: -5px;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 7px solid var(--segment-line);
-  cursor: help;
-}
-
 /* 时间区：编辑行与刻度、轨道、底部滚动条；游标时刻会画到刻度上方，所以不裁剪 */
 .timeline {
   position: relative;
@@ -657,10 +644,6 @@
   color: inherit;
 }
 
-.groupName[data-now] {
-  color: #79a6e9;
-}
-
 /* 窄时先收补充信息，名字尽量完整 */
 .groupMeta {
   flex: 0 4 auto;
@@ -1046,17 +1029,13 @@
 }
 
 /* 竖线从刻度底部的时长条处画到轨道底 */
-.cursorLine, .endLine, .segmentLine {
+.cursorLine, .endLine {
   position: absolute;
   top: 17px;
   bottom: 0;
   left: 0;
   width: 1px;
   will-change: transform;
-}
-
-.segmentLine {
-  background: var(--segment-line);
 }
 
 /* 终点（时长由片段决定、不能拖动）：暗蓝线，灰色 5×14 头压在时长条上方 */

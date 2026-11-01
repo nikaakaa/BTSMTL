@@ -1,9 +1,6 @@
 import type { TrackOverlap } from '../api/authoring';
-import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition, RouteFrame } from '../api/types';
+import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition } from '../api/types';
 import { inputRootKey } from './store';
-
-// Timeline 面板与检查器共用：把路线帧中的播放记录换算成运行秒数上的片段实例。
-// 运行秒数 = 段起点（该段首帧 frame.seconds − cursorSeconds）+ 片段在 Timeline 内的秒数。
 
 export type TrackKind = 'anim' | 'motion' | 'act' | 'in' | 'other';
 
@@ -24,23 +21,13 @@ export const trackColors: Record<TrackKind, string> = {
   other: 'var(--text-disabled)',
 };
 
-export interface PlaySegment {
+export interface TimelineSegment {
+  id: string;
   documentId: string;
-  index: number;
-  firstIndex: number;
-  lastIndex: number;
   origin: number;
   start: number;
   end: number;
-}
-
-// 一段路线：某个状态进入后播放一条 Timeline，到离开为止。
-export interface RouteSegment extends PlaySegment {
-  id: string;
-  timeline: AuthorTimeline | null;
-  // 段首帧进入的状态机状态；没有状态机记录时为 null。
-  state: { graphId: string; nodeId: string; name: string } | null;
-  // 作者 Timeline 的长度（最后一个片段或标记的结束秒数）。
+  timeline: AuthorTimeline;
   length: number;
 }
 
@@ -60,7 +47,7 @@ export interface TrackRow {
   kind: 'track';
   id: string;
   selectId: string;
-  segment: RouteSegment;
+  segment: TimelineSegment;
   timeline: AuthorTimeline;
   track: AuthorTrack;
   trackKind: TrackKind;
@@ -74,16 +61,16 @@ export interface TrackRow {
 export interface GroupRow {
   kind: 'group';
   id: string;
-  segment: RouteSegment;
+  segment: TimelineSegment;
   title: string;
   // 单个 Timeline 视图的 Timeline 分组：添加轨道在编辑行，分组头不再重复。
   focused?: boolean;
 }
 
 // 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）。
-export function clipUnions(segment: RouteSegment): Span[] {
+export function clipUnions(segment: TimelineSegment): Span[] {
   const result: Span[] = [];
-  for (const track of segment.timeline?.tracks ?? []) {
+  for (const track of segment.timeline.tracks) {
     let current: Span | null = null;
     for (const clip of [...track.clips].sort((left, right) => left.startSeconds - right.startSeconds)) {
       const start = segment.origin + clip.startSeconds, end = segment.origin + clip.endSeconds;
@@ -135,38 +122,17 @@ export function overlapIssue(policy: TrackOverlap, spans: readonly Span[]): stri
   return null;
 }
 
-export function playSegments(frames: RouteFrame[]): Map<string, PlaySegment[]> {
-  const result = new Map<string, PlaySegment[]>();
-  frames.forEach((frame, index) => {
-    for (const playback of frame.playbacks) {
-      let segments = result.get(playback.documentId);
-      if (!segments) result.set(playback.documentId, segments = []);
-      const previous = segments.at(-1);
-      if (previous && previous.lastIndex === index - 1) {
-        previous.lastIndex = index;
-        previous.end = frame.seconds;
-      } else {
-        segments.push({
-          documentId: playback.documentId, index: segments.length, firstIndex: index, lastIndex: index,
-          origin: frame.seconds - playback.cursorSeconds, start: frame.seconds, end: frame.seconds,
-        });
-      }
-    }
-  });
-  return result;
-}
-
 export const clipSelectId = (documentId: string, clipId: string) => `${documentId}/${clipId}`;
 export const trackSelectId = (documentId: string, trackId: string) => `${documentId}/${trackId}`;
 export const inputClipSelectId = (trackId: string, clipId: string) => `input/${trackId}/${clipId}`;
 export const inputTrackSelectId = (trackId: string) => `input/${trackId}`;
 
 // 不经运行打开技能时，每条 Timeline 自成一段，本地零点即运行零点。
-export const documentSegments = (timelines: AuthorTimeline[]): RouteSegment[] => timelines.map(timeline => {
+export const documentSegments = (timelines: AuthorTimeline[]): TimelineSegment[] => timelines.map(timeline => {
   const length = timelineLength(timeline);
   return {
-    id: `document:${timeline.documentId}`, documentId: timeline.documentId, index: 0, firstIndex: 0, lastIndex: 0,
-    origin: 0, start: 0, end: length, timeline, state: null, length,
+    id: `document:${timeline.documentId}`, documentId: timeline.documentId,
+    origin: 0, start: 0, end: length, timeline, length,
   };
 });
 
@@ -179,37 +145,8 @@ export function timelineLength(timeline: AuthorTimeline): number {
   return length;
 }
 
-// 状态机：带转移连线的图。
-export const stateMachineIds = (graphs: GraphDefinition[] | null) =>
-  new Set((graphs ?? []).filter(graph => graph.edges.some(edge => edge.kind === 'Transition')).map(graph => graph.id));
-
-// 按播放先后排列的路线段；段名取段首帧进入的状态机状态。
-export function routeSegments(frames: RouteFrame[], timelines: AuthorTimeline[], graphs: GraphDefinition[] | null): RouteSegment[] {
-  const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
-  const machines = stateMachineIds(graphs);
-  const names = new Map<string, string>();
-  for (const graph of graphs ?? [])
-    if (machines.has(graph.id))
-      for (const node of graph.nodes) names.set(`${graph.id}/${node.id}`, node.displayName ?? node.id.slice(0, 8));
-  const result: RouteSegment[] = [];
-  for (const [documentId, segments] of playSegments(frames)) {
-    const timeline = byId.get(documentId) ?? null;
-    for (const segment of segments) {
-      const enteredNode = frames[segment.firstIndex].nodes.find(node => node.kind === 'Enter' && names.has(`${node.graphId}/${node.nodeId}`));
-      const entered = enteredNode ? `${enteredNode.graphId}/${enteredNode.nodeId}` : null;
-      const split = entered?.indexOf('/') ?? -1;
-      result.push({
-        ...segment, id: `${documentId}#${segment.index}`, timeline,
-        state: entered ? { graphId: entered.slice(0, split), nodeId: entered.slice(split + 1), name: names.get(entered)! } : null,
-        length: timeline ? timelineLength(timeline) : segment.end - segment.origin,
-      });
-    }
-  }
-  return result.sort((left, right) => left.start - right.start);
-}
-
-export const segmentTitle = (segment: RouteSegment) =>
-  `${segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}${segment.state ? ` · ${segment.state.name}` : ''} · ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`;
+export const segmentTitle = (segment: TimelineSegment) =>
+  `${segment.timeline.displayName ?? segment.documentId.slice(0, 8)} · ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`;
 
 // 片段引用的节点图（graphId 形如 `类别:图身份`）；本次运行没有这张图时为 null。
 export function clipGraph(graphs: GraphDefinition[] | null, graphId: string | null): GraphDefinition | null {
@@ -225,9 +162,8 @@ export function clipLabel(clip: AuthorClip, track: AuthorTrack, graphNames: Map<
   return (graphId && graphNames.get(graphId)) || track.displayName;
 }
 
-export function segmentRows(segment: RouteSegment, graphNames: Map<string, string>): TrackRow[] {
+export function segmentRows(segment: TimelineSegment, graphNames: Map<string, string>): TrackRow[] {
   const timeline = segment.timeline;
-  if (!timeline) return [];
   return timeline.tracks.map(track => ({
     kind: 'track', id: `track:${segment.id}/${track.id}`, selectId: trackSelectId(timeline.documentId, track.id),
     segment, timeline, track, trackKind: trackKind(track),
