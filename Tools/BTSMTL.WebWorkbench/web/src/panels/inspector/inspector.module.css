@@ -335,6 +335,20 @@
   gap: 2px;
 }
 
+/* 执行出口一行：序号、名称、上移、下移、删除 */
+.portItem {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto auto;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--row);
+}
+
+.portIndex {
+  font: var(--mono);
+  color: var(--text-disabled);
+}
+
 .issue {
   padding: 2px 0;
   color: var(--reject);

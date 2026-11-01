@@ -1097,6 +1097,23 @@ const sortedObject = (value: JsonObject): JsonObject =>
 const nodesOf = (document: JsonValue) => (document as JsonObject).allNodes as JsonObject[];
 const connectionsOf = (node: JsonObject) => node.outConnections as JsonObject[];
 
+// 组合节点的一个步骤就是一个执行出口（身份 m_Id 即端口），步骤的条件与调度从该出口唯一的连线编辑。
+export interface EdgeStep { nodeId: string; nodeType: string; member: string; index: number; step: JsonObject }
+
+export function edgeStep(document: JsonValue | null, connectionId: string): EdgeStep | null {
+  for (const node of document ? nodesOf(document) : []) {
+    const connection = connectionsOf(node).find(item => item.UID === connectionId);
+    if (!connection) continue;
+    for (const [member, value] of Object.entries(node)) {
+      if (!Array.isArray(value)) continue;
+      const index = value.findIndex(item => item !== null && typeof item === 'object' && (item as JsonObject).m_Id === connection.sourcePortID);
+      if (index >= 0) return { nodeId: node.UID as string, nodeType: node.type as string, member, index, step: value[index] as JsonObject };
+    }
+    return null;
+  }
+  return null;
+}
+
 function layoutNodes(document: JsonValue, graphId: string): JsonObject {
   const layout = document as JsonObject;
   const graph = (layout[graphId] ??= { allNodes: {}, canvasGroups: [], translation: { x: new JsonFloat(0), y: new JsonFloat(0) }, zoomFactor: new JsonFloat(1) }) as JsonObject;
@@ -1350,6 +1367,21 @@ export const graphAuthoring = {
 
   removeCondition(graphId: string, connectionId: string, condition: string) {
     graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], null);
+    dropOrphans([condition]);
+  },
+
+  // 组合步骤的条件从该步骤出发的连线新建；新条件默认成立，原本无条件的步骤在改图前照常进入。
+  createStepCondition(graphId: string, elements: SkillElements, step: EdgeStep): string {
+    const condition = createGraph(elements, 'ConditionRule', '步骤条件');
+    authoringActions.edit(graphPath(condition), document => {
+      for (const node of nodesOf(document)) node._inputPortValues = { m_Result: true };
+    });
+    graphAuthoring.setNodeValue(graphId, step.nodeId, [step.member, step.index, 'm_Condition'], condition);
+    return condition;
+  },
+
+  removeStepCondition(graphId: string, step: EdgeStep, condition: string) {
+    graphAuthoring.setNodeValue(graphId, step.nodeId, [step.member, step.index, 'm_Condition'], null);
     dropOrphans([condition]);
   },
 

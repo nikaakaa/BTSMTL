@@ -13,7 +13,7 @@ import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeIn
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
-  applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
@@ -572,9 +572,29 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (!isGroupNode(node)) open(node.data);
   }, [open]);
-  const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
-    if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
-  }, [enter]);
+  // 连线的条件：转移存在转移上，组合步骤存在步骤（出口）上。
+  const edgeCondition = useCallback((edgeId: string) => {
+    const document = currentDocument(graphPath(graph.id));
+    if (!machine) {
+      const step = edgeStep(document, edgeId);
+      return step && { condition: (step.step.m_Condition as string | null | undefined) ?? null, step };
+    }
+    const connection = (document ? ((document as JsonObject).allNodes as JsonObject[]).flatMap(node => node.outConnections as JsonObject[]) : [])
+      .find(item => item.UID === edgeId);
+    return connection ? { condition: ((connection.Payload as JsonObject).m_Condition as string | null | undefined) ?? null, step: null } : null;
+  }, [graph.id, machine]);
+  // 双击连线进入条件图；没有时新建（步骤条件默认成立），网页新建的图保存后才能进入。
+  const openEdge = useCallback((edge: FlowEdge) => {
+    if (edge.data!.conditions.length) { enter(edge.data!.conditions[0]); return; }
+    const owner = editable && elements ? edgeCondition(edge.id) : null;
+    if (!owner || !elements) return;
+    if (owner.condition === null) {
+      if (owner.step) graphAuthoring.createStepCondition(graph.id, elements, owner.step);
+      else graphAuthoring.createCondition(graph.id, elements, edge.id);
+    }
+    consoleActions.log('info', '作者', owner.condition === null ? '已新建条件图，保存后可进入' : '条件图尚未保存，保存后可进入');
+  }, [enter, editable, elements, edgeCondition, graph.id]);
+  const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => openEdge(edge), [openEdge]);
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
@@ -589,14 +609,14 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
   const menuAt = useRef({ x: 0, y: 0 });
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
-  // 单击连线选中（Ctrl／Shift 加选，预览与作者模式都可选）；状态机的转移同时交给检查器。
+  // 单击连线选中（Ctrl／Shift 加选，预览与作者模式都可选），同时交给检查器。
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
-    if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
+    selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
     const additive = event.ctrlKey || event.shiftKey;
     const next = new Set(additive ? selectedEdges : []);
     if (!next.delete(edge.id)) next.add(edge.id);
     selectCanvas(additive ? nodes.filter(node => node.selected).map(node => node.id) : [], [...next]);
-  }, [machine, graph, call, nodes, selectCanvas, selectedEdges]);
+  }, [graph, call, nodes, selectCanvas, selectedEdges]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -700,7 +720,34 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     graphAuthoring.addGroup(graph.id, rect, '新分组');
   };
   const blocked = '只能编辑顶栏所选技能的图';
+  // 右键连线（线或线上的条件名）：打开或新建条件、删除条件、删除连线，排在画布菜单前面。
+  const [menuEdgeId, setMenuEdgeId] = useState<string | null>(null);
+  const menuEdge = menuEdgeId === null ? null : edges.find(edge => edge.id === menuEdgeId) ?? null;
+  const menuOwner = menuEdge && editable ? edgeCondition(menuEdge.id) : null;
+  // 只有转移和组合步骤的连线带条件；数据线与普通执行线只能删除。
+  const conditional = !!menuEdge && (machine || menuEdge.data!.conditions.length > 0 || menuOwner !== null);
+  const edgeMenu: MenuEntry[] = !menuEdge ? [] : [
+    ...(!conditional ? [] : [
+      {
+        label: menuEdge.data!.conditions.length || menuOwner?.condition ? '打开条件' : '新建条件',
+        disabled: !menuEdge.data!.conditions.length && !(menuOwner && elements),
+        tip: menuEdge.data!.conditions.length || menuOwner ? undefined : blocked,
+        onSelect: () => openEdge(menuEdge),
+      },
+      {
+        label: '删除条件', disabled: !menuOwner?.condition, tip: editable ? undefined : blocked,
+        onSelect: () => {
+          const condition = menuOwner!.condition!;
+          if (menuOwner!.step) graphAuthoring.removeStepCondition(graph.id, menuOwner!.step, condition);
+          else graphAuthoring.removeCondition(graph.id, menuEdge.id, condition);
+        },
+      },
+    ]),
+    { label: '删除连线', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.disconnect(graph.id, [menuEdge.id]) },
+    { kind: 'separator' },
+  ];
   const menu: MenuEntry[] = [
+    ...edgeMenu,
     !editable ? { label: machine ? '添加状态' : '添加节点…', onSelect: () => {}, disabled: true, tip: blocked }
       : machine ? { label: '添加状态', onSelect: () => void addState(screenToFlowPosition(menuAt.current)) }
         : { label: '添加节点…', onSelect: () => setPicker({ ...menuAt.current, flow: screenToFlowPosition(menuAt.current) }) },
@@ -759,6 +806,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
             return;
           }
           menuAt.current = { x: event.clientX, y: event.clientY };
+          setMenuEdgeId((event.target as Element).closest('[data-edge]')?.getAttribute('data-edge') ?? null);
         }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -1002,7 +1050,7 @@ function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourceP
   return (
     <>
       <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
-        <g>
+        <g data-edge={id}>
           <path d={path} className={styles.edgeHit} />
           <path d={path} className={styles.edge} style={{ ['--ec' as string]: color }} data-status={status} data-faded={faded || undefined}
             data-selected={state.selected || undefined} data-picked={selected || undefined} />
@@ -1011,7 +1059,7 @@ function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourceP
       {condition && labels !== 'none' && (
         <EdgeLabelRenderer>
           <Tip name={data!.label} content="双击进入条件图">
-            <div className={styles.edgeLabel} data-condition data-faded={faded || undefined} data-name
+            <div className={styles.edgeLabel} data-condition data-faded={faded || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
               onDoubleClick={() => enter(condition)}>
               {data!.label}
@@ -1090,7 +1138,7 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
   const faded = related !== null && !related.has(id) && status === 'idle';
   const showLabel = labels !== 'none' && data!.label && (labels === 'all' || highlighted || status !== 'idle');
   return (
-    <g className={styles.transition} data-status={status} data-hi={highlighted || undefined} data-faded={faded || undefined}
+    <g className={styles.transition} data-edge={id} data-status={status} data-hi={highlighted || undefined} data-faded={faded || undefined}
       data-picked={selected || undefined} data-minor={data!.minor || undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <BaseEdge path={path} interactionWidth={12} />
@@ -1098,7 +1146,7 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
       {showLabel && (
         <EdgeLabelRenderer>
           <Tip name={data!.label} content="双击进入条件图">
-            <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name
+            <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
               onDoubleClick={() => { if (data!.conditions[0]) enter(data!.conditions[0]); }}>
               {data!.label}

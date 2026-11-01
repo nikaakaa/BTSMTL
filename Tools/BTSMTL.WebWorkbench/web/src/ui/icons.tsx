@@ -66,6 +66,11 @@ export const CheckIcon = (props: IconProps) => (
 );
 
 // 关闭与删除。
+// 列表项上移、下移。
+export const MoveIcon = ({ down, ...props }: IconProps & { down: boolean }) => (
+  <Icon {...props}><path d={down ? 'M4 6h8l-4 5z' : 'M4 10h8L8 5z'} /></Icon>
+);
+
 export const CloseIcon = (props: IconProps) => (
   <Icon {...props}><path fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" d="m4.5 4.5 7 7m0-7-7 7" /></Icon>
 );

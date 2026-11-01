@@ -7,12 +7,12 @@ import {
 import { ApiError, isAbort } from '../../api/http';
 import {
   authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
-  type JsonKey,
+  type EdgeStep, type JsonKey,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
-import { AddIcon, CloseIcon } from '../../ui/icons';
+import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import styles from './inspector.module.css';
 
@@ -201,6 +201,77 @@ function ListEditor({ label, value, shape, keys, onSet, identities }: {
   );
 }
 
+// 每项是一个执行出口的列表（组合步骤，身份 m_Id 即端口）：节点上只改名称、顺序与增删；
+// 条件与调度在该出口的连线上编辑。连着线的出口要先断线才能删。
+const isPortList = (shape: StorageShape | null | undefined) => !!shape?.element?.members?.some(member => member.member === 'm_Id');
+
+function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
+  label: string; value: JsonObject[]; shape: StorageShape | null | undefined; keys: JsonKey[]; node: JsonObject;
+  outputs: DescribedPort[]; onSet: SetValue;
+}) {
+  const connected = new Set((node.outConnections as JsonObject[]).map(connection => connection.sourcePortID as string));
+  const write = (next: JsonObject[]) => onSet(keys, next.map(item => cloneJson(item)));
+  const move = (from: number, to: number) => {
+    const next = [...value];
+    [next[from], next[to]] = [next[to], next[from]];
+    write(next);
+  };
+  const add = () => {
+    const created: JsonObject = { ...(defaultFor(shape?.element) as JsonObject), m_Condition: null, m_Id: crypto.randomUUID().replaceAll('-', '') };
+    write([...value, Object.fromEntries(Object.keys(created).sort().map(key => [key, created[key]]))]);
+  };
+  return (
+    <div className={styles.group}>
+      <div className={styles.groupHead}>
+        {label}<span className={styles.count}>{value.length}</span>
+        <Button variant="ghost" className={styles.iconButton} tip="添加一个出口" aria-label="添加一个出口" onClick={add}><AddIcon /></Button>
+      </div>
+      {value.map((item, index) => {
+        const id = item.m_Id as string;
+        const linked = connected.has(id);
+        const port = outputs.find(entry => entry.port.ID === id)?.port.name ?? `${index + 1}.`;
+        return (
+          <div key={id} className={styles.portItem}>
+            <span className={styles.portIndex}>{port.slice(0, port.indexOf('.') + 1) || `${index + 1}.`}</span>
+            <TextValue label={`${port} 名称`} value={(item.m_Name as string | undefined) ?? ''}
+              onSet={next => onSet([...keys, index, 'm_Name'], next)} />
+            <Button variant="ghost" className={styles.iconButton} disabled={index === 0} tip="上移" aria-label="上移"
+              onClick={() => move(index, index - 1)}><MoveIcon down={false} /></Button>
+            <Button variant="ghost" className={styles.iconButton} disabled={index === value.length - 1} tip="下移" aria-label="下移"
+              onClick={() => move(index, index + 1)}><MoveIcon down /></Button>
+            <Button variant="ghost" className={styles.iconButton} disabled={linked} tip={linked ? '请先断开该出口的连线' : '删除这个出口'}
+              aria-label="删除这个出口" onClick={() => write(value.filter((_, other) => other !== index))}><CloseIcon /></Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 连线所属步骤的调度字段（条件失效时中断、优先级）；条件图由 children 的引用行新建、移除与进入。
+// 规格：LowerPriority／Both 只用于选择执行的步骤，其它组合不提供。
+export function StepFields({ graphId, step, children }: { graphId: string; step: EdgeStep; children?: ReactNode }) {
+  const skill = useAuthoring(state => state.target);
+  const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
+  const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === step.nodeId) ?? null;
+  const { description } = useDescription(skill, graphId, node);
+  const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
+  const selector = step.nodeType === 'BtsmtlSkillSelectorFlowNode';
+  const set: SetValue = (keys, value) => graphAuthoring.setNodeValue(graphId, step.nodeId, [step.member, step.index, ...keys], value);
+  return (
+    <Fold title="步骤" defaultOpen>
+      {children}
+      {(shape?.members ?? []).filter(member => !['m_Id', 'm_Name', 'm_Condition'].includes(member.member)).map(member => (
+        <ValueEditor key={member.member} label={memberLabel(member.member)} value={step.step[member.member]}
+          shape={member.member === 'm_AbortPolicy' && !selector
+            ? { ...member, enumValues: (member.enumValues ?? []).filter(name => name === 'None' || name === 'Self') } : member}
+          keys={[member.member]} onSet={set} />
+      ))}
+      {!shape && <div className={styles.note}>读取字段</div>}
+    </Fold>
+  );
+}
+
 // ── 节点字段 ──
 
 interface Description {
@@ -283,6 +354,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   const connected = new Set(((document as JsonObject).allNodes as JsonObject[]).flatMap(item =>
     (item.outConnections as JsonObject[]).filter(connection => connection.targetNode === nodeId).map(connection => connection.targetPortID as string)));
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
+  const outputs = (description?.ports ?? []).filter(port => port.direction === 'output');
   return (
     <>
       <Fold title="节点" defaultOpen>
@@ -295,7 +367,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
         {!description && !issues.length && <div className={styles.note}>读取字段</div>}
         {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
-            blackboards={blackboards} identities={listId} onSet={set} />
+            blackboards={blackboards} identities={listId} outputs={outputs} onSet={set} />
         ))}
         {children}
       </Fold>
@@ -528,9 +600,9 @@ function portShape(type: string): StorageShape {
   return { clrType, enumValues: null, elementType: null };
 }
 
-function StoredItem({ item, node, values, blackboards, identities, onSet }: {
+function StoredItem({ item, node, values, blackboards, identities, outputs = [], onSet }: {
   item: StoredField; node: JsonObject; values: Map<string, JsonValue | undefined>; blackboards: BlackboardItem[];
-  identities: string; onSet: SetValue;
+  identities: string; outputs?: DescribedPort[]; onSet: SetValue;
 }) {
   if (!item.fields.length)
     return <ValueEditor label={memberLabel(item.member)} value={item.value} shape={item.shape} keys={[item.member]} onSet={onSet} identities={identities} />;
@@ -540,14 +612,16 @@ function StoredItem({ item, node, values, blackboards, identities, onSet }: {
   return (
     <>
       {item.fields.filter(field => !owners.has(field.fieldId) && visible(field, values)).map(field => (
-        <FieldEditor key={field.fieldId} field={field} item={item} node={node} blackboards={blackboards} identities={identities} onSet={onSet} />
+        <FieldEditor key={field.fieldId} field={field} item={item} node={node} blackboards={blackboards} identities={identities}
+          outputs={outputs} onSet={onSet} />
       ))}
     </>
   );
 }
 
-function FieldEditor({ field, item, node, blackboards, identities, onSet }: {
-  field: FieldMetadata; item: StoredField; node: JsonObject; blackboards: BlackboardItem[]; identities: string; onSet: SetValue;
+function FieldEditor({ field, item, node, blackboards, identities, outputs, onSet }: {
+  field: FieldMetadata; item: StoredField; node: JsonObject; blackboards: BlackboardItem[]; identities: string;
+  outputs: DescribedPort[]; onSet: SetValue;
 }): ReactNode {
   const label = field.displayName ?? field.fieldId;
   const path = field.serializedMemberPath;
@@ -556,6 +630,8 @@ function FieldEditor({ field, item, node, blackboards, identities, onSet }: {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
   if (field.readOnly)
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{value == null ? '空' : typeof value === 'object' ? stringifySkillJson(value, ' ') : String(value)}</span></Row>;
+  if (Array.isArray(value) && isPortList(shape))
+    return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
   switch (field.valueKind) {
     case 'Boolean':
       return <Row label={label}><Checkbox label={label} checked={value === true} onChange={set} /></Row>;

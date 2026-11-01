@@ -8,7 +8,7 @@ import {
   isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, edgeStep, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
@@ -20,7 +20,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { ClipFields, InputClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { ClipFields, InputClipFields, InputPlanFields, NodeFields, StepFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -361,7 +361,7 @@ function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }
   );
 }
 
-// ── 状态机转移 ──
+// ── 连线：状态机转移与组合步骤的连线都带条件图；步骤的条件与调度存在步骤上，从这里编辑 ──
 
 function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const graphs = useWorkbench(state => state.graphs);
@@ -377,26 +377,34 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
   if (!found) return missing;
   const { graph, edge } = found;
+  const transition = edge.kind === 'Transition';
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
-  const name = `${edge.source ? names.get(edge.source.nodeId) ?? '—' : '—'} → ${edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招'}`;
+  const port = edge.source && !transition ? graph.ports.find(item => item.nodeId === edge.source!.nodeId && item.id === edge.source!.portId &&
+    item.direction === 'output' && item.invocationPath === edge.invocationPath)?.displayName : undefined;
+  const name = `${edge.source ? names.get(edge.source.nodeId) ?? '—' : '—'}${port ? ` · ${port}` : ''} → ${edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招'}`;
   const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
     .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === edge.id);
-  const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
+  const step = editable && !transition ? edgeStep(document, edge.id) : null;
+  const condition = transition ? ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null
+    : (step?.step.m_Condition as string | null | undefined) ?? null;
   const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
-  const conditionRows = editable ? (
+  const owned = editable && (transition || step);
+  const conditionRows = owned ? (
     <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
-      onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
-      onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
+      onCreate={!elements ? null : step ? () => graphAuthoring.createStepCondition(graph.id, elements, step)
+        : () => graphAuthoring.createCondition(graph.id, elements, edge.id)}
+      onRemove={item => step ? graphAuthoring.removeStepCondition(graph.id, step, item) : graphAuthoring.removeCondition(graph.id, edge.id, item)} />
   ) : conditions.length ? conditions.map(item => (
     <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
-  )) : <Value label="条件图" mono={false} value="无条件" />;
+  )) : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="无条件" />;
   return (
     <>
       <Head name={name} sub={graphName(graph)} />
-      {editable && elements ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
-        : <Fold title="转移" defaultOpen>{conditionRows}</Fold>}
+      {transition && editable && elements ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
+        : step ? <StepFields graphId={graph.id} step={step}>{conditionRows}</StepFields>
+          : <Fold title={transition ? '转移' : '连线'} defaultOpen>{conditionRows}</Fold>}
       <Identity extra={[
-        { displayName: '转移', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
+        { displayName: transition ? '转移' : '连线', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
         { displayName: '程序', value: graph.programId },
       ]} />
     </>
