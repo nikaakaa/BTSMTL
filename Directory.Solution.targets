@@ -16,9 +16,14 @@
     <Exec Command="dotnet &quot;@(DependencyGuardTargetPath)&quot; $(DependencyGuardArguments)" />
   </Target>
   <!-- 宿主提供 Unity 工程与 Editor 路径时执行 Burst 兼容检查（Float32 数值目标）。 -->
+  <!-- 空值也会成为全局属性并压过工程内默认值，输出与临时目录只在调用方提供时传递。 -->
   <Target Name="BurstCheck" AfterTargets="Build" Condition="'$(BurstCheckClientRoot)' != ''">
+    <PropertyGroup>
+      <BurstCheckProperties>Configuration=$(Configuration);UseSharedCompilation=false;BurstCheckClientRoot=$(BurstCheckClientRoot);UnityEditorDataPath=$(UnityEditorDataPath)</BurstCheckProperties>
+      <BurstCheckProperties Condition="'$(BurstCheckOutput)' != ''">$(BurstCheckProperties);BurstCheckOutput=$(BurstCheckOutput)</BurstCheckProperties>
+      <BurstCheckProperties Condition="'$(BurstCheckTemp)' != ''">$(BurstCheckProperties);BurstCheckTemp=$(BurstCheckTemp)</BurstCheckProperties>
+    </PropertyGroup>
     <MSBuild Projects="$(MSBuildThisFileDirectory)Tools/BurstCheck/BTSMTL.BurstCheck.csproj"
-             Targets="Restore;Build" BuildInParallel="false"
-             Properties="Configuration=$(Configuration);UseSharedCompilation=false;BurstCheckClientRoot=$(BurstCheckClientRoot);UnityEditorDataPath=$(UnityEditorDataPath);BurstCheckOutput=$(BurstCheckOutput);BurstCheckTemp=$(BurstCheckTemp)" />
+             Targets="Restore;Build" BuildInParallel="false" Properties="$(BurstCheckProperties)" />
   </Target>
 </Project>
