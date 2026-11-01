@@ -19,12 +19,6 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex) =>
             m_Bindings[bindingIndex].Contract.Execution;
 
-        public bool ShouldExecute(int bindingIndex, in TContext context)
-        {
-            ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            return binding.ExecutionGate == null || binding.ExecutionGate.ShouldExecute(binding.ContentIndex, in context);
-        }
-
         public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TContext context,
             in OrchestrationExtensionArguments<TValue> invocation)
         {
@@ -71,11 +65,7 @@ namespace BTSMTL.Orchestration
                 {
                     if (!(implementation is CandidateOrchestrationExtensionBinding<TValue, TContext> candidate))
                         throw Failure(in reference, $"实现未提供宿主句柄 {typeof(TContext)} 的候选写入调用接口");
-                    var executionGate = candidate as ICandidateOrchestrationExtensionExecutionGate<TContext>;
-                    if (executionGate != null && (contract.Kind != OrchestrationExtensionKind.Action ||
-                        (contract.Invocations & OrchestrationExtensionInvocationKind.Execute) == 0))
-                        throw Failure(in reference, "执行前判断只适用于支持 Execute 的 Action");
-                    bindings[bindingIndex] = new Binding(in contract, reference.ContentIndex, candidate, executionGate);
+                    bindings[bindingIndex] = new Binding(in contract, reference.ContentIndex, candidate);
                 }
             }
             return new OrchestrationExtensionBindings<TValue, TContext>(bindings);
@@ -234,25 +224,21 @@ namespace BTSMTL.Orchestration
                 ContentIndex = contentIndex;
                 ReadOnly = readOnly;
                 Candidate = null;
-                ExecutionGate = null;
             }
 
             public Binding(in OrchestrationExtensionContract contract, int contentIndex,
-                CandidateOrchestrationExtensionBinding<TValue, TContext> candidate,
-                ICandidateOrchestrationExtensionExecutionGate<TContext> executionGate)
+                CandidateOrchestrationExtensionBinding<TValue, TContext> candidate)
             {
                 Contract = contract;
                 ContentIndex = contentIndex;
                 ReadOnly = null;
                 Candidate = candidate;
-                ExecutionGate = executionGate;
             }
 
             public readonly OrchestrationExtensionContract Contract;
             public readonly int ContentIndex;
             public readonly ReadOnlyOrchestrationExtensionBinding<TValue, TContext> ReadOnly;
             public readonly CandidateOrchestrationExtensionBinding<TValue, TContext> Candidate;
-            public readonly ICandidateOrchestrationExtensionExecutionGate<TContext> ExecutionGate;
         }
     }
 

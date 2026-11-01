@@ -64,10 +64,8 @@ namespace BTSMTL.Compilation
                         if (prediction.ContainsKey(current.Operation))
                             continue;
                         ref readonly OperationDraft op = ref operations[current.Operation];
-                        if (op.Code == OrchestrationOperationCode.Constant ||
-                            op.Code == OrchestrationOperationCode.BlackboardGet ||
-                            op.Code == OrchestrationOperationCode.Extension &&
-                            m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
+                        if (op.Code is OrchestrationOperationCode.Constant or OrchestrationOperationCode.BlackboardGet ||
+                            IsAction(in op))
                         {
                             prediction.Add(current.Operation, false);
                             continue;
@@ -98,15 +96,9 @@ namespace BTSMTL.Compilation
                     }
                     return prediction[operation];
                 }
-                ReadOnlySpan<int> Outgoing(int operation, OrchestrationFlowKind kind)
-                {
-                    int segment = operation * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-                    int start = structure.OutgoingOffsets.Span[segment];
-                    return structure.OutgoingEdgeIndexes.Span.Slice(start, structure.OutgoingOffsets.Span[segment + 1] - start);
-                }
                 bool SelectionPrediction(int operation, OrchestrationFlowKind kind)
                 {
-                    foreach (int edge in Outgoing(operation, kind))
+                    foreach (int edge in structure.Outgoing(operation, kind))
                     {
                         if (!edges[edge].HasCondition)
                         {
@@ -157,7 +149,7 @@ namespace BTSMTL.Compilation
                                 product.InputEntry(operation), workbench.InputEntry(operation));
                         if (op.Code == OrchestrationOperationCode.Selector)
                         {
-                            ReadOnlySpan<int> childEdges = Outgoing(operation, OrchestrationFlowKind.Child);
+                            ReadOnlySpan<int> childEdges = structure.Outgoing(operation, OrchestrationFlowKind.Child);
                             for (int position = 0; position < childEdges.Length; position++)
                             {
                                 int edge = childEdges[position];
@@ -338,13 +330,12 @@ namespace BTSMTL.Compilation
 
                 internal int AbortEntry(int operation, int position)
                 {
-                    int segment = operation * OrchestrationProgramStructure.FlowKindCount + (int)OrchestrationFlowKind.Child - 1;
-                    int start = m_Structure.OutgoingOffsets.Span[segment];
+                    ReadOnlySpan<int> children = m_Structure.Outgoing(operation, OrchestrationFlowKind.Child);
                     int next = Emit(OrchestrationValueScheduleCode.Return,
                         operand: (int)OrchestrationValueSelectionReason.None, argument: -1);
                     for (int i = position - 1; i >= 0; i--)
                     {
-                        int index = m_Structure.OutgoingEdgeIndexes.Span[start + i];
+                        int index = children[i];
                         OrchestrationFlowEdge edge = m_Edges[index];
                         if (edge.AbortPolicy is not (OrchestrationAbortPolicy.LowerPriority or OrchestrationAbortPolicy.Both))
                             continue;
@@ -356,7 +347,7 @@ namespace BTSMTL.Compilation
                                     BooleanSlot(0), next: accepted, alternative: next))
                             : accepted;
                     }
-                    int currentIndex = m_Structure.OutgoingEdgeIndexes.Span[start + position];
+                    int currentIndex = children[position];
                     OrchestrationFlowEdge current = m_Edges[currentIndex];
                     if (current.HasCondition && current.AbortPolicy is OrchestrationAbortPolicy.Self or OrchestrationAbortPolicy.Both)
                         next = Work(WorkKind.BooleanValue, current.ConditionOperationIndex, -1, argument: 0,
@@ -430,12 +421,10 @@ namespace BTSMTL.Compilation
                             {
                                 Next(d.Destination);
                                 OrchestrationFlowKind kind = work.Kind == WorkKind.Select ? OrchestrationFlowKind.Transition : OrchestrationFlowKind.Child;
-                                int segment = d.Operation * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-                                int start = m_Structure.OutgoingOffsets.Span[segment];
-                                int end = m_Structure.OutgoingOffsets.Span[segment + 1];
-                                for (int i = start + d.Operand; i < end; i++)
+                                ReadOnlySpan<int> outgoing = m_Structure.Outgoing(d.Operation, kind);
+                                for (int i = d.Operand; i < outgoing.Length; i++)
                                 {
-                                    OrchestrationFlowEdge edge = m_Edges[m_Structure.OutgoingEdgeIndexes.Span[i]];
+                                    OrchestrationFlowEdge edge = m_Edges[outgoing[i]];
                                     bool any = m_Operations[d.Operation].Code == OrchestrationOperationCode.StateAny;
                                     if (any && m_State >= 0 && edge.TargetOperationIndex == m_State)
                                         continue;
@@ -482,9 +471,7 @@ namespace BTSMTL.Compilation
                         }
                         else
                         {
-                            ref readonly OperationDraft operation = ref m_Operations[current.Operation];
-                            if (!(operation.Code == OrchestrationOperationCode.Extension &&
-                                m_Compiler.m_Extensions[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action))
+                            if (!m_Compiler.IsAction(in m_Operations[current.Operation]))
                                 Inputs(current.Operation, current.Bank);
                         }
                     }
@@ -596,10 +583,7 @@ namespace BTSMTL.Compilation
                             if ((available & (BigInteger.One << slot)) != 0)
                                 return Alias(d.Next, available);
                             int done = Work(WorkKind.CompleteValue, op, d.Operand, slot, next: d.Next);
-                            ref readonly OperationDraft operation = ref m_Operations[op];
-                            bool action = operation.Code == OrchestrationOperationCode.Extension &&
-                                m_Compiler.m_Extensions[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
-                            int compute = action
+                            int compute = m_Compiler.IsAction(in m_Operations[op])
                                 ? Emit(OrchestrationValueScheduleCode.ReadActionOutput, op, d.Operand, slot, next: done)
                                 : Work(WorkKind.Inputs, op, argument: d.Argument,
                                     next: Emit(OrchestrationValueScheduleCode.Compute, op,
@@ -678,9 +662,7 @@ namespace BTSMTL.Compilation
                         case WorkKind.SelectChild:
                         {
                             OrchestrationFlowKind kind = work.Kind == WorkKind.Select ? OrchestrationFlowKind.Transition : OrchestrationFlowKind.Child;
-                            int segment = op * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-                            int start = m_Structure.OutgoingOffsets.Span[segment];
-                            int count = m_Structure.OutgoingOffsets.Span[segment + 1] - start;
+                            ReadOnlySpan<int> outgoing = m_Structure.Outgoing(op, kind);
                             int Finish(int edge)
                             {
                                 OrchestrationValueScheduleInstruction finish = m_Work[d.Destination].Data;
@@ -690,9 +672,9 @@ namespace BTSMTL.Compilation
                                         ? edge < 0 ? -1 : work.Kind == WorkKind.SelectChild ? d.Operand : edge
                                         : finish.Argument, finish.Next, finish.Alternative);
                             }
-                            if (d.Operand == count)
+                            if (d.Operand == outgoing.Length)
                                 return Alias(Finish(-1), available);
-                            int edgeIndex = m_Structure.OutgoingEdgeIndexes.Span[start + d.Operand];
+                            int edgeIndex = outgoing[d.Operand];
                             OrchestrationFlowEdge edge = m_Edges[edgeIndex];
                             int nextEdge = Work(work.Kind, op, d.Operand + 1, d.Destination, d.Argument);
                             if (m_Operations[op].Code == OrchestrationOperationCode.StateAny && m_State >= 0 &&

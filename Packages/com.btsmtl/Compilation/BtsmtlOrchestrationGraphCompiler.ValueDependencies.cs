@@ -19,17 +19,7 @@ namespace BTSMTL.Compilation
                 var dependencies = new List<List<int>>();
                 var controls = new Queue<(int Operation, int State)>();
                 var visitedControls = new HashSet<(int Operation, int State)>();
-                var invocationEntries = new List<int>[operations.Length];
-                for (int i = 0; i < operations.Length; i++)
-                    invocationEntries[i] = new List<int>();
-                foreach (ProgramSourceMapEntry entry in m_SourceMap)
-                {
-                    ProgramExecutionSource source = entry.Source;
-                    if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
-                        source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip or
-                            ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip)
-                        invocationEntries[source.InvocationCallerOperationIndex].Add(source.InvocationEntryOperationIndex);
-                }
+                List<int>[] invocationEntries = TimelineInvocationEntries(operations.Length);
 
                 int Value(int operation, int state)
                 {
@@ -138,8 +128,7 @@ namespace BTSMTL.Compilation
                     (int operation, int state) = nodes[i];
                     OrchestrationOperationCode code = operations[operation].Code;
                     if (code is OrchestrationOperationCode.Constant or OrchestrationOperationCode.BlackboardGet ||
-                        code == OrchestrationOperationCode.Extension &&
-                        m_Extensions[operations[operation].ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
+                        IsAction(in operations[operation]))
                         continue;
                     foreach (int input in InputDependencies(operation, state))
                         dependencies[i].Add(Value(input, state));

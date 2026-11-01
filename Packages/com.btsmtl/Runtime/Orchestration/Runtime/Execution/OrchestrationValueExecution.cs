@@ -212,11 +212,9 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.TimelineTime:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
-                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
-                    if (m_Host.ExecutionContract(binding).Kind != OrchestrationExtensionKind.Action)
+                    if (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Kind !=
+                        OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
-                    if (!m_Host.ShouldExecute(binding))
-                        return OrchestrationOperationResult.Success;
                     break;
             }
             int depth = ReadInputs(operationIndex, out int count);

@@ -56,9 +56,7 @@ namespace BTSMTL.Compilation
                 {
                     OperationDraft operation = operations[context.Operation];
                     if (CanEvaluate(operation.Code) && operation.Code is not
-                        (OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.Cycle) &&
-                        !(operation.Code == OrchestrationOperationCode.Extension &&
-                          m_Extensions[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action))
+                        (OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.Cycle) && !IsAction(in operation))
                         conditions.Add(context.Operation);
                 }
                 foreach (int condition in conditions)

@@ -8,7 +8,6 @@ namespace BTSMTL.Orchestration
         where TValue : unmanaged
     {
         OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex);
-        bool ShouldExecute(int bindingIndex);
         OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in OrchestrationExtensionArguments<TValue> invocation);
         OrchestrationExtensionResult InvokeCandidate(int bindingIndex, in OrchestrationExtensionArguments<TValue> invocation);
 
@@ -99,8 +98,6 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex) =>
             m_Extensions.ExecutionContract(bindingIndex);
-
-        public bool ShouldExecute(int bindingIndex) => m_Extensions.ShouldExecute(bindingIndex, in m_Context);
 
         public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex,
             in OrchestrationExtensionArguments<TValue> invocation) =>

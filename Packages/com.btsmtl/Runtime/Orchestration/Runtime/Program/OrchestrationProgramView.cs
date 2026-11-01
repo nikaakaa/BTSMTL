@@ -143,13 +143,9 @@ namespace BTSMTL.Orchestration
                 in Section<OrchestrationGraphCallRecord>(in Header.GraphCalls)[graphCallIndex],
                 Section<OrchestrationGraphParameter>(in Header.GraphParameters));
 
-        public ReadOnlySpan<int> Outgoing(int operationIndex, OrchestrationFlowKind kind)
-        {
-            int segment = operationIndex * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-            ReadOnlySpan<int> offsets = Section<int>(in Header.OutgoingOffsets);
-            int start = offsets[segment];
-            return Section<int>(in Header.OutgoingEdgeIndexes).Slice(start, offsets[segment + 1] - start);
-        }
+        public ReadOnlySpan<int> Outgoing(int operationIndex, OrchestrationFlowKind kind) =>
+            OrchestrationProgramStructure.Outgoing(Section<int>(in Header.OutgoingOffsets),
+                Section<int>(in Header.OutgoingEdgeIndexes), operationIndex, kind);
 
         public ReadOnlySpan<OrchestrationValueInputBinding> Inputs(int operationIndex)
         {

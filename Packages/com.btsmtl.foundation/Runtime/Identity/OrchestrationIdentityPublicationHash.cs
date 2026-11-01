@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Security.Cryptography;
 using ThirdPersonSimulation;
 
@@ -10,10 +9,10 @@ namespace BTSMTL.Orchestration
         internal static StableHash Table(ReadOnlySpan<string> entries)
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-identity-table/1");
-            Integer(hash, entries.Length);
+            StableHash.AppendLengthPrefixedText(hash, "btsmtl-orchestration-identity-table/1");
+            StableHash.AppendInt32(hash, entries.Length);
             for (int i = 0; i < entries.Length; i++)
-                Text(hash, entries[i]);
+                StableHash.AppendLengthPrefixedText(hash, entries[i]);
             return StableHash.Compute(hash);
         }
 
@@ -22,34 +21,21 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> rosterOrdinals)
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-prepared-identities/1");
-            Text(hash, tableIdentity.ToString());
-            Integer(hash, rosterOrdinals.Length);
+            StableHash.AppendLengthPrefixedText(hash, "btsmtl-orchestration-prepared-identities/1");
+            StableHash.AppendLengthPrefixedText(hash, tableIdentity.ToString());
+            StableHash.AppendInt32(hash, rosterOrdinals.Length);
             for (int i = 0; i < rosterOrdinals.Length; i++)
-                Integer(hash, rosterOrdinals[i]);
-            Integer(hash, contentTables.Length);
+                StableHash.AppendInt32(hash, rosterOrdinals[i]);
+            StableHash.AppendInt32(hash, contentTables.Length);
             for (int tableIndex = 0; tableIndex < contentTables.Length; tableIndex++)
             {
-                Text(hash, contentTables[tableIndex].Identity.ToString());
+                StableHash.AppendLengthPrefixedText(hash, contentTables[tableIndex].Identity.ToString());
                 ReadOnlySpan<int> mapping = mappings[tableIndex].Span;
-                Integer(hash, mapping.Length);
+                StableHash.AppendInt32(hash, mapping.Length);
                 for (int i = 0; i < mapping.Length; i++)
-                    Integer(hash, mapping[i]);
+                    StableHash.AppendInt32(hash, mapping[i]);
             }
             return StableHash.Compute(hash);
-        }
-
-        static void Text(IncrementalHash hash, string value)
-        {
-            Integer(hash, value.Length);
-            StableHash.AppendText(hash, value.AsSpan());
-        }
-
-        static void Integer(IncrementalHash hash, int value)
-        {
-            Span<byte> bytes = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
-            hash.AppendData(bytes);
         }
     }
 }

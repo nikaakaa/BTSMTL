@@ -57,13 +57,8 @@ namespace BTSMTL.Orchestration
         public ref readonly OrchestrationBlackboardSlot Blackboard(int valueSlot) => ref m_Blackboards[valueSlot];
         public ref readonly OrchestrationOutputTemplate OutputTemplate(int templateIndex) => ref m_OutputTemplates[templateIndex];
 
-        public ReadOnlySpan<int> Outgoing(int operationIndex, OrchestrationFlowKind kind)
-        {
-            int segment = operationIndex * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-            ReadOnlySpan<int> offsets = Structure.OutgoingOffsets.Span;
-            int start = offsets[segment];
-            return Structure.OutgoingEdgeIndexes.Span.Slice(start, offsets[segment + 1] - start);
-        }
+        public ReadOnlySpan<int> Outgoing(int operationIndex, OrchestrationFlowKind kind) =>
+            Structure.Outgoing(operationIndex, kind);
 
         public ReadOnlySpan<OrchestrationValueInputBinding> Inputs(int operationIndex)
         {

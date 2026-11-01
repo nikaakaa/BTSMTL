@@ -152,8 +152,6 @@ namespace BTSMTL.BurstCheck
         public OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex) =>
             throw new InvalidOperationException("检查插头不提供扩展。");
 
-        public bool ShouldExecute(int bindingIndex) => false;
-
         public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex,
             in OrchestrationExtensionArguments<Float32OrchestrationValue> invocation) => OrchestrationExtensionResult.Success;
 

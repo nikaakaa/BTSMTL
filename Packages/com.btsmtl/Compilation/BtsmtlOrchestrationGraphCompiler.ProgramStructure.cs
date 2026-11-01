@@ -96,8 +96,7 @@ namespace BTSMTL.Compilation
                     ReadVariableMetadata(binding.Declaration);
                 foreach (var binding in GeneratedBlackboardDeclarations())
                     ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排绑定恢复失败：{string.Join("；", m_Report.Messages)}");
+                ThrowIfInvalid("编排绑定恢复");
                 var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts);
                 return new BtsmtlOrchestrationGraphLayout<TValue>(CreateBindings(content, identities));
             }
@@ -276,8 +275,7 @@ namespace BTSMTL.Compilation
                 if (identitiesChanged)
                     BuildIdentityBindings();
                 PrepareValues();
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                ThrowIfInvalid();
 
                 OrchestrationGraphParameters<TValue> original = previous.Content.Parameters;
                 ReadOnlyMemory<TValue> constants = BindLiteralValues(original.Constants,
@@ -399,16 +397,14 @@ namespace BTSMTL.Compilation
                     evaluationOffsets[i + 1] = checked(evaluationOffsets[i] + operation.OutputCount + 1);
                     if (operation.Code == OrchestrationOperationCode.Parallel)
                     {
-                        int segment = i * kinds + (int)OrchestrationFlowKind.Child - 1;
-                        int children = offsets[segment + 1] - offsets[segment];
+                        int children = OrchestrationProgramStructure.Outgoing(offsets, edgeIndexes, i, OrchestrationFlowKind.Child).Length;
                         if (children > 31)
                             Error("parallel_child_limit", ProgramSourceTargetKind.Operation, i,
                                 $"Parallel 有 {children} 个子项，超过完成位图允许的 31 个。");
                     }
                     if (operation.Code == OrchestrationOperationCode.SubGraph)
                     {
-                        int segment = i * kinds + (int)OrchestrationFlowKind.Enter - 1;
-                        int entries = offsets[segment + 1] - offsets[segment];
+                        int entries = OrchestrationProgramStructure.Outgoing(offsets, edgeIndexes, i, OrchestrationFlowKind.Enter).Length;
                         if (entries != 1)
                             Error("graph_call_entry_count", ProgramSourceTargetKind.Operation, i,
                                 $"GraphCall 必须有一个 Enter 调用入口，实际为 {entries} 个。");
@@ -417,13 +413,12 @@ namespace BTSMTL.Compilation
                     {
                         int initialCount = 0;
                         int anyCount = 0;
-                        int segment = i * kinds + (int)OrchestrationFlowKind.Enter - 1;
-                        for (int j = offsets[segment]; j < offsets[segment + 1]; j++)
+                        foreach (int edgeIndex in OrchestrationProgramStructure.Outgoing(offsets, edgeIndexes, i, OrchestrationFlowKind.Enter))
                         {
-                            ref readonly OrchestrationFlowEdge edge = ref edges[edgeIndexes[j]];
+                            ref readonly OrchestrationFlowEdge edge = ref edges[edgeIndex];
                             OrchestrationOperationCode target = operations[edge.TargetOperationIndex].Code;
                             string port = m_Identities.Resolve(edge.SourcePortId);
-                            if (port == "StateMachine" && target == OrchestrationOperationCode.StateEnter)
+                            if (port == OrchestrationCorePortNames.StateMachine && target == OrchestrationOperationCode.StateEnter)
                             {
                                 initialCount++;
                                 initial[i] = edge.TargetOperationIndex;

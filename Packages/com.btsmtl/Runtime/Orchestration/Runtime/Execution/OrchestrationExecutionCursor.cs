@@ -136,16 +136,8 @@ namespace BTSMTL.Orchestration
         internal OrchestrationBlackboardMetadata ReadBlackboardMetadata(int valueSlot) => m_Blackboards.ReadMetadata(valueSlot);
         internal void SelectDiagnosticFrame(int frameSlot) => SelectExecutionFrame(frameSlot);
 
-        public bool IsPredictiveEvaluation
-        {
-            get
-            {
-                for (int i = m_StateDepth - 1; i >= 0; i--)
-                    if (m_States[i].HasRootCompletedOverride)
-                        return true;
-                return false;
-            }
-        }
+        // 只有调度预测会压入带 RootCompleted 覆盖的状态，且与预测深度成对进出。
+        public bool IsPredictiveEvaluation => m_ScheduledPredictionDepth != 0;
 
         void BeginInvocation()
         {

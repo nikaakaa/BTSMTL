@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Security.Cryptography;
 using ThirdPersonSimulation;
 
@@ -19,57 +18,42 @@ namespace BTSMTL.Orchestration
             where TValue : unmanaged
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-actor-preparation/3");
-            Text(hash, identities.ToString());
-            Text(hash, defaults.ToString());
-            Integer(hash, defaultIdentityTableIndex);
-            Integer(hash, dependencyIdentityTableIndices.Length);
+            StableHash.AppendLengthPrefixedText(hash, "btsmtl-orchestration-actor-preparation/3");
+            StableHash.AppendLengthPrefixedText(hash, identities.ToString());
+            StableHash.AppendLengthPrefixedText(hash, defaults.ToString());
+            StableHash.AppendInt32(hash, defaultIdentityTableIndex);
+            StableHash.AppendInt32(hash, dependencyIdentityTableIndices.Length);
             for (int dependencyIndex = 0; dependencyIndex < dependencyIdentityTableIndices.Length; dependencyIndex++)
-                Integer(hash, dependencyIdentityTableIndices[dependencyIndex]);
-            Integer(hash, sources.Length);
+                StableHash.AppendInt32(hash, dependencyIdentityTableIndices[dependencyIndex]);
+            StableHash.AppendInt32(hash, sources.Length);
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
-                Text(hash, sources[programIndex].ContentIdentity.ToString());
-                Integer(hash, sources[programIndex].IdentityTableIndex);
+                StableHash.AppendLengthPrefixedText(hash, sources[programIndex].ContentIdentity.ToString());
+                StableHash.AppendInt32(hash, sources[programIndex].IdentityTableIndex);
                 ReadOnlySpan<int> mapping = characterMappings[programIndex].Span;
-                Integer(hash, mapping.Length);
+                StableHash.AppendInt32(hash, mapping.Length);
                 for (int valueSlot = 0; valueSlot < mapping.Length; valueSlot++)
-                    Integer(hash, mapping[valueSlot]);
+                    StableHash.AppendInt32(hash, mapping[valueSlot]);
             }
-            Integer(hash, characterBlackboards.Length);
+            StableHash.AppendInt32(hash, characterBlackboards.Length);
             for (int sharedSlot = 0; sharedSlot < characterBlackboards.Length; sharedSlot++)
             {
                 ref readonly OrchestrationGraphBlackboardBinding binding = ref characterBlackboards[sharedSlot];
                 ref readonly OrchestrationBlackboardSlot descriptor = ref descriptors[sharedSlot];
-                Integer(hash, binding.InstanceIdentityId);
-                Integer(hash, binding.ContractIdentityId);
-                Integer(hash, binding.Field);
-                Integer(hash, (int)descriptor.ScopeKind);
-                Integer(hash, (int)descriptor.Lifetime);
-                Integer(hash, descriptor.CompiledOwnerIndex);
-                Integer(hash, (int)descriptor.ValueKind);
-                Integer(hash, (int)characterSlotTypes[sharedSlot].ValueKind);
-                Integer(hash, characterSlotTypes[sharedSlot].TypeIndex);
+                StableHash.AppendInt32(hash, binding.InstanceIdentityId);
+                StableHash.AppendInt32(hash, binding.ContractIdentityId);
+                StableHash.AppendInt32(hash, binding.Field);
+                StableHash.AppendInt32(hash, (int)descriptor.ScopeKind);
+                StableHash.AppendInt32(hash, (int)descriptor.Lifetime);
+                StableHash.AppendInt32(hash, descriptor.CompiledOwnerIndex);
+                StableHash.AppendInt32(hash, (int)descriptor.ValueKind);
+                StableHash.AppendInt32(hash, (int)characterSlotTypes[sharedSlot].ValueKind);
+                StableHash.AppendInt32(hash, characterSlotTypes[sharedSlot].TypeIndex);
             }
-            Integer(hash, characterKindSlotCounts.Length);
+            StableHash.AppendInt32(hash, characterKindSlotCounts.Length);
             for (int kind = 0; kind < characterKindSlotCounts.Length; kind++)
-                Integer(hash, characterKindSlotCounts[kind]);
-            return Complete(hash);
-        }
-
-        private static StableHash Complete(IncrementalHash hash) => StableHash.Compute(hash);
-
-        private static void Text(IncrementalHash hash, string value)
-        {
-            Integer(hash, value.Length);
-            StableHash.AppendText(hash, value.AsSpan());
-        }
-
-        private static void Integer(IncrementalHash hash, int value)
-        {
-            Span<byte> bytes = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
-            hash.AppendData(bytes);
+                StableHash.AppendInt32(hash, characterKindSlotCounts[kind]);
+            return StableHash.Compute(hash);
         }
     }
 }

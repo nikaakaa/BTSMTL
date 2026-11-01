@@ -62,6 +62,7 @@ namespace BTSMTL.Orchestration
 
     public static class OrchestrationCorePortNames
     {
+        public const string StateMachine = "StateMachine";
         public const string AnyState = "AnyState";
         public const string StateOnEnter = "OnEnter";
         public const string StateRoot = "Root";

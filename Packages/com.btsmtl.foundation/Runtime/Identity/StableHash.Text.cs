@@ -33,6 +33,20 @@ namespace ThirdPersonSimulation
             return new StableHash(digest);
         }
 
+        public static void AppendInt32(IncrementalHash hash, int value)
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
+            hash.AppendData(bytes);
+        }
+
+        // 先写长度再写文本，相邻字段不会拼接出同一字节序列。
+        public static void AppendLengthPrefixedText(IncrementalHash hash, string value)
+        {
+            AppendInt32(hash, value.Length);
+            AppendText(hash, value.AsSpan());
+        }
+
         public static void AppendText(IncrementalHash hash, ReadOnlySpan<char> value)
         {
             if (BitConverter.IsLittleEndian)

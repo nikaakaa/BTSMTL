@@ -83,7 +83,7 @@ namespace BTSMTL.Compilation
                     m_Schedule = schedule;
                     m_CycleResetPort = compiler.Bind(OrchestrationCorePortNames.CycleReset);
                     m_States = Lists(operations.Length);
-                    m_TimelineEntries = Lists(operations.Length);
+                    m_TimelineEntries = compiler.TimelineInvocationEntries(operations.Length);
                     m_OwnerOperations = Lists(operations.Length);
                     m_ForceChildren = Lists(operations.Length);
                     for (int i = 0; i < operations.Length; i++)
@@ -92,14 +92,6 @@ namespace BTSMTL.Compilation
                         m_OwnerOperations[operation.ExecutionFrameOwnerOperationIndex].Add(i);
                         if (operation.Code == OrchestrationOperationCode.State)
                             m_States[operation.StateMachineOwnerOperationIndex].Add(i);
-                    }
-                    foreach (ProgramSourceMapEntry entry in compiler.m_SourceMap)
-                    {
-                        ProgramExecutionSource source = entry.Source;
-                        if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
-                            source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip or
-                                ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip)
-                            m_TimelineEntries[source.InvocationCallerOperationIndex].Add(source.InvocationEntryOperationIndex);
                     }
                     for (int i = 0; i < operations.Length; i++)
                     {
@@ -143,17 +135,22 @@ namespace BTSMTL.Compilation
                     return result;
                 }
 
-                ReadOnlySpan<int> Outgoing(int operation, OrchestrationFlowKind kind)
+                void ThrowIfActive((int Operation, Phase Phase, OrchestrationExecutionContract Contract) key)
                 {
-                    int segment = operation * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-                    int start = m_Structure.OutgoingOffsets.Span[segment];
-                    return m_Structure.OutgoingEdgeIndexes.Span.Slice(start,
-                        m_Structure.OutgoingOffsets.Span[segment + 1] - start);
+                    int cycle = m_Active.IndexOf(key);
+                    if (cycle < 0)
+                        return;
+                    var operations = new HashSet<int>();
+                    for (int i = cycle; i < m_Active.Count; i++)
+                        operations.Add(m_Active[i].Operation);
+                    var indexes = new int[operations.Count];
+                    operations.CopyTo(indexes);
+                    throw new WorkspaceCapacityCycle(indexes);
                 }
 
                 void AddForceChildren(int operation, OrchestrationFlowKind kind)
                 {
-                    foreach (int edge in Outgoing(operation, kind))
+                    foreach (int edge in m_Structure.Outgoing(operation, kind))
                         m_ForceChildren[operation].Add(m_Edges[edge].TargetOperationIndex);
                 }
 
@@ -329,16 +326,7 @@ namespace BTSMTL.Compilation
                     var key = (operation, phase, contract);
                     if (m_Shapes.TryGetValue(key, out Shape cached))
                         return cached;
-                    int cycle = m_Active.IndexOf(key);
-                    if (cycle >= 0)
-                    {
-                        var operations = new HashSet<int>();
-                        for (int i = cycle; i < m_Active.Count; i++)
-                            operations.Add(m_Active[i].Operation);
-                        var indexes = new int[operations.Count];
-                        operations.CopyTo(indexes);
-                        throw new WorkspaceCapacityCycle(indexes);
-                    }
+                    ThrowIfActive(key);
                     m_Active.Add(key);
                     try
                     {
@@ -363,7 +351,7 @@ namespace BTSMTL.Compilation
                 Shape Output(int operation, int port)
                 {
                     var result = new Shape();
-                    foreach (int edge in Outgoing(operation, OrchestrationFlowKind.Child))
+                    foreach (int edge in m_Structure.Outgoing(operation, OrchestrationFlowKind.Child))
                         if (m_Edges[edge].SourcePortId == port)
                             Child(result, edge, Phase.Tick, OrchestrationExecutionContract.Complete);
                     return result;
@@ -373,7 +361,7 @@ namespace BTSMTL.Compilation
                     OrchestrationExecutionContract contract, bool conditions = false, bool stops = false,
                     int states = 0, int graphs = 0, bool first = false)
                 {
-                    foreach (int edgeIndex in Outgoing(operation, kind))
+                    foreach (int edgeIndex in m_Structure.Outgoing(operation, kind))
                     {
                         OrchestrationFlowEdge edge = m_Edges[edgeIndex];
                         if (conditions && edge.HasCondition)
@@ -430,7 +418,7 @@ namespace BTSMTL.Compilation
                                 stops: op.Code == OrchestrationOperationCode.Parallel || contract == OrchestrationExecutionContract.Resumable);
                             return result;
                         case OrchestrationOperationCode.Selector:
-                            foreach (int edge in Outgoing(operation, OrchestrationFlowKind.Child))
+                            foreach (int edge in m_Structure.Outgoing(operation, OrchestrationFlowKind.Child))
                             {
                                 Schedules(result, m_Schedule.ChildSelectionEntries.Span, edge, m_Edges.Length);
                                 Schedules(result, m_Schedule.SelectorAbortEntries.Span, edge, m_Edges.Length);
@@ -477,8 +465,7 @@ namespace BTSMTL.Compilation
                             break;
                         default:
                         {
-                            bool action = op.Code == OrchestrationOperationCode.Extension &&
-                                m_Compiler.m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
+                            bool action = m_Compiler.IsAction(in op);
                             if (!action && CanEvaluate(op.Code))
                                 Schedules(result, m_Schedule.BooleanEntries.Span, operation, m_Operations.Length);
                             else
@@ -556,16 +543,7 @@ namespace BTSMTL.Compilation
                     {
                         if (!m_ForceCycles[operation] && m_Shapes.TryGetValue(key, out Shape cached))
                             return cached;
-                        int cycle = m_Active.IndexOf(key);
-                        if (cycle >= 0)
-                        {
-                            var operations = new HashSet<int>();
-                            for (int i = cycle; i < m_Active.Count; i++)
-                                operations.Add(m_Active[i].Operation);
-                            var indexes = new int[operations.Count];
-                            operations.CopyTo(indexes);
-                            throw new WorkspaceCapacityCycle(indexes);
-                        }
+                        ThrowIfActive(key);
                         m_Active.Add(key);
                         try
                         {

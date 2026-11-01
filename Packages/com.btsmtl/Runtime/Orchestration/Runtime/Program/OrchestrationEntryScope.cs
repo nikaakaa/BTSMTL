@@ -23,8 +23,6 @@ namespace BTSMTL.Orchestration
         {
             ReadOnlySpan<OrchestrationOperation> operations = program.Operations.Span;
             ReadOnlySpan<OrchestrationFlowEdge> edges = program.Edges.Span;
-            ReadOnlySpan<int> outgoingOffsets = program.Structure.OutgoingOffsets.Span;
-            ReadOnlySpan<int> outgoingEdges = program.Structure.OutgoingEdgeIndexes.Span;
 
             var reachable = new bool[operations.Length];
             var pending = new List<int>();
@@ -63,10 +61,7 @@ namespace BTSMTL.Orchestration
                     AddOperation(program.GraphCalls.Span[parameters.ReadOperationPayload<OrchestrationGraphCallPayload>(program, operationIndex).CallIndex].EntryOperationIndex,
                         reachable, pending);
 
-                int segment = operationIndex * OrchestrationProgramStructure.FlowKindCount;
-                int firstEdge = outgoingOffsets[segment];
-                int endEdge = outgoingOffsets[segment + OrchestrationProgramStructure.FlowKindCount];
-                foreach (int edgeIndex in outgoingEdges.Slice(firstEdge, endEdge - firstEdge))
+                foreach (int edgeIndex in program.Structure.Outgoing(operationIndex))
                 {
                     ref readonly OrchestrationFlowEdge edge = ref edges[edgeIndex];
                     AddOperation(edge.TargetOperationIndex, reachable, pending);

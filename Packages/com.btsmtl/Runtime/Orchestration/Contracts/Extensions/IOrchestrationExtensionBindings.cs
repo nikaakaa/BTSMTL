@@ -7,8 +7,6 @@ namespace BTSMTL.Orchestration
         int Count { get; }
         OrchestrationExtensionExecutionContract ExecutionContract(int bindingIndex);
 
-        bool ShouldExecute(int bindingIndex, in TContext context);
-
         OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TContext context,
             in OrchestrationExtensionArguments<TValue> invocation);
 

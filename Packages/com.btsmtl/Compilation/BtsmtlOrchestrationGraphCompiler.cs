@@ -390,8 +390,7 @@ namespace BTSMTL.Compilation
                 ValidateInputs();
                 int[] parents = BuildParentStates();
                 PrepareValues();
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                ThrowIfInvalid();
                 BuildConstantBindings();
                 foreach (int literal in m_ConstantLiteralIndexes)
                     m_Constants.Add(m_LoweredValues[literal]);
@@ -411,8 +410,7 @@ namespace BTSMTL.Compilation
                 ValidateValueDependencies(operations, controlFlow, structure);
                 BuildTypedValues(operations, controlFlow, structure);
                 OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                ThrowIfInvalid();
                 OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
                 OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
                 OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
@@ -421,8 +419,7 @@ namespace BTSMTL.Compilation
                 m_EvaluationOffsets = structure.ValueEvaluationOffsets;
                 BuildOperationTables(operations, assignments, out OrchestrationOperation[] hotOperations,
                     out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
-                if (!m_Report.IsValid)
-                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                ThrowIfInvalid();
                 var program = new OrchestrationProgramContent(
                     hotOperations, coldOperations, controlFlow, structure, valueSchedule,
                     workspaceCapacity, executionStorage, m_Inputs.ToArray(),
@@ -659,15 +656,8 @@ namespace BTSMTL.Compilation
                 {
                     return m_Lowering.Number(value, sourceIdentity, precision);
                 }
-                catch (SimulationNumericConversionException exception)
-                {
-                    throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
-                }
-                catch (ArgumentOutOfRangeException exception)
-                {
-                    throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
-                }
-                catch (OverflowException exception)
+                catch (Exception exception) when (exception is SimulationNumericConversionException or
+                    ArgumentOutOfRangeException or OverflowException)
                 {
                     throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
                 }
@@ -703,8 +693,8 @@ namespace BTSMTL.Compilation
                 yield return OrchestrationCorePortNames.StateOnExit;
                 yield return OrchestrationCorePortNames.BranchTrue;
                 yield return OrchestrationCorePortNames.BranchFalse;
-                yield return "Then";
-                yield return "Reset";
+                yield return OrchestrationCorePortNames.BranchThen;
+                yield return OrchestrationCorePortNames.CycleReset;
                 foreach (ProgramScopeLayout scope in m_Scopes)
                     yield return scope.Identity;
                 for (int i = 0; i < m_Operations.Count; i++)
@@ -920,9 +910,7 @@ namespace BTSMTL.Compilation
                         };
                         m_GraphInvocationFrames.Add(path, invocation);
                     }
-                    if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
-                        invocation.IsTimelineOccurrence |= source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip
-                            or ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip;
+                    invocation.IsTimelineOccurrence |= IsTimelineInvocation(source);
                     if (source.TargetKind == ProgramSourceTargetKind.Operation)
                         operationInvocationPaths[source.TargetIndex] = source.GraphInvocationPath;
                 }
@@ -1094,7 +1082,6 @@ namespace BTSMTL.Compilation
                     case OrchestrationOperationCode.InputScalar: return GraphValueTypeIdentity.Of(OrchestrationValueKind.Scalar);
                     case OrchestrationOperationCode.InputVector2:
                     case OrchestrationOperationCode.InputVector2Magnitude: return GraphValueTypeIdentity.Of(OrchestrationValueKind.Vector2);
-                    case OrchestrationOperationCode.HostInput: return null;
                     default: return null;
                 }
             }
@@ -1906,6 +1893,33 @@ namespace BTSMTL.Compilation
                 var result = new int[count];
                 Array.Fill(result, -1);
                 return result;
+            }
+
+            bool IsAction(in OperationDraft operation) =>
+                operation.Code == OrchestrationOperationCode.Extension &&
+                m_Extensions[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
+
+            static bool IsTimelineInvocation(ProgramExecutionSource source) =>
+                source.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
+                source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip or
+                    ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip;
+
+            // Timeline／表现调用者操作 → 它同步调用的子图入口操作。
+            List<int>[] TimelineInvocationEntries(int operationCount)
+            {
+                var result = new List<int>[operationCount];
+                for (int i = 0; i < operationCount; i++)
+                    result[i] = new List<int>();
+                foreach (ProgramSourceMapEntry entry in m_SourceMap)
+                    if (IsTimelineInvocation(entry.Source))
+                        result[entry.Source.InvocationCallerOperationIndex].Add(entry.Source.InvocationEntryOperationIndex);
+                return result;
+            }
+
+            void ThrowIfInvalid(string stage = "编排编译")
+            {
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' {stage}失败：{string.Join("；", m_Report.Messages)}");
             }
 
             OrchestrationValueKind Kind(ProgramStateValueKind kind) => m_Domain.StateSchema.RuntimeKind(kind);
