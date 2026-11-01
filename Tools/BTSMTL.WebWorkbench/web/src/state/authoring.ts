@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ReferenceCurves, type ScenarioDraftRequest, type SkillEditingView, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
+import {
+  authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillEditingView, type SkillElements,
+  type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
+} from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -56,8 +61,8 @@ export interface AuthoringDocument {
   saving: boolean;
   // 最近一次保存的编译结论；文件写入后由正式编译器判断。
   lastSave: SaveOutcome | null;
-  // 不经运行从 JSON 展开的全部图实例（未叠加网页修改）；严格读取被拒时为空并给出原因。
-  documentGraphs: GraphDefinition[] | null;
+  // 作者 JSON 与当前未保存修改的图投影；来源被拒时给出原因。
+  documentGraphs: SkillDocumentGraph[] | null;
   documentError: string | null;
   tickRate: number | null;
   previewDefinitionGuid: string | null;
@@ -100,6 +105,11 @@ export const useAuthoring = create<AuthoringState>()(() => ({
 
 export const authoringDocument = (state: AuthoringState, target = state.target): AuthoringDocument =>
   target === null ? closedDocument : state.documents[authoringTargetKey(target)];
+
+export const ownsAuthoringGraph = (state: AuthoringState, id: string): boolean => {
+  const target = state.target;
+  return target?.kind === 'skill' && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === target.name) === true;
+};
 
 const get = () => {
   const state = useAuthoring.getState();
@@ -340,19 +350,21 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
-  const revision = authoringDocument(useAuthoring.getState(), target).revision;
+  const { revision, version } = authoringDocument(useAuthoring.getState(), target);
   if (target.kind === 'scenario') {
     setDocument({ documentGraphs: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
     return;
   }
   try {
-    const document = await authoringApi.document(target.name, signal);
-    if (authoringDocument(useAuthoring.getState(), target).revision !== revision) return;
+    const document = await authoringApi.document(target.name, authoringActions.editingView(), signal);
+    const current = authoringDocument(useAuthoring.getState(), target);
+    if (current.revision !== revision || current.version !== version) return;
     setDocument({ documentGraphs: document.graphs, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
   } catch (error) {
     if (isAbort(error)) throw error;
-    if (authoringDocument(useAuthoring.getState(), target).revision !== revision) return;
+    const current = authoringDocument(useAuthoring.getState(), target);
+    if (current.revision !== revision || current.version !== version) return;
     setDocument({ documentGraphs: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
     consoleActions.error('作者', error);
   }
@@ -378,11 +390,29 @@ function reconcileSelection() {
 }
 
 // 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
-async function reloadDocument(target = get().target) {
+async function reloadDocument(target = get().target, signal?: AbortSignal) {
   if (!target) return;
-  await readDocument(target);
+  await readDocument(target, signal);
   if (isActiveTarget(target)) publishDocument();
 }
+
+let documentTimer: ReturnType<typeof setTimeout> | null = null;
+let documentController: AbortController | null = null;
+useAuthoring.subscribe((state, previous) => {
+  if (state.target !== previous.target) {
+    if (documentTimer !== null) clearTimeout(documentTimer);
+    documentController?.abort();
+    return;
+  }
+  const target = state.target;
+  if (target?.kind !== 'skill' || authoringDocument(state).version === authoringDocument(previous).version) return;
+  if (documentTimer !== null) clearTimeout(documentTimer);
+  documentController?.abort();
+  const controller = documentController = new AbortController();
+  documentTimer = setTimeout(() => {
+    void reloadDocument(target, controller.signal).catch(error => consoleActions.error('作者', error));
+  }, 150);
+});
 
 export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
@@ -407,7 +437,7 @@ export const authoringActions = {
   // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
   async open(target: AuthoringTarget) {
     const current = get().target;
-    if (current && authoringTargetKey(current) === authoringTargetKey(target) && get().documentGraphs) return true;
+    if (current && authoringTargetKey(current) === authoringTargetKey(target)) target = current;
     loadController?.abort();
     const controller = loadController = new AbortController();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
@@ -417,18 +447,16 @@ export const authoringActions = {
     set({ target, author: true, documents: opened ? state.documents
       : { ...state.documents, [key]: { ...newDocument(), loading: true } } });
     publishDocument();
-    if (opened && opened.documentGraphs !== null) return true;
-    setDocument({ loading: true }, target);
+    if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
     try {
       if (!opened || opened.revision === null) {
         const snapshot = await authoringApi.read(target, controller.signal);
         controller.signal.throwIfAborted();
         setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
       }
-      await readDocument(target, controller.signal);
+      await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
       setDocument({ loading: false }, target);
-      publishDocument();
       return true;
     } catch (error) {
       setDocument({ loading: false }, target);
@@ -537,7 +565,6 @@ export const authoringActions = {
         edited: {}, removed: [], addedPorts: {}, externalChange: false,
         version: authoringDocument(useAuthoring.getState(), target).version + 1, saving: false, lastSave,
       }, target);
-      void reloadDocument(target);
       return isActiveTarget(target);
     };
     try {
@@ -605,8 +632,9 @@ export const authoringActions = {
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
         const snapshot = await authoringApi.read(target);
-        setDocument({ revision: snapshot.revision, sourceRevision: null, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
-        await reloadDocument(target);
+        setDocument({ revision: snapshot.revision, sourceRevision: null,
+          version: authoringDocument(useAuthoring.getState(), target).version + 1,
+          files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
       }
     } catch (error) {
       consoleActions.error('作者', error);

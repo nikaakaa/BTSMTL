@@ -8,7 +8,7 @@ import {
   isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
@@ -217,7 +217,7 @@ function SkillSummary() {
 // 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
 function useAuthorGraphs() {
   return useAuthoring(useShallow(state => ({
-    program: state.author && state.target?.kind === 'skill' ? authoringDocument(state).programId : null,
+    on: state.author && state.target?.kind === 'skill',
     edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
   })));
 }
@@ -227,14 +227,14 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const { graphs, frame, runId } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame, runId: state.runId })));
   const author = useAuthorGraphs();
   const found = useMemo(() => {
-    if (author.program === null) return findGraphNode(graphs, id);
+    if (!author.on) return findGraphNode(graphs, id);
     const located = findEditedGraph(graphs, id, author.edited, author.ports);
     const node = located?.graph.nodes.find(item => item.id === located.id && item.invocationPath === located.path);
     return located && node ? { graph: located.graph, node } : null;
   }, [graphs, id, author]);
+  const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   if (!found) return missing;
   const { graph, node } = found;
-  const editable = author.program !== null && author.program === graph.programId;
   const candidates = graphRecords(frame?.route, graph, binding);
   const observedCall = call ?? singleCall(candidates);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
@@ -325,11 +325,12 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
 }
 
 // 专属图（状态体、转移条件）：已在展开结果里的可进入；网页新建的保存后才有展开结果。
-function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
-  label: string; owner: GraphDefinition; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
+function OwnedGraph({ label, id, onCreate, onRemove, createText }: {
+  label: string; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
 }) {
   const graphs = useWorkbench(state => state.graphs);
-  const target = id ? graphs?.find(item => item.id === id && item.programId === owner.programId) ?? null : null;
+  const target = id ? graphs?.find(item => item.id === id) ?? null : null;
+  const error = useAuthoring(state => authoringDocument(state).documentError);
   return (
     <div className={styles.field}>
       <label title={label}>{label}</label>
@@ -337,7 +338,7 @@ function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
         {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => onCreate?.()}>{createText}</Button> : (
           <>
             {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={() => openGraph(target)} />
-              : <span className={styles.note}>未保存，保存后可进入</span>}
+              : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
             <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => onRemove(id)}>移除</Button>
           </>
         )}
@@ -353,7 +354,7 @@ function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }
   // 只有普通状态带状态体；入口、任意状态与出口是系统锚点。
   if (node?.type !== 'BtsmtlSkillNativeState') return null;
   return (
-    <OwnedGraph label="状态体" owner={graph} id={(node.m_Body as string | null) ?? null} createText="新建状态体"
+    <OwnedGraph label="状态体" id={(node.m_Body as string | null) ?? null} createText="新建状态体"
       onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
       onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
   );
@@ -365,12 +366,12 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const graphs = useWorkbench(state => state.graphs);
   const author = useAuthorGraphs();
   const found = useMemo(() => {
-    const located = findEditedGraph(graphs, id, author.program === null ? {} : author.edited, author.ports);
+    const located = findEditedGraph(graphs, id, author.on ? author.edited : {}, author.ports);
     const edge = located?.graph.edges.find(item => item.id === located.id && item.invocationPath === located.path);
     return located && edge ? { graph: located.graph, edge } : null;
   }, [graphs, id, author]);
   const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
-  const editable = !!found && author.program === found.graph.programId;
+  const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   const elements = useSkillElements(editable);
   const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
   if (!found) return missing;
@@ -382,7 +383,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
   const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
   const conditionRows = editable ? (
-    <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
+    <OwnedGraph label="条件图" id={condition} createText="新建条件"
       onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
       onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
   ) : conditions.length ? conditions.map(item => (

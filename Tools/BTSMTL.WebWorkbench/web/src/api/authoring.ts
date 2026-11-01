@@ -366,13 +366,19 @@ export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
   | { stage: 'compilation-failed'; compilationState: 'failed'; diagnostic?: never; exitCode: number; output: string; error: string; outputPath: string; errorPath: string }
 );
 
-// 不经运行、按编译器同一展开得到的技能全部图实例；调用路径与运行记录同一语法。
+export interface SkillDocumentGraph extends GraphDefinition {
+  owner: string;
+  ownerName: string;
+  file: string;
+  role: string;
+}
+
 export interface SkillDocument {
   skill: string;
   programId: string;
   sourceRevision: string;
   tickRate: number;
-  graphs: GraphDefinition[];
+  graphs: SkillDocumentGraph[];
 }
 
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
@@ -414,7 +420,8 @@ export const authoringApi = {
   read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
-  document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, signal),
+  document: (skill: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
+    postJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, { editingView, graphId }, signal),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<SkillSaveResult>(targetPath(target), request);
     return result.compilationState === 'not-required' ? { ...result,

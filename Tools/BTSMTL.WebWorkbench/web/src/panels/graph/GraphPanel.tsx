@@ -13,7 +13,7 @@ import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeIn
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
@@ -367,7 +367,7 @@ function NodeTypePicker({ graph, at, onCreated, onClose }: {
 // 黑板浮层：读打开技能里这张图的文件；作者模式可增删、改名、改默认值与声明。
 function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose(): void }) {
   const author = useAuthoring(useShallow(state => ({
-    own: state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId, editable: state.author,
+    own: ownsAuthoringGraph(state, graph.id), editable: state.author,
   })));
   const elements = useSkillElements(author.own && author.editable);
   return (
@@ -401,9 +401,9 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
   const { graph, path } = props;
   const author = useAuthoring(useShallow(state => ({
-    on: state.author && state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId,
+    on: state.author && ownsAuthoringGraph(state, graph.id),
     edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
-    own: state.target?.kind === 'skill' && authoringDocument(state).programId === graph.programId,
+    own: ownsAuthoringGraph(state, graph.id),
   })));
   const editable = author.on;
   const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,
