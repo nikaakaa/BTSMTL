@@ -108,15 +108,18 @@
 }
 
 .choices {
-  max-height: 150px;
-  overflow: auto;
+  max-height: 200px;
+  overflow: hidden;
   flex: none;
   border-bottom: 2px solid var(--bg-0);
 }
 
 .choices .row {
-  height: auto;
-  min-height: 36px;
+  height: 100%;
+}
+
+.candidateList {
+  height: 120px;
 }
 
 .issue {

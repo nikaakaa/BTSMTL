@@ -40,18 +40,23 @@ export function ProjectPanel() {
 function ProjectFieldChoices({ field }: { field: ReferenceFieldSelection }) {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
+  const items = field.catalog.kind === 'ready' ? field.catalog.items.filter(choice => `${choice.name} ${choice.detail} ${choice.source}`.toLocaleLowerCase().includes(query)) : [];
+  const selected = items.findIndex(choice => referenceValueKey(choice.value) === referenceValueKey(field.value));
   return <div className={projectStyles.choices}><Fold title={`当前字段：${field.name}`} defaultOpen>
     {field.catalog.kind === 'unavailable' ? <div className={projectStyles.note}>{field.catalog.reason}</div> : <>
       <TextInput aria-label="筛选当前字段候选" placeholder="搜索名称、说明或来源" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
-      {field.catalog.items.filter(choice => `${choice.name} ${choice.detail} ${choice.source}`.toLocaleLowerCase().includes(query)).map((choice, index) =>
-        <button key={index} className={projectStyles.row} draggable
+      <VirtualList className={projectStyles.candidateList} count={items.length} rowHeight={48} label={field.name}
+        revealKey={field.id} revealIndex={selected < 0 ? undefined : selected} render={index => {
+          const choice = items[index];
+          return <button className={projectStyles.row} draggable
           aria-selected={referenceValueKey(choice.value) === referenceValueKey(field.value)}
           onClick={() => field.choose(choice)}
           onDragStart={event => { if (field.catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choice); }}>
           <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>
           {choice.conflict && <span className={projectStyles.issue}>{choice.conflict}</span>}
-        </button>)}
+        </button>;
+      }} />
     </>}
   </Fold></div>;
 }
@@ -75,6 +80,10 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const field = useReferenceSelection(state => state.field);
+  const animationField = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind;
+  useEffect(() => {
+    if (animationField) { setSearch(''); setCategory(null); }
+  }, [field?.id, animationField]);
   const selectedValue = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind
     ? field.value : identity;
   const categories = useMemo(() => [...new Set(library.clips.map(item => item.category))].sort(), [library]);
@@ -84,6 +93,10 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
       `${clip.name} ${clip.category}`.toLowerCase().includes(text));
   }, [library, search, category]);
   const clip = library.clips.find(item => item.resource.identity === identity) ?? null;
+  const referencedClip = animationField ? library.clips.find(item => item.resource.identity === field.value) : undefined;
+  const referencedIdentity = referencedClip?.resource.identity;
+  useEffect(() => { if (referencedIdentity !== undefined) resourceActions.select(referencedIdentity); }, [referencedIdentity]);
+  const selectedIndex = clips.findIndex(item => referenceValueKey(selectedValue) === referenceValueKey(item.resource.identity));
 
   useEffect(() => {
     if (identity && !clip) consoleActions.log('error', 'resources', `该版本资源清单不包含所选资源 ${identity}`);
@@ -122,7 +135,8 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
             ...categories.map(value => ({ label: value || '未分类', onSelect: () => setCategory(value) })),
           ]}>{category ?? '全部类别'}</MenuButton>
         </PanelBar>
-        <VirtualList className={styles.list} count={clips.length} rowHeight={36} label="动画片段" render={index => {
+        <VirtualList className={styles.list} count={clips.length} rowHeight={36} label="动画片段"
+          revealKey={field?.id} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
           const item = clips[index];
           return (
             <button className={styles.clip} draggable

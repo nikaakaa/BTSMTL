@@ -30,6 +30,7 @@ export function AuthoringProject() {
   const [ownership, setOwnership] = useState<ProjectItem['ownership'] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const field = useReferenceSelection(state => state.field);
+  useEffect(() => { setSearch(''); setKind(null); setOwnership(null); }, [field?.id]);
   useEffect(() => {
     setItems(null);
     setFailure(null);
@@ -50,6 +51,7 @@ export function AuthoringProject() {
   const item = items?.find(value => keyOf(value) === selected) ?? null;
   const referencedItem = field?.catalog.kind === 'ready' && field.catalog.items.some(choice => referenceValueKey(choice.value) === referenceValueKey(field.value))
     ? items?.find(value => referenceValueKey(value.identity) === referenceValueKey(field.value)) : undefined;
+  const referencedIndex = referencedItem ? shown.findIndex(value => keyOf(value) === keyOf(referencedItem)) : -1;
   if (available === false) return <Empty text={reason ?? '作者目录不可用'} />;
   if (skill === null) return <Empty text="技能目录为空" />;
   return <div className={styles.catalog}>
@@ -71,7 +73,8 @@ export function AuthoringProject() {
         ]}>{ownership === null ? '私有与共享' : ownership === 'Shared' ? '共享' : '私有'}</MenuButton>
       </PanelBar>
       {failure ? <ErrorLine {...failure} /> : items === null ? <Empty text="正在读取作者目录" /> :
-        <VirtualList className={styles.list} count={shown.length} rowHeight={48} label="作者内容" render={index => {
+        <VirtualList className={styles.list} count={shown.length} rowHeight={48} label="作者内容"
+          revealKey={field?.id} revealIndex={referencedIndex < 0 ? undefined : referencedIndex} render={index => {
           const value = shown[index];
           const choices = field?.catalog.kind === 'ready' ? field.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(value.identity)) : [];
           return <button className={styles.row} aria-selected={referencedItem ? keyOf(referencedItem) === keyOf(value) : selected === keyOf(value)} draggable={choices.length === 1}

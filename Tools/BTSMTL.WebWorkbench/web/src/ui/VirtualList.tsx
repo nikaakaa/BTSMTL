@@ -2,12 +2,14 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import styles from './virtual.module.css';
 
 // 定高虚拟滚动列表：只渲染可见行；尺寸按列表所在窗口观察（拆出窗口同样适用）。
-export function VirtualList({ count, rowHeight, render, className, label }: {
+export function VirtualList({ count, rowHeight, render, className, label, revealIndex, revealKey }: {
   count: number;
   rowHeight: number;
   render(index: number): ReactNode;
   className?: string;
   label?: string;
+  revealIndex?: number;
+  revealKey?: string;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 400 });
@@ -20,6 +22,16 @@ export function VirtualList({ count, rowHeight, render, className, label }: {
     observer.observe(target);
     return () => observer.disconnect();
   }, []);
+  useLayoutEffect(() => {
+    if (revealIndex === undefined) return;
+    const target = element.current!;
+    const top = revealIndex * rowHeight;
+    const bottom = top + rowHeight;
+    if (top < target.scrollTop) target.scrollTop = top;
+    else if (bottom > target.scrollTop + target.clientHeight) target.scrollTop = bottom - target.clientHeight;
+    setView(previous => previous.top === target.scrollTop && previous.height === target.clientHeight ? previous
+      : { top: target.scrollTop, height: target.clientHeight });
+  }, [revealIndex, revealKey, rowHeight, count, view.height]);
   const first = Math.max(0, Math.floor(view.top / rowHeight) - 4);
   const last = Math.min(count, Math.ceil((view.top + view.height) / rowHeight) + 4);
   const rows: ReactNode[] = [];
