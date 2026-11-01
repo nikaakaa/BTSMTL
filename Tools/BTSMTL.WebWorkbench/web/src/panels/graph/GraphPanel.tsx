@@ -22,7 +22,7 @@ import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  belongsTo, callKey, callLabel, edgeSelectId, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
+  callKey, callLabel, edgeSelectId, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
   isStateMachine, layoutGraph, matchesDocumentCall, nodeGraphs, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
   recordedGraphCalls, type GraphHierarchy, type GraphNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
@@ -111,12 +111,27 @@ type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 export function GraphPanel() {
   const opened = useAuthoring(useShallow(state => ({ target: state.target,
     loading: authoringDocument(state).loading, error: authoringDocument(state).documentError,
-    graphs: authoringDocument(state).documentGraphs })));
+    graphs: authoringDocument(state).documentGraphs, programId: authoringDocument(state).programId })));
+  const [params, setParams] = usePanelParams<Params>(defaults);
+  const request = useWorkbench(state => state.graphRequest);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
   if (opened.loading || !opened.graphs) return <Empty text="读取中" />;
   if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
-  return <GraphView graphs={opened.graphs} />;
+  const graphs = opened.graphs;
+  const selected = graphs.find(graph => graphKey(graph) === params.graph)
+    ?? graphs.find(graph => graphKey(graph) === request?.key)
+    ?? graphs.find(graph => graph.id === opened.programId);
+  if (selected === undefined) return <div className={styles.root}>
+    <PanelBar><Select label="作者图" value={null} placeholder="选择作者图"
+      options={graphs.map(graph => ({ value: graphKey(graph), label: `${graph.ownerName} · ${graphName(graph)}` }))}
+      onChange={key => {
+        const graph = graphs.find(item => graphKey(item) === key)!;
+        void projectActions.openGraph(graph).catch(reason => consoleActions.error('作者', reason));
+      }} /></PanelBar>
+    <ReportEmpty text="当前技能没有声明根执行图，请选择要查看的作者图。" />
+  </div>;
+  return <GraphView graphs={graphs} defaultGraph={selected} params={params} setParams={setParams} />;
 }
 
 function ReportEmpty({ text }: { text: string }) {
@@ -126,18 +141,18 @@ function ReportEmpty({ text }: { text: string }) {
 
 const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([graphKey(graph), callKey(call)]);
 
-function GraphView({ graphs }: { graphs: SkillDocumentGraph[] }) {
+function GraphView({ graphs, defaultGraph, params, setParams }: {
+  graphs: SkillDocumentGraph[]; defaultGraph: SkillDocumentGraph; params: Params; setParams(patch: Partial<Params>): void;
+}) {
   const binding = useDocumentObservationBinding();
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
-  const [params, setParams] = usePanelParams<Params>(defaults);
   const observationNotice = useDocumentObservationNotice(params.pin?.runId === runId ? params.pin.call : null);
   const hierarchy = useDocumentGraphHierarchy();
-  const programId = useAuthoring(state => authoringDocument(state).programId);
 
   const currentCalls = useMemo(() => recordedGraphCalls([], observation.current, graphs, binding), [observation.current, graphs, binding]);
   const followed = params.graph === null && currentCalls.length === 1 ? graphKey(currentCalls[0].graph) : null;
-  const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? graphs.find(item => item.id === programId)!;
+  const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? defaultGraph;
   const key = graphKey(graph);
 
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
@@ -577,7 +592,7 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
         for (const frame of state.routeFrames) {
           if (frame.seconds > state.frame.seconds) continue;
           const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
-            belongsTo(item.call, graph, binding) && call !== null && callKey(item.call) === callKey(call);
+            matchesDocumentCall(item.call, binding) && call !== null && callKey(item.call) === callKey(call);
           for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
           for (const edge of frame.edges) if (edge.passed && matches(edge)) history.traveled.add(edge.edgeId);
         }

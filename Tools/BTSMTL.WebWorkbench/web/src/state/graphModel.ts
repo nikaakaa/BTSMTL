@@ -38,8 +38,6 @@ export function documentObservationNotice(frame: RouteFrame | null, binding: Doc
       }
   return outdated ? expired : null;
 }
-export const belongsTo = (call: ExecutionCall, graph: GraphDefinition, binding: DocumentObservationBinding) =>
-  graph.programId === binding.programId && matchesDocumentCall(call, binding);
 export const compareSequence = (left: { sequence: string }, right: { sequence: string }) => {
   const a = BigInt(left.sequence), b = BigInt(right.sequence);
   return a < b ? -1 : a > b ? 1 : 0;
@@ -89,7 +87,7 @@ export function singleCall(records: RouteRecord[]): ExecutionCall | null {
 export function graphRecords(route: RouteFrame | null | undefined, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
   if (!route) return [];
   return [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)]
-    .filter((item): item is RouteRecord => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding));
+    .filter((item): item is RouteRecord => item.call !== null && item.graphId === graph.id && matchesDocumentCall(item.call, binding));
 }
 
 export interface RecordedGraphCall {
@@ -101,7 +99,7 @@ export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | n
   if (current === null) return [];
   const calls = new Map<string, RecordedGraphCall>();
   const byId = new Map<string, GraphDefinition[]>();
-  for (const graph of graphs.filter(item => item.programId === binding.programId)) {
+  for (const graph of graphs) {
     const matches = byId.get(graph.id) ?? [];
     matches.push(graph);
     byId.set(graph.id, matches);
