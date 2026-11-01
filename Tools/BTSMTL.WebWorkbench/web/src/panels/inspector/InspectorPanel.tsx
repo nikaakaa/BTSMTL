@@ -542,10 +542,12 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
 
 // 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放身份折叠。
 function ResourceInspector({ identity }: { identity: string }) {
-  const library = useAnimationLibrary(true);
-  const clip = library?.clips.find(item => item.resource.identity === identity) ?? null;
-  if (!library) return <Empty text="读取中" />;
-  if (!clip) return <div className={styles.missing}>资源清单不包含所选资源</div>;
+  const libraryState = useAnimationLibrary(true);
+  if (libraryState.kind === 'loading') return <Empty text="读取中" />;
+  if (libraryState.kind === 'unavailable') return <div className={styles.missing}>{libraryState.reason}</div>;
+  const library = libraryState.library;
+  const clip = library.clips.find(item => item.resource.identity === identity);
+  if (!clip) return <div className={styles.missing}>动画库不包含所选资源，请重新导出动画库；原身份已保留</div>;
   return (
     <>
       <Head icon={<TrackIcon kind="anim" />} name={clip.name} sub={`动画 · ${clip.category}`} />
