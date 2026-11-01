@@ -408,7 +408,7 @@ export function SkillFields({ editable }: { editable: boolean }) {
   if (target?.kind !== 'skill' || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
     <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
-      graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value, next); })} />
+      graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />
   </fieldset>;
 }
 
@@ -478,7 +478,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   keys: import('../../api/types').InputCatalog['players'][number]['keys'];
 }) {
   const target = useAuthoring(state => state.target);
-  const { description, issues } = useDescription(target, graphId, node);
+  const { description, issues } = useDescription(target, graphId, node.type as string, configurationOf(node));
   const key = getIn(node, contract.keyPath);
   const kind = keys.find(item => item.name === key)?.kind;
   const fields = description?.stored.map(item => ({ ...item, fields: item.fields
@@ -493,7 +493,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   return <Fold title="输入" defaultOpen>
     {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
     {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
-      owner={{ graphId, nodeId: String(node.UID) }} onSet={set} onSetFields={setFields} />)}
+      owner={{ kind: 'node', graphId, nodeId: String(node.UID) }} onSet={set} onSetFields={setFields} />)}
   </Fold>;
 }
 
