@@ -137,6 +137,7 @@ export type FieldMetadata = FieldChoices & {
   visibleWhenValue: string | null;
   references: FieldReference[];
   graphTargets: GraphReferenceTarget[];
+  flowOutputList: boolean;
 };
 
 // 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。

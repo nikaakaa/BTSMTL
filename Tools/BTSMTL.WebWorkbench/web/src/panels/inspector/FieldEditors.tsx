@@ -220,8 +220,6 @@ function ListEditor({ label, value, shape, keys, graphId, scope, onSet }: {
 
 // 每项是一个执行出口的列表（组合步骤，身份 m_Id 即端口）：节点上只改名称、顺序与增删；
 // 条件与调度在该出口的连线上编辑。连着线的出口要先断线才能删。
-const isPortList = (shape: StorageShape | null | undefined) => !!shape?.element?.members?.some(member => member.member === 'm_Id');
-
 function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
   label: string; value: JsonObject[]; shape: StorageShape | null | undefined; keys: JsonKey[]; node: JsonObject;
   outputs: DescribedPort[]; onSet: SetValue;
@@ -702,7 +700,7 @@ function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
   if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
-  if (owner.kind === 'node' && Array.isArray(value) && isPortList(shape))
+  if (owner.kind === 'node' && Array.isArray(value) && field.flowOutputList)
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
   const ownedTargets = field.graphTargets.filter(target => target.ownerBinding === 'ReferenceNode');
   if (owner.kind === 'node' && ownedTargets.length !== 0)
