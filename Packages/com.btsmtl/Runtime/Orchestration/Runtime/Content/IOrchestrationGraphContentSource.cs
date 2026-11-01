@@ -1,3 +1,5 @@
+using ThirdPersonSimulation;
+
 namespace BTSMTL.Orchestration
 {
     public interface IOrchestrationGraphContentSource
