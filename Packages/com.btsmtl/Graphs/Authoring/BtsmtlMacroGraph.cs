@@ -214,10 +214,10 @@ namespace BTSMTL.Graphs
         public override List<Node> DuplicateNodes(List<Node> nodes, Vector2 position = default) =>
             m_Host.DuplicateNodes(this, nodes, position);
 
-        public List<Node> DuplicateNodeStructure(List<Node> nodes, Vector2 position = default) =>
-            base.DuplicateNodes(
+        public List<Node> DuplicateNodeStructure(List<Node> nodes, Vector2 position = default, Action<Node> initialize = null) =>
+            CloneNodesCore(
                 nodes.Where(node => node is not BtsmtlMacroInputNode && node is not BtsmtlMacroOutputNode).ToList(),
-                position);
+                this, position, initialize);
 
         public override bool HandleEditorCommand(string command, Vector2 position) =>
             m_Host.HandleEditorCommand(this, command, position);
