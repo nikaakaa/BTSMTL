@@ -184,7 +184,8 @@ namespace BTSMTL.Authoring.Graph
                     string.Equals(
                         value.ExternalKind,
                         descriptor.ExternalKind,
-                        StringComparison.Ordinal)))
+                        StringComparison.Ordinal) &&
+                    (descriptor.AuthoringType == null || value.AuthoringType == null)))
             {
                 throw new InvalidOperationException(
                     $"Graph authoring external kind '{descriptor.ExternalKind}' is already registered in domain '{descriptor.DomainId}'.");
@@ -211,14 +212,21 @@ namespace BTSMTL.Authoring.Graph
             string externalKind,
             out GraphAuthoringCapabilityDescriptor descriptor)
         {
-            descriptor = string.IsNullOrWhiteSpace(externalKind)
-                ? null
-                : m_Descriptors.Values.SingleOrDefault(value =>
-                    value.DomainId.Equals(domainId) &&
-                    string.Equals(
-                        value.ExternalKind,
-                        externalKind,
-                        StringComparison.Ordinal));
+            descriptor = null;
+            if (string.IsNullOrWhiteSpace(externalKind))
+                return false;
+            foreach (GraphAuthoringCapabilityDescriptor candidate in m_Descriptors.Values)
+            {
+                if (!candidate.DomainId.Equals(domainId) ||
+                    !string.Equals(candidate.ExternalKind, externalKind, StringComparison.Ordinal))
+                    continue;
+                if (descriptor != null)
+                {
+                    descriptor = null;
+                    return false;
+                }
+                descriptor = candidate;
+            }
             return descriptor != null;
         }
 
