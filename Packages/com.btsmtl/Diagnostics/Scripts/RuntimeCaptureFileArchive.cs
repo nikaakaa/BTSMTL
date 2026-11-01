@@ -794,8 +794,7 @@ namespace BTSMTL.Diagnostics
                 m_ReadPages.AsSpan(slot * EventsPerPage, EventsPerPage).Clear();
                 if (!ReadSymbols(page.SymbolOffset, page.SymbolCount, request))
                     return false;
-                long end = pageId + 1 == m_WrittenPages ? m_Written : ReadPage(pageId + 1).First;
-                int count = (int)(end - page.First);
+                int count = page.Count;
                 m_EventIndexReader.BaseStream.Position = page.First * EventIndexSize + sizeof(ulong);
                 m_EventReader.BaseStream.Position = m_EventIndexReader.ReadInt64();
                 for (int i = 0; i < count; i++)
