@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
-import type { ProfileEntryTarget } from '../../api/authoring';
+import type { ProfileEntryTarget, ReferenceChoiceTarget } from '../../api/authoring';
 import { openPanel } from '../../shell/layout';
 import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
@@ -18,6 +18,7 @@ import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from '../resources/resourceScene';
 import { AuthoringProject } from './AuthoringProject';
 import { CarrierProject } from './CarrierProject';
+import { TargetReferrers } from './TargetReferrers';
 import styles from '../resources/resources.module.css';
 import projectStyles from './project.module.css';
 
@@ -30,13 +31,18 @@ export function ProjectPanel() {
   const field = useReferenceSelection(state => state.field);
   const [section, setSection] = useState<'authoring' | 'carriers' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
   const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
+  const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
   const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
   useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
-    {field && <ProjectFieldChoices key={field.id} field={field} onProfileTarget={target => {
+    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={target => {
       setProfileTarget(target);
       setSection('carriers');
     }} />}
+    {referenceTarget && <div className={projectStyles.referenceDetails}>
+      <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
+      <TargetReferrers target={referenceTarget} />
+    </div>}
     <div className={projectStyles.body}><Tabs<'authoring' | 'carriers' | 'animations'> value={section} onChange={setSection} items={[
       { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
       { value: 'carriers', label: '载体与资源', content: <CarrierProject target={profileTarget} /> },
@@ -45,8 +51,8 @@ export function ProjectPanel() {
   </div>;
 }
 
-function ProjectFieldChoices({ field, onProfileTarget }: {
-  field: ReferenceFieldSelection; onProfileTarget(target: ProfileEntryTarget): void;
+function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
+  field: ReferenceFieldSelection; onProfileTarget(target: ProfileEntryTarget): void; onReferrers(target: ReferenceChoiceTarget): void;
 }) {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
@@ -66,18 +72,18 @@ function ProjectFieldChoices({ field, onProfileTarget }: {
           <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>
           {choice.conflict && <span className={projectStyles.issue}>{choice.conflict}</span>}
           </button>
-          {choice.targets.length !== 0 && <MenuButton label={`打开${choice.name}的来源`} variant="ghost" entries={choice.targets.map(target => {
-            if (target.kind === 'ProfileEntry') return {
-              label: `${target.domain} · ${target.key} · ${target.carrierIdentity}`,
+          {choice.targets.length !== 0 && <MenuButton label={`打开${choice.name}的来源`} variant="ghost" entries={choice.targets.flatMap(target => {
+            if (target.kind === 'ProfileEntry') return [{
+              label: `打开 ${target.domain} · ${target.key} · ${target.carrierIdentity}`,
               onSelect: () => onProfileTarget(target),
-            };
+            }, { label: `查看 ${target.domain} · ${target.key} 的引用者`, onSelect: () => onReferrers(target) }];
             const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(value => value.id === target.graphId);
-            return {
+            return [{
               label: graph ? `${graph.displayName ?? graph.id} · ${target.nodeId}` : `所属图尚未加载 · ${target.graphId}`,
               disabled: graph === undefined,
               onSelect: () => { if (graph) void projectActions.openGraph(graph, target.nodeId)
                 .then(() => { openPanel('graph'); }, error => consoleActions.error('Project', error)); },
-            };
+            }, { label: `查看节点 ${target.nodeId} 的引用者`, onSelect: () => onReferrers(target) }];
           })}>来源</MenuButton>}
         </div>;
       }} />

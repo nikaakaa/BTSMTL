@@ -122,6 +122,18 @@
   height: 120px;
 }
 
+.referenceDetails {
+  flex: none;
+  max-height: 240px;
+  overflow: auto;
+  border-bottom: 2px solid var(--bg-0);
+}
+
+.referrerList {
+  flex: none;
+  height: 180px;
+}
+
 .candidateRow {
   display: flex;
   align-items: center;

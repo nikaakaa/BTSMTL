@@ -3,11 +3,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
+import { referenceTargetKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
+import { TargetReferrers } from './TargetReferrers';
 import styles from './project.module.css';
 
 interface ResourceRow {
@@ -17,6 +19,11 @@ interface ResourceRow {
 
 const matchesTarget = (row: ResourceRow, target: ProfileEntryTarget) => row.source === target.profileSource &&
   row.domain === target.domain && row.entryKind === target.entryKind && row.key === target.key && row.identity === target.resourceIdentity;
+
+const resourceTarget = (carrier: AuthoringCarrier, row: ResourceRow): ProfileEntryTarget => ({
+  kind: 'ProfileEntry', carrierIdentity: carrier.identity, profileSource: row.source, domain: row.domain,
+  entryKind: row.entryKind, key: row.key, resourceIdentity: row.identity,
+});
 
 function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
   const rows: ResourceRow[] = [];
@@ -130,6 +137,12 @@ function CarrierResources({ carrier, target }: { carrier: AuthoringCarrier; targ
   const [kind, setKind] = useState<string | null>(null);
   const [selected, setSelected] = useState<ResourceRow | null>(null);
   const rows = useMemo(() => resourcesOf(carrier), [carrier]);
+  const field = useReferenceSelection(state => state.field);
+  const choicesFor = (row: ResourceRow) => {
+    if (field?.catalog.kind !== 'ready' || field.catalog.referenceKind !== row.entryKind) return [];
+    const key = referenceTargetKey(resourceTarget(carrier, row));
+    return field.catalog.items.filter(choice => choice.targets.some(value => referenceTargetKey(value) === key));
+  };
   useEffect(() => {
     if (target !== null) {
       setSearch('');
@@ -154,14 +167,20 @@ function CarrierResources({ carrier, target }: { carrier: AuthoringCarrier; targ
     <VirtualList className={styles.list} count={shown.length} rowHeight={44} label="载体只读资源"
       revealKey={JSON.stringify(target)} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
       const row = shown[index];
-      return <button className={styles.row} aria-selected={row === selected} onClick={() => setSelected(row)}>
+      const choices = choicesFor(row);
+      return <button className={styles.row} aria-selected={row === selected} onClick={() => setSelected(row)} draggable={choices.length === 1}
+        onDragStart={event => { if (field?.catalog.kind === 'ready' && choices.length === 1)
+          writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choices[0]); }}>
         <span>{row.name}</span><small>{row.kind} · {row.detail || row.key}</small>
       </button>;
     }} />
     {selected && <div className={styles.facts}><strong>{selected.name} · {selected.kind}</strong>
       <code>{selected.source}</code><small>{selected.key}{selected.identity ? ` · ${selected.identity}` : ''}</small>
       {selected.detail && <span>{selected.detail}</span>}
+      {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
+        onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}
+    {selected && <TargetReferrers target={resourceTarget(carrier, selected)} />}
     {target !== null && !rows.some(row => matchesTarget(row, target)) && <div className={styles.issue}>引用的配置条目已失效，原身份已保留：{target.key}</div>}
     <div className={styles.note}>{shown.length} / {rows.length} 项 · 引用绑定使用上方当前字段的正式候选</div>
   </div>;
