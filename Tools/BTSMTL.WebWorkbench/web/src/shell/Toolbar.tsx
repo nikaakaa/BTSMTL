@@ -96,7 +96,8 @@ function AuthoringStatus() {
           <Tip content={`${dirty} 个文件未保存${state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}`}>
             <span className={styles.dirty} tabIndex={0}>未保存</span>
           </Tip>
-          <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
+          <Button variant="ghost" disabled={state.saving} tip={state.saving ? '正在保存，收到回执后可还原' : '丢弃网页中的全部未保存修改'}
+            onClick={() => authoringActions.revert()}>还原</Button>
         </>
       )}
       {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存并应用当前载体配置（Ctrl+S）" onClick={() => void authoringActions.save()}>
