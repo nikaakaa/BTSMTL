@@ -106,6 +106,10 @@ export const SubgraphIcon = (props: IconProps) => (
   </Icon>
 );
 
+export const TimelineIcon = (props: IconProps) => (
+  <Icon {...props}><path d="M1.5 2.5h7v3h-7zm4 4.5h9v3h-9zm-2 4.5h6v3h-6z" /></Icon>
+);
+
 // Timeline 选择器（TimelineSelector）：左侧短竖条加方框。
 export const SelectorIcon = (props: IconProps) => (
   <Icon {...props}>

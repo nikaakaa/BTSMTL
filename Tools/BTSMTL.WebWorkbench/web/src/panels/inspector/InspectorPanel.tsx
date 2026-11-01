@@ -5,8 +5,8 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
-  type GraphNavigationTarget,
+  isPortSample, nodeReferences, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
+  type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding,
@@ -304,7 +304,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
 
 function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
   const hierarchy = useDocumentGraphHierarchy();
-  const children = nodeGraphs(hierarchy, graph, nodeId);
+  const children = nodeReferences(hierarchy, graph, nodeId);
   const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
@@ -312,8 +312,12 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
   return (
     <>
       {children.map(child => (
-        <Link key={child.id} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)" tip="在节点图面板打开"
-          onOpen={() => openGraph(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId })} />
+        <Link key={`${child.kind}:${child.owner}:${child.id}`} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)"
+          tip={child.kind === 'timeline' ? '在 Timeline 面板打开' : '在节点图面板打开'}
+          onOpen={() => {
+            void projectActions.openReference(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId })
+              .then(panel => { openPanel(panel); }, reason => consoleActions.error('作者', reason));
+          }} />
       ))}
       {transitions.map(edge => {
         const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
@@ -407,7 +411,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   );
 }
 
-const childLabel = (graph: GraphNavigationTarget) => graph.role === 'StateMachine' ? '状态机' : '图引用';
+const childLabel = (target: NodeNavigationTarget) => target.kind === 'timeline' ? 'Timeline' : target.role === 'StateMachine' ? '状态机' : '图引用';
 
 // ── Timeline 片段与轨道 ──
 

@@ -1,6 +1,6 @@
 import { authoringApi, type ProjectItem, type ReferrersResult } from '../api/authoring';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
-import { graphKey, nodeSelectId, type GraphNavigationTarget } from './graphModel';
+import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
 import { selectionActions, type GraphNavigationOrigin } from './store';
@@ -24,6 +24,18 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 
 export const projectActions = {
   openGraph,
+  async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin): Promise<'graph' | 'timeline'> {
+    switch (target.kind) {
+      case 'graph':
+        await openGraph(target, undefined, origin);
+        return 'graph';
+      case 'timeline':
+        await openOwner(target);
+        selectionActions.select(null);
+        selectionActions.showTimeline(target.id, null);
+        return 'timeline';
+    }
+  },
   async open(item: ProjectItem, schemeIndex?: number): Promise<'graph' | 'timeline' | 'inspector'> {
     const document = await openOwner(item);
     selectionActions.select(null);

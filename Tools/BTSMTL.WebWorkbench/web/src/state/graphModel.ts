@@ -196,11 +196,13 @@ export function layoutGraph(graph: GraphDefinition, path: string): { nodes: Laid
   };
 }
 
-export type GraphNavigationTarget = Pick<SkillDocumentRelation['target'], 'id' | 'displayName' | 'role' | 'owner' | 'ownerName' | 'file'>;
+export type GraphNavigationTarget = Pick<Extract<SkillDocumentRelation['target'], { kind: 'graph' }>, 'id' | 'displayName' | 'role' | 'owner' | 'ownerName' | 'file'>;
+export type NodeNavigationTarget = (GraphNavigationTarget & { kind: 'graph' })
+  | Pick<Extract<SkillDocumentRelation['target'], { kind: 'timeline' }>, 'kind' | 'id' | 'displayName' | 'owner' | 'ownerName' | 'file'>;
 
 export interface GraphHierarchy {
   graphs: Map<string, SkillDocumentGraph>;
-  nodeTargets: Map<string, GraphNavigationTarget[]>;
+  nodeTargets: Map<string, NodeNavigationTarget[]>;
   parents: Map<string, SkillDocumentGraph>;
   referrers: Map<string, SkillDocumentRelation[]>;
 }
@@ -210,18 +212,19 @@ const nodeTargetKey = (graph: GraphDefinition, nodeId: string) => JSON.stringify
 
 export function graphHierarchy(graphs: SkillDocumentGraph[], relations: SkillDocumentRelation[]): GraphHierarchy {
   const byAuthor = new Map(graphs.map(graph => [authorGraphKey(graph.owner, graph.id), graph]));
-  const nodeTargets = new Map<string, GraphNavigationTarget[]>();
+  const nodeTargets = new Map<string, NodeNavigationTarget[]>();
   const parents = new Map<string, SkillDocumentGraph>();
   const referrers = new Map<string, SkillDocumentRelation[]>();
-  const addTarget = (graph: SkillDocumentGraph, nodeId: string, target: GraphNavigationTarget) => {
+  const addTarget = (graph: SkillDocumentGraph, nodeId: string, target: NodeNavigationTarget) => {
     const key = nodeTargetKey(graph, nodeId);
     const targets = nodeTargets.get(key) ?? [];
-    if (!targets.some(item => item.owner === target.owner && item.id === target.id)) targets.push(target);
+    if (!targets.some(item => item.kind === target.kind && item.owner === target.owner && item.id === target.id)) targets.push(target);
     nodeTargets.set(key, targets);
   };
   for (const relation of relations) {
     const source = byAuthor.get(authorGraphKey(relation.source.owner, relation.source.graphId));
     if (source) addTarget(source, relation.source.nodeId, relation.target);
+    if (relation.target.kind !== 'graph') continue;
     const key = authorGraphKey(relation.target.owner, relation.target.id);
     const uses = referrers.get(key) ?? [];
     uses.push(relation);
@@ -232,12 +235,12 @@ export function graphHierarchy(graphs: SkillDocumentGraph[], relations: SkillDoc
     const parent = byAuthor.get(authorGraphKey(graph.owner, graph.declaredOwner.graphId));
     if (!parent) continue;
     parents.set(graphKey(graph), parent);
-    addTarget(parent, graph.declaredOwner.nodeId, graph);
+    addTarget(parent, graph.declaredOwner.nodeId, { ...graph, kind: 'graph' });
   }
   return { graphs: new Map(graphs.map(graph => [graphKey(graph), graph])), nodeTargets, parents, referrers };
 }
 
-export const nodeGraphs = (hierarchy: GraphHierarchy, graph: GraphDefinition, nodeId: string) =>
+export const nodeReferences = (hierarchy: GraphHierarchy, graph: GraphDefinition, nodeId: string) =>
   hierarchy.nodeTargets.get(nodeTargetKey(graph, nodeId)) ?? [];
 
 export function graphReferrers(hierarchy: GraphHierarchy, graph: GraphDefinition) {

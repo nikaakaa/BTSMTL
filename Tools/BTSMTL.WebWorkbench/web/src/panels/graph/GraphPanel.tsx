@@ -20,17 +20,18 @@ import {
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { usePanelId, usePanelParams } from '../../shell/panel';
+import { openPanel } from '../../shell/layout';
 import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeGraphs, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
-  recordedGraphCalls, type GraphHierarchy, type GraphNavigationTarget, type LaidNode, type RecordedGraphCall,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
+  recordedGraphCalls, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
 import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
-import { CloseIcon, SubgraphIcon } from '../../ui/icons';
+import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
@@ -59,6 +60,7 @@ interface ViewOptions {
   dim: boolean;
   related: Set<string> | null;
   enter(graph: GraphNavigationTarget, nodeId?: string): void;
+  openReference(target: NodeNavigationTarget, nodeId: string): void;
   openNode(data: NodeData): void;
   hierarchy: GraphHierarchy;
   graph: GraphDefinition;
@@ -80,7 +82,7 @@ const useView = () => useContext(ViewContext)!;
 interface NodeData extends Record<string, unknown> {
   laid: LaidNode;
   selectId: string;
-  children: GraphNavigationTarget[];
+  children: NodeNavigationTarget[];
 }
 type FlowNode = Node<NodeData, 'flow' | 'state'>;
 interface GroupData extends Record<string, unknown> {
@@ -463,7 +465,7 @@ const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView), canvas
 const edgeTypes = { route: memo(RouteEdgeView), transition: memo(TransitionEdgeView) };
 
 function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: LaidNode) {
-  return !nodeGraphs(hierarchy, graph, laid.node.id).length;
+  return !nodeReferences(hierarchy, graph, laid.node.id).length;
 }
 
 // 连线的条件：转移存在连线的 Payload 上，组合步骤存在出口所属的步骤上。
@@ -536,7 +538,7 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
     return [...groupNodes, ...layout.nodes.map((laid): FlowNode => ({
       id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
       measured: measured.get(laid.node.id),
-      data: { laid, selectId: nodeSelectId(graph, laid.node), children: nodeGraphs(hierarchy, graph, laid.node.id) },
+      data: { laid, selectId: nodeSelectId(graph, laid.node), children: nodeReferences(hierarchy, graph, laid.node.id) },
     }))];
   }, [layout, hierarchy, graph, machine, groups, canvasSelection, view]);
   const [nodes, setNodes] = useState<CanvasNode[]>(() => build([]));
@@ -621,12 +623,16 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
 
   const connected = useMemo(() => new Set(layout.edges.flatMap(edge =>
     [`${edge.source!.nodeId}|output:${edge.source!.portId}`, `${edge.target!.nodeId}|input:${edge.target!.portId}`])), [layout]);
+  const openReference = useCallback((target: NodeNavigationTarget, nodeId: string) => {
+    const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId };
+    void projectActions.openReference(target, origin).then(panel => { openPanel(panel); }, reason => consoleActions.error('作者', reason));
+  }, [graph.owner, graph.ownerName, graph.id]);
   const openNode = useCallback((data: NodeData) => {
-    if (data.children.length === 1) enter(data.children[0], data.laid.node.id);
-  }, [enter]);
+    if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
+  }, [openReference]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openNode, hierarchy, graph, connected,
-  }), [store, params.values, params.dim, related, params.labels, enter, openNode, hierarchy, graph, connected]);
+    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected,
+  }), [store, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -1004,7 +1010,7 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
       data-openable={children.length > 0 || undefined}>
       <Tip name={nodeName(laid.node)}
-        content={`${nodeTypeName(laid.node) ? `${nodeTypeName(laid.node)}\n` : ''}${laid.node.id}${children.length === 1 ? '\n双击进入引用图' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
+        content={`${nodeTypeName(laid.node) ? `${nodeTypeName(laid.node)}\n` : ''}${laid.node.id}${children.length === 1 ? `\n双击打开${children[0].kind === 'timeline' ? ' Timeline' : '引用图'}` : ''}${state.detail ? `\n${state.detail}` : ''}`}>
         <div className={styles.header}>
           <b data-name>{nodeName(laid.node)}</b>
           <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
@@ -1030,21 +1036,21 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
 
 // 标题栏右上的进入按钮：引用一张图时直接打开，引用多张时列出选择。
 function NodeGraphLinks({ data }: { data: NodeData }) {
-  const { enter, openNode } = useView();
+  const { openReference, openNode } = useView();
   const { children, laid } = data;
   if (children.length === 0) return null;
   return <span className="nodrag nopan" onPointerDown={event => event.stopPropagation()}
     onDoubleClick={event => event.stopPropagation()}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }}>
     {children.length === 1
-      ? <Tip content={`进入 ${children[0].ownerName} · ${graphName(children[0])}`}>
-        <button type="button" className={styles.openButton} aria-label={`打开图：${nodeName(laid.node)}`}
+      ? <Tip content={`打开${children[0].kind === 'timeline' ? ' Timeline' : '引用图'}：${children[0].ownerName} · ${graphName(children[0])}`}>
+        <button type="button" className={styles.openButton} aria-label={`打开${children[0].kind === 'timeline' ? ' Timeline' : '引用图'}：${graphName(children[0])}`}
           onClick={event => { event.stopPropagation(); if (event.detail < 2) openNode(data); }}>
-          <SubgraphIcon width={12} height={12} />
+          {children[0].kind === 'timeline' ? <TimelineIcon width={12} height={12} /> : <SubgraphIcon width={12} height={12} />}
         </button>
       </Tip>
-      : <MenuButton label={`选择引用图（${children.length}）`} iconOnly className={styles.openButton} entries={children.map(target => ({
-        label: `${target.ownerName} · ${graphName(target)}`, onSelect: () => enter(target, laid.node.id),
+      : <MenuButton label={`选择引用内容（${children.length}）`} iconOnly className={styles.openButton} entries={children.map(target => ({
+        label: `${target.ownerName} · ${graphName(target)}`, onSelect: () => openReference(target, laid.node.id),
       }))}><SubgraphIcon width={12} height={12} /></MenuButton>}
   </span>;
 }

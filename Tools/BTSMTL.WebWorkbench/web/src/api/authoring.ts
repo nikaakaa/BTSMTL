@@ -472,9 +472,9 @@ export interface SkillDocumentRelation {
     fieldId: string; serializedMemberPath: string[];
   };
   target: {
-    kind: 'graph'; id: string; displayName: string | null; role: string;
+    id: string; displayName: string | null;
     owner: string; ownerName: string; file: string; ownership: 'Private' | 'Shared' | null;
-  };
+  } & ({ kind: 'graph'; role: string } | { kind: 'timeline'; role: null });
 }
 
 export interface SkillDocument {

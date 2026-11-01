@@ -51,7 +51,7 @@
 | `GET /api/authoring/skills` | 无 | 技能目录名 `string[]` |
 | `GET /api/authoring/skills/{skill}` | 无 | `SkillSnapshot`：`{skill,revision,files:[{path,content}]}` |
 | `GET /api/authoring/skills/{skill}/changes` | `revision` | `{skill,revision,changed,files:[{path,revision}]}` |
-| `GET /api/authoring/skills/{skill}/document` | 无 | `{skill,programId,sourceRevision,tickRate,graphs:GraphDefinition[]}`；不要求先创建运行 |
+| `GET /api/authoring/skills/{skill}/document` | 无 | `{skill,programId,sourceRevision,tickRate,graphs:SkillDocumentGraph[],relations:SkillDocumentRelation[]}`；不要求先创建运行 |
 | `PUT /api/authoring/skills/{skill}` | `SkillSaveRequest`，见下文 | 编译保存或输入保存的分支回执；拒绝时保留正式诊断 |
 | `GET /api/authoring/scenarios` | 无 | 场景方案目录名 `string[]` |
 | `GET /api/authoring/scenarios/{scenario}` | 无 | 与 `SkillSnapshot` 相同文件快照结构 |
@@ -64,6 +64,8 @@
 `input-fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
 
 文件快照 `revision` 是文件内容哈希清单的修订；`document.sourceRevision` 是正式作者内容闭包修订，两者职责不同。运行图是否可叠加还需对应 `programId/programRevision` 及实际调用。未保存内容不能继续显示旧运行值为当前结果。
+
+`document.relations` 从节点正式字段合同读取引用：`source` 给出原 owner、文件、graphId、nodeId、fieldId 与 serializedMemberPath；`target` 给出 `kind=graph|timeline`、id、displayName、owner、ownerName、file。图目标保留 role 与 ownership；Timeline 目标的这两项为 null。节点标题按钮、双击与检查器引用入口消费同一关系，先打开目标 owner，再按 kind 打开节点图或 Timeline；不从节点名称猜目标，也不要求先运行到该节点。
 
 ### 类型、字段、端口和模板
 
