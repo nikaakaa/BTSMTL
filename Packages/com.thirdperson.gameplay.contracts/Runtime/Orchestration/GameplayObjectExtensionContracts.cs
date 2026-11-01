@@ -15,8 +15,6 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Identity("CarrierDefinition", "gameplay.carrier-definition");
             public static readonly OrchestrationExtensionContentField ParentEndPolicy =
                 OrchestrationExtensionContentField.Enum<OrchestrationObjectParentEndPolicy>("ParentEndPolicy");
-            public static readonly OrchestrationExtensionContentField ChildEndPolicy =
-                OrchestrationExtensionContentField.Enum<OrchestrationObjectChildEndPolicy>("ChildEndPolicy");
             public static readonly OrchestrationExtensionContentField Event =
                 OrchestrationExtensionContentField.Identity("Event", "gameplay.action-event");
             public static readonly OrchestrationExtensionContentField EventTag =
@@ -70,7 +68,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> FailureCode = new("failure-code", OrchestrationValueKind.Int32, 2);
             public static readonly OrchestrationExtensionDefinition<SpawnAndActivate> Definition = Write<SpawnAndActivate>("spawn-and-activate",
                 new[] { Position.Declaration, Yaw.Declaration, Succeeded.Declaration, Handle.Declaration, FailureCode.Declaration },
-                new[] { Fields.Ability, Fields.CarrierDefinition, Fields.ParentEndPolicy, Fields.ChildEndPolicy });
+                new[] { Fields.Ability, Fields.CarrierDefinition, Fields.ParentEndPolicy });
         }
 
         public readonly struct NotifyParent

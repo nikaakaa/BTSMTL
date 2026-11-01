@@ -8,12 +8,6 @@ namespace BTSMTL.Orchestration
         Cancel = 2
     }
 
-    public enum OrchestrationObjectChildEndPolicy : byte
-    {
-        KeepCarrier = 1,
-        DestroyCarrier = 2
-    }
-
     public readonly struct OrchestrationObjectRequestOrigin
     {
         public OrchestrationObjectRequestOrigin(ObjectHandle carrier,
@@ -33,7 +27,7 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationObjectSpawnRequest(in OrchestrationObjectRequestOrigin parent,
             int abilityIdentityId, int carrierDefinitionIdentityId, in TValue position, in TValue yaw,
-            OrchestrationObjectParentEndPolicy parentEndPolicy, OrchestrationObjectChildEndPolicy childEndPolicy)
+            OrchestrationObjectParentEndPolicy parentEndPolicy)
         {
             Parent = parent;
             AbilityIdentityId = abilityIdentityId;
@@ -41,7 +35,6 @@ namespace BTSMTL.Orchestration
             Position = position;
             Yaw = yaw;
             ParentEndPolicy = parentEndPolicy;
-            ChildEndPolicy = childEndPolicy;
         }
 
         public readonly OrchestrationObjectRequestOrigin Parent;
@@ -50,7 +43,6 @@ namespace BTSMTL.Orchestration
         public readonly TValue Position;
         public readonly TValue Yaw;
         public OrchestrationObjectParentEndPolicy ParentEndPolicy { get; }
-        public OrchestrationObjectChildEndPolicy ChildEndPolicy { get; }
     }
 
     public readonly struct OrchestrationObjectRequestResult

@@ -22,13 +22,12 @@ namespace ThirdPersonGameplay.Orchestration
     public readonly struct GameplayObjectSpawnContent
     {
         public GameplayObjectSpawnContent(int abilityIdentityId, int carrierDefinitionIdentityId,
-            OrchestrationObjectParentEndPolicy parentEndPolicy, OrchestrationObjectChildEndPolicy childEndPolicy,
+            OrchestrationObjectParentEndPolicy parentEndPolicy,
             ReadOnlySpan<OrchestrationExtensionPort> startupPorts)
         {
             AbilityIdentityId = abilityIdentityId;
             CarrierDefinitionIdentityId = carrierDefinitionIdentityId;
             ParentEndPolicy = parentEndPolicy;
-            ChildEndPolicy = childEndPolicy;
             Contract = GameplayObjectExtensionContracts.SpawnAndActivate.Definition.Declaration
                 .WithAdditionalPorts(startupPorts).Contract;
         }
@@ -36,7 +35,6 @@ namespace ThirdPersonGameplay.Orchestration
         public int AbilityIdentityId { get; }
         public int CarrierDefinitionIdentityId { get; }
         public OrchestrationObjectParentEndPolicy ParentEndPolicy { get; }
-        public OrchestrationObjectChildEndPolicy ChildEndPolicy { get; }
         public OrchestrationExtensionContract Contract { get; }
     }
 
@@ -210,7 +208,7 @@ namespace ThirdPersonGameplay.Orchestration
                 content.AbilityIdentityId, content.CarrierDefinitionIdentityId,
                 in invocation.ReadInput(in GameplayObjectExtensionContracts.SpawnAndActivate.Position),
                 in invocation.ReadInput(in GameplayObjectExtensionContracts.SpawnAndActivate.Yaw),
-                content.ParentEndPolicy, content.ChildEndPolicy);
+                content.ParentEndPolicy);
             OrchestrationObjectRequestResult result = m_Backend.SpawnAndActivate(ref context, in request,
                 invocation.InputRows.Row(0).Slice(GameplayObjectExtensionContracts.SpawnAndActivate.StartupInputOffset));
             if (result.Result == OrchestrationExtensionResult.Success)
