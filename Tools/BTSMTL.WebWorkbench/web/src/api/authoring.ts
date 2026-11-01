@@ -492,8 +492,43 @@ export interface ScenarioDraftRequest {
   rangeEndSeconds: number;
 }
 
+export interface SkillCreationCatalog {
+  stage: 'creation-catalog';
+  projectPath: string;
+  containers: { identity: string; name: string; assetPath: string }[];
+  admissionProfiles: { identity: string; name: string; assetPath: string }[];
+  references: { Assets: JsonObject; Values: JsonObject };
+  skillCreation: { clrType: string; parameters: { name: string; shape: StorageShape }[] };
+  availability: QueryAvailability;
+}
+
+export interface SkillCreationRequest {
+  parameters: {
+    containerIdentity: string;
+    name: string;
+    abilityId: string;
+    displayName: string;
+    admissionProfile: string;
+    candidateOrder: number;
+    sourceOrder: number;
+    entryGraph: { name: string } | null;
+    startupInputs: JsonObject[];
+    trajectory: JsonObject | null;
+  };
+  references: SkillCreationCatalog['references'];
+}
+
+interface SkillCreationDraft {
+  stage: 'draft';
+  containerIdentity: string;
+  files: SkillFile[];
+  availability: QueryAvailability;
+}
+
 export const authoringApi = {
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
+  skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
+  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>

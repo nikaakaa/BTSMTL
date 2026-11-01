@@ -11,6 +11,7 @@ import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
+import { SkillCreationForm } from './SkillCreationForm';
 import styles from './project.module.css';
 
 const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案' };
@@ -30,7 +31,7 @@ export function AuthoringProject() {
   const [kind, setKind] = useState<ProjectItem['kind'] | null>(null);
   const [ownership, setOwnership] = useState<ProjectItem['ownership'] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [creating, setCreating] = useState<'timeline' | 'macro' | null>(null);
+  const [creating, setCreating] = useState<'skill' | 'timeline' | 'macro' | null>(null);
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [name, setName] = useState('');
   const elements = useSkillElements(editable && available !== false);
@@ -60,17 +61,22 @@ export function AuthoringProject() {
     ? items?.find(value => referenceValueKey(value.identity) === referenceValueKey(field.value)) : undefined;
   const referencedIndex = referencedItem ? shown.findIndex(value => keyOf(value) === keyOf(referencedItem)) : -1;
   if (available === false) return <Empty text={reason ?? '作者目录不可用'} />;
-  if (skill === null) return <Empty text="技能目录为空" />;
   return <div className={styles.catalog}>
     <div className={styles.browser}>
       <PanelBar>
         <TextInput aria-label="搜索作者内容" placeholder="搜索名称、所属技能" value={search} className={styles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => setRefresh(value => value + 1)}>刷新</Button>
+        <Button variant="ghost" disabled={creatingBusy} onClick={() => setCreating('skill')}>新建技能</Button>
         <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('timeline')}>新建 Timeline</Button>
         <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('macro')}>新建共享子图</Button>
       </PanelBar>
-      {creating && <div className={styles.facts}>
+      {creating === 'skill' && <SkillCreationForm onCancel={() => setCreating(null)} onCreated={() => {
+        setCreating(null);
+        setSelected(null);
+        openPanel('inspector');
+      }} />}
+      {creating !== null && creating !== 'skill' && <div className={styles.facts}>
         <TextInput autoFocus aria-label="新内容名称" placeholder={creating === 'timeline' ? 'Timeline 名称' : '共享子图名称'} value={name} disabled={creatingBusy}
           onChange={event => setName(event.currentTarget.value)} />
         <PanelBar><Button disabled={!editable || elements === null || !name.trim() || creatingBusy} onClick={() => {
@@ -106,7 +112,7 @@ export function AuthoringProject() {
           { label: '共享', onSelect: () => setOwnership('Shared') },
         ]}>{ownership === null ? '私有与共享' : ownership === 'Shared' ? '共享' : '私有'}</MenuButton>
       </PanelBar>
-      {failure ? <ErrorLine {...failure} /> : items === null ? <Empty text="正在读取作者目录" /> :
+      {failure ? <ErrorLine {...failure} /> : skill === null ? <Empty text="技能目录为空，可新建技能" /> : items === null ? <Empty text="正在读取作者目录" /> :
         <VirtualList className={styles.list} count={shown.length} rowHeight={48} label="作者内容"
           revealKey={field?.id} revealIndex={referencedIndex < 0 ? undefined : referencedIndex} render={index => {
           const value = shown[index];

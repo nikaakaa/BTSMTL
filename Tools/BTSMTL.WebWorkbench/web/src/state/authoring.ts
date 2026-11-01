@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
-  type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
+  type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
@@ -435,6 +435,24 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 export const authoringActions = {
+  async createSkill(request: SkillCreationRequest) {
+    const target = { kind: 'skill', name: request.parameters.name } as const;
+    const key = authoringTargetKey(target);
+    const state = useAuthoring.getState();
+    if (state.skills?.includes(target.name) || state.documents[key] !== undefined)
+      throw new Error(`技能目录 ${target.name} 已存在或已经打开，请使用其他名称`);
+    const containerOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
+      (document.edited['references.json'] as JsonObject | undefined)?.Root === request.parameters.containerIdentity);
+    if (containerOwner !== undefined)
+      throw new Error(`此技能容器已用于未保存草稿 ${containerOwner[0]}，请继续编辑该草稿或选择其他容器`);
+    const draft = await authoringApi.createSkillDraft(request);
+    const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
+    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), edited, version: 1 } } });
+    await authoringActions.open(target);
+    selectionActions.select(null);
+    return target;
+  },
+
   async createScenario(name: string, request: ScenarioDraftRequest) {
     const target = { kind: 'scenario', name } as const;
     const draft = await authoringApi.scenarioDraft(name, request);
@@ -469,7 +487,7 @@ export const authoringActions = {
     publishDocument();
     if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
     try {
-      if (!opened || opened.revision === null) {
+      if (!opened || (opened.revision === null && !hasChanges(target))) {
         const snapshot = await authoringApi.read(target, controller.signal);
         controller.signal.throwIfAborted();
         setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
@@ -536,6 +554,17 @@ export const authoringActions = {
   },
 
   revert() {
+    const state = get();
+    if (state.revision === null) {
+      loadController?.abort();
+      documentController?.abort();
+      if (documentTimer !== null) clearTimeout(documentTimer);
+      const documents = { ...state.documents };
+      delete documents[authoringTargetKey(state.target!)];
+      set({ target: null, documents });
+      publishDocument();
+      return;
+    }
     clearHistory();
     setDocument({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
     reconcileSelection();
