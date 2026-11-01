@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
-import { usePanelAnimationFrame, usePanelVisible, usePanelWindow } from '../../shell/panel';
+import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
+import { panelInfo } from '../../shell/panelTypes';
 import { writeResourceReady } from '../../shell/readiness';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
@@ -10,13 +11,15 @@ import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
-import { ResourceScene } from './resourceScene';
-import styles from './resources.module.css';
+import { ResourceScene } from '../resources/resourceScene';
+import styles from '../resources/resources.module.css';
 
-// 动画资源面板：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色；单击片段在检查器显示资源信息（照 Unity 选中资产）。
+// Project 的动画库：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色；单击片段在检查器显示资源信息。
 // 素材时间只改 resource 分片，不经过 transport、不移动运行游标（D6）；按 D8 写入 resource* 就绪标记。
 
-export function ResourcesPanel() {
+export function ProjectPanel() {
+  const panel = usePanelApi();
+  useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const [library, setLibrary] = useState<AnimationLibrary | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   useEffect(() => {
@@ -67,6 +70,7 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
     <div className={styles.root}>
       <div className={styles.side}>
         <div className={styles.search}>
+          <span className={styles.sectionTitle}>动画库</span>
           <TextInput className={styles.searchInput} placeholder="搜索片段" value={search} aria-label="搜索片段"
             onChange={event => setSearch(event.currentTarget.value)} />
         </div>
