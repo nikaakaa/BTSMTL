@@ -6,9 +6,15 @@ public sealed record PreviewModeAvailability(string Id, string DisplayName, bool
     public string[] DefaultChannels { get; init; } = [];
 }
 public sealed record PreviewObservationAvailability(string Channel, bool Available, bool Complete, string Reason);
-public sealed record PreviewExecutionCall(string ActorId, string ProgramId, string ProgramRevision,
+public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, string ProgramRevision,
     string InvocationPath, string? ParentInvocationPath, string ActionId, string ExecutionGeneration,
-    string InvocationGeneration, string? ParentInvocationGeneration, string PlaybackId);
+    string InvocationGeneration, string? ParentInvocationGeneration, string PlaybackId)
+{
+    public int? ObjectSlot { get; init; }
+    public string? ObjectHandle { get; init; }
+    public string? ObjectKind { get; init; }
+    public int? DefinitionIndex { get; init; }
+}
 public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, string NodeId,
     string Kind, string Generation, string? Result, PreviewExecutionCall? Call)
 {
