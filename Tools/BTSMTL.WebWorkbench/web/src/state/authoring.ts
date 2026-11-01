@@ -514,9 +514,13 @@ export const authoringActions = {
     };
   },
 
+  selectPreviewCarrier(identity: string | null) {
+    setDocument({ previewDefinitionGuid: identity, version: get().version + 1 });
+  },
+
   // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。
   async save() {
-    const { target, saving, removed } = get();
+    const { target, saving, removed, previewDefinitionGuid } = get();
     const files = authoringActions.changedFiles();
     if (!target || saving || (!files.length && !removed.length)) return;
     previewController?.abort();
@@ -540,7 +544,7 @@ export const authoringActions = {
       ]);
       const result = await authoringApi.save(target, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
-        job,
+        job, previewDefinitionGuid: previewDefinitionGuid ?? undefined,
       });
       if (result.compilationState === 'not-required') {
         const preview = result.preview;

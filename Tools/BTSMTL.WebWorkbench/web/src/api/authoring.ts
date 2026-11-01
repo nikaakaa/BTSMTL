@@ -149,6 +149,54 @@ export interface IdentityItem {
   referenceCount: number;
 }
 
+interface ProjectItemBase {
+  identity: string;
+  name: string;
+  owner: string;
+  ownerName: string;
+  file: string;
+  ownership: 'Private' | 'Shared';
+  referenceCount: number;
+}
+
+export type ProjectItem = ProjectItemBase & (
+  | { kind: 'skill'; asset: JsonObject }
+  | { kind: 'graph'; role: string }
+  | { kind: 'timeline' }
+  | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
+);
+
+export interface ProjectReferrer {
+  identity: string;
+  owner: string;
+  ownerName: string;
+  file: string;
+  path: string;
+}
+
+export interface CarrierResource { key: string; name: string; identity: string }
+
+export interface AuthoringCarrier {
+  identity: string;
+  name: string;
+  source: string;
+  preview: boolean;
+  vfx: { source: string; resources: CarrierResource[]; anchors: { key: string; bone: string }[];
+    stateModifiers: { id: string; resourceIds: string[] }[] } | null;
+  camera: { source: string; sequences: CarrierResource[]; effects: { kind: string; resource: CarrierResource }[];
+    targets: { key: string; space: string; anchorKey: string; aimPointKey: string; preferredBoneKey: string }[] } | null;
+  audio: { source: string; events: CarrierResource[]; rules: CarrierResource[]; parameters: CarrierResource[];
+    actionSoundSlotCount: number } | null;
+  input: { source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
+}
+
+export interface AuthoringCarriers {
+  availability: QueryAvailability;
+  authoringRevision: string;
+  items: AuthoringCarrier[];
+  locateAvailability: QueryAvailability;
+}
+
 export interface BlackboardItem {
   identity: string;
   graphId: string;
@@ -264,6 +312,7 @@ export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sc
 export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };
   preview: PlayerSkillRefreshTarget | null;
+  previewDefinitionGuid?: string;
   job?: StartPlayerJobRequest;
 }
 
@@ -356,6 +405,7 @@ export interface ScenarioDraftRequest {
 }
 
 export const authoringApi = {
+  carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
@@ -383,9 +433,13 @@ export const authoringApi = {
     readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, editingView, signal),
+    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, editingView, signal),
+    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal),
+  project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<ProjectItem>(`${targetPath(target)}/queries/project`, { editingView }, signal),
+  referrers: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<ProjectReferrer>(`${targetPath(target)}/queries/referrers`, { identity, editingView }, signal),
   referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
@@ -416,10 +470,10 @@ function readTypeDescription(text: string): TypeDescription {
   return description;
 }
 
-async function allPages<T>(path: string, editingView: SkillEditingView, signal?: AbortSignal): Promise<T[]> {
+async function allPages<T>(path: string, input: { editingView: SkillEditingView; identity?: string }, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
-    const page = await postJson<Page<T>>(path, { offset, limit: 128, editingView }, signal);
+    const page = await postJson<Page<T>>(path, { ...input, offset, limit: 128 }, signal);
     items.push(...page.items);
     if (!page.hasMore) return items;
   }
