@@ -10,7 +10,7 @@ import {
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
-import { selectedScene, useWorkbench } from '../../state/store';
+import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
