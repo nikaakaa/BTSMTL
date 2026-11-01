@@ -230,7 +230,9 @@ export function readViewerMessage(value: unknown, path = 'Player.view') {
 }
 const quaternion = tuple(number, number, number, number);
 const call = object({
-  actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
+  actorId: nullable(text), objectSlot: nullable(number), objectHandle: nullable(text),
+  objectKind: nullable(text), definitionIndex: nullable(number),
+  programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
   actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: nullable(text), playbackId: text,
 });
 const location = object({ displayName: text, documentId: text, elementId: text, call: nullable(call) });

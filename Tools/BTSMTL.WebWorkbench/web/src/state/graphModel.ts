@@ -7,8 +7,11 @@ import type { SkillDocumentGraph, SkillDocumentRelation } from '../api/authoring
 
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
+  call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
-export const callLabel = (call: ExecutionCall) => `${call.actorId} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
+export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
+  (call.objectHandle === null ? '对象（未记录句柄）' : `${call.objectKind} · ${call.objectHandle}`);
+export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
   (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {
   programId: string | null;
@@ -100,6 +103,8 @@ export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | n
 export const parentCallMatches = (parent: ExecutionCall, call: ExecutionCall) =>
   call.parentInvocationPath !== null && call.parentInvocationPath !== '' && call.parentInvocationGeneration !== null &&
   parent.actorId === call.actorId && parent.programId === call.programId && parent.programRevision === call.programRevision &&
+  parent.objectSlot === call.objectSlot && parent.objectHandle === call.objectHandle &&
+  parent.objectKind === call.objectKind && parent.definitionIndex === call.definitionIndex &&
   parent.actionId === call.actionId && parent.executionGeneration === call.executionGeneration &&
   parent.invocationPath === call.parentInvocationPath && parent.invocationGeneration === call.parentInvocationGeneration;
 

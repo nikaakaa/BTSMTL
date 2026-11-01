@@ -5,7 +5,7 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, type DocumentObservationBinding,
   type GraphNavigationTarget,
 } from '../../state/graphModel';
 import {
@@ -254,7 +254,13 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
         : <Fold title="节点" defaultOpen>{references}</Fold>}
       {runId && <Fold title="本帧" defaultOpen>
         <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
-        {observedCall && <Value label="角色" value={observedCall.actorId} />}
+        {observedCall && <>
+          {observedCall.actorId !== null && <Value label="角色" value={observedCall.actorId} />}
+          <Value label="对象类型" value={observedCall.objectKind} />
+          <Value label="对象句柄" value={observedCall.objectHandle} />
+          <Value label="对象槽" value={observedCall.objectSlot === null ? null : String(observedCall.objectSlot)} />
+          <Value label="定义索引" value={observedCall.definitionIndex === null ? null : String(observedCall.definitionIndex)} />
+        </>}
         {events.length ? (
           <div className={styles.list}>
             {events.map(item => (
@@ -468,7 +474,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
                 <div className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
                   onClick={() => void transport.seekTime(item.first.seconds)}
                   onKeyDown={event => { if (event.key === 'Enter') void transport.seekTime(item.first.seconds); }}>
-                  <span className={styles.listText}>{item.call.actorId} · {item.count} 帧记录{active ? ' · 当前帧活动' : ''}</span>
+                  <span className={styles.listText}>{callOwnerLabel(item.call)} · {item.count} 帧记录{active ? ' · 当前帧活动' : ''}</span>
                   <span className={styles.listValue} data-sampled={active || undefined}>{item.first.seconds.toFixed(3)} — {item.last.seconds.toFixed(3)} s</span>
                 </div>
                 </Tip>

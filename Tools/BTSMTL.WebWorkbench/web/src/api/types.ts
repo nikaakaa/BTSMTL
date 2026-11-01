@@ -181,7 +181,11 @@ export interface Geometry {
 // ── 路线与节点图 ──
 
 export interface ExecutionCall {
-  actorId: string;
+  actorId: string | null;
+  objectSlot: number | null;
+  objectHandle: string | null;
+  objectKind: string | null;
+  definitionIndex: number | null;
   programId: string;
   programRevision: string;
   invocationPath: string;
