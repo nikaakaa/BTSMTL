@@ -117,6 +117,24 @@ namespace BTSMTL.Authoring.Graph
         public Func<object, object, object> BindAsset { get; }
     }
 
+    public sealed class GraphAuthoringSubtypeDescriptor
+    {
+        readonly Func<object> m_CreateDefault;
+
+        public GraphAuthoringSubtypeDescriptor(string identity, string comment, Type type, Func<object> createDefault)
+        {
+            Identity = identity;
+            Comment = comment;
+            Type = type;
+            m_CreateDefault = createDefault;
+        }
+
+        public string Identity { get; }
+        public string Comment { get; }
+        public Type Type { get; }
+        public object CreateDefault() => m_CreateDefault();
+    }
+
     public sealed class GraphAuthoringFieldDescriptor
     {
         public GraphAuthoringFieldDescriptor(
@@ -135,7 +153,8 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringFieldTuningMetadata tuning = null,
             GraphAuthoringFieldCompilation compilation = default,
             GraphAuthoringResourceReference resourceReference = null,
-            GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field)
+            GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field,
+            IReadOnlyList<GraphAuthoringSubtypeDescriptor> subtypes = null)
         {
             FieldId = fieldId.IsValid ? fieldId : throw new ArgumentException("Field identity is missing.", nameof(fieldId));
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? throw new ArgumentException("Field display name is missing.", nameof(displayName)) : displayName;
@@ -150,6 +169,7 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.IdentityReference => "identity",
                 GraphAuthoringFieldValueKind.AssetReference => "asset",
                 GraphAuthoringFieldValueKind.Object => "object",
+                GraphAuthoringFieldValueKind.Polymorphic => "polymorphic",
                 _ => string.Empty
             } : pickerKind;
             Optional = optional;
@@ -159,6 +179,7 @@ namespace BTSMTL.Authoring.Graph
             Compilation = compilation;
             ResourceReference = resourceReference;
             DocumentMember = documentMember;
+            Subtypes = subtypes ?? Array.Empty<GraphAuthoringSubtypeDescriptor>();
         }
 
         public GraphAuthoringFieldId FieldId { get; }
@@ -167,6 +188,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldAccess Access { get; }
         public Type ValueType { get; }
+        public IReadOnlyList<GraphAuthoringSubtypeDescriptor> Subtypes { get; }
         public GraphAuthoringDetailsSection Section { get; }
         public object DefaultValue { get; }
         public GraphAuthoringFieldConstraint Constraint { get; }
@@ -261,6 +283,7 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.AssetReference => Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.IdentityReference => Value is string || Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Object => true,
+                GraphAuthoringFieldValueKind.Polymorphic => Field.Subtypes.Any(subtype => subtype.Type == Value.GetType()),
                 _ => false
             };
         }

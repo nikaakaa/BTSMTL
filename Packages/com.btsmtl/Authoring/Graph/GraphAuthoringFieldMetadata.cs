@@ -14,7 +14,8 @@ namespace BTSMTL.Authoring.Graph
         Enum = 8,
         AssetReference = 9,
         IdentityReference = 10,
-        Object = 11
+        Object = 11,
+        Polymorphic = 12
     }
 
     [Flags]

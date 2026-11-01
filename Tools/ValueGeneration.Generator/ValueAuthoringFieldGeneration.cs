@@ -139,6 +139,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Error(field.Symbol, "作者字段身份必须唯一：" + field.Id);
                     valid = false;
                 }
+                if (!ValidateAuthoringSubtypes(context.Compilation, type, field, Error))
+                    valid = false;
             }
             for (INamedTypeSymbol ancestor = type.BaseType; ancestor != null; ancestor = ancestor.BaseType)
                 foreach (AuthoringField inheritedField in AuthoringFields(ancestor))
@@ -305,6 +307,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append(AuthoringFieldMetadata(field, fields)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
                     .Append("new string[] { ").Append(string.Join(", ",
                         AuthoringSerializedMemberPath(context.Compilation, type, field).Select(Quote))).Append(" }, ")
+                    .Append(AuthoringSubtypeDescriptors(field)).Append(", ")
                     .Append("target => ").Append(read).Append(", new global::System.Func<object, ").Append(TypeName(field.Type))
                     .Append(">(target => ").Append(read).Append("), new global::System.Func<object, ").Append(TypeName(field.Type))
                     .Append(">(candidate => ").Append(evaluate).Append("), candidate => ").Append(evaluate)
@@ -452,11 +455,85 @@ namespace ThirdPerson.ValueGeneration.Generator
                     ? Quote(fields.Single(candidate => candidate.MemberPath == (string)argument.Value.Value).Id)
                     : AuthoringConstant(argument.Value)))) + " }");
 
-        static bool AuthoringIdentityField(AuthoringField field)
+        static bool AuthoringFieldKind(AuthoringField field, string name)
         {
             TypedConstant kind = field.Arguments.First();
-            return kind.Kind == TypedConstantKind.Enum && kind.Type.GetMembers("IdentityReference").OfType<IFieldSymbol>()
+            return kind.Kind == TypedConstantKind.Enum && kind.Type.GetMembers(name).OfType<IFieldSymbol>()
                 .Any(member => Equals(member.ConstantValue, kind.Value));
+        }
+
+        static bool AuthoringIdentityField(AuthoringField field) => AuthoringFieldKind(field, "IdentityReference");
+
+        static ITypeSymbol[] AuthoringSubtypes(AuthoringField field)
+        {
+            foreach (KeyValuePair<string, TypedConstant> argument in field.Metadata.NamedArguments)
+                if (argument.Key == "Subtypes")
+                    return argument.Value.IsNull ? Array.Empty<ITypeSymbol>() :
+                        argument.Value.Values.Select(value => (ITypeSymbol)value.Value).ToArray();
+            return Array.Empty<ITypeSymbol>();
+        }
+
+        static bool ValidateAuthoringSubtypes(Compilation compilation, INamedTypeSymbol owner, AuthoringField field,
+            Action<ISymbol, string> error)
+        {
+            ITypeSymbol[] subtypes = AuthoringSubtypes(field);
+            if (!AuthoringFieldKind(field, "Polymorphic"))
+            {
+                if (subtypes.Length == 0) return true;
+                error(field.Symbol, "只有多态作者字段可以声明 Subtypes");
+                return false;
+            }
+            if (field.Type.TypeKind != TypeKind.Class && field.Type.TypeKind != TypeKind.Interface || subtypes.Length == 0)
+            {
+                error(field.Symbol, "多态作者字段必须使用类或接口类型，并声明非空的 Subtypes 清单");
+                return false;
+            }
+            bool valid = true;
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ITypeSymbol subtype in subtypes)
+            {
+                if (!(subtype is INamedTypeSymbol type) || type.TypeKind != TypeKind.Class || type.IsAbstract ||
+                    type.IsUnboundGenericType || !compilation.IsSymbolAccessibleWithin(type, owner) ||
+                    !type.InstanceConstructors.Any(constructor => constructor.Parameters.Length == 0 &&
+                        compilation.IsSymbolAccessibleWithin(constructor, owner)))
+                {
+                    error(field.Symbol, "多态子类型必须是当前声明可访问、非抽象且具有无参构造函数的类");
+                    valid = false;
+                    continue;
+                }
+                Conversion conversion = ((CSharpCompilation)compilation).ClassifyConversion(type, field.Type);
+                if (!conversion.IsIdentity && !(conversion.IsImplicit && conversion.IsReference))
+                {
+                    error(field.Symbol, "多态子类型必须继承或实现字段类型：" + Identity(type));
+                    valid = false;
+                }
+                AttributeData declaration = Attribute(type, AuthoringNamespace + "GraphAuthoringSubtypeAttribute");
+                if (declaration == null || string.IsNullOrWhiteSpace((string)declaration.ConstructorArguments[0].Value) ||
+                    string.IsNullOrWhiteSpace((string)declaration.ConstructorArguments[1].Value))
+                {
+                    error(field.Symbol, "多态子类型必须通过 GraphAuthoringSubtype 声明稳定身份和用途说明：" + Identity(type));
+                    valid = false;
+                }
+                else if (!identities.Add((string)declaration.ConstructorArguments[0].Value))
+                {
+                    error(field.Symbol, "同一字段的多态子类型身份必须唯一：" + declaration.ConstructorArguments[0].Value);
+                    valid = false;
+                }
+            }
+            return valid;
+        }
+
+        static string AuthoringSubtypeDescriptors(AuthoringField field)
+        {
+            ITypeSymbol[] subtypes = AuthoringSubtypes(field);
+            string descriptor = AuthoringRuntime + "GraphAuthoringSubtypeDescriptor";
+            if (subtypes.Length == 0) return "global::System.Array.Empty<" + descriptor + ">()";
+            return "new " + descriptor + "[] { " + string.Join(", ", subtypes.Select(type =>
+            {
+                AttributeData declaration = Attribute(type, AuthoringNamespace + "GraphAuthoringSubtypeAttribute");
+                return "new " + descriptor + "(" + string.Join(", ", declaration.ConstructorArguments.Select(AuthoringConstant)) +
+                    ", typeof(" + TypeName(type) + "), () => new " + TypeName(type) + "())";
+            })) + " }";
         }
 
         static string AuthoringConvert(AuthoringField field, string value)

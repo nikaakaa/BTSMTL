@@ -50,6 +50,7 @@ namespace BTSMTL.Authoring.Graph
     public sealed class GraphAuthoringMember
     {
         public GraphAuthoringMember(GraphAuthoringFieldAttribute metadata, Type valueType, string[] serializedMemberPath,
+            GraphAuthoringSubtypeDescriptor[] subtypes,
             Func<object, object> read, Delegate reader,
             Delegate candidateReader, Func<GraphAuthoringCandidate, object> evaluate,
             Action<GraphAuthoringCandidate, object> writeCandidate,
@@ -66,6 +67,7 @@ namespace BTSMTL.Authoring.Graph
             Metadata = metadata;
             ValueType = valueType;
             SerializedMemberPath = serializedMemberPath;
+            Subtypes = subtypes;
             Read = read;
             Reader = reader;
             CandidateReader = candidateReader;
@@ -89,6 +91,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldAttribute Metadata { get; }
         public Type ValueType { get; }
         public IReadOnlyList<string> SerializedMemberPath { get; }
+        public IReadOnlyList<GraphAuthoringSubtypeDescriptor> Subtypes { get; }
         public Func<object, object> Read { get; }
         public Delegate Reader { get; }
         public Delegate CandidateReader { get; }
@@ -124,7 +127,7 @@ namespace BTSMTL.Authoring.Graph
                 visibility: string.IsNullOrEmpty(field.VisibleWhenField) ? null : new GraphAuthoringFieldVisibilityCondition(
                     new GraphAuthoringFieldId(field.VisibleWhenField), field.VisibleWhenValue),
                 compilation: new GraphAuthoringFieldCompilation(field.CompilationImpact, field.Unit),
-                documentMember: field.DocumentMember);
+                documentMember: field.DocumentMember, subtypes: Subtypes);
         }
     }
 

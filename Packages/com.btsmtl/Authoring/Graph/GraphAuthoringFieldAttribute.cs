@@ -47,6 +47,7 @@ namespace BTSMTL.Authoring.Graph
         public string DisplayName { get; set; }
         public Type EnumType { get; set; }
         public Type ObjectType { get; set; }
+        public Type[] Subtypes { get; set; } = Array.Empty<Type>();
         public bool Optional { get; set; }
         public bool HasMinimum { get; set; }
         public double Minimum { get; set; }
@@ -66,6 +67,19 @@ namespace BTSMTL.Authoring.Graph
         public bool AuthoringVisible { get; set; } = true;
         public string VisibleWhenField { get; set; }
         public string VisibleWhenValue { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    public sealed class GraphAuthoringSubtypeAttribute : Attribute
+    {
+        public GraphAuthoringSubtypeAttribute(string identity, string comment)
+        {
+            Identity = identity;
+            Comment = comment;
+        }
+
+        public string Identity { get; }
+        public string Comment { get; }
     }
 
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
