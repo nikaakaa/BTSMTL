@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
-import { clockPosition, positionValue, type LivePlayer, type PlayerPreviewContent } from '../../api/playerRecords';
+import { clockPosition, positionValue, type LivePlayer } from '../../api/playerRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
@@ -55,13 +55,12 @@ function PlayerView() {
   const contentSelection = state.contentSelection;
   const timeline = contentSelection?.kind === 'timeline'
     ? state.sources?.timelines.find(item => item.content.package === contentSelection.package) : undefined;
-  const content: PlayerPreviewContent | null = scene
-    ? { kind: 'scene', scene: scene.path, revision: scene.revision, source: { kind: 'device', lastSdkFrame: 0 } }
-    : timeline?.content ?? null;
+  const content = timeline?.content ?? null;
   const loading = player?.state === 'loading';
   const selectedLive = state.lives.find(item => item.liveId === state.liveId);
   const loadBlocked = !state.viewerOpen ? '尚未连接播放器画面' : !selectedLive || selectedLive.hello === null ? '正在读取播放器能力'
     : selectedLive.identity.liveProtocol !== 'btsmtl.preview-live/1' ? '所选播放器需要更新到支持当前预览协议的构建'
+    : scene ? 'Unavailable：宿主尚未提供场景载入的输入来源与请求参数声明'
     : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
   const overlayReason = !state.archiveImage ? '正在读取画面'
