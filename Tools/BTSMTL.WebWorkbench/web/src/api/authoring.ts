@@ -101,6 +101,11 @@ export interface ProfileEntryTarget {
 
 export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
 
+export interface ReferenceBank {
+  Assets: JsonObject;
+  Values: JsonObject;
+}
+
 export interface ReferenceChoice {
   value: JsonValue;
   name: string;
@@ -109,6 +114,7 @@ export interface ReferenceChoice {
   conflict: string | null;
   targets: ReferenceChoiceTarget[];
   associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
+  references: ReferenceBank | null;
 }
 
 type FieldChoices =
@@ -147,6 +153,7 @@ export type FieldMetadata = FieldChoices & {
   flowOutputList: boolean;
   selectedSubtype: string | null;
   subtypes: AuthoringSubtype[];
+  choicesTarget: 'element' | 'value' | null;
 };
 
 // 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。
@@ -514,7 +521,7 @@ export interface SkillCreationCatalog {
   projectPath: string;
   containers: { identity: string; name: string; assetPath: string }[];
   admissionProfiles: { identity: string; name: string; assetPath: string }[];
-  references: { Assets: JsonObject; Values: JsonObject };
+  references: ReferenceBank;
   skillCreation: { clrType: string; parameters: { name: string; shape: StorageShape }[] };
   availability: QueryAvailability;
 }

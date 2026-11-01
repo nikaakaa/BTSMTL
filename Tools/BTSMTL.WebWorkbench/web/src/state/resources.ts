@@ -37,7 +37,7 @@ export const animationReferenceKind = 'animation-clip';
 export const animationChoice = (clip: AnimationClip): ReferenceChoice => ({
   value: clip.resource.identity, name: clip.name,
   detail: `${clip.category} · ${clip.duration.toFixed(3)} 秒 · ${clip.frameRate} fps`,
-  source: clip.unityAsset, conflict: null, targets: [], associated: [],
+  source: clip.unityAsset, conflict: null, targets: [], associated: [], references: null,
 });
 
 export function animationReferenceCatalog(state: AnimationLibraryState): ReferenceCatalog {

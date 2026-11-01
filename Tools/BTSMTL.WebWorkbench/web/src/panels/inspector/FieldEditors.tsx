@@ -349,7 +349,8 @@ const visible = (field: FieldMetadata, values: Map<string, JsonValue | undefined
 // 作者字段对应的存储形状：一层成员路径取 item 自身形状，更深的沿 members 找。
 function shapeAt(item: StoredField, path: string[]): StorageShape | null {
   let shape: StorageShape | null = item.shape;
-  for (const name of path.slice(1)) shape = shape?.members?.find(member => member.member === name) ?? null;
+  for (const name of path.slice(1)) shape = /^\d+$/.test(name)
+    ? shape?.element ?? null : shape?.members?.find(member => member.member === name) ?? null;
   return shape;
 }
 
@@ -484,7 +485,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
     .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
       ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
-        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
+        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [], references: null })) } : field),
   })).filter(item => item.fields.length) ?? [];
   const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);
   const set: SetValue = (path, value) => setFields([{ keys: path, value }]);
@@ -669,9 +670,9 @@ function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetField
     return null;
   return (
     <>
-      {item.fields.filter(field => visible(field, values)).map(field => (
-        <FieldEditor key={field.fieldId} id={`${owner.kind === 'node' ? `${owner.graphId}/${owner.nodeId}` : owner.identity}/${field.fieldId}`} field={field} item={item} node={node} owner={owner}
-          outputs={outputs} onSet={onSet} onSetFields={onSetFields} />
+      {rootFields(item.fields).filter(field => visible(field, values)).map(field => (
+        <FieldEditor key={field.serializedMemberPath.join('/')} id={`${owner.kind === 'node' ? `${owner.graphId}/${owner.nodeId}` : owner.identity}/${field.serializedMemberPath.join('/')}`} field={field} item={item} node={node} owner={owner}
+          values={values} outputs={outputs} onSet={onSet} onSetFields={onSetFields} />
       ))}
     </>
   );
@@ -689,9 +690,51 @@ function CreateOwnedGraph({ owner, path, target }: {
   }}>{creating ? '正在创建' : `新建 ${target.role}`}</Button>;
 }
 
-function PolymorphicValue({ id, label, field, value, owner, onSet }: {
-  id: string; label: string; field: FieldMetadata; value: JsonValue | undefined;
-  owner: ReferenceOwner; onSet(value: JsonValue): void;
+const belowPath = (path: string[], parent: string[]) => path.length > parent.length &&
+  parent.every((member, index) => path[index] === member);
+
+const rootFields = (fields: FieldMetadata[]) => fields.filter(field =>
+  !fields.some(parent => belowPath(field.serializedMemberPath, parent.serializedMemberPath)));
+
+function FieldReferencePicker({ id, label, field, value, onChoose }: {
+  id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; onChoose(choice: ReferenceChoice): void;
+}) {
+  return <ReferencePicker id={id} label={label} value={value}
+    catalog={field.choiceKind === null
+      ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
+      : field.choicesAvailability.available
+        ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
+          invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
+        : { kind: 'unavailable', reason: field.choicesAvailability.reason }} onChoose={onChoose} />;
+}
+
+function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {
+  onSetFields([
+    { keys, value },
+    ...choice.associated.map(associated => ({ keys: associated.serializedMemberPath, value: associated.value })),
+  ]);
+  if (choice.references !== null) authoringActions.mergeReferences(choice.references);
+}
+
+function ReferenceCollection({ id, label, field, value, onSet, onSetFields }: {
+  id: string; label: string; field: FieldMetadata; value: JsonValue[]; onSet: SetValue; onSetFields: SetFields;
+}) {
+  const path = field.serializedMemberPath;
+  return <div className={styles.group}>
+    <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
+    {value.map((element, index) => <div key={index} className={styles.listItem}>
+      <FieldReferencePicker id={`${id}/${index}`} label={`${label} [${index}]`} field={field} value={element}
+        onChoose={choice => writeReferenceChoice(choice, [...path, index], choice.value, onSetFields)} />
+      <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
+        onClick={() => onSet(path, value.filter((_, item) => item !== index).map(item => cloneJson(item)))}><CloseIcon /></Button>
+    </div>)}
+    <Row label="添加一项"><FieldReferencePicker id={`${id}/add`} label={`添加${label}`} field={field} value={undefined}
+      onChoose={choice => writeReferenceChoice(choice, path, [...value.map(item => cloneJson(item)), choice.value], onSetFields)} /></Row>
+  </div>;
+}
+
+function PolymorphicValue({ label, field, value, children, onSet }: {
+  label: string; field: FieldMetadata; value: JsonValue | undefined; children: ReactNode; onSet(value: JsonValue): void;
 }) {
   const selected = field.subtypes.find(subtype => subtype.identity === field.selectedSubtype);
   return <fieldset className={styles.authorFields} disabled={field.readOnly}>
@@ -702,47 +745,68 @@ function PolymorphicValue({ id, label, field, value, owner, onSet }: {
         onSet(cloneJson(field.subtypes[index].defaultValue));
       }} /></Row>
     {selected && <div className={styles.note}>{selected.comment}</div>}
-    {selected && value !== null && typeof value === 'object' && !Array.isArray(value) &&
-      <AuthoringValueFields key={selected.identity} label={selected.identity} type={selected.clrType} value={value as JsonObject}
-        graphId={owner.graphId} identity={`${id}/${selected.identity}`} onSet={onSet} />}
+    {selected && value !== null && children}
     {field.optional && value !== null && <Row label="">
       <Button variant="ghost" onClick={() => onSet(null)}>移除 {label}</Button>
     </Row>}
   </fieldset>;
 }
 
-function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields }: {
+function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onSetFields }: {
   id: string; field: FieldMetadata; item: StoredField; node: JsonObject; owner: ReferenceOwner;
-  outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
+  values: Map<string, JsonValue | undefined>; outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }): ReactNode {
   const label = field.displayName ?? field.fieldId;
   const path = field.serializedMemberPath;
   const value = getIn(node, path);
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
+  const descendants = item.fields.filter(child => belowPath(child.serializedMemberPath, path));
+  const childFields = (prefix: string[]) => rootFields(descendants.filter(child => belowPath(child.serializedMemberPath, prefix)))
+    .filter(child => visible(child, values))
+    .map(child => <FieldEditor key={child.serializedMemberPath.join('/')} id={`${id}/${child.serializedMemberPath.join('/')}`}
+      field={child} item={item} node={node} owner={owner} values={values} outputs={outputs} onSet={onSet} onSetFields={onSetFields} />);
   if (field.valueKind === 'Polymorphic')
-    return <PolymorphicValue id={id} label={label} field={field} value={value} owner={owner} onSet={set} />;
+    return <PolymorphicValue label={label} field={field} value={value} onSet={set}>{childFields(path)}</PolymorphicValue>;
   if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (owner.kind === 'node' && Array.isArray(value) && field.flowOutputList)
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
+  if (Array.isArray(value) && field.choicesTarget === 'element')
+    return <ReferenceCollection id={id} label={label} field={field} value={value} onSet={onSet} onSetFields={onSetFields} />;
+  if (Array.isArray(value) && descendants.length !== 0) {
+    const created = shape?.element?.defaultValue;
+    const add = created === undefined ? undefined : () => set([...value.map(element => cloneJson(element)), cloneJson(created)]);
+    return <div className={styles.group}>
+      <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span>
+        <Button variant="ghost" className={styles.iconButton} aria-label="添加一项" disabled={created === undefined}
+          tip={created === undefined ? '该类型没有正式的创建默认值' : '添加一项'}
+          onClick={add}><AddIcon /></Button>
+      </div>
+      {value.map((element, index) => <div key={index} className={styles.listItem}>
+        <div className={styles.group}><div className={styles.groupHead}>[{index}]</div>
+          {element === null
+            ? created === undefined ? <div className={styles.issue}>该类型没有正式的创建默认值</div>
+              : <Button variant="ghost" onClick={() => onSet([...path, index], cloneJson(created))}>添加 {label}</Button>
+            : childFields([...path, String(index)])}
+        </div>
+        <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
+          onClick={() => set(value.filter((_, item) => item !== index).map(element => cloneJson(element)))}><CloseIcon /></Button>
+      </div>)}
+    </div>;
+  }
+  if (field.valueKind === 'Object' && value !== null && !Array.isArray(value) && descendants.length !== 0)
+    return <div className={styles.group}><div className={styles.groupHead}>{label}</div>{childFields(path)}
+      {field.optional && <Row label=""><Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button></Row>}
+    </div>;
   const ownedTargets = field.graphTargets.filter(target => target.ownerBinding === 'ReferenceNode');
   if (owner.kind === 'node' && ownedTargets.length !== 0)
     return <Row label={label}>{value == null || value === ''
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
   if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
-    return <Row label={label}><ReferencePicker id={id} label={label} value={value}
-      catalog={field.choiceKind === null
-        ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
-        : field.choicesAvailability.available
-          ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
-            invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
-          : { kind: 'unavailable', reason: field.choicesAvailability.reason }}
-      onChoose={(choice: ReferenceChoice) => onSetFields([
-        { keys: path, value: choice.value },
-        ...choice.associated.map(associated => ({ keys: associated.serializedMemberPath, value: associated.value })),
-      ])} /></Row>;
+    return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value}
+      onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
   switch (field.valueKind) {
     case 'Boolean':
       return <Row label={label}><Checkbox label={label} checked={value === true} onChange={set} /></Row>;

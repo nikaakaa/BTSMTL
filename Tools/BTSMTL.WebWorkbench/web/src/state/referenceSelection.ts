@@ -23,11 +23,12 @@ export const referenceTargetKey = (target: ReferenceChoiceTarget) => target.kind
   ? JSON.stringify([target.kind, target.graphId, target.nodeId])
   : JSON.stringify([target.kind, target.carrierIdentity, target.profileSource, target.domain, target.entryKind, target.key, target.resourceIdentity]);
 
-type ReferenceDragChoice = Pick<ReferenceChoice, 'value' | 'source' | 'targets' | 'associated'>;
+type ReferenceDragChoice = Pick<ReferenceChoice, 'value' | 'source' | 'targets' | 'associated' | 'references'>;
 
 const referenceChoiceKey = (choice: ReferenceDragChoice) => JSON.stringify([
   referenceValueKey(choice.value), choice.source, choice.targets.map(referenceTargetKey).sort(),
   choice.associated.map(field => [field.fieldId, field.serializedMemberPath, referenceValueKey(field.value)]),
+  choice.references === null ? null : [referenceValueKey(choice.references.Assets), referenceValueKey(choice.references.Values)],
 ]);
 
 const referenceMime = 'application/x-btsmtl-authoring-reference';

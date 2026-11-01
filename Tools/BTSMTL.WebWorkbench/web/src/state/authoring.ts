@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
-  type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
+  type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
@@ -539,6 +539,14 @@ export const authoringActions = {
     record();
     const state = get();
     setDocument({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
+  },
+
+  mergeReferences(bank: ReferenceBank) {
+    authoringActions.edit('references.json', value => {
+      const references = value as JsonObject;
+      Object.assign(references.Assets as JsonObject, cloneJson(bank.Assets));
+      Object.assign(references.Values as JsonObject, cloneJson(bank.Values));
+    });
   },
 
   // 删除文件：网页新建的直接丢弃，原有的保存时删除。
