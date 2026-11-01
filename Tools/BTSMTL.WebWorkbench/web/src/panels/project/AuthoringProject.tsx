@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type ProjectItem, type ProjectReferrer } from '../../api/authoring';
+import { authoringApi, type ProjectItem, type ReferrersResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
 import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
@@ -114,14 +114,14 @@ export function AuthoringProject() {
 }
 
 function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
-  const [referrers, setReferrers] = useState<ProjectReferrer[] | null>(null);
+  const [referrers, setReferrers] = useState<ReferrersResult | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setReferrers(null);
-    authoringApi.referrers({ kind: 'skill', name: item.owner }, item.identity, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
+    authoringApi.referrers({ kind: 'skill', name: item.owner }, { identity: item.identity }, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
       if (!isAbort(error)) setFailure({ text: '引用者读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
@@ -137,8 +137,8 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(async () => { openPanel(await projectActions.open(item)); })}>打开</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>
-      {item.kind !== 'skill' && <Button variant="ghost" disabled={busy || referrers === null || referrers.length !== 0}
-        tip={referrers?.length ? '仍有引用，先在引用者中解除引用' : '删除加入所属技能的未保存修改，可撤销'}
+      {item.kind !== 'skill' && <Button variant="ghost" disabled={busy || referrers === null || !referrers.complete || referrers.items.length !== 0}
+        tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入所属技能的未保存修改，可撤销'}
         onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>删除</Button>}
     </PanelBar>
     {failure && <ErrorLine {...failure} />}
@@ -155,13 +155,23 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
       {item.schemes.map(scheme => <Button key={scheme.index} variant="ghost" disabled={busy}
         onClick={() => void perform(async () => { openPanel(await projectActions.open(item, scheme.index)); })}>打开 {scheme.name}</Button>)}
     </div>}
-    <div className={styles.heading}>引用者{referrers === null ? ' · 读取中' : ` · ${referrers.length}`}</div>
-    {referrers?.length === 0 && <div className={styles.note}>没有引用者</div>}
-    {referrers?.map((reference, index) => {
+    <div className={styles.heading}>引用者{referrers === null ? ' · 读取中' : ` · 已确认 ${referrers.items.length} 项${referrers.complete ? '' : ' · 查询未完整'}`}</div>
+    {referrers?.complete && referrers.items.length === 0 && <div className={styles.note}>没有引用者</div>}
+    {referrers?.unresolved.map((issue, index) => <div key={index} className={styles.facts}>
+      <span className={styles.issue}>{issue.reason}</span>
+      {'owner' in issue && <small>{issue.ownerName} · {issue.file} · {issue.path}</small>}
+    </div>)}
+    {referrers?.items.map((reference, index) => {
       const source = items.find(value => value.owner === reference.owner && value.file === reference.file);
-      return <button key={index} className={styles.referrer} disabled={busy || !source}
-        onClick={() => { if (source) void perform(async () => { openPanel(await projectActions.open(source)); }); }}>
+      return <button key={index} className={styles.referrer} disabled={busy || (!('graphId' in reference) && !source)}
+        onClick={() => void perform(async () => {
+          if ('graphId' in reference) {
+            await projectActions.openGraph({ owner: reference.owner, ownerName: reference.ownerName, id: reference.graphId }, reference.nodeId);
+            openPanel('graph');
+          } else if (source) openPanel(await projectActions.open(source));
+        })}>
         <span>{reference.ownerName} · {source?.name ?? reference.file}</span><small>{reference.path}</small>
+        {'contextOwnerName' in reference && <small>调用上下文：{reference.contextOwnerName} · {reference.fieldId}</small>}
       </button>;
     })}
   </div>;

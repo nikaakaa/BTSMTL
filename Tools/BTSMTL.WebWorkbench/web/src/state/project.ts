@@ -1,4 +1,4 @@
-import { authoringApi, type ProjectItem, type ProjectReferrer } from '../api/authoring';
+import { authoringApi, type ProjectItem, type ReferrersResult } from '../api/authoring';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
@@ -55,13 +55,13 @@ export const projectActions = {
     });
   },
 
-  async remove(item: Exclude<ProjectItem, { kind: 'skill' }>): Promise<ProjectReferrer[]> {
-    const referrers = await authoringApi.referrers(ownerOf(item), item.identity, authoringActions.editingView());
-    if (referrers.length !== 0) return referrers;
+  async remove(item: Exclude<ProjectItem, { kind: 'skill' }>): Promise<ReferrersResult> {
+    const referrers = await authoringApi.referrers(ownerOf(item), { identity: item.identity }, authoringActions.editingView());
+    if (!referrers.complete || referrers.items.length !== 0) return referrers;
     await openOwner(item);
     authoringActions.remove([item.file]);
     if (item.kind === 'graph' && currentDocument(layoutPath))
       authoringActions.edit(layoutPath, value => { delete (value as JsonObject)[item.identity]; });
-    return [];
+    return referrers;
   },
 };

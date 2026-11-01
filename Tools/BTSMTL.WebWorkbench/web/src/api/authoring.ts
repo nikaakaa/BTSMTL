@@ -183,13 +183,36 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
 
-export interface ProjectReferrer {
-  identity: string;
+interface ReferenceLocation {
   owner: string;
   ownerName: string;
   file: string;
   path: string;
 }
+
+export interface SemanticReferenceLocation extends ReferenceLocation {
+  contextOwner: string;
+  contextOwnerName: string;
+  graphId: string;
+  nodeId: string;
+  fieldId: string;
+  serializedMemberPath: string[];
+  value: JsonValue;
+}
+
+export type ProjectReferrer = (ReferenceLocation & { identity: string }) |
+  (SemanticReferenceLocation & { targets: ReferenceChoiceTarget[] });
+
+export type ReferenceSelector = { identity: string; target?: never } | { identity?: never; target: ReferenceChoiceTarget };
+
+export type ReferenceQueryIssue = { code: string; reason: string } &
+  ({ target: ReferenceChoiceTarget } | SemanticReferenceLocation);
+
+export type ReferrersResult = {
+  items: ProjectReferrer[];
+  complete: boolean;
+  unresolved: ReferenceQueryIssue[];
+} & ({ identity: string; target: null } | { identity: null; target: ReferenceChoiceTarget });
 
 export interface CarrierResource { key: string; name: string; identity: string }
 
@@ -488,8 +511,19 @@ export const authoringApi = {
     allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<ProjectItem>(`${targetPath(target)}/queries/project`, { editingView }, signal),
-  referrers: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectReferrer>(`${targetPath(target)}/queries/referrers`, { identity, editingView }, signal),
+  referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
+    const items: ProjectReferrer[] = [];
+    const unresolved = new Map<string, ReferenceQueryIssue>();
+    let complete = true;
+    for (let offset = 0; ; offset += 128) {
+      const page = await postJson<ReferrersResult & { hasMore: boolean }>(`${targetPath(target)}/queries/referrers`,
+        { ...selector, editingView, offset, limit: 128 }, signal);
+      items.push(...page.items);
+      for (const issue of page.unresolved) unresolved.set(JSON.stringify(issue), issue);
+      complete = complete && page.complete;
+      if (!page.hasMore) return { ...page, items, complete, unresolved: [...unresolved.values()] };
+    }
+  },
   referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
@@ -520,7 +554,7 @@ function readTypeDescription(text: string): TypeDescription {
   return description;
 }
 
-async function allPages<T>(path: string, input: { editingView: SkillEditingView; identity?: string }, signal?: AbortSignal): Promise<T[]> {
+async function allPages<T>(path: string, input: { editingView: SkillEditingView }, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
     const page = await postJson<Page<T>>(path, { ...input, offset, limit: 128 }, signal);
