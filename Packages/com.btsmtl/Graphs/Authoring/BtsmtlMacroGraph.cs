@@ -129,6 +129,7 @@ namespace BTSMTL.Graphs
         public override bool usesDomainAuthoring => true;
         public override bool usesExplicitPortSelection => true;
         public override bool isEditorReadOnly => Application.isPlaying;
+        protected override void OnBeforeGraphValidate() => m_Host.PrepareAuthoringValidation(this);
         public override UnityEngine.Object EditorUndoTarget => m_Authoring == null ? this : m_Authoring.UndoTarget;
 
         // 新子图：唯一执行入口、出入口锚点与宿主准入一次配置完成；私有子图由所属图写入为子资产。
