@@ -134,6 +134,8 @@ export type FieldItem = StoredField | ComputedField;
 // 未保存节点的类型描述（原 DescribeType）：默认配置，本次配置下的字段与实际端口。
 export interface TypeDescription {
   availability: QueryAvailability;
+  sourceRevision: string;
+  authoringRevision: string | null;
   type: string;
   configuration: JsonObject;
   fields: { hasMore: boolean; items: FieldItem[] };
@@ -380,10 +382,12 @@ export const authoringApi = {
   describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     parseSkillJson(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)) as unknown as TypeDescription,
-  identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
-  blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
-  referenceCurves: (target: AuthoringTarget, identity: string, signal?: AbortSignal) =>
-    getJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves${query({ identity })}`, signal),
+  identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, editingView, signal),
+  blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, editingView, signal),
+  referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
   elements: async (target: AuthoringTarget, signal?: AbortSignal) => {
     const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements;
@@ -396,10 +400,10 @@ export const authoringApi = {
   },
 };
 
-async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
+async function allPages<T>(path: string, editingView: SkillEditingView, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
-    const page = await getJson<Page<T>>(`${path}${query({ offset, limit: 128 })}`, signal);
+    const page = await postJson<Page<T>>(path, { offset, limit: 128, editingView }, signal);
     items.push(...page.items);
     if (!page.hasMore) return items;
   }

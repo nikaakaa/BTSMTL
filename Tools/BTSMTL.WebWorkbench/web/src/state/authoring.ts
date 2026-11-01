@@ -864,7 +864,7 @@ export function requestReferenceCurves(identity: string) {
   const target = get().target;
   if (!target || referenceRequests.has(identity)) return;
   referenceRequests.add(identity);
-  authoringApi.referenceCurves(target, identity).then(result => useReferenceCurves.setState({ [identity]: result }), (error: unknown) => {
+  authoringApi.referenceCurves(target, identity, authoringActions.editingView()).then(result => useReferenceCurves.setState({ [identity]: result }), (error: unknown) => {
     consoleActions.error('作者', error);
     useReferenceCurves.setState({ [identity]: { failed: error instanceof Error ? error.message : String(error) } });
   });
