@@ -23,7 +23,8 @@ namespace BTSMTL.Graphs.Editor
             IOrchestrationGraphContentEncoding<TValue> encoding,
             TLowering lowering,
             IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
-            IBtsmtlGraphNodeCompileSource nodes, Func<SemanticGraphParameters, StableHash> parameterIdentity)
+            IBtsmtlGraphNodeCompileSource nodes, Func<SemanticGraphParameters, StableHash> parameterIdentity,
+            Action<OrchestrationGraphContent<TValue>, string> publish)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
@@ -51,8 +52,7 @@ namespace BTSMTL.Graphs.Editor
             OrchestrationGraphContent<TValue> content =
                 new Compilation(root, contract, identity.SourceRevision, nodes).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     identity, lowering, contentEncoder, encoding, parameterIdentity);
-            root.SetExecutionData(encoding.Write(content), content.Identity, encoding, inputIdentity);
-            EditorUtility.SetDirty(root);
+            publish(content, inputIdentity);
         }
 
         static string ComputeCompilationInputIdentity(GraphHostContract contract, string sourceIdentity,
@@ -60,7 +60,7 @@ namespace BTSMTL.Graphs.Editor
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/3", sourceIdentity, loweringType, valueAccessType, contentContract,
+                "btsmtl-graph-compiler/4", sourceIdentity, loweringType, valueAccessType, contentContract,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
             foreach (GraphHostInputDescriptor input in contract.Inputs)

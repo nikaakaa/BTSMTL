@@ -12,15 +12,24 @@ namespace ThirdPersonSimulation.Serialization
         public static string ParametersPath(string manifestPath) => Path.ChangeExtension(manifestPath, "parameters.bin");
         public static string SourcesPath(string manifestPath) => Path.ChangeExtension(manifestPath, "sources.bin");
 
+        public static OrchestrationGraphContentBlocks Read(string manifestPath) =>
+            ReadBlocks(manifestPath, ReadManifest(manifestPath));
+
         public static OrchestrationGraphContentBlocks Read(string manifestPath, string expectedContentIdentity)
         {
-            GraphExecutionIdentity identity = MemoryPackGraphContentPublisher.Instance.ReadIdentity(File.ReadAllBytes(manifestPath));
+            GraphExecutionIdentity identity = ReadManifest(manifestPath);
             if (identity.ContentIdentity.Value != expectedContentIdentity)
                 throw new InvalidDataException($"图 '{identity.Source.GraphId}' 的清单与发布目录身份不一致。");
-            return new OrchestrationGraphContentBlocks(identity,
+            return ReadBlocks(manifestPath, identity);
+        }
+
+        static GraphExecutionIdentity ReadManifest(string manifestPath) =>
+            MemoryPackGraphContentPublisher.Instance.ReadIdentity(File.ReadAllBytes(manifestPath));
+
+        static OrchestrationGraphContentBlocks ReadBlocks(string manifestPath, GraphExecutionIdentity identity) =>
+            new(identity,
                 File.ReadAllBytes(StructurePath(manifestPath)), File.ReadAllBytes(ParametersPath(manifestPath)),
                 File.ReadAllBytes(SourcesPath(manifestPath)));
-        }
     }
 
     public sealed class MemoryPackGraphFileTransaction
