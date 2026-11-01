@@ -557,6 +557,7 @@ namespace BTSMTL.Compilation
                 ProgramStateValueKind.Boolean => false,
                 ProgramStateValueKind.Int32 => 0,
                 ProgramStateValueKind.UInt64 => 0UL,
+                ProgramStateValueKind.ObjectHandle => ObjectHandle.Empty,
                 ProgramStateValueKind.Scalar => 0f,
                 ProgramStateValueKind.Vector2 => new SemanticVector2Value(0d, 0d),
                 ProgramStateValueKind.Vector3 => new SemanticVector3Value(0d, 0d, 0d),
@@ -581,6 +582,7 @@ namespace BTSMTL.Compilation
                 case int int32: return SemanticLiteral.FromInt32(identity, index, int32);
                 case uint uint32: return SemanticLiteral.FromUInt64(identity, index, uint32);
                 case ulong uint64: return SemanticLiteral.FromUInt64(identity, index, uint64);
+                case ObjectHandle handle: return SemanticLiteral.FromObjectHandle(identity, index, handle);
                 case float single: return SemanticLiteral.FromNumber(identity, index, new SemanticNumberValue(single));
                 case double number: return SemanticLiteral.FromNumber(identity, index, new SemanticNumberValue(number));
                 case string text: return SemanticLiteral.FromString(identity, index, text);

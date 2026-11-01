@@ -52,6 +52,7 @@ namespace BTSMTL
         {
             SemanticValueKind.Boolean => "bool", SemanticValueKind.Int32 => "int",
             SemanticValueKind.UInt64 => "ulong", SemanticValueKind.Number => "float",
+            SemanticValueKind.ObjectHandle => "object-handle",
             SemanticValueKind.Identity => "string", SemanticValueKind.Vector2 => "vector2",
             SemanticValueKind.Vector3 => "vector3", SemanticValueKind.Quaternion => "quaternion",
             _ => throw new ArgumentException($"原生端口没有作者值类型：{kind}。", nameof(kind))

@@ -12,6 +12,8 @@ namespace BTSMTL.Compilation
         public static readonly CompileValueType Int32 = new(SemanticValueKind.Int32, "System.Int32", 0);
         public static readonly CompileValueType UInt32 = new(SemanticValueKind.UInt64, "System.UInt32", 0u);
         public static readonly CompileValueType UInt64 = new(SemanticValueKind.UInt64, "System.UInt64", 0UL);
+        public static readonly CompileValueType ObjectHandle = new(SemanticValueKind.ObjectHandle,
+            "BTSMTL.Orchestration.ObjectHandle", BTSMTL.Orchestration.ObjectHandle.Empty);
         public static readonly CompileValueType Single = new(SemanticValueKind.Number, "System.Single", 0f);
         public static readonly CompileValueType Double = new(SemanticValueKind.Number, "System.Double", 0d);
         public static readonly CompileValueType String = new(SemanticValueKind.Identity, "System.String", string.Empty);
@@ -28,6 +30,7 @@ namespace BTSMTL.Compilation
                 "int" => Int32,
                 "uint" => UInt32,
                 "ulong" => UInt64,
+                "object-handle" => ObjectHandle,
                 "float" => Single,
                 "double" => Double,
                 "string" => String,
@@ -49,6 +52,7 @@ namespace BTSMTL.Compilation
             OrchestrationValueKind.Boolean => Boolean,
             OrchestrationValueKind.Int32 => Int32,
             OrchestrationValueKind.UInt64 => UInt64,
+            OrchestrationValueKind.ObjectHandle => ObjectHandle,
             OrchestrationValueKind.Scalar or OrchestrationValueKind.Yaw => Single,
             OrchestrationValueKind.Vector2 => Vector2,
             OrchestrationValueKind.Vector3 => Vector3,

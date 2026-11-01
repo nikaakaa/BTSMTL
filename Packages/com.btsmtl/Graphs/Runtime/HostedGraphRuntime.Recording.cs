@@ -13,7 +13,7 @@ namespace BTSMTL.Graphs
         where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
-        const uint RecordedStateVersion = 5;
+        const uint RecordedStateVersion = 6;
         Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_Ports;
         GraphRuntimePort[] m_RuntimePorts;
         OrchestrationValueOverride<TValue>[] m_Overrides;

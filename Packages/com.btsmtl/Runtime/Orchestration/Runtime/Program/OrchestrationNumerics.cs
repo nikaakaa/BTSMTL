@@ -14,10 +14,12 @@ namespace BTSMTL.Orchestration
         OrchestrationValueKind Kind(in TValue value);
         bool Boolean(in TValue value);
         ulong UInt64(in TValue value);
+        ObjectHandle ObjectHandle(in TValue value);
         OrchestrationIdentityValue Identity(in TValue value);
         TValue FromBoolean(bool value);
         TValue FromInt32(int value);
         TValue FromUInt64(ulong value);
+        TValue FromObjectHandle(ObjectHandle value);
         TValue FromTime(OrchestrationTime time);
 
         void Unary(OrchestrationValueOpcode code, in TValue source,
@@ -42,6 +44,9 @@ namespace BTSMTL.Orchestration
         public ulong UInt64(in Float32OrchestrationValue value) =>
             default(Float32OrchestrationValueAccess).UInt64(in value);
 
+        public ObjectHandle ObjectHandle(in Float32OrchestrationValue value) =>
+            default(Float32OrchestrationValueAccess).ObjectHandle(in value);
+
         public OrchestrationIdentityValue Identity(in Float32OrchestrationValue value) =>
             default(Float32OrchestrationValueAccess).Identity(in value);
 
@@ -53,6 +58,9 @@ namespace BTSMTL.Orchestration
 
         public Float32OrchestrationValue FromUInt64(ulong value) =>
             default(Float32OrchestrationValueAccess).FromUInt64(value);
+
+        public Float32OrchestrationValue FromObjectHandle(ObjectHandle value) =>
+            default(Float32OrchestrationValueAccess).FromObjectHandle(value);
 
         public Float32OrchestrationValue FromTime(OrchestrationTime time) =>
             default(Float32OrchestrationValueAccess).FromScalar(Float32Scalar.FromSingle(time.AsSingle));

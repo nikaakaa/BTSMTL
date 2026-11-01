@@ -28,7 +28,8 @@ namespace BTSMTL.Graphs
         Vector3 = 5,
         Quaternion = 6,
         Enum = 7,
-        Text = 8
+        Text = 8,
+        ObjectHandle = 9
     }
 
     public enum GraphVariableMutation : byte
@@ -48,6 +49,8 @@ namespace BTSMTL.Graphs
                 kind = GraphHostValueKind.Bool;
             else if (type == typeof(int))
                 kind = GraphHostValueKind.Int32;
+            else if (type == typeof(ObjectHandle))
+                kind = GraphHostValueKind.ObjectHandle;
             else if (type == typeof(float))
                 kind = GraphHostValueKind.Float32;
             else if (type == typeof(UnityEngine.Vector2))
@@ -71,6 +74,7 @@ namespace BTSMTL.Graphs
             GraphHostValueKind.Text => typeof(string),
             GraphHostValueKind.Bool => typeof(bool),
             GraphHostValueKind.Int32 => typeof(int),
+            GraphHostValueKind.ObjectHandle => typeof(ObjectHandle),
             GraphHostValueKind.Float32 => typeof(float),
             GraphHostValueKind.Vector2 => typeof(UnityEngine.Vector2),
             GraphHostValueKind.Vector3 => typeof(UnityEngine.Vector3),
@@ -94,6 +98,7 @@ namespace BTSMTL.Graphs
         readonly UnityEngine.Quaternion m_QuaternionValue;
         readonly Type m_EnumType;
         readonly int m_EnumValue;
+        readonly ObjectHandle m_ObjectHandleValue;
 
         GraphHostValue(
             GraphHostValueKind kind,
@@ -125,7 +130,7 @@ namespace BTSMTL.Graphs
             UnityEngine.Quaternion quaternionValue,
             Type enumType,
             int enumValue,
-            string textValue = default)
+            string textValue = default, ObjectHandle objectHandleValue = default)
         {
             m_TextValue = textValue;
             Kind = kind;
@@ -137,9 +142,15 @@ namespace BTSMTL.Graphs
             m_QuaternionValue = quaternionValue;
             m_EnumType = enumType;
             m_EnumValue = enumValue;
+            m_ObjectHandleValue = objectHandleValue;
         }
 
         public GraphHostValueKind Kind { get; }
+        public ObjectHandle ObjectHandleValue => m_ObjectHandleValue;
+
+        public static GraphHostValue FromObjectHandle(ObjectHandle value) =>
+            new GraphHostValue(GraphHostValueKind.ObjectHandle, false, 0, 0f, default, default, default,
+                null, 0, objectHandleValue: value);
 
         public string TextValue
         {
@@ -172,6 +183,9 @@ namespace BTSMTL.Graphs
                     break;
                 case GraphHostValueKind.Int32:
                     writer.Write(m_IntValue);
+                    break;
+                case GraphHostValueKind.ObjectHandle:
+                    writer.Write(m_ObjectHandleValue);
                     break;
                 case GraphHostValueKind.Float32:
                     writer.Write(m_FloatValue);
@@ -206,6 +220,8 @@ namespace BTSMTL.Graphs
                     return new GraphHostValue(kind, reader.Read<bool>(), 0, 0f, default, default);
                 case GraphHostValueKind.Int32:
                     return new GraphHostValue(kind, false, reader.Read<int>(), 0f, default, default);
+                case GraphHostValueKind.ObjectHandle:
+                    return FromObjectHandle(reader.Read<ObjectHandle>());
                 case GraphHostValueKind.Float32:
                     return new GraphHostValue(kind, false, 0, reader.Read<float>(), default, default);
                 case GraphHostValueKind.Vector2:
@@ -369,6 +385,8 @@ namespace BTSMTL.Graphs
                 return FromBool(boolValue);
             if (value is int intValue)
                 return FromInt32(intValue);
+            if (value is ObjectHandle handle)
+                return FromObjectHandle(handle);
             if (value is float floatValue)
                 return FromFloat32(floatValue);
             if (value is UnityEngine.Vector2 vector2Value)
@@ -389,6 +407,7 @@ namespace BTSMTL.Graphs
             GraphHostValueKind.Text => m_TextValue,
             GraphHostValueKind.Bool => m_BoolValue,
             GraphHostValueKind.Int32 => m_IntValue,
+            GraphHostValueKind.ObjectHandle => m_ObjectHandleValue,
             GraphHostValueKind.Float32 => m_FloatValue,
             GraphHostValueKind.Vector2 => m_Vector2Value,
             GraphHostValueKind.Vector3 => m_Vector3Value,
@@ -405,6 +424,8 @@ namespace BTSMTL.Graphs
                 return Reinterpret<bool, T>(m_BoolValue);
             if (typeof(T) == typeof(int) && Kind == GraphHostValueKind.Int32)
                 return Reinterpret<int, T>(m_IntValue);
+            if (typeof(T) == typeof(ObjectHandle) && Kind == GraphHostValueKind.ObjectHandle)
+                return Reinterpret<ObjectHandle, T>(m_ObjectHandleValue);
             if (typeof(T) == typeof(float) && Kind == GraphHostValueKind.Float32)
                 return Reinterpret<float, T>(m_FloatValue);
             if (typeof(T) == typeof(UnityEngine.Vector2) && Kind == GraphHostValueKind.Vector2)
@@ -426,6 +447,7 @@ namespace BTSMTL.Graphs
         {
             if (typeof(T) == typeof(bool)) return FromBool(Unsafe.As<T, bool>(ref value));
             if (typeof(T) == typeof(int)) return FromInt32(Unsafe.As<T, int>(ref value));
+            if (typeof(T) == typeof(ObjectHandle)) return FromObjectHandle(Unsafe.As<T, ObjectHandle>(ref value));
             if (typeof(T) == typeof(float)) return FromFloat32(Unsafe.As<T, float>(ref value));
             if (typeof(T) == typeof(UnityEngine.Vector2)) return FromVector2(Unsafe.As<T, UnityEngine.Vector2>(ref value));
             if (typeof(T) == typeof(UnityEngine.Vector3)) return FromVector3(Unsafe.As<T, UnityEngine.Vector3>(ref value));

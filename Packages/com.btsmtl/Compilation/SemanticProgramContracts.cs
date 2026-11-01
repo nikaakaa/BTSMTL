@@ -131,6 +131,7 @@ namespace BTSMTL.Compilation
         [ValueUnionCase] public bool Boolean { get; }
         [ValueUnionCase] public int Int32 { get; }
         [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public ObjectHandle ObjectHandle { get; }
         [ValueUnionCase] public SemanticNumberValue Number { get; }
         [ValueUnionCase] public SemanticVector2Value Vector2 { get; }
         [ValueUnionCase] public SemanticVector3Value Vector3 { get; }

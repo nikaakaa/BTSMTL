@@ -19,6 +19,8 @@ namespace ThirdPersonSimulation.QuantumNumerics
 
         public ulong UInt64(in FPOrchestrationValue value) => default(FPOrchestrationValueAccess).UInt64(in value);
 
+        public ObjectHandle ObjectHandle(in FPOrchestrationValue value) => default(FPOrchestrationValueAccess).ObjectHandle(in value);
+
         public OrchestrationIdentityValue Identity(in FPOrchestrationValue value) =>
             default(FPOrchestrationValueAccess).Identity(in value);
 
@@ -27,6 +29,8 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public FPOrchestrationValue FromInt32(int value) => default(FPOrchestrationValueAccess).FromInt32(value);
 
         public FPOrchestrationValue FromUInt64(ulong value) => default(FPOrchestrationValueAccess).FromUInt64(value);
+
+        public FPOrchestrationValue FromObjectHandle(ObjectHandle value) => default(FPOrchestrationValueAccess).FromObjectHandle(value);
 
         public FPOrchestrationValue FromTime(OrchestrationTime time) =>
             default(FPOrchestrationValueAccess).FromScalar(FP.FromRaw(time.RawValue));

@@ -227,6 +227,7 @@ namespace BTSMTL.Compilation
                     SemanticLiteralKind.Boolean => current.Boolean == previous.Boolean,
                     SemanticLiteralKind.Int32 => current.Int32 == previous.Int32,
                     SemanticLiteralKind.UInt64 => current.UInt64 == previous.UInt64,
+                    SemanticLiteralKind.ObjectHandle => current.ObjectHandle == previous.ObjectHandle,
                     SemanticLiteralKind.Number => current.Number.Equals(previous.Number),
                     SemanticLiteralKind.Vector2 => current.Vector2.Equals(previous.Vector2),
                     SemanticLiteralKind.Vector3 => current.Vector3.Equals(previous.Vector3),

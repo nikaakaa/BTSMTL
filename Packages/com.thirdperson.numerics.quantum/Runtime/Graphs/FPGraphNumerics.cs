@@ -17,10 +17,12 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public OrchestrationValueKind Kind(in FPOrchestrationValue value) => default(FPOrchestrationNumerics).Kind(in value);
         public bool Boolean(in FPOrchestrationValue value) => default(FPOrchestrationNumerics).Boolean(in value);
         public ulong UInt64(in FPOrchestrationValue value) => default(FPOrchestrationNumerics).UInt64(in value);
+        public ObjectHandle ObjectHandle(in FPOrchestrationValue value) => default(FPOrchestrationNumerics).ObjectHandle(in value);
         public OrchestrationIdentityValue Identity(in FPOrchestrationValue value) => default(FPOrchestrationNumerics).Identity(in value);
         public FPOrchestrationValue FromBoolean(bool value) => default(FPOrchestrationNumerics).FromBoolean(value);
         public FPOrchestrationValue FromInt32(int value) => default(FPOrchestrationNumerics).FromInt32(value);
         public FPOrchestrationValue FromUInt64(ulong value) => default(FPOrchestrationNumerics).FromUInt64(value);
+        public FPOrchestrationValue FromObjectHandle(ObjectHandle value) => default(FPOrchestrationNumerics).FromObjectHandle(value);
         public FPOrchestrationValue FromTime(OrchestrationTime time) => default(FPOrchestrationNumerics).FromTime(time);
 
         public void Unary(OrchestrationValueOpcode code, in FPOrchestrationValue source,

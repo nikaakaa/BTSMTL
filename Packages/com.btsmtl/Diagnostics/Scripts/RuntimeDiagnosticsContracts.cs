@@ -1,5 +1,6 @@
 using System;
 using BTSMTL.Orchestration;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
@@ -499,7 +500,8 @@ namespace BTSMTL.Diagnostics
         FPActionTargetSnapshot,
         FPScalar,
         FPYaw,
-        FPQuaternion
+        FPQuaternion,
+        ObjectHandle
     }
 
     [ValueStorage]
@@ -523,6 +525,11 @@ namespace BTSMTL.Diagnostics
         public double Number { get; }
         public string Text { get; }
         public Vector4 Vector { get; }
+
+        public static DebugValueSnapshot FromObjectHandle(ObjectHandle value) =>
+            new DebugValueSnapshot(DebugValueKind.ObjectHandle, false, 0, value.Value, 0, string.Empty, default);
+
+        public ObjectHandle ReadObjectHandle() => new ObjectHandle(Unsigned);
 
         public static DebugValueSnapshot FromFPScalar(long raw) =>
             new DebugValueSnapshot(DebugValueKind.FPScalar, false, raw, 0, 0, string.Empty, default);
@@ -589,6 +596,8 @@ namespace BTSMTL.Diagnostics
                 return new DebugValueSnapshot(DebugValueKind.Int64, false, Convert.ToInt64(value), 0, 0, string.Empty, default);
             if (value is byte || value is ushort || value is uint || value is ulong)
                 return new DebugValueSnapshot(DebugValueKind.UInt64, false, 0, Convert.ToUInt64(value), 0, string.Empty, default);
+            if (value is ObjectHandle handle)
+                return FromObjectHandle(handle);
             if (value is float || value is double || value is decimal)
                 return new DebugValueSnapshot(DebugValueKind.Double, false, 0, 0, Convert.ToDouble(value), string.Empty, default);
             if (value is string text)
@@ -616,6 +625,7 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.Boolean: return Boolean ? "true" : "false";
                 case DebugValueKind.Int64: return Signed.ToString();
                 case DebugValueKind.UInt64: return Unsigned.ToString();
+                case DebugValueKind.ObjectHandle: return Unsigned.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case DebugValueKind.Double: return Number.ToString("0.###");
                 case DebugValueKind.String:
                 case DebugValueKind.Guid:

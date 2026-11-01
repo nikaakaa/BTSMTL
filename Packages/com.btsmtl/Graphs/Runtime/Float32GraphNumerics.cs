@@ -16,10 +16,12 @@ namespace BTSMTL.Graphs
         public OrchestrationValueKind Kind(in Float32OrchestrationValue value) => default(Float32OrchestrationNumerics).Kind(in value);
         public bool Boolean(in Float32OrchestrationValue value) => default(Float32OrchestrationNumerics).Boolean(in value);
         public ulong UInt64(in Float32OrchestrationValue value) => default(Float32OrchestrationNumerics).UInt64(in value);
+        public ObjectHandle ObjectHandle(in Float32OrchestrationValue value) => default(Float32OrchestrationNumerics).ObjectHandle(in value);
         public OrchestrationIdentityValue Identity(in Float32OrchestrationValue value) => default(Float32OrchestrationNumerics).Identity(in value);
         public Float32OrchestrationValue FromBoolean(bool value) => default(Float32OrchestrationNumerics).FromBoolean(value);
         public Float32OrchestrationValue FromInt32(int value) => default(Float32OrchestrationNumerics).FromInt32(value);
         public Float32OrchestrationValue FromUInt64(ulong value) => default(Float32OrchestrationNumerics).FromUInt64(value);
+        public Float32OrchestrationValue FromObjectHandle(ObjectHandle value) => default(Float32OrchestrationNumerics).FromObjectHandle(value);
         public Float32OrchestrationValue FromTime(OrchestrationTime time) => default(Float32OrchestrationNumerics).FromTime(time);
 
         public void Unary(OrchestrationValueOpcode code, in Float32OrchestrationValue source,

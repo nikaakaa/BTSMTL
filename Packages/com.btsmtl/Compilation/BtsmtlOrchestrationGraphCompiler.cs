@@ -1786,6 +1786,9 @@ namespace BTSMTL.Compilation
                     case SemanticLiteralKind.UInt64:
                         value = values.FromUInt64(literal.UInt64);
                         break;
+                    case SemanticLiteralKind.ObjectHandle:
+                        value = values.FromObjectHandle(literal.ObjectHandle);
+                        break;
                     case SemanticLiteralKind.Number:
                         value = values.FromScalar(
                             LowerNumber(literal.Number.Value, literal.Identity, literal.Number.Precision));
@@ -1912,6 +1915,7 @@ namespace BTSMTL.Compilation
                 SemanticValueKind.Boolean => OrchestrationValueKind.Boolean,
                 SemanticValueKind.Int32 => OrchestrationValueKind.Int32,
                 SemanticValueKind.UInt64 => OrchestrationValueKind.UInt64,
+                SemanticValueKind.ObjectHandle => OrchestrationValueKind.ObjectHandle,
                 SemanticValueKind.Number => OrchestrationValueKind.Scalar,
                 SemanticValueKind.Vector2 => OrchestrationValueKind.Vector2,
                 SemanticValueKind.Vector3 => OrchestrationValueKind.Vector3,
