@@ -28,7 +28,7 @@ export function ProjectPanel() {
   useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
     {field && <ProjectFieldChoices key={field.id} field={field} />}
-    <div className={projectStyles.body}><Tabs value={section} onChange={setSection} items={[
+    <div className={projectStyles.body}><Tabs<'authoring' | 'animations'> value={section} onChange={setSection} items={[
       { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
       { value: 'animations', label: '动画库', content: <AnimationProject /> },
     ]} /></div>

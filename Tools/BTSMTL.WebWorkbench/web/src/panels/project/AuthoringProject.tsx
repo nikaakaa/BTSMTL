@@ -113,7 +113,7 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
   };
   return <div className={styles.details}>
     <PanelBar>
-      <Button variant="ghost" disabled={busy} onClick={() => void perform(async () => openPanel(await projectActions.open(item)))}>打开</Button>
+      <Button variant="ghost" disabled={busy} onClick={() => void perform(async () => { openPanel(await projectActions.open(item)); })}>打开</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>
       {item.kind !== 'skill' && <Button variant="ghost" disabled={busy || referrers === null || referrers.length !== 0}
         tip={referrers?.length ? '仍有引用，先在引用者中解除引用' : '删除加入所属技能的未保存修改，可撤销'}
@@ -131,14 +131,14 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
     })} />}
     {item.kind === 'input-plan' && <div className={styles.facts}>
       {item.schemes.map(scheme => <Button key={scheme.index} variant="ghost" disabled={busy}
-        onClick={() => void perform(async () => openPanel(await projectActions.open(item, scheme.index)))}>打开 {scheme.name}</Button>)}
+        onClick={() => void perform(async () => { openPanel(await projectActions.open(item, scheme.index)); })}>打开 {scheme.name}</Button>)}
     </div>}
     <div className={styles.heading}>引用者{referrers === null ? ' · 读取中' : ` · ${referrers.length}`}</div>
     {referrers?.length === 0 && <div className={styles.note}>没有引用者</div>}
     {referrers?.map((reference, index) => {
       const source = items.find(value => value.owner === reference.owner && value.file === reference.file);
       return <button key={index} className={styles.referrer} disabled={busy || !source}
-        onClick={() => { if (source) void perform(async () => openPanel(await projectActions.open(source))); }}>
+        onClick={() => { if (source) void perform(async () => { openPanel(await projectActions.open(source)); }); }}>
         <span>{reference.ownerName} · {source?.name ?? reference.file}</span><small>{reference.path}</small>
       </button>;
     })}
