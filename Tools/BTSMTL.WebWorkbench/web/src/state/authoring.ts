@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
@@ -866,12 +866,14 @@ export const authoringActions = {
   },
 
   // 片段图种类（tree.clip）带专属 TimelineBody 图；标记带专属 TimelineTrigger 图。
-  addClipAt(documentId: string, trackId: string, elements: SkillElements, template: ElementTemplate, startSeconds: number, endSeconds: number): string {
+  async addClipAt(documentId: string, trackId: string, template: ElementTemplate, startSeconds: number, endSeconds: number): Promise<string> {
+    const elements = await skillElements();
     const graph = 'm_AssetTree' in template.value ? createGraph(elements, 'TimelineBody', '片段内容') : null;
     return authoringActions.addClip(documentId, trackId, template.value, startSeconds, endSeconds, graph);
   },
 
-  addMarkerAt(documentId: string, trackId: string, elements: SkillElements, seconds: number): string | null {
+  async addMarkerAt(documentId: string, trackId: string, seconds: number): Promise<string | null> {
+    const elements = await skillElements();
     if (markerTimeTaken(documentId, trackId, seconds, null)) {
       consoleActions.log('warn', '作者', `同一轨道在 ${seconds.toFixed(3)} s 已有标记，标记不能重叠`);
       return null;
@@ -1320,18 +1322,11 @@ export const inputAuthoring = {
   },
 };
 
-// 新建元素用的锚点与默认值：每个技能读一次。
-let elementCache: { key: string; items: Promise<SkillElements> } | null = null;
 export function skillElements(): Promise<SkillElements> {
   const target = get().target;
   if (!target) return Promise.reject(new Error('没有打开的作者目录'));
-  const key = authoringTargetKey(target);
-  if (elementCache?.key !== key) {
-    const items = authoringApi.elements(target);
-    elementCache = { key, items };
-    items.catch(() => { elementCache = null; });
-  }
-  return elementCache.items;
+  const signal = loadController!.signal;
+  return authoringApi.elements(target, signal).then(elements => { signal.throwIfAborted(); return elements; });
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {
@@ -1347,20 +1342,18 @@ export function useSkillElements(enabled: boolean): SkillElements | null {
   return enabled && elements?.key === key ? elements.items : null;
 }
 
-// 新建一张专属图（状态体、转移条件、Timeline 片段图）：带角色的系统锚点，锚点按默认坐标写入布局。
-export function createGraph(elements: SkillElements, role: string, name: string): string {
-  const id = nodeUid();
-  const anchors = elements.anchors[role] ?? [];
-  authoringActions.create(graphPath(id), sortedObject({
-    AuthoringId: id, BlackboardDeclarations: [], Role: role, localBlackboard: { variables: {} }, name,
-    allNodes: anchors.map(anchor => ({ UID: anchor.uid, outConnections: [], type: anchor.type })),
-  }));
-  if (currentDocument(layoutPath))
-    authoringActions.edit(layoutPath, document => {
-      const nodes = layoutNodes(document, id);
-      // 锚点坐标按技能 JSON 规则解析，可能是 1.0 形式的浮点对象。
-      for (const anchor of anchors) nodes[anchor.uid] = positionValue({ x: numberOf(anchor.x), y: numberOf(anchor.y) });
-    });
+function createGraph(elements: SkillElements, role: string, name: string, ownership: GraphTemplate['ownership'] = null,
+  context?: { OwnerGraphId: string; OwnerNodeId: string }): string {
+  const template = elements.graphs.find(item => item.role === role && item.ownership === ownership);
+  if (!template) throw new Error(`正式作者接口未提供 ${role} / ${ownership ?? '专属'} 图的创建合同`);
+  const graph = cloneJson(template.value);
+  const id = graph.AuthoringId as string;
+  graph.name = name;
+  if (template.requiredContext.length !== 0 && context === undefined)
+    throw new Error(`${role} 必须从实际拥有节点创建：${template.requiredContext.join('、')}`);
+  for (const field of template.requiredContext) graph[field] = context![field];
+  authoringActions.create(graphPath(id), graph);
+  authoringActions.edit(layoutPath, document => { (document as JsonObject)[id] = cloneJson(template.layout); });
   return id;
 }
 
@@ -1368,6 +1361,11 @@ export function createGraph(elements: SkillElements, role: string, name: string)
 let clipboard: { nodes: JsonObject[]; positions: Record<string, { x: number; y: number }>; ports: Record<string, AddedPort[]> } | null = null;
 
 export const graphAuthoring = {
+  async createPage(role: string, ownership: GraphTemplate['ownership'], name: string,
+    context?: { OwnerGraphId: string; OwnerNodeId: string }): Promise<string> {
+    const elements = await skillElements();
+    return createGraph(elements, role, name, ownership, context);
+  },
   // 按类型描述新建节点：配置取描述的默认配置，端口取描述结果。
   addNode(graphId: string, type: string, configuration: JsonObject, ports: AddedPort[], position: { x: number; y: number }): string {
     const uid = nodeUid();
@@ -1399,7 +1397,8 @@ export const graphAuthoring = {
 
   // ── 状态机（照 Unity 原生 Skill FSM）：新状态带专属状态体；转移按序号排在源状态之后，条件图按需创建 ──
 
-  addState(graphId: string, elements: SkillElements, configuration: JsonObject, position: { x: number; y: number }): string {
+  async addState(graphId: string, configuration: JsonObject, position: { x: number; y: number }): Promise<string> {
+    const elements = await skillElements();
     const uid = nodeUid();
     const body = createGraph(elements, 'StateBody', '状态内容');
     authoringActions.edit(graphPath(graphId), document => {
@@ -1432,12 +1431,14 @@ export const graphAuthoring = {
   },
 
   // 给状态建状态体、给转移建条件图；移除时原图不再被引用就删除。
-  createStateBody(graphId: string, elements: SkillElements, nodeId: string) {
+  async createStateBody(graphId: string, nodeId: string) {
+    const elements = await skillElements();
     const body = createGraph(elements, 'StateBody', '状态内容');
     graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: body }]);
   },
 
-  createCondition(graphId: string, elements: SkillElements, connectionId: string) {
+  async createCondition(graphId: string, connectionId: string) {
+    const elements = await skillElements();
     const condition = createGraph(elements, 'ConditionRule', '转移条件');
     graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], condition);
   },
@@ -1453,7 +1454,8 @@ export const graphAuthoring = {
   },
 
   // 组合步骤的条件从该步骤出发的连线新建；新条件默认成立，原本无条件的步骤在改图前照常进入。
-  createStepCondition(graphId: string, elements: SkillElements, step: EdgeStep): string {
+  async createStepCondition(graphId: string, step: EdgeStep): Promise<string> {
+    const elements = await skillElements();
     const condition = createGraph(elements, 'ConditionRule', '步骤条件');
     authoringActions.edit(graphPath(condition), document => {
       for (const node of nodesOf(document)) node._inputPortValues = { m_Result: true };

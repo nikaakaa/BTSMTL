@@ -312,7 +312,7 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
 
 // 专属图（状态体、转移条件）：已在展开结果里的可进入；网页新建的保存后才有展开结果。
 function OwnedGraph({ label, id, onCreate, onRemove, createText }: {
-  label: string; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
+  label: string; id: string | null; onCreate: (() => Promise<unknown>) | null; onRemove(id: string): void; createText: string;
 }) {
   const graphs = useWorkbench(state => state.graphs);
   const target = id ? graphs?.find(item => item.id === id) ?? null : null;
@@ -321,7 +321,9 @@ function OwnedGraph({ label, id, onCreate, onRemove, createText }: {
     <div className={styles.field}>
       <FieldLabel label={label} />
       <div className={styles.actions}>
-        {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => onCreate?.()}>{createText}</Button> : (
+        {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => {
+          void onCreate?.().catch(error => consoleActions.error('作者', error));
+        }}>{createText}</Button> : (
           <>
             {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={() => openGraph(target)} />
               : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
@@ -341,7 +343,7 @@ function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }
   if (node?.type !== 'BtsmtlSkillNativeState') return null;
   return (
     <OwnedGraph label="状态体" id={(node.m_Body as string | null) ?? null} createText="新建状态体"
-      onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
+      onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, nodeId) : null}
       onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
   );
 }
@@ -374,8 +376,8 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const owned = editable && (transition || step);
   const conditionRows = owned ? (
     <OwnedGraph label="条件图" id={condition} createText="新建条件"
-      onCreate={!elements ? null : step ? () => graphAuthoring.createStepCondition(graph.id, elements, step)
-        : () => graphAuthoring.createCondition(graph.id, elements, edge.id)}
+      onCreate={!elements ? null : step ? () => graphAuthoring.createStepCondition(graph.id, step)
+        : () => graphAuthoring.createCondition(graph.id, edge.id)}
       onRemove={item => step ? graphAuthoring.removeStepCondition(graph.id, step, item) : graphAuthoring.removeCondition(graph.id, edge.id, item)} />
   ) : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
   return (

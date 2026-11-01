@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type ProjectItem, type ReferrersResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
-import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
+import { authoringActions, authoringDocument, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, selectionActions } from '../../state/store';
@@ -30,10 +30,11 @@ export function AuthoringProject() {
   const [kind, setKind] = useState<ProjectItem['kind'] | null>(null);
   const [ownership, setOwnership] = useState<ProjectItem['ownership'] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [creatingTimeline, setCreatingTimeline] = useState(false);
+  const [creating, setCreating] = useState<'timeline' | 'macro' | null>(null);
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const [name, setName] = useState('');
   const elements = useSkillElements(editable && available !== false);
-  useEffect(() => { setCreatingTimeline(false); setName(''); }, [skill]);
+  useEffect(() => { setCreating(null); setName(''); }, [skill]);
   const field = useReferenceSelection(state => state.field);
   useEffect(() => { setSearch(''); setKind(null); setOwnership(null); }, [field?.id]);
   useEffect(() => {
@@ -65,19 +66,33 @@ export function AuthoringProject() {
         <TextInput aria-label="搜索作者内容" placeholder="搜索名称、所属技能" value={search} className={styles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => setRefresh(value => value + 1)}>刷新</Button>
-        <Button variant="ghost" disabled={!editable || elements === null} onClick={() => setCreatingTimeline(true)}>新建 Timeline</Button>
+        <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('timeline')}>新建 Timeline</Button>
+        <Button variant="ghost" disabled={!editable || elements === null || creatingBusy} onClick={() => setCreating('macro')}>新建共享子图</Button>
       </PanelBar>
-      {creatingTimeline && <div className={styles.facts}>
-        <TextInput autoFocus aria-label="新 Timeline 名称" placeholder="Timeline 名称" value={name}
+      {creating && <div className={styles.facts}>
+        <TextInput autoFocus aria-label="新内容名称" placeholder={creating === 'timeline' ? 'Timeline 名称' : '共享子图名称'} value={name} disabled={creatingBusy}
           onChange={event => setName(event.currentTarget.value)} />
-        <PanelBar><Button disabled={!editable || elements === null || !name.trim()} onClick={() => {
-          const id = authoringActions.createTimeline(elements!.timeline, name);
-          setSelected(JSON.stringify([skill, 'timeline', id]));
-          setCreatingTimeline(false);
-          setName('');
-          selectionActions.showTimeline(id, null);
-          openPanel('timeline');
-        }}>创建</Button><Button variant="ghost" onClick={() => setCreatingTimeline(false)}>取消</Button></PanelBar>
+        <PanelBar><Button disabled={!editable || elements === null || !name.trim() || creatingBusy} onClick={() => {
+          void (async () => {
+            setCreatingBusy(true);
+            try {
+              if (creating === 'timeline') {
+                const id = authoringActions.createTimeline(elements!.timeline, name);
+                setSelected(JSON.stringify([skill, 'timeline', id]));
+                selectionActions.showTimeline(id, null);
+                openPanel('timeline');
+              } else {
+                const id = await graphAuthoring.createPage('Subgraph', 'Shared', name);
+                setSelected(JSON.stringify([skill, 'graph', id]));
+                await projectActions.openGraph({ owner: skill, ownerName: skill, id });
+                openPanel('graph');
+              }
+              setCreating(null);
+              setName('');
+            } catch (error) { consoleActions.error('Project', error); }
+            finally { setCreatingBusy(false); }
+          })();
+        }}>{creatingBusy ? '正在创建' : '创建'}</Button><Button variant="ghost" disabled={creatingBusy} onClick={() => setCreating(null)}>取消</Button></PanelBar>
       </div>}
       <PanelBar>
         <MenuButton label="作者内容类型" caret entries={[

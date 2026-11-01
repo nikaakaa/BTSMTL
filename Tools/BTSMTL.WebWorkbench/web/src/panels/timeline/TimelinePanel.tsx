@@ -1574,10 +1574,14 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
       label: `${template.kind ?? template.clrType} 片段`,
       onSelect: () => {
         const start = local();
-        select(authoringActions.addClipAt(documentId, row.track.id, elements, template, start, start + Math.max(step, Math.round(0.5 / step) * step)));
+        void authoringActions.addClipAt(documentId, row.track.id, template, start, start + Math.max(step, Math.round(0.5 / step) * step))
+          .then(select, error => consoleActions.error('Timeline', error));
       },
     })),
-    { label: '标记', onSelect: () => { const id = authoringActions.addMarkerAt(documentId, row.track.id, elements, local()); if (id) select(id); } },
+    { label: '标记', onSelect: () => {
+      void authoringActions.addMarkerAt(documentId, row.track.id, local())
+        .then(id => { if (id) select(id); }, error => consoleActions.error('Timeline', error));
+    } },
     {
       label: '粘贴片段', disabled: !authoringActions.canPasteClip(), tip: '粘贴复制的片段，起点在此处',
       onSelect: () => { const id = authoringActions.pasteClip(documentId, row.track.id, local()); if (id) select(id); },
@@ -1653,8 +1657,8 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
       const value = cloneJson(template.value);
       setIn(value, template.sourceAsset.serializedMemberPath, result.clip.resource.identity);
       const start = snapLocal(getValueFromScreenX(event.clientX));
-      const id = authoringActions.addClipAt(documentId, row.track.id, elements, { ...template, value }, start, start + result.clip.duration);
-      selectTimelineObject(clock, 'clip', clipSelectId(documentId, id));
+      void authoringActions.addClipAt(documentId, row.track.id, { ...template, value }, start, start + result.clip.duration)
+        .then(id => selectTimelineObject(clock, 'clip', clipSelectId(documentId, id)), error => consoleActions.error('Timeline', error));
     }} onContextMenuCapture={event => {
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。

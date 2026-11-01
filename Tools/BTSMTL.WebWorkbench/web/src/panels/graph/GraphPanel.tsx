@@ -14,7 +14,7 @@ import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -636,10 +636,10 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
     const owner = editable && elements ? edgeCondition(currentDocument(graphPath(graph.id)), edge.id, machine) : null;
     if (!owner || !elements) return;
     if (owner.condition === null) {
-      if (owner.step) graphAuthoring.createStepCondition(graph.id, elements, owner.step);
-      else graphAuthoring.createCondition(graph.id, elements, edge.id);
+      const creation = owner.step ? graphAuthoring.createStepCondition(graph.id, owner.step)
+        : graphAuthoring.createCondition(graph.id, edge.id);
+      void creation.then(() => consoleActions.log('info', '作者', '已新建条件图'), error => consoleActions.error('作者', error));
     }
-    consoleActions.log('info', '作者', owner.condition === null ? '已新建条件图，保存后可进入' : '条件图尚未保存，保存后可进入');
   }, [enter, editable, elements, graph.id, machine]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => openEdge(edge), [openEdge]);
   const saved = params.viewport?.view === view ? params.viewport : null;
@@ -770,8 +770,7 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
       const skill = useAuthoring.getState().target!;
       const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id, authoringActions.editingView());
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
-      const elementsNow = elements ?? await skillElements();
-      selectCreated(graphAuthoring.addState(graph.id, elementsNow, description.configuration, position));
+      selectCreated(await graphAuthoring.addState(graph.id, description.configuration, position));
     } catch (error) {
       consoleActions.error('作者', error);
     }
