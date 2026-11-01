@@ -883,7 +883,10 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
   const inputs = laid.inputs.filter(port => !port.isTrigger), outputs = laid.outputs.filter(port => !port.isTrigger);
   const triggerIns = laid.inputs.filter(port => port.isTrigger), triggerOuts = laid.outputs.filter(port => port.isTrigger);
-  const rows = Math.max(inputs.length, outputs.length);
+  // 一侧只有一个执行端口时压在标题栏边框上；多个（组合节点的步骤）时各占一行写名字，从上到下即执行顺序。
+  const headIns = triggerIns.length === 1 ? triggerIns : [], headOuts = triggerOuts.length === 1 ? triggerOuts : [];
+  const left = [...(triggerIns.length > 1 ? triggerIns : []), ...inputs], right = [...(triggerOuts.length > 1 ? triggerOuts : []), ...outputs];
+  const rows = Math.max(left.length, right.length);
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
@@ -894,8 +897,8 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
           <b data-name>{nodeName(laid.node)}</b>
           <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
           <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
-          {triggerIns.map(port => <FlowPort key={`i${port.id}`} port={port} occurred={state.occurred > 0} />)}
-          {triggerOuts.map(port => <FlowPort key={`o${port.id}`} port={port} occurred={state.occurred > 0} />)}
+          {headIns.map(port => <FlowPort key={`i${port.id}`} port={port} occurred={state.occurred > 0} />)}
+          {headOuts.map(port => <FlowPort key={`o${port.id}`} port={port} occurred={state.occurred > 0} />)}
         </div>
       </Tip>
       {(children.length > 0 || timeline) && (
@@ -909,8 +912,8 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
         <div className={styles.body}>
           {Array.from({ length: rows }, (_, index) => (
             <div key={index} className={styles.portRow}>
-              <PortCell port={inputs[index]} state={state} values={values} />
-              <PortCell port={outputs[index]} state={state} values={values} />
+              <PortCell port={left[index]} state={state} values={values} />
+              <PortCell port={right[index]} state={state} values={values} />
             </div>
           ))}
         </div>
@@ -940,6 +943,12 @@ function PortCell({ port, state, values }: {
   const { editable, connected } = useView();
   if (!port) return <span className={styles.portEmpty} />;
   const input = port.direction === 'input';
+  if (port.isTrigger) return (
+    <span className={input ? styles.portIn : styles.portOut}>
+      <FlowPort port={port} occurred={state.occurred > 0} />
+      <span className={styles.portName} data-name>{port.displayName}</span>
+    </span>
+  );
   const sample = state.ports[`${port.direction}:${port.id}`];
   const color = portColor(sample?.valueType);
   // 照 Shader Graph：连了线实心；没连线的输入在旁边写当前值。
