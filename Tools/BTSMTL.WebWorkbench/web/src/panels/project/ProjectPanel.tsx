@@ -5,14 +5,16 @@ import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } 
 import { panelInfo } from '../../shell/panelTypes';
 import { writeResourceReady } from '../../shell/readiness';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
-import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
+import { referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
-import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
+import { BarSeparator, Empty, Fold, PanelBar, Tabs } from '../../ui/blocks';
 import { Button, MenuButton, NumberInput, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from '../resources/resourceScene';
+import { AuthoringProject } from './AuthoringProject';
 import styles from '../resources/resources.module.css';
+import projectStyles from './project.module.css';
 
 // Project 的动画库：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色；单击片段在检查器显示资源信息。
 // 素材时间只改 resource 分片，不经过 transport、不移动运行游标（D6）；按 D8 写入 resource* 就绪标记。
@@ -20,6 +22,39 @@ import styles from '../resources/resources.module.css';
 export function ProjectPanel() {
   const panel = usePanelApi();
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
+  const field = useReferenceSelection(state => state.field);
+  const [section, setSection] = useState<'authoring' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
+  const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
+  useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
+  return <div className={projectStyles.root}>
+    {field && <ProjectFieldChoices key={field.id} field={field} />}
+    <div className={projectStyles.body}><Tabs value={section} onChange={setSection} items={[
+      { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
+      { value: 'animations', label: '动画库', content: <AnimationProject /> },
+    ]} /></div>
+  </div>;
+}
+
+function ProjectFieldChoices({ field }: { field: ReferenceFieldSelection }) {
+  const [search, setSearch] = useState('');
+  const query = search.toLocaleLowerCase();
+  return <div className={projectStyles.choices}><Fold title={`当前字段：${field.name}`} defaultOpen>
+    {field.catalog.kind === 'unavailable' ? <div className={projectStyles.note}>{field.catalog.reason}</div> : <>
+      <TextInput aria-label="筛选当前字段候选" placeholder="搜索名称、说明或来源" value={search}
+        onChange={event => setSearch(event.currentTarget.value)} />
+      {field.catalog.items.filter(choice => `${choice.name} ${choice.detail} ${choice.source}`.toLocaleLowerCase().includes(query)).map((choice, index) =>
+        <button key={index} className={projectStyles.row} draggable
+          aria-selected={referenceValueKey(choice.value) === referenceValueKey(field.value)}
+          onClick={() => field.choose(choice)}
+          onDragStart={event => { if (field.catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choice); }}>
+          <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>
+          {choice.conflict && <span className={projectStyles.issue}>{choice.conflict}</span>}
+        </button>)}
+    </>}
+  </Fold></div>;
+}
+
+function AnimationProject() {
   const [library, setLibrary] = useState<AnimationLibrary | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   useEffect(() => {

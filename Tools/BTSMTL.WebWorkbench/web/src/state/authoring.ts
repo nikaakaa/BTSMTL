@@ -406,7 +406,7 @@ export const authoringActions = {
   // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
   async open(target: AuthoringTarget) {
     const current = get().target;
-    if (current && authoringTargetKey(current) === authoringTargetKey(target) && get().documentGraphs) return;
+    if (current && authoringTargetKey(current) === authoringTargetKey(target) && get().documentGraphs) return true;
     loadController?.abort();
     const controller = loadController = new AbortController();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
@@ -416,7 +416,7 @@ export const authoringActions = {
     set({ target, author: true, documents: opened ? state.documents
       : { ...state.documents, [key]: { ...newDocument(), loading: true } } });
     publishDocument();
-    if (opened && opened.documentGraphs !== null) return;
+    if (opened && opened.documentGraphs !== null) return true;
     setDocument({ loading: true }, target);
     try {
       if (!opened || opened.revision === null) {
@@ -428,10 +428,12 @@ export const authoringActions = {
       controller.signal.throwIfAborted();
       setDocument({ loading: false }, target);
       publishDocument();
+      return true;
     } catch (error) {
       setDocument({ loading: false }, target);
-      if (isAbort(error)) return;
+      if (isAbort(error)) return false;
       consoleActions.error('作者', error);
+      return false;
     }
   },
 
