@@ -75,7 +75,7 @@ namespace ThirdPersonGameplay.Orchestration
         public readonly struct MoveFacingAngle
         {
             public static readonly OrchestrationExtensionInputPort<MoveFacingAngle> MoveInput = new("move-input", OrchestrationValueKind.Vector2, 0);
-            public static readonly OrchestrationExtensionOutputPort<MoveFacingAngle> Output = new("angle", OrchestrationValueKind.Scalar, 0);
+            public static readonly OrchestrationExtensionOutputPort<MoveFacingAngle> Angle = new("angle", OrchestrationValueKind.Scalar, 0);
 
             public static readonly OrchestrationExtensionDefinition<MoveFacingAngle> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-move-facing-angle"),
@@ -85,13 +85,13 @@ namespace ThirdPersonGameplay.Orchestration
                     new[]
                     {
                         MoveInput.Declaration,
-                        Output.Declaration
+                        Angle.Declaration
                     }, new[] { CharacterStateFields.ProviderOwner }));
         }
 
         public readonly struct CharacterStateVector3
         {
-            public static readonly OrchestrationExtensionOutputPort<CharacterStateVector3> Output = new("value", OrchestrationValueKind.Vector3, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateVector3> Value = new("value", OrchestrationValueKind.Vector3, 0);
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateVector3> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-vector3"),
@@ -100,13 +100,13 @@ namespace ThirdPersonGameplay.Orchestration
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
-                        Output.Declaration
+                        Value.Declaration
                     }, CharacterStateFields.All));
         }
 
         public readonly struct CharacterStateScalar
         {
-            public static readonly OrchestrationExtensionOutputPort<CharacterStateScalar> Output = new("value", OrchestrationValueKind.Scalar, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateScalar> Value = new("value", OrchestrationValueKind.Scalar, 0);
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateScalar> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-scalar"),
@@ -115,13 +115,13 @@ namespace ThirdPersonGameplay.Orchestration
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
-                        Output.Declaration
+                        Value.Declaration
                     }, CharacterStateFields.All));
         }
 
         public readonly struct CharacterStateYaw
         {
-            public static readonly OrchestrationExtensionOutputPort<CharacterStateYaw> Output = new("value", OrchestrationValueKind.Yaw, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateYaw> Value = new("value", OrchestrationValueKind.Yaw, 0);
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateYaw> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-yaw"),
@@ -130,13 +130,13 @@ namespace ThirdPersonGameplay.Orchestration
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
-                        Output.Declaration
+                        Value.Declaration
                     }, CharacterStateFields.All));
         }
 
         public readonly struct CharacterStateBoolean
         {
-            public static readonly OrchestrationExtensionOutputPort<CharacterStateBoolean> Output = new("value", OrchestrationValueKind.Boolean, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateBoolean> Value = new("value", OrchestrationValueKind.Boolean, 0);
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateBoolean> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-bool"),
@@ -145,13 +145,13 @@ namespace ThirdPersonGameplay.Orchestration
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
-                        Output.Declaration
+                        Value.Declaration
                     }, CharacterStateFields.All));
         }
 
         public readonly struct LocomotionDecision
         {
-            public static readonly OrchestrationExtensionOutputPort<LocomotionDecision> Output = new("result", OrchestrationValueKind.Boolean, 0);
+            public static readonly OrchestrationExtensionOutputPort<LocomotionDecision> Result = new("result", OrchestrationValueKind.Boolean, 0);
 
             public static readonly OrchestrationExtensionDefinition<LocomotionDecision> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "locomotion-decision"),
@@ -160,7 +160,7 @@ namespace ThirdPersonGameplay.Orchestration
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
-                        Output.Declaration
+                        Result.Declaration
                     }, LocomotionDecisionFields.All));
         }
 
