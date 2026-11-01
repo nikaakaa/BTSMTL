@@ -42,7 +42,7 @@ namespace BTSMTL.Graphs
         FlowGraph IBtsmtlAuthoringGraph.Graph => this;
         BtsmtlGraphVariableDeclarations IBtsmtlAuthoringGraph.Variables => Variables;
         bool IBtsmtlAuthoringGraph.PublishesVariables => true;
-        public override UnityEngine.Object EditorUndoTarget => Authoring.UndoTarget;
+        public override UnityEngine.Object EditorUndoTarget => m_Authoring == null ? this : m_Authoring.UndoTarget;
 
         public void EditAuthoring(string title, Action mutation) => Authoring.Edit(title, mutation);
 
