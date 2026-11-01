@@ -381,12 +381,26 @@
   border-left-color: #ffe000;
 }
 
-.subgraphMark {
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid #9a9a9a;
-  border-radius: 1px;
+.openNode {
+  border: 1px solid #9a9a9a;
+  border-radius: 2px;
+  padding: 1px 4px;
+  background: #3b3b3b;
+  color: #eee;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
   flex: none;
+}
+
+.openNode:hover {
+  background: #555;
+}
+
+.openNode:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .body {

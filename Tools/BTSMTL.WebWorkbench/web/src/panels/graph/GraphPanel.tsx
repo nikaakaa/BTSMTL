@@ -62,6 +62,7 @@ interface ViewOptions {
   related: Set<string> | null;
   labels: Params['labels'];
   enter(graph: GraphDefinition): void;
+  openNode(data: NodeData): void;
   hierarchy: GraphHierarchy;
   graph: GraphDefinition;
   // 作者模式下端口可拖出连线。
@@ -536,9 +537,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     return result;
   }, [params.relations, machine, selectedNode, layout, graph]);
 
+  const openNode = useCallback((data: NodeData) => {
+    if (data.children.length) enter(data.children[0]);
+    else if (data.timeline) showTimeline(data.timeline, call !== null && runId !== null ? { runId, call } : null);
+  }, [enter, call, runId]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph,
-  }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph]);
+    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openNode, hierarchy, graph,
+  }), [store, params.values, params.dim, related, params.labels, enter, openNode, hierarchy, graph]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -557,9 +562,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   }, [call, editable, selectCanvas]);
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
-    if (node.data.children.length) enter(node.data.children[0]);
-    else if (node.data.timeline) showTimeline(node.data.timeline, call !== null && runId !== null ? { runId, call } : null);
-  }, [enter, call, runId]);
+    openNode(node.data);
+  }, [openNode]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
     if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
   }, [enter]);
@@ -814,7 +818,7 @@ function GroupView({ data, selected }: NodeProps<GroupNode>) {
 // 流图节点：NodeCanvas 节点，标题下按行列出输入与输出端口。
 function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, children, timeline } = data;
-  const { store, values, dim, related } = useView();
+  const { store, values, dim, related, openNode } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
@@ -829,7 +833,14 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
         {triggerIn && <i className={styles.flowIn} />}
         <b>{nodeName(laid.node)}</b>
         {triggerOut && <i className={styles.flowOut} />}
-        {(children.length > 0 || timeline) && <i className={styles.subgraphMark} />}
+        {(children.length > 0 || timeline) && <button type="button" className={`${styles.openNode} nodrag nopan`}
+          title={children.length ? '进入子图' : '打开 Timeline'}
+          aria-label={`${children.length ? '进入子图' : '打开 Timeline'}：${nodeName(laid.node)}`}
+          onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}
+          onDoubleClick={event => event.stopPropagation()}
+          onClick={event => { event.stopPropagation(); if (event.detail < 2) openNode(data); }}>
+          {children.length ? '进入子图' : '打开 Timeline'}
+        </button>}
         <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
         <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
       </div>
