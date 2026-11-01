@@ -62,6 +62,9 @@ export type DescribedPorts =
   | { availability: { available: true; reason: null }; hasMore: boolean; items: DescribedPort[]; errors?: never }
   | { availability: { available: false; reason: string }; errors: SkillFormatError[]; hasMore?: never; items?: never };
 
+export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract<DescribedPorts, { items: DescribedPort[] }> =>
+  ports.availability.available;
+
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
   clrType: string;

@@ -9,7 +9,7 @@ import {
   type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillElements } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillElements } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
@@ -335,7 +335,7 @@ function useNodeCreator(graphId: string) {
         : await authoringApi.describeNode(skill, type, configuration, graphId, authoringActions.editingView(), controller.signal);
       controller.signal.throwIfAborted();
       if (!description.availability.available) throw new Error(description.availability.reason ?? `${type} 不可创建`);
-      if (!description.ports.availability.available) throw new Error(description.ports.availability.reason);
+      if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
       const ports = description.ports.items.map(entry => ({
         id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
       }));
