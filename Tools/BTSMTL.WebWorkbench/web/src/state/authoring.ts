@@ -29,6 +29,7 @@ export interface AuthoringState {
   documents: Record<string, AuthoringDocument>;
   skills: string[] | null;
   scenarios: string[] | null;
+  carrierRevision: string | null;
 }
 
 export interface AuthoringDocument {
@@ -94,7 +95,7 @@ const newDocument = (): AuthoringDocument => ({
 const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, target: null, documents: {}, skills: null, scenarios: null,
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, skills: null, scenarios: null, carrierRevision: null,
 }));
 
 export const authoringDocument = (state: AuthoringState, target = state.target): AuthoringDocument =>
@@ -524,7 +525,7 @@ export const authoringActions = {
   async save() {
     const { target, saving, removed, previewDefinitionGuid } = get();
     const files = authoringActions.changedFiles();
-    if (!target || saving || (!files.length && !removed.length)) return;
+    if (!target || saving || (target.kind === 'scenario' && !files.length && !removed.length)) return;
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;

@@ -218,6 +218,7 @@ const configurationOf = (node: JsonObject): JsonObject =>
 
 function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
   const version = useAuthoring(state => authoringDocument(state).version);
+  const carrierRevision = useAuthoring(state => state.carrierRevision);
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
@@ -250,7 +251,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, type, key, graphId, version]);
+  }, [skill, type, key, graphId, version, carrierRevision]);
   return { description, issues };
 }
 

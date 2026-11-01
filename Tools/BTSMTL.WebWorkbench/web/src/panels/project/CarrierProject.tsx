@@ -54,7 +54,10 @@ export function CarrierProject() {
     const controller = new AbortController();
     setCatalog(null);
     setFailure(null);
-    authoringApi.carriers(controller.signal).then(setCatalog, error => {
+    authoringApi.carriers(controller.signal).then(value => {
+      useAuthoring.setState({ carrierRevision: value.authoringRevision });
+      setCatalog(value);
+    }, error => {
       if (!isAbort(error)) setFailure({ text: '载体与资源目录读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
