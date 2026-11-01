@@ -71,9 +71,19 @@ namespace BTSMTL.BurstCheck
         {
         }
 
-        public int EnterInvocation(in OrchestrationTimelineStart<OrchestrationTime> start,
-            in OrchestrationTimelineInvocation<OrchestrationTime> invocation, ref BurstCheckContext context) =>
-            context.FrameSlot;
+        public OrchestrationOperationResult ExecuteInvocation(in OrchestrationTimelineInvocationFacts invocation,
+            in OrchestrationStopContext stopContext, ref BurstCheckContext context) =>
+            OrchestrationOperationResult.Success;
+
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext,
+            ref BurstCheckContext context)
+        {
+        }
+
+        public void ReleasePlaybackFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
+            in OrchestrationStopContext stopContext, ref BurstCheckContext context)
+        {
+        }
 
         public void SelectExecutionFrame(int frameSlot, ref BurstCheckContext context) =>
             context.FrameSlot = frameSlot;
@@ -81,10 +91,6 @@ namespace BTSMTL.BurstCheck
         public OrchestrationOperationResult ReleaseInvocation(in OrchestrationTimelineStart<OrchestrationTime> start,
             in OrchestrationTimelineInvocation<OrchestrationTime> invocation, ref BurstCheckContext context) =>
             OrchestrationOperationResult.Success;
-
-        public void LeaveInvocation(ref BurstCheckContext context)
-        {
-        }
     }
 
     public readonly struct BurstCheckSampleInvoker<TValue> : ITimelineLogicSampleInvoker<TValue, BurstCheckContext>
@@ -189,26 +195,10 @@ namespace BTSMTL.BurstCheck
         public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity) =>
             Dispatch.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
 
-        public int EnterInvocation(int playbackSlot, int invocationIndex)
-        {
-            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
-            return Dispatch.EnterInvocation(Runtime, ref bindings, playbackSlot, invocationIndex, ref m_Context);
-        }
-
-        public OrchestrationTimelineInvocationFacts ReadInvocationFacts() => Dispatch.ReadInvocationFacts(Runtime);
-
         public void SelectExecutionFrame(int frameSlot) => m_Context.FrameSlot = frameSlot;
 
-        public OrchestrationOperationResult ReleaseInvocation()
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
         {
-            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
-            return Dispatch.ReleaseInvocation(Runtime, ref bindings, ref m_Context);
-        }
-
-        public void LeaveInvocation()
-        {
-            var bindings = new BurstCheckTimelineBindings<Float32OrchestrationValue>();
-            Dispatch.LeaveInvocation(Runtime, ref bindings, ref m_Context);
         }
 
         public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick)
