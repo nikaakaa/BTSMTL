@@ -22,5 +22,16 @@ public sealed record SkillAuthoringPageQuery(int Offset = 0, int Limit = 128, st
 public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string GraphId,
     [property: JsonRequired] string NodeId, int Offset = 0, int Limit = 128,
     SkillAuthoringEditingView? EditingView = null);
-public sealed record SkillAuthoringReferenceQuery([property: JsonRequired] string Identity,
-    int Offset = 0, int Limit = 128, SkillAuthoringEditingView? EditingView = null);
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(SkillAuthoringProfileEntryTarget), "ProfileEntry")]
+[JsonDerivedType(typeof(SkillAuthoringNodeTarget), "Node")]
+public abstract record SkillAuthoringReferenceTarget;
+public sealed record SkillAuthoringProfileEntryTarget([property: JsonRequired] string CarrierIdentity,
+    [property: JsonRequired] string ProfileSource, [property: JsonRequired] string Domain,
+    [property: JsonRequired] string EntryKind, [property: JsonRequired] string Key,
+    string? ResourceIdentity = null) : SkillAuthoringReferenceTarget;
+public sealed record SkillAuthoringNodeTarget([property: JsonRequired] string GraphId,
+    [property: JsonRequired] string NodeId) : SkillAuthoringReferenceTarget;
+public sealed record SkillAuthoringReferenceQuery(string? Identity = null,
+    int Offset = 0, int Limit = 128, SkillAuthoringEditingView? EditingView = null,
+    SkillAuthoringReferenceTarget? Target = null);
