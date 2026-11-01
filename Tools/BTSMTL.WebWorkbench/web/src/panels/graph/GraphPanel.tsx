@@ -1,12 +1,12 @@
 import {
   Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
-  ReactFlowProvider, SelectionMode, applyNodeChanges, useConnection, useInternalNode, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps, type Node, type NodeChange,
-  type Connection, type NodeProps, type Viewport,
+  ReactFlowProvider, SelectionMode, ViewportPortal, applyNodeChanges, useInternalNode, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps,
+  type Node, type NodeChange, type Connection, type InternalNode, type NodeProps, type Viewport, type XYPosition,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
 import {
   createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
-  type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
@@ -70,6 +70,8 @@ interface ViewOptions {
   grabGroup?(group: CanvasGroup): void;
   renameGroup?(group: CanvasGroup, name: string): void;
   resizeGroup?(group: CanvasGroup, rect: CanvasGroup['rect']): void;
+  // 状态机作者模式：在状态上按住右键拖到目标状态建立转移。
+  beginLink?(source: string, event: ReactPointerEvent): void;
 }
 const ViewContext = createContext<ViewOptions | null>(null);
 const useView = () => useContext(ViewContext)!;
@@ -698,14 +700,47 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const renameGroup = useCallback((group: CanvasGroup, name: string) => graphAuthoring.updateGroup(graph.id, group.index, { name }), [graph.id]);
   const resizeGroup = useCallback((group: CanvasGroup, rect: CanvasGroup['rect']) =>
     graphAuthoring.updateGroup(graph.id, group.index, { rect }), [graph.id]);
-  const viewOptions = useMemo(() => ({ ...options, editable, grabGroup, renameGroup, resizeGroup }),
-    [options, editable, grabGroup, renameGroup, resizeGroup]);
+  // 右键拖出转移：移动超过 4px 才算拖动，松开在另一个状态上建立转移；拖过之后不弹右键菜单。
+  const [link, setLink] = useState<{ source: string; at: XYPosition } | null>(null);
+  const linked = useRef(false);
+  const beginLink = useCallback((source: string, event: ReactPointerEvent) => {
+    if (!elements) return;
+    linked.current = false;
+    const startX = event.clientX, startY = event.clientY;
+    const move = (pointer: PointerEvent) => {
+      if (!linked.current && Math.hypot(pointer.clientX - startX, pointer.clientY - startY) < 4) return;
+      linked.current = true;
+      setLink({ source, at: screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }) });
+    };
+    const up = (pointer: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setLink(null);
+      if (!linked.current) return;
+      const target = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest('.react-flow__node-state')?.getAttribute('data-id');
+      if (target && target !== source) graphAuthoring.connectStates(graph.id, elements, source, target);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, [elements, graph.id, screenToFlowPosition]);
+  const viewOptions = useMemo(() => ({
+    ...options, editable, grabGroup, renameGroup, resizeGroup, beginLink: editable && machine ? beginLink : undefined,
+  }), [options, editable, grabGroup, renameGroup, resizeGroup, machine, beginLink]);
 
   return (
     <ViewContext.Provider value={viewOptions}>
       <ContextMenu entries={menu}>
       <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined} data-far={far || undefined}
-        onContextMenuCapture={event => { menuAt.current = { x: event.clientX, y: event.clientY }; }}>
+        data-linking={link !== null || undefined}
+        onContextMenuCapture={event => {
+          if (linked.current) {
+            linked.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          menuAt.current = { x: event.clientX, y: event.clientY };
+        }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
@@ -726,6 +761,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
               nodeColor={node => themeColor(node.type === 'canvasGroup' ? '--group-line' : machine ? '--state' : '--node-head')}
               nodeStrokeWidth={0} />
           )}
+          {link && <LinkPreview source={link.source} at={link.at} />}
         </ReactFlow>
         {picker && <NodeTypePicker graph={graph} at={picker} onCreated={selectCreated} onClose={() => setPicker(null)} />}
       </div>
@@ -753,9 +789,7 @@ function useNodeState(store: RouteStore, id: string) {
 // 状态机的状态：照 Animator 的圆角块，本帧所在的状态描黄并写本地秒数，走过的描金。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, timeline, children } = data;
-  const { store, related, editable } = useView();
-  // 拖转移时整个状态块都是落点；平时不挡状态的拖动。
-  const connecting = useConnection(connection => connection.inProgress);
+  const { store, related, beginLink } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const running = state.occurred > 0;
@@ -768,12 +802,10 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   return (
     <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
     <div className={styles.state} data-running={running || undefined}
-      data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}>
-      {/* 作者模式：从右侧圆点拖出转移，松开在目标状态任意位置 */}
-      <Handle id="in:@node" type="target" position={Position.Left} isConnectable={!!editable} isConnectableStart={false}
-        className={editable && connecting ? styles.stateTarget : styles.hiddenHandle} />
-      <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
-        className={editable ? styles.stateSource : styles.hiddenHandle} />
+      data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}
+      onPointerDown={event => { if (event.button === 2) beginLink?.(laid.node.id, event); }}>
+      <Handle id="in:@node" type="target" position={Position.Left} isConnectable={false} className={styles.hiddenHandle} />
+      <Handle id="out:@node" type="source" position={Position.Right} isConnectable={false} className={styles.hiddenHandle} />
       <div className={styles.stateTitle} data-name>{nodeName(laid.node)}</div>
       {/* 第二行：播放的 Timeline 与运行中的本地秒数，写在块内不被连线穿过 */}
       {timelineName && <div className={styles.stateCaption}>
@@ -898,6 +930,43 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   );
 }
 
+const stateBox = (node: InternalNode) => ({
+  x: node.internals.positionAbsolute.x, y: node.internals.positionAbsolute.y,
+  w: node.measured.width ?? 80, h: node.measured.height ?? 26,
+});
+type StateBox = ReturnType<typeof stateBox>;
+
+// 从 (cx, cy) 沿 (dx, dy) 方向射出，落在状态边框外 2px 处。
+function borderPoint(box: StateBox, cx: number, cy: number, dx: number, dy: number): XYPosition {
+  const scale = Math.min(Math.abs((box.w / 2 + 2) / (dx || 1e-6)), Math.abs((box.h / 2 + 2) / (dy || 1e-6)));
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+// 画在 mid 处、指向 start→end 方向的三角箭头。
+function midArrow(start: XYPosition, end: XYPosition, mid: XYPosition) {
+  const span = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const ux = (end.x - start.x) / span, uy = (end.y - start.y) / span;
+  const tipX = mid.x + ux * 5, tipY = mid.y + uy * 5;
+  return `M${tipX} ${tipY} L${tipX - ux * 10 - uy * 4.5} ${tipY - uy * 10 + ux * 4.5} L${tipX - ux * 10 + uy * 4.5} ${tipY - uy * 10 - ux * 4.5}Z`;
+}
+
+// 右键拖出转移时跟着鼠标的线，样子同提亮的转移。
+function LinkPreview({ source, at }: { source: string; at: XYPosition }) {
+  const node = useInternalNode(source);
+  if (!node) return null;
+  const box = stateBox(node);
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  const start = borderPoint(box, cx, cy, at.x - cx, at.y - cy);
+  return (
+    <ViewportPortal>
+      <svg className={styles.linkPreview}>
+        <path d={`M${start.x} ${start.y} L${at.x} ${at.y}`} />
+        <path d={midArrow(start, at, { x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 })} className={styles.arrow} />
+      </svg>
+    </ViewportPortal>
+  );
+}
+
 // 转移：从源状态边框到目标状态边框的曲线，照 Animator 把箭头画在线的中点，多条转移汇到同一状态时箭头不堆在一起；
 // 标签取条件图名称，放在靠源状态的三分之一处，不盖住箭头。
 function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<FlowEdge>) {
@@ -906,29 +975,18 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
   const from = useInternalNode(source), to = useInternalNode(target);
   const [hover, setHover] = useState(false);
   if (!from || !to) return null;
-  const box = (node: typeof from) => ({
-    x: node.internals.positionAbsolute.x, y: node.internals.positionAbsolute.y,
-    w: node.measured.width ?? 80, h: node.measured.height ?? 26,
-  });
-  const a = box(from), b = box(to);
+  const a = stateBox(from), b = stateBox(to);
   const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
   // 错开同一对状态之间的多条转移：沿垂直方向平移。
   const length = Math.hypot(bx - ax, by - ay) || 1;
   const nx = -(by - ay) / length * data!.offset, ny = (bx - ax) / length * data!.offset;
-  const exit = (box: typeof a, cx: number, cy: number, dx: number, dy: number) => {
-    const scale = Math.min(Math.abs((box.w / 2 + 2) / (dx || 1e-6)), Math.abs((box.h / 2 + 2) / (dy || 1e-6)));
-    return { x: cx + dx * scale, y: cy + dy * scale };
-  };
-  const start = exit(a, ax + nx, ay + ny, bx - ax, by - ay);
-  const end = exit(b, bx + nx, by + ny, ax - bx, ay - by);
+  const start = borderPoint(a, ax + nx, ay + ny, bx - ax, by - ay);
+  const end = borderPoint(b, bx + nx, by + ny, ax - bx, ay - by);
   // 二次曲线 t=0.5 处正好是 (mx, my)，切线方向与起点指向终点一致。
   const mx = (start.x + end.x) / 2 + nx * 0.6, my = (start.y + end.y) / 2 + ny * 0.6;
   const cx = mx * 2 - (start.x + end.x) / 2, cy = my * 2 - (start.y + end.y) / 2;
   const path = `M${start.x} ${start.y} Q${cx} ${cy} ${end.x} ${end.y}`;
-  const span = Math.hypot(end.x - start.x, end.y - start.y) || 1;
-  const ux = (end.x - start.x) / span, uy = (end.y - start.y) / span;
-  const tipX = mx + ux * 5, tipY = my + uy * 5;
-  const arrow = `M${tipX} ${tipY} L${tipX - ux * 10 - uy * 4.5} ${tipY - uy * 10 + ux * 4.5} L${tipX - ux * 10 + uy * 4.5} ${tipY - uy * 10 - ux * 4.5}Z`;
+  const arrow = midArrow(start, end, { x: mx, y: my });
   const at = (t: number) => ({
     x: (1 - t) ** 2 * start.x + 2 * t * (1 - t) * cx + t ** 2 * end.x,
     y: (1 - t) ** 2 * start.y + 2 * t * (1 - t) * cy + t ** 2 * end.y,
