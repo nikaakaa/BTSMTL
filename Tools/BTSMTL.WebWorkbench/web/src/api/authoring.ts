@@ -6,10 +6,15 @@ import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandRecei
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
 
-export interface SkillFile {
+export type SkillFile = {
   path: string;
   content: string;
-}
+};
+
+export type SkillEditingView = {
+  skills: Record<string, SkillSaveRequest['content']>;
+  previewDefinitionGuid: string | null;
+};
 
 export interface SkillSnapshot {
   skill: string;
@@ -369,12 +374,12 @@ export const authoringApi = {
   types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
-  describeType: async (target: AuthoringTarget, type: string, graphId: string, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128 }, signal)) as unknown as TypeDescription,
+  describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    parseSkillJson(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)) as unknown as TypeDescription,
   // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
-  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, signal?: AbortSignal) =>
+  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     parseSkillJson(await postText(`${targetPath(target)}/queries/type`,
-      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
+      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)) as unknown as TypeDescription,
   identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
   blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
   referenceCurves: (target: AuthoringTarget, identity: string, signal?: AbortSignal) =>

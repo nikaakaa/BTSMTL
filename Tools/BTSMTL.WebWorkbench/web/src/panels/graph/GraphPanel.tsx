@@ -13,7 +13,7 @@ import { authoringApi, authoringTargetKey, type AuthoringTarget, type NodeTypeIn
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
-  applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
@@ -320,7 +320,7 @@ function NodeTypePicker({ graph, at, onCreated, onClose }: {
   const add = async (item: NodeTypeInfo) => {
     setBusy(true);
     try {
-      const description = await authoringApi.describeType(skill, item.type, graph.id);
+      const description = await authoringApi.describeType(skill, item.type, graph.id, authoringActions.editingView());
       if (!description.availability.available) throw new Error(description.availability.reason ?? `${item.type} 不可创建`);
       if (!description.ports.availability.available)
         consoleActions.log('warn', '作者', `${item.type} 的端口暂不可用：${description.ports.availability.reason ?? ''}`);
@@ -655,7 +655,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const addState = async (position: { x: number; y: number }) => {
     try {
       const skill = useAuthoring.getState().target!;
-      const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
+      const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id, authoringActions.editingView());
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
       const elementsNow = elements ?? await skillElements();
       selectCreated(graphAuthoring.addState(graph.id, elementsNow, description.configuration, position));

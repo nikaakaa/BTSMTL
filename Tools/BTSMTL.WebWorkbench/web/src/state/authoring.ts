@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ReferenceCurves, type ScenarioDraftRequest, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
+import { authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ReferenceCurves, type ScenarioDraftRequest, type SkillEditingView, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
@@ -470,6 +470,14 @@ export const authoringActions = {
     return Object.entries(state.edited).filter(([path]) => !state.removed.includes(path)).map(([path, document]) => ({
       path, content: writeSkillJson(document, state.files[path] !== undefined ? shapeOf(state.files[path]) : fallback),
     })).filter(file => file.content !== state.files[file.path]);
+  },
+
+  editingView(): SkillEditingView {
+    const { target, removed } = get();
+    return {
+      skills: target?.kind === 'skill' ? { [target.name]: { files: authoringActions.changedFiles(), removedFiles: removed } } : {},
+      previewDefinitionGuid: null,
+    };
   },
 
   // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。

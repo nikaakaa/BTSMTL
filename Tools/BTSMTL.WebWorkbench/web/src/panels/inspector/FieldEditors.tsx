@@ -189,6 +189,7 @@ const configurationOf = (node: JsonObject): JsonObject =>
   Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
 
 function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
+  const version = useAuthoring(state => state.version);
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
@@ -203,7 +204,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
     if (!skill || !type || key === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      authoringApi.describeNode(skill, type, latest.current!, graphId, controller.signal).then(result => {
+      authoringApi.describeNode(skill, type, latest.current!, graphId, authoringActions.editingView(), controller.signal).then(result => {
         if (controller.signal.aborted) return;
         const items = result.fields.items;
         setDescription({
@@ -221,7 +222,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, type, key, graphId]);
+  }, [skill, type, key, graphId, version]);
   return { description, issues };
 }
 
