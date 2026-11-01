@@ -15,6 +15,7 @@ namespace BTSMTL.Timeline
         public bool Trimmed { get; set; }
         public bool SourceMappingOnly { get; set; }
         public bool IsSourceAsset { get; set; }
+        public string SourceAssetKind { get; set; }
         public TimelineAuthoringSourceBoundary SourceBoundary { get; set; }
         public TimelineBindingValueKind[] BindingValueKinds { get; set; } = Array.Empty<TimelineBindingValueKind>();
         public TimelineBindingAccess BindingAccess { get; set; }
@@ -44,6 +45,7 @@ namespace BTSMTL.Timeline
         public bool Trimmed => m_Annotation?.Trimmed == true;
         public bool SourceMappingOnly => m_Annotation?.SourceMappingOnly == true;
         public bool IsSourceAsset => m_Annotation?.IsSourceAsset == true;
+        public string SourceAssetKind => m_Annotation.SourceAssetKind;
         public TimelineAuthoringSourceBoundary SourceBoundary => m_Annotation?.SourceBoundary ?? TimelineAuthoringSourceBoundary.None;
         public IReadOnlyList<TimelineBindingValueKind> BindingValueKinds =>
             m_Annotation?.BindingValueKinds ?? Array.Empty<TimelineBindingValueKind>();
