@@ -29,6 +29,9 @@ const getIn = (value: JsonValue | undefined, keys: JsonKey[]): JsonValue | undef
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
 
+const valueText = (value: JsonValue | undefined) => value == null ? '空'
+  : typeof value === 'object' ? stringifySkillJson(value, ' ') : String(value);
+
 // 字段显示名照 Unity ObjectNames.NicifyVariableName：去掉 m_／_／k 前缀，按大小写断词，首字母大写（HasStart → Has Start）。
 const memberLabel = (member: string) => {
   const words = member.replace(/^(m_|_|k(?=[A-Z]))/, '')
@@ -102,6 +105,8 @@ function ValueEditor({ label, value, shape, keys, onSet }: {
   label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
 }): ReactNode {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
+  if (shape?.clrType === 'ObjectHandle')
+    return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (isCurve(value, shape?.clrType))
     return <CurveEditor label={label} value={value ?? null} onSet={next => onSet(keys, next)} />;
   if (shape?.enumValues?.length)
@@ -392,7 +397,8 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
                 <Row label="名称"><TextValue label="名称" value={variable.name as string} onSet={next => {
                   if (typeof next === 'string' && next.trim()) graphAuthoring.renameVariable(graphId, id, next.trim());
                 }} /></Row>
-                <ValueEditor label="默认值" value={variable.serializedValue} shape={null} keys={[]}
+                <ValueEditor label="默认值" value={variable.serializedValue}
+                  shape={variable.varType === 'ObjectHandle' ? portShape('ObjectHandle') : null} keys={[]}
                   onSet={(keys, value) => graphAuthoring.setVariableValue(graphId, id, keys, value)} />
                 {declaration ? members.filter(item => item.member !== 'm_VariableId').map(item => (
                   <ValueEditor key={item.member} label={memberLabel(item.member)} value={declaration[item.member]} shape={item}
@@ -517,7 +523,7 @@ function FieldEditor({ id, field, item, node, onSet, onSetFields }: {
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
   if (field.readOnly || field.valueKind === 'ObjectHandle')
-    return <Row label={label} tip="只读"><span className={styles.readOnly}>{value == null ? '空' : typeof value === 'object' ? stringifySkillJson(value, ' ') : String(value)}</span></Row>;
+    return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.pickerKind !== null)
     return <Row label={label}><ReferencePicker id={id} label={label} value={value}
       catalog={field.choiceKind === null
