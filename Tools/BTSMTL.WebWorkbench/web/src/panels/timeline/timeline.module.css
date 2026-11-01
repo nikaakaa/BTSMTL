@@ -750,7 +750,12 @@
   pointer-events: auto;
 }
 
-/* 片段（ClipDrawer）：中段底色画在 --in 与 --out 之间，两端过渡由 ClipShape 画；底边 4 像素类别色；选中时整块白框 */
+.itemContent {
+  display: flex;
+  height: 100%;
+}
+
+/* 片段（ClipDrawer）：中段底色画在 --in 与 --out 之间，两端过渡、底边类别色与边线由 ClipShape 画；选中时整块白框 */
 .clip {
   all: unset;
   position: relative;
@@ -764,22 +769,19 @@
   --blend: var(--tl-clip-blend);
 }
 
-.clip::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  background: var(--tc);
-  pointer-events: none;
-}
-
 .clip[data-selected] {
-  outline: 1px solid #fff;
-  outline-offset: -1px;
   --body: var(--tl-clip-selected);
   --blend: var(--tl-clip-selected);
+}
+
+/* 白框贴着片段外沿压在两端边线、类别色条之上，同 Unity 最后画选中框 */
+.clip[data-selected]::before, .clip[data-invalid]::before, .dropGhost::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 1px solid #fff;
+  pointer-events: none;
 }
 
 .clip[data-dim] {
@@ -806,15 +808,13 @@
 /* 不合规的片段（DrawInvalidClip）：片段底色乘 colorInvalidClipOverlay（红，50.2%），白框，不画两端过渡 */
 .clip[data-invalid] {
   background: rgb(64 0 0 / 50.2%);
-  outline: 1px solid #fff;
-  outline-offset: -1px;
 }
 
-.clip[data-invalid]::after {
-  background: rgb(255 0 0 / 50.2%);
+.clip[data-invalid] .clipSwatch {
+  fill: rgb(255 0 0 / 50.2%);
 }
 
-.clip[data-invalid] .clipShape, .clip[data-invalid] .easeHandle {
+.clip[data-invalid] .clipShape > :not(.clipSwatch), .clip[data-invalid] .easeHandle {
   display: none;
 }
 
@@ -835,10 +835,8 @@
   height: 30px;
   box-sizing: border-box;
   background: rgb(64 68 74 / 50%);
-  outline: 1px solid #fff;
-  outline-offset: -1px;
-  --in: 0px;
-  --out: 0px;
+  --label-start: 0px;
+  --label-end: 0px;
 }
 
 .dropGhost::after {
@@ -898,6 +896,10 @@
   fill: var(--blend);
 }
 
+.clipSwatch {
+  fill: var(--tc);
+}
+
 .clipEdge {
   fill: var(--tl-clip-border);
 }
@@ -908,11 +910,11 @@
   vector-effect: non-scaling-stroke;
 }
 
-/* 片段名：白字黑影，在中段内居中，放不下时省略 */
+/* 片段名：白字黑影，在可见的中段内居中，放不下时省略 */
 .clipLabel {
   position: absolute;
-  left: calc(var(--in) + 6px);
-  right: calc(var(--out) + 6px);
+  left: calc(var(--label-start) + 6px);
+  right: calc(var(--label-end) + 6px);
   top: 0;
   bottom: 0;
   color: #fff;
@@ -926,22 +928,14 @@
   pointer-events: none;
 }
 
-/* 作者模式的淡入淡出手柄：悬停或选中片段时出现在顶边 */
+/* 作者模式的淡入淡出手柄：顶边两端的不可见热区，压在两端调整热区之上 */
 .easeHandle {
   position: absolute;
   top: 0;
   z-index: 2;
   width: 7px;
   height: 7px;
-  box-sizing: border-box;
-  border: 1px solid var(--tl-clip-border);
-  background: #c4c4c4;
   cursor: ew-resize;
-  opacity: 0;
-}
-
-.clip:hover .easeHandle, .clip[data-selected] .easeHandle {
-  opacity: 1;
 }
 
 .clipCut {

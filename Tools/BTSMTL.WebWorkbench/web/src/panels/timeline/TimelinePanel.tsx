@@ -2186,7 +2186,7 @@ type EaseDraft = { side: 'in' | 'out'; seconds: number };
 // 片段一端的过渡：与相邻片段重叠为混合，否则有淡入淡出时为淡变（BlendKind）；width 为像素宽。
 type ClipBlend = { kind: 'mix' | 'ease'; width: number } | null;
 
-// 淡入淡出手柄（作者模式）：顶边两端的小方块左右拖动改时长，按片段网格的步长取整（时长不带偏移）；悬停或选中片段时显示。
+// 淡入淡出手柄（作者模式）：照 Unity 不画出来，顶边两端 7 像素见方的热区换成调整光标，左右拖动改时长，按片段网格的步长取整（时长不带偏移）。
 // 拖动中的草稿由片段持有，片段按草稿画淡变形状；已与相邻片段混合的一端没有手柄。
 function EaseHandles({ ease, start, end, draft, setDraft, sides, step }: {
   ease: ClipEase; start: number; end: number; draft: EaseDraft | null; setDraft(draft: EaseDraft | null): void;
@@ -2218,7 +2218,7 @@ function EaseHandles({ ease, start, end, draft, setDraft, sides, step }: {
     },
     onClick: (event: ReactMouseEvent) => event.stopPropagation(),
   });
-  // 方块中心对准淡入终点、淡出起点，贴边时收在片段内。
+  // 热区中心对准淡入终点、淡出起点，贴边时收在片段内。
   return (
     <>
       {sides.in && <Tip content={`淡入 ${easeIn.toFixed(3)} s · 左右拖动`}>
@@ -2232,7 +2232,7 @@ function EaseHandles({ ease, start, end, draft, setDraft, sides, step }: {
 }
 
 // 片段底形（ClipDrawer.DrawDefaultClip）：中段底色由按钮背景画（CSS 按 --in/--out 在两端留空），
-// 这里画两端的混合与淡变三角、淡变暗底和默认边线。视口高度与轨道同为 30，横向 1 单位即 1 像素。
+// 这里画两端的混合与淡变三角、淡变暗底、底边 4 像素类别色和压在色条上的默认边线。视口高度与轨道同为 30，横向 1 单位即 1 像素。
 function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipBlend; blendOut: ClipBlend }) {
   const w = Math.max(1, width), h = trackHeight;
   const inW = blendIn?.width ?? 0, outW = blendOut?.width ?? 0;
@@ -2242,6 +2242,7 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
       {blendOut?.kind === 'ease' && <rect className={styles.easeBack} x={w - outW} width={outW} height={h} />}
       {blendIn && <polygon className={styles.blendShape} points={blendIn.kind === 'mix' ? `0,0 ${inW},${h} ${inW},0` : `0,${h} ${inW},${h} ${inW},0`} />}
       {blendOut && <polygon className={styles.blendShape} points={`${w - outW},0 ${w - outW},${h} ${w},${h}`} />}
+      <rect className={styles.clipSwatch} y={h - 4} width={w} height={4} />
       <rect className={styles.clipEdge} x={inW} width={1} height={h} />
       {blendOut?.kind !== 'mix' && <rect className={styles.clipEdge} x={w - outW - 1} width={1} height={h} />}
       {blendIn?.kind === 'mix' && <>
@@ -2259,10 +2260,10 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
 }) {
-  const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
+  const { setNodeRef, itemStyle, listeners, attributes } = useItem({
     id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 12,
   });
-  const { valueToPixels } = useTimelineContext();
+  const { range, valueToPixels } = useTimelineContext();
   const clock = useContext(PreviewClockContext);
   const panelId = usePanelId();
   // 拖动中由虚影代替；拖端不合规时原地变红。
@@ -2283,16 +2284,19 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const blendIn: ClipBlend = mixIn > 0 ? { kind: 'mix', width: valueToPixels(mixIn) } : easeIn > 0 ? { kind: 'ease', width: valueToPixels(easeIn) } : null;
   const blendOut: ClipBlend = mixOut > 0 ? { kind: 'mix', width: valueToPixels(mixOut) } : easeOut > 0 ? { kind: 'ease', width: valueToPixels(easeOut) } : null;
   const inWidth = blendIn?.width ?? 0, outWidth = blendOut?.width ?? 0;
-  const labelWidth = width - inWidth - outWidth - clipLabelPadding * 2;
+  // 照 Unity 片段按整段画、伸出视口的部分被裁掉；名字只在可见的中段里居中。
+  const labelStart = Math.max(inWidth, valueToPixels(range.start - start)), labelEnd = Math.max(outWidth, valueToPixels(end - range.end));
+  const labelWidth = width - labelStart - labelEnd - clipLabelPadding * 2;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
-      <div style={itemContentStyle}>
+      <div className={styles.itemContent}>
         <Tip name={label}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
-          style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
+          style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px`,
+            ['--label-start' as string]: `${labelStart}px`, ['--label-end' as string]: `${labelEnd}px` }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
