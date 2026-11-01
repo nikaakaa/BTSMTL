@@ -229,6 +229,15 @@
   fill: var(--graph-edge);
 }
 
+/* 连着入口、出口或任意状态的转移：平时细而淡，提亮或有状态时与其它转移一样 */
+.transition[data-minor]:not([data-hi], [data-picked], [data-faded], [data-status='route'], [data-status='live']) {
+  opacity: 0.45;
+}
+
+.transition[data-minor] :global(.react-flow__edge-path) {
+  stroke-width: 1.1;
+}
+
 .transition[data-hi] :global(.react-flow__edge-path) {
   stroke: var(--graph-edge-hi);
 }

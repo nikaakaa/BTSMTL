@@ -99,6 +99,8 @@ interface EdgeData extends Record<string, unknown> {
   conditions: GraphDefinition[];
   // 同一对状态之间多条转移时的错开量。
   offset: number;
+  // 连着入口、出口或任意状态的转移：数量多、信息少，平时画淡。
+  minor: boolean;
 }
 type FlowEdge = Edge<EdgeData, 'route' | 'transition'>;
 
@@ -472,6 +474,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     const counts = new Map<string, number>();
     const pairKey = (edge: GraphEdge) => [edge.source!.nodeId, edge.target!.nodeId].sort().join('|');
     for (const edge of layout.edges) counts.set(pairKey(edge), (counts.get(pairKey(edge)) ?? 0) + 1);
+    const system = new Set(machine ? layout.nodes.filter(laid => isSystemNode(graph, hierarchy, laid)).map(laid => laid.node.id) : []);
     return layout.edges.map(edge => {
       const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
       if (machine) {
@@ -481,7 +484,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         return {
           id: edge.id, type: 'transition', source: edge.source!.nodeId, target: edge.target!.nodeId,
           sourceHandle: 'out:@node', targetHandle: 'in:@node',
-          data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: (index - (counts.get(pair)! - 1) / 2) * 16 },
+          data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: (index - (counts.get(pair)! - 1) / 2) * 16,
+            minor: system.has(edge.source!.nodeId) || system.has(edge.target!.nodeId) },
         };
       }
       const source = layout.nodes.find(item => item.node.id === edge.source!.nodeId)!;
@@ -490,7 +494,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         id: edge.id, type: 'route', source: edge.source!.nodeId, target: edge.target!.nodeId,
         sourceHandle: source.outputs.some(port => port.id === edge.source!.portId) ? `out:${edge.source!.portId}` : 'out:@node',
         targetHandle: target.inputs.some(port => port.id === edge.target!.portId) ? `in:${edge.target!.portId}` : 'in:@node',
-        data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: 0 },
+        data: { edge, conditions, label: conditions.map(graphName).join(' · '), offset: 0, minor: false },
       };
     });
   }, [layout, hierarchy, graph, machine]);
@@ -895,7 +899,8 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   );
 }
 
-// 转移：从源状态边框指向目标状态边框的曲线箭头，标签取条件图名称。
+// 转移：从源状态边框到目标状态边框的曲线，照 Animator 把箭头画在线的中点，多条转移汇到同一状态时箭头不堆在一起；
+// 标签取条件图名称，放在靠源状态的三分之一处，不盖住箭头。
 function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<FlowEdge>) {
   const { store, related, labels } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
@@ -912,22 +917,31 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
   const length = Math.hypot(bx - ax, by - ay) || 1;
   const nx = -(by - ay) / length * data!.offset, ny = (bx - ax) / length * data!.offset;
   const exit = (box: typeof a, cx: number, cy: number, dx: number, dy: number) => {
-    const scale = Math.min(Math.abs((box.w / 2 + 6) / (dx || 1e-6)), Math.abs((box.h / 2 + 6) / (dy || 1e-6)));
+    const scale = Math.min(Math.abs((box.w / 2 + 2) / (dx || 1e-6)), Math.abs((box.h / 2 + 2) / (dy || 1e-6)));
     return { x: cx + dx * scale, y: cy + dy * scale };
   };
   const start = exit(a, ax + nx, ay + ny, bx - ax, by - ay);
   const end = exit(b, bx + nx, by + ny, ax - bx, ay - by);
+  // 二次曲线 t=0.5 处正好是 (mx, my)，切线方向与起点指向终点一致。
   const mx = (start.x + end.x) / 2 + nx * 0.6, my = (start.y + end.y) / 2 + ny * 0.6;
-  const path = `M${start.x} ${start.y} Q${mx * 2 - (start.x + end.x) / 2} ${my * 2 - (start.y + end.y) / 2} ${end.x} ${end.y}`;
-  const angle = Math.atan2(end.y - my, end.x - mx);
-  const arrow = `M${end.x} ${end.y} L${end.x - 11 * Math.cos(angle - 0.45)} ${end.y - 11 * Math.sin(angle - 0.45)} L${end.x - 11 * Math.cos(angle + 0.45)} ${end.y - 11 * Math.sin(angle + 0.45)}Z`;
+  const cx = mx * 2 - (start.x + end.x) / 2, cy = my * 2 - (start.y + end.y) / 2;
+  const path = `M${start.x} ${start.y} Q${cx} ${cy} ${end.x} ${end.y}`;
+  const span = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const ux = (end.x - start.x) / span, uy = (end.y - start.y) / span;
+  const tipX = mx + ux * 5, tipY = my + uy * 5;
+  const arrow = `M${tipX} ${tipY} L${tipX - ux * 10 - uy * 4.5} ${tipY - uy * 10 + ux * 4.5} L${tipX - ux * 10 + uy * 4.5} ${tipY - uy * 10 - ux * 4.5}Z`;
+  const at = (t: number) => ({
+    x: (1 - t) ** 2 * start.x + 2 * t * (1 - t) * cx + t ** 2 * end.x,
+    y: (1 - t) ** 2 * start.y + 2 * t * (1 - t) * cy + t ** 2 * end.y,
+  });
+  const label = at(0.3);
   const status = state.passed ? 'live' : state.traveled ? 'route' : 'idle';
   const highlighted = hover || (related !== null && related.has(id));
   const faded = related !== null && !related.has(id) && status === 'idle';
   const showLabel = labels !== 'none' && data!.label && (labels === 'all' || highlighted || status !== 'idle');
   return (
     <g className={styles.transition} data-status={status} data-hi={highlighted || undefined} data-faded={faded || undefined}
-      data-picked={selected || undefined}
+      data-picked={selected || undefined} data-minor={data!.minor || undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <BaseEdge path={path} interactionWidth={12} />
       <path d={arrow} className={styles.arrow} />
@@ -935,7 +949,7 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
         <EdgeLabelRenderer>
           <Tip name={data!.label} content="双击进入条件图">
             <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name
-              style={{ transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)` }}>
+              style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}>
               {data!.label}
             </div>
           </Tip>
