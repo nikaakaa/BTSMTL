@@ -32,13 +32,14 @@ import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
-import { useAnimationFrameRates } from '../../state/resources';
+import { animationReferenceKind, readAnimationDrop, useAnimationFrameRates, useAnimationLibrary } from '../../state/resources';
+import { acceptsReferenceDrag } from '../../state/referenceSelection';
 import { curveWithKey, curveWithoutKey, evaluateCurve } from '../../state/curveSplit';
 import {
   breakKeys, isBroken, keyTime, keyValue, moveKeys, removeKeys, setTangent, setTangentKind, smoothKeys, tangentKind, tangentOf,
   type TangentKind, type TangentSide,
 } from '../../state/curveEdit';
-import { numberOf, type JsonObject } from '../../state/skillJson';
+import { cloneJson, numberOf, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, NumberInput, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CrumbArrow, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon, SelectorIcon, SettingsIcon } from '../../ui/icons';
@@ -1562,6 +1563,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
   const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
+  const animationLibrary = useAnimationLibrary(author && row.trackKind === 'anim');
   const curves = hasCurves && row.curves ? row.curves : 0;
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
@@ -1574,7 +1576,26 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   };
   return (
     <ContextMenu entries={menu}>
-    <div className={styles.menuArea} onContextMenuCapture={event => {
+    <div className={styles.menuArea} onDragOver={event => {
+      if (author && row.trackKind === 'anim' && acceptsReferenceDrag(event.dataTransfer, animationReferenceKind)) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    }} onDrop={event => {
+      if (!author || row.trackKind !== 'anim') return;
+      event.preventDefault();
+      const result = readAnimationDrop(event.dataTransfer, animationLibrary);
+      if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
+      if (!elements) { consoleActions.log('warn', 'Timeline', '片段作者合同尚未取得'); return; }
+      const template = clipTemplatesFor(elements, documentId, row.track.id)
+        .find(item => item.sourceAsset?.choiceKind === animationReferenceKind);
+      if (!template?.sourceAsset) { consoleActions.log('warn', 'Timeline', '当前轨道没有提供正式动画源片段合同'); return; }
+      const value = cloneJson(template.value);
+      setIn(value, template.sourceAsset.serializedMemberPath, result.clip.resource.identity);
+      const start = snapLocal(getValueFromScreenX(event.clientX));
+      const id = authoringActions.addClipAt(documentId, row.track.id, elements, { ...template, value }, start, start + result.clip.duration);
+      selectTimelineObject(clock, 'clip', clipSelectId(documentId, id));
+    }} onContextMenuCapture={event => {
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。
       const item = (event.target as HTMLElement).closest<HTMLElement>('[data-select]');
@@ -2088,6 +2109,17 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
+  useAuthoring(state => state.version);
+  const elements = useSkillElements(useAuthoring(state => state.target !== null));
+  const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
+  const animation = source?.choiceKind === animationReferenceKind ? source : null;
+  const library = useAnimationLibrary(animation !== null);
+  const resource = animation && library.kind === 'ready'
+    ? library.library.clips.find(item => item.resource.identity === animation.value) : undefined;
+  const referenceInvalid = animation !== null && library.kind === 'ready' && resource === undefined;
+  const referenceIssue = !animation ? null : library.kind === 'loading' ? '动画库清单尚未取得'
+    : library.kind === 'unavailable' ? library.reason : resource ? null : '动画引用已失效，请重新导出动画库；原身份已保留';
+  const label = resource?.name ?? (referenceInvalid ? `失效动画 · ${String(animation?.value)}` : clip.label);
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, segmentId, trackId, clip]);
   // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
@@ -2096,8 +2128,15 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
     set: (easeIn: number | null, easeOut: number | null) => authoringActions.setClipEase(documentId, clip.clip.id, easeIn, easeOut),
   } : undefined, [author, clip, documentId]);
   return (
-    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
-      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix} />
+    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={label} start={clip.start} end={clip.end}
+      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
+      referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
+      onAnimationDrop={author && kind === 'anim' ? transfer => {
+        if (!animation) { consoleActions.log('warn', 'Timeline', '当前片段未提供正式动画源资产字段，原值已保留'); return; }
+        const result = readAnimationDrop(transfer, library);
+        if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
+        authoringActions.setClipValue(documentId, clip.clip.id, animation.serializedMemberPath, result.clip.resource.identity);
+      } : undefined} />
   );
 });
 
@@ -2176,9 +2215,10 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
+  referenceInvalid?: boolean; referenceIssue?: string | null; onAnimationDrop?(transfer: DataTransfer): void;
 }) {
   const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
     id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 12,
@@ -2212,8 +2252,22 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
       <div style={itemContentStyle}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
+          data-reference-invalid={referenceInvalid || undefined} aria-invalid={referenceInvalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px` }}
-          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
+          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}${referenceIssue ? '\n' + referenceIssue : ''}`}
+          onDragOver={event => {
+            if (onAnimationDrop && acceptsReferenceDrag(event.dataTransfer, animationReferenceKind)) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={event => {
+            if (!onAnimationDrop) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAnimationDrop(event.dataTransfer);
+          }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />

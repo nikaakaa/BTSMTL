@@ -192,6 +192,7 @@ export interface ClipTemplate extends ElementTemplate {
   // 正式 ClipCapabilities：起止按逻辑 tick 量化；可设 ClipIn（素材时间按 ClipIn 映射）。
   tickQuantized: boolean;
   clipInable: boolean;
+  sourceAsset: { serializedMemberPath: string[]; choiceKind: string } | null;
   // 引用源曲线资产的成员（有只读参考曲线的片段，如位移曲线的 m_SourceCurve）；没有为 null。
   referenceCurves: string | null;
 }

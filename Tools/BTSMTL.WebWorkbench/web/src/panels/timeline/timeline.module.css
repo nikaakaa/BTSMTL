@@ -810,6 +810,11 @@
   outline-offset: -1px;
 }
 
+.clip[data-reference-invalid] {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+
 .clip[data-invalid]::after {
   background: rgb(255 0 0 / 50.2%);
 }

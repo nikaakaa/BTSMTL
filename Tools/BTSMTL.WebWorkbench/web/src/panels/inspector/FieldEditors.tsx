@@ -8,7 +8,8 @@ import {
   authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type JsonKey, type JsonMutation,
 } from '../../state/authoring';
-import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, NumberInput, Select, TextInput } from '../../ui/controls';
 import { AddIcon, CloseIcon } from '../../ui/icons';
@@ -21,10 +22,6 @@ import styles from './inspector.module.css';
 
 type SetValue = (keys: JsonKey[], value: JsonValue) => void;
 type SetFields = (changes: readonly JsonMutation[]) => void;
-
-const getIn = (value: JsonValue | undefined, keys: JsonKey[]): JsonValue | undefined =>
-  keys.reduce<JsonValue | undefined>((current, key) =>
-    current !== null && typeof current === 'object' && !(current instanceof JsonFloat) ? (current as Record<JsonKey, JsonValue>)[key] : undefined, value);
 
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
@@ -577,17 +574,27 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
   const shape = useElementShape('clips', clip?.ContractKind);
+  const elements = useSkillElements(skill !== null);
+  const source = elements?.clips.find(template => template.kind === clip?.ContractKind)?.sourceAsset;
+  const animation = source?.choiceKind === animationReferenceKind ? source : null;
+  const library = useAnimationLibrary(animation !== null);
   if (!clip) return null;
   const set: SetValue = (keys, value) => authoringActions.setClipValue(documentId, clipId, keys, value);
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
   return (
     <Fold title="片段" defaultOpen>
       {children}
+      {!timeOnly && animation && <Row label="动画">
+        <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)}
+          catalog={animationReferenceCatalog(library)} onChoose={choice => set(animation.serializedMemberPath, choice.value)} />
+        {library.kind === 'ready' && !library.library.clips.some(item => item.resource.identity === getIn(clip, animation.serializedMemberPath)) &&
+          <p className={styles.issue}>当前动画库缺少该动画，请重新导出动画库；原身份会继续保留。</p>}
+      </Row>}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
+      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key) && key !== animation?.serializedMemberPath[0]).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />

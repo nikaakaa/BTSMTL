@@ -8,6 +8,20 @@ export class JsonFloat {
 export type JsonValue = null | boolean | number | string | JsonFloat | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
+export const getIn = (value: JsonValue | undefined, keys: readonly (string | number)[]): JsonValue | undefined =>
+  keys.reduce<JsonValue | undefined>((current, key) =>
+    current !== null && typeof current === 'object' && !(current instanceof JsonFloat)
+      ? (current as Record<string | number, JsonValue>)[key] : undefined, value);
+
+export function setIn(target: JsonValue, keys: readonly (string | number)[], value: JsonValue) {
+  let current = target as Record<string | number, JsonValue>;
+  for (const key of keys.slice(0, -1)) {
+    current[key] ??= {};
+    current = current[key] as Record<string | number, JsonValue>;
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
 type SourceReviver = (key: string, value: unknown, context: { source?: string }) => unknown;
 
 export function parseSkillJson(text: string): JsonValue {

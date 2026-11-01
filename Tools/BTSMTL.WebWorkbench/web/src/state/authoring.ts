@@ -7,7 +7,7 @@ import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
-  JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
+  JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
@@ -831,9 +831,10 @@ export function clipSnapSource(elements: SkillElements, documentId: string, clip
   const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
   const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
   if (!clip || !template) return null;
-  const references = Object.values(clip).filter((value): value is string => typeof value === 'string' && /^[0-9a-f]{32}:-?\d+$/.test(value));
+  const source = template.sourceAsset ? { ...template.sourceAsset, value: getIn(clip, template.sourceAsset.serializedMemberPath) } : null;
+  const references = source?.choiceKind === 'animation-clip' && typeof source.value === 'string' ? [source.value] : [];
   return {
-    template, references, start: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), clipIn: fpSeconds(numberOf(clip.m_ClipInTimeFPRawValue ?? 0)),
+    template, source, references, start: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), clipIn: fpSeconds(numberOf(clip.m_ClipInTimeFPRawValue ?? 0)),
   };
 }
 
@@ -995,16 +996,6 @@ function dropOrphans(seeds: string[]) {
 
 export type JsonKey = string | number;
 export interface JsonMutation { keys: JsonKey[]; value: JsonValue }
-
-// 按键路径写值；路径上缺的对象按需建出。
-function setIn(target: JsonValue, keys: JsonKey[], value: JsonValue) {
-  let current = target as Record<JsonKey, JsonValue>;
-  for (const key of keys.slice(0, -1)) {
-    current[key] ??= {};
-    current = current[key] as Record<JsonKey, JsonValue>;
-  }
-  current[keys[keys.length - 1]] = value;
-}
 
 // 文件的当前内容：编辑过的取编辑版本，否则解析原文；只读使用。
 // 原文解析结果按文本缓存；调用方只读。
