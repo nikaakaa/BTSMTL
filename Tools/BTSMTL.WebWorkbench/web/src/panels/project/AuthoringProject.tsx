@@ -98,7 +98,8 @@ export function AuthoringProject() {
           return <button className={styles.row} aria-selected={referencedItem ? keyOf(referencedItem) === keyOf(value) : selected === keyOf(value)} draggable={choices.length === 1 || value.kind === 'graph'}
             onDragStart={event => {
               if (field?.catalog.kind === 'ready' && choices.length === 1) writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choices[0]);
-              else if (value.kind === 'graph') writeReferenceDrag(event.dataTransfer, value.kind, { value: value.identity, source: `${value.owner}/${value.file}` });
+              else if (value.kind === 'graph') writeReferenceDrag(event.dataTransfer, value.kind,
+                { value: value.identity, source: `${value.owner}/${value.file}`, targets: [], associated: [] });
             }}
             onClick={event => { setSelected(keyOf(value)); if (event.detail < 2 && choices.length === 1) field!.choose(choices[0]); }}
             onDoubleClick={() => { void projectActions.open(value).then(openPanel, error => consoleActions.error('Project', error)); }}>
