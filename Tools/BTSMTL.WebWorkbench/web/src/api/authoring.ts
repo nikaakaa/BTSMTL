@@ -402,9 +402,8 @@ export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sc
 export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };
   expectedRevision: string | null;
+  editingView: SkillEditingView;
   preview: PlayerSkillRefreshTarget | null;
-  previewDefinitionGuid?: string;
-  scene?: SkillEditingView['scene'];
   job?: StartPlayerJobRequest;
 }
 

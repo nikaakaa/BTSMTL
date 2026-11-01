@@ -456,7 +456,8 @@ export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
     const target = { kind: 'scenario', name } as const;
     const draft = await authoringApi.scenarioDraft(name, request);
-    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, expectedRevision: null, preview: null });
+    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, expectedRevision: null,
+      editingView: authoringActions.editingView(), preview: null });
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listSkills(), session.loadInputs()]);
@@ -608,13 +609,16 @@ export const authoringActions = {
   },
 
   async save() {
-    const { target, saving, removed, previewDefinitionGuid, revision } = get();
-    const files = authoringActions.changedFiles();
-    if (!target || saving || (target.kind === 'scenario' && !files.length && !removed.length)) return;
+    const { target, saving, removed, revision } = get();
+    if (!target || saving) return;
+    const editingView = authoringActions.editingView();
+    const content = target.kind === 'skill' ? editingView.skills[target.name]
+      : { files: authoringActions.changedFiles(), removedFiles: removed };
+    if (target.kind === 'scenario' && !content.files.length && !content.removedFiles.length) return;
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;
-    const scene = selectedScene(useWorkbench.getState());
+    const scene = editingView.scene;
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
@@ -635,9 +639,9 @@ export const authoringActions = {
         selectedPreview(), jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]);
       const result = await authoringApi.save(target, {
-        content: { files, removedFiles: removed }, expectedRevision: revision,
+        content, expectedRevision: revision, editingView,
         preview: selection.kind === 'selected' ? selection.target : null,
-        job, previewDefinitionGuid: previewDefinitionGuid ?? undefined, scene,
+        job,
       });
       if (result.compilationState === 'not-required') {
         const preview = result.preview;
