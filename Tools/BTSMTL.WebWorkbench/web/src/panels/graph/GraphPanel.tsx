@@ -15,7 +15,7 @@ import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
 import {
   applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
-  useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
+  useDocumentGraphHierarchy, useDocumentObservationBinding, useDocumentObservationNotice, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
@@ -131,6 +131,7 @@ function GraphView({ graphs }: { graphs: SkillDocumentGraph[] }) {
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const [params, setParams] = usePanelParams<Params>(defaults);
+  const observationNotice = useDocumentObservationNotice(params.pin?.runId === runId ? params.pin.call : null);
   const hierarchy = useDocumentGraphHierarchy();
   const programId = useAuthoring(state => authoringDocument(state).programId);
 
@@ -223,6 +224,7 @@ function GraphView({ graphs }: { graphs: SkillDocumentGraph[] }) {
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
+          {observationNotice && <span role="status" className={styles.notice}>{observationNotice}</span>}
           {graphOptions.length > 1 && <Select label="作者图" value={key} options={graphOptions}
             onChange={value => enter(hierarchy.graphs.get(value)!)} />}
           <span className={styles.crumbs}>

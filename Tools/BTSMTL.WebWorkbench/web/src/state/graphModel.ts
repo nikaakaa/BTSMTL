@@ -21,6 +21,23 @@ export interface DocumentObservationBinding {
 export const matchesDocumentCall = (call: ExecutionCall, binding: DocumentObservationBinding) =>
   !binding.dirty && binding.sourceRevision !== null &&
   call.programId === binding.programId && call.programRevision === binding.sourceRevision;
+
+export function documentObservationNotice(frame: RouteFrame | null, binding: DocumentObservationBinding,
+  selected: ExecutionCall | null = null): string | null {
+  if (binding.dirty) return '作者内容已有修改，运行叠加已过期；原档案保留。';
+  if (binding.sourceRevision === null) return '尚未取得当前内容的正式修订，运行叠加不可用。';
+  const expired = '运行档案与当前内容修订不同，叠加已过期；原档案保留。';
+  if (selected !== null) return selected.programId === binding.programId && selected.programRevision === binding.sourceRevision ? null : expired;
+  if (frame === null) return null;
+  let outdated = false;
+  for (const records of [frame.nodes, frame.edges, frame.ports, frame.playbacks, frame.active])
+    for (const record of records)
+      if (record.call !== null && record.call.programId === binding.programId) {
+        if (record.call.programRevision === binding.sourceRevision) return null;
+        outdated = true;
+      }
+  return outdated ? expired : null;
+}
 export const belongsTo = (call: ExecutionCall, graph: GraphDefinition, binding: DocumentObservationBinding) =>
   graph.programId === binding.programId && matchesDocumentCall(call, binding);
 export const compareSequence = (left: { sequence: string }, right: { sequence: string }) => {

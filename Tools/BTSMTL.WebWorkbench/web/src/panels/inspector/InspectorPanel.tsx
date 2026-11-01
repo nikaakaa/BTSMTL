@@ -5,7 +5,7 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
   type GraphNavigationTarget,
 } from '../../state/graphModel';
 import {
@@ -236,6 +236,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const { graph, node } = found;
   const candidates = graphRecords(frame?.route, graph, binding);
   const observedCall = call ?? singleCall(candidates);
+  const notice = runId === null ? null : documentObservationNotice(frame?.route ?? null, binding, observedCall);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
     'nodeId' in item && item.nodeId === node.id);
   const events = records.filter(isNodeOccurrence).sort(compareSequence);
@@ -253,7 +254,8 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       {editable ? <NodeFields graphId={graph.id} nodeId={node.id}>{references}</NodeFields>
         : <Fold title="节点" defaultOpen>{references}</Fold>}
       {runId && <Fold title="本帧" defaultOpen>
-        <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
+        {notice !== null ? <div role="status" className={styles.note}>{notice}</div>
+          : <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />}
         {observedCall && <>
           {observedCall.actorId !== null && <Value label="角色" value={observedCall.actorId} />}
           <Value label="对象类型" value={observedCall.objectKind} />
@@ -446,6 +448,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
   const graph = clipGraph(graphs, clip.graphId);
   const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
+  const notice = runId === null ? null : documentObservationNotice(frame?.route ?? null, binding, observedCall);
   const graphRow = input || !clip.graphId ? null : graph
     ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
     : <Value label="节点图" mono={false} value="当前技能没有这张图" />;
@@ -481,9 +484,9 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
               );
             })}
           </div>
-        ) : <div className={styles.note}>{frame === null ? '正在读取当前帧'
-          : frame.route === null ? '档案播放记录尚未提供' : binding.dirty ? '当前内容未保存，旧档案叠加已停用'
-            : '已读取记录中没有匹配来源修订与调用的活动记录'}</div>}
+        ) : <div role="status" className={styles.note}>{notice ?? (frame === null ? '正在读取当前帧'
+          : frame.route === null ? '档案播放记录尚未提供'
+            : '已读取记录中没有匹配来源修订与调用的活动记录')}</div>}
       </Fold>}
       {!input && <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
       <Identity extra={[

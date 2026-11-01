@@ -10,13 +10,13 @@ import {
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
-import type { AuthorTimeline, GraphNode, GraphPort } from '../api/types';
+import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
-import { graphHierarchy, type DocumentObservationBinding } from './graphModel';
+import { documentObservationNotice, graphHierarchy, type DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session, stageNames } from './session';
@@ -131,6 +131,11 @@ export const useDocumentObservationBinding = (): DocumentObservationBinding => u
   programId: authoringDocument(state).programId, sourceRevision: authoringDocument(state).sourceRevision,
   dirty: Object.keys(authoringDocument(state).edited).length > 0 || authoringDocument(state).removed.length > 0,
 })));
+
+export function useDocumentObservationNotice(call: ExecutionCall | null = null): string | null {
+  const binding = useDocumentObservationBinding();
+  return useWorkbench(state => state.runId === null ? null : documentObservationNotice(state.frame?.route ?? null, binding, call));
+}
 
 export function useDocumentGraphHierarchy() {
   const { graphs, relations } = useAuthoring(useShallow(state => ({

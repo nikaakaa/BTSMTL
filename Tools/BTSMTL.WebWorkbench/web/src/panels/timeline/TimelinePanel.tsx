@@ -18,7 +18,7 @@ import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
   graphPath, inputAuthoring, markersTaken, markerTimeTaken, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
-  useReferenceCurves, useSkillElements, useDocumentObservationBinding, type ReferenceEntry,
+  useReferenceCurves, useSkillElements, useDocumentObservationBinding, useDocumentObservationNotice, type ReferenceEntry,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
@@ -1014,14 +1014,14 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
   pinned: boolean; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
 }) {
-  const binding = useDocumentObservationBinding();
   const clock = useContext(PreviewClockContext);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
+  const documentNotice = useDocumentObservationNotice(clock.kind === 'document' ? clock.observation?.call ?? null : null);
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
   const notice = useWorkbench(state => {
     if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
     if (!state.runId) return null;
-    if (binding.dirty) return '内容未保存，运行叠加已停用';
+    if (documentNotice !== null) return documentNotice;
     if (!state.frame?.route) return '档案播放记录尚未提供';
     return documentPlayback(state, clock) ? null : '本帧没有这个 Timeline 的播放记录';
   });
