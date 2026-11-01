@@ -1,6 +1,6 @@
 import {
   Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
-  ReactFlowProvider, SelectionMode, ViewportPortal, applyNodeChanges, useInternalNode, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps,
+  ReactFlowProvider, SelectionMode, ViewportPortal, applyNodeChanges, useConnection, useInternalNode, type ConnectionLineComponentProps, useReactFlow, useStore as useFlowStore, type Edge, type EdgeProps,
   type Node, type NodeChange, type Connection, type InternalNode, type NodeProps, type Viewport, type XYPosition,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
@@ -608,6 +608,14 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
   }, [graph.id, machine, elements]);
+  // 执行端口只接执行端口，数据端口只接数据端口；不连自己。
+  const isValidConnection = useCallback((connection: Connection | FlowEdge) => {
+    const trigger = (nodeId: string, handle: string | null | undefined) =>
+      graph.ports.find(port => port.nodeId === nodeId && port.id === portOf(handle))?.isTrigger ?? true;
+    return connection.source !== connection.target
+      && trigger(connection.source, connection.sourceHandle) === trigger(connection.target, connection.targetHandle);
+  }, [graph]);
+  const connecting = useConnection(connection => connection.inProgress);
   const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
     graphAuthoring.reconnect(graph.id, edge.id,
       { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
@@ -743,7 +751,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     <ViewContext.Provider value={viewOptions}>
       <ContextMenu entries={menu}>
       <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined} data-far={far || undefined}
-        data-linking={link !== null || undefined}
+        data-linking={link !== null || undefined} data-connecting={connecting || undefined}
         onContextMenuCapture={event => {
           if (linked.current) {
             linked.current = false;
@@ -759,6 +767,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onReconnect={onReconnect} edgesReconnectable={editable && !machine}
+          isValidConnection={isValidConnection} connectionLineComponent={ConnectionLineView}
           onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={readableFocus}
@@ -949,12 +958,34 @@ function PortCell({ port, state, values }: {
   );
 }
 
+// 端口颜色：执行端口用执行色，数据端口按采样值类型（与端口圆圈一致）。
+function usePortColor(nodeId: string, handleId: string | null | undefined) {
+  const { store, graph } = useView();
+  const input = handleId?.startsWith('in:') ?? false;
+  const portId = handleId?.slice(handleId.indexOf(':') + 1) ?? '';
+  const sample = useNodeState(store, nodeId).ports[`${input ? 'input' : 'output'}:${portId}`];
+  const trigger = graph.ports.find(port => port.nodeId === nodeId && port.id === portId)?.isTrigger ?? true;
+  return trigger ? 'var(--port-exec)' : portColor(sample?.valueType);
+}
+
+// 拖线：与出发端口同色，端点随鼠标；吸附到能接的端口时贴上去，停在接不上的端口时变红。
+function ConnectionLineView({ fromNode, fromHandle, fromX, fromY, toX, toY, fromPosition, toPosition, connectionStatus, toHandle }:
+  ConnectionLineComponentProps<CanvasNode>) {
+  const color = usePortColor(fromNode.id, fromHandle.id);
+  const [path] = getBezierPath({ sourceX: fromX, sourceY: fromY, sourcePosition: fromPosition, targetX: toX, targetY: toY, targetPosition: toPosition });
+  return (
+    <g className={styles.connectionLine} style={{ ['--ec' as string]: color }} data-status={connectionStatus ?? undefined}>
+      <path d={path} />
+      {!toHandle && <circle cx={toX} cy={toY} r={4} />}
+    </g>
+  );
+}
+
 // 流图连线：执行线用执行色，数据线与源端口同色（Shader Graph）。
 function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
   const { store, related } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
-  const sample = useNodeState(store, source).ports[`output:${data!.edge.source!.portId}`];
-  const color = data!.trigger ? 'var(--port-exec)' : portColor(sample?.valueType);
+  const color = usePortColor(source, data!.trigger ? null : `out:${data!.edge.source!.portId}`);
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const status = state.passed ? 'passed' : state.rejected ? 'rejected' : 'idle';
   const faded = related !== null && !related.has(id);
