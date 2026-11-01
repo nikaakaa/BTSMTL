@@ -348,7 +348,10 @@ useWorkbench.subscribe((state, previous) => {
     if (get().target !== null) setDocument({ saveRun: null });
   }
   if (state.generation !== previous.generation) publishDocument();
-  if (JSON.stringify(selectedScene(state)) !== JSON.stringify(selectedScene(previous))) scheduleDocumentReload(get().target);
+  if (JSON.stringify(selectedScene(state)) !== JSON.stringify(selectedScene(previous))) {
+    previewController?.abort();
+    scheduleDocumentReload(get().target);
+  }
   if (state.archiveJobs === previous.archiveJobs) return;
   const saved = get().saveRun;
   if (saved?.kind !== 'waiting') return;
@@ -575,15 +578,19 @@ export const authoringActions = {
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;
+    const scene = selectedScene(useWorkbench.getState());
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
+      const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
       clearHistory(target);
       setDocument({
         revision: content.revision, sourceRevision: null, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
         edited: {}, removed: [], addedPorts: {}, externalChange: false,
-        version: authoringDocument(useAuthoring.getState(), target).version + 1, saving: false, lastSave,
+        version: authoringDocument(useAuthoring.getState(), target).version + 1, saving: false,
+        lastSave: currentScene ? lastSave : { ...lastSave,
+          message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
       }, target);
-      return isActiveTarget(target);
+      return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
     try {
       const jobBlocked = session.canStart();
@@ -592,7 +599,7 @@ export const authoringActions = {
       ]);
       const result = await authoringApi.save(target, {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
-        job, previewDefinitionGuid: previewDefinitionGuid ?? undefined,
+        job, previewDefinitionGuid: previewDefinitionGuid ?? undefined, scene,
       });
       if (result.compilationState === 'not-required') {
         const preview = result.preview;

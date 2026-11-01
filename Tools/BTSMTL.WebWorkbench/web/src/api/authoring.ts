@@ -375,6 +375,7 @@ export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };
   preview: PlayerSkillRefreshTarget | null;
   previewDefinitionGuid?: string;
+  scene?: SkillEditingView['scene'];
   job?: StartPlayerJobRequest;
 }
 
