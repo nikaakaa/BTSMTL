@@ -1311,11 +1311,9 @@ export const inputAuthoring = {
   },
 
   // 新方案复制所选方案的设置，配一条新的空输入 Timeline。
-  addScheme(path: string, name: string) {
-    const timeline = crypto.randomUUID();
-    authoringActions.create(timelinePath(timeline), {
-      m_AuthoringId: timeline, m_ExternalBindings: [], m_Loop: false, m_Name: 'Timeline', m_Tracks: [],
-    });
+  async addScheme(path: string, name: string) {
+    const elements = await skillElements();
+    const timeline = authoringActions.createTimeline(elements.timeline, 'Timeline');
     authoringActions.edit(path, document => {
       const plan = document as JsonObject;
       const schemes = plan.Schemes as JsonObject[];

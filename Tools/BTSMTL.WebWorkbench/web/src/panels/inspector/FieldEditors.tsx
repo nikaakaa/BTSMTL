@@ -554,7 +554,9 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
       </Row>
       {editable && (
         <Row label="">
-          <Button variant="ghost" tip="复制所选方案的设置，配一条新的空输入 Timeline" onClick={() => inputAuthoring.addScheme(path, `方案 ${schemes.length + 1}`)}>新增方案</Button>
+          <Button variant="ghost" tip="复制所选方案的设置，配一条新的空输入 Timeline" onClick={() => {
+            void inputAuthoring.addScheme(path, `方案 ${schemes.length + 1}`).catch(error => consoleActions.error('输入', error));
+          }}>新增方案</Button>
           <Button variant="ghost" disabled={schemes.length < 2} tip={schemes.length < 2 ? '至少保留一个方案' : '删除所选方案；它专属的输入 Timeline 保存时删除'}
             onClick={() => inputAuthoring.removeScheme(path, selected)}>删除方案</Button>
         </Row>
