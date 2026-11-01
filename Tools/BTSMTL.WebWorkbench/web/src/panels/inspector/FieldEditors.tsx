@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
-  type ReferenceChoice, type StorageShape, type StoredField,
+  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
@@ -23,6 +23,7 @@ import styles from './inspector.module.css';
 
 type SetValue = (keys: JsonKey[], value: JsonValue) => void;
 type SetFields = (changes: readonly JsonMutation[]) => void;
+type ReferenceOwner = { graphId: string; nodeId: string };
 
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
@@ -368,7 +369,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
         {!description && !issues.length && <div className={styles.note}>读取字段</div>}
         {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
-            id={`${graphId}/${nodeId}`} outputs={outputs} onSet={set} onSetFields={setFields} />
+            owner={{ graphId, nodeId }} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
         {children}
       </Fold>
@@ -435,7 +436,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   return <Fold title="输入" defaultOpen>
     {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
     {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
-      id={`${graphId}/${String(node.UID)}`} onSet={set} onSetFields={setFields} />)}
+      owner={{ graphId, nodeId: String(node.UID) }} onSet={set} onSetFields={setFields} />)}
   </Fold>;
 }
 
@@ -605,24 +606,37 @@ function portShape(type: string): StorageShape {
   return { clrType, enumValues: null, elementType: null };
 }
 
-function StoredItem({ item, node, values, id, outputs = [], onSet, onSetFields }: {
+function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetFields }: {
   item: StoredField; node: JsonObject; values: Map<string, JsonValue | undefined>;
-  id: string; outputs?: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
+  owner: ReferenceOwner; outputs?: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }) {
   if (!item.fields.length)
     return null;
   return (
     <>
       {item.fields.filter(field => visible(field, values)).map(field => (
-        <FieldEditor key={field.fieldId} id={`${id}/${field.fieldId}`} field={field} item={item} node={node}
+        <FieldEditor key={field.fieldId} id={`${owner.graphId}/${owner.nodeId}/${field.fieldId}`} field={field} item={item} node={node} owner={owner}
           outputs={outputs} onSet={onSet} onSetFields={onSetFields} />
       ))}
     </>
   );
 }
 
-function FieldEditor({ id, field, item, node, outputs, onSet, onSetFields }: {
-  id: string; field: FieldMetadata; item: StoredField; node: JsonObject; outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
+function CreateOwnedGraph({ owner, path, target }: {
+  owner: ReferenceOwner; path: string[]; target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
+}) {
+  const [creating, setCreating] = useState(false);
+  return <Button disabled={creating} onClick={() => {
+    setCreating(true);
+    graphAuthoring.createOwnedReference({ ...owner, path, target })
+      .catch((error: unknown) => consoleActions.error('作者', error))
+      .finally(() => setCreating(false));
+  }}>{creating ? '正在创建' : `新建 ${target.role}`}</Button>;
+}
+
+function FieldEditor({ id, field, item, node, owner, outputs, onSet, onSetFields }: {
+  id: string; field: FieldMetadata; item: StoredField; node: JsonObject; owner: ReferenceOwner;
+  outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }): ReactNode {
   const label = field.displayName ?? field.fieldId;
   const path = field.serializedMemberPath;
@@ -633,6 +647,11 @@ function FieldEditor({ id, field, item, node, outputs, onSet, onSetFields }: {
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (Array.isArray(value) && isPortList(shape))
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
+  const ownedTargets = field.graphTargets.filter(target => target.ownerBinding === 'ReferenceNode');
+  if (ownedTargets.length !== 0)
+    return <Row label={label}>{value == null || value === ''
+      ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
+      : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
   if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.pickerKind !== null)
     return <Row label={label}><ReferencePicker id={id} label={label} value={value}
       catalog={field.choiceKind === null

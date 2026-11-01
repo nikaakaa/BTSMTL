@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type GraphTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
@@ -1357,13 +1357,13 @@ export function useSkillElements(enabled: boolean): SkillElements | null {
   return enabled && elements?.key === key ? elements.items : null;
 }
 
-function createGraph(elements: SkillElements, role: string, name: string, ownership: GraphTemplate['ownership'] = null,
+function createGraph(elements: SkillElements, role: string, name: string | null, ownership: GraphTemplate['ownership'] = null,
   context?: { OwnerGraphId: string; OwnerNodeId: string }): string {
   const template = elements.graphs.find(item => item.role === role && item.ownership === ownership);
   if (!template) throw new Error(`正式作者接口未提供 ${role} / ${ownership ?? '专属'} 图的创建合同`);
   const graph = cloneJson(template.value);
   const id = graph.AuthoringId as string;
-  graph.name = name;
+  if (name !== null) graph.name = name;
   if (template.requiredContext.length !== 0 && context === undefined)
     throw new Error(`${role} 必须从实际拥有节点创建：${template.requiredContext.join('、')}`);
   for (const field of template.requiredContext) graph[field] = context![field];
@@ -1376,6 +1376,16 @@ function createGraph(elements: SkillElements, role: string, name: string, owners
 let clipboard: { nodes: JsonObject[]; positions: Record<string, { x: number; y: number }>; ports: Record<string, AddedPort[]> } | null = null;
 
 export const graphAuthoring = {
+  async createOwnedReference({ graphId, nodeId, path, target }: {
+    graphId: string; nodeId: string; path: string[];
+    target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
+  }): Promise<string> {
+    const elements = await skillElements();
+    const id = createGraph(elements, target.role, null, null, { OwnerGraphId: graphId, OwnerNodeId: nodeId });
+    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: path, value: id }]);
+    return id;
+  },
+
   async createPage(role: string, ownership: GraphTemplate['ownership'], name: string,
     context?: { OwnerGraphId: string; OwnerNodeId: string }): Promise<string> {
     const elements = await skillElements();
