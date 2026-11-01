@@ -166,7 +166,7 @@ export const readViewerStatus = object({ type: choice('status'), live: readLiveP
 export const readPlayerCreationOptions = object({
   requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
-  quality: number, channels: array(observationChannel), mode: choice('real'),
+  quality: number, channels: array(observationChannel), mode: previewMode,
 });
 
 const playerJobRequest = {
@@ -174,7 +174,7 @@ const playerJobRequest = {
   firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number), outputDirectory: text,
   width: number, height: number, quality: number,
 };
-export const readPlayerJobRequest = object({ ...playerJobRequest, channels: array(observationChannel), mode: choice('real') });
+export const readPlayerJobRequest = object({ ...playerJobRequest, channels: array(observationChannel), mode: previewMode });
 const readArchivedPlayerJobRequest = object({ ...playerJobRequest, channels: nullable(array(observationChannel)), mode: nullable(previewMode) });
 export const readPlayerJobReceipt = object({
   request: readArchivedPlayerJobRequest,

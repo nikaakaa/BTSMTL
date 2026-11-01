@@ -55,7 +55,7 @@ function selectedStart() {
   if (selectedInput.kind === 'recorded') {
     const replay = state.sources?.replays.find(item => item.id === selectedInput.id);
     if (!replay) return { kind: 'unavailable', reason: '输入来源已变化，请重新选择' } as const;
-    return { kind: 'selected', liveId, scene, source: replay.source, viewport: state.playerViewport } as const;
+    return { kind: 'selected', mode: mode.id, liveId, scene, source: replay.source, viewport: state.playerViewport } as const;
   }
   if (!state.inputCatalog) return { kind: 'unavailable', reason: '先读取当前场景的输入方案' } as const;
   for (const player of state.inputCatalog.players) {
@@ -64,7 +64,7 @@ function selectedStart() {
       return { kind: 'unavailable', reason: `先为 ${player.actorId} 选择输入方案` } as const;
   }
   if (state.localLastSdkFrame === null) return { kind: 'unavailable', reason: '填写本次结束 SDK 帧' } as const;
-  return { kind: 'selected', liveId, scene, viewport: state.playerViewport,
+  return { kind: 'selected', mode: mode.id, liveId, scene, viewport: state.playerViewport,
     source: { kind: 'local', lastSdkFrame: state.localLastSdkFrame, players: state.inputChoices } } as const;
 }
 
@@ -127,7 +127,7 @@ useWorkbench.subscribe((state, previous) => {
 export const session = {
   async prepareRun(input: RunPreparation, signal?: AbortSignal) {
     const selected = input.kind === 'selection' ? selectedStart() : {
-      kind: 'selected' as const, liveId: input.target.liveId, source: input.target.content.source, viewport: input.viewport,
+      kind: 'adopted' as const, liveId: input.target.liveId, source: input.target.content.source, viewport: input.viewport,
       scene: { path: input.target.content.scene, revision: input.target.content.revision },
     };
     if (selected.kind === 'unavailable') throw new Error(selected.reason);
@@ -139,6 +139,7 @@ export const session = {
     const { frameRangeBasis, ...parameters } = options;
     consoleActions.log('info', source, frameRangeBasis);
     return readPlayerJobRequest({ ...parameters, playerBuildId,
+      mode: selected.kind === 'selected' ? selected.mode : parameters.mode,
       channels: input.kind === 'adopted' ? input.target.channels : parameters.channels,
       scene: selected.scene.path, sceneRevision: selected.scene.revision, source: selected.source });
   },

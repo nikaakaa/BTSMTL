@@ -120,28 +120,29 @@ const shortTime = (job: PlayerJobReceipt) => new Date(job.acceptedAt).toLocaleSt
 
 // 运行：在看的运行、新建运行的输入来源、本次运行的输入方案和新建／取消合成一个菜单。
 function RunMenu() {
-  const { jobs, runId, receipt, inputSource, replays, roots, inputRoot } = useWorkbench(useShallow(state => ({
+  const { jobs, runId, receipt, inputSource, replays, localAvailable, roots, inputRoot } = useWorkbench(useShallow(state => ({
     jobs: state.archiveJobs, runId: state.runId, receipt: state.receipt, inputSource: state.inputSource,
-    replays: state.sources?.replays, roots: state.inputTimeline?.roots, inputRoot: state.inputRoot,
+    replays: state.sources?.replays, localAvailable: state.inputCatalog !== null, roots: state.inputTimeline?.roots, inputRoot: state.inputRoot,
   })));
   const startBlocked = useWorkbench(() => session.canStart());
   const current = jobs.find(job => job.jobId === runId);
   const cancellable = runId !== null && (receipt?.stage === 'queued' || receipt?.stage === 'running');
+  const inputs: MenuEntry[] = [
+    ...(localAvailable ? [{
+      kind: 'radio' as const, label: '本地输入方案', checked: inputSource?.kind === 'local',
+      onSelect: () => contentActions.selectInputSource({ kind: 'local' }),
+    }] : []),
+    ...(replays ?? []).map((replay): MenuEntry => ({
+      kind: 'radio', label: replay.displayName, checked: inputSource?.kind === 'recorded' && inputSource.id === replay.id,
+      onSelect: () => contentActions.selectInputSource({ kind: 'recorded', id: replay.id }),
+    })),
+  ];
   const entries: MenuEntry[] = [
     { kind: 'label', label: '运行' },
     ...(jobs.length ? jobs.map((job): MenuEntry => ({
       kind: 'radio', label: runLabel(job), checked: job.jobId === runId, onSelect: () => session.selectRun(job.jobId),
     })) : [{ label: '还没有运行', disabled: true, onSelect: () => {} }]),
-    { kind: 'separator' },
-    { kind: 'label', label: '输入来源' },
-    {
-      kind: 'radio', label: '本地输入方案', checked: inputSource?.kind === 'local',
-      onSelect: () => contentActions.selectInputSource({ kind: 'local' }),
-    },
-    ...(replays ?? []).map((replay): MenuEntry => ({
-      kind: 'radio', label: replay.displayName, checked: inputSource?.kind === 'recorded' && inputSource.id === replay.id,
-      onSelect: () => contentActions.selectInputSource({ kind: 'recorded', id: replay.id }),
-    })),
+    ...(inputs.length ? [{ kind: 'separator' as const }, { kind: 'label' as const, label: '输入来源' }, ...inputs] : []),
   ];
   if (runId && roots && roots.length > 1)
     entries.push({ kind: 'separator' }, { kind: 'label', label: '本次运行的输入方案' }, ...roots.map((root): MenuEntry => ({
@@ -271,16 +272,21 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
 
 // 预览档位：只列宿主声明可用的档位。
 function PreviewModeChoice() {
-  const { modes, selected } = useWorkbench(useShallow(state => ({ modes: state.host?.modes, selected: state.previewMode })));
+  const { modes, selected, observing } = useWorkbench(useShallow(state => ({
+    modes: state.host?.modes, selected: state.previewMode, observing: state.runId !== null || state.live?.player?.source != null,
+  })));
   const available = modes?.filter(mode => mode.available) ?? [];
   if (!available.length) return null;
   return (
-    <div className={styles.modes} role="group" aria-label="预览档位">
-      <span className={styles.dim}>预览</span>
+    <div className={styles.modes} role="group" aria-label="请求预览档位">
+      <Tip content="用于新建运行；本次实际采用的档位以宿主输出为准"><span className={styles.dim}>请求</span></Tip>
       {available.map(mode => (
         <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason}
           onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
       ))}
+      {observing && <Tip content="宿主尚未提供本次运行或载入已采用的预览档位">
+        <span className={styles.dim} role="status">实际采用：Unavailable</span>
+      </Tip>}
     </div>
   );
 }
