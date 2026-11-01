@@ -402,6 +402,7 @@ namespace ThirdPerson.MemoryPackAdapters
             string owner = Identity(method.ContainingType.OriginalDefinition);
             return owner == "MemoryPack.MemoryPackSerializer" &&
                 (method.Name == "Serialize" || method.Name == "Deserialize") ||
+                owner == "MemoryPack.MemoryPackReader" && method.Name == "GetFormatter" ||
                 owner == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
                 (method.Name == "Serialize" || method.Name == "SerializeInto" || method.Name == "Deserialize" ||
                     method.Name == "DeserializeParts" || method.Name == "DeserializeInto" ||

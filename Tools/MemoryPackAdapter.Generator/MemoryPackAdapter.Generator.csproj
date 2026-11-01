@@ -10,7 +10,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
-    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.memorypack\Runtime\Analyzers</UnityAnalyzerDirectory>
+    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl.foundation\Runtime\Analyzers</UnityAnalyzerDirectory>
   </PropertyGroup>
   <ItemGroup>
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />

@@ -85,6 +85,9 @@
         "^com\\.thirdperson\\.(?:shared|gameplay\\.contracts)$"
       ],
       "precompiledReferencesByAssembly": {
+        "BTSMTL.Diagnostics": [
+          "MemoryPack.Core.dll"
+        ],
         "BTSMTL.Foundation": [
           "System.Runtime.CompilerServices.Unsafe.dll"
         ],

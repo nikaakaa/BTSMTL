@@ -4,11 +4,6 @@ using MemoryPack;
 
 namespace ThirdPersonSimulation.Serialization
 {
-    public interface IMemoryPackSchema
-    {
-        StableHash SchemaHash { get; }
-    }
-
     public interface IMemoryPackPreparedFormatter<TValue, TStorage>
     {
         TValue ReadInto(ref MemoryPackReader reader, TStorage storage);

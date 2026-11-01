@@ -27,15 +27,17 @@ namespace BTSMTL.Diagnostics
 
         static RuntimeTraceBinaryCodec()
         {
-            MemoryPackContent.Initialize();
             MemoryPackGeneratedFormatters.Register();
+            MemoryPackReader reader = default;
             s_FormatIdentity = StableHash.Compute(Protocol,
-                MemoryPackContent.GetSchemaHash<RuntimeTraceEvent>().Value,
-                MemoryPackContent.GetSchemaHash<RuntimeCaptureFileArchive.Page>().Value,
-                MemoryPackContent.GetSchemaHash<RuntimeCaptureSpanSource>().Value,
-                MemoryPackContent.GetSchemaHash<RuntimeCaptureSpanKey>().Value).Value;
+                SchemaHash(reader.GetFormatter<RuntimeTraceEvent>()),
+                SchemaHash(reader.GetFormatter<RuntimeCaptureFileArchive.Page>()),
+                SchemaHash(reader.GetFormatter<RuntimeCaptureSpanSource>()),
+                SchemaHash(reader.GetFormatter<RuntimeCaptureSpanKey>())).Value;
             s_StringSlots = StringSlots(typeof(RuntimeTraceEvent));
         }
+
+        static string SchemaHash(object formatter) => ((IMemoryPackSchema)formatter).SchemaHash.Value;
 
         internal RuntimeTraceBinaryCodec(Stream symbols, int maximumEventsPerPage, bool inlineText = false)
         {

@@ -12,7 +12,6 @@
     <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
-    <ProjectReference Include="..\ThirdPersonSimulation.MemoryPack\ThirdPersonSimulation.MemoryPack.csproj" />
     <ProjectReference Include="..\..\Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\Tools\MemoryPackAdapter.Generator\MemoryPackAdapter.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <Reference Include="MemoryPack.Core" HintPath="$(MemoryPackCorePath)" Private="false" />
