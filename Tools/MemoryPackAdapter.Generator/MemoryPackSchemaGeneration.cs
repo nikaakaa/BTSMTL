@@ -41,6 +41,11 @@ namespace ThirdPerson.MemoryPackAdapters
             void AppendType(StringBuilder code, ITypeSymbol type, HashSet<string> visited)
             {
                 if (type is INamedTypeSymbol tuple) type = RecordType(tuple);
+                if (IsFloat32Vector4(type))
+                {
+                    code.AppendLine("type memorypack.float32x4/sequential-xyzw/1");
+                    return;
+                }
                 string name = TypeName(type);
                 code.Append("type ").Append(name).Append('\n');
                 if (!visited.Add(name)) return;
@@ -110,6 +115,25 @@ namespace ThirdPerson.MemoryPackAdapters
                 }
                 foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
                     code.Append("presence ").Append(presence.Name).Append('\n');
+            }
+
+            static bool IsFloat32Vector4(ITypeSymbol type)
+            {
+                if (!(type is INamedTypeSymbol record) || !type.IsUnmanagedType ||
+                    Identity(type) != "UnityEngine.Vector4" && Identity(type) != "System.Numerics.Vector4")
+                    return false;
+                IFieldSymbol[] fields = record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).ToArray();
+                if (fields.Length != 4) return false;
+                for (int i = 0; i < fields.Length; i++)
+                    if (fields[i].Type.SpecialType != SpecialType.System_Single ||
+                        !string.Equals(fields[i].Name, "xyzw"[i].ToString(), StringComparison.OrdinalIgnoreCase) ||
+                        fields[i].GetAttributes().Any(attribute => Identity(attribute.AttributeClass) ==
+                            "System.Runtime.InteropServices.FieldOffsetAttribute"))
+                        return false;
+                return !record.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) ==
+                    "System.Runtime.InteropServices.StructLayoutAttribute" &&
+                    ((int)attribute.ConstructorArguments[0].Value != 0 || attribute.NamedArguments.Any(argument =>
+                        argument.Key == "Size" && (int)argument.Value.Value != 0 && (int)argument.Value.Value != 16)));
             }
 
             static void AppendLayout(StringBuilder code, ISymbol symbol)
