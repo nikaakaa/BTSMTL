@@ -312,6 +312,7 @@ function runtimeValue(value: unknown, path = 'Player.runtimeValue') {
     case 'boolean': return { kind: 'boolean' as const, value: boolean(record.value, `${path}.value`) };
     case 'int32': return { kind: 'int32' as const, value: number(record.value, `${path}.value`) };
     case 'uint64': return { kind: 'uint64' as const, value: text(record.value, `${path}.value`) };
+    case 'objectHandle': return { kind: 'objectHandle' as const, value: text(record.value, `${path}.value`) };
     case 'scalar': return { kind: 'scalar' as const, raw: text(record.raw, `${path}.raw`) };
     case 'yaw': return { kind: 'yaw' as const, raw: text(record.raw, `${path}.raw`) };
     case 'vector2': return { kind: 'vector2' as const, raw: tuple(text, text)(record.raw, `${path}.raw`) };

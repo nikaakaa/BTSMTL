@@ -1124,12 +1124,13 @@ export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGr
 }
 
 // 技能黑板支持的原生变量类型（与 Unity BtsmtlSkillBlackboardValueContract 一致）及其默认值。
-export const variableTypes = ['Boolean', 'Int32', 'UInt64', 'Single', 'String', 'Vector2', 'Vector3'];
+export const variableTypes = ['Boolean', 'Int32', 'UInt64', 'ObjectHandle', 'Single', 'String', 'Vector2', 'Vector3'];
 
 function variableDefault(varType: string): JsonValue {
   switch (varType) {
     case 'Boolean': return false;
     case 'Int32': case 'UInt64': return 0;
+    case 'ObjectHandle': return '0';
     case 'Single': return new JsonFloat(0);
     case 'String': return '';
     case 'Vector2': return { x: new JsonFloat(0), y: new JsonFloat(0) };

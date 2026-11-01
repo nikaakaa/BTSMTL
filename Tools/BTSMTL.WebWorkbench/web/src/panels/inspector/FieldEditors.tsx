@@ -113,6 +113,7 @@ const floatTypes = new Set(['System.Single', 'System.Double', 'System.Decimal'])
 
 export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   if (!shape) return null;
+  if (shape.clrType === 'BTSMTL.Orchestration.ObjectHandle') return '0';
   if (shape.enumValues?.length) return shape.enumValues[0];
   if (shape.clrType === 'System.Boolean') return false;
   if (floatTypes.has(shape.clrType)) return new JsonFloat(0);
@@ -127,7 +128,7 @@ function ValueEditor({ label, value, shape, keys, onSet }: {
   label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
 }): ReactNode {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
-  if (shape?.clrType === 'ObjectHandle')
+  if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (isCurve(value, shape?.clrType))
     return <CurveEditor label={label} value={value ?? null} onSet={next => onSet(keys, next)} />;
@@ -423,7 +424,7 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
                   if (typeof next === 'string' && next.trim()) graphAuthoring.renameVariable(graphId, id, next.trim());
                 }} /></Row>
                 <ValueEditor label="默认值" value={variable.serializedValue}
-                  shape={variable.varType === 'ObjectHandle' ? portShape('ObjectHandle') : null} keys={[]}
+                  shape={portShape(variable.varType as string)} keys={[]}
                   onSet={(keys, value) => graphAuthoring.setVariableValue(graphId, id, keys, value)} />
                 {declaration ? members.filter(item => item.member !== 'm_VariableId').map(item => (
                   <ValueEditor key={item.member} label={memberLabel(item.member)} value={declaration[item.member]} shape={item}
@@ -519,7 +520,8 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
 // 端口值类型名（C# 短名）对应的存储形状。
 function portShape(type: string): StorageShape {
   const clrType = { Single: 'System.Single', Double: 'System.Double', Int32: 'System.Int32', Int64: 'System.Int64',
-    Boolean: 'System.Boolean', String: 'System.String' }[type] ?? type;
+    UInt64: 'System.UInt64', Boolean: 'System.Boolean', String: 'System.String',
+    ObjectHandle: 'BTSMTL.Orchestration.ObjectHandle', 'object-handle': 'BTSMTL.Orchestration.ObjectHandle' }[type] ?? type;
   return { clrType, enumValues: null, elementType: null };
 }
 
@@ -547,7 +549,7 @@ function FieldEditor({ id, field, item, node, onSet, onSetFields }: {
   const value = getIn(node, path);
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
-  if (field.readOnly || field.valueKind === 'ObjectHandle')
+  if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.pickerKind !== null)
     return <Row label={label}><ReferencePicker id={id} label={label} value={value}

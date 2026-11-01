@@ -23,6 +23,7 @@ function neutral(value: InputValue) {
     case 'boolean': return !runtime.value;
     case 'int32': return runtime.value === 0;
     case 'uint64': return runtime.value === '0';
+    case 'objectHandle': return runtime.value === '0';
     case 'scalar': case 'yaw': return BigInt(runtime.raw) === 0n;
     case 'vector2': case 'vector3': case 'quaternion': return runtime.raw.every(component => BigInt(component) === 0n);
     default: return false;
