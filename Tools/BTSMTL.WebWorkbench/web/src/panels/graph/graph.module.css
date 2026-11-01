@@ -184,18 +184,6 @@
   color: var(--state-system-title);
 }
 
-/* 状态下方的小字：播放的 Timeline */
-.stateCaption {
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 4px);
-  transform: translateX(-50%);
-  color: var(--graph-note);
-  font-size: 11px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
 .stateTitle {
   height: 30px;
   display: flex;
@@ -208,14 +196,22 @@
   white-space: nowrap;
 }
 
-/* 运行中的本地秒数：标题下一行 */
-.stateBody {
-  margin-top: -6px;
+/* 块内第二行：播放的 Timeline，运行中在后面写本地秒数 */
+.stateCaption {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -7px;
   padding: 0 18px 6px;
+  color: var(--state-system-title);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.stateCaption b {
   color: var(--graph-now);
   font: var(--mono);
-  text-align: center;
-  white-space: nowrap;
+  font-size: 11px;
 }
 
 /* 转移：与流图连线同色同粗，带箭头；悬停或与所选状态相关时提亮 */

@@ -778,8 +778,10 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
         className={editable ? styles.stateSource : styles.hiddenHandle} />
       <div className={styles.stateTitle} data-name>{nodeName(laid.node)}</div>
-      {running && local !== null && <div className={styles.stateBody}>{local.toFixed(2)} s</div>}
-      {timelineName && <span className={styles.stateCaption}>{timelineName}</span>}
+      {/* 第二行：播放的 Timeline 与运行中的本地秒数，写在块内不被连线穿过 */}
+      {timelineName && <div className={styles.stateCaption}>
+        {timelineName}{running && local !== null && <b>{local.toFixed(2)} s</b>}
+      </div>}
     </div>
     </Tip>
   );
