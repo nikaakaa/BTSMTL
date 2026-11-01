@@ -94,8 +94,6 @@ namespace BTSMTL.Compilation
                 CollectValueLiterals();
                 foreach (var binding in VariableDeclarations())
                     ReadVariableMetadata(binding.Declaration);
-                foreach (var binding in GeneratedBlackboardDeclarations())
-                    ReadGeneratedBlackboardMetadata(binding.Declaration, binding.Field);
                 ThrowIfInvalid("编排绑定恢复");
                 var identities = new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts);
                 return new BtsmtlOrchestrationGraphLayout<TValue>(CreateBindings(content, identities));

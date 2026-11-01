@@ -253,7 +253,7 @@ namespace BTSMTL.Graphs.Editor
                 AddDeclarations(sources, m_Root.Variables, m_Route);
                 var owners = new Dictionary<string, BtsmtlMacroGraph>(StringComparer.Ordinal);
                 CollectMacros(m_Root, m_Route, sources, owners);
-                return new BtsmtlBlackboardCompilation(sources, m_Builder, contract.BlackboardScopes, true,
+                return new BtsmtlBlackboardCompilation(sources, m_Builder, contract.BlackboardScopes,
                     (declaration, source, fields) => fields.Add(m_Builder.ConstantField(source, "Public",
                         ((Variable)declaration.AuthoringDeclaration).isExposedPublic)));
             }

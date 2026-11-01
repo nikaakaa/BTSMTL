@@ -69,23 +69,19 @@ namespace BTSMTL.Compilation
         readonly BtsmtlGraphSemanticBuilder m_Builder;
         readonly IReadOnlyCollection<PipelineBlackboardVariableScope> m_Scopes;
         readonly BtsmtlBlackboardCatalogFields m_DomainFields;
-        readonly bool m_ContentDefaults;
         readonly Dictionary<string, int> m_ValueSlots = new Dictionary<string, int>(StringComparer.Ordinal);
         readonly Dictionary<string, ScopeRecord> m_ScopeRecords = new Dictionary<string, ScopeRecord>(StringComparer.Ordinal);
         readonly List<GraphRoute> m_GraphStack = new List<GraphRoute>();
 
-        // contentDefaults 为 true 时作者默认值写入编排内容；为 false 时默认值由宿主的生成数据提供。
         public BtsmtlBlackboardCompilation(
             IReadOnlyDictionary<string, BtsmtlBlackboardDeclarationSource> declarations,
             BtsmtlGraphSemanticBuilder builder,
             IReadOnlyCollection<PipelineBlackboardVariableScope> hostScopes,
-            bool contentDefaults,
             BtsmtlBlackboardCatalogFields domainFields = null)
         {
             m_Declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
             m_Builder = builder ?? throw new ArgumentNullException(nameof(builder));
             m_Scopes = hostScopes ?? throw new ArgumentNullException(nameof(hostScopes));
-            m_ContentDefaults = contentDefaults;
             m_DomainFields = domainFields;
         }
 
@@ -221,20 +217,13 @@ namespace BTSMTL.Compilation
             CompileValueType valueType = item.Declaration.ValueType;
             ProgramStateValueKind valueKind = OrchestrationValuePortContracts.ToState(valueType.Kind);
             SimulationSourceLocation source = DeclarationSource(item, route);
-            int value = m_ContentDefaults
-                ? m_Builder.DeclareStandaloneStateSlot(
-                    source,
-                    valueKind,
-                    ProgramStateOwnerKind.Blackboard,
-                    ProgramStateSemantic.BlackboardValue,
-                    stateKey,
-                    valueType.ToSemanticLiteral(item.Declaration.DefaultValue))
-                : m_Builder.DeclareStandaloneStateSlot(
-                    source,
-                    valueKind,
-                    ProgramStateOwnerKind.Blackboard,
-                    ProgramStateSemantic.BlackboardValue,
-                    stateKey);
+            int value = m_Builder.DeclareStandaloneStateSlot(
+                source,
+                valueKind,
+                ProgramStateOwnerKind.Blackboard,
+                ProgramStateSemantic.BlackboardValue,
+                stateKey,
+                valueType.ToSemanticLiteral(item.Declaration.DefaultValue));
             int owner = m_Builder.DeclareStandaloneStateSlot(
                 source,
                 ProgramStateValueKind.BlackboardOwnerToken,
