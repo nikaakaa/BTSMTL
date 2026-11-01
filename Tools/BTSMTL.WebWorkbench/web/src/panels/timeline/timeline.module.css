@@ -814,6 +814,11 @@
   fill: rgb(255 0 0 / 50.2%);
 }
 
+.clip[data-reference-invalid] {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+
 .clip[data-invalid] .clipShape > :not(.clipSwatch), .clip[data-invalid] .easeHandle {
   display: none;
 }

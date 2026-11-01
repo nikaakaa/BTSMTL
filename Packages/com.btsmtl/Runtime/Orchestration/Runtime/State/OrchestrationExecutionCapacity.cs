@@ -98,7 +98,7 @@ namespace BTSMTL.Orchestration
             foreach (ref readonly OrchestrationTimelineCallCapacity call in calls)
                 callMap.Add((call.ProgramIndex, call.OperationIndex), call);
             var ownerCalls = new List<int>[programs.Length][];
-            var roots = new Dictionary<(int Program, int Owner), (int Frames, int Playbacks, int[] Owners, int Depth)>();
+            var roots = new Dictionary<(int Program, int Owner), (int Frames, int Playbacks, int[][] Owners, int Depth)>();
             var ownerInstanceBuffers = new int[programs.Length][];
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
             var sourceDepths = new int[programs.Length];
@@ -142,22 +142,32 @@ namespace BTSMTL.Orchestration
                     {
                         if (program.Operation(root.OwnerOperationIndex).ExecutionFrameOwnerOperationIndex != root.OwnerOperationIndex)
                             throw new InvalidOperationException($"Program '{programIndex}' admission '{root.OwnerOperationIndex}' is not an execution frame owner.");
-                        var counts = new int[program.OperationCount];
+                        var counts = new int[programs.Length][];
+                        for (int target = 0; target < counts.Length; target++)
+                            counts[target] = new int[programs[target].OperationCount];
                         int rootPlaybacks = 0;
                         int depth = AccumulateOwners(programIndex, root.OwnerOperationIndex, 1,
-                            ownerCalls[programIndex], callMap, counts, ref rootPlaybacks);
+                            ownerCalls, callMap, counts, new HashSet<(int Program, int Owner)>(), ref rootPlaybacks);
                         int rootFrames = 0;
-                        foreach (int count in counts)
-                            rootFrames = checked(rootFrames + count);
+                        foreach (int[] owners in counts)
+                            foreach (int count in owners)
+                                rootFrames = checked(rootFrames + count);
                         roots.Add(key, capacity = (rootFrames, rootPlaybacks, counts, depth));
                     }
-                    sourceDepths[programIndex] = Math.Max(sourceDepths[programIndex], capacity.Depth);
                     frames = Math.Max(frames, capacity.Frames);
                     playbacks = Math.Max(playbacks, capacity.Playbacks);
-                    if (!admissionOwners.TryGetValue(programIndex, out int[] perAdmission))
-                        admissionOwners.Add(programIndex, perAdmission = new int[program.OperationCount]);
-                    for (int owner = 0; owner < perAdmission.Length; owner++)
-                        perAdmission[owner] = Math.Max(perAdmission[owner], capacity.Owners[owner]);
+                    for (int target = 0; target < capacity.Owners.Length; target++)
+                    {
+                        if (!admissionOwners.TryGetValue(target, out int[] perAdmission))
+                            admissionOwners.Add(target, perAdmission = new int[programs[target].OperationCount]);
+                        for (int owner = 0; owner < perAdmission.Length; owner++)
+                        {
+                            int count = capacity.Owners[target][owner];
+                            if (count != 0)
+                                sourceDepths[target] = Math.Max(sourceDepths[target], capacity.Depth);
+                            perAdmission[owner] = Math.Max(perAdmission[owner], count);
+                        }
+                    }
                 }
                 foreach (KeyValuePair<int, int[]> item in admissionOwners)
                 {
@@ -191,26 +201,29 @@ namespace BTSMTL.Orchestration
         }
 
         static int AccumulateOwners(int programIndex, int owner, int count,
-            List<int>[] ownerCalls,
+            List<int>[][] ownerCalls,
             Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity> calls,
-            Span<int> instances, ref int playbacks)
+            int[][] instances, HashSet<(int Program, int Owner)> active, ref int playbacks)
         {
-            instances[owner] = checked(instances[owner] + count);
-            List<int> owned = ownerCalls[owner];
-            if (owned == null)
-                return 1;
+            var key = (programIndex, owner);
+            if (!active.Add(key))
+                throw new InvalidOperationException($"Program '{programIndex}' 的执行帧 '{owner}' 存在没有有限容量的 Timeline 调用循环。");
+            instances[programIndex][owner] = checked(instances[programIndex][owner] + count);
+            List<int> owned = ownerCalls[programIndex][owner];
             int depth = 1;
-            foreach (int operationIndex in owned)
-            {
-                if (!calls.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineCallCapacity call))
-                    throw new InvalidOperationException($"Program '{programIndex}' Timeline '{operationIndex}' 缺少已完成的生命周期容量生产结果。");
-                playbacks = checked(playbacks + count);
-                foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
-                    if (occurrence.MaximumInstances != 0)
-                        depth = Math.Max(depth, checked(1 + AccumulateOwners(programIndex,
-                            occurrence.OwnerOperationIndex, checked(count * occurrence.MaximumInstances),
-                            ownerCalls, calls, instances, ref playbacks)));
-            }
+            if (owned != null)
+                foreach (int operationIndex in owned)
+                {
+                    if (!calls.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineCallCapacity call))
+                        throw new InvalidOperationException($"Program '{programIndex}' Timeline '{operationIndex}' 缺少已完成的生命周期容量生产结果。");
+                    playbacks = checked(playbacks + count);
+                    foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
+                        if (occurrence.MaximumInstances != 0)
+                            depth = Math.Max(depth, checked(1 + AccumulateOwners(occurrence.ProgramIndex,
+                                occurrence.OwnerOperationIndex, checked(count * occurrence.MaximumInstances),
+                                ownerCalls, calls, instances, active, ref playbacks)));
+                }
+            active.Remove(key);
             return depth;
         }
     }

@@ -43,33 +43,94 @@ namespace BTSMTL.Orchestration
             var graphs = new PreparedOrchestrationGraph<TValue, TNumerics>[sources.Length];
             var programs = new OrchestrationProgram<TValue>[sources.Length];
             var storages = new OrchestrationPreparedProgramStorage<TValue>[sources.Length];
+            var actionKinds = new SortedDictionary<(int Graph, int Declaration), OrchestrationValueKind>();
+            foreach (ref readonly OrchestrationProgramSource<TValue> source in sources)
+            {
+                ReadOnlySpan<int> mapping = identities.LocalToShared(source.IdentityTableIndex).Span;
+                foreach (ref readonly OrchestrationGraphVariable variable in source.Content.Structure.Variables.Span)
+                    if (source.Content.Structure.Program.BlackboardSlots.Span[variable.ValueSlot].ScopeKind ==
+                        OrchestrationScopeKind.ActionInstance)
+                        actionKinds.TryAdd((mapping[variable.GraphIdentityId], mapping[variable.DeclarationIdentityId]),
+                            source.Content.Structure.Program.ValueSlotTypes.Span[variable.ValueSlot].ValueKind);
+            }
+            var actionSlots = new Dictionary<(int Graph, int Declaration), (int Slot, int TypeIndex)>();
+            var actionKindCounts = new int[OrchestrationStateLayoutView.KindCount];
+            foreach (var entry in actionKinds)
+                actionSlots.Add(entry.Key, (actionSlots.Count, actionKindCounts[(int)entry.Value]++));
             TNumerics values = default;
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;
                 ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
-                var overrides = new OrchestrationDefaultValue<TValue>[content.GeneratedBlackboards.Length];
+                var overrides = new OrchestrationDefaultValue<TValue>[content.Structure.GeneratedBlackboards.Length];
                 for (int bindingIndex = 0; bindingIndex < overrides.Length; bindingIndex++)
                 {
-                    ref readonly OrchestrationGraphBlackboardBinding binding = ref content.GeneratedBlackboards.Span[bindingIndex];
+                    ref readonly OrchestrationGraphBlackboardBinding binding = ref content.Structure.GeneratedBlackboards.Span[bindingIndex];
                     int contract = mapping[binding.ContractIdentityId];
                     if (!projected.TryGetValue((contract, binding.Field), out TValue value))
                         throw new InvalidOperationException($"当前发布默认值缺少黑板合同 '{identities.Table.Resolve(contract)}' 的字段 '{binding.Field}'。");
-                    OrchestrationValueKind declaredKind = content.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
+                    OrchestrationValueKind declaredKind = content.Structure.Program.ValueSlotTypes.Span[binding.ValueSlot].ValueKind;
                     OrchestrationValueKind kind = values.Kind(in value);
                     if (kind != declaredKind)
-                        throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
+                        throw new InvalidOperationException($"图 '{content.Identity.Source.GraphId}' 的黑板槽 '{binding.ValueSlot}' 要求 '{declaredKind}'，当前发布默认值为 '{kind}'。");
                     overrides[bindingIndex] = new OrchestrationDefaultValue<TValue>(binding.ValueSlot, value);
                 }
                 graphs[programIndex] = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(
-                    content, identities, sources[programIndex].IdentityTableIndex, overrides);
-                OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
-                programs[programIndex] = new OrchestrationProgram<TValue>(program);
+                    content, identities, sources[programIndex].IdentityTableIndex, overrides,
+                    PrepareStorage(content.Structure, mapping, actionSlots, actionKindCounts));
+                OrchestrationProgramContent program = graphs[programIndex].Program;
+                programs[programIndex] = new OrchestrationProgram<TValue>(program, graphs[programIndex].Parameters);
                 storages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
                     programContentIds[programIndex], program.ExecutionStorage, program.ValueSlotTypes);
             }
             return new OrchestrationGraphPreparation<TValue, TNumerics>(
                 graphs, programs, storages);
+        }
+
+        static OrchestrationProgramStorageLayout PrepareStorage(OrchestrationGraphStructure graph,
+            ReadOnlySpan<int> mapping,
+            Dictionary<(int Graph, int Declaration), (int Slot, int TypeIndex)> actionSlots,
+            int[] actionKindCounts)
+        {
+            OrchestrationProgramContent program = graph.Program;
+            OrchestrationProgramStorageLayout original = program.ExecutionStorage;
+            var values = original.Values.ToArray();
+            var counts = new int[original.Owners.Length];
+            var kinds = new int[original.Owners.Length][];
+            for (int owner = 0; owner < kinds.Length; owner++)
+                if (program.Operations.Span[owner].ExecutionFrameOwnerOperationIndex == owner)
+                {
+                    counts[owner] = actionSlots.Count;
+                    kinds[owner] = (int[])actionKindCounts.Clone();
+                }
+            foreach (ref readonly OrchestrationGraphVariable variable in graph.Variables.Span)
+            {
+                int slot = variable.ValueSlot;
+                if (program.BlackboardSlots.Span[slot].ScopeKind != OrchestrationScopeKind.ActionInstance)
+                    continue;
+                var shared = actionSlots[(mapping[variable.GraphIdentityId], mapping[variable.DeclarationIdentityId])];
+                values[slot] = new OrchestrationValueStorageSlot(-1, shared.Slot, shared.TypeIndex,
+                    values[slot].SavedOutputIndex, shared.Slot);
+            }
+            for (int slot = 0; slot < values.Length; slot++)
+            {
+                OrchestrationValueStorageSlot value = values[slot];
+                if (value.ValueIndex < 0 || program.BlackboardSlots.Span[slot].ScopeKind == OrchestrationScopeKind.ActionInstance)
+                    continue;
+                int index = counts[value.OwnerOperationIndex]++;
+                int kind = (int)program.ValueSlotTypes.Span[slot].ValueKind;
+                values[slot] = new OrchestrationValueStorageSlot(value.OwnerOperationIndex,
+                    index, kinds[value.OwnerOperationIndex][kind]++, value.SavedOutputIndex, index);
+            }
+            var owners = new OrchestrationExecutionOwnerStorage[original.Owners.Length];
+            for (int owner = 0; owner < owners.Length; owner++)
+                if (kinds[owner] != null)
+                {
+                    OrchestrationExecutionOwnerStorage previous = original.Owners.Span[owner];
+                    owners[owner] = new OrchestrationExecutionOwnerStorage(previous.OperationCount,
+                        previous.SavedOutputCount, counts[owner], kinds[owner]);
+                }
+            return new OrchestrationProgramStorageLayout(original.OperationIndices, values, owners);
         }
     }
 }

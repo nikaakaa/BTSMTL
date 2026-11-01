@@ -68,13 +68,13 @@ namespace BTSMTL.Graphs
                     new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
             OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<TValue>(
-                new[] { program }, new[] { content.Extensions },
+                new[] { program }, new[] { content.Structure.Extensions },
                 new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
             OrchestrationExecutionStateCapacity stateCapacity = capacity.State;
             OrchestrationExecutionStateLayout<TValue> executionLayout = default(TNumerics).CreateStateLayout(
-                StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
-                content.NumericProfile.Id, content.NumericProfile.AbiVersion,
+                content.Identity.ExecutionIdentity,
+                content.Structure.NumericProfile.Id, content.Structure.NumericProfile.AbiVersion,
                 stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
                 1, stateCapacity.SavedOutputCount, stateCapacity.ValueCount);
             m_PrivateValues = executionLayout.Values;
@@ -93,7 +93,7 @@ namespace BTSMTL.Graphs
                 program.View, stateCapacity.FrameCount, tickCapacity.Programs.Span[0].CursorOutputs));
             m_Diagnostics = new OrchestrationWorkbenchDiagnosticStorage<TValue>(program, content, stateCapacity.FrameCount);
             m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
-                content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
+                content.Structure.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Structure.Extensions.Length),
                 extensions ?? throw new ArgumentNullException(nameof(extensions)));
             // Start 与 Update 的输出按两次调用保留；编辑器排队触发时提前准备额外容量。
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Scratch.OutputRequestCapacity * 2)];
@@ -102,7 +102,7 @@ namespace BTSMTL.Graphs
             PrepareRuntimeObservation();
 #endif
             int textCapacity = checked(program.ValueSlotCount + m_Inputs.Length +
-                m_Bindings.PublishedSlots.Length + content.Ports.Length +
+                m_Bindings.PublishedSlots.Length + content.Structure.Ports.Length +
                 program.InputBindingCount + program.ValueEvaluationSlotCount + 1);
             m_StateTransaction = new GraphStateTransaction(m_MemoryLayout.Identity,
                 new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity),
@@ -226,7 +226,7 @@ namespace BTSMTL.Graphs
             {
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 Reject(OrchestrationExecutionErrorFormatter.Describe(exception, in m_Scratch.Error,
-                    m_Bindings.Content.Identity.GraphId, m_Bindings.Content.Identity.SourceRevision), exception);
+                    m_Bindings.Content.Identity.Source.GraphId, m_Bindings.Content.Identity.Source.SourceRevision), exception);
             }
         }
 
@@ -445,7 +445,7 @@ namespace BTSMTL.Graphs
                 ParentFrameIndex = -1,
                 ParentTimelineOperationIndex = -1,
                 Generation = generation
-            }, m_Bindings.Program.Content.DefaultValues.Span);
+            }, m_Bindings.Program.Parameters.DefaultValues.Span);
         }
 
         void Reject(string message, Exception exception = null)

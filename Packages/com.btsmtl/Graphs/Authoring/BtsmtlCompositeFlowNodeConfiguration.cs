@@ -5,19 +5,15 @@ using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Graphs
 {
-    public interface IBtsmtlGraphStepPort
-    {
-        string Id { get; }
-        string Name { get; }
-    }
+    public interface IBtsmtlGraphStepPort : IGraphNodePortItem { }
 
+    [FlowInput("Input", "执行")]
     public abstract partial class BtsmtlCompositeFlowNode<TStep>
         where TStep : IBtsmtlGraphStepPort
     {
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.SerializeField, FlowCanvas.FlowNode.GatherPortsCallback]
 #endif
-        [GraphNodePortState]
         List<TStep> m_Steps = new();
 
         protected BtsmtlCompositeFlowNode() { }
@@ -25,6 +21,7 @@ namespace BTSMTL.Graphs
 
         [GraphAuthoringField("steps", GraphAuthoringFieldValueKind.Object,
             CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
+        [FlowOutputList(Numbered = true)]
         public IReadOnlyList<TStep> Steps => m_Steps;
         public int StepCount => m_Steps.Count;
         public IBtsmtlGraphStepPort GetStep(int index) => m_Steps[index];

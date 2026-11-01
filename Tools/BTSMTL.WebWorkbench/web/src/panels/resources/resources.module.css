@@ -30,6 +30,11 @@
   flex: 1;
 }
 
+.sectionTitle {
+  margin-right: var(--gap-2);
+  white-space: nowrap;
+}
+
 .list {
   flex: 1;
 }

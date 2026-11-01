@@ -45,6 +45,7 @@ namespace BTSMTL.Compilation
         }
 
         public IReadOnlyList<SimulationCompileMessage> Messages => m_ReadOnlyMessages;
+        public void Include(SimulationCompileReport report) => m_Messages.AddRange(report.m_Messages);
         public bool IsValid
         {
             get

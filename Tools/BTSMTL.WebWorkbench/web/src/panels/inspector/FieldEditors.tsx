@@ -1,32 +1,33 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, type AuthoringTarget, type BlackboardItem, type ComputedField, type DescribedPort, type FieldMetadata, type IdentityItem,
-  type StorageShape, type StoredField,
+  authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
+  type ReferenceChoice, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
-  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
-  type EdgeStep, type JsonKey,
+  authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
+  type EdgeStep, type JsonKey, type JsonMutation,
 } from '../../state/authoring';
-import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
+import { ReferencePicker } from './ReferencePicker';
 import styles from './inspector.module.css';
 
 // 检查器字段编辑（9.3）：节点字段按宿主类型描述（C# 作者字段合同）给出的值种类编辑，
 // 片段按 JSON 自身的值类型编辑。写入作者 JSON 的编辑副本，保存时由宿主正式编译判断合法性。
 
 type SetValue = (keys: JsonKey[], value: JsonValue) => void;
-
-const getIn = (value: JsonValue | undefined, keys: JsonKey[]): JsonValue | undefined =>
-  keys.reduce<JsonValue | undefined>((current, key) =>
-    current !== null && typeof current === 'object' && !(current instanceof JsonFloat) ? (current as Record<JsonKey, JsonValue>)[key] : undefined, value);
+type SetFields = (changes: readonly JsonMutation[]) => void;
 
 const sameValue = (left: JsonValue | undefined, right: JsonValue) =>
   left !== undefined && stringifySkillJson(left, '\n') === stringifySkillJson(right, '\n');
+
+const valueText = (value: JsonValue | undefined) => value == null ? '空'
+  : typeof value === 'object' ? stringifySkillJson(value, ' ') : String(value);
 
 // 字段显示名照 Unity ObjectNames.NicifyVariableName：去掉 m_／_／k 前缀，按大小写断词，首字母大写（HasStart → Has Start）。
 const memberLabel = (member: string) => {
@@ -35,39 +36,6 @@ const memberLabel = (member: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-// ── 身份表与黑板（每个技能修订读一次） ──
-
-const identityCache = new Map<string, Promise<IdentityItem[]>>();
-const blackboardCache = new Map<string, Promise<BlackboardItem[]>>();
-
-function useCached<T>(cache: Map<string, Promise<T[]>>, load: (target: AuthoringTarget) => Promise<T[]>, enabled: boolean): T[] {
-  const { skill, revision } = useAuthoring(useShallow(state => ({ skill: state.target, revision: state.revision })));
-  const [items, setItems] = useState<T[]>([]);
-  useEffect(() => {
-    if (!skill || !enabled) return;
-    const key = `${authoringTargetKey(skill)}@${revision}`;
-    if (!cache.has(key)) cache.set(key, load(skill).catch(error => { cache.delete(key); throw error; }));
-    let live = true;
-    cache.get(key)!.then(result => { if (live) setItems(result); }, () => undefined);
-    return () => { live = false; };
-  }, [skill, revision, enabled, cache, load]);
-  return items;
-}
-
-function useIdentities() {
-  const skill = useAuthoring(state => state.target?.kind === 'skill');
-  return useCached(identityCache, authoringApi.identities, skill);
-}
-
-function IdentityList({ id }: { id: string }) {
-  const identities = useIdentities();
-  return (
-    <datalist id={id}>
-      {identities.map(item => <option key={item.identity} value={item.identity}>{item.asset.AssetPath ?? ''}</option>)}
-    </datalist>
-  );
-}
-
 // ── 基本输入 ──
 
 function Row({ label, tip, children }: { label: string; tip?: string; children: ReactNode }) {
@@ -75,8 +43,8 @@ function Row({ label, tip, children }: { label: string; tip?: string; children: 
 }
 
 // 文本：失焦或回车提交；空文本按存储类型写空字符串或 null。
-function TextValue({ value, label, list, nullable, onSet }: {
-  value: string | null; label: string; list?: string; nullable?: boolean; onSet(value: JsonValue): void;
+function TextValue({ value, label, nullable, onSet }: {
+  value: string | null; label: string; nullable?: boolean; onSet(value: JsonValue): void;
 }) {
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
@@ -85,7 +53,7 @@ function TextValue({ value, label, list, nullable, onSet }: {
     onSet(draft === '' && nullable ? null : draft);
   };
   return (
-    <TextInput aria-label={label} value={draft} list={list} placeholder={value === null ? '空' : undefined}
+    <TextInput aria-label={label} value={draft} placeholder={value === null ? '空' : undefined}
       onChange={event => setDraft(event.currentTarget.value)} onBlur={commit}
       onKeyDown={event => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setDraft(value ?? ''); }} />
   );
@@ -97,6 +65,30 @@ function NumberValue({ value, label, integer, onSet }: { value: JsonValue | unde
     <NumberInput wide label={label} value={Number.isNaN(number) ? null : number} step={integer ? 1 : undefined}
       onChange={next => { if (next !== null) onSet(integer ? Math.round(next) : new JsonFloat(next)); }} />
   );
+}
+
+function IntegerValue({ value, label, onSet }: { value: JsonValue | undefined; label: string; onSet(value: JsonValue): void }) {
+  const text = value == null ? '' : String(value);
+  const [draft, setDraft] = useState(text);
+  const [issue, setIssue] = useState<string | null>(null);
+  useEffect(() => { setDraft(text); setIssue(null); }, [text]);
+  const commit = () => {
+    if (draft === text) return;
+    if (!/^-?(0|[1-9]\d*)$/.test(draft)) {
+      setIssue('请输入十进制整数');
+      return;
+    }
+    onSet(parseSkillJson(draft));
+    setIssue(null);
+  };
+  return <>
+    <TextInput aria-label={label} inputMode="numeric" value={draft} onChange={event => setDraft(event.currentTarget.value)}
+      onBlur={commit} onKeyDown={event => {
+        if (event.key === 'Enter') commit();
+        if (event.key === 'Escape') { setDraft(text); setIssue(null); }
+      }} />
+    {issue && <span role="alert" className={styles.issue}>{issue}</span>}
+  </>;
 }
 
 function VectorValue({ value, axes, label, onSet }: { value: JsonValue | undefined; axes: string[]; label: string; onSet: SetValue }) {
@@ -116,10 +108,12 @@ function VectorValue({ value, axes, label, onSet }: { value: JsonValue | undefin
 // ── 按存储形状推出的通用编辑（嵌套结构、列表与没有作者字段的成员） ──
 
 const integerTypes = new Set(['System.Int32', 'System.Int64', 'System.Int16', 'System.Byte', 'System.UInt32', 'System.UInt64', 'System.UInt16', 'System.SByte']);
+const preciseIntegerTypes = new Set(['System.Int64', 'System.UInt64']);
 const floatTypes = new Set(['System.Single', 'System.Double', 'System.Decimal']);
 
 export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   if (!shape) return null;
+  if (shape.clrType === 'BTSMTL.Orchestration.ObjectHandle') return '0';
   if (shape.enumValues?.length) return shape.enumValues[0];
   if (shape.clrType === 'System.Boolean') return false;
   if (floatTypes.has(shape.clrType)) return new JsonFloat(0);
@@ -130,10 +124,12 @@ export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   return null;
 }
 
-function ValueEditor({ label, value, shape, keys, onSet, identities }: {
-  label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue; identities?: string;
+function ValueEditor({ label, value, shape, keys, onSet }: {
+  label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
 }): ReactNode {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
+  if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
+    return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (isCurve(value, shape?.clrType))
     return <CurveEditor label={label} value={value ?? null} onSet={next => onSet(keys, next)} />;
   if (shape?.enumValues?.length)
@@ -141,25 +137,27 @@ function ValueEditor({ label, value, shape, keys, onSet, identities }: {
       options={shape.enumValues.map(name => ({ value: name, label: name }))} onChange={next => set(next)} /></Row>;
   if (typeof value === 'boolean' || (value == null && shape?.clrType === 'System.Boolean'))
     return <Row label={label}><Checkbox label={label} checked={value === true} onChange={next => set(next)} /></Row>;
+  if (typeof value === 'bigint' || preciseIntegerTypes.has(shape?.clrType ?? ''))
+    return <Row label={label}><IntegerValue label={label} value={value} onSet={set} /></Row>;
   if (value instanceof JsonFloat || (typeof value === 'number' && !Number.isInteger(value)) || (value == null && floatTypes.has(shape?.clrType ?? '')))
     return <Row label={label}><NumberValue label={label} value={value} integer={false} onSet={set} /></Row>;
   if (typeof value === 'number' || (value == null && integerTypes.has(shape?.clrType ?? '')))
     return <Row label={label}><NumberValue label={label} value={value} integer onSet={set} /></Row>;
   if (typeof value === 'string' || (value == null && shape?.clrType === 'System.String'))
-    return <Row label={label}><TextValue label={label} value={value ?? null} list={identities} onSet={set} /></Row>;
+    return <Row label={label}><TextValue label={label} value={value ?? null} onSet={set} /></Row>;
   if (Array.isArray(value))
-    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} onSet={onSet} identities={identities} />;
+    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} onSet={onSet} />;
   if (value && typeof value === 'object')
-    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} onSet={onSet} identities={identities} />;
+    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} onSet={onSet} />;
   // 空值：有存储形状时可按默认值创建；没有形状的按身份字符串填写。
   const created = defaultFor(shape);
   return created !== null
     ? <Row label={label}><Button variant="ghost" onClick={() => onSet(keys, created)}>创建</Button></Row>
-    : <Row label={label}><TextValue label={label} value={null} list={identities} nullable onSet={set} /></Row>;
+    : <Row label={label}><TextValue label={label} value={null} nullable onSet={set} /></Row>;
 }
 
-function StructEditor({ label, value, shape, keys, onSet, identities }: {
-  label: string; value: JsonObject; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue; identities?: string;
+function StructEditor({ label, value, shape, keys, onSet }: {
+  label: string; value: JsonObject; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
 }) {
   const members = shape?.members ?? [];
   const names = [...members.map(member => member.member), ...Object.keys(value).filter(key => !members.some(member => member.member === key))];
@@ -171,14 +169,14 @@ function StructEditor({ label, value, shape, keys, onSet, identities }: {
       <div className={styles.groupHead}>{label}</div>
       {names.map(name => (
         <ValueEditor key={name} label={memberLabel(name)} value={value[name]} shape={members.find(member => member.member === name)}
-          keys={[...keys, name]} onSet={onSet} identities={identities} />
+          keys={[...keys, name]} onSet={onSet} />
       ))}
     </div>
   );
 }
 
-function ListEditor({ label, value, shape, keys, onSet, identities }: {
-  label: string; value: JsonValue[]; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue; identities?: string;
+function ListEditor({ label, value, shape, keys, onSet }: {
+  label: string; value: JsonValue[]; shape: StorageShape | null | undefined; keys: JsonKey[]; onSet: SetValue;
 }) {
   const add = () => {
     const created = value.length ? cloneJson(value[value.length - 1]) : defaultFor(shape);
@@ -193,7 +191,7 @@ function ListEditor({ label, value, shape, keys, onSet, identities }: {
       </div>
       {value.map((item, index) => (
         <div key={index} className={styles.listItem}>
-          <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} onSet={onSet} identities={identities} />
+          <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} onSet={onSet} />
           <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项" onClick={() => remove(index)}><CloseIcon /></Button>
         </div>
       ))}
@@ -257,7 +255,7 @@ export function StepFields({ graphId, step, children }: { graphId: string; step:
   const { description } = useDescription(skill, graphId, node);
   const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
   const selector = step.nodeType === 'BtsmtlSkillSelectorFlowNode';
-  const set: SetValue = (keys, value) => graphAuthoring.setNodeValue(graphId, step.nodeId, [step.member, step.index, ...keys], value);
+  const set: SetValue = (keys, value) => graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, ...keys], value }]);
   return (
     <Fold title="步骤" defaultOpen>
       {children}
@@ -290,6 +288,8 @@ const configurationOf = (node: JsonObject): JsonObject =>
   Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
 
 function useDescription(skill: AuthoringTarget | null, graphId: string, node: JsonObject | null) {
+  const version = useAuthoring(state => authoringDocument(state).version);
+  const carrierRevision = useAuthoring(state => state.carrierRevision);
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
   // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
@@ -304,7 +304,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
     if (!skill || !type || key === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      authoringApi.describeNode(skill, type, latest.current!, graphId, controller.signal).then(result => {
+      authoringApi.describeNode(skill, type, latest.current!, graphId, authoringActions.editingView(), controller.signal).then(result => {
         if (controller.signal.aborted) return;
         const items = result.fields.items;
         setDescription({
@@ -322,12 +322,13 @@ function useDescription(skill: AuthoringTarget | null, graphId: string, node: Js
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, type, key, graphId]);
+  }, [skill, type, key, graphId, version, carrierRevision]);
   return { description, issues };
 }
 
 const visible = (field: FieldMetadata, values: Map<string, JsonValue | undefined>) =>
-  !field.visibleWhenField || String(values.get(field.visibleWhenField) ?? '').toLowerCase() === (field.visibleWhenValue ?? '').toLowerCase();
+  field.authoringVisible && (!field.visibleWhenField ||
+    String(values.get(field.visibleWhenField) ?? '').toLowerCase() === (field.visibleWhenValue ?? '').toLowerCase());
 
 // 作者字段对应的存储形状：一层成员路径取 item 自身形状，更深的沿 members 找。
 function shapeAt(item: StoredField, path: string[]): StorageShape | null {
@@ -342,15 +343,14 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
   const { description, issues } = useDescription(skill, graphId, node);
-  const listId = `identities-${graphId}-${nodeId}`;
-  const blackboards = useCached(blackboardCache, authoringApi.blackboards,
-    !!description?.stored.some(item => item.fields.some(field => field.pickerKind === 'blackboard-variable')));
   if (!node) return null;
-  const set: SetValue = (keys, value) => graphAuthoring.setNodeValue(graphId, nodeId, keys, value);
+  const setFields: SetFields = changes => graphAuthoring.setNodeValues(graphId, nodeId, changes);
+  const set: SetValue = (keys, value) => setFields([{ keys, value }]);
   const values = new Map<string, JsonValue | undefined>();
   for (const item of description?.stored ?? [])
     for (const field of item.fields) values.set(field.fieldId, getIn(node, field.serializedMemberPath));
   for (const field of description?.computed ?? []) values.set(field.fieldId, field.value);
+  const computed = description?.computed.filter(field => visible(field, values)) ?? [];
   const connected = new Set(((document as JsonObject).allNodes as JsonObject[]).flatMap(item =>
     (item.outConnections as JsonObject[]).filter(connection => connection.targetNode === nodeId).map(connection => connection.targetPortID as string)));
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
@@ -358,7 +358,6 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   return (
     <>
       <Fold title="节点" defaultOpen>
-        <IdentityList id={listId} />
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
         {issues.map((issue, index) => {
           const text = `${issue.path ? `${issue.path}：` : ''}${issue.message}`;
@@ -367,7 +366,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
         {!description && !issues.length && <div className={styles.note}>读取字段</div>}
         {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
-            blackboards={blackboards} identities={listId} outputs={outputs} onSet={set} />
+            id={`${graphId}/${nodeId}`} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
         {children}
       </Fold>
@@ -377,13 +376,13 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
             const keys = ['_inputPortValues', port.port.ID];
             const current = getIn(node, keys) ?? (port.port.serializedValue as JsonValue);
             return <ValueEditor key={port.port.ID} label={port.port.name} value={current} shape={portShape(port.port.type)}
-              keys={keys} onSet={set} identities={listId} />;
+              keys={keys} onSet={set} />;
           })}
         </Fold>
       )}
-      {!!description?.computed.length && (
+      {computed.length > 0 && (
         <Fold title="推导">
-          {description.computed.map(field => (
+          {computed.map(field => (
             <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
               <span className={styles.readOnly}>{field.value === null ? '空' : typeof field.value === 'object' ? stringifySkillJson(field.value, ' ') : String(field.value)}</span>
             </Row>
@@ -425,14 +424,16 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   const fields = description?.stored.map(item => ({ ...item, fields: item.fields
     .filter(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/') ||
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
-    .map(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
-      ? { ...field, choices: keys.map(item => item.name) } : field),
+    .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
+      ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
+        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
-  const set: SetValue = (path, value) => inputAuthoring.setNodeValue(graphId, node.UID as string, path, value, contract);
+  const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);
+  const set: SetValue = (path, value) => setFields([{ keys: path, value }]);
   return <Fold title="输入" defaultOpen>
     {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
     {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
-      blackboards={[]} identities="" onSet={set} />)}
+      id={`${graphId}/${String(node.UID)}`} onSet={set} onSetFields={setFields} />)}
   </Fold>;
 }
 
@@ -498,7 +499,8 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
                 <Row label="名称"><TextValue label="名称" value={variable.name as string} onSet={next => {
                   if (typeof next === 'string' && next.trim()) graphAuthoring.renameVariable(graphId, id, next.trim());
                 }} /></Row>
-                <ValueEditor label="默认值" value={variable.serializedValue} shape={null} keys={[]}
+                <ValueEditor label="默认值" value={variable.serializedValue}
+                  shape={portShape(variable.varType as string)} keys={[]}
                   onSet={(keys, value) => graphAuthoring.setVariableValue(graphId, id, keys, value)} />
                 {declaration ? members.filter(item => item.member !== 'm_VariableId').map(item => (
                   <ValueEditor key={item.member} label={memberLabel(item.member)} value={declaration[item.member]} shape={item}
@@ -580,13 +582,11 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
   const shape = useElementShape('tracks', track?.ContractKind);
   if (!track) return null;
-  const listId = `identities-${documentId}-${trackId}`;
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
   return (
     <Fold title="轨道" defaultOpen>
-      <IdentityList id={listId} />
       {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
-        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />
+        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />
       ))}
       {children}
     </Fold>
@@ -596,47 +596,58 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
 // 端口值类型名（C# 短名）对应的存储形状。
 function portShape(type: string): StorageShape {
   const clrType = { Single: 'System.Single', Double: 'System.Double', Int32: 'System.Int32', Int64: 'System.Int64',
-    Boolean: 'System.Boolean', String: 'System.String' }[type] ?? type;
+    UInt64: 'System.UInt64', Boolean: 'System.Boolean', String: 'System.String',
+    ObjectHandle: 'BTSMTL.Orchestration.ObjectHandle', 'object-handle': 'BTSMTL.Orchestration.ObjectHandle' }[type] ?? type;
   return { clrType, enumValues: null, elementType: null };
 }
 
-function StoredItem({ item, node, values, blackboards, identities, outputs = [], onSet }: {
-  item: StoredField; node: JsonObject; values: Map<string, JsonValue | undefined>; blackboards: BlackboardItem[];
-  identities: string; outputs?: DescribedPort[]; onSet: SetValue;
+function StoredItem({ item, node, values, id, outputs = [], onSet, onSetFields }: {
+  item: StoredField; node: JsonObject; values: Map<string, JsonValue | undefined>;
+  id: string; outputs?: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }) {
   if (!item.fields.length)
-    return <ValueEditor label={memberLabel(item.member)} value={item.value} shape={item.shape} keys={[item.member]} onSet={onSet} identities={identities} />;
-  // 黑板变量选择器同时写声明与所属图，所属字段不单独编辑。
-  const owners = new Set(item.fields.filter(field => field.pickerKind === 'blackboard-variable' && field.pickerOwnerField)
-    .map(field => field.pickerOwnerField!));
+    return null;
   return (
     <>
-      {item.fields.filter(field => !owners.has(field.fieldId) && visible(field, values)).map(field => (
-        <FieldEditor key={field.fieldId} field={field} item={item} node={node} blackboards={blackboards} identities={identities}
-          outputs={outputs} onSet={onSet} />
+      {item.fields.filter(field => visible(field, values)).map(field => (
+        <FieldEditor key={field.fieldId} id={`${id}/${field.fieldId}`} field={field} item={item} node={node}
+          outputs={outputs} onSet={onSet} onSetFields={onSetFields} />
       ))}
     </>
   );
 }
 
-function FieldEditor({ field, item, node, blackboards, identities, outputs, onSet }: {
-  field: FieldMetadata; item: StoredField; node: JsonObject; blackboards: BlackboardItem[]; identities: string;
-  outputs: DescribedPort[]; onSet: SetValue;
+function FieldEditor({ id, field, item, node, outputs, onSet, onSetFields }: {
+  id: string; field: FieldMetadata; item: StoredField; node: JsonObject; outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }): ReactNode {
   const label = field.displayName ?? field.fieldId;
   const path = field.serializedMemberPath;
   const value = getIn(node, path);
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
-  if (field.readOnly)
-    return <Row label={label} tip="只读"><span className={styles.readOnly}>{value == null ? '空' : typeof value === 'object' ? stringifySkillJson(value, ' ') : String(value)}</span></Row>;
+  if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
+    return <Row label={label} tip="只读"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (Array.isArray(value) && isPortList(shape))
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
+  if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.pickerKind !== null)
+    return <Row label={label}><ReferencePicker id={id} label={label} value={value}
+      catalog={field.choiceKind === null
+        ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
+        : field.choicesAvailability.available
+          ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
+            invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
+          : { kind: 'unavailable', reason: field.choicesAvailability.reason }}
+      onChoose={(choice: ReferenceChoice) => onSetFields([
+        { keys: path, value: choice.value },
+        ...choice.associated.map(associated => ({ keys: associated.serializedMemberPath, value: associated.value })),
+      ])} /></Row>;
   switch (field.valueKind) {
     case 'Boolean':
       return <Row label={label}><Checkbox label={label} checked={value === true} onChange={set} /></Row>;
     case 'Integer':
-      return <Row label={label}><NumberValue label={label} value={value} integer onSet={set} /></Row>;
+      return <Row label={label}>{preciseIntegerTypes.has(field.clrType)
+        ? <IntegerValue label={label} value={value} onSet={set} />
+        : <NumberValue label={label} value={value} integer onSet={set} />}</Row>;
     case 'Float':
       return <Row label={label}><NumberValue label={label} value={value} integer={false} onSet={set} /></Row>;
     case 'Enum': {
@@ -649,33 +660,13 @@ function FieldEditor({ field, item, node, blackboards, identities, outputs, onSe
       return <Row label={label}><VectorValue label={label} value={value} axes={field.valueKind === 'Vector2' ? ['x', 'y'] : ['x', 'y', 'z']}
         onSet={(axis, next) => onSet([...path, ...axis], next)} /></Row>;
   }
-  if (field.pickerKind === 'blackboard-variable') {
-    const owner = item.fields.find(other => other.fieldId === field.pickerOwnerField);
-    const ownerValue = owner ? getIn(node, owner.serializedMemberPath) : undefined;
-    const selected = blackboards.find(entry => entry.id === value && (!owner || entry.graphId === ownerValue));
-    return (
-      <Row label={label} tip={selected ? `${selected.type} · ${selected.category}` : typeof value === 'string' ? value : undefined}>
-        <Select label={label} value={selected?.identity ?? null} placeholder={typeof value === 'string' && value ? value : '选择黑板变量'}
-          options={blackboards.map(entry => ({ value: entry.identity, label: `${entry.key} · ${entry.category || '—'}` }))}
-          onChange={identity => {
-            const entry = blackboards.find(candidate => candidate.identity === identity)!;
-            onSet(path, entry.id);
-            if (owner) onSet(owner.serializedMemberPath, entry.graphId);
-          }} />
-      </Row>
-    );
-  }
-  const choices = Array.isArray(field.choices) && field.choices.every(choice => typeof choice === 'string') ? field.choices as string[] : null;
-  if (choices?.length)
-    return <Row label={label}><Select label={label} value={typeof value === 'string' ? value : null}
-      options={choices.map(choice => ({ value: choice, label: choice }))} onChange={set} /></Row>;
   if ((value == null || typeof value === 'string') && !(value == null && shape?.members?.length) && !isCurve(value, shape?.clrType ?? field.objectType ?? undefined))
     return <Row label={label} tip={field.references.map(reference => reference.errorMessage).join('\n') || undefined}>
-      <TextValue label={label} value={(value as string | null | undefined) ?? null} list={identities}
+      <TextValue label={label} value={value ?? null}
         nullable={shape?.clrType !== 'System.String'} onSet={set} />
     </Row>;
   return <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, enumValues: null, elementType: null } : null)}
-    keys={path} onSet={onSet} identities={identities} />;
+    keys={path} onSet={onSet} />;
 }
 
 // ── 片段字段：没有类型合同，按 JSON 值本身的类型编辑；FP 时间以秒显示 ──
@@ -694,24 +685,30 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
   const shape = useElementShape('clips', clip?.ContractKind);
+  const elements = useSkillElements(skill !== null);
+  const source = elements?.clips.find(template => template.kind === clip?.ContractKind)?.sourceAsset;
+  const animation = source?.choiceKind === animationReferenceKind ? source : null;
+  const library = useAnimationLibrary(animation !== null);
   if (!clip) return null;
-  const listId = `identities-${documentId}-${clipId}`;
   const set: SetValue = (keys, value) => authoringActions.setClipValue(documentId, clipId, keys, value);
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
   return (
     <Fold title="片段" defaultOpen>
-      <IdentityList id={listId} />
       {children}
+      {!timeOnly && animation && <Row label="动画">
+        <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)}
+          catalog={animationReferenceCatalog(library)} onChoose={choice => set(animation.serializedMemberPath, choice.value)} />
+      </Row>}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key)).map(key => key.endsWith('FPRawValue') ? (
+      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key) && key !== animation?.serializedMemberPath[0]).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
-      ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />)}
+      ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />)}
     </Fold>
   );
 }

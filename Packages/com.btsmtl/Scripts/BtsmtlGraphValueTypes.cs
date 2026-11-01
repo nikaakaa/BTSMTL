@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using ThirdPersonSimulation;
+using BTSMTL.Orchestration;
 using UnityEngine;
 
 namespace BTSMTL
@@ -12,6 +13,7 @@ namespace BTSMTL
             if (type == typeof(bool)) return SemanticValueKind.Boolean;
             if (type == typeof(int)) return SemanticValueKind.Int32;
             if (type == typeof(uint) || type == typeof(ulong)) return SemanticValueKind.UInt64;
+            if (type == typeof(ObjectHandle)) return SemanticValueKind.ObjectHandle;
             if (type == typeof(float) || type == typeof(double)) return SemanticValueKind.Number;
             if (type == typeof(Vector2)) return SemanticValueKind.Vector2;
             if (type == typeof(Vector3)) return SemanticValueKind.Vector3;

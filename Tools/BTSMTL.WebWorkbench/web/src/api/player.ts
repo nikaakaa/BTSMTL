@@ -1,7 +1,7 @@
 import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
-  readPlayerVideoMetadata, readPreviewClock, readPreviewSampleSource, readViewerStatus,
+  readPlayerVideoMetadata, readPreviewSampleSource, readViewerMessage,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
   readPlayerCommandResult,
   readPlayerCancellation,
@@ -61,10 +61,10 @@ export const playerApi = {
     decoded(`${job(id)}/curves/samples${query({ curveId, ...range })}`, readPlayerCurveSamples, signal),
   unavailable: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/unavailable${query({ ...range })}`, readPlayerUnavailable, signal),
-  archiveImageMetadata: (id: PlayerJobId, sdkFrame: string, signal?: AbortSignal) =>
-    decoded(`${job(id)}/images/${encodeURIComponent(sdkFrame)}/metadata`, readPlayerArchiveImage, signal),
-  archiveImage: (id: PlayerJobId, sdkFrame: string, signal?: AbortSignal) =>
-    getBlob(`${job(id)}/images/${encodeURIComponent(sdkFrame)}`, signal).then(response => response.blob()),
+  archiveImageMetadata: (id: PlayerJobId, hostFrame: string, signal?: AbortSignal) =>
+    decoded(`${job(id)}/images/${encodeURIComponent(hostFrame)}/metadata`, readPlayerArchiveImage, signal),
+  archiveImage: (id: PlayerJobId, hostFrame: string, signal?: AbortSignal) =>
+    getBlob(`${job(id)}/images/${encodeURIComponent(hostFrame)}`, signal).then(response => response.blob()),
   frameImages: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/frame-images${query({ ...range })}`, readPlayerFrameImages, signal),
   frameImage: (id: PlayerJobId, imageIndex: number, signal?: AbortSignal) =>
@@ -98,6 +98,7 @@ export interface ViewerHandlers {
   open(): void;
   message(message: ViewerMessage): void;
   video(frame: VideoFrame): void;
+  error(error: unknown): void;
   close(event: CloseEvent): void;
 }
 
@@ -109,18 +110,19 @@ export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket 
   socket.onopen = () => handlers.open();
   socket.onclose = event => handlers.close(event);
   socket.onmessage = event => {
-    if (typeof event.data === 'string') {
-      const message = JSON.parse(event.data) as ViewerMessage;
-      if (message.type === 'status') handlers.message(readViewerStatus(message));
-      else if (message.type === 'ack') handlers.message({ ...message,
-        clock: message.clock == null ? null : readPreviewClock(message.clock) });
-      else handlers.message(message);
-      return;
-    }
-    const buffer = event.data as ArrayBuffer;
-    const length = new DataView(buffer, 0, 4).getInt32(0, true);
-    const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
-    handlers.video({ ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) });
+    let packet: ViewerMessage | VideoFrame;
+    try {
+      if (typeof event.data === 'string') packet = readViewerMessage(JSON.parse(event.data));
+      else {
+        if (!(event.data instanceof ArrayBuffer)) throw new Error('画面连接需要文本或 ArrayBuffer');
+        const buffer = event.data;
+        const length = new DataView(buffer, 0, 4).getInt32(0, true);
+        const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
+        packet = { ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) };
+      }
+    } catch (error) { handlers.error(error); return; }
+    if ('type' in packet) handlers.message(packet);
+    else handlers.video(packet);
   };
   return socket;
 }

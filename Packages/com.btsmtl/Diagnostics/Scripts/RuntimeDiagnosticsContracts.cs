@@ -1,5 +1,6 @@
 using System;
 using BTSMTL.Orchestration;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
@@ -9,7 +10,8 @@ using System.Numerics;
 
 namespace BTSMTL.Diagnostics
 {
-    public readonly struct RuntimeContentRevision : IEquatable<RuntimeContentRevision>
+    [ValueStorage]
+    public readonly partial struct RuntimeContentRevision : IEquatable<RuntimeContentRevision>
     {
         public RuntimeContentRevision(string runtimeId, string sourceRevision, string contentHash)
         {
@@ -266,6 +268,7 @@ namespace BTSMTL.Diagnostics
         public ulong InvocationGeneration { get; }
         public int SourceOperationIndex { get; }
         public int TreeClipOperationIndex { get; }
+        [ValuePresence] internal bool HasValueStorage => StateId != null;
         public bool IsValid => Kind != RuntimeInstanceKind.None && CharacterRuntimeId != Guid.Empty;
 
         public static RuntimeInstanceKey Character(Guid characterId) => new RuntimeInstanceKey(RuntimeInstanceKind.Character, characterId, Guid.Empty, string.Empty, 0, 0, -1);
@@ -497,10 +500,12 @@ namespace BTSMTL.Diagnostics
         FPActionTargetSnapshot,
         FPScalar,
         FPYaw,
-        FPQuaternion
+        FPQuaternion,
+        ObjectHandle
     }
 
-    public readonly struct DebugValueSnapshot
+    [ValueStorage]
+    public readonly partial struct DebugValueSnapshot
     {
         public DebugValueSnapshot(DebugValueKind kind, bool boolean, long signed, ulong unsigned, double number, string text, Vector4 vector)
         {
@@ -520,6 +525,11 @@ namespace BTSMTL.Diagnostics
         public double Number { get; }
         public string Text { get; }
         public Vector4 Vector { get; }
+
+        public static DebugValueSnapshot FromObjectHandle(ObjectHandle value) =>
+            new DebugValueSnapshot(DebugValueKind.ObjectHandle, false, 0, value.Value, 0, string.Empty, default);
+
+        public ObjectHandle ReadObjectHandle() => new ObjectHandle(Unsigned);
 
         public static DebugValueSnapshot FromFPScalar(long raw) =>
             new DebugValueSnapshot(DebugValueKind.FPScalar, false, raw, 0, 0, string.Empty, default);
@@ -586,6 +596,8 @@ namespace BTSMTL.Diagnostics
                 return new DebugValueSnapshot(DebugValueKind.Int64, false, Convert.ToInt64(value), 0, 0, string.Empty, default);
             if (value is byte || value is ushort || value is uint || value is ulong)
                 return new DebugValueSnapshot(DebugValueKind.UInt64, false, 0, Convert.ToUInt64(value), 0, string.Empty, default);
+            if (value is ObjectHandle handle)
+                return FromObjectHandle(handle);
             if (value is float || value is double || value is decimal)
                 return new DebugValueSnapshot(DebugValueKind.Double, false, 0, 0, Convert.ToDouble(value), string.Empty, default);
             if (value is string text)
@@ -613,6 +625,7 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.Boolean: return Boolean ? "true" : "false";
                 case DebugValueKind.Int64: return Signed.ToString();
                 case DebugValueKind.UInt64: return Unsigned.ToString();
+                case DebugValueKind.ObjectHandle: return Unsigned.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 case DebugValueKind.Double: return Number.ToString("0.###");
                 case DebugValueKind.String:
                 case DebugValueKind.Guid:
@@ -649,7 +662,8 @@ namespace BTSMTL.Diagnostics
         }
     }
 
-    public readonly struct RuntimeTimelinePlaybackProvenance
+    [ValueStorage]
+    public readonly partial struct RuntimeTimelinePlaybackProvenance
     {
         public RuntimeTimelinePlaybackProvenance(
             string sourceGraphAuthoringId,
@@ -756,7 +770,8 @@ namespace BTSMTL.Diagnostics
         public EventId SourceEventId;
     }
 
-    public readonly struct RuntimeTraceEvent
+    [ValueStorage]
+    public readonly partial struct RuntimeTraceEvent
     {
         public RuntimeTraceEvent(
             Guid sessionId,

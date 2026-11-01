@@ -241,6 +241,7 @@ internal sealed class BlackboardSchema : IDisposable
         AddMapped(module, "Vector3", target.GetProperty("vector3Type").GetString()!,
             target.GetProperty("vector3Factory").GetString()!, ("X", numberType), ("Y", numberType), ("Z", numberType));
         AddMapped(module, "UInt64", "System.UInt64", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues.UInt64", ("Bits", "long"));
+        AddMapped(module, "ObjectHandle", "BTSMTL.Orchestration.ObjectHandle", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues.ObjectHandle", ("Bits", "long"));
         AddMapped(module, "Text", "System.String", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues.Text", ("IsNull", "bool"), ("CodeUnits", "array,int"));
     }
 
@@ -260,6 +261,7 @@ internal sealed class BlackboardSchema : IDisposable
     static string SchemaType(string kind) => kind switch
     {
         "Bool" => "bool", "Int32" => "int", "UInt64" => "UInt64", "Number" => "Number",
+        "ObjectHandle" => "ObjectHandle",
         "Text" => "Text", "Vector2" => "Vector2", "Vector3" => "Vector3",
         _ => throw new InvalidDataException($"黑板不支持类型 '{kind}'。")
     };

@@ -4,15 +4,17 @@ import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRe
 import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
-  childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeName, nodeOccurrenceLabel, playedTimeline, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
+  isPortSample, nodeGraphs, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, singleCall, matchesDocumentCall, type DocumentObservationBinding,
+  type GraphNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, edgeStep, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
+import { projectActions } from '../../state/project';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
-import { selectionActions, useWorkbench, type Selection } from '../../state/store';
+import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin, type Selection } from '../../state/store';
 import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
@@ -115,18 +117,9 @@ function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNo
   return <div className={styles.field}><FieldLabel label={label} /><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
 }
 
-function openGraph(graph: GraphDefinition) {
-  selectionActions.showGraph(graphKey(graph), null);
-  openPanel('graph');
-}
-
-function openTimeline(documentId: string) {
-  selectionActions.showTimeline(documentId, null);
-  openPanel('timeline');
-}
-
-function useTimelineName(documentId: string | null) {
-  return useWorkbench(state => documentId ? state.timelines.find(item => item.documentId === documentId)?.displayName ?? documentId.slice(0, 8) : null);
+function openGraph(graph: Pick<GraphDefinition, 'id'>, origin: GraphNavigationOrigin | null = null) {
+  const target = authoringDocument(useAuthoring.getState()).documentGraphs!.find(item => item.id === graph.id)!;
+  void projectActions.openGraph(target, undefined, origin).then(() => { openPanel('graph'); }, reason => consoleActions.error('作者', reason));
 }
 
 function Values({ fields }: { fields: Field[] }) {
@@ -193,11 +186,12 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 
 // 打开技能、没有选中对象时（照 Unity 选中资产本身）：技能名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
 function SkillSummary() {
-  const { skill, plans, editable } = useAuthoring(useShallow(state => ({
-    skill: state.target?.name ?? null, editable: state.author,
-    plans: [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])]
-      .filter(path => path.startsWith('inputs/') && !state.removed.includes(path)).sort().join('\n'),
-  })));
+  const { skill, plans, editable } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { skill: state.target?.name ?? null, editable: state.author,
+      plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
+        .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };
+  }));
   const timelines = useAuthorTimelines().length;
   const paths = plans ? plans.split('\n') : [];
   return (
@@ -218,7 +212,8 @@ function SkillSummary() {
 // 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
 function useAuthorGraphs() {
   return useAuthoring(useShallow(state => ({
-    program: state.author && state.target?.kind === 'skill' ? state.programId : null, edited: state.edited, ports: state.addedPorts,
+    on: state.author && state.target?.kind === 'skill',
+    edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
   })));
 }
 
@@ -227,14 +222,14 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const { graphs, frame, runId } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame, runId: state.runId })));
   const author = useAuthorGraphs();
   const found = useMemo(() => {
-    if (author.program === null) return findGraphNode(graphs, id);
+    if (!author.on) return findGraphNode(graphs, id);
     const located = findEditedGraph(graphs, id, author.edited, author.ports);
     const node = located?.graph.nodes.find(item => item.id === located.id && item.invocationPath === located.path);
     return located && node ? { graph: located.graph, node } : null;
   }, [graphs, id, author]);
+  const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   if (!found) return missing;
   const { graph, node } = found;
-  const editable = author.program !== null && author.program === graph.programId;
   const candidates = graphRecords(frame?.route, graph, binding);
   const observedCall = call ?? singleCall(candidates);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
@@ -294,13 +289,10 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-// 节点的引用字段：子图（状态体或调用的状态机）、播放的 Timeline、出去的转移及其条件图；所在图写在对象头。
 function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
-  const graphs = useWorkbench(state => state.graphs);
-  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
-  const children = childGraphs(hierarchy, graph, nodeId);
-  const timeline = playedTimeline(hierarchy, graph, nodeId);
-  const timelineName = useTimelineName(timeline);
+  const hierarchy = useDocumentGraphHierarchy();
+  const children = nodeGraphs(hierarchy, graph, nodeId);
+  const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
     edge.invocationPath === invocationPath);
@@ -308,30 +300,23 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
     <>
       {children.map(child => (
         <Link key={child.id} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)" tip="在节点图面板打开"
-          onOpen={() => openGraph(child)} />
+          onOpen={() => openGraph(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId })} />
       ))}
-      {timeline && <Link label="Timeline" text={timelineName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
-        onOpen={() => openTimeline(timeline)} />}
       {transitions.map(edge => {
-        const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
         const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
-        return conditions.length
-          ? conditions.map(condition => (
-            <Link key={`${edge.id}/${condition.id}`} label={`→ ${target}`} text={graphName(condition)} kind="var(--port-bool)"
-              tip="转移条件图，在节点图面板打开" onOpen={() => openGraph(condition)} />
-          ))
-          : <Value key={edge.id} label={`→ ${target}`} mono={false} value="无条件" />;
+        return <Value key={edge.id} label={`→ ${target}`} mono={false} value="条件图声明尚未提供" />;
       })}
     </>
   );
 }
 
 // 专属图（状态体、转移条件）：已在展开结果里的可进入；网页新建的保存后才有展开结果。
-function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
-  label: string; owner: GraphDefinition; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
+function OwnedGraph({ label, id, onCreate, onRemove, createText }: {
+  label: string; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
 }) {
   const graphs = useWorkbench(state => state.graphs);
-  const target = id ? graphs?.find(item => item.id === id && item.programId === owner.programId) ?? null : null;
+  const target = id ? graphs?.find(item => item.id === id) ?? null : null;
+  const error = useAuthoring(state => authoringDocument(state).documentError);
   return (
     <div className={styles.field}>
       <FieldLabel label={label} />
@@ -339,7 +324,7 @@ function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
         {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => onCreate?.()}>{createText}</Button> : (
           <>
             {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={() => openGraph(target)} />
-              : <span className={styles.note}>未保存，保存后可进入</span>}
+              : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
             <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => onRemove(id)}>移除</Button>
           </>
         )}
@@ -355,7 +340,7 @@ function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }
   // 只有普通状态带状态体；入口、任意状态与出口是系统锚点。
   if (node?.type !== 'BtsmtlSkillNativeState') return null;
   return (
-    <OwnedGraph label="状态体" owner={graph} id={(node.m_Body as string | null) ?? null} createText="新建状态体"
+    <OwnedGraph label="状态体" id={(node.m_Body as string | null) ?? null} createText="新建状态体"
       onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
       onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
   );
@@ -367,12 +352,11 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const graphs = useWorkbench(state => state.graphs);
   const author = useAuthorGraphs();
   const found = useMemo(() => {
-    const located = findEditedGraph(graphs, id, author.program === null ? {} : author.edited, author.ports);
+    const located = findEditedGraph(graphs, id, author.on ? author.edited : {}, author.ports);
     const edge = located?.graph.edges.find(item => item.id === located.id && item.invocationPath === located.path);
     return located && edge ? { graph: located.graph, edge } : null;
   }, [graphs, id, author]);
-  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
-  const editable = !!found && author.program === found.graph.programId;
+  const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   const elements = useSkillElements(editable);
   const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
   if (!found) return missing;
@@ -387,16 +371,13 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const step = editable && !transition ? edgeStep(document, edge.id) : null;
   const condition = transition ? ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null
     : (step?.step.m_Condition as string | null | undefined) ?? null;
-  const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
   const owned = editable && (transition || step);
   const conditionRows = owned ? (
-    <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
+    <OwnedGraph label="条件图" id={condition} createText="新建条件"
       onCreate={!elements ? null : step ? () => graphAuthoring.createStepCondition(graph.id, elements, step)
         : () => graphAuthoring.createCondition(graph.id, elements, edge.id)}
       onRemove={item => step ? graphAuthoring.removeStepCondition(graph.id, step, item) : graphAuthoring.removeCondition(graph.id, edge.id, item)} />
-  ) : conditions.length ? conditions.map(item => (
-    <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
-  )) : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="无条件" />;
+  ) : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
   return (
     <>
       <Head name={name} sub={graphName(graph)} />
@@ -411,7 +392,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   );
 }
 
-const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kind === 'Transition') ? '子状态机' : '子图';
+const childLabel = (graph: GraphNavigationTarget) => graph.role === 'StateMachine' ? '状态机' : '图引用';
 
 // ── Timeline 片段与轨道 ──
 
@@ -423,7 +404,9 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
-  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({
+    edited: authoringDocument(state).edited, removed: authoringDocument(state).removed, editable: state.author && state.target !== null,
+  })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const { document: inputGraph } = useCurrentDocument(found?.clip.graphId ? graphPath(found.clip.graphId) : null);
@@ -505,7 +488,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
   const { timeline, track, marker } = found;
   const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
   const input = useInputSchemes().some(scheme => scheme.documentId === timeline.documentId);
-  const tickRate = useAuthoring(state => state.tickRate);
+  const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
   const step = tickRate ? 1 / tickRate : 1 / 60;
   return (
     <>
@@ -532,7 +515,9 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
   const binding = useDocumentObservationBinding();
   const schemes = useInputSchemes();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
-  const { edited, removed, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, removed: state.removed, editable: state.author && state.target !== null })));
+  const { edited, removed, editable } = useAuthoring(useShallow(state => ({
+    edited: authoringDocument(state).edited, removed: authoringDocument(state).removed, editable: state.author && state.target !== null,
+  })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;
@@ -555,10 +540,12 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
 
 // 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放身份折叠。
 function ResourceInspector({ identity }: { identity: string }) {
-  const library = useAnimationLibrary(true);
-  const clip = library?.clips.find(item => item.resource.identity === identity) ?? null;
-  if (!library) return <Empty text="读取中" />;
-  if (!clip) return <div className={styles.missing}>资源清单不包含所选资源</div>;
+  const libraryState = useAnimationLibrary(true);
+  if (libraryState.kind === 'loading') return <Empty text="读取中" />;
+  if (libraryState.kind === 'unavailable') return <div className={styles.missing}>{libraryState.reason}</div>;
+  const library = libraryState.library;
+  const clip = library.clips.find(item => item.resource.identity === identity);
+  if (!clip) return <div className={styles.missing}>动画库不包含所选资源，请重新导出动画库；原身份已保留</div>;
   return (
     <>
       <Head icon={<TrackIcon kind="anim" />} name={clip.name} sub={`动画 · ${clip.category}`} />
@@ -613,7 +600,7 @@ function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
                 {sample.presentationTick !== null && <Value label="表现 Tick" value={String(sample.presentationTick)} />}
                 <Identity extra={[
                   ...sample.source.clock.fields,
-                  { displayName: '场景修订', value: sample.source.sceneRevision },
+                  ...(sample.source.sceneRevision === null ? [] : [{ displayName: '场景修订', value: sample.source.sceneRevision }]),
                   { displayName: '输入修订', value: sample.source.inputRevision ?? '无固定修订' },
                 ]} />
               </Fold>)}

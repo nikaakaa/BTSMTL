@@ -10,7 +10,7 @@
 - WebSocket 使用同源的 `ws://` 或 `wss://`。Vite 当前把 `/api`（含 WebSocket）代理到 `http://127.0.0.1:5367`；联调其它端口时，UI 开发配置应指向该实际 Host。
 - 独立启动通用网页服务只装配静态页面、动画资源及不可用的 `/api/preview/host`；完整编辑与运行使用项目 Host。技能和场景作者接口需 Host 启用 `SkillAuthoring`。
 - 作者文件的 `content` 是完整 JSON 原文字符串。读取、编辑和写出沿用 [skillJson.ts](web/src/state/skillJson.ts)，保留大整数及 `1.0` 等正式浮点写法；不能经过普通 `JSON.parse`／`JSON.stringify` 整体往返。
-- 响应里的帧号、64 位身份、序号、FP Raw 和修订保持字符串。控制请求的 SDK 帧／Timeline tick 是协议规定的整数 `number`，不由展示字符串重新推断其它时钟。
+- 公共帧键、64 位身份、序号、FP Raw 和修订保持字符串。定位请求只提交 `position:{hostFrame:"目标键"}`，由原 Host 按实际采用内容解释；网页不转换为 SDK 帧或 Timeline tick。
 - 查询分页有两种原合同：作者查询用 `hasMore`，档案分页用 `nextOffset`（终点为 `null`）。按各自回执翻页，不把二者混用。
 - 三维公共几何采用右手坐标、Y 轴向上、米；四元数顺序为 `[x,y,z,w]`。画面使用实际 `flipY` 和列主序 `worldToClip`。
 
@@ -161,11 +161,15 @@ Load 的 `content` 是二选一：
 
 实时采样与档案使用同一公共 `PreviewFrameSource`，完整字段见下文公共合同表；执行身份取 `execution`，载入和画面分别保留 `loadCommandId/sequence`，内容保留正式 `content` 及绑定修订。实际位置、秒数和显示名取 `clock.position.hostFrame/seconds/positionDisplayName`；请求位置独立保存在 `clock.requestedPosition`。网页不解读运行端时钟种类或换算帧率。
 
-`Live/status.player.transport` 为 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。`seek` 描述任意位置定位资格；`first/previous/next/last` 的目标由 Host 按原运行规则提供；`play/pause/step` 同样使用实际状态的资格。网页按其原因禁用操作，缺少操作项时明确提示资格未提供，不从时钟种类推断。上一帧、首末帧只使用正式目标，下一帧仍向原入口发送 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
+`Live/status.player.transport` 为可空 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。旧运行端未提供资格时，Host 保留实际状态和来源，返回 `transport=null` 与明确 `transportUnavailableReason`，不能补造数组或阻断其它实例目录；网页显示原原因并禁用控制。数组存在时，`seek` 描述任意位置定位资格，`first/previous/next/last` 的目标由 Host 按原规则提供，`play/pause/step` 同样使用实际状态的资格。网页不从时钟种类推断；上一帧、首末帧只使用正式目标，下一帧仍发原 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
 
 画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON][图像字节]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip,mediaType`。直接复用 `openViewer` 解析，不能在浏览器消费 Native Player 的内部二进制头。
 
+HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.source/transport`、`latestSample` 与实际内容／绑定身份；Live 顶层没有 `rawJson`，原状态文本位于 `player.rawJson`。HTTP 和 WS 的 ACK 也共用读取器，保留 Host 的 `clock/content/source/hostFrame/rawJson`，允许正式空值，不在客户端重建帧号或原始记录。文本与视频均在原 `openViewer` 边界解码；协议字段缺失会清除当前时钟、目标与画面并进入已有错误记录，不继续显示旧样本为当前成功结果。
+
 新 Load 后清除旧画面；接收图像时核对该图自身的 Load、Player build、内容／绑定修订及对应时钟。图片角标显示图片自身采样，不借另一次状态消息的帧号。只有 `frame.jpg` 的图像与 `X-Preview-Source` 或同一 WS 包里的图像与 source 能组成同次画面。
+
+状态、画面和命令通过同一来源比较：执行身份、构建／Editor程序集、Load、内容、文档／绑定及场景／输入修订均参与；实际时钟和采样序号各自保留，不把连续采样误作新 Load。来源改变、画面连接关闭或新 Load 开始时清除旧时钟、定位目标、回执和画面；旧来源状态及迟到回执不得关联新目标。既有 HTTP 列表刷新只在 WS 尚未打开时供同一选中执行初始化状态，不增轮询或第二次取图。最后命令保留完整原回执；submitted 后到达的同 commandId WS ACK 更新同一条记录，仍需核对实际内容与来源。
 
 ## 正式作业与档案
 
@@ -176,7 +180,7 @@ Load 的 `content` 是二选一：
 | `GET /api/preview/player-jobs` | 作业列表与队列情况 | `capacity,concurrency,queued,archiveCacheCapacity,items` |
 | `GET /api/preview/player-jobs/{id}` | 当前作业及可用档案 | `{receipt,archive}` |
 | `POST /api/preview/player-jobs/{id}/cancel` | `{}` | `{jobId,cancellationRequested,jobStage,reason}`；发出取消不等于已结束 |
-| `GET /api/preview/player-jobs/{id}/archive` | 原正式档案清单 | `PlayerArchive` |
+| `GET /api/preview/player-jobs/{id}/archive` | 原正式档案清单 | 原 Host JSON；网页只读取已消费的 `jobId,inputMode`，不要求项目协议名、Player 构建号或私有时钟 |
 | `GET /api/preview/player-jobs/{id}/files/{path}` | 清单内的原文件路径 | 原文件正文 |
 | `GET /api/preview/player-jobs/{id}/summary` | 档案概况 | `PlayerSummary`，含实际帧范围、场景／输入／内容修订及通道可用性 |
 
@@ -184,7 +188,7 @@ Load 的 `content` 是二选一：
 
 作业 stage 为 `queued/running/completed/failed/cancelled/rejected/unavailable`。按原 `statusPath` 读取，直到实际终态；失败是否有可读档案取原清单／回执，不用 stage 名字捏造空档案。
 
-档案下表全部为 GET。范围参数记为 `firstSdkFrame,lastSdkFrame,offset?,limit?`；`firstSdkFrame/lastSdkFrame` 是实际 SDK 范围，不是网页列表索引。分页 `limit` 默认 128。各通道结构直接使用 playerRecords 中对应读取器；不得假设所有结果都有同一分页外壳。
+档案下表全部为 GET。范围参数为 `firstFrame,lastFrame,offset?,limit?`；范围使用 Host 的原帧键，不是网页列表索引。网页原样提交十进制文本，由原 Host 绑定到其实际帧范围；不转换为 SDK 帧或另建范围协议。分页 `limit` 默认 128。各通道结构直接使用 playerRecords 中对应读取器；不得假设所有结果都有同一分页外壳。
 
 | 完整路径 | 参数／返回用途 |
 | --- | --- |
@@ -213,6 +217,8 @@ Load 的 `content` 是二选一：
 
 观察通道为 `logic,bones,camera,physics,graph,stateMachine,timeline,blackboard,ports,input,images`。`available=false`、`complete=false` 和空数组含义不同；按原 `reason` 展示，不能以静态默认值或其它帧补齐。检查器同时消费摘要与当前帧的 availability，同一缺项原因只列一次。通用 sections 是宿主提供的显示名、字段和来源定位，前端无需为每种内部运行值新增硬编码页签。
 
+画面通道能力取同一 Summary。明确捕获的图片沿原 `/images/{宿主帧键}/metadata` 查询实际可用性和原因，不解析项目清单的 captures 或 SDK 成员来猜画面是否存在；仅 metadata.available 为 true 时再取字节。Editor 的原画面构建号可以为 null，真实执行身份仍来自 Summary／Source。
+
 档案游标使用通用帧的 `hostFrame/seconds`，总时长使用实际首末帧秒数之差；通过既有 `/frames` 按需读取首末各一条，复用同一时间基准，不从项目清单反算。通用帧的 `source` 可按正式合同为 null，几何接触 `kind` 使用宿主给出的文本分类。截图就绪标记的帧号与可选一致性值也直接取当前通用帧；缺少项目逻辑通道不阻止已完成绘制的面板报告就绪。
 
 档案来源和摘要使用 [PreviewObservationContracts.cs](Contracts/PreviewObservationContracts.cs) 的公共合同，JSON 字段采用 camelCase：
@@ -224,10 +230,14 @@ Load 的 `content` 是二选一：
 | `PreviewTransportAction` | `action,available,reason,target?`；target 明确可为 null，资格和前后／首末目标由原 Host 提供。 |
 | `PreviewClock` | `position,seconds,positionDisplayName,requestedPosition?,fields`；请求位置与实际位置分开，显示字段直接取 Host，seconds 使用所属真实时间轴。 |
 | `PreviewContentIdentity` | `kind,revision,documentId?,contentIdentity?,contentRevision?,bindingRevision?`；除前两项外均可为 null，实际内容和绑定修订随来源保留。 |
-| `PreviewFrameSource` | `execution,contentRevision,sceneRevision,inputSource,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null，未记录不补身份。 |
+| `PreviewFrameSource` | `execution,contentRevision,sceneRevision?,inputSource?,inputRevision?,clock,loadCommandId?,sequence?,content?`；问号项明确可为 null。独立 Timeline 没有场景修订或 Quantum 输入来源时保留 null，不猜方案或场景身份；未记录不补身份。 |
 | `PreviewSummary` | 原摘要字段保留，原 `playerBuildId` 改为必填 `execution`；构建 ID 从 `execution.playerBuildId` 读取。 |
 
-曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。输入计划的时间属于独立调度语义，仍需原 Host 提供，不能借用档案 seconds。上述公共来源、实时控制与通道范围的 Host 实际投影尚未完成采用检查；已部署的旧形状不会在前端兼容解码。
+曲线按 `source.clock.seconds` 排序和定位；嵌入作者 Timeline 时，按当前通用帧的真实秒数与作者游标对齐，不再用 SDK 帧差和 tickRate 换算。采样帧号和名称取 `source.clock.position.hostFrame`、`positionDisplayName`，项目时钟附加信息显示 `clock.fields`。档案上下文保留原 Summary，范围和帧数只从它读取；档案网格／吸附使用 Summary 的可空 `frameStepSeconds`，不从项目清单或平均 FPS 推算。
+
+`/input` 每条记录的 `inputTimeSeconds` 为正式方案时间，开始前为 null；页级 `inputTimeOriginSeconds` 是输入零点在档案中的实际秒数，`inputTimeStepSeconds` 是原时钟提供的样本步长。旧缺实际生效边界时三项为 null，原因取页级 `inputTimeUnavailableReason`。输入观察仍须匹配角色、方案路径、修订和 scheme；时间不能代替关联。定位沿既有 `seekTime(origin+方案秒)` 查实际帧记录，最后只发送原宿主帧键；显示和输入持续区间只用正式时间／步长，连续区间按原缓存记录序号判定，不做 SDK 算术。方案开始前不制造零秒样本，但已知真实零点时仍可定位后续方案位置。
+
+上述公共来源、实时控制与通道范围尚未完成运行采用检查；已部署的旧形状不会在前端兼容解码。
 
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 

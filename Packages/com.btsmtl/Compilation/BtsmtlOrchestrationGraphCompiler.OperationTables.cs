@@ -71,6 +71,68 @@ namespace BTSMTL.Compilation
 
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
         {
+            ReadOnlyMemory<byte> BindOperationPayloads(ParameterBindings<TValue> previous,
+                bool identitiesChanged, Func<int, int> rebind)
+            {
+                OrchestrationProgramContent program = previous.Content.Structure.Program;
+                OrchestrationGraphParameters<TValue> parameters = previous.Content.Parameters;
+                byte[] changed = null;
+                for (int i = 0; i < m_Operations.Count; i++)
+                {
+                    SemanticOperation current = m_Operations[i];
+                    SemanticOperation original = previous.Operations[i];
+                    int offset = program.Operations.Span[i].ParameterOffset;
+                    switch (current.Code)
+                    {
+                        case OrchestrationOperationCode.Loop:
+                        case OrchestrationOperationCode.Parallel:
+                            if (current.Integer0 != original.Integer0)
+                                Write(offset, new OrchestrationModePayload(current.Integer0));
+                            break;
+                        case OrchestrationOperationCode.Cycle:
+                            if (current.Integer0 != original.Integer0 || current.Integer1 != original.Integer1)
+                                Write(offset, new OrchestrationCyclePayload(current.Integer0, current.Integer1));
+                            break;
+                        case OrchestrationOperationCode.Timeline:
+                            if (identitiesChanged || current.Text0 != original.Text0 || current.Integer0 != original.Integer0)
+                                Write(offset, new OrchestrationTimelinePayload(Bind(current.Text0), current.Integer0));
+                            break;
+                        case OrchestrationOperationCode.InputRequest:
+                            if (identitiesChanged || current.Text0 != original.Text0)
+                                Write(offset, new OrchestrationRequestPayload(Bind(current.Text0)));
+                            break;
+                        case OrchestrationOperationCode.State:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationStatePayload state = parameters.ReadOperationPayload<OrchestrationStatePayload>(program, i);
+                                Write(offset, new OrchestrationStatePayload(rebind(state.Identity.IdentityId), state.MachineIndex));
+                            }
+                            break;
+                        case OrchestrationOperationCode.StateExit:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationStateIdentityPayload state = parameters.ReadOperationPayload<OrchestrationStateIdentityPayload>(program, i);
+                                Write(offset, new OrchestrationStateIdentityPayload(rebind(state.IdentityId)));
+                            }
+                            break;
+                        case OrchestrationOperationCode.EmitOutput:
+                            if (identitiesChanged)
+                            {
+                                OrchestrationOutputPayload output = parameters.ReadOperationPayload<OrchestrationOutputPayload>(program, i);
+                                Write(offset, new OrchestrationOutputPayload(output.TemplateIndex, rebind(output.ProducerIdentityId)));
+                            }
+                            break;
+                    }
+                }
+                return changed == null ? parameters.OperationPayloads : changed;
+
+                void Write<T>(int offset, T value) where T : unmanaged
+                {
+                    changed ??= parameters.OperationPayloads.ToArray();
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).CopyTo(changed.AsSpan(offset));
+                }
+            }
+
             ushort CompactIndex(int value, int operation, string field)
             {
                 if ((uint)value <= ushort.MaxValue)
@@ -100,7 +162,7 @@ namespace BTSMTL.Compilation
                 foreach (int i in order)
                 {
                     OperationDraft d = drafts[i];
-                    ushort payload = CompactIndex(bytes.Count, i, "PayloadOffset");
+                    ushort payload = CompactIndex(bytes.Count, i, "ParameterOffset");
                     switch (d.Code)
                     {
                         case OrchestrationOperationCode.Loop:

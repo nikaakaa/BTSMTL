@@ -382,6 +382,7 @@ namespace BTSMTL.Compilation
                 ProgramStateValueKind.Boolean => "state.boolean/v1",
                 ProgramStateValueKind.Int32 => "state.int32/v1",
                 ProgramStateValueKind.UInt64 => "state.uint64/v1",
+                ProgramStateValueKind.ObjectHandle => "state.object-handle/v1",
                 ProgramStateValueKind.Scalar => "state.float32-scalar/v1",
                 ProgramStateValueKind.Vector2 => "state.float32-vector2/v1",
                 ProgramStateValueKind.Vector3 => "state.float32-vector3/v1",
@@ -404,6 +405,7 @@ namespace BTSMTL.Compilation
             ProgramStateValueKind.Boolean => OrchestrationValueKind.Boolean,
             ProgramStateValueKind.Int32 => OrchestrationValueKind.Int32,
             ProgramStateValueKind.UInt64 => OrchestrationValueKind.UInt64,
+            ProgramStateValueKind.ObjectHandle => OrchestrationValueKind.ObjectHandle,
             ProgramStateValueKind.Scalar => OrchestrationValueKind.Scalar,
             ProgramStateValueKind.Vector2 => OrchestrationValueKind.Vector2,
             ProgramStateValueKind.Vector3 => OrchestrationValueKind.Vector3,
@@ -454,6 +456,7 @@ namespace BTSMTL.Compilation
             return kind == ProgramStateValueKind.Boolean ||
                    kind == ProgramStateValueKind.Int32 ||
                    kind == ProgramStateValueKind.UInt64 ||
+                   kind == ProgramStateValueKind.ObjectHandle ||
                    kind == ProgramStateValueKind.Scalar ||
                    kind == ProgramStateValueKind.Vector2 ||
                    kind == ProgramStateValueKind.Vector3 ||
@@ -805,7 +808,7 @@ namespace BTSMTL.Compilation
                             !invocations.TryAdd(entry.GraphInvocationPath, entry) ||
                             !Enum.IsDefined(typeof(ProgramInvocationCallerKind), entry.InvocationCallerKind) ||
                             (entry.InvocationCallerKind == ProgramInvocationCallerKind.None) != string.IsNullOrEmpty(entry.ParentInvocationPath) ||
-                            (entry.InvocationCallerKind == ProgramInvocationCallerKind.None) != string.IsNullOrEmpty(entry.InvocationCallerId) ||
+                            entry.InvocationCallerKind != ProgramInvocationCallerKind.None && string.IsNullOrEmpty(entry.InvocationCallerId) ||
                             timelineCaller != !string.IsNullOrEmpty(entry.InvocationCallerClipId) ||
                             timelineCaller && (entry.InvocationCallerOperationIndex < 0 ||
                                 entry.InvocationCallerOperationIndex >= operationCount))

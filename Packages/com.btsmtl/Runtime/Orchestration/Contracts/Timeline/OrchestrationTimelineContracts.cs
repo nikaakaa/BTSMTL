@@ -214,9 +214,13 @@ namespace BTSMTL.Orchestration
             in OrchestrationTimelinePlaybackState<TTime> accepted,
             in OrchestrationStopContext stopContext, ref TContext context);
 
-        int EnterInvocation(in OrchestrationTimelineStart<TTime> start,
-            in OrchestrationTimelineInvocation<TTime> invocation,
-            ref TContext context);
+        OrchestrationOperationResult ExecuteInvocation(in OrchestrationTimelineInvocationFacts invocation,
+            in OrchestrationStopContext stopContext, ref TContext context);
+
+        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context);
+
+        void ReleasePlaybackFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
+            in OrchestrationStopContext stopContext, ref TContext context);
 
         void SelectExecutionFrame(int frameSlot, ref TContext context);
 
@@ -224,6 +228,5 @@ namespace BTSMTL.Orchestration
             in OrchestrationTimelineInvocation<TTime> invocation,
             ref TContext context);
 
-        void LeaveInvocation(ref TContext context);
     }
 }

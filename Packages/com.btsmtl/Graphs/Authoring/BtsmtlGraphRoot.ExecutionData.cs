@@ -8,8 +8,7 @@ namespace BTSMTL.Graphs
 {
     public partial class BtsmtlGraphRoot
     {
-        [SerializeField, HideInInspector] byte[] m_ExecutionData = Array.Empty<byte>();
-        [SerializeField, HideInInspector] byte[] m_ExecutionIdentity = Array.Empty<byte>();
+        [SerializeField, HideInInspector] ScriptableObject m_ExecutionContentSource;
         [SerializeField, HideInInspector] string m_CompilationInputIdentity = string.Empty;
         [NonSerialized] GraphExecutionIdentity m_PreparedIdentity;
 
@@ -18,17 +17,17 @@ namespace BTSMTL.Graphs
         public OrchestrationGraphContent<TValue> RequireExecutionData<TValue>(
             IOrchestrationGraphContentEncoding<TValue> encoding, string numericTarget) where TValue : unmanaged
         {
-            if (m_ExecutionData.Length == 0 || m_ExecutionIdentity.Length == 0)
+            if (!m_ExecutionContentSource)
                 throw new InvalidOperationException($"图 '{AuthoringId}' 尚未发布执行数据，请显式编译该图。");
-#if UNITY_EDITOR
-            GraphExecutionIdentity expected = new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
-                encoding.EncodingContract, numericTarget);
-#else
-            GraphExecutionIdentity expected = encoding.ReadIdentity(m_ExecutionIdentity);
-            if (expected.GraphId != AuthoringId)
+            var source = (IOrchestrationGraphContentSource)m_ExecutionContentSource;
+            GraphExecutionIdentity expected = source.Identity;
+            if (expected.Source.GraphId != AuthoringId)
                 throw new InvalidOperationException($"图 '{AuthoringId}' 的发布身份不匹配。");
+#if UNITY_EDITOR
+            expected.Source.RequireMatches(new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
+                encoding.EncodingContract, numericTarget));
 #endif
-            OrchestrationGraphContent<TValue> data = encoding.Read(m_ExecutionData, expected);
+            OrchestrationGraphContent<TValue> data = source.Load(encoding);
             m_PreparedIdentity = expected;
             return data;
         }
@@ -36,21 +35,22 @@ namespace BTSMTL.Graphs
         public void WriteExecutionData<TValue>(Stream destination, Stream expectedIdentity,
             IOrchestrationGraphContentEncoding<TValue> encoding, string numericTarget) where TValue : unmanaged
         {
-            RequireExecutionData(encoding, numericTarget);
-            destination.Write(m_ExecutionData, 0, m_ExecutionData.Length);
-            expectedIdentity.Write(m_ExecutionIdentity, 0, m_ExecutionIdentity.Length);
+            OrchestrationGraphContent<TValue> content = RequireExecutionData(encoding, numericTarget);
+            byte[] bytes = encoding.Write(content);
+            byte[] identity = encoding.WriteIdentity(content.Identity);
+            destination.Write(bytes, 0, bytes.Length);
+            expectedIdentity.Write(identity, 0, identity.Length);
         }
 
 #if UNITY_EDITOR
         public string CompilationInputIdentity => m_CompilationInputIdentity;
 
-        public void SetExecutionData<TValue>(byte[] bytes, GraphExecutionIdentity identity,
-            IOrchestrationGraphContentEncoding<TValue> encoding, string compilationInputIdentity) where TValue : unmanaged
+        public void SetExecutionData<TSource>(TSource source, string compilationInputIdentity)
+            where TSource : ScriptableObject, IOrchestrationGraphContentSource
         {
-            m_ExecutionData = bytes;
-            m_ExecutionIdentity = encoding.WriteIdentity(identity);
+            m_ExecutionContentSource = source;
             m_CompilationInputIdentity = compilationInputIdentity;
-            m_PreparedIdentity = identity;
+            m_PreparedIdentity = source.Identity;
         }
 #endif
     }

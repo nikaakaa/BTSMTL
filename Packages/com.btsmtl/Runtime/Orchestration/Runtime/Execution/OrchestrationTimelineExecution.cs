@@ -39,11 +39,6 @@ namespace BTSMTL.Orchestration
                     OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
                     m_Host.ReadEntryContext(ref this, in entry, out context);
                 }
-                if (invocation.EndsExecutionFrame)
-                {
-                    CloseExecutionFrame(in stopContext);
-                    ClearExecutionFrame(m_FrameSlot);
-                }
                 return result;
             }
             finally
@@ -57,66 +52,12 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
             m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
 
-        public void ExecuteTimelineBatch<TTime>(
-            OrchestrationTimelineBatch<TTime> batch,
-            in OrchestrationTimelineStart<OrchestrationTime> start,
-            in OrchestrationStopContext stopContext) where TTime : unmanaged
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
         {
             BeginInvocation();
             try
             {
-                ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> invocations = batch.Invocations;
-                for (int i = 0; i < invocations.Length; i++)
-                {
-                    ref readonly OrchestrationTimelineInvocation<TTime> invocation = ref invocations[i];
-                    OrchestrationOperationResult result;
-                    OrchestrationTimelineInvocationFacts previousInvocation = m_TimelineInvocation;
-                    TValue previousTime = m_TimelineTime;
-                    int previousFrame = m_FrameSlot;
-                    int previousOperation = m_CurrentOperationIndex;
-                    int frameSlot;
-                    bool releaseFrame = false;
-                    try
-                    {
-                        frameSlot = m_Host.EnterInvocation(batch.PlaybackSlot, i);
-                        OrchestrationTimelineInvocationFacts facts = m_Host.ReadInvocationFacts();
-                        TValue time = default(TNumerics).FromTime(m_Host.ReadTime());
-                        m_TimelineInvocation = facts;
-                        m_TimelineTime = time;
-                        SelectExecutionFrame(frameSlot);
-                        result = Advance(invocation.Entry);
-                        if (facts.EndsExecutionFrame)
-                        {
-                            if (!invocation.Token.Marker &&
-                                m_Host.ReleaseInvocation() != OrchestrationOperationResult.Success)
-                                result = OrchestrationOperationResult.Failure;
-                            CloseExecutionFrame(in stopContext);
-                            releaseFrame = true;
-                        }
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            m_Host.LeaveInvocation();
-                        }
-                        finally
-                        {
-                            SelectExecutionFrame(previousFrame);
-                            m_CurrentOperationIndex = previousOperation;
-                            m_TimelineInvocation = previousInvocation;
-                            m_TimelineTime = previousTime;
-                        }
-                    }
-                    if (releaseFrame)
-                        ClearExecutionFrame(frameSlot);
-                    if (result == OrchestrationOperationResult.Failure)
-                        Fail(OrchestrationExecutionErrorCode.TimelineInvocation, invocation.Entry.OperationIndex,
-                            invocation.Token.ClipOrdinal, (int)invocation.Hook, identity: invocation.Token.PlaybackIdentity);
-                }
-                if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed ||
-                    batch.Status == OrchestrationTimelinePlaybackStatus.Stopped)
-                    ReleaseTimelineFrames(in start, in stopContext);
+                ReleaseFrame(frameSlot, in stopContext);
             }
             finally
             {
@@ -124,16 +65,20 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ReleaseTimelineFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
-            in OrchestrationStopContext stopContext)
+        public void CompleteTimelineInvocation(in OrchestrationStopContext stopContext)
         {
-            for (int frameSlot = 0; frameSlot < m_Frames.Capacity; frameSlot++)
-                if (m_Frames.Header(frameSlot).SkillContentId != 0 &&
-                    m_Frames.Header(frameSlot).TimelineStart.Equals(start))
-                    ReleaseExecutionFrame(frameSlot, in stopContext);
+            m_EntryDepth++;
+            try
+            {
+                ReleaseFrame(m_FrameSlot, in stopContext);
+            }
+            finally
+            {
+                m_EntryDepth--;
+            }
         }
 
-        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
+        void ReleaseFrame(int frameSlot, in OrchestrationStopContext stopContext)
         {
             int previousFrame = m_FrameSlot;
             int previousOperation = m_CurrentOperationIndex;
@@ -163,7 +108,12 @@ namespace BTSMTL.Orchestration
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&
                     m_Frames.Header(child).ParentFrameIndex == m_FrameSlot)
-                    ReleaseExecutionFrame(child, in stopContext);
+                {
+                    if (m_Frames.Header(child).SkillContentId == m_Frames.Header(m_FrameSlot).SkillContentId)
+                        ReleaseFrame(child, in stopContext);
+                    else
+                        m_Host.ReleaseExecutionFrame(child, in stopContext);
+                }
         }
 
         void ClearExecutionFrame(int frameSlot)

@@ -197,41 +197,6 @@
 }
 
 /* 块内第二行：播放的 Timeline，运行中在后面写本地秒数 */
-.stateCaption {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: -7px;
-  padding: 0 18px 6px;
-  color: var(--state-caption);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.stateCaption b {
-  color: var(--graph-now);
-  font: var(--mono);
-  font-size: 11px;
-}
-
-/* 本帧所在状态底部的进度条 */
-.stateProgress {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 4px;
-  height: 2.5px;
-  border-radius: 2px;
-  background: var(--node);
-  overflow: hidden;
-}
-
-.stateProgress i {
-  display: block;
-  height: 100%;
-  background: var(--graph-now);
-}
-
 /* 转移：与流图连线同色同粗，带箭头；悬停或与所选状态相关时提亮 */
 .transition :global(.react-flow__edge-path) {
   fill: none;
@@ -600,7 +565,7 @@
 }
 
 /* 缩小到 0.6 以下：只留节点名与连线 */
-.canvas[data-far] .stateCaption, .canvas[data-far] .edgeLabel, .canvas[data-far] .portValue {
+.canvas[data-far] .edgeLabel, .canvas[data-far] .portValue {
   display: none;
 }
 

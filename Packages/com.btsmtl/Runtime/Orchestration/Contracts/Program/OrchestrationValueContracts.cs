@@ -82,6 +82,7 @@ namespace BTSMTL.Orchestration
         TQuaternion Quaternion(in TValue value);
         OrchestrationIdentityValue Identity(in TValue value);
         OrchestrationEnumValue Enum(in TValue value);
+        ObjectHandle ObjectHandle(in TValue value);
         OrchestrationSpatialIdentity<TVector3, TYaw> SpatialIdentity(in TValue value);
         TValue FromBoolean(bool value);
         TValue FromVector2(TVector2 value);
@@ -90,6 +91,7 @@ namespace BTSMTL.Orchestration
         TValue FromQuaternion(TQuaternion value);
         TValue FromIdentity(OrchestrationIdentityValue value);
         TValue FromEnum(OrchestrationEnumValue value);
+        TValue FromObjectHandle(ObjectHandle value);
         TValue FromSpatialIdentity(OrchestrationSpatialIdentity<TVector3, TYaw> value);
     }
 }

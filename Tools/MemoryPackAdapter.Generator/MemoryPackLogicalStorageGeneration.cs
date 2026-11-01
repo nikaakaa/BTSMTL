@@ -109,7 +109,7 @@ namespace ThirdPerson.MemoryPackAdapters
         }
 
         static void EmitLogicalStorageFormatter(StringBuilder code, LogicalStoragePlan plan, int ordinal,
-            bool scopedReferences, Func<ITypeSymbol, bool> hasPayload, string schemaHash)
+            bool scopedReferences, Func<ITypeSymbol, bool> hasPayload, string schemaHash, bool stringCodec)
         {
             string name = TypeName(plan.Type);
             EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash, name);
@@ -125,7 +125,7 @@ namespace ThirdPerson.MemoryPackAdapters
             {
                 if (plan.Presence != null && HasAttribute(member.Symbol, PayloadAttribute))
                     code.Append("if (entry_").Append(plan.Presence.Name).AppendLine(") {");
-                EmitMemberWrite(code, member, "entry_" + member.Name, true, hasPayload);
+                EmitMemberWrite(code, member, "entry_" + member.Name, true, hasPayload, stringCodec);
                 if (plan.Presence != null && HasAttribute(member.Symbol, PayloadAttribute)) code.AppendLine("}");
             }
             code.AppendLine("} }");
@@ -143,7 +143,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.Append(TypeName(member.Type)).Append(" entry_").Append(member.Name).AppendLine(" = default;");
                 if (plan.Presence != null && HasAttribute(member.Symbol, PayloadAttribute))
                     code.Append("if (entry_").Append(plan.Presence.Name).AppendLine(") {");
-                EmitMemberRead(code, member, "entry_" + member.Name, false, hasPayload);
+                EmitMemberRead(code, member, "entry_" + member.Name, false, hasPayload, stringCodec);
                 if (plan.Presence != null && HasAttribute(member.Symbol, PayloadAttribute)) code.AppendLine("}");
             }
             if (plan.Presence != null) code.Append("if (entry_").Append(plan.Presence.Name).AppendLine(")");

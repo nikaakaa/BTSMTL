@@ -6,10 +6,15 @@ import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandRecei
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
 
-export interface SkillFile {
+export type SkillFile = {
   path: string;
   content: string;
-}
+};
+
+export type SkillEditingView = {
+  skills: Record<string, SkillSaveRequest['content']>;
+  previewDefinitionGuid: string | null;
+};
 
 export interface SkillSnapshot {
   skill: string;
@@ -28,10 +33,9 @@ export interface SkillChanges {
 }
 
 // 按需查询的统一外壳：availability 表示作者来源是否可读，items 为原分页结果。
-export interface QueryAvailability {
-  available: boolean;
-  reason: string | null;
-}
+export type QueryAvailability =
+  | { available: true; reason: null }
+  | { available: false; reason: string };
 
 // 可创建的节点类型（原 Types）：按实际 C# 类型与原生节点声明发现。
 export interface NodeTypeInfo {
@@ -58,6 +62,9 @@ export type DescribedPorts =
   | { availability: { available: true; reason: null }; hasMore: boolean; items: DescribedPort[]; errors?: never }
   | { availability: { available: false; reason: string }; errors: SkillFormatError[]; hasMore?: never; items?: never };
 
+export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract<DescribedPorts, { items: DescribedPort[] }> =>
+  ports.availability.available;
+
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
   clrType: string;
@@ -79,13 +86,40 @@ export interface FieldReference {
 }
 
 // 节点类的作者字段合同：显示名、值种类、所在存储路径、枚举与选择器、条件显示和引用声明。
-export interface FieldMetadata {
+export interface ProfileEntryTarget {
+  kind: 'ProfileEntry';
+  carrierIdentity: string;
+  profileSource: string;
+  domain: 'Vfx' | 'Camera' | 'Audio' | 'Input';
+  entryKind: string;
+  key: string;
+  resourceIdentity: string | null;
+}
+
+export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
+
+export interface ReferenceChoice {
+  value: JsonValue;
+  name: string;
+  detail: string;
+  source: string;
+  conflict: string | null;
+  targets: ReferenceChoiceTarget[];
+  associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
+}
+
+type FieldChoices =
+  | { choiceKind: null; choicesAvailability: null; choices: null }
+  | { choiceKind: string; choicesAvailability: QueryAvailability; choices: ReferenceChoice[] };
+
+export type FieldMetadata = FieldChoices & {
   fieldId: string;
   displayName: string | null;
   type: string;
   clrType: string;
   valueKind: string;
   serializedMemberPath: string[];
+  authoringVisible: boolean;
   readOnly: boolean;
   optional: boolean;
   allowedValues: string[] | null;
@@ -94,9 +128,8 @@ export interface FieldMetadata {
   objectType: string | null;
   visibleWhenField: string | null;
   visibleWhenValue: string | null;
-  choices: JsonValue;
   references: FieldReference[];
-}
+};
 
 // 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。
 export interface StoredField {
@@ -107,20 +140,23 @@ export interface StoredField {
   computed?: undefined;
 }
 
-export interface ComputedField extends FieldMetadata {
+export type ComputedField = FieldMetadata & {
   computed: true;
   value: JsonValue;
-}
+};
 
 export type FieldItem = StoredField | ComputedField;
 
 // 未保存节点的类型描述（原 DescribeType）：默认配置，本次配置下的字段与实际端口。
 export interface TypeDescription {
   availability: QueryAvailability;
+  sourceRevision: string;
+  authoringRevision: string | null;
   type: string;
   configuration: JsonObject;
   fields: { hasMore: boolean; items: FieldItem[] };
   ports: DescribedPorts;
+  references: { fieldId: string; serializedMemberPath: string[]; identity: string; owner: string; role: string; ownership: 'Private' | 'Shared' }[];
 }
 
 // 身份表（references.json）一项：作者 JSON 中引用的资产身份。
@@ -128,6 +164,54 @@ export interface IdentityItem {
   identity: string;
   asset: { AssetPath?: string };
   referenceCount: number;
+}
+
+interface ProjectItemBase {
+  identity: string;
+  name: string;
+  owner: string;
+  ownerName: string;
+  file: string;
+  ownership: 'Private' | 'Shared';
+  referenceCount: number;
+}
+
+export type ProjectItem = ProjectItemBase & (
+  | { kind: 'skill'; asset: JsonObject }
+  | { kind: 'graph'; role: string }
+  | { kind: 'timeline' }
+  | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
+);
+
+export interface ProjectReferrer {
+  identity: string;
+  owner: string;
+  ownerName: string;
+  file: string;
+  path: string;
+}
+
+export interface CarrierResource { key: string; name: string; identity: string }
+
+export interface AuthoringCarrier {
+  identity: string;
+  name: string;
+  source: string;
+  preview: boolean;
+  vfx: { source: string; resources: CarrierResource[]; anchors: { key: string; bone: string }[];
+    stateModifiers: { id: string; resourceIds: string[] }[] } | null;
+  camera: { source: string; sequences: CarrierResource[]; effects: { kind: string; resource: CarrierResource }[];
+    targets: { key: string; space: string; anchorKey: string; aimPointKey: string; preferredBoneKey: string }[] } | null;
+  audio: { source: string; events: CarrierResource[]; rules: CarrierResource[]; parameters: CarrierResource[];
+    actionSoundSlotCount: number } | null;
+  input: { source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
+}
+
+export interface AuthoringCarriers {
+  availability: QueryAvailability;
+  authoringRevision: string;
+  items: AuthoringCarrier[];
+  locateAvailability: QueryAvailability;
 }
 
 export interface BlackboardItem {
@@ -180,6 +264,7 @@ export interface ClipTemplate extends ElementTemplate {
   // 正式 ClipCapabilities：起止按逻辑 tick 量化；可设 ClipIn（素材时间按 ClipIn 映射）。
   tickQuantized: boolean;
   clipInable: boolean;
+  sourceAsset: { serializedMemberPath: string[]; choiceKind: string } | null;
   // 引用源曲线资产的成员（有只读参考曲线的片段，如位移曲线的 m_SourceCurve）；没有为 null。
   referenceCurves: string | null;
 }
@@ -196,9 +281,19 @@ export interface SkillElements {
   tracks: TrackTemplate[];
   clips: ClipTemplate[];
   marker: ElementTemplate;
+  referenceNodes: ReferenceNodeTemplate[];
   previewInput: { nodeType: string; keyPath: string[]; valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
+}
+
+export interface ReferenceNodeTemplate {
+  type: string;
+  referenceKind: string;
+  fieldId: string;
+  serializedMemberPath: string[];
+  pickerOwnerField: string | null;
+  configuration: JsonObject;
 }
 
 interface Page<T> {
@@ -244,6 +339,7 @@ export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sc
 export interface SkillSaveRequest {
   content: { files: SkillFile[]; removedFiles: string[] };
   preview: PlayerSkillRefreshTarget | null;
+  previewDefinitionGuid?: string;
   job?: StartPlayerJobRequest;
 }
 
@@ -297,13 +393,33 @@ export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
   | { stage: 'compilation-failed'; compilationState: 'failed'; diagnostic?: never; exitCode: number; output: string; error: string; outputPath: string; errorPath: string }
 );
 
-// 不经运行、按编译器同一展开得到的技能全部图实例；调用路径与运行记录同一语法。
+export interface SkillDocumentGraph extends GraphDefinition {
+  authoringPath: string;
+  owner: string;
+  ownerName: string;
+  file: string;
+  role: string;
+  declaredOwner: { graphId: string; nodeId: string } | null;
+}
+
+export interface SkillDocumentRelation {
+  source: {
+    owner: string; ownerName: string; file: string; graphId: string; nodeId: string;
+    fieldId: string; serializedMemberPath: string[];
+  };
+  target: {
+    kind: 'graph'; id: string; displayName: string | null; role: string;
+    owner: string; ownerName: string; file: string; ownership: 'Private' | 'Shared' | null;
+  };
+}
+
 export interface SkillDocument {
   skill: string;
   programId: string;
   sourceRevision: string;
   tickRate: number;
-  graphs: GraphDefinition[];
+  graphs: SkillDocumentGraph[];
+  relations: SkillDocumentRelation[];
 }
 
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
@@ -336,6 +452,7 @@ export interface ScenarioDraftRequest {
 }
 
 export const authoringApi = {
+  carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
@@ -344,7 +461,8 @@ export const authoringApi = {
   read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
-  document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, signal),
+  document: (skill: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
+    postJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, { editingView, graphId }, signal),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<SkillSaveResult>(targetPath(target), request);
     return result.compilationState === 'not-required' ? { ...result,
@@ -356,16 +474,22 @@ export const authoringApi = {
   types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
-  describeType: async (target: AuthoringTarget, type: string, graphId: string, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128 }, signal)) as unknown as TypeDescription,
+  describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    readTypeDescription(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)),
   // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
-  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, signal?: AbortSignal) =>
-    parseSkillJson(await postText(`${targetPath(target)}/queries/type`,
-      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
-  identities: (target: AuthoringTarget, signal?: AbortSignal) => allPages<IdentityItem>(`${targetPath(target)}/queries/references`, signal),
-  blackboards: (target: AuthoringTarget, signal?: AbortSignal) => allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, signal),
-  referenceCurves: (target: AuthoringTarget, identity: string, signal?: AbortSignal) =>
-    getJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves${query({ identity })}`, signal),
+  describeNode: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
+      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
+  identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal),
+  blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal),
+  project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<ProjectItem>(`${targetPath(target)}/queries/project`, { editingView }, signal),
+  referrers: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    allPages<ProjectReferrer>(`${targetPath(target)}/queries/referrers`, { identity, editingView }, signal),
+  referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+    postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
   elements: async (target: AuthoringTarget, signal?: AbortSignal) => {
     const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements`, signal)) as unknown as SkillElements;
@@ -378,10 +502,26 @@ export const authoringApi = {
   },
 };
 
-async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
+function readTypeDescription(text: string): TypeDescription {
+  const description = parseSkillJson(text) as unknown as TypeDescription;
+  const fields = description.fields.items.flatMap(item => item.computed ? [item] : item.fields);
+  const valueOf = (value: JsonValue, clrType: string) =>
+    typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
+  for (const field of fields) {
+    if (field.choices === null) continue;
+    field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),
+      associated: choice.associated.map(associated => ({ ...associated,
+        value: valueOf(associated.value, fields.find(target => target.fieldId === associated.fieldId)!.clrType),
+      })),
+    }));
+  }
+  return description;
+}
+
+async function allPages<T>(path: string, input: { editingView: SkillEditingView; identity?: string }, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
-    const page = await getJson<Page<T>>(`${path}${query({ offset, limit: 128 })}`, signal);
+    const page = await postJson<Page<T>>(path, { ...input, offset, limit: 128 }, signal);
     items.push(...page.items);
     if (!page.hasMore) return items;
   }

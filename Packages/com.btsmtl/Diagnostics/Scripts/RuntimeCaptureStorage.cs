@@ -157,7 +157,8 @@ namespace BTSMTL.Diagnostics
 
     public enum RuntimeCaptureSpanSlot { ClipSample, OpenTree }
 
-    public readonly struct RuntimeCaptureSpanKey : IEquatable<RuntimeCaptureSpanKey>
+    [ThirdPersonSimulation.ValueStorage]
+    public readonly partial struct RuntimeCaptureSpanKey : IEquatable<RuntimeCaptureSpanKey>
     {
         public RuntimeCaptureSpanKey(in RuntimeTraceEvent value)
         {

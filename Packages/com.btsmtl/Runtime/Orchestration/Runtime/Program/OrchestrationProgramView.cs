@@ -124,7 +124,7 @@ namespace BTSMTL.Orchestration
         public ref readonly OrchestrationOperationColdData ColdOperation(int operationIndex) =>
             ref Section<OrchestrationOperationColdData>(in Header.ColdOperations)[operationIndex];
         public T Payload<T>(int operationIndex) where T : unmanaged =>
-            SpanReinterpret.Read<T>(Section<byte>(in Header.Payloads).Slice(Operation(operationIndex).PayloadOffset));
+            SpanReinterpret.Read<T>(Section<byte>(in Header.Payloads).Slice(Operation(operationIndex).ParameterOffset));
         public ref readonly OrchestrationValueOperation ValueOperation(int operationIndex, int outputPortIndex = -1) =>
             ref Section<OrchestrationValueOperation>(in Header.ScheduleValueOperations)[
                 ValueEvaluationSlot(operationIndex, outputPortIndex)];

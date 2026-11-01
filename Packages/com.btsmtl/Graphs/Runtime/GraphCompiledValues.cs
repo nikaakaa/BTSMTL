@@ -14,6 +14,7 @@ namespace BTSMTL.Graphs
             {
                 GraphHostValueKind.Bool => nameof(OrchestrationValueKind.Boolean),
                 GraphHostValueKind.Int32 => nameof(OrchestrationValueKind.Int32),
+                GraphHostValueKind.ObjectHandle => nameof(OrchestrationValueKind.ObjectHandle),
                 GraphHostValueKind.Float32 => nameof(OrchestrationValueKind.Scalar),
                 GraphHostValueKind.Vector2 => nameof(OrchestrationValueKind.Vector2),
                 GraphHostValueKind.Vector3 => nameof(OrchestrationValueKind.Vector3),
@@ -37,6 +38,7 @@ namespace BTSMTL.Graphs
             {
                 nameof(OrchestrationValueKind.Boolean) => typeof(bool),
                 nameof(OrchestrationValueKind.Int32) => typeof(int),
+                nameof(OrchestrationValueKind.ObjectHandle) => typeof(ObjectHandle),
                 nameof(OrchestrationValueKind.Scalar) => typeof(float),
                 nameof(OrchestrationValueKind.Vector2) => typeof(Vector2),
                 nameof(OrchestrationValueKind.Vector3) => typeof(Vector3),
@@ -63,6 +65,7 @@ namespace BTSMTL.Graphs
         {
             OrchestrationValueKind.Boolean => typeof(bool),
             OrchestrationValueKind.Int32 => typeof(int),
+            OrchestrationValueKind.ObjectHandle => typeof(ObjectHandle),
             OrchestrationValueKind.Scalar => typeof(float),
             OrchestrationValueKind.Vector2 => typeof(Vector2),
             OrchestrationValueKind.Vector3 => typeof(Vector3),
@@ -77,6 +80,7 @@ namespace BTSMTL.Graphs
         {
             GraphHostValueKind.Bool => default(TValues).FromBoolean(value.BoolValue),
             GraphHostValueKind.Int32 => default(TValues).FromInt32(value.Int32Value),
+            GraphHostValueKind.ObjectHandle => default(TValues).FromObjectHandle(value.ObjectHandleValue),
             GraphHostValueKind.Float32 => default(TValues).FromScalar(default(TNumeric).FromSingle(value.Float32Value)),
             GraphHostValueKind.Vector2 => default(TValues).FromVector2(default(TNumeric).FromUnityVector2(value.Vector2Value)),
             GraphHostValueKind.Vector3 => default(TValues).FromVector3(default(TNumeric).FromUnityVector3(value.Vector3Value)),
@@ -91,6 +95,7 @@ namespace BTSMTL.Graphs
         {
             OrchestrationValueKind.Boolean => GraphHostValue.FromBool(default(TValues).Boolean(in value)),
             OrchestrationValueKind.Int32 => GraphHostValue.FromInt32(default(TValues).Int32(in value)),
+            OrchestrationValueKind.ObjectHandle => GraphHostValue.FromObjectHandle(default(TValues).ObjectHandle(in value)),
             OrchestrationValueKind.Scalar => GraphHostValue.FromFloat32(default(TNumeric).ToSingle(default(TValues).Scalar(in value))),
             OrchestrationValueKind.Vector2 => GraphHostValue.FromVector2(default(TNumeric).ToUnityVector2(default(TValues).Vector2(in value))),
             OrchestrationValueKind.Vector3 => GraphHostValue.FromVector3(default(TNumeric).ToUnityVector3(default(TValues).Vector3(in value))),

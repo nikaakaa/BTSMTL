@@ -73,7 +73,7 @@ export const readPreviewClock = object({ position, seconds: number, positionDisp
 const contentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
   contentIdentity: nullable(text), contentRevision: nullable(text), bindingRevision: nullable(text) });
 const source = object({
-  execution: executionIdentity, contentRevision: text, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
+  execution: executionIdentity, contentRevision: text, sceneRevision: nullable(text), inputSource: nullable(text), inputRevision: nullable(text),
   clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(contentIdentity),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
@@ -121,18 +121,35 @@ const previewTarget = object({
   channels: nullable(array(observationChannel)),
 });
 export const readPreviewSampleSource = source;
+export function samePreviewContent(left: PreviewContentIdentity | null, right: PreviewContentIdentity | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.kind === right.kind && left.revision === right.revision && left.documentId === right.documentId &&
+    left.contentIdentity === right.contentIdentity && left.contentRevision === right.contentRevision && left.bindingRevision === right.bindingRevision;
+}
+export function samePreviewLoad(left: PreviewSampleSource | null, right: PreviewSampleSource | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.loadCommandId === right.loadCommandId && left.execution.kind === right.execution.kind &&
+    left.execution.identity === right.execution.identity && left.execution.playerBuildId === right.execution.playerBuildId &&
+    left.execution.editorAssemblyMvid === right.execution.editorAssemblyMvid && left.contentRevision === right.contentRevision &&
+    left.sceneRevision === right.sceneRevision && left.inputSource === right.inputSource && left.inputRevision === right.inputRevision &&
+    samePreviewContent(left.content, right.content);
+}
 export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
-export const readViewerStatus = object({ type: choice('status'), live: object({
-  liveId: text, buildId: text, state: text, exitCode: nullable(number), rawJson: text,
-  player: nullable(object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
+const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
     error: nullable(text), source: nullable(readPreviewSampleSource),
-    transport: array(object({ action: text, available: boolean, reason: text, target: nullable(position) })),
+    transport: nullable(array(object({ action: text, available: boolean, reason: text, target: nullable(position) }))),
+    transportUnavailableReason: nullable(text),
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
-    fields: array(field), rawJson: text })),
-}) });
+    fields: array(field), rawJson: text });
+function viewerPlayer(value: unknown, path = 'Player.status') {
+  const player = viewerPlayerFields(value, path);
+  if (player.transport !== null) return { ...player, transport: player.transport };
+  if (player.transportUnavailableReason === null) throw new Error(`${path}.transport 缺少不可用原因`);
+  return { ...player, transport: null, transportUnavailableReason: player.transportUnavailableReason };
+}
 const liveIdentity = object({
   liveId, playerBuildId: buildId, width: number, height: number, running: boolean,
   liveProtocol: nullable(text), observationProtocol: nullable(text), executionModes: array(text), imageEncoding: nullable(text),
@@ -140,11 +157,12 @@ const liveIdentity = object({
 });
 export const readLivePlayer = object({
   liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
-  width: nullable(number), height: nullable(number), hello: opaque, player: opaque,
+  width: nullable(number), height: nullable(number), hello: opaque, player: nullable(viewerPlayer),
   identity: liveIdentity,
   previewTarget: nullable(previewTarget), viewers: number, latestSample: nullable(readPreviewSampleSource),
 });
 export const readLivePlayers = array(readLivePlayer);
+export const readViewerStatus = object({ type: choice('status'), live: readLivePlayer });
 export const readPlayerCreationOptions = object({
   requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
@@ -168,21 +186,16 @@ export const readPlayerJobReceipt = object({
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
 });
-const nativeAck = object({
+export const readPlayerAck = object({
   type: choice('ack'), commandId: text, ok: boolean,
-  playerBuildId: optional(nullable(text)), content: optional(nullable(contentIdentity)), clock: optional(nullable(readPreviewClock)),
-  error: optional(nullable(text)), path: optional(nullable(text)),
+  playerBuildId: optional(nullable(text)), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
+  source: nullable(source), hostFrame: nullable(text),
+  error: optional(nullable(text)), path: optional(nullable(text)), rawJson: text,
 });
 export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
   const receipt = readPlayerCommandReceipt(value, path);
   if (receipt.ack === null) return { ...receipt, ack: null };
-  const ack = nativeAck(receipt.ack, `${path}.ack`);
-  const clock = ack.clock ?? null;
-  return { ...receipt, ack: {
-    type: ack.type, commandId: ack.commandId, ok: ack.ok, clock, content: ack.content ?? null,
-    playerBuildId: ack.playerBuildId ?? null, hostFrame: clock === null ? null : clockPosition(clock),
-    error: ack.error ?? undefined, path: ack.path ?? undefined, rawJson: JSON.stringify(receipt.ack),
-  } };
+  return { ...receipt, ack: readPlayerAck(receipt.ack, `${path}.ack`) };
 }
 export const readPlayerJobs = object({
   capacity: number, concurrency: number, queued: number, archiveCacheCapacity: number,
@@ -192,11 +205,29 @@ export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: nu
 export const readPlayerCancellation = object({ jobId, cancellationRequested: boolean, jobStage, reason: text });
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
-  frameCount: number, channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
+  frameCount: number, frameStepSeconds: nullable(number), channels: array(text), geometryAvailable: boolean, fields: array(field), rawJson: text,
   execution: executionIdentity, sceneRevision: text, inputSource: text, inputRevision: nullable(text),
   availability: array(availability),
 });
 const vector3 = tuple(number, number, number);
+const viewerFrames = object({ type: choice('frames'),
+  items: array(object({ hostFrame: text, consistency: object({ displayName: text, value: text }) })), rawJson: text });
+const viewerPick = object({ type: choice('pick'), commandId: text, ok: boolean, hostFrame: nullable(text),
+  actorId: text, position: vector3, hitCollider: optional(text), rawJson: text });
+const viewerError = object({ type: choice('error'), error: text, displayName: optional(text), rawJson: optional(text) });
+const viewerExtension = object({ type: choice('extension'), displayName: text, error: nullable(text), rawJson: text });
+export function readViewerMessage(value: unknown, path = 'Player.view') {
+  const { type } = object({ type: text })(value, path);
+  switch (type) {
+    case 'status': return readViewerStatus(value, path);
+    case 'ack': return readPlayerAck(value, path);
+    case 'frames': return viewerFrames(value, path);
+    case 'pick': return viewerPick(value, path);
+    case 'error': return viewerError(value, path);
+    case 'extension': return viewerExtension(value, path);
+    default: throw new Error(`${path} 不支持消息 ${type}`);
+  }
+}
 const quaternion = tuple(number, number, number, number);
 const call = object({
   actorId: text, programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
@@ -281,6 +312,7 @@ function runtimeValue(value: unknown, path = 'Player.runtimeValue') {
     case 'boolean': return { kind: 'boolean' as const, value: boolean(record.value, `${path}.value`) };
     case 'int32': return { kind: 'int32' as const, value: number(record.value, `${path}.value`) };
     case 'uint64': return { kind: 'uint64' as const, value: text(record.value, `${path}.value`) };
+    case 'objectHandle': return { kind: 'objectHandle' as const, value: text(record.value, `${path}.value`) };
     case 'scalar': return { kind: 'scalar' as const, raw: text(record.raw, `${path}.raw`) };
     case 'yaw': return { kind: 'yaw' as const, raw: text(record.raw, `${path}.raw`) };
     case 'vector2': return { kind: 'vector2' as const, raw: tuple(text, text)(record.raw, `${path}.raw`) };
@@ -297,14 +329,15 @@ function runtimeValue(value: unknown, path = 'Player.runtimeValue') {
 }
 export const readPlayerInput = object({
   page: page(object({
-    source, actors: array(object({
+    source, inputTimeSeconds: nullable(number), actors: array(object({
       actorId: text, rosterIndex: number, received: boolean, inputSequence: text, sourceTick: text,
       values: array(object({ inputId: text, kind: text, value: nullable(array(number)), runtimeValue: nullable(runtimeValue) })),
       requests: array(object({ requestId: text, sequence: text, sourceTick: text, expireTick: text, priority: number })),
     })),
   })),
   plans: array(object({ actorId: text, plan: text, planRevision: text, schemeIndex: number })),
-  valueEncoding: nullable(text), availability: array(availability),
+  valueEncoding: nullable(text), inputTimeOriginSeconds: nullable(number), inputTimeStepSeconds: nullable(number),
+  inputTimeUnavailableReason: nullable(text), availability: array(availability),
 });
 const dataCurve = object({
   id: text, displayName: text, channel: text, clock: text, actorId: text, targetId: text, component: text,
@@ -312,12 +345,12 @@ const dataCurve = object({
 });
 export const readPlayerCurves = observationPage(dataCurve);
 export const readPlayerCurveSamples = object({
-  curve: dataCurve, sdkTickRate: number, firstRecordedSdkFrame: text,
+  curve: dataCurve,
   page: page(object({ source, presentationSequence: nullable(text), presentationTick: nullable(number), value: number, rawValue: text })),
   availability: array(availability),
 });
 export const readPlayerArchiveImage = object({
-  jobId, archiveJobId: identity<'archive'>(), playerBuildId: buildId, contentRevision: text, sceneRevision: text,
+  jobId, archiveJobId: identity<'archive'>(), playerBuildId: nullable(buildId), contentRevision: text, sceneRevision: text,
   inputSource: text, inputRevision: nullable(text), hostFrame: text, sourceHostFrame: text, presentationSequence: text,
   width: number, height: number, available: boolean, presentationPrepared: boolean,
   relativePath: nullable(text), mediaType: text, reason: text,
@@ -331,10 +364,7 @@ const frameImage = object({
 });
 export const readPlayerFrameImages = observationPage(frameImage);
 export const readPlayerArchive = object({
-  protocol: choice('q3-preview-observation/1'), jobId: identity<'archive'>(), status: text,
-  playerBuildId: buildId, contentRevision: text, sceneRevision: text, inputMode: text, inputSource: text, inputRevision: nullable(text),
-  firstRecordedSdkFrame: number, lastRecordedSdkFrame: number, sdkTickRate: number, scheduleStartFrame: number,
-  captures: array(object({ sdkFrame: number })), availability: array(availability),
+  jobId: identity<'archive'>(), inputMode: text,
 });
 
 export type PlayerJobId = ReturnType<typeof jobId>;
@@ -377,7 +407,7 @@ export type PlayerCurveSample = ReturnType<typeof readPlayerCurveSamples>['page'
 export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
 export type PlayerFrameImage = ReturnType<typeof frameImage>;
 export type PlayerArchive = ReturnType<typeof readPlayerArchive>;
-export type PlayerArchiveRange = { firstSdkFrame: number; lastSdkFrame: number; offset: number; limit: number };
+export type PlayerArchiveRange = { firstFrame: string; lastFrame: string; offset: number; limit: number };
 
 export const newPlayerJobId = (): PlayerJobId => crypto.randomUUID() as PlayerJobId;
 export const readPlayerJobId = jobId;

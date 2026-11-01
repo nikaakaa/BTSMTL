@@ -1,8 +1,11 @@
+using BTSMTL.Orchestration;
+
 namespace ThirdPersonSimulation.Configuration
 {
     public static class BlackboardDefaultValues
     {
         public static ulong UInt64(long bits) => unchecked((ulong)bits);
+        public static ObjectHandle ObjectHandle(long bits) => new ObjectHandle(unchecked((ulong)bits));
         public static string Text(bool isNull, int[] codeUnits)
         {
             if (isNull)

@@ -99,11 +99,6 @@ export const CrumbArrow = (props: IconProps) => (
   </svg>
 );
 
-// 跳到 Timeline：错开的三条轨道片段。
-export const TimelineIcon = (props: IconProps) => (
-  <Icon {...props}><path d="M1.5 2.5h7v3h-7zm4 4.5h9v3h-9zm-2 4.5h6v3h-6z" /></Icon>
-);
-
 // 进入子图：两个相连的节点。
 export const SubgraphIcon = (props: IconProps) => (
   <Icon {...props}>

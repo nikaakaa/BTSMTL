@@ -5,15 +5,32 @@ export class JsonFloat {
   constructor(readonly value: number) {}
 }
 
-export type JsonValue = null | boolean | number | string | JsonFloat | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue = null | boolean | number | bigint | string | JsonFloat | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
+
+export const getIn = (value: JsonValue | undefined, keys: readonly (string | number)[]): JsonValue | undefined =>
+  keys.reduce<JsonValue | undefined>((current, key) =>
+    current !== null && typeof current === 'object' && !(current instanceof JsonFloat)
+      ? (current as Record<string | number, JsonValue>)[key] : undefined, value);
+
+export function setIn(target: JsonValue, keys: readonly (string | number)[], value: JsonValue) {
+  let current = target as Record<string | number, JsonValue>;
+  for (const key of keys.slice(0, -1)) {
+    current[key] ??= {};
+    current = current[key] as Record<string | number, JsonValue>;
+  }
+  current[keys[keys.length - 1]] = value;
+}
 
 type SourceReviver = (key: string, value: unknown, context: { source?: string }) => unknown;
 
 export function parseSkillJson(text: string): JsonValue {
-  const reviver: SourceReviver = (_key, value, context) =>
-    typeof value === 'number' && Number.isInteger(value) && context.source && /[.eE]/.test(context.source)
-      ? new JsonFloat(value) : value;
+  const reviver: SourceReviver = (_key, value, context) => {
+    if (typeof value !== 'number') return value;
+    const source = context.source!;
+    if (/[.eE]/.test(source)) return Number.isInteger(value) ? new JsonFloat(value) : value;
+    return Number.isSafeInteger(value) ? value : BigInt(source);
+  };
   return JSON.parse(text, reviver as Parameters<typeof JSON.parse>[1]) as JsonValue;
 }
 
@@ -32,6 +49,7 @@ const floatText = (value: number) => Number.isInteger(value) ? `${value}.0` : St
 export function stringifySkillJson(value: JsonValue, newline: string): string {
   const write = (item: JsonValue, indent: string): string => {
     if (item instanceof JsonFloat) return floatText(item.value);
+    if (typeof item === 'bigint') return item.toString();
     if (item === null || typeof item !== 'object') return JSON.stringify(item);
     const inner = indent + '  ';
     if (Array.isArray(item))

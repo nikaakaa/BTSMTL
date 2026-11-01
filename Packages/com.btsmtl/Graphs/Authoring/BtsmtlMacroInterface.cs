@@ -153,43 +153,17 @@ namespace BTSMTL.Graphs
         {
             Caller[] callers = FindCallers(macro).ToArray();
             FlowGraph[] graphs = callers.Select(caller => caller.Graph).Append(macro).Distinct().ToArray();
-            if (graphs.Any(graph => graph.isEditorReadOnly))
-                throw new InvalidOperationException("运行观察期间不能编辑子图接口。");
-            foreach (FlowGraph graph in graphs)
-                graph.SelfSerialize();
-            Undo.IncrementCurrentGroup();
-            int group = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName(title);
-            Undo.RegisterCompleteObjectUndo(graphs.Cast<UnityEngine.Object>().ToArray(), title);
-            try
+            macro.Authoring.Edit(title, graphs, () =>
             {
-                macro.EditAuthoring(title, () =>
-                {
-                    mutation();
-                    Validate(macro);
-                    macro.EnsureAnchors();
-                });
+                mutation();
+                Validate(macro);
+                macro.EnsureAnchors();
                 foreach (Caller caller in callers)
                 {
                     caller.Call.GatherPorts();
                     ValidateCall(caller.Call, macro, caller.Path);
                 }
-                foreach (FlowGraph graph in graphs)
-                    if (graph.SelfSerialize() || ReferenceEquals(graph, macro))
-                        EditorUtility.SetDirty(graph);
-                Undo.CollapseUndoOperations(group);
-            }
-            catch
-            {
-                Undo.FlushUndoRecordObjects();
-                Undo.RevertAllDownToGroup(group);
-                foreach (FlowGraph graph in graphs)
-                {
-                    graph.SelfDeserialize();
-                    graph.Validate();
-                }
-                throw;
-            }
+            });
         }
 
         public static void RequireParameterChangeAllowed(BtsmtlMacroGraph macro, string parameterId)
@@ -203,23 +177,13 @@ namespace BTSMTL.Graphs
             }
         }
 
-        // 接口编辑是低频操作，不维护常驻索引；先用资产数据库已缓存的直接依赖筛出引用本子图所在资产的图，
-        // 只加载这些资产，避免为一次接口修改反序列化工程内全部图。
         static IEnumerable<Caller> FindCallers(BtsmtlMacroGraph macro)
         {
-            string macroPath = AssetDatabase.GetAssetPath(macro);
-            if (string.IsNullOrEmpty(macroPath))
-                yield break;
-            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(FlowGraph)))
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path != macroPath && Array.IndexOf(AssetDatabase.GetDependencies(path, false), macroPath) < 0)
-                    continue;
-                foreach (FlowGraph graph in AssetDatabase.LoadAllAssetsAtPath(path).OfType<FlowGraph>())
-                    foreach (MacroNodeWrapper call in graph.allNodes.OfType<MacroNodeWrapper>())
-                        if (ReferenceEquals(call.macro, macro))
-                            yield return new Caller(graph, call, $"{path}/{graph.name}/node:{call.UID}");
-            }
+            foreach (FlowGraph graph in macro.Host.CallerGraphs(macro))
+                foreach (MacroNodeWrapper call in graph.allNodes.OfType<MacroNodeWrapper>())
+                    if (ReferenceEquals(call.macro, macro))
+                        yield return new Caller(graph, call,
+                            $"{macro.Host.AuthoringPath(graph)}/{graph.name}/node:{call.UID}");
         }
 
         readonly struct Caller
@@ -260,12 +224,16 @@ namespace BTSMTL.Graphs
                 return;
             }
             EditorGUILayout.LabelField(m_Macro.name, EditorStyles.boldLabel);
-            bool shared = AssetDatabase.IsMainAsset(m_Macro);
-            EditorGUILayout.LabelField(shared ? "共享子图" : "私有子图", m_Macro.Host?.DisplayName ?? "未声明宿主");
+            BtsmtlMacroHost host = m_Macro.Host;
+            bool shared = host != null && host.IsShared(m_Macro);
+            if (host == null)
+                EditorGUILayout.LabelField("未声明宿主");
+            else
+                host.DrawAuthoringToolbar(m_Macro);
             using (new EditorGUI.DisabledScope(m_Macro.isEditorReadOnly))
             {
-                if (shared && m_Macro.Host is BtsmtlGraphMacroHost host)
-                    DrawDomains(host);
+                if (shared && host is BtsmtlGraphMacroHost graphHost)
+                    DrawDomains(graphHost);
                 m_Scroll = EditorGUILayout.BeginScrollView(m_Scroll);
                 DrawParameters("输入参数", m_Macro.inputDefinitions, true);
                 EditorGUILayout.Space(8f);

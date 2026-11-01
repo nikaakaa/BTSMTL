@@ -43,6 +43,10 @@ namespace BTSMTL.Timeline
                 return new TimelineContentDiscoveryResult(null, errors, null);
             }
 
+#if UNITY_EDITOR
+            if (graphBindings is TimelineAuthoringGraphBindings)
+                TimelineAuthoringGraphBindings.Prepare(timeline);
+#endif
             if (!timeline.ValidateContent(catalog, errors))
                 return new TimelineContentDiscoveryResult(null, errors, null);
 

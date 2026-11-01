@@ -79,7 +79,7 @@ namespace BTSMTL.Graphs
     {
         protected override void RegisterPorts()
         {
-            foreach (GraphNodePortDeclaration port in DeclarePorts())
+            foreach (GraphNodePort port in GraphNodePortShapes.Of(this))
                 if (port.IsInput)
                     AddFlowInput(port.DisplayName, RejectAuthoringExecution, port.Id);
                 else
@@ -167,7 +167,7 @@ namespace BTSMTL.Graphs
             CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string OwnerId => m_OwnerId;
         [GraphAuthoringField("variableId", GraphAuthoringFieldValueKind.IdentityReference,
-            DisplayName = "变量", PickerKind = "graph-variable", PickerOwnerField = "ownerId",
+            DisplayName = "变量", PickerKind = "graph-variable", PickerOwnerField = nameof(OwnerId),
             CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string VariableId => m_VariableId;
         public Type ValueType => typeof(T);

@@ -115,7 +115,8 @@ namespace BTSMTL.Compilation
         List<CompileEdge> m_OutEdges;
 
         // fields 在首次读取作者字段时调用一次；节点没有作者字段时可为 null。
-        public CompileNode(string id, string sourceType, string kind, CompileNodeRole role,
+        // nodeType 为作者节点 CLR 类型；原生数值与宏端点没有对应类型时为 null。
+        public CompileNode(string id, string sourceType, string kind, Type nodeType, CompileNodeRole role,
             IReadOnlyList<string> flowInputs, IReadOnlyList<string> flowOutputs,
             IReadOnlyList<CompileValuePort> valueInputs, IReadOnlyList<CompileValuePort> valueOutputs,
             Func<GraphNodeFields> fields, Func<CompileNode, SimulationNodeEmission> describe)
@@ -123,6 +124,7 @@ namespace BTSMTL.Compilation
             Id = id;
             SourceType = sourceType;
             Kind = kind;
+            NodeType = nodeType;
             Role = role;
             FlowInputs = flowInputs;
             FlowOutputs = flowOutputs;
@@ -135,6 +137,7 @@ namespace BTSMTL.Compilation
         public string Id { get; }
         public string SourceType { get; }
         public string Kind { get; }
+        public Type NodeType { get; }
         public CompileNodeRole Role { get; }
         public IReadOnlyList<string> FlowInputs { get; }
         public IReadOnlyList<string> FlowOutputs { get; }

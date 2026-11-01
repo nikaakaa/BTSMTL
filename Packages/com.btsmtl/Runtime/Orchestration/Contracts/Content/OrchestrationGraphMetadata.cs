@@ -175,7 +175,6 @@ namespace BTSMTL.Orchestration
         public int SourceIdentityId { get; }
     }
 
-    [ValueStorage(UseConstructor = true)]
     public sealed partial class OrchestrationGraphSource
     {
         public OrchestrationGraphSource(OrchestrationGraphExecutionSource source,
@@ -187,6 +186,19 @@ namespace BTSMTL.Orchestration
         }
 
         public OrchestrationGraphExecutionSource Source { get; }
+        public string SourceType { get; }
+        public ReadOnlyMemory<string> DisplayPathSegments { get; }
+    }
+
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class OrchestrationGraphSourceText
+    {
+        public OrchestrationGraphSourceText(string sourceType, ReadOnlyMemory<string> displayPathSegments)
+        {
+            SourceType = sourceType;
+            DisplayPathSegments = displayPathSegments;
+        }
+
         public string SourceType { get; }
         public ReadOnlyMemory<string> DisplayPathSegments { get; }
     }

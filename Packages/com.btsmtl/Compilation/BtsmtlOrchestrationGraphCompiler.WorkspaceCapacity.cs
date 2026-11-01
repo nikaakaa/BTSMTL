@@ -81,7 +81,7 @@ namespace BTSMTL.Compilation
                     m_Edges = edges;
                     m_Structure = structure;
                     m_Schedule = schedule;
-                    m_CycleResetPort = compiler.Bind("Reset");
+                    m_CycleResetPort = compiler.Bind(OrchestrationCorePortNames.CycleReset);
                     m_States = Lists(operations.Length);
                     m_TimelineEntries = Lists(operations.Length);
                     m_OwnerOperations = Lists(operations.Length);

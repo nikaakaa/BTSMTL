@@ -41,7 +41,8 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationStopContext stopContext = OrchestrationStopContext.ParentStop(operationIndex);
             OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
                 OrchestrationTime.FromRaw(default(TClock).Raw(playback.Start.StartTime)));
-            cursor.ExecuteTimelineBatch(batch, in startIdentity, in stopContext);
+            if (!ExecuteBatch(runtime, ref bindings, in batch, in startIdentity, in stopContext, ref context))
+                return OrchestrationOperationResult.Failure;
             ref readonly OrchestrationTimelineOperationWork<TTime> work = ref runtime.Workspace.Operations[slot];
             if (runtime.Content.Domain == TimelineExecutionDomain.Logic)
                 samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
@@ -78,7 +79,8 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineBatch<TTime> batch = runtime.BeginStop(candidate, slot, stop, force);
             OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
                 OrchestrationTime.FromRaw(default(TClock).Raw(playback.Start.StartTime)));
-            cursor.ExecuteTimelineBatch(batch, in startIdentity, in stopContext);
+            if (!ExecuteBatch(runtime, ref bindings, in batch, in startIdentity, in stopContext, ref context))
+                return OrchestrationStopStatus.Failed;
             runtime.Complete(candidate, slot, in batch);
             bindings.AcceptTerminal(operationIndex, slot, tick, in playback, in stopContext, ref context);
             ReleasePlayback(runtime, candidate, ref playbackIdentity);
@@ -105,13 +107,29 @@ namespace BTSMTL.Timeline.Runtime
             return ReleaseInvocation(runtime, ref bindings, ref context);
         }
 
-        public static int EnterInvocation<TBindings>(OrchestrationTimelineRuntime<TTime, TClock> runtime,
-            ref TBindings bindings, int playbackSlot, int invocationIndex, ref TContext context)
+        static bool ExecuteBatch<TBindings>(OrchestrationTimelineRuntime<TTime, TClock> runtime,
+            ref TBindings bindings, in OrchestrationTimelineBatch<TTime> batch,
+            in OrchestrationTimelineStart<OrchestrationTime> start, in OrchestrationStopContext stopContext,
+            ref TContext context)
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
         {
-            OrchestrationTimelineWorkspaceView<TTime> workspace = runtime.Workspace;
-            workspace.EnterInvocation(playbackSlot, invocationIndex);
-            return bindings.EnterInvocation(in workspace.CurrentStart, in workspace.CurrentInvocation, ref context);
+            for (int index = 0; index < batch.Invocations.Length; index++)
+            {
+                runtime.Workspace.EnterInvocation(batch.PlaybackSlot, index);
+                try
+                {
+                    OrchestrationTimelineInvocationFacts invocation = ReadInvocationFacts(runtime);
+                    if (bindings.ExecuteInvocation(in invocation, in stopContext, ref context) == OrchestrationOperationResult.Failure)
+                        return false;
+                }
+                finally
+                {
+                    runtime.Workspace.LeaveInvocation();
+                }
+            }
+            if (batch.Status is OrchestrationTimelinePlaybackStatus.Completed or OrchestrationTimelinePlaybackStatus.Stopped)
+                bindings.ReleasePlaybackFrames(in start, in stopContext, ref context);
+            return true;
         }
 
         public static OrchestrationTimelineInvocationFacts ReadInvocationFacts(OrchestrationTimelineRuntime<TTime, TClock> runtime)
@@ -141,20 +159,6 @@ namespace BTSMTL.Timeline.Runtime
         {
             OrchestrationTimelineWorkspaceView<TTime> workspace = runtime.Workspace;
             return bindings.ReleaseInvocation(in workspace.CurrentStart, in workspace.CurrentInvocation, ref context);
-        }
-
-        public static void LeaveInvocation<TBindings>(OrchestrationTimelineRuntime<TTime, TClock> runtime,
-            ref TBindings bindings, ref TContext context)
-            where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
-        {
-            try
-            {
-                bindings.LeaveInvocation(ref context);
-            }
-            finally
-            {
-                runtime.Workspace.LeaveInvocation();
-            }
         }
 
         static OrchestrationOperationResult Result(OrchestrationTimelinePlaybackStatus status)
@@ -241,21 +245,11 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.RequestClipExit(Runtime, ref m_Bindings,
                 candidate, ref context);
 
-        public int EnterInvocation(int playbackSlot, int invocationIndex, ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.EnterInvocation(Runtime, ref m_Bindings,
-                playbackSlot, invocationIndex, ref context);
-
         public void SelectExecutionFrame(int frameSlot, ref TContext context) =>
             m_Bindings.SelectExecutionFrame(frameSlot, ref context);
 
-        public OrchestrationTimelineInvocationFacts ReadInvocationFacts() =>
-            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReadInvocationFacts(Runtime);
-
-        public OrchestrationOperationResult ReleaseInvocation(ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReleaseInvocation(Runtime, ref m_Bindings, ref context);
-
-        public void LeaveInvocation(ref TContext context) =>
-            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.LeaveInvocation(Runtime, ref m_Bindings, ref context);
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context) =>
+            m_Bindings.ReleaseExecutionFrame(frameSlot, in stopContext, ref context);
     }
 
     public readonly struct ManagedOrchestrationTimelineBindings<TTime, TValue, TContext> :
@@ -283,9 +277,16 @@ namespace BTSMTL.Timeline.Runtime
             in OrchestrationStopContext stopContext, ref TContext context) =>
             m_Bindings.AcceptTerminal(operationIndex, playbackSlot, tick, in accepted, in stopContext, ref context);
 
-        public int EnterInvocation(in OrchestrationTimelineStart<TTime> start,
-            in OrchestrationTimelineInvocation<TTime> invocation, ref TContext context) =>
-            m_Bindings.EnterInvocation(in start, in invocation, ref context);
+        public OrchestrationOperationResult ExecuteInvocation(in OrchestrationTimelineInvocationFacts invocation,
+            in OrchestrationStopContext stopContext, ref TContext context) =>
+            m_Bindings.ExecuteInvocation(in invocation, in stopContext, ref context);
+
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context) =>
+            m_Bindings.ReleaseExecutionFrame(frameSlot, in stopContext, ref context);
+
+        public void ReleasePlaybackFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
+            in OrchestrationStopContext stopContext, ref TContext context) =>
+            m_Bindings.ReleasePlaybackFrames(in start, in stopContext, ref context);
 
         public void SelectExecutionFrame(int frameSlot, ref TContext context) =>
             m_Bindings.SelectExecutionFrame(frameSlot, ref context);
@@ -294,7 +295,6 @@ namespace BTSMTL.Timeline.Runtime
             in OrchestrationTimelineInvocation<TTime> invocation, ref TContext context) =>
             m_Bindings.ReleaseInvocation(in start, in invocation, ref context);
 
-        public void LeaveInvocation(ref TContext context) => m_Bindings.LeaveInvocation(ref context);
     }
 
     public readonly struct ManagedTimelineLogicSamples<TValue, TContext> : ITimelineRuntimeLogicSamples<TValue, TContext>

@@ -4,9 +4,18 @@ namespace BTSMTL.Authoring.Graph
 {
     public enum GraphAuthoringDocumentMember { Field, DisplayName, Order, Time, Loop }
 
+    // 省略字段身份时由值生成器按成员名首字母小写得出，生成的 AuthoringContract 与 FieldIds 携带最终身份；
+    // 只有身份与成员名不一致时才显式写出。反射直接读取本特性的旧入口须改读生成合同。
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = true)]
     public sealed class GraphAuthoringFieldAttribute : Attribute
     {
+        public GraphAuthoringFieldAttribute(GraphAuthoringFieldValueKind valueKind) : this(null, valueKind) { }
+
+        public GraphAuthoringFieldAttribute(Type enumType) : this(null, enumType) { }
+
+        public GraphAuthoringFieldAttribute(GraphAuthoringFieldValueKind valueKind, params string[] allowedValues)
+            : this(null, valueKind, allowedValues) { }
+
         public GraphAuthoringFieldAttribute(
             string fieldId,
             GraphAuthoringFieldValueKind valueKind)

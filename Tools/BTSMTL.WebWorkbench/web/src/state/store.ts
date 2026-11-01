@@ -1,14 +1,15 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
-  InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
+  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, HostDescription, ImageSourceAvailability,
+  InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
+import type { SkillDocumentGraph } from '../api/authoring';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
-  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewClock, PreviewPosition, PreviewSampleSource,
+  PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewPosition, PreviewSampleSource,
 } from '../api/playerRecords';
 
 // ── connection ──
@@ -59,7 +60,7 @@ export interface RunData {
   routeFrames: RouteFrame[];
   routeProtocol: string | null;
   routeAvailability: Availability[];
-  graphs: GraphDefinition[] | null;
+  graphs: SkillDocumentGraph[] | null;
   graphAvailability: Availability[];
   inputTimeline: InputTimeline | null;
   // Timeline 输入组与工具栏共同显示的已采用输入方案（inputRootKey）。
@@ -88,7 +89,7 @@ export interface ArchiveFrame {
   presentations: ArchivePresentationRecord[];
   cameras: PlayerCameraPage['page']['items'];
   input: PlayerInputPage['page']['items'][number] | null;
-  inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding'> | null;
+  inputContext: Pick<PlayerInputPage, 'plans' | 'valueEncoding' | 'inputTimeOriginSeconds' | 'inputTimeStepSeconds' | 'inputTimeUnavailableReason'> | null;
   curves: Record<string, { kind: 'sampled'; samples: PlayerCurveSample[]; availability: Availability[] }
     | { kind: 'failed'; reason: string; entryId: number }>;
   unavailable: PlayerUnavailablePage['page']['items'];
@@ -132,13 +133,7 @@ export interface CursorSlice {
 }
 
 // ── player ──
-export interface PlayerCommandRecord {
-  type: string;
-  commandId: string | null;
-  stage: LiveCommandStage;
-  clock: PreviewClock | null;
-  error: string | null;
-}
+export type PlayerCommandRecord = LiveCommandResult & { type: string };
 export interface PlayerSlice {
   playerBuilds: PlayerBuild[] | null;
   lives: LivePlayer[];
@@ -147,7 +142,7 @@ export interface PlayerSlice {
   viewerOpen: boolean;
   playerViewport: { width: number; height: number } | null;
   targetPosition: PreviewPosition | null;
-  pendingSeek: { commandId: string; loadCommandId: PreviewSampleSource['loadCommandId']; position: PreviewPosition } | null;
+  pendingSeek: { commandId: string; source: PreviewSampleSource; position: PreviewPosition } | null;
   lastCommand: PlayerCommandRecord | null;
   // 画面面板正在接管键鼠时，运行快捷键不响应。
   capturing: boolean;
@@ -174,12 +169,18 @@ export interface CanvasSelection {
   nodes: readonly string[];
   edges: readonly string[];
 }
+export interface GraphNavigationOrigin {
+  owner: string;
+  ownerName: string;
+  graphId: string;
+  nodeId: string;
+}
 export interface SelectionSlice {
   selection: Selection | null;
   canvasSelections: Record<string, CanvasSelection>;
   timelineSelections: Record<string, readonly { box: string; id: string }[]>;
   // 其它面板请求节点图面板显示的图（graphKey）；sequence 让同一张图可重复请求。
-  graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
+  graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
   // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
   timelineRequest: { documentId: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
 }
@@ -366,8 +367,8 @@ export const selectionActions = {
   selectTimelineClips(panelId: string, selection: SelectionSlice['timelineSelections'][string]) {
     set({ timelineSelections: { ...getState().timelineSelections, [panelId]: selection } });
   },
-  showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
-    set({ graphRequest: { key, observation, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
+  showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null, origin: GraphNavigationOrigin | null = null) {
+    set({ graphRequest: { key, observation, origin, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
   },
   showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
     set({ timelineRequest: { documentId, observation, sequence: (getState().timelineRequest?.sequence ?? 0) + 1 } });

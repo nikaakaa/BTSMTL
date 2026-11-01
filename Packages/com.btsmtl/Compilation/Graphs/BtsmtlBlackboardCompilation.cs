@@ -191,7 +191,10 @@ namespace BTSMTL.Compilation
             }
 
             string stateKey = ResolveDeclarationStateKey(declaration);
-            if (!m_ValueSlots.TryGetValue(stateKey, out int stateSlot))
+            int stateSlot;
+            if (declaration.Declaration.BlackboardScope == PipelineBlackboardVariableScope.ActionInstance)
+                stateSlot = EnsureDeclarationState(declaration, route, OperationHandle.Invalid);
+            else if (!m_ValueSlots.TryGetValue(stateKey, out stateSlot))
             {
                 Report.Error("blackboard_state_address_missing", source.Identity, $"Blackboard state address '{stateKey}' was not declared.");
                 return;
@@ -207,7 +210,7 @@ namespace BTSMTL.Compilation
 
         int EnsureDeclarationState(BtsmtlBlackboardDeclarationSource item, string route, OperationHandle stateScopeOwner)
         {
-            string stateKey = item.Declaration.BlackboardScope == PipelineBlackboardVariableScope.Character
+            string stateKey = item.Declaration.BlackboardScope is PipelineBlackboardVariableScope.Character or PipelineBlackboardVariableScope.ActionInstance
                 ? BtsmtlGraphVariableReference.CompileIdentity(item.GraphId, item.Declaration.DeclarationId)
                 : $"{route}/declaration:{item.Declaration.DeclarationId}";
             if (m_ValueSlots.TryGetValue(stateKey, out int existing))
@@ -278,7 +281,7 @@ namespace BTSMTL.Compilation
 
         string ResolveDeclarationStateKey(BtsmtlBlackboardDeclarationSource declaration)
         {
-            if (declaration.Declaration.BlackboardScope == PipelineBlackboardVariableScope.Character)
+            if (declaration.Declaration.BlackboardScope is PipelineBlackboardVariableScope.Character or PipelineBlackboardVariableScope.ActionInstance)
                 return BtsmtlGraphVariableReference.CompileIdentity(declaration.GraphId, declaration.Declaration.DeclarationId);
             if (declaration.Declaration.BlackboardScope == PipelineBlackboardVariableScope.Frame)
                 return $"{declaration.Route}/declaration:{declaration.Declaration.DeclarationId}";

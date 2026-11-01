@@ -129,17 +129,20 @@ namespace BTSMTL.Graphs
         public override bool usesDomainAuthoring => true;
         public override bool usesExplicitPortSelection => true;
         public override bool isEditorReadOnly => Application.isPlaying;
-        public override UnityEngine.Object EditorUndoTarget => Authoring.UndoTarget;
+        public override UnityEngine.Object EditorUndoTarget => m_Authoring == null ? this : m_Authoring.UndoTarget;
 
         // 新子图：唯一执行入口、出入口锚点与宿主准入一次配置完成；私有子图由所属图写入为子资产。
         public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host)
         {
             var macro = CreateInstance<BtsmtlMacroGraph>();
             macro.name = name;
-            macro.ConfigureHost(host);
-            macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
-            macro.EnsureAnchors();
-            host.OnMacroCreated(macro);
+            macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
+            macro.Authoring.Initialize(() =>
+            {
+                macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
+                macro.EnsureAnchors();
+                host.OnMacroCreated(macro);
+            });
             return macro;
         }
 
@@ -179,8 +182,12 @@ namespace BTSMTL.Graphs
         public override bool CanAuthorConnection(Port source, Port target, out string reason) =>
             Authoring.CanConnect(source, target, out reason);
 
-        public override Node AddNode(Type nodeType, Vector2 position = default) =>
-            Authoring.AddNode(nodeType, () => base.AddNode(nodeType, position));
+        public override Node AddNode(Type nodeType, Vector2 position = default, Action<Node> initialize = null) =>
+            Authoring.AddNode(nodeType, () => base.AddNode(m_Host?.CanvasNodeType(nodeType) ?? nodeType, position, node =>
+            {
+                m_Host?.InitializeNode(node, nodeType);
+                initialize?.Invoke(node);
+            }));
 
         public override BinderConnection CreatePortConnection(Port source, Port target) =>
             Authoring.Connect(source, target);
@@ -198,14 +205,16 @@ namespace BTSMTL.Graphs
         public override void DisconnectPort(Port port) =>
             Authoring.Disconnect(port, connection => base.RemoveConnection(connection, false));
 
-        public override List<Node> DuplicateNodes(List<Node> nodes, Vector2 position = default)
-        {
-            List<Node> result = null;
-            EditAuthoring("复制图节点", () => result = base.DuplicateNodes(
+        public override List<Node> DuplicateNodes(List<Node> nodes, Vector2 position = default) =>
+            m_Host.DuplicateNodes(this, nodes, position);
+
+        public List<Node> DuplicateNodeStructure(List<Node> nodes, Vector2 position = default) =>
+            base.DuplicateNodes(
                 nodes.Where(node => node is not BtsmtlMacroInputNode && node is not BtsmtlMacroOutputNode).ToList(),
-                position));
-            return result;
-        }
+                position);
+
+        public override bool HandleEditorCommand(string command, Vector2 position) =>
+            m_Host.HandleEditorCommand(this, command, position);
 
         public override void RenameNode(Node node, string name) =>
             EditAuthoring("修改图节点名称", () => node.name = name);
@@ -240,8 +249,10 @@ namespace BTSMTL.Graphs
 
         protected override void OnGraphEditorToolbar()
         {
-            GUILayout.Label((AssetDatabase.IsMainAsset(this) ? "共享子图 · " : "私有子图 · ") +
-                (m_Host?.DisplayName ?? "未声明宿主"), EditorStyles.miniLabel);
+            if (m_Host == null)
+                GUILayout.Label("未声明宿主", EditorStyles.miniLabel);
+            else
+                m_Host.DrawAuthoringToolbar(this);
             if (GUILayout.Button("编辑接口", EditorStyles.toolbarButton))
                 BtsmtlMacroInterface.OpenEditor(this);
         }

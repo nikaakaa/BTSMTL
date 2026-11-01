@@ -32,6 +32,7 @@ namespace BTSMTL.Timeline.Editor
         void OnEnable()
         {
             m_Contracts = TimelineWorkspaceModeBridge.Authoring.Contracts;
+            TimelineAuthoringGraphBindings.Prepare(((TimelineAsset)target).Data);
         }
 
         void OnDisable()

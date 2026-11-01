@@ -9,6 +9,10 @@ namespace BTSMTL.Timeline
 {
     public static class TimelineContentCompilation
     {
+        public const string IdentityPrefix = "timeline:";
+
+        public static string Identity(string authoringId) => IdentityPrefix + authoringId;
+
         public static TimelineContentUnit Compile(string authoringId, string name, bool loop,
             string rootFingerprint, OrchestrationTime duration, IReadOnlyList<TimelineContentTrack> tracks,
             IReadOnlyList<TimelineContentClip> sourceClips, IReadOnlyList<TimelineContentMarker> sourceMarkers,
@@ -53,7 +57,7 @@ namespace BTSMTL.Timeline
                 hashParts.Add(marker.Time.RawValue.ToString(CultureInfo.InvariantCulture));
                 hashParts.Add(marker.ForceTriggerOnInitialSeek ? "1" : "0");
             }
-            return new TimelineContentUnit($"timeline:{authoringId}", authoringId,
+            return new TimelineContentUnit(Identity(authoringId), authoringId,
                 SourceContentHasher.Hash(hashParts.ToArray()), rootFingerprint, name, duration, loop,
                 tracks, clips, markers, bindings, dependencies);
         }

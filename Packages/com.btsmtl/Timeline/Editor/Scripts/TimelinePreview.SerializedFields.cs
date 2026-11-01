@@ -12,6 +12,20 @@ namespace BTSMTL.Timeline.Editor
 {
     public sealed partial class TimelinePreviewInputSchemes
     {
+        public static TimelinePreviewInputSchemes CreateDefault(string owner, string timeline,
+            TimelineAssetPreviewPreferences initialScheme)
+        {
+#if UNITY_EDITOR
+            var schemes = UnityEngine.ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
+#else
+            var schemes = new TimelinePreviewInputSchemes();
+#endif
+            schemes.Owner = owner;
+            schemes.Timeline = timeline;
+            schemes.Schemes.Add(initialScheme);
+            return schemes;
+        }
+
         [GraphAuthoringField(nameof(Owner), GraphAuthoringFieldValueKind.String)]
         public string Owner;
         // 场景方案不属于技能或独立 Timeline（Owner、Timeline 为空），由场景包与其中的目标角色确定运行对象。

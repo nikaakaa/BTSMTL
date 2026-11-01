@@ -2,7 +2,7 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
-import { authoringActions, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
@@ -66,11 +66,12 @@ function SkillChoice() {
 }
 
 function AuthoringStatus() {
-  const state = useAuthoring(useShallow(current => ({
-    open: current.author && current.target !== null, edited: current.edited, removed: current.removed,
-    externalChange: current.externalChange, saving: current.saving, lastSave: current.lastSave,
-    undoDepth: current.undoDepth, redoDepth: current.redoDepth,
-  })));
+  const state = useAuthoring(useShallow(current => {
+    const document = authoringDocument(current);
+    return { open: current.author && current.target !== null, skill: current.target?.kind === 'skill', edited: document.edited, removed: document.removed,
+      externalChange: document.externalChange, saving: document.saving, lastSave: document.lastSave,
+      undoDepth: document.undo.length, redoDepth: document.redo.length };
+  }));
   useEffect(() => {
     if (!state.open) return;
     const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
@@ -90,17 +91,18 @@ function AuthoringStatus() {
           <span className={styles.warn} tabIndex={0}>外部已修改</span>
         </Tip>
       )}
-      {dirty > 0 ? (
+      {dirty > 0 && (
         <>
           <Tip content={`${dirty} 个文件未保存${state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}`}>
             <span className={styles.dirty} tabIndex={0}>未保存</span>
           </Tip>
           <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
-          <Button disabled={state.saving} tip="保存当前内容（Ctrl+S）" onClick={() => void authoringActions.save()}>
-            {state.saving ? '保存中' : '保存'}
-          </Button>
         </>
-      ) : lastSave && (
+      )}
+      {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存并应用当前载体配置（Ctrl+S）" onClick={() => void authoringActions.save()}>
+        {state.saving ? '保存中' : '保存'}
+      </Button>}
+      {dirty === 0 && lastSave && (
         <Tip content={lastSave.message}>
           <span className={lastSave.ok ? styles.dim : styles.warn} tabIndex={0}>
             {lastSave.ok ? '已保存' : lastSave.compilationState === 'failed' ? '编译未通过' : lastSave.saved ? '已保存，尚未应用' : '保存未完成'}

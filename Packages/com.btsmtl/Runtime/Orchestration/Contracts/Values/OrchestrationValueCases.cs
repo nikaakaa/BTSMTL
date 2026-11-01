@@ -14,6 +14,7 @@ namespace BTSMTL.Orchestration
         [ValueUnionCase] public bool Boolean { get; }
         [ValueUnionCase] public int Int32 { get; }
         [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public ObjectHandle ObjectHandle { get; }
         [ValueUnionCase] public TScalar Scalar { get; }
         [ValueUnionCase] public TVector2 Vector2 { get; }
         [ValueUnionCase] public TVector3 Vector3 { get; }

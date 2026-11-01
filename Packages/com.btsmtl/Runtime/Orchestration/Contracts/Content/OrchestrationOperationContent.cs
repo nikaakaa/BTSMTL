@@ -1,20 +1,17 @@
-using System;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
     [ValueStorage(UseConstructor = true)]
-    public readonly partial struct OrchestrationOperationContent
+    public readonly partial struct OrchestrationOperationContentBinding
     {
-        public OrchestrationOperationContent(int operationIndex, string encodingContract, ReadOnlyMemory<byte> payload)
+        public OrchestrationOperationContentBinding(int operationIndex, string encodingContract)
         {
             OperationIndex = operationIndex;
             EncodingContract = encodingContract;
-            Payload = payload;
         }
 
         public int OperationIndex { get; }
         public string EncodingContract { get; }
-        public ReadOnlyMemory<byte> Payload { get; }
     }
 }

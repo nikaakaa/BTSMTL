@@ -63,6 +63,9 @@ namespace BTSMTL.Graphs
 
         public UnityEngine.Object UndoTarget => m_EditDepth == 0 ? m_Graph : null;
 
+        BtsmtlMacroHost MacroHost => m_Graph is BtsmtlMacroGraph macro ? macro.Host :
+            m_Graph is IBtsmtlMacroHostProvider provider ? provider.CreatePrivateMacroHost() : null;
+
         public void Edit(string title, Action mutation)
         {
             if (m_EditDepth != 0)
@@ -70,33 +73,70 @@ namespace BTSMTL.Graphs
                 mutation();
                 return;
             }
-            if (m_Graph.isEditorReadOnly)
-                throw new InvalidOperationException("运行观察期间不能编辑 BTSMTL 图。");
-            m_Graph.SelfSerialize();
-            Undo.IncrementCurrentGroup();
-            int group = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName(title);
-            Undo.RegisterCompleteObjectUndo(m_Graph, title);
+            Edit(title, new[] { m_Graph }, mutation);
+        }
+
+        internal void Edit(string title, FlowGraph[] affectedGraphs, Action mutation)
+        {
+            m_EditDepth++;
+            try
+            {
+                BtsmtlMacroHost host = MacroHost;
+                if (host == null)
+                    EditAssets(m_Graph, title, affectedGraphs, mutation);
+                else
+                    host.Edit(m_Graph, title, affectedGraphs, mutation);
+            }
+            finally
+            {
+                m_EditDepth--;
+            }
+        }
+
+        public void Initialize(Action mutation)
+        {
             m_EditDepth++;
             try
             {
                 mutation();
                 m_Graph.UpdateNodeIDs(true);
                 m_Graph.SelfSerialize();
-                EditorUtility.SetDirty(m_Graph);
+            }
+            finally
+            {
+                m_EditDepth--;
+            }
+        }
+
+        internal static void EditAssets(FlowGraph owner, string title, FlowGraph[] graphs, Action mutation)
+        {
+            if (graphs.Any(graph => graph.isEditorReadOnly))
+                throw new InvalidOperationException("运行观察期间不能编辑 BTSMTL 图。");
+            foreach (FlowGraph graph in graphs)
+                graph.SelfSerialize();
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName(title);
+            Undo.RegisterCompleteObjectUndo(graphs.Cast<UnityEngine.Object>().ToArray(), title);
+            try
+            {
+                mutation();
+                owner.UpdateNodeIDs(true);
+                foreach (FlowGraph graph in graphs)
+                    if (graph.SelfSerialize() || ReferenceEquals(graph, owner))
+                        EditorUtility.SetDirty(graph);
                 Undo.CollapseUndoOperations(group);
             }
             catch
             {
                 Undo.FlushUndoRecordObjects();
                 Undo.RevertAllDownToGroup(group);
-                m_Graph.SelfDeserialize();
-                m_Graph.Validate();
+                foreach (FlowGraph graph in graphs)
+                {
+                    graph.SelfDeserialize();
+                    graph.Validate();
+                }
                 throw;
-            }
-            finally
-            {
-                m_EditDepth--;
             }
         }
 
@@ -169,38 +209,39 @@ namespace BTSMTL.Graphs
         }
 
         // 子图入口：新建私有子图取本图准入；共享子图只列出其全部节点都被本图接受的资产。
-        void AppendMacroItems(GenericMenu menu, Vector2 position, Port context)
+        public void AppendMacroItems(GenericMenu menu, Vector2 position, Port context)
         {
             if (m_Graph.isEditorReadOnly || !m_Graph.CanAuthorNodeType(typeof(MacroNodeWrapper)) ||
                 m_Graph is not IBtsmtlMacroHostProvider provider || context != null && context is not FlowOutput)
                 return;
+            BtsmtlMacroHost host = provider.CreatePrivateMacroHost();
             menu.AddItem(new GUIContent("子图/新建私有子图"), false, () => Run(() => Edit("创建私有子图", () =>
             {
-                string path = AssetDatabase.GetAssetPath(m_Graph);
-                if (string.IsNullOrEmpty(path))
-                    throw new InvalidOperationException("所属图保存为资产后才能创建私有子图。");
-                BtsmtlMacroGraph macro = BtsmtlMacroGraph.Create(m_Graph.name + " 子图", provider.CreatePrivateMacroHost());
-                AssetDatabase.AddObjectToAsset(macro, path);
-                Undo.RegisterCreatedObjectUndo(macro, "创建私有子图");
+                BtsmtlMacroGraph macro = host.CreatePrivateMacro(m_Graph, m_Graph.name + " 子图");
                 AddCall(macro, position, context);
             })));
-            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(BtsmtlMacroGraph)))
+            foreach (BtsmtlMacroGraph macro in host.SharedMacros(m_Graph))
             {
-                var macro = AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GUIDToAssetPath(guid)) as BtsmtlMacroGraph;
-                if (macro == null || macro == m_Graph || !macro.allNodes.All(node =>
-                        node is BtsmtlMacroInputNode || node is BtsmtlMacroOutputNode || m_Graph.CanAuthorNodeType(node.GetType())))
+                if (macro == m_Graph || !macro.allNodes.All(node =>
+                        node is BtsmtlMacroInputNode || node is BtsmtlMacroOutputNode ||
+                        m_Graph.CanAuthorNodeType(macro.Host.AuthoringNodeType(node))))
                     continue;
-                menu.AddItem(new GUIContent("子图/调用共享子图/" + macro.name), false,
+                menu.AddItem(new GUIContent("子图/调用共享子图/" + host.SharedMacroLabel(macro)), false,
                     () => Run(() => Edit("调用共享子图", () => AddCall(macro, position, context))));
             }
         }
 
-        void AddCall(BtsmtlMacroGraph macro, Vector2 position, Port context)
+        public MacroNodeWrapper AddCall(BtsmtlMacroGraph macro, Vector2 position, Port context)
         {
-            var call = (MacroNodeWrapper)m_Graph.AddNode(typeof(MacroNodeWrapper), position);
-            call.macro = macro;
-            if (context != null)
-                ConnectCreated(context, call, macro.inputDefinitions.Single(value => value.type == typeof(Flow)).ID);
+            MacroNodeWrapper call = null;
+            Edit("调用子图", () =>
+            {
+                call = (MacroNodeWrapper)m_Graph.AddNode(typeof(MacroNodeWrapper), position);
+                call.macro = macro;
+                if (context != null)
+                    ConnectCreated(context, call, macro.inputDefinitions.Single(value => value.type == typeof(Flow)).ID);
+            });
+            return call;
         }
 
         static void Run(Action action)

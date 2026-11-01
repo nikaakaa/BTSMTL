@@ -280,7 +280,7 @@ namespace BTSMTL.Timeline.Runtime
                     ClipOrdinal = token.ClipOrdinal,
                     Cycle = token.Cycle,
                     Marker = token.Marker
-                }, program.Content.DefaultValues.Span);
+                }, program.Parameters.DefaultValues.Span);
             OrchestrationExecutionFrameState header = frames.Header(frameSlot);
             TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, metadata);
             OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, invocation.Invocation.Tick, in header);
@@ -304,6 +304,8 @@ namespace BTSMTL.Timeline.Runtime
                 if (invocation.EndsExecutionFrame && !token.Marker &&
                     m_Bindings.ReleaseInvocation(domain, in metadata, in invocation, in header, ref context) != OrchestrationOperationResult.Success)
                     result = OrchestrationOperationResult.Failure;
+                if (invocation.EndsExecutionFrame)
+                    cursor.CompleteTimelineInvocation(in stopContext);
                 Consume(domain, programIndex, metadata, in header, in context, in traceContext);
                 return result;
             }

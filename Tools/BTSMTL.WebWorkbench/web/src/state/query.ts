@@ -191,6 +191,6 @@ useWorkbench.subscribe((next, previous) => {
 
 function observations(id: number, jobId: PlayerJobId, range: ObservationQuery, offset: number) {
   return enqueue(pending.observations, { type: 'observations', id, jobId, range: {
-    firstSdkFrame: Number(range.firstFrame), lastSdkFrame: Number(range.lastFrame), offset, limit: 64,
+    firstFrame: range.firstFrame, lastFrame: range.lastFrame, offset, limit: 64,
   } });
 }

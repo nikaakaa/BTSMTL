@@ -9,7 +9,7 @@ export const panelInfo: Record<PanelType, { title: string; multi: boolean }> = {
   player: { title: '画面', multi: false },
   'wall-contact': { title: '扶墙调节', multi: false },
   viewport: { title: '逻辑视图', multi: true },
-  resources: { title: '动画资源', multi: false },
+  resources: { title: 'Project', multi: false },
   graph: { title: '节点图', multi: true },
   inspector: { title: '检查器', multi: true },
   frames: { title: '帧记录', multi: true },

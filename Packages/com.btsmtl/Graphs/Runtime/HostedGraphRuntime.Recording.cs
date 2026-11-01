@@ -13,7 +13,7 @@ namespace BTSMTL.Graphs
         where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
-        const uint RecordedStateVersion = 5;
+        const uint RecordedStateVersion = 6;
         Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_Ports;
         GraphRuntimePort[] m_RuntimePorts;
         OrchestrationValueOverride<TValue>[] m_Overrides;
@@ -60,7 +60,7 @@ namespace BTSMTL.Graphs
             m_Overrides = new OrchestrationValueOverride<TValue>[overrideCapacity];
             m_ObservedInputs = new TValue[program.InputBindingCount];
             m_ObservedOutputs = new TValue[program.ValueEvaluationSlotCount];
-            m_Triggers = new List<(int Operation, int Port, bool Input)>(m_Bindings.Content.Ports.Length);
+            m_Triggers = new List<(int Operation, int Port, bool Input)>(m_Bindings.Content.Structure.Ports.Length);
             m_CandidateOverrides = new OrchestrationValueOverride<TValue>[overrideCapacity];
             m_CandidateObservedInputs = new TValue[m_ObservedInputs.Length];
             m_CandidateObservedOutputs = new TValue[m_ObservedOutputs.Length];
@@ -110,7 +110,7 @@ namespace BTSMTL.Graphs
             try
             {
                 int enumTypeContentId = m_Bindings.StateTypes[slot].IsEnum
-                    ? default(TNumerics).EnumTypeContentId(m_Bindings.Program.Content.DefaultValues.Span[slot]) : 0;
+                    ? default(TNumerics).EnumTypeContentId(m_Bindings.Program.Parameters.DefaultValues.Span[slot]) : 0;
                 TValue state = operation == GraphVariableMutation.Release ? default :
                     m_Bindings.ToState(in value, enumTypeContentId, m_CandidateTexts);
                 MutateCandidateVariable(slot, in state, operation);
@@ -481,7 +481,7 @@ namespace BTSMTL.Graphs
                     {
                         GraphHostValue locked = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[slot]);
                         int enumIdentity = m_Bindings.StateTypes[slot].IsEnum
-                            ? default(TNumerics).EnumTypeContentId(m_Bindings.Program.Content.DefaultValues.Span[slot]) : 0;
+                            ? default(TNumerics).EnumTypeContentId(m_Bindings.Program.Parameters.DefaultValues.Span[slot]) : 0;
                         TValue supplied =
                             m_Bindings.ToState(in locked, enumIdentity, m_CandidateTexts);
                         MutateCandidateVariable(slot, in supplied, GraphVariableMutation.Override);

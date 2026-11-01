@@ -14,6 +14,7 @@ namespace BTSMTL.Orchestration
         Enum = 9,
         BlackboardOwnerToken = 11,
         BlackboardWriteStamp = 12,
-        Identity = 13
+        Identity = 13,
+        ObjectHandle = 14
     }
 }

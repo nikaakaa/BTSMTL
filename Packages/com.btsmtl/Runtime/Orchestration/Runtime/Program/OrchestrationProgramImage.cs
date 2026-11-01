@@ -81,7 +81,8 @@ namespace BTSMTL.Orchestration
     // 托管宿主直接持有该数组；Burst 宿主把同一份字节放进原生内存，两者共用同一布局。
     public static class OrchestrationProgramImage
     {
-        public static byte[] Build<TValue>(OrchestrationProgramContent<TValue> content) where TValue : unmanaged
+        public static byte[] Build<TValue>(OrchestrationProgramContent content,
+            OrchestrationGraphParameters<TValue> parameters) where TValue : unmanaged
         {
             var writer = new OrchestrationMemoryImageWriter(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationProgramImageHeader>());
@@ -90,12 +91,12 @@ namespace BTSMTL.Orchestration
             OrchestrationValueSchedule schedule = content.ValueSchedule;
             OrchestrationProgramStorageLayout storage = content.ExecutionStorage;
             header.Operations = writer.Add(content.Operations.Span);
-            header.Payloads = writer.Add(content.OperationPayloads.Span);
+            header.Payloads = writer.Add(parameters.OperationPayloads.Span);
             header.ColdOperations = writer.Add(content.ColdOperations.Span);
             header.Edges = writer.Add(content.Edges.Span);
             header.ValueInputs = writer.Add(content.ValueInputs.Span);
-            header.Constants = writer.Add(content.Constants.Span);
-            header.DefaultValues = writer.Add(content.DefaultValues.Span);
+            header.Constants = writer.Add(parameters.Constants.Span);
+            header.DefaultValues = writer.Add(parameters.DefaultValues.Span);
             header.ValueSlotTypes = writer.Add(content.ValueSlotTypes.Span);
             header.ValueKindSlotCounts = writer.Add(content.ValueKindSlotCounts.Span);
             AddGraphCalls(writer, content.GraphCalls.Span, ref header);

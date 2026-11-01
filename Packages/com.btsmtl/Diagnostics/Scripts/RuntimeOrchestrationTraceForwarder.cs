@@ -69,7 +69,7 @@ namespace BTSMTL.Diagnostics
             ThirdPersonSimulation.GraphExecutionIdentity identity)
         {
             var revisions = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (ThirdPersonSimulation.GraphExecutionDependency dependency in identity.Dependencies)
+            foreach (ThirdPersonSimulation.GraphExecutionDependency dependency in identity.Source.Dependencies)
                 revisions.Add(dependency.Identity, dependency.Revision);
             var graphByPath = new Dictionary<string, string>(StringComparer.Ordinal);
             var callers = new Dictionary<(string Path, string Kind, string Id), RuntimeSourceElementKey>();

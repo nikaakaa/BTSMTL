@@ -16,7 +16,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
+  applyTimelineEdits, authoringActions, authoringDocument, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
   graphPath, inputAuthoring, markersTaken, markerTimeTaken, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
   useReferenceCurves, useSkillElements, useDocumentObservationBinding, type ReferenceEntry,
 } from '../../state/authoring';
@@ -29,16 +29,17 @@ import {
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
+import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
-import { useAnimationFrameRates } from '../../state/resources';
+import { animationReferenceKind, readAnimationDrop, useAnimationFrameRates, useAnimationLibrary } from '../../state/resources';
+import { acceptsReferenceDrag } from '../../state/referenceSelection';
 import { curveWithKey, curveWithoutKey, evaluateCurve } from '../../state/curveSplit';
 import {
   breakKeys, isBroken, keyTime, keyValue, moveKeys, removeKeys, setTangent, setTangentKind, smoothKeys, tangentKind, tangentOf,
   type TangentKind, type TangentSide,
 } from '../../state/curveEdit';
-import { numberOf, type JsonObject } from '../../state/skillJson';
+import { cloneJson, numberOf, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
 import {
   Button, ContextMenu, createTipGroup, GroupTip, MenuButton, NumberInput, Select, TextInput, Tip, TipGroup, type MenuEntry,
@@ -156,8 +157,7 @@ const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, 
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
 const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'archive'
   ? state.seconds : clock.kind === 'input'
-    ? author ?? (state.hostFrame !== null && state.archiveMetadata !== null
-      ? Number(BigInt(state.hostFrame) - BigInt(scheduleZeroFrame(state.archiveMetadata))) / state.archiveMetadata.sdkTickRate : null)
+    ? author ?? state.archiveFrame?.input?.inputTimeSeconds ?? null
     : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
 // 游标秒数：运行档案、运行观察或编辑游标。
 function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
@@ -218,8 +218,8 @@ export function TimelinePanel() {
 // 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
   const { target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
-    target: state.target, loading: state.loading, available: state.available,
-    reason: state.unavailableReason, error: state.documentError,
+    target: state.target, loading: authoringDocument(state).loading, available: state.available,
+    reason: state.unavailableReason, error: authoringDocument(state).documentError,
   })));
   const count = useAuthorTimelines().length;
   if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
@@ -254,16 +254,16 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
     return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
       Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
   }, [frames, authorTimelines, focusId, schemes]);
-  const tickRate = useAuthoring(state => state.tickRate);
+  const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
     const scheme = schemes.find(item => item.documentId === focusId);
     return scheme !== undefined && scheme.scene === selectedScene(state)?.path && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
       ? state.inputCatalog.tickRate : null;
   });
-  const sdkTickRate = useWorkbench(state => state.archiveMetadata?.sdkTickRate ?? null);
-  const rate = frames ? sdkTickRate : scenario ? inputRate : tickRate;
-  const frameStep = rate === null ? null : 1 / rate;
+  const recordedFrameStep = useWorkbench(state => state.summary?.frameStepSeconds ?? null);
+  const rate = frames ? recordedFrameStep === null ? null : 1 / recordedFrameStep : scenario ? inputRate : tickRate;
+  const frameStep = frames ? recordedFrameStep : rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
   const clipGrid = useClipGrid(params.snap ?? defaults.snap, frameStep);
   const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
@@ -630,8 +630,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     curves: state.archiveCurves, selectedCurves: state.selectedCurves,
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
-  const edited = useAuthoring(state => state.edited);
-  const files = useAuthoring(state => state.files);
+  const edited = useAuthoring(state => authoringDocument(state).edited);
+  const files = useAuthoring(state => authoringDocument(state).files);
   const timelines = useAuthorTimelines();
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
@@ -672,9 +672,9 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const receivedSource = useMemo(() => runId !== null && inputObservation.kind === 'ready' ? {
-    jobId: runId, actorId: inputObservation.input.actorId, metadata: inputObservation.metadata, keys: inputObservation.declarations.keys,
+    jobId: runId, actorId: inputObservation.input.actorId, stepSeconds: inputObservation.stepSeconds, keys: inputObservation.declarations.keys,
   } : null, [runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
-    inputObservation.kind === 'ready' ? inputObservation.metadata : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
+    inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
@@ -835,9 +835,8 @@ function TimelineBody({ params, setParams, bounds, rate, frames, onRangeChanged 
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
-    if (inputScheme && inputObservation.kind === 'ready') {
-      const metadata = inputObservation.metadata;
-      void transport.seekTime((scheduleZeroFrame(metadata) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
+    if (inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
+      void transport.seekTime(inputObservation.originSeconds + seconds);
       return;
     }
     if (!observed) {
@@ -1490,7 +1489,7 @@ function selectedClip(): { documentId: string; clipId: string } | null {
 }
 
 const currentClip = (documentId: string, clipId: string) =>
-  applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId)
+  applyTimelineEdits(getState().timelines, authoringDocument(useAuthoring.getState()).edited, authoringDocument(useAuthoring.getState()).removed).find(item => item.documentId === documentId)
     ?.tracks.flatMap(track => track.clips.map(clip => ({ track, clip }))).find(item => item.clip.id === clipId) ?? null;
 
 // Ctrl+C 复制选中片段；Ctrl+V 粘贴到选中片段所在轨道、紧接其后（选中轨道时接在轨道末尾）。
@@ -1504,7 +1503,8 @@ function pasteAfterSelection() {
   const selection = getState().selection;
   if (!selection || selection.id.startsWith('input/') || !authoringActions.canPasteClip()) return false;
   const [documentId, itemId] = selection.id.split('/');
-  const timeline = applyTimelineEdits(getState().timelines, useAuthoring.getState().edited, useAuthoring.getState().removed).find(item => item.documentId === documentId);
+  const document = authoringDocument(useAuthoring.getState());
+  const timeline = applyTimelineEdits(getState().timelines, document.edited, document.removed).find(item => item.documentId === documentId);
   const track = selection.kind === 'track' ? timeline?.tracks.find(item => item.id === itemId)
     : timeline?.tracks.find(item => item.clips.some(clip => clip.id === itemId));
   if (!track) return false;
@@ -1519,7 +1519,7 @@ function pasteAfterSelection() {
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
 function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void): MenuEntry[] {
   const author = useAuthoring(state => state.author && state.target !== null);
-  const version = useAuthoring(state => state.version);
+  const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
   const snap = useContext(SnapContext);
@@ -1623,6 +1623,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
   const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
+  const animationLibrary = useAnimationLibrary(author && row.trackKind === 'anim');
   const curves = hasCurves && row.curves ? row.curves : 0;
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
@@ -1635,7 +1636,26 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   };
   return (
     <ContextMenu entries={menu}>
-    <div className={styles.menuArea} onContextMenuCapture={event => {
+    <div className={styles.menuArea} onDragOver={event => {
+      if (author && row.trackKind === 'anim' && acceptsReferenceDrag(event.dataTransfer, animationReferenceKind)) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    }} onDrop={event => {
+      if (!author || row.trackKind !== 'anim') return;
+      event.preventDefault();
+      const result = readAnimationDrop(event.dataTransfer, animationLibrary);
+      if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
+      if (!elements) { consoleActions.log('warn', 'Timeline', '片段作者合同尚未取得'); return; }
+      const template = clipTemplatesFor(elements, documentId, row.track.id)
+        .find(item => item.sourceAsset?.choiceKind === animationReferenceKind);
+      if (!template?.sourceAsset) { consoleActions.log('warn', 'Timeline', '当前轨道没有提供正式动画源片段合同'); return; }
+      const value = cloneJson(template.value);
+      setIn(value, template.sourceAsset.serializedMemberPath, result.clip.resource.identity);
+      const start = snapLocal(getValueFromScreenX(event.clientX));
+      const id = authoringActions.addClipAt(documentId, row.track.id, elements, { ...template, value }, start, start + result.clip.duration);
+      selectTimelineObject(clock, 'clip', clipSelectId(documentId, id));
+    }} onContextMenuCapture={event => {
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。
       const item = (event.target as HTMLElement).closest<HTMLElement>('[data-select]');
@@ -1752,7 +1772,7 @@ function clipParameters(elements: SkillElements, documentId: string, clip: ClipI
 
 // 展开曲线的轨道只看本轨选中的片段（照 IEmbeddedTimelineTrackBinding.SelectedClip）。
 function useCurveClip(row: TrackRow, elements: SkillElements, mixes: Map<string, ClipMix>) {
-  useAuthoring(state => state.version);
+  useAuthoring(state => authoringDocument(state).version);
   const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const view = useContext(CurveViewContext);
   const clip = row.clips.find(item => item.selectId === selection) ?? null;
@@ -2165,6 +2185,17 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
+  useAuthoring(state => authoringDocument(state).version);
+  const elements = useSkillElements(useAuthoring(state => state.target !== null));
+  const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
+  const animation = source?.choiceKind === animationReferenceKind ? source : null;
+  const library = useAnimationLibrary(animation !== null);
+  const resource = animation && library.kind === 'ready'
+    ? library.library.clips.find(item => item.resource.identity === animation.value) : undefined;
+  const referenceInvalid = animation !== null && library.kind === 'ready' && resource === undefined;
+  const referenceIssue = !animation ? null : library.kind === 'loading' ? '动画库清单尚未取得'
+    : library.kind === 'unavailable' ? library.reason : resource ? null : '动画引用已失效，请重新导出动画库；原身份已保留';
+  const label = resource?.name ?? (referenceInvalid ? `失效动画 · ${String(animation?.value)}` : clip.label);
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, segmentId, trackId, clip]);
   // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
@@ -2173,8 +2204,15 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
     set: (easeIn: number | null, easeOut: number | null) => authoringActions.setClipEase(documentId, clip.clip.id, easeIn, easeOut),
   } : undefined, [author, clip, documentId]);
   return (
-    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
-      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix} />
+    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={label} start={clip.start} end={clip.end}
+      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
+      referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
+      onAnimationDrop={author && kind === 'anim' ? transfer => {
+        if (!animation) { consoleActions.log('warn', 'Timeline', '当前片段未提供正式动画源资产字段，原值已保留'); return; }
+        const result = readAnimationDrop(transfer, library);
+        if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
+        authoringActions.setClipValue(documentId, clip.clip.id, animation.serializedMemberPath, result.clip.resource.identity);
+      } : undefined} />
   );
 });
 
@@ -2256,9 +2294,10 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix }: {
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
+  referenceInvalid?: boolean; referenceIssue?: string | null; onAnimationDrop?(transfer: DataTransfer): void;
 }) {
   const { setNodeRef, itemStyle, listeners, attributes } = useItem({
     id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 12,
@@ -2292,11 +2331,25 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
     <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div className={styles.itemContent}>
-        <Tip name={label}>
+        <Tip name={label} content={referenceIssue || undefined}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
+          data-reference-invalid={referenceInvalid || undefined} aria-invalid={referenceInvalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px`,
             ['--label-start' as string]: `${labelStart}px`, ['--label-end' as string]: `${labelEnd}px` }}
+          onDragOver={event => {
+            if (onAnimationDrop && acceptsReferenceDrag(event.dataTransfer, animationReferenceKind)) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={event => {
+            if (!onAnimationDrop) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAnimationDrop(event.dataTransfer);
+          }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />

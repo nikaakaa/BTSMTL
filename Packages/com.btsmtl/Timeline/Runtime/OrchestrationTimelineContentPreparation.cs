@@ -133,7 +133,7 @@ namespace BTSMTL.Timeline.Runtime
             where TValue : unmanaged
             where TNumerics : struct, IOrchestrationNumerics<TValue>
         {
-            string graphId = graph.Source.Identity.GraphId;
+            string graphId = graph.Source.Identity.Source.GraphId;
             var sources = new Dictionary<string, OrchestrationGraphExecutionSource>(StringComparer.Ordinal);
             foreach (OrchestrationGraphSource source in graph.Sources.Span)
             {
@@ -316,57 +316,6 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        public static OrchestrationTimelinePreparedEntries PrepareEntries<TValue>(
-            TimelineRuntimePreparedContent prepared, OrchestrationGraphContent<TValue> graph,
-            OrchestrationProgram<TValue> program, ReadOnlySpan<int> localToShared,
-            int programIndex, int operationIndex) where TValue : unmanaged
-        {
-            var sources = new Dictionary<(string Clip, string Graph, string Hook), OrchestrationGraphSource>();
-            foreach (OrchestrationGraphSource source in graph.Sources.Span)
-            {
-                OrchestrationGraphExecutionSource invocation = source.Source;
-                if (invocation.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation &&
-                    invocation.InvocationCallerOperationIndex == operationIndex)
-                    sources.Add((invocation.InvocationCallerClipId, invocation.GraphId,
-                        invocation.InvocationCallerId), source);
-            }
-            TimelineContentUnit content = prepared.Content;
-            var clips = new OrchestrationTimelineEntryBinding[content.Clips.Count];
-            var markers = new OrchestrationExecutionEntry[content.Markers.Count];
-            var clipPrograms = new int[clips.Length];
-            var markerPrograms = new int[markers.Length];
-            Array.Fill(clipPrograms, programIndex);
-            Array.Fill(markerPrograms, programIndex);
-            var metadata = new List<OrchestrationTimelineInvocationMetadata>();
-            for (int domainIndex = 0; domainIndex < 2; domainIndex++)
-            {
-                TimelineRuntimeDomainIndex domain = domainIndex == 0 ? prepared.Index.Logic : prepared.Index.Presentation;
-                foreach (TimelineRuntimeIndexedClip indexed in domain.Trees)
-                {
-                    int ordinal = indexed.ContentIndex;
-                    TimelineContentClip clip = content.Clips[ordinal];
-                    string graphId = TimelineGraphBinding.GraphAuthoringId(clip.GraphBinding.GraphId);
-                    OrchestrationExecutionEntry enable = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Enable,
-                        sources[(clip.AuthoringId, graphId, "OnEnable")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry root = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Root,
-                        sources[(clip.AuthoringId, graphId, "Root")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry disable = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Disable,
-                        sources[(clip.AuthoringId, graphId, "OnDisable")], graph, program, localToShared, metadata);
-                    OrchestrationExecutionEntry destroy = BindEntry(programIndex, ordinal, false, OrchestrationTimelineHook.Destroy,
-                        sources[(clip.AuthoringId, graphId, "OnDestroy")], graph, program, localToShared, metadata);
-                    clips[ordinal] = new OrchestrationTimelineEntryBinding(enable, root, disable, destroy);
-                }
-                for (int markerIndex = 0; markerIndex < domain.Markers.Count; markerIndex++)
-                {
-                    int ordinal = domain.Markers.ContentIndexAt(markerIndex);
-                    TimelineContentMarker marker = content.Markers[ordinal];
-                    markers[ordinal] = BindEntry(programIndex, ordinal, true, OrchestrationTimelineHook.Enable,
-                        sources[(marker.MarkerId, TimelineGraphBinding.GraphAuthoringId(marker.GraphId), "OnEnable")], graph, program, localToShared, metadata);
-                }
-            }
-            return new OrchestrationTimelinePreparedEntries(clips, markers, clipPrograms, markerPrograms, metadata.ToArray());
-        }
-
         public static bool TryCalculateCapacity<TValue, TScalar>(
             TimelineRuntimePreparedContent prepared, OrchestrationTimelinePlaybackMode mode,
             TimelineExecutionDomain domain,
@@ -508,23 +457,5 @@ namespace BTSMTL.Timeline.Runtime
             return binding.Entry;
         }
 
-        static OrchestrationExecutionEntry BindEntry<TValue>(int programIndex, int ordinal, bool marker,
-            OrchestrationTimelineHook hook, OrchestrationGraphSource source,
-            OrchestrationGraphContent<TValue> graph, OrchestrationProgram<TValue> program,
-            ReadOnlySpan<int> localToShared, List<OrchestrationTimelineInvocationMetadata> metadata)
-            where TValue : unmanaged
-        {
-            OrchestrationGraphExecutionSource invocation = source.Source;
-            OrchestrationExecutionEntry original = invocation.InvocationEntry;
-            var entry = new OrchestrationExecutionEntry(original.OperationIndex, original.Contract,
-                localToShared[original.InputPortId]);
-            int graphIdentityId = localToShared[graph.Identities.Bind(invocation.GraphId)];
-            int sourceIdentityId = localToShared[invocation.SourceIdentityId];
-            metadata.Add(new OrchestrationTimelineInvocationMetadata(programIndex, ordinal, marker, hook, entry,
-                program.Operation(entry.OperationIndex).ExecutionFrameOwnerOperationIndex,
-                invocation.TargetIndex, invocation.InvocationCallerOperationIndex,
-                graphIdentityId, sourceIdentityId));
-            return entry;
-        }
     }
 }

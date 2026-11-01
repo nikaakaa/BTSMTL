@@ -4,7 +4,8 @@ namespace BTSMTL.Orchestration
 {
     public sealed class OrchestrationProgram<TValue> where TValue : unmanaged
     {
-        readonly OrchestrationProgramContent<TValue> m_Content;
+        readonly OrchestrationProgramContent m_Content;
+        readonly OrchestrationGraphParameters<TValue> m_Parameters;
         ReadOnlySpan<OrchestrationOperation> m_Operations => m_Content.Operations.Span;
         ReadOnlySpan<OrchestrationFlowEdge> m_Edges => m_Content.Edges.Span;
         ReadOnlySpan<OrchestrationValueInputBinding> m_Inputs => m_Content.ValueInputs.Span;
@@ -16,20 +17,22 @@ namespace BTSMTL.Orchestration
 
         readonly byte[] m_Image;
 
-        public OrchestrationProgram(OrchestrationProgramContent<TValue> content)
+        public OrchestrationProgram(OrchestrationProgramContent content, OrchestrationGraphParameters<TValue> parameters)
         {
             m_Content = content;
-            m_Image = OrchestrationProgramImage.Build(content);
+            m_Parameters = parameters;
+            m_Image = OrchestrationProgramImage.Build(content, parameters);
         }
 
-        public OrchestrationProgramContent<TValue> Content => m_Content;
+        public OrchestrationProgramContent Content => m_Content;
+        public OrchestrationGraphParameters<TValue> Parameters => m_Parameters;
         public ReadOnlyMemory<byte> Image => m_Image;
         public OrchestrationProgramView<TValue> View => new OrchestrationProgramView<TValue>(m_Image);
         public OrchestrationProgramStorageLayout ExecutionStorage => m_Content.ExecutionStorage;
         public int RootOperationIndex => m_Content.RootOperationIndex;
         public OrchestrationCorePorts Ports => m_Content.CorePorts;
         public int OperationCount => m_Operations.Length;
-        public int ValueSlotCount => m_Content.DefaultValues.Length;
+        public int ValueSlotCount => m_Parameters.DefaultValues.Length;
         public int InputBindingCount => m_Inputs.Length;
         public int BlackboardCount => m_Blackboards.Length;
         public int EdgeCount => m_Edges.Length;
@@ -45,12 +48,12 @@ namespace BTSMTL.Orchestration
         public ref readonly OrchestrationOperationColdData ColdOperation(int operationIndex) =>
             ref m_Content.ColdOperations.Span[operationIndex];
         public T Payload<T>(int operationIndex) where T : unmanaged =>
-            m_Content.ReadOperationPayload<T>(operationIndex);
+            m_Parameters.ReadOperationPayload<T>(m_Content, operationIndex);
         public ref readonly OrchestrationValueOperation ValueOperation(int operationIndex, int outputPortIndex = -1) =>
             ref m_Content.ValueSchedule.ValueOperations.Span[ValueEvaluationSlot(operationIndex, outputPortIndex)];
         public ref readonly OrchestrationFlowEdge Edge(int edgeIndex) => ref m_Edges[edgeIndex];
-        public ref readonly TValue Constant(int constantIndex) => ref m_Content.Constants.Span[constantIndex];
-        public ref readonly TValue DefaultValue(int valueSlot) => ref m_Content.DefaultValues.Span[valueSlot];
+        public ref readonly TValue Constant(int constantIndex) => ref m_Parameters.Constants.Span[constantIndex];
+        public ref readonly TValue DefaultValue(int valueSlot) => ref m_Parameters.DefaultValues.Span[valueSlot];
         public ref readonly OrchestrationBlackboardSlot Blackboard(int valueSlot) => ref m_Blackboards[valueSlot];
         public ref readonly OrchestrationOutputTemplate OutputTemplate(int templateIndex) => ref m_OutputTemplates[templateIndex];
 

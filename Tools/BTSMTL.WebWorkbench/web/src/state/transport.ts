@@ -1,7 +1,7 @@
 import { playerApi } from '../api/player';
 import { isAbort } from '../api/http';
-import type { PlayerJobId, PreviewPosition } from '../api/playerRecords';
-import type { Frame, LiveCommand, LiveCommandResult } from '../api/types';
+import { samePreviewContent, samePreviewLoad, type PlayerJobId, type PreviewPosition } from '../api/playerRecords';
+import type { Frame, LiveCommand, LiveCommandResult, PlayerAck } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
 export type TransportSource = 'sealed' | 'player-live';
@@ -121,15 +121,15 @@ function startReview() {
 
 // ── 播放器命令：记录 sent / submitted / applied / rejected ──
 
-function record(type: string, result: LiveCommandResult): PlayerCommandRecord {
+function record(type: string, result: LiveCommandResult): PlayerCommandRecord | null {
   const ack = result.ack;
-  const entry: PlayerCommandRecord = {
-    type, commandId: result.commandId, stage: result.stage,
-    clock: ack?.clock ?? null, error: ack && !ack.ok ? ack.error ?? '播放器拒绝' : null,
-  };
+  const context = getState().live?.player?.source ?? null;
+  if (ack !== null && (ack.source !== null && !samePreviewLoad(ack.source, context) ||
+    ack.content !== null && !samePreviewContent(ack.content, context?.content ?? null))) return null;
+  const entry: PlayerCommandRecord = { type, ...result };
   useWorkbench.setState({ lastCommand: entry });
   if (entry.stage === 'rejected' || entry.stage === 'not-applied')
-    consoleActions.log('error', source, `${type}：${entry.error ?? '播放器未执行'}`, ack?.rawJson);
+    consoleActions.log('error', source, `${type}：${ack?.error ?? '播放器未执行'}`, ack?.rawJson);
   else if (entry.stage === 'submitted')
     consoleActions.log('warn', source, `${type}：等待时限内未收到播放器回执`);
   return entry;
@@ -137,7 +137,7 @@ function record(type: string, result: LiveCommandResult): PlayerCommandRecord {
 
 async function playerCommand(command: LiveCommand): Promise<PlayerCommandRecord | null> {
   const liveId = getState().liveId;
-  const loadCommandId = getState().live?.player?.source?.loadCommandId;
+  const context = getState().live?.player?.source ?? null;
   if (!liveId) return null;
   const reason = transport.unavailableReason(command.type);
   if (reason !== null) {
@@ -146,7 +146,7 @@ async function playerCommand(command: LiveCommand): Promise<PlayerCommandRecord 
   }
   try {
     const result = await playerApi.command(liveId, command);
-    if (getState().liveId !== liveId || getState().live?.player?.source?.loadCommandId !== loadCommandId) return null;
+    if (getState().liveId !== liveId || !samePreviewLoad(context, getState().live?.player?.source ?? null)) return null;
     return record(command.type, result);
   } catch (error) {
     consoleActions.error(source, error);
@@ -163,12 +163,12 @@ function seekPlayer(position: PreviewPosition) {
 
 async function sendSeek(position: PreviewPosition) {
   const liveId = getState().liveId;
-  const loadCommandId = getState().live!.player!.source!.loadCommandId;
+  const context = getState().live!.player!.source!;
   const commandId = crypto.randomUUID();
-  useWorkbench.setState({ pendingSeek: { commandId, loadCommandId, position } });
+  useWorkbench.setState({ pendingSeek: { commandId, source: context, position } });
   await playerCommand({ type: 'seek', commandId, position });
   if (getState().liveId !== liveId || getState().pendingSeek?.commandId !== commandId ||
-    getState().live?.player?.source?.loadCommandId !== loadCommandId) return;
+    !samePreviewLoad(context, getState().live?.player?.source ?? null)) return;
   const { targetPosition } = getState();
   if (targetPosition !== null && targetPosition.hostFrame !== position.hostFrame)
     void sendSeek(targetPosition);
@@ -181,11 +181,19 @@ export const transport = {
   source: transportSource,
   seekTime,
 
+  acceptAck(ack: PlayerAck) {
+    const command = getState().lastCommand;
+    if (command?.commandId === ack.commandId)
+      record(command.type, { commandId: ack.commandId, stage: ack.ok ? 'applied' : 'rejected', ack });
+  },
+
   action(name: string) {
-    return getState().live?.player?.transport.find(item => item.action === name);
+    return getState().live?.player?.transport?.find(item => item.action === name);
   },
 
   unavailableReason(name: string) {
+    const player = getState().live?.player;
+    if (player?.transport === null) return player.transportUnavailableReason;
     const action = transport.action(name);
     return action === undefined ? '宿主未提供此操作的资格' : action.available ? null : action.reason;
   },

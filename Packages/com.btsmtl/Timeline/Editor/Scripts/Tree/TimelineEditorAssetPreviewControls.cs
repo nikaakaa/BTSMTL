@@ -199,7 +199,7 @@ namespace BTSMTL.Timeline.Editor
                 foreach (OrchestrationStaticTimeline timeline in preview.Query.Query.Timelines)
                     if (preview.Query.ResolveTimeline(timeline.Identity) is { } resolved && resolved)
                         timelines.Add(resolved);
-            foreach (ITimelineAuthoringDocument document in timelines.Select(TimelineAuthoringSave.Document)
+            foreach (ITimelineAuthoringDocument document in timelines.Select(TimelineAuthoringGraphBindings.Document)
                          .GroupBy(value => value.SourcePath).Select(group => group.First()))
                 if (document.HasUnsavedChanges)
                     m_UnsavedDocuments.Add(document);

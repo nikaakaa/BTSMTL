@@ -26,11 +26,8 @@ namespace BTSMTL.Orchestration
 
         OrchestrationTime ReadTime();
         void ReleasePlayback(OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity);
-        int EnterInvocation(int playbackSlot, int invocationIndex);
-        OrchestrationTimelineInvocationFacts ReadInvocationFacts();
         void SelectExecutionFrame(int frameSlot);
-        OrchestrationOperationResult ReleaseInvocation();
-        void LeaveInvocation();
+        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext);
         OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick);
 
         // 生产与工作台的区别由诊断类型在编译期决定，执行器不做逐节点开关判断。
@@ -134,16 +131,10 @@ namespace BTSMTL.Orchestration
         public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity) =>
             m_Timeline.ReleasePlayback(candidate, operationIndex, ref playbackIdentity, in m_Context);
 
-        public int EnterInvocation(int playbackSlot, int invocationIndex) =>
-            m_Timeline.EnterInvocation(playbackSlot, invocationIndex, ref m_Context);
-
-        public OrchestrationTimelineInvocationFacts ReadInvocationFacts() => m_Timeline.ReadInvocationFacts();
-
         public void SelectExecutionFrame(int frameSlot) => m_Timeline?.SelectExecutionFrame(frameSlot, ref m_Context);
 
-        public OrchestrationOperationResult ReleaseInvocation() => m_Timeline.ReleaseInvocation(ref m_Context);
-
-        public void LeaveInvocation() => m_Timeline.LeaveInvocation(ref m_Context);
+        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext) =>
+            m_Timeline.ReleaseExecutionFrame(frameSlot, in stopContext, ref m_Context);
 
         public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick) =>
             m_ClipExit.RequestClipExit(candidate, operationIndex, tick, ref m_Context);

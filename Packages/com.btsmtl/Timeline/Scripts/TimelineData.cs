@@ -18,6 +18,19 @@ namespace BTSMTL.Timeline
         string m_SerializedPropertyPath;
 
 #if UNITY_EDITOR
+        [NonSerialized] ITimelineAuthoringDocument m_AuthoringDocument;
+
+        public ITimelineAuthoringDocument AuthoringDocument => m_AuthoringDocument;
+
+        public void BindAuthoringDocument(ITimelineAuthoringDocument document)
+        {
+            m_AuthoringDocument = document;
+            foreach (Track track in m_Tracks)
+                foreach (Clip clip in track.Clips)
+                    if (clip is ITimelineTreeClipAuthoringSource tree && tree.AssetTreeId.Length != 0)
+                        ((ITimelineTreeGraphAsset)document.ResolveGraph(tree.AssetTreeId)).BindTimelineAuthoringContext(this, clip);
+        }
+
         [GraphAuthoringField(nameof(m_Name), GraphAuthoringFieldValueKind.String,
             DocumentMember = GraphAuthoringDocumentMember.DisplayName)]
 #endif
@@ -33,20 +46,14 @@ namespace BTSMTL.Timeline
         public UnityEngine.Object SerializedOwner => m_SerializedOwner;
         public string SerializedPropertyPath => m_SerializedPropertyPath ?? string.Empty;
 
-        public static TimelineData CreateDefault(string name)
-        {
-            return new TimelineData
-            {
-                m_AuthoringId = AuthoringIdentity.Create(),
-                Name = string.IsNullOrEmpty(name) ? "Timeline" : name
-            };
-        }
-
         public TimelineData Clone()
         {
             TimelineData clone = ManagedReferenceCloneUtility.Clone(this);
             clone.m_SerializedOwner = null;
             clone.m_SerializedPropertyPath = string.Empty;
+#if UNITY_EDITOR
+            clone.m_AuthoringDocument = m_AuthoringDocument;
+#endif
             return clone;
         }
 
@@ -56,13 +63,6 @@ namespace BTSMTL.Timeline
             TimelineData clone = Clone();
             clone.RegenerateAuthoringIdentities();
             return clone;
-        }
-
-        public void ConfigureAuthoringIdentity(string authoringId)
-        {
-            if (!AuthoringIdentity.IsValid(authoringId))
-                throw new ArgumentException("Timeline authoring identity is invalid.", nameof(authoringId));
-            m_AuthoringId = authoringId;
         }
 
         public bool EnsureAuthoringIdentities()
@@ -216,6 +216,10 @@ namespace BTSMTL.Timeline
 
         public void BindSerializedOwner(UnityEngine.Object owner, string propertyPath)
         {
+#if UNITY_EDITOR
+            if (!ReferenceEquals(m_SerializedOwner, owner))
+                m_AuthoringDocument = null;
+#endif
             m_SerializedOwner = owner;
             m_SerializedPropertyPath = propertyPath ?? string.Empty;
 #if UNITY_EDITOR

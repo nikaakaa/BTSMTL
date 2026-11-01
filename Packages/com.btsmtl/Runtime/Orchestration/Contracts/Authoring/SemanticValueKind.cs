@@ -11,6 +11,7 @@ namespace ThirdPersonSimulation
         Yaw = 7,
         Identity = 8,
         Quaternion = 9,
-        Enum = 10
+        Enum = 10,
+        ObjectHandle = 11
     }
 }
