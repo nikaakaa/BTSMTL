@@ -496,6 +496,11 @@
   outline: none;
 }
 
+/* 缩小到 0.6 以下：只留节点名与连线 */
+.canvas[data-far] .stateCaption, .canvas[data-far] .edgeLabel, .canvas[data-far] .portValue {
+  display: none;
+}
+
 /* 状态转移把手：右侧圆点拖出，拖动中整个状态块是落点 */
 .stateSource {
   position: absolute;

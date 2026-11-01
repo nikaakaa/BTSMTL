@@ -435,6 +435,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     selectionActions.selectCanvas(panelId, { view, nodes, edges }), [panelId, view]);
   const runId = useWorkbench(state => state.runId);
   const minimapWidth = useFlowStore(state => Math.min(204, state.width * 0.3, state.height * 0.3 * 204 / 104));
+  // 缩得很小时字已经读不清：只留节点名与连线，隐藏 Timeline 名、转移标签与端口值。
+  const far = useFlowStore(state => state.transform[2] < 0.6);
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
@@ -706,7 +708,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   return (
     <ViewContext.Provider value={viewOptions}>
       <ContextMenu entries={menu}>
-      <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined}
+      <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined} data-far={far || undefined}
         onContextMenuCapture={event => { menuAt.current = { x: event.clientX, y: event.clientY }; }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
