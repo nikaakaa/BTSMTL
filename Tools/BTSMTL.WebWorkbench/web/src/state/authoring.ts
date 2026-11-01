@@ -187,7 +187,7 @@ function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt
   return {
     saved: save.saved, compilationState: save.compilationState, preview,
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
-    message: `已保存，编译通过；${detail}`, errors: [],
+    message: `已保存，编译通过；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
   };
 }
 

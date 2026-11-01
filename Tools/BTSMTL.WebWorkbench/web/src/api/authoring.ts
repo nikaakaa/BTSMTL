@@ -369,12 +369,12 @@ export interface SkillSaveRequest {
 }
 
 interface SkillRefreshPackage {
+  stage: 'offline-scene-written';
   scenePath: string;
   sceneRevision: string;
-  programAssetId: string;
   skillIdentity: string;
-  programRevision: string;
-  contentHash: string;
+  program: { programAssetId: string; graphId: string; programRevision: string; contentHash: string } | null;
+  inputPlans: { id: string; path: string; revision: string; schemes: string[] }[];
 }
 
 interface SkillRefreshCommand {
