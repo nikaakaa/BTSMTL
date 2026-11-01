@@ -210,15 +210,16 @@ function Transport() {
 
 function FrameField() {
   const view = useWorkbench(useShallow(state => {
-    if (transport.source() === 'player-live') {
+    const source = transport.source();
+    if (source === 'player-live') {
       const player = state.live!.player!;
       const clock = player.source!.clock;
-      const first = transport.action('first')?.target, last = transport.action('last')?.target;
+      const last = transport.action('last')?.target;
       return { kind: 'live' as const, loadCommandId: player.source!.loadCommandId,
-        frame: clockPosition(clock), first: first?.hostFrame, last: last?.hostFrame, seconds: clock.seconds,
+        frame: clockPosition(clock), last: last?.hostFrame, seconds: clock.seconds,
         label: clock.positionDisplayName, blocked: transport.unavailableReason('seek') };
     }
-    if (!state.summary?.frameCount) return null;
+    if (source !== 'sealed' || !state.summary?.frameCount) return null;
     return {
       kind: 'archive' as const,
       frame: state.frameIndex,
