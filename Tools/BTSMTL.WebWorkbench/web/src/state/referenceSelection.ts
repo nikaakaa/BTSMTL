@@ -35,8 +35,11 @@ export type ReferenceDrop =
   | { kind: 'selected'; choice: ReferenceChoice }
   | { kind: 'rejected'; reason: string };
 
-export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCatalog): ReferenceDrop {
-  if (catalog.kind === 'unavailable') return { kind: 'rejected', reason: catalog.reason };
+export type ReferenceDrag =
+  | { kind: 'reference'; referenceKind: string; value: JsonValue; source: string }
+  | { kind: 'rejected'; reason: string };
+
+export function readReferenceDrag(transfer: DataTransfer): ReferenceDrag {
   let payload: unknown;
   try { payload = JSON.parse(transfer.getData(referenceMime)); }
   catch { return { kind: 'rejected', reason: '拖入内容不是作者引用，原值已保留' }; }
@@ -44,20 +47,18 @@ export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCata
     !('value' in payload) || !('source' in payload) || typeof payload.kind !== 'string' ||
     typeof payload.value !== 'string' || typeof payload.source !== 'string')
     return { kind: 'rejected', reason: '拖入引用缺少类型或身份，原值已保留' };
-  if (payload.kind !== catalog.referenceKind)
-    return { kind: 'rejected', reason: '引用类型与当前字段不匹配，原值已保留' };
-  const key = payload.value;
-  const source = payload.source;
-  const choice = catalog.items.find(item => referenceValueKey(item.value) === key && item.source === source);
-  return choice ? { kind: 'selected', choice }
-    : { kind: 'rejected', reason: '拖入引用不在当前载体候选中，原值已保留' };
+  try { return { kind: 'reference', referenceKind: payload.kind, value: parseSkillJson(payload.value), source: payload.source }; }
+  catch { return { kind: 'rejected', reason: '拖入引用的值不符合作者 JSON 格式，原值已保留' }; }
 }
 
-export function referenceDragValue(transfer: DataTransfer, referenceKind: string): JsonValue | undefined {
-  if (!acceptsReferenceDrag(transfer, referenceKind)) return undefined;
-  const payload: unknown = JSON.parse(transfer.getData(referenceMime));
-  if (payload === null || typeof payload !== 'object' || !('kind' in payload) ||
-    !('value' in payload) || payload.kind !== referenceKind || typeof payload.value !== 'string')
-    throw new Error('拖入内容缺少正式引用身份');
-  return parseSkillJson(payload.value);
+export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCatalog): ReferenceDrop {
+  if (catalog.kind === 'unavailable') return { kind: 'rejected', reason: catalog.reason };
+  const drag = readReferenceDrag(transfer);
+  if (drag.kind === 'rejected') return drag;
+  if (drag.referenceKind !== catalog.referenceKind)
+    return { kind: 'rejected', reason: '引用类型与当前字段不匹配，原值已保留' };
+  const key = referenceValueKey(drag.value);
+  const choice = catalog.items.find(item => referenceValueKey(item.value) === key && item.source === drag.source);
+  return choice ? { kind: 'selected', choice }
+    : { kind: 'rejected', reason: '拖入引用不在当前载体候选中，原值已保留' };
 }

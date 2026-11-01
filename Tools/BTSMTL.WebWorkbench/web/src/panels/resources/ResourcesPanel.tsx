@@ -3,7 +3,8 @@ import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
 import { usePanelAnimationFrame, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { writeResourceReady } from '../../shell/readiness';
-import { resourceCache } from '../../state/resources';
+import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
+import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, TextInput } from '../../ui/controls';
@@ -32,16 +33,15 @@ export function ResourcesPanel() {
 function ResourceView({ library }: { library: AnimationLibrary }) {
   const { identity, time, playing } = useWorkbench(useShallow(state => ({ identity: state.identity, time: state.time, playing: state.playing })));
   const [search, setSearch] = useState('');
+  const field = useReferenceSelection(state => state.field);
   const clips = useMemo(() => {
     const text = search.trim().toLowerCase();
     return text ? library.clips.filter(clip => `${clip.name} ${clip.category}`.toLowerCase().includes(text)) : library.clips;
   }, [library, search]);
   const clip = library.clips.find(item => item.resource.identity === identity) ?? null;
 
-  // 未指定资源时选第一段；地址指定的资源不在清单中时报错。
   useEffect(() => {
-    if (!identity && library.clips.length) resourceActions.select(library.clips[0].resource.identity);
-    else if (identity && !clip) consoleActions.log('error', 'resources', `该版本资源清单不包含所选资源 ${identity}`);
+    if (identity && !clip) consoleActions.log('error', 'resources', `该版本资源清单不包含所选资源 ${identity}`);
   }, [identity, clip, library]);
 
   const duration = clip?.exportedDuration ?? 0;
@@ -73,10 +73,16 @@ function ResourceView({ library }: { library: AnimationLibrary }) {
         <VirtualList className={styles.list} count={clips.length} rowHeight={36} label="动画片段" render={index => {
           const item = clips[index];
           return (
-            <button className={styles.clip} aria-selected={item.resource.identity === identity}
+            <button className={styles.clip} draggable
+              aria-selected={item.resource.identity === identity ||
+                (field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind &&
+                  referenceValueKey(field.value) === referenceValueKey(item.resource.identity))}
+              onDragStart={event => writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(item))}
               onClick={() => {
                 resourceActions.select(item.resource.identity);
-                selectionActions.select({ kind: 'resource', id: item.resource.identity });
+                if (field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind)
+                  field.choose(animationChoice(item));
+                else selectionActions.select({ kind: 'resource', id: item.resource.identity });
               }}>
               <span>{item.name}</span>
               <small>{item.category} · {item.duration.toFixed(3)} s · {item.frameRate} fps</small>
