@@ -285,31 +285,28 @@ export const transport = {
     }
   },
 
-  // 档案按记录序号；实时定位由 Host 解析目标键。
-  seek(frame: number) {
+  seekRecord(frame: number) {
     timeSeek?.abort();
-    switch (transportSource()) {
-      case 'sealed':
-        stopReview();
-        moveCursor(frame);
-        break;
-      case 'player-live':
-        seekPlayer({ hostFrame: String(frame) });
-        break;
-    }
+    stopReview();
+    moveCursor(frame);
+  },
+
+  seekPosition(position: PreviewPosition) {
+    timeSeek?.abort();
+    seekPlayer(position);
   },
 
   home() {
     if (transportSource() === 'player-live') {
       const first = transport.action('first');
       if (first?.available && first.target !== null) seekPlayer(first.target);
-    } else transport.seek(0);
+    } else if (transportSource() === 'sealed') transport.seekRecord(0);
   },
   end() {
     if (transportSource() === 'player-live') {
       const last = transport.action('last');
       if (last?.available && last.target !== null) seekPlayer(last.target);
-    } else transport.seek(frameCount() - 1);
+    } else if (transportSource() === 'sealed') transport.seekRecord(frameCount() - 1);
   },
 
 };

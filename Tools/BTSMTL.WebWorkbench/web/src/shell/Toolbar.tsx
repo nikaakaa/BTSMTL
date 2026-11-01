@@ -1,12 +1,12 @@
 import { NumberField } from '@base-ui/react/number-field';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
 import { authoringActions, authoringDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
-import { Button, MenuButton, Select, Tip, type MenuEntry } from '../ui/controls';
+import { Button, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../ui/controls';
 import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
@@ -213,12 +213,13 @@ function FrameField() {
       const player = state.live!.player!;
       const clock = player.source!.clock;
       const first = transport.action('first')?.target, last = transport.action('last')?.target;
-      return { frame: Number(clockPosition(clock)), first: first == null ? undefined : Number(first.hostFrame),
-        last: last == null ? undefined : Number(last.hostFrame), seconds: clock.seconds,
+      return { kind: 'live' as const, loadCommandId: player.source!.loadCommandId,
+        frame: clockPosition(clock), first: first?.hostFrame, last: last?.hostFrame, seconds: clock.seconds,
         label: clock.positionDisplayName, blocked: transport.unavailableReason('seek') };
     }
     if (!state.summary?.frameCount) return null;
     return {
+      kind: 'archive' as const,
       frame: state.frameIndex,
       first: 0,
       last: state.summary.frameCount - 1,
@@ -231,15 +232,41 @@ function FrameField() {
   return (
     <Tip content={view.blocked ?? view.label}>
       <div className={styles.frame}>
-        <NumberField.Root value={view.frame} min={view.first} max={view.last} disabled={view.blocked !== null}
-          onValueCommitted={value => { if (value !== null) transport.seek(value); }} step={1}>
+        {view.kind === 'live' ? <LiveFrameField key={view.loadCommandId} value={view.frame} label={view.label} blocked={view.blocked} /> :
+        <NumberField.Root value={view.frame} min={view.first} max={view.last}
+          onValueCommitted={value => { if (value !== null) transport.seekRecord(value); }} step={1}>
           <NumberField.Input className={styles.frameInput} aria-label={view.label} />
-        </NumberField.Root>
+        </NumberField.Root>}
         {view.last !== undefined && <span className={styles.frameLast}>/ {view.last}</span>}
         {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
       </div>
     </Tip>
   );
+}
+
+function LiveFrameField({ value, label, blocked }: { value: string; label: string; blocked: string | null }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [issue, setIssue] = useState<string | null>(null);
+  const text = draft ?? value;
+  const commit = () => {
+    if (!/^-?(0|[1-9]\d*)$/.test(text)) {
+      setIssue('请输入十进制整数');
+      return;
+    }
+    if (text !== value) transport.seekPosition({ hostFrame: text });
+    setDraft(null);
+    setIssue(null);
+  };
+  return <>
+    <TextInput className={styles.frameInput} style={{ width: `${Math.max(4, text.length)}ch` }} aria-label={label}
+      inputMode="numeric" value={text} disabled={blocked !== null} aria-invalid={issue !== null}
+      onFocus={() => setDraft(value)} onChange={event => setDraft(event.currentTarget.value)} onBlur={commit}
+      onKeyDown={event => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Escape') { setDraft(null); setIssue(null); }
+      }} />
+    {issue && <span role="alert">{issue}</span>}
+  </>;
 }
 
 // 预览档位：只列宿主声明可用的档位。
