@@ -96,11 +96,12 @@ namespace BTSMTL.Authoring.Graph
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class GraphAuthoringAnnotationAttribute : Attribute { }
 
-    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Method, AllowMultiple = true)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Method, AllowMultiple = true)]
     public sealed class GraphAuthoringChoicesAttribute : Attribute
     {
         public GraphAuthoringChoicesAttribute(string fieldId) => FieldId = fieldId;
         public string FieldId { get; }
+        public string MemberName { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Method)]

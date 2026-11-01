@@ -58,14 +58,12 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static IEnumerable<AuthoringField> AuthoringFields(INamedTypeSymbol type, string[] path, string prefix)
         {
-            AttributeData[] declarations = AuthoringAttributes(type, "GraphAuthoringField").ToArray();
             foreach (ISymbol member in type.GetMembers())
             {
                 string[] memberPath = path.Concat(new[] { member.Name }).ToArray();
                 ITypeSymbol memberType = member is IPropertySymbol property ? property.Type :
                     member is IFieldSymbol declaredField ? declaredField.Type : null;
-                foreach (AttributeData metadata in AuthoringAttributes(member, "GraphAuthoringField")
-                    .Concat(declarations.Where(declaration => AuthoringMemberName(declaration) == member.Name)))
+                foreach (AttributeData metadata in AuthoringAttributes(member, "GraphAuthoringField"))
                     yield return new AuthoringField
                 {
                     Symbol = member,
@@ -92,9 +90,16 @@ namespace ThirdPerson.ValueGeneration.Generator
         static AttributeData Attribute(ISymbol symbol, string name) => symbol.GetAttributes()
             .SingleOrDefault(attribute => Identity(attribute.AttributeClass) == name);
 
-        static IEnumerable<AttributeData> AuthoringAttributes(ISymbol symbol, string suffix) =>
-            symbol.GetAttributes().Where(attribute =>
-                Identity(attribute.AttributeClass) == AuthoringNamespace + suffix + "Attribute");
+        static IEnumerable<AttributeData> AuthoringAttributes(ISymbol symbol, string suffix)
+        {
+            string identity = AuthoringNamespace + suffix + "Attribute";
+            IEnumerable<AttributeData> declarations = symbol.GetAttributes().Where(attribute =>
+                Identity(attribute.AttributeClass) == identity);
+            if (symbol is INamedTypeSymbol)
+                return declarations;
+            return declarations.Concat(symbol.ContainingType.GetAttributes().Where(attribute =>
+                Identity(attribute.AttributeClass) == identity && AuthoringMemberName(attribute) == symbol.Name));
+        }
 
         static ISymbol AuthoringAuxiliary(INamedTypeSymbol type, string suffix, AuthoringField field) =>
             type.GetMembers().SingleOrDefault(member => AuthoringAttributes(member, suffix)
@@ -106,6 +111,7 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static bool AuthoringTypeHasFields(INamedTypeSymbol type) => type != null &&
             (HasAttribute(type, AuthoringFieldAttribute) ||
+                HasAttribute(type, AuthoringNamespace + "GraphAuthoringChoicesAttribute") ||
                 type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute) ||
                     HasAttribute(member, AuthoringNamespace + "GraphAuthoringInlineAttribute")));
 
@@ -114,13 +120,13 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static bool PublicAuthoringRead(ISymbol member) => member.DeclaredAccessibility == Accessibility.Public &&
             (member is IPropertySymbol property ? !property.IsIndexer && property.GetMethod?.DeclaredAccessibility == Accessibility.Public :
-                member is IMethodSymbol method && !method.IsGenericMethod && method.Parameters.Length == 0 && !method.ReturnsVoid);
+                member is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary &&
+                !method.IsGenericMethod && method.Parameters.Length == 0 && !method.ReturnsVoid);
 
         static void EmitAuthoringFields(GeneratorExecutionContext context, INamedTypeSymbol type)
         {
             if (context.Compilation.GetTypeByMetadataName(AuthoringNamespace + "IGraphAuthoringFieldSource") == null)
                 return;
-            AuthoringField[] fields = AuthoringFields(type);
             void Error(ISymbol symbol, string reason) => context.ReportDiagnostic(Diagnostic.Create(
                 InvalidValueDeclaration, symbol.Locations.FirstOrDefault(), Identity(symbol), reason));
             if (type.ContainingType != null || type.TypeKind != TypeKind.Class ||
@@ -131,15 +137,18 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return;
             }
             bool valid = true;
-            foreach (AttributeData declaration in AuthoringAttributes(type, "GraphAuthoringField"))
+            foreach (AttributeData declaration in AuthoringAttributes(type, "GraphAuthoringField")
+                .Concat(AuthoringAttributes(type, "GraphAuthoringChoices")))
             {
                 string memberName = AuthoringMemberName(declaration);
                 if (string.IsNullOrWhiteSpace(memberName) || type.GetMembers(memberName).Length != 1)
                 {
-                    Error(type, "类级作者字段的 MemberName 必须唯一指向当前类声明的真实字段或属性：" + memberName);
+                    Error(type, "类级 " + declaration.AttributeClass.Name + " 的 MemberName 必须唯一指向当前类声明的真实成员：" + memberName);
                     valid = false;
                 }
             }
+            if (!valid) return;
+            AuthoringField[] fields = AuthoringFields(type);
             foreach (AuthoringField field in fields)
             {
                 if (field.Type == null || field.Symbol.DeclaredAccessibility != Accessibility.Public || field.Symbol.IsStatic ||
@@ -184,8 +193,18 @@ namespace ThirdPerson.ValueGeneration.Generator
                     foreach (AttributeData annotation in AuthoringAttributes(member, kind))
                     {
                         string key = (string)annotation.ConstructorArguments[0].Value;
-                        if (key == null)
+                        if (!fields.Any(field => field.MemberPath == key))
+                        {
+                            Error(member, "作者字段辅助成员引用了未声明的字段成员：" + key);
+                            valid = false;
                             continue;
+                        }
+                        string memberName = AuthoringMemberName(annotation);
+                        if (memberName != null && memberName != member.Name)
+                        {
+                            Error(member, "成员级 " + kind + " 的 MemberName 不能改绑其它成员：" + memberName);
+                            valid = false;
+                        }
                         if (auxiliaryMembers.TryGetValue(key, out ISymbol previous))
                         {
                             Error(previous, "同一作者字段只能声明一个" + kind + "辅助成员：" + key);
@@ -274,18 +293,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                 Error(field.Symbol, "只读 getter 的可写作者字段必须属于标注 GraphAuthoringConfigure 的正式配置操作");
                 valid = false;
             }
-            foreach (ISymbol member in type.GetMembers())
-                foreach (AttributeData annotation in member.GetAttributes().Where(attribute =>
-                    Identity(attribute.AttributeClass).StartsWith(AuthoringNamespace, StringComparison.Ordinal) &&
-                    attribute.AttributeClass.Name != "GraphAuthoringFieldAttribute" &&
-                    attribute.AttributeClass.Name != "GraphAuthoringConfigureAttribute" &&
-                    attribute.AttributeClass.Name != "GraphAuthoringInlineAttribute" &&
-                    attribute.ConstructorArguments.Length == 1 && attribute.ConstructorArguments[0].Value is string))
-                    if (!fields.Any(field => field.MemberPath == (string)annotation.ConstructorArguments[0].Value))
-                    {
-                        Error(member, "作者字段辅助成员引用了未声明的字段成员：" + annotation.ConstructorArguments[0].Value);
-                        valid = false;
-                    }
             foreach (AuthoringField field in fields)
                 foreach (KeyValuePair<string, TypedConstant> argument in field.Metadata.NamedArguments)
                     if (AuthoringFieldReference(argument) && !fields.Any(candidate => candidate.MemberPath == (string)argument.Value.Value))
