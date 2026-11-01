@@ -21,12 +21,16 @@ public sealed record PreviewActorCollider(string ActorId, double Radius, double 
 public sealed record PreviewGeometry(string RunId, string ContentRevision, PreviewWorldCollider[] World,
     PreviewTriangle[] WorldTriangles, PreviewActorCollider[] Actors, PreviewShape[] Shapes, string RawJson);
 public sealed record PreviewSweepSegment(int ShapeIndex, PreviewPose Start, PreviewPose End);
-public sealed record PreviewSweep(PreviewSweepSegment[] Segments, PreviewSweepSegment[] Targets);
+public sealed record PreviewSweep(PreviewSweepSegment[] Segments, PreviewSweepSegment[] Targets,
+    int ObjectSlot, string ExecutionObjectHandle, string SettlementObjectHandle, string? ActorId);
 public sealed record PreviewContact(double[] Point, double[] Normal)
 {
     public string? Kind { get; init; }
     public string? ActorId { get; init; }
     public string? Purpose { get; init; }
+    public int? ObjectSlot { get; init; }
+    public string? ExecutionObjectHandle { get; init; }
+    public string? SettlementObjectHandle { get; init; }
 }
 public sealed record PreviewFrameGeometry(PreviewSweep[] Sweeps, PreviewContact[] Contacts);
 public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor[] Actors,
