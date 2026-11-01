@@ -132,15 +132,20 @@ namespace BTSMTL.Graphs
         public override UnityEngine.Object EditorUndoTarget => m_Authoring == null ? this : m_Authoring.UndoTarget;
 
         // 新子图：唯一执行入口、出入口锚点与宿主准入一次配置完成；私有子图由所属图写入为子资产。
-        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host)
+        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host) => Create(name, host, macro =>
+        {
+            foreach (var input in CreateDefaultInputInterface())
+                macro.inputDefinitions.Add(new DynamicParameterDefinition(input.Id, input.DisplayName, typeof(Flow)));
+        });
+
+        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host, Action<BtsmtlMacroGraph> configure)
         {
             var macro = CreateInstance<BtsmtlMacroGraph>();
             macro.name = name;
             macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
             macro.Authoring.Initialize(() =>
             {
-                foreach (var input in CreateDefaultInputInterface())
-                    macro.inputDefinitions.Add(new DynamicParameterDefinition(input.Id, input.DisplayName, typeof(Flow)));
+                configure(macro);
                 macro.EnsureAnchors();
                 host.OnMacroCreated(macro);
             });
@@ -173,9 +178,9 @@ namespace BTSMTL.Graphs
         public void EnsureAnchors() => EditAuthoring("配置子图出入口", () =>
         {
             if (InputAnchor == null)
-                base.AddNode(typeof(BtsmtlMacroInputNode), new Vector2(-translation.x + 200, -translation.y + 200));
+                base.AddNode(typeof(BtsmtlMacroInputNode), new Vector2(-translation.x + DefaultInputPosition.X, -translation.y + DefaultInputPosition.Y));
             if (OutputAnchor == null)
-                base.AddNode(typeof(BtsmtlMacroOutputNode), new Vector2(-translation.x + 800, -translation.y + 200));
+                base.AddNode(typeof(BtsmtlMacroOutputNode), new Vector2(-translation.x + DefaultOutputPosition.X, -translation.y + DefaultOutputPosition.Y));
             InputAnchor.GatherPorts();
             OutputAnchor.GatherPorts();
         });

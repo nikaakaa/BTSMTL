@@ -6,6 +6,9 @@ namespace BTSMTL.Graphs
 {
     public sealed partial class BtsmtlMacroGraph
     {
+        public static (float X, float Y) DefaultInputPosition => (200, 200);
+        public static (float X, float Y) DefaultOutputPosition => (800, 200);
+
         public static IReadOnlyList<GraphNodePort> CreateDefaultInputInterface() => new[]
         {
             new GraphNodePort(GraphAuthoringPortDirection.Input, true, Guid.NewGuid().ToString("D"),
