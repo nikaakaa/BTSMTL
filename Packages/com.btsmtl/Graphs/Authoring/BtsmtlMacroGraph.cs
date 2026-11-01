@@ -127,6 +127,7 @@ namespace BTSMTL.Graphs
 
         public override bool allowsEditorExecution => false;
         public override bool usesDomainAuthoring => true;
+        public override bool authoringValidationManagedByOwner => true;
         public override bool usesExplicitPortSelection => true;
         public override bool isEditorReadOnly => Application.isPlaying;
         protected override void OnBeforeGraphValidate() => m_Host.PrepareAuthoringValidation(this);
