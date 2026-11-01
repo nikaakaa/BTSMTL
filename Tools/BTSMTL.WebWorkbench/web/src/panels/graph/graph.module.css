@@ -1,6 +1,6 @@
 /* 照 Unity GraphView（D4）。颜色、圆角全部取 theme.css 的节点图变量。
-   状态写法三处同义：本帧经过 --graph-now、已走过 --graph-route、失败 --reject；
-   节点用框内 2px 描边（不改尺寸），连线换色加粗；选中是框外一圈 --select-graph，可与状态同时显示；压暗统一 --graph-faded。 */
+   状态写法三处同义：本帧经过 --graph-now、已走过 --graph-route、失败 --graph-fail；
+   节点用框内描边（不改尺寸），连线换色加粗；选中是框外一圈 --select-graph，可与状态同时显示；压暗统一 --graph-faded。 */
 .root {
   position: relative;
   display: flex;
@@ -149,39 +149,39 @@
 }
 
 .state[data-visited] {
-  outline: 2px solid var(--graph-route);
+  outline: var(--graph-status-width) solid var(--graph-route);
   outline-offset: -1px;
 }
 
 .state[data-running], .node[data-occurred] {
-  outline: 2px solid var(--graph-now);
+  outline: var(--graph-status-width) solid var(--graph-now);
   outline-offset: -1px;
 }
 
 .node[data-failed] {
-  outline: 2px solid var(--reject);
+  outline: var(--graph-status-width) solid var(--graph-fail);
   outline-offset: -1px;
 }
 
-.state[data-selected], .node[data-selected] {
-  box-shadow: 0 0 0 2px var(--select-graph), var(--node-shadow);
+.node[data-selected] {
+  box-shadow: 0 0 0 var(--graph-status-width) var(--select-graph), var(--node-shadow);
 }
 
 .state[data-faded], .node[data-faded] {
   opacity: var(--graph-faded);
 }
 
-/* 状态机的状态：照 Animator 的圆角灰块；入口、出口、任意状态压暗 */
+/* 状态机的状态：照 Animator 的圆角灰块，入口、出口、任意状态与其它状态同一种块；顶边一条亮线 */
 .state {
   min-width: 96px;
   background: var(--state);
-  border: 1px solid var(--node-line);
+  border: 1px solid var(--state-line);
+  box-shadow: inset 0 1px 0 var(--state-light), var(--node-shadow);
   color: var(--state-title);
 }
 
-.state[data-system] {
-  background: var(--state-system);
-  color: var(--state-system-title);
+.state[data-selected] {
+  box-shadow: inset 0 1px 0 var(--state-light), 0 0 0 var(--graph-status-width) var(--select-graph), var(--node-shadow);
 }
 
 .stateTitle {
@@ -203,7 +203,7 @@
   gap: 8px;
   margin-top: -7px;
   padding: 0 18px 6px;
-  color: var(--state-system-title);
+  color: var(--state-caption);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -218,7 +218,7 @@
 .transition :global(.react-flow__edge-path) {
   fill: none;
   stroke: var(--graph-edge);
-  stroke-width: 1.6;
+  stroke-width: 1.5;
 }
 
 .arrow {
@@ -258,7 +258,7 @@
 .transition[data-status='live'] :global(.react-flow__edge-path),
 .transition[data-picked] :global(.react-flow__edge-path) {
   stroke: var(--status);
-  stroke-width: 2.6;
+  stroke-width: 2.2;
 }
 
 .transition[data-status='route'] .arrow, .transition[data-status='live'] .arrow, .transition[data-picked] .arrow {
@@ -457,22 +457,22 @@
 .edge {
   fill: none;
   stroke: var(--graph-edge);
-  stroke-width: 1.6;
+  stroke-width: 1.5;
 }
 
 .edge[data-status='passed'] {
   stroke: var(--graph-now);
-  stroke-width: 2.6;
+  stroke-width: 2.2;
 }
 
 .edge[data-status='rejected'] {
-  stroke: var(--reject);
-  stroke-width: 2.6;
+  stroke: var(--graph-fail);
+  stroke-width: 2.2;
 }
 
 .edge[data-picked] {
   stroke: var(--select-graph);
-  stroke-width: 2.6;
+  stroke-width: 2.2;
 }
 
 .edge[data-faded] {

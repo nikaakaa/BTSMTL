@@ -288,7 +288,8 @@ export const isStateMachine = (graph: GraphDefinition) => graph.edges.some(edge 
 export function portColor(valueType: string | undefined): string {
   const type = (valueType ?? '').toLowerCase();
   if (/bool/.test(type)) return 'var(--port-bool)';
-  if (/single|double|float|int|fp|number|vector|quaternion/.test(type)) return 'var(--port-float)';
+  if (/vector|quaternion/.test(type)) return 'var(--port-vector)';
+  if (/single|double|float|int|fp|number/.test(type)) return 'var(--port-float)';
   if (/enum|tag/.test(type)) return 'var(--port-enum)';
   if (type) return 'var(--port-asset)';
   // 没有采样值时不知道类型，不冒充浮点。

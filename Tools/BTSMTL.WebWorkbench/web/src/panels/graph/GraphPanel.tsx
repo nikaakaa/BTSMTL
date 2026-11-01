@@ -77,7 +77,6 @@ const useView = () => useContext(ViewContext)!;
 interface NodeData extends Record<string, unknown> {
   laid: LaidNode;
   selectId: string;
-  system: boolean;
   timeline: string | null;
   children: GraphDefinition[];
 }
@@ -456,10 +455,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       return {
         id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
         measured: measured.get(laid.node.id),
-        data: {
-          laid, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
-          timeline, children,
-        },
+        data: { laid, selectId: nodeSelectId(graph, laid.node), timeline, children },
       };
     })];
   }, [layout, hierarchy, graph, machine, groups, canvasSelection, view]);
@@ -727,8 +723,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           {params.minimap && minimapWidth > 0 && (
             <MiniMap className={styles.minimap} style={{ width: minimapWidth, height: minimapWidth * 104 / 204 }} pannable zoomable
               bgColor={themeColor('--bg-0')} maskColor="rgb(255 255 255 / 4%)" maskStrokeColor={themeColor('--graph-edge')}
-              nodeColor={node => themeColor(node.type === 'canvasGroup' ? '--group-line'
-                : (node.data as NodeData).system ? '--state-system' : machine ? '--state' : '--node-head')}
+              nodeColor={node => themeColor(node.type === 'canvasGroup' ? '--group-line' : machine ? '--state' : '--node-head')}
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
@@ -757,7 +752,7 @@ function useNodeState(store: RouteStore, id: string) {
 
 // 状态机的状态：照 Animator 的圆角块，本帧所在的状态描黄并写本地秒数，走过的描金。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
-  const { laid, selectId, system, timeline, children } = data;
+  const { laid, selectId, timeline, children } = data;
   const { store, related, editable } = useView();
   // 拖转移时整个状态块都是落点；平时不挡状态的拖动。
   const connecting = useConnection(connection => connection.inProgress);
@@ -772,7 +767,7 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const faded = related !== null && !related.has(laid.node.id);
   return (
     <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
-    <div className={styles.state} data-system={system || undefined} data-running={running || undefined}
+    <div className={styles.state} data-running={running || undefined}
       data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}>
       {/* 作者模式：从右侧圆点拖出转移，松开在目标状态任意位置 */}
       <Handle id="in:@node" type="target" position={Position.Left} isConnectable={!!editable} isConnectableStart={false}
