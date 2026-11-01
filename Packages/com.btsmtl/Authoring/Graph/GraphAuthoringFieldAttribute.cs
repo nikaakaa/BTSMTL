@@ -6,7 +6,7 @@ namespace BTSMTL.Authoring.Graph
 
     // 省略字段身份时由值生成器按成员名首字母小写得出，生成的 AuthoringContract 与 FieldIds 携带最终身份；
     // 只有身份与成员名不一致时才显式写出。反射直接读取本特性的旧入口须改读生成合同。
-    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true, Inherited = true)]
     public sealed class GraphAuthoringFieldAttribute : Attribute
     {
         public GraphAuthoringFieldAttribute(GraphAuthoringFieldValueKind valueKind) : this(null, valueKind) { }
@@ -40,6 +40,7 @@ namespace BTSMTL.Authoring.Graph
         }
 
         public string FieldId { get; }
+        public string MemberName { get; set; }
         public GraphAuthoringDocumentMember DocumentMember { get; set; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldCompilationImpact CompilationImpact { get; set; }

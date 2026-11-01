@@ -58,13 +58,14 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static IEnumerable<AuthoringField> AuthoringFields(INamedTypeSymbol type, string[] path, string prefix)
         {
+            AttributeData[] declarations = AuthoringAttributes(type, "GraphAuthoringField").ToArray();
             foreach (ISymbol member in type.GetMembers())
             {
-                AttributeData metadata = Attribute(member, AuthoringFieldAttribute);
                 string[] memberPath = path.Concat(new[] { member.Name }).ToArray();
                 ITypeSymbol memberType = member is IPropertySymbol property ? property.Type :
                     member is IFieldSymbol declaredField ? declaredField.Type : null;
-                if (metadata != null)
+                foreach (AttributeData metadata in AuthoringAttributes(member, "GraphAuthoringField")
+                    .Concat(declarations.Where(declaration => AuthoringMemberName(declaration) == member.Name)))
                     yield return new AuthoringField
                 {
                     Symbol = member,
@@ -85,6 +86,9 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
         }
 
+        static string AuthoringMemberName(AttributeData metadata) => metadata.NamedArguments
+            .Where(argument => argument.Key == "MemberName").Select(argument => (string)argument.Value.Value).SingleOrDefault();
+
         static AttributeData Attribute(ISymbol symbol, string name) => symbol.GetAttributes()
             .SingleOrDefault(attribute => Identity(attribute.AttributeClass) == name);
 
@@ -101,8 +105,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ((IPropertySymbol)field.Symbol).SetMethod?.DeclaredAccessibility == Accessibility.Public);
 
         static bool AuthoringTypeHasFields(INamedTypeSymbol type) => type != null &&
-            type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute) ||
-                HasAttribute(member, AuthoringNamespace + "GraphAuthoringInlineAttribute"));
+            (HasAttribute(type, AuthoringFieldAttribute) ||
+                type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute) ||
+                    HasAttribute(member, AuthoringNamespace + "GraphAuthoringInlineAttribute")));
 
         static ITypeSymbol AuthoringResultType(ISymbol member) => member is IPropertySymbol property
             ? property.Type : ((IMethodSymbol)member).ReturnType;
@@ -126,15 +131,36 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return;
             }
             bool valid = true;
+            foreach (AttributeData declaration in AuthoringAttributes(type, "GraphAuthoringField"))
+            {
+                string memberName = AuthoringMemberName(declaration);
+                if (string.IsNullOrWhiteSpace(memberName) || type.GetMembers(memberName).Length != 1)
+                {
+                    Error(type, "类级作者字段的 MemberName 必须唯一指向当前类声明的真实字段或属性：" + memberName);
+                    valid = false;
+                }
+            }
             foreach (AuthoringField field in fields)
             {
-                if (field.Symbol.DeclaredAccessibility != Accessibility.Public || field.Symbol.IsStatic ||
+                if (field.Type == null || field.Symbol.DeclaredAccessibility != Accessibility.Public || field.Symbol.IsStatic ||
                     field.Symbol is IPropertySymbol property && (property.IsIndexer || property.GetMethod?.DeclaredAccessibility != Accessibility.Public))
                 {
                     Error(field.Symbol, "作者字段读取必须是公开实例字段或公开 getter");
                     valid = false;
+                    continue;
                 }
-                if (fields.Count(other => other.Id == field.Id) != 1)
+                string memberName = AuthoringMemberName(field.Metadata);
+                if (memberName != null && memberName != field.Symbol.Name)
+                {
+                    Error(field.Symbol, "成员级作者字段的 MemberName 不能改绑其它成员：" + memberName);
+                    valid = false;
+                }
+                if (fields.Count(other => other.MemberPath == field.MemberPath) != 1)
+                {
+                    Error(field.Symbol, "同一真实成员只能声明一个作者字段：" + field.MemberPath);
+                    valid = false;
+                }
+                else if (fields.Count(other => other.Id == field.Id) != 1)
                 {
                     Error(field.Symbol, "作者字段身份必须唯一：" + field.Id);
                     valid = false;
