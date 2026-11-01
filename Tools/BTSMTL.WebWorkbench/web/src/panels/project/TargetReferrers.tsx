@@ -13,7 +13,7 @@ import styles from './project.module.css';
 
 type Result = { key: string } & (
   | { kind: 'loading' }
-  | { kind: 'failed'; text: string; entryId: number }
+  | { kind: 'failed'; text: string; entryId: number | null }
   | { kind: 'ready'; value: ReferrersResult }
 );
 
