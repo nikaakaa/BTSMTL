@@ -56,8 +56,8 @@ export function ReferencePicker({ id, label, value, catalog, onChoose }: {
       {title}
     </Button>
     {catalog.kind === 'unavailable' ? <div className={styles.note}>上下文尚未取得：{catalog.reason}</div>
-      : catalog.items.length === 0 ? <div className={styles.note}>没有候选</div>
-        : invalid ? <div className={styles.issue}>引用已失效，原值已保留</div> : null}
+      : <>{catalog.items.length === 0 && <div className={styles.note}>没有候选</div>}
+        {invalid && <div className={styles.issue}>{catalog.invalidReason}</div>}</>}
     {selected.map((item, index) => item.conflict && <div key={index} className={styles.issue}>{item.conflict}</div>)}
     {rejection && <div role="alert" className={styles.issue}>{rejection}</div>}
     {open && <div className={styles.popup} onKeyDown={event => { if (event.key === 'Escape') setOpen(false); }}>

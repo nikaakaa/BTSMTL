@@ -526,7 +526,8 @@ function FieldEditor({ id, field, item, node, onSet, onSetFields }: {
       catalog={field.choiceKind === null
         ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
         : field.choicesAvailability.available
-          ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices }
+          ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
+            invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
           : { kind: 'unavailable', reason: field.choicesAvailability.reason }}
       onChoose={(choice: ReferenceChoice) => onSetFields([
         { keys: path, value: choice.value },
@@ -587,8 +588,6 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
       {!timeOnly && animation && <Row label="动画">
         <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)}
           catalog={animationReferenceCatalog(library)} onChoose={choice => set(animation.serializedMemberPath, choice.value)} />
-        {library.kind === 'ready' && !library.library.clips.some(item => item.resource.identity === getIn(clip, animation.serializedMemberPath)) &&
-          <p className={styles.issue}>当前动画库缺少该动画，请重新导出动画库；原身份会继续保留。</p>}
       </Row>}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>

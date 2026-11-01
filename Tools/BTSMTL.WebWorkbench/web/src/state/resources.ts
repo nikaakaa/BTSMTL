@@ -44,7 +44,10 @@ export function animationReferenceCatalog(state: AnimationLibraryState): Referen
   switch (state.kind) {
     case 'loading': return { kind: 'unavailable', reason: '动画库清单尚未取得' };
     case 'unavailable': return state;
-    case 'ready': return { kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.map(animationChoice) };
+    case 'ready': return {
+      kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.map(animationChoice),
+      invalidReason: '动画引用已失效，当前动画库缺少该动画，请重新导出动画库；原身份已保留',
+    };
   }
 }
 

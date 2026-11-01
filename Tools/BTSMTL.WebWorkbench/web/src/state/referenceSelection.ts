@@ -3,7 +3,7 @@ import type { ReferenceChoice } from '../api/authoring';
 import { parseSkillJson, stringifySkillJson, type JsonValue } from './skillJson';
 
 export type ReferenceCatalog =
-  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[] }
+  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
   | { kind: 'unavailable'; reason: string };
 
 export interface ReferenceFieldSelection {
@@ -60,5 +60,5 @@ export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCata
   const key = referenceValueKey(drag.value);
   const choice = catalog.items.find(item => referenceValueKey(item.value) === key && item.source === drag.source);
   return choice ? { kind: 'selected', choice }
-    : { kind: 'rejected', reason: '拖入引用不在当前载体候选中，原值已保留' };
+    : { kind: 'rejected', reason: catalog.invalidReason };
 }
