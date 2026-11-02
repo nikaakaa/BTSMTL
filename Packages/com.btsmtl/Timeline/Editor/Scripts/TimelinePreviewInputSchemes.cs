@@ -54,8 +54,6 @@ namespace BTSMTL.Timeline.Editor
 
         public void Load(TimelinePreviewRoot root, bool saveChanges = true, int? selection = null)
         {
-            if (saveChanges)
-                Save();
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;

@@ -203,9 +203,9 @@ namespace BTSMTL.Timeline.Editor
         int? m_PendingInputScheme;
 
         public void Open(TimelinePreviewRoot root, TimelinePreviewMode mode, bool showScene,
-            bool saveInputSchemes = true, int? inputScheme = null)
+            bool saveInputSchemes = true, int? inputScheme = null, bool savePreviousInputScheme = true)
         {
-            Close(saveInputSchemes);
+            Close(savePreviousInputScheme);
             Error = string.Empty;
             if (m_Provider == null)
             {
