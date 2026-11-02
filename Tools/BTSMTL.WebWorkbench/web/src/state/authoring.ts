@@ -624,6 +624,10 @@ export const authoringActions = {
           documents[key] = { ...document, externalChange: true };
           return;
         }
+        if (isActiveTarget(target)) {
+          loadController?.abort();
+          loadController = new AbortController();
+        }
         const history = (items: Snapshot[]) => items.map(item => ({ ...item,
           edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
           removed: item.removed.filter(path => !paths.has(path)),
