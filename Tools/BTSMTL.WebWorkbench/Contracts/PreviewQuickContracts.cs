@@ -3,8 +3,16 @@ using System.Text.Json.Serialization;
 
 namespace BTSMTL.WebWorkbench;
 
-public sealed record PreviewQuickRoot([property: JsonRequired] string Kind, [property: JsonRequired] string Path,
-    string? ElementId = null, int Machine = 0);
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(PreviewQuickNativeRoot), "nativeDocument")]
+[JsonDerivedType(typeof(PreviewQuickWebRoot), "webEditingView")]
+[JsonDerivedType(typeof(PreviewQuickTimelineRoot), "timelineAsset")]
+public abstract record PreviewQuickRoot;
+public sealed record PreviewQuickNativeRoot([property: JsonRequired] string Path, int Machine = 0) : PreviewQuickRoot;
+public sealed record PreviewQuickWebRoot([property: JsonRequired] string Skill,
+    [property: JsonRequired] SkillAuthoringEditingView EditingView, int Machine = 0) : PreviewQuickRoot;
+public sealed record PreviewQuickTimelineRoot([property: JsonRequired] string Path,
+    [property: JsonRequired] string ElementId) : PreviewQuickRoot;
 public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null);
 public sealed record PreviewQuickInputPoint(string InputId, double Time, JsonElement Value);
 public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault);
@@ -16,7 +24,7 @@ public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
     double? RangeEndSeconds = null, int TimeoutSeconds = 180);
 
 public sealed record PreviewQuickReply<T>(bool Success, bool Pending, string? Code, string? Message, T? Data, string RawJson);
-public sealed record PreviewQuickDocument(string Path, string? SavedRevision, bool HasUnsavedChanges);
+public sealed record PreviewQuickDocument(string Path, string Revision, string? SavedRevision, bool? HasUnsavedChanges);
 public sealed record PreviewQuickSource(string Kind, string Identity, string Path, string Revision,
     string SceneRevision, PreviewQuickDocument[] Documents);
 public sealed record PreviewQuickSkill(string Directory, string DisplayName, string Identity);
