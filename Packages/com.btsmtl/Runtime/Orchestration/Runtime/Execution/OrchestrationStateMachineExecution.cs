@@ -99,6 +99,7 @@ namespace BTSMTL.Orchestration
         void RetargetStateTransition(int machineOperationIndex, int exiting)
         {
             ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
+            OperationState(exiting).StopContext.UpdateTick(m_Input.Tick);
             int pending = machine.StopContext.ReplacementEdgeIndex;
             int anyState = m_Program.AnyStateEntry(machineOperationIndex);
             int selected = anyState >= 0 ? SelectTransition(anyState, exiting, exiting) : -1;
