@@ -56,6 +56,9 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueStorageIgnoreAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class ValueRecordedStateConstructorAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Struct)]
     public sealed class ValueStateLayoutAttribute : Attribute { }
 

@@ -390,25 +390,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 .Append(string.Join(", ", inputs.Select(member => Escape(member.Symbol.Name)))).AppendLine(");");
             if (recordedState)
             {
-                for (int i = 0; i < inputs.Length; i++)
-                    if (constructor.Parameters[i].Type.SpecialType != SpecialType.System_String &&
-                        !constructor.Parameters[i].Type.IsUnmanagedType)
-                    {
-                        context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, inputs[i].Symbol.Locations.FirstOrDefault(),
-                            Identity(type), "RecordedState 成员 '" + inputs[i].Symbol.Name + "' 必须是原 string 或 unmanaged 值"));
-                        return false;
-                    }
-                code.Append("public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
-                    .Append(Runtime).AppendLine("IRecordedRuntimeStateWriter {");
-                for (int i = 0; i < inputs.Length; i++)
-                    code.Append(constructor.Parameters[i].Type.SpecialType == SpecialType.System_String ?
-                        "writer.WriteText(this." : "writer.Write(this.").Append(Escape(inputs[i].Symbol.Name)).AppendLine(");");
-                code.AppendLine("}");
-                code.Append("public static ").Append(TypeName(type)).Append(" ReadRecordedState(ref ")
-                    .Append(Runtime).Append("RecordedRuntimeStateReader reader) => new ").Append(TypeName(type)).Append('(')
-                    .Append(string.Join(", ", constructor.Parameters.Select(parameter =>
-                        parameter.Type.SpecialType == SpecialType.System_String ? "reader.ReadText()" :
-                        "reader.Read<" + TypeName(parameter.Type) + ">()"))).AppendLine(");");
+                if (!EmitRecordedState(context, code, type, constructor, inputs)) return false;
             }
             return true;
         }
