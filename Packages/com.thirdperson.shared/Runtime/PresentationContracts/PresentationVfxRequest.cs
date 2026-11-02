@@ -21,7 +21,8 @@ namespace ThirdPersonSimulation
         ReferTarget = 7
     }
 
-    public readonly struct PresentationVfxRequest
+    [ValueStorage(UseConstructor = true, RecordedState = true)]
+    public readonly partial struct PresentationVfxRequest
     {
         public PresentationVfxRequest(
             PresentationVfxCommand command, string requestId, string resourceId,

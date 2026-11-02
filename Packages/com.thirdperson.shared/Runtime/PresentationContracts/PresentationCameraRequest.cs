@@ -40,7 +40,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [ValueStorage(UseConstructor = true), ValueOperations]
+    [ValueStorage(UseConstructor = true, RecordedState = true), ValueOperations]
     public readonly partial struct PresentationCameraRequest
     {
         PresentationCameraRequest(

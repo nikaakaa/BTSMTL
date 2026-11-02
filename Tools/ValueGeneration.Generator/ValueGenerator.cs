@@ -315,6 +315,13 @@ namespace ThirdPerson.ValueGeneration.Generator
             AttributeData purpose = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
             bool construct = purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
             bool useConstructor = purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value);
+            bool recordedState = purpose.NamedArguments.Any(argument => argument.Key == "RecordedState" && (bool)argument.Value.Value);
+            if (recordedState && !useConstructor)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
+                    "RecordedState 须消费 UseConstructor 的原成员顺序与重建入口"));
+                return null;
+            }
             ValueUnionShape union = GetValueUnionShape(type);
             if (union != null)
             {
@@ -328,7 +335,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             else if (useConstructor)
             {
-                if (!EmitConstructorValueStorage(context, code, type, construct)) return null;
+                if (!EmitConstructorValueStorage(context, code, type, construct, recordedState)) return null;
             }
             else
                 EmitValueStorage(code, type, StorageMembers(type).Where(member =>
@@ -340,7 +347,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         }
 
         static bool EmitConstructorValueStorage(GeneratorExecutionContext context, StringBuilder code,
-            INamedTypeSymbol type, bool construct)
+            INamedTypeSymbol type, bool construct, bool recordedState)
         {
             Member[] members = StorageMembers(type).Where(member =>
                 !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
@@ -380,6 +387,28 @@ namespace ThirdPerson.ValueGeneration.Generator
                     "in " + TypeName(constructor.Parameters[index].Type) + " " + Escape(member.Symbol.Name))))
                 .Append(") => new ").Append(TypeName(type)).Append('(')
                 .Append(string.Join(", ", inputs.Select(member => Escape(member.Symbol.Name)))).AppendLine(");");
+            if (recordedState)
+            {
+                for (int i = 0; i < inputs.Length; i++)
+                    if (constructor.Parameters[i].Type.SpecialType != SpecialType.System_String &&
+                        !constructor.Parameters[i].Type.IsUnmanagedType)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, inputs[i].Symbol.Locations.FirstOrDefault(),
+                            Identity(type), "RecordedState 成员 '" + inputs[i].Symbol.Name + "' 必须是原 string 或 unmanaged 值"));
+                        return false;
+                    }
+                code.Append("public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
+                    .Append(Runtime).AppendLine("IRecordedRuntimeStateWriter {");
+                for (int i = 0; i < inputs.Length; i++)
+                    code.Append(constructor.Parameters[i].Type.SpecialType == SpecialType.System_String ?
+                        "writer.WriteText(this." : "writer.Write(this.").Append(Escape(inputs[i].Symbol.Name)).AppendLine(");");
+                code.AppendLine("}");
+                code.Append("public static ").Append(TypeName(type)).Append(" ReadRecordedState(ref ")
+                    .Append(Runtime).Append("RecordedRuntimeStateReader reader) => new ").Append(TypeName(type)).Append('(')
+                    .Append(string.Join(", ", constructor.Parameters.Select(parameter =>
+                        parameter.Type.SpecialType == SpecialType.System_String ? "reader.ReadText()" :
+                        "reader.Read<" + TypeName(parameter.Type) + ">()"))).AppendLine(");");
+            }
             return true;
         }
 

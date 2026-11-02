@@ -47,6 +47,7 @@ namespace ThirdPersonSimulation
     {
         public bool Construct { get; set; }
         public bool UseConstructor { get; set; }
+        public bool RecordedState { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
