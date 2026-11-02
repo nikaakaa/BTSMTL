@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using BTSMTL.Orchestration;
@@ -32,6 +33,20 @@ namespace ThirdPersonSimulation.Serialization
                 File.ReadAllBytes(SourcesPath(manifestPath)));
     }
 
+    public readonly struct MemoryPackGraphPreparation
+    {
+        public MemoryPackGraphPreparation(GraphCompilationWork work, double encodingMilliseconds, double milliseconds)
+        {
+            Work = work;
+            EncodingMilliseconds = encodingMilliseconds;
+            Milliseconds = milliseconds;
+        }
+
+        public GraphCompilationWork Work { get; }
+        public double EncodingMilliseconds { get; }
+        public double Milliseconds { get; }
+    }
+
     public sealed class MemoryPackGraphFileTransaction
     {
         sealed class Write
@@ -47,22 +62,32 @@ namespace ThirdPersonSimulation.Serialization
 
         public IReadOnlyList<string> ChangedFiles => m_Writes.Keys.OrderBy(path => path, StringComparer.Ordinal).ToArray();
 
-        public void PrepareGraph<TValue>(string manifestPath, OrchestrationGraphContent<TValue> content,
+        public MemoryPackGraphPreparation PrepareGraph<TValue>(string manifestPath, OrchestrationGraphContent<TValue> content,
             IOrchestrationGraphContentEncoding<TValue> encoding) where TValue : unmanaged
         {
+            var elapsed = Stopwatch.StartNew();
             GraphExecutionIdentity previous = File.Exists(manifestPath)
                 ? encoding.ReadIdentity(File.ReadAllBytes(manifestPath)) : null;
             GraphExecutionIdentity identity = content.Identity;
             if (previous != null && previous.ContentIdentity == identity.ContentIdentity)
-                return;
+                return new MemoryPackGraphPreparation(GraphCompilationWork.Unchanged, 0, elapsed.Elapsed.TotalMilliseconds);
+            bool structureChanged = previous == null || previous.StructureIdentity != identity.StructureIdentity;
+            bool parametersChanged = previous == null || previous.TargetParameterIdentity != identity.TargetParameterIdentity;
+            bool sourcesChanged = previous == null || previous.SourceIdentity != identity.SourceIdentity;
+            var encodingTime = Stopwatch.StartNew();
             OrchestrationGraphContentBlocks blocks = encoding.WriteBlocks(content);
-            if (previous == null || previous.StructureIdentity != identity.StructureIdentity)
+            byte[] manifest = encoding.WriteIdentity(identity);
+            encodingTime.Stop();
+            if (structureChanged)
                 Prepare(MemoryPackGraphContentFiles.StructurePath(manifestPath), blocks.Structure, 0);
-            if (previous == null || previous.TargetParameterIdentity != identity.TargetParameterIdentity)
+            if (parametersChanged)
                 Prepare(MemoryPackGraphContentFiles.ParametersPath(manifestPath), blocks.Parameters, 0);
-            if (previous == null || previous.SourceIdentity != identity.SourceIdentity)
+            if (sourcesChanged)
                 Prepare(MemoryPackGraphContentFiles.SourcesPath(manifestPath), blocks.Sources, 0);
-            Prepare(manifestPath, encoding.WriteIdentity(identity), 1);
+            Prepare(manifestPath, manifest, 1);
+            GraphCompilationWork work = structureChanged ? GraphCompilationWork.Structure
+                : parametersChanged ? GraphCompilationWork.Parameters : GraphCompilationWork.Sources;
+            return new MemoryPackGraphPreparation(work, encodingTime.Elapsed.TotalMilliseconds, elapsed.Elapsed.TotalMilliseconds);
         }
 
         public void PreparePublication(string path, byte[] content)
