@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -18,7 +19,7 @@ namespace BTSMTL.Orchestration
 
         public int StorageSizeBytes => m_Memory.Length;
 
-        public void Capture(OrchestrationExecutionSource<TValue> source)
+        public void Capture(in OrchestrationExecutionSource<TValue> source)
         {
             OrchestrationStateLayoutView plan = m_Plan.View;
             OrchestrationStateBinding.ClearPayloads(m_Plan, m_Memory);
@@ -60,7 +61,7 @@ namespace BTSMTL.Orchestration
                     .CopyTo(m_Memory.AsSpan(segment.OffsetBytes, segment.SizeBytes));
             }
             m_Tick = source.Tick;
-            m_StopContext = source.StopContext;
+            source.StopContextStorage.CopyTo(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
         }
 
         public OrchestrationExecutionSource<TValue> Borrow()
@@ -73,7 +74,7 @@ namespace BTSMTL.Orchestration
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(m_Tick);
-            writer.Write(m_StopContext);
+            writer.WriteSpan(OrchestrationStopContext.Borrow(in m_StopContext));
             foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, m_Memory))
                 writer.WriteSpan<byte>(m_Memory.AsSpan(region.OffsetBytes, region.SizeBytes));
         }
@@ -82,7 +83,7 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationStateBinding.ClearPayloads(m_Plan, m_Memory);
             m_Tick = reader.Read<ulong>();
-            m_StopContext = reader.Read<OrchestrationStopContext>();
+            reader.ReadSpan<OrchestrationStopContext>(1).CopyTo(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
             foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, m_Memory))
                 reader.ReadSpan<byte>(region.SizeBytes).CopyTo(m_Memory.AsSpan(region.OffsetBytes, region.SizeBytes));
         }

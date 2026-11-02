@@ -28,14 +28,18 @@ namespace BTSMTL.Orchestration
                 OrchestrationOperationStatus.Success;
         }
 
-        public OrchestrationStopContext CurrentStopContext()
+        public ref readonly OrchestrationStopContext CurrentStopContext()
         {
             if (m_StateDepth != 0)
-                return m_States[m_StateDepth - 1].ExitContext;
-            return m_InvocationStopContext.IsValid ? m_InvocationStopContext : m_Blackboards.BorrowedStopContext;
+                return ref m_States[m_StateDepth - 1].ExitContext;
+            if (!m_InvocationStopContext.IsEmpty)
+                return ref m_InvocationStopContext[0];
+            if (m_Blackboards.HasBorrowedSource)
+                return ref m_Blackboards.BorrowedStopContext;
+            return ref OrchestrationStopContext.Empty;
         }
 
-        public OrchestrationStateExitContext CurrentStateExitContext() => CurrentStopContext().StateExit;
+        public OrchestrationStateExitContext CurrentStateExitContext() => new(in CurrentStopContext());
 
         public uint CurrentStateExitCause() => CurrentStateExitContext().Cause;
 
@@ -345,10 +349,13 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        OrchestrationStopContext StateExitContext(int stateOperationIndex, in OrchestrationStopContext context) =>
-            context.StateExit.IsValid && context.StateExit.SourceStateOperationIndex == stateOperationIndex &&
-                context.StateExit.SourceStateExecutionFrameIndex == m_FrameSlot
+        OrchestrationStopContext StateExitContext(int stateOperationIndex, in OrchestrationStopContext context)
+        {
+            var exit = new OrchestrationStateExitContext(in context);
+            return exit.IsValid && exit.SourceStateOperationIndex == stateOperationIndex &&
+                exit.SourceStateExecutionFrameIndex == m_FrameSlot
                 ? context : context.ForStateExit(stateOperationIndex, m_FrameSlot);
+        }
 
         void ActivateState(int machineOperationIndex, int stateOperationIndex)
         {

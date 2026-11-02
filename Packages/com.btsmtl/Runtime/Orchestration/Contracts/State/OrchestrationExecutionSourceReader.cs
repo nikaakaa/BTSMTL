@@ -117,7 +117,7 @@ namespace BTSMTL.Orchestration
             Owner(ownerOperationIndex).Source ? m_Source.Tick : candidateTick;
 
         internal int SourceFrameIndex => m_Source.FrameSlot;
-        internal OrchestrationStopContext SourceStopContext => m_Source.StopContext;
+        internal ref readonly OrchestrationStopContext SourceStopContext => ref m_Source.StopContext;
         internal ref readonly OrchestrationExecutionFrameState SourceHeader(int frameSlot) =>
             ref m_Source.Frames.Header(frameSlot);
 

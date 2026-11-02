@@ -53,7 +53,7 @@ namespace BTSMTL.Orchestration
         int m_ScheduledPredictionDepth;
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
-        OrchestrationStopContext m_InvocationStopContext;
+        ReadOnlySpan<OrchestrationStopContext> m_InvocationStopContext;
 
         internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
             OrchestrationExecutionScratch<TValue> scratch,
@@ -522,8 +522,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.Parallel:
                     return TickParallel(operationIndex);
                 case OrchestrationOperationCode.Sequence:
-                    return m_Contract == OrchestrationExecutionContract.Complete
-                        ? TickChildren(operationIndex) : TickSequence(operationIndex);
+                    return TickSequence(operationIndex);
                 case OrchestrationOperationCode.Selector:
                     return TickSelector(operationIndex);
                 case OrchestrationOperationCode.Succeed:

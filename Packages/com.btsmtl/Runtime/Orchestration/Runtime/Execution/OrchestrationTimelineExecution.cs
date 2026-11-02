@@ -27,10 +27,10 @@ namespace BTSMTL.Orchestration
             context = default;
             OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
             TValue previousTime = m_TimelineTime;
-            OrchestrationStopContext previousStopContext = m_InvocationStopContext;
+            ReadOnlySpan<OrchestrationStopContext> previousStopContext = m_InvocationStopContext;
             m_TimelineInvocation = invocation;
             m_TimelineTime = time;
-            m_InvocationStopContext = stopContext;
+            m_InvocationStopContext = OrchestrationStopContext.Borrow(in stopContext);
             BeginInvocation();
             try
             {

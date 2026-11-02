@@ -41,10 +41,11 @@ namespace BTSMTL.Orchestration
         internal int BorrowedStateOperationIndex => m_SourceBinding.HasSource && m_SourceBinding.SameProgram ?
             m_SourceBinding.SourceStateOperationIndex : -1;
         internal bool HasBorrowedState => m_SourceBinding.HasSource && m_SourceBinding.SourceStateOperationIndex >= 0;
+        internal bool HasBorrowedSource => m_SourceBinding.HasSource;
         internal bool BorrowedStateRootCompleted() => m_SourceBinding.SourceStateRootOperationIndex >= 0 &&
             m_Reader.ReadSourceOperation(m_SourceBinding.SourceStateRootOperationIndex,
                 m_SourceBinding.SourceStateRootOwnerOperationIndex).Status == OrchestrationOperationStatus.Success;
-        internal OrchestrationStopContext BorrowedStopContext => m_Reader.SourceStopContext;
+        internal ref readonly OrchestrationStopContext BorrowedStopContext => ref m_Reader.SourceStopContext;
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
             m_SourceBinding.HasSource && m_SourceBinding.ContainsSourceState(in m_Program, stateOperationIndex);
 

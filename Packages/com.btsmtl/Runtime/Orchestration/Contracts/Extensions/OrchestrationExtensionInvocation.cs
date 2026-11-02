@@ -24,6 +24,8 @@ namespace BTSMTL.Orchestration
 
     public readonly ref struct OrchestrationExtensionArguments<TValue> where TValue : struct
     {
+        readonly ReadOnlySpan<OrchestrationStopContext> m_StopContext;
+
         public OrchestrationExtensionArguments(OrchestrationExtensionInvocationKind kind,
             int operationIndex, ulong operationGeneration, ulong tick, in OrchestrationStopContext stopContext,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
@@ -46,7 +48,7 @@ namespace BTSMTL.Orchestration
             OperationIndex = operationIndex;
             OperationGeneration = operationGeneration;
             Tick = tick;
-            StopContext = stopContext;
+            m_StopContext = OrchestrationStopContext.Borrow(in stopContext);
             StateAncestors = stateAncestors;
             ExecutionFrame = executionFrame;
             InputRows = inputRows;
@@ -58,9 +60,9 @@ namespace BTSMTL.Orchestration
         public int OperationIndex { get; }
         public ulong OperationGeneration { get; }
         public ulong Tick { get; }
-        public readonly OrchestrationStopContext StopContext;
+        public ref readonly OrchestrationStopContext StopContext => ref m_StopContext[0];
         public uint StopCause => StopContext.Cause;
-        public OrchestrationStateExitContext StateExit => StopContext.StateExit;
+        public OrchestrationStateExitContext StateExit => new(in StopContext);
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
         public ReadOnlySpan<OrchestrationExecutionFrameState> ExecutionFrame { get; }
         public OrchestrationExtensionInputRows<TValue> InputRows { get; }
@@ -96,6 +98,7 @@ namespace BTSMTL.Orchestration
     {
         readonly Span<TValue> m_Outputs;
         readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_ExecutionFrame;
+        readonly ReadOnlySpan<OrchestrationStopContext> m_StopContext;
 
         internal OrchestrationExtensionInvocation(in OrchestrationExtensionArguments<TValue> arguments)
         {
@@ -103,7 +106,7 @@ namespace BTSMTL.Orchestration
             OperationIndex = arguments.OperationIndex;
             OperationGeneration = arguments.OperationGeneration;
             Tick = arguments.Tick;
-            StopContext = arguments.StopContext;
+            m_StopContext = OrchestrationStopContext.Borrow(in arguments.StopContext);
             StateAncestors = arguments.StateAncestors;
             InputRows = new OrchestrationExtensionInputRows<TValue, TOperation>(arguments.InputRows);
             m_Outputs = arguments.Outputs;
@@ -115,9 +118,9 @@ namespace BTSMTL.Orchestration
         public int OperationIndex { get; }
         public ulong OperationGeneration { get; }
         public ulong Tick { get; }
-        public readonly OrchestrationStopContext StopContext;
+        public ref readonly OrchestrationStopContext StopContext => ref m_StopContext[0];
         public uint StopCause => StopContext.Cause;
-        public OrchestrationStateExitContext StateExit => StopContext.StateExit;
+        public OrchestrationStateExitContext StateExit => new(in StopContext);
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
         public OrchestrationExtensionInputRows<TValue, TOperation> InputRows { get; }
         public ref readonly OrchestrationExecutionFrameState ExecutionFrame => ref m_ExecutionFrame[0];

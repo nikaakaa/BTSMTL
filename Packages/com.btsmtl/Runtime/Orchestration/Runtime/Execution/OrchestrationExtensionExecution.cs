@@ -20,7 +20,7 @@ namespace BTSMTL.Orchestration
                         ? exitingStateOperationIndex : -1;
                 var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
-                    m_Input.Tick, CurrentStopContext(), StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
+                    m_Input.Tick, in CurrentStopContext(), StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
                     ReadExecutionFrame(operationIndex),
                     Span<TValue>.Empty, Span<TValue>.Empty, in m_TimelineInvocation);
                 m_CurrentOperationIndex = operationIndex;
