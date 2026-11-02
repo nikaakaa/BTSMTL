@@ -169,6 +169,12 @@ namespace BTSMTL.Compilation
                         return false;
                     switch (current.Code)
                     {
+                        case OrchestrationOperationCode.Loop:
+                        case OrchestrationOperationCode.Parallel:
+                        case OrchestrationOperationCode.Cycle:
+                            if (current.Integer0 != original.Integer0 || current.Integer1 != original.Integer1)
+                                return false;
+                            break;
                         case OrchestrationOperationCode.Compare:
                         case OrchestrationOperationCode.Calculate:
                         case OrchestrationOperationCode.StateExitCause:
@@ -525,6 +531,211 @@ namespace BTSMTL.Compilation
                     Error("graph_parameter_execution_frame_mismatch", ProgramSourceTargetKind.Operation, operation,
                         $"图参数 '{parameter.ParameterName}' 跨越执行帧归属。");
             }
+
+            void ValidateCompleteEntries(OperationDraft[] operations, OrchestrationFlowEdge[] edges,
+                OrchestrationProgramStructure structure, OrchestrationGraphEntry[] entries)
+            {
+                foreach (OrchestrationGraphEntry entry in entries)
+                {
+                    if (entry.Execution.Contract != OrchestrationExecutionContract.Complete)
+                        continue;
+                    string identity = m_Identity.GraphId;
+                    foreach (ProgramReference reference in m_References)
+                        if (!reference.HasSourceOperation && reference.Kind == ProgramReferenceKind.Operation &&
+                            reference.TargetIndex == entry.Execution.OperationIndex)
+                        {
+                            identity = reference.Identity;
+                            break;
+                        }
+                    Validate(entry.Execution.OperationIndex, entry.Execution.InputPortId, identity);
+                }
+                for (int operation = 0; operation < operations.Length; operation++)
+                {
+                    int exit = structure.StateOnExitEdges.Span[operation];
+                    if (exit >= 0)
+                        Validate(edges[exit].TargetOperationIndex, 0,
+                            $"State.OnExit（{SourceLocation(ProgramSourceTargetKind.Operation, operation)}）");
+                }
+
+                void Validate(int entry, int inputPort, string identity)
+                {
+                    var path = new List<int>();
+                    var active = new HashSet<(int Operation, int Port)>();
+                    var results = new Dictionary<(int Operation, int Port), CompleteResult>();
+                    bool reported = false;
+
+                    void Wait(int operation, string reason)
+                    {
+                        if (reported)
+                            return;
+                        reported = true;
+                        var calls = new List<string>();
+                        foreach (int step in path)
+                            calls.Add(SourceLocation(ProgramSourceTargetKind.Operation, step));
+                        Error("complete_entry_may_wait", ProgramSourceTargetKind.Operation, entry,
+                            $"Complete 入口 '{identity}' 不能证明当帧结束：{reason}；等待节点：" +
+                            $"{SourceLocation(ProgramSourceTargetKind.Operation, operation)}；调用链：{string.Join(" → ", calls)}。");
+                    }
+
+                    CompleteResult Visit(int operation, int port = 0)
+                    {
+                        var key = (operation, port);
+                        if (results.TryGetValue(key, out CompleteResult cached))
+                            return cached;
+                        path.Add(operation);
+                        try
+                        {
+                            if (!active.Add(key))
+                            {
+                                Wait(operation, "同步调用成环");
+                                return CompleteResult.Running;
+                            }
+                            try
+                            {
+                                CompleteResult result = Execute(operation, port);
+                                if ((result & CompleteResult.Running) == 0)
+                                    results.Add(key, result);
+                                return result;
+                            }
+                            finally
+                            {
+                                active.Remove(key);
+                            }
+                        }
+                        finally
+                        {
+                            path.RemoveAt(path.Count - 1);
+                        }
+                    }
+
+                    CompleteResult Sequence(int operation, int port = -1)
+                    {
+                        CompleteResult result = CompleteResult.Success;
+                        foreach (int edge in structure.Outgoing(operation, OrchestrationFlowKind.Child))
+                        {
+                            if (port >= 0 && edges[edge].SourcePortId != port)
+                                continue;
+                            if ((result & CompleteResult.Success) == 0)
+                                break;
+                            result = (result & ~CompleteResult.Success) | Visit(edges[edge].TargetOperationIndex,
+                                edges[edge].TargetPortId);
+                        }
+                        return result;
+                    }
+
+                    CompleteResult Single(int operation, OrchestrationFlowKind kind)
+                    {
+                        foreach (int edge in structure.Outgoing(operation, kind))
+                            return Visit(edges[edge].TargetOperationIndex, edges[edge].TargetPortId) |
+                                (edges[edge].HasCondition ? CompleteResult.Failure : 0);
+                        return CompleteResult.Success;
+                    }
+
+                    CompleteResult Execute(int operation, int port)
+                    {
+                        OperationDraft op = operations[operation];
+                        switch (op.Code)
+                        {
+                            case OrchestrationOperationCode.Root:
+                            case OrchestrationOperationCode.Sequence:
+                                return Sequence(operation);
+                            case OrchestrationOperationCode.StateOnEnter:
+                            case OrchestrationOperationCode.StateOnExit:
+                            case OrchestrationOperationCode.TimelineEnter:
+                                return Single(operation, OrchestrationFlowKind.Child);
+                            case OrchestrationOperationCode.SubGraph:
+                                return Single(operation, OrchestrationFlowKind.Enter);
+                            case OrchestrationOperationCode.Succeed:
+                                return CompleteResult.Success;
+                            case OrchestrationOperationCode.Loop:
+                            {
+                                ReadOnlySpan<int> children = structure.Outgoing(operation, OrchestrationFlowKind.Child);
+                                if (children.Length != 1)
+                                    return CompleteResult.Failure;
+                                CompleteResult child = Visit(edges[children[0]].TargetOperationIndex,
+                                    edges[children[0]].TargetPortId);
+                                CompleteResult terminal = op.Integer0 == 1 ? CompleteResult.Success :
+                                    op.Integer0 == 2 ? CompleteResult.Failure : 0;
+                                CompleteResult result = child & terminal;
+                                if ((child & ~(terminal | CompleteResult.Running)) != 0)
+                                {
+                                    Wait(operation, "Loop 在主体结束后进入下一轮，返回 Running");
+                                    result |= CompleteResult.Running;
+                                }
+                                return result | (child & CompleteResult.Running) |
+                                    (edges[children[0]].HasCondition ? CompleteResult.Failure : 0);
+                            }
+                            case OrchestrationOperationCode.Selector:
+                            {
+                                CompleteResult result = CompleteResult.Failure;
+                                foreach (int edge in structure.Outgoing(operation, OrchestrationFlowKind.Child))
+                                {
+                                    if ((result & CompleteResult.Failure) == 0)
+                                        break;
+                                    result = (result & ~CompleteResult.Failure) |
+                                        Visit(edges[edge].TargetOperationIndex, edges[edge].TargetPortId) |
+                                        (edges[edge].HasCondition ? CompleteResult.Failure : 0);
+                                }
+                                return result;
+                            }
+                            case OrchestrationOperationCode.Parallel:
+                            {
+                                CompleteResult result = CompleteResult.Success;
+                                bool first = true;
+                                foreach (int edge in structure.Outgoing(operation, OrchestrationFlowKind.Child))
+                                {
+                                    CompleteResult child = Visit(edges[edge].TargetOperationIndex, edges[edge].TargetPortId);
+                                    result |= child & CompleteResult.Running;
+                                    if (first && op.Integer0 == 2)
+                                    {
+                                        result |= child & CompleteResult.Failure;
+                                        if (!edges[edge].HasCondition && (child & CompleteResult.Running) == 0)
+                                            return child;
+                                    }
+                                    first = false;
+                                }
+                                return result;
+                            }
+                            case OrchestrationOperationCode.Branch:
+                            {
+                                CompleteResult result = Sequence(operation, Bind(OrchestrationCorePortNames.BranchTrue)) |
+                                    Sequence(operation, Bind(OrchestrationCorePortNames.BranchFalse));
+                                return (result & CompleteResult.Success) == 0 ? result :
+                                    (result & ~CompleteResult.Success) | Sequence(operation, Bind(OrchestrationCorePortNames.BranchThen));
+                            }
+                            case OrchestrationOperationCode.Cycle:
+                            {
+                                if (port == Bind(OrchestrationCorePortNames.CycleReset))
+                                    return CompleteResult.Success;
+                                CompleteResult result = CompleteResult.Success;
+                                foreach (int edge in structure.Outgoing(operation, OrchestrationFlowKind.Child))
+                                    result |= Visit(edges[edge].TargetOperationIndex, edges[edge].TargetPortId);
+                                return result;
+                            }
+                            case OrchestrationOperationCode.State:
+                            case OrchestrationOperationCode.StateMachine:
+                            case OrchestrationOperationCode.Timeline:
+                                Wait(operation, $"{op.Code} 的正式执行可能等待状态转移、主体或时间推进");
+                                return CompleteResult.Success | CompleteResult.Failure | CompleteResult.Running;
+                            case OrchestrationOperationCode.Extension:
+                                if (m_Extensions[op.ExtensionBindingIndex].Completion != OrchestrationExtensionCompletion.Immediate)
+                                {
+                                    Wait(operation, $"扩展 '{m_Extensions[op.ExtensionBindingIndex].Identity}' 声明为 Resumable");
+                                    return CompleteResult.Success | CompleteResult.Failure | CompleteResult.Running;
+                                }
+                                break;
+                        }
+                        CompleteResult leaf = op.Code is OrchestrationOperationCode.BlackboardSet or OrchestrationOperationCode.EmitOutput
+                            ? CompleteResult.Success : CompleteResult.Success | CompleteResult.Failure;
+                        return (leaf & ~CompleteResult.Success) | Sequence(operation);
+                    }
+
+                    Visit(entry, inputPort);
+                }
+            }
+
+            [Flags]
+            enum CompleteResult : byte { Success = 1, Failure = 2, Running = 4 }
         }
     }
 }

@@ -407,6 +407,7 @@ namespace BTSMTL.Compilation
                     Bind(OrchestrationCorePortNames.BranchThen), Bind(OrchestrationCorePortNames.CycleReset));
                 OrchestrationGraphEntry[] entries = BuildEntries();
                 OrchestrationProgramStructure structure = BuildProgramStructure(operations, controlFlow, corePorts);
+                ValidateCompleteEntries(operations, controlFlow, structure, entries);
                 ValidateValueDependencies(operations, controlFlow, structure);
                 BuildTypedValues(operations, controlFlow, structure);
                 OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
