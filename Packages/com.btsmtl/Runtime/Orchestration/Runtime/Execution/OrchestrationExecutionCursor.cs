@@ -252,7 +252,12 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (!operation.IsRunnable)
+            {
+                if (operation.Code == OrchestrationOperationCode.Sequence &&
+                    m_Contract == OrchestrationExecutionContract.Complete)
+                    ResetOperation(operationIndex);
                 return Execute(operationIndex, inputPortId);
+            }
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.Status == OrchestrationOperationStatus.Stopping)
                 return OrchestrationOperationResult.Running;
@@ -429,8 +434,7 @@ namespace BTSMTL.Orchestration
             }
             if (active)
                 TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: current.Cause);
-            if (m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex)
-                ResetOperation(operationIndex);
+            ResetOperation(operationIndex);
         }
 
         void ForceStopChildren(int operationIndex, in OrchestrationStopContext context)
@@ -464,6 +468,8 @@ namespace BTSMTL.Orchestration
 
         void ResetOperation(int operationIndex)
         {
+            if (m_OperationIndices[operationIndex] == OrchestrationProgramStorageLayout.NoOperationIndex)
+                return;
             RetireOperationOverrides(operationIndex);
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.TimelineRuntimeHandle != 0)
