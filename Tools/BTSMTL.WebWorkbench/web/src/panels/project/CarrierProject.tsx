@@ -148,6 +148,7 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
         {migration?.result.target.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
           onRefreshed={onMigrationRefreshed} />}
         <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
+          migration={migration?.result.target.carrierIdentity === carrier.identity ? migration : null}
           onSaved={result => setMigration({ result, refresh: null })}
           onRefreshed={onMigrationRefreshed} />
       </> : <Empty text={catalog?.availability.available && focusTarget !== null && selected === focusTarget.carrierIdentity
@@ -156,8 +157,9 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
   </div>;
 }
 
-function CarrierResources({ carrier, target, onSaved, onRefreshed }: {
+function CarrierResources({ carrier, target, migration, onSaved, onRefreshed }: {
   carrier: AuthoringCarrier; target: ProfileEntryTarget | null;
+  migration: BusinessKeyRenameCompletion | null;
   onSaved: ComponentProps<typeof BusinessKeyRename>['onSaved'];
   onRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'];
 }) {
@@ -179,6 +181,14 @@ function CarrierResources({ carrier, target, onSaved, onRefreshed }: {
       setSelection(target);
     }
   }, [target]);
+  useEffect(() => {
+    if (migration === null || migration.refresh === null || migration.refresh.catalog === null) return;
+    const { result } = migration;
+    const renamed = rows.find(row => row.source === result.target.profileSource && row.domain === result.target.domain &&
+      row.entryKind === result.target.entryKind && row.key === result.newKey);
+    if (renamed !== undefined) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.target)
+      ? resourceTarget(carrier, renamed) : current);
+  }, [migration, rows, carrier]);
   const kinds = useMemo(() => [...new Set(rows.map(row => row.kind))], [rows]);
   const shown = useMemo(() => {
     const query = search.toLocaleLowerCase();
@@ -209,11 +219,7 @@ function CarrierResources({ carrier, target, onSaved, onRefreshed }: {
       <LocateAssetButton key={selected.location.kind === 'asset' ? selected.location.identity : JSON.stringify(resourceTarget(carrier, selected))}
         target={selected.location} />
       {selected.entryKind !== 'audio-sound' && <BusinessKeyRename key={referenceTargetKey(resourceTarget(carrier, selected))}
-        target={resourceTarget(carrier, selected)} onSaved={onSaved} onRefreshed={(result, value) => {
-          if (value.catalog !== null) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.target)
-            ? { ...result.target, key: result.newKey } : current);
-          onRefreshed(result, value);
-        }} />}
+        target={resourceTarget(carrier, selected)} onSaved={onSaved} onRefreshed={onRefreshed} />}
       {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
         onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}
