@@ -246,13 +246,19 @@ export interface AuthoringCarrier {
   name: string;
   source: string;
   preview: boolean;
-  vfx: { source: string; resources: CarrierResource[]; anchors: { key: string; bone: string }[];
+  vfx: { identity: string; source: string; resources: CarrierResource[]; anchors: { key: string; bone: string }[];
     stateModifiers: { id: string; resourceIds: string[] }[] } | null;
-  camera: { source: string; sequences: CarrierResource[]; effects: { kind: string; resource: CarrierResource }[];
+  camera: { identity: string; source: string; sequences: CarrierResource[]; effects: { kind: string; resource: CarrierResource }[];
     targets: { key: string; space: string; anchorKey: string; aimPointKey: string; preferredBoneKey: string }[] } | null;
-  audio: { source: string; events: CarrierResource[]; rules: CarrierResource[]; parameters: CarrierResource[];
+  audio: { identity: string; source: string; events: CarrierResource[]; rules: CarrierResource[]; parameters: CarrierResource[];
     actionSoundSlotCount: number } | null;
-  input: { source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
+  input: { identity: string; source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
+}
+
+export interface AssetLocateResult {
+  projectPath: string;
+  identity: string;
+  assetPath: string;
 }
 
 export interface AuthoringCarriers {
@@ -550,6 +556,7 @@ interface SkillCreationDraft {
 
 export const authoringApi = {
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
+  locateAsset: (identity: string) => postJson<AssetLocateResult>('/api/authoring/locate', { identity }),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
