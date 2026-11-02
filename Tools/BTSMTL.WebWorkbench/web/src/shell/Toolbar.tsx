@@ -9,22 +9,24 @@ import { transport } from '../state/transport';
 import { Button, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../ui/controls';
 import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
 import { panelMenu } from './GroupActions';
+import { openPanel } from './layout';
+import { QuickCursor } from '../panels/timeline/QuickPreview';
 import styles from './toolbar.module.css';
 
 // 顶部工具栏（D7，只有一行）：左侧内容与技能、运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
 // 右侧预览档位、布局与连接圆点。面板不再各自放播放按钮。
 export function Toolbar() {
+  const quick = useWorkbench(state => state.previewMode === 'quick');
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
         <ContentChoice />
         <SkillChoice />
         <AuthoringStatus />
-        <RunMenu />
+        {quick ? <Button variant="ghost" tip="在 Timeline 面板选择根与输入方案并推导路线" onClick={() => openPanel('timeline')}>路线</Button> : <RunMenu />}
       </div>
       <div className={styles.center}>
-        <Transport />
-        <FrameField />
+        {quick ? <QuickCursor /> : <><Transport /><FrameField /></>}
       </div>
       <div className={styles.right}>
         <PreviewModeChoice />
@@ -271,22 +273,23 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
   </>;
 }
 
-// 预览档位：只列宿主声明可用的档位。
 function PreviewModeChoice() {
   const { modes, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
-    modes: state.host?.modes, selected: state.previewMode, observing: state.runId !== null || state.live?.player?.source != null,
-    adoptedMode: state.runId !== null
+    modes: state.host?.modes, selected: state.previewMode, observing: state.previewMode === 'quick'
+      ? state.quickPreview.job.kind !== 'idle' : state.runId !== null || state.live?.player?.source != null,
+    adoptedMode: state.previewMode === 'quick'
+      ? 'reply' in state.quickPreview.job ? state.quickPreview.job.reply?.data?.adoptedMode ?? null : null
+      : state.runId !== null
       ? state.sealed ? state.summary?.adoptedMode ?? null : state.receipt?.adoptedMode ?? null
       : state.live?.player?.source?.adoptedMode ?? null,
   })));
-  const available = modes?.filter(mode => mode.available) ?? [];
-  if (!available.length && !observing) return null;
+  if (!modes?.length && !observing) return null;
   const adoptedLabel = adoptedMode === null ? 'Unavailable' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
   return (
     <div className={styles.modes} role="group" aria-label="预览档位">
-      {available.length > 0 && <Tip content="用于新建运行；本次实际采用的档位以宿主输出为准"><span className={styles.dim}>请求</span></Tip>}
-      {available.map(mode => (
-        <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason}
+      <Tip content="快档推导路线，真档使用正式运行；实际采用以宿主回执为准"><span className={styles.dim}>请求</span></Tip>
+      {modes?.map(mode => (
+        <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason} disabled={!mode.available}
           onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
       ))}
       {observing && <Tip content={adoptedMode === null ? '该来源未记录实际采用档位；采用值未知不代表载入失败。' : `宿主记录的实际采用档位：${adoptedMode}`}>

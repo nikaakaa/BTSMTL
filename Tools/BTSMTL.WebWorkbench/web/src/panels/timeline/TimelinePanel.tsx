@@ -41,6 +41,7 @@ import {
 } from '../../state/curveEdit';
 import { cloneJson, numberOf, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
+import { QuickPreview } from './QuickPreview';
 import {
   Button, ContextMenu, createTipGroup, GroupTip, MenuButton, NumberInput, Select, TextInput, Tip, TipGroup, type MenuEntry,
 } from '../../ui/controls';
@@ -200,7 +201,7 @@ function rowNesting(rows: Row[]): (Nest | undefined)[] {
 }
 
 export function TimelinePanel() {
-  return <DocumentTimeline />;
+  return <div className={styles.window}><QuickPreview /><DocumentTimeline /></div>;
 }
 
 // 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。

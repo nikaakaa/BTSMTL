@@ -340,6 +340,11 @@
   outline: 1px solid var(--accent);
 }
 
+.node[data-planned], .state[data-planned] {
+  outline: 1px dashed var(--cursor);
+  outline-offset: 2px;
+}
+
 /* 执行端口：压在标题栏或步骤行两侧边框上的三角（垂直居中），连线接在三角中心；连了线实心，本帧经过变黄 */
 .flowPort {
   --pc: var(--port-exec);

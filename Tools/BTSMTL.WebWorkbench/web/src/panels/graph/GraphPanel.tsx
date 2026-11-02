@@ -34,6 +34,7 @@ import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry
 import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
+import { QuickGraphRoute, useQuickPlan } from '../timeline/QuickPreview';
 import styles from './graph.module.css';
 
 interface Params {
@@ -66,6 +67,7 @@ interface ViewOptions {
   graph: GraphDefinition;
   // 连了线的端口：`节点|方向:端口`。
   connected: Set<string>;
+  planned: ReadonlySet<string>;
   // 作者模式下端口可拖出连线。
   editable?: boolean;
   // 按住分组标题拖动前选中分组及其中的节点，一起拖动。
@@ -163,7 +165,8 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
     ? params.pin : null;
   const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
-  const observedCall = pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
+  const quickMode = useWorkbench(state => state.previewMode === 'quick');
+  const observedCall = quickMode ? null : pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
   const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
@@ -293,6 +296,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
         </PanelBar>
+        <QuickGraphRoute graph={graph} />
         {/* 图名只在面包屑里出现一次；黑板浮层贴在画布右上 */}
         <div className={styles.stage}>
           {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
@@ -511,6 +515,11 @@ interface GraphCanvasProps {
 }
 
 function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+  const plan = useQuickPlan();
+  const seconds = useWorkbench(state => state.quickPreview.seconds);
+  const planned = useMemo(() => new Set(plan?.segments.flatMap(segment => segment.stateSource !== null &&
+    segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end
+    ? [segment.stateSource.nodeId] : [])), [plan, graph.id, seconds]);
   const path = graph.authoringPath;
   const binding = useDocumentObservationBinding();
   const panelId = usePanelId();
@@ -631,8 +640,8 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
   }, [openReference]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected,
-  }), [store, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected]);
+    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned,
+  }), [store, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -945,7 +954,7 @@ function useNodeState(store: RouteStore, id: string) {
 // 状态机的状态：照 Animator 的圆角块，本帧所在的状态描黄并写本地秒数，走过的描金。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, children } = data;
-  const { store, related, beginLink } = useView();
+  const { store, related, beginLink, planned } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const running = state.occurred > 0;
@@ -954,6 +963,7 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
     <Tip name={nodeName(laid.node)} content={`${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
     <div className={styles.state} data-running={running || undefined}
       data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}
+      data-planned={planned.has(laid.node.id) || undefined}
       onPointerDown={event => { if (event.button === 2) beginLink?.(laid.node.id, event); }}>
       <Handle id="in:@node" type="target" position={Position.Left} isConnectable={false} className={styles.hiddenHandle} />
       <Handle id="out:@node" type="source" position={Position.Right} isConnectable={false} className={styles.hiddenHandle} />
@@ -995,7 +1005,7 @@ function GroupView({ data, selected }: NodeProps<GroupNode>) {
 // 流图节点：NodeCanvas 节点，标题下按行列出输入与输出端口。
 function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, children } = data;
-  const { store, values, dim, related } = useView();
+  const { store, values, dim, related, planned } = useView();
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
@@ -1008,6 +1018,7 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   return (
     <div className={styles.node} data-selected={selected || undefined} data-faded={faded || undefined}
       data-occurred={state.occurred || undefined} data-failed={state.failed || undefined}
+      data-planned={planned.has(laid.node.id) || undefined}
       data-openable={children.length > 0 || undefined}>
       <Tip name={nodeName(laid.node)}
         content={`${nodeTypeName(laid.node) ? `${nodeTypeName(laid.node)}\n` : ''}${laid.node.id}${children.length === 1 ? `\n双击打开${children[0].kind === 'timeline' ? ' Timeline' : '引用图'}` : ''}${state.detail ? `\n${state.detail}` : ''}`}>
@@ -1088,7 +1099,7 @@ function PortCell({ port, state, values }: {
   const linked = connected.has(`${port.nodeId}|${port.direction}:${port.id}`);
   const inline = input && !linked;
   return (
-    <Tip name={port.displayName} content={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : port.id}>
+    <Tip name={port.displayName} content={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : `${port.id}\nUnavailable：当前没有对应端口观察`}>
       <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
         <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
           position={input ? Position.Left : Position.Right} isConnectable={!!editable}
