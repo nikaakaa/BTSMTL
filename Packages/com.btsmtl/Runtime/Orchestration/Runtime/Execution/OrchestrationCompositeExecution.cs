@@ -39,10 +39,10 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             int cursor = Math.Max(0, state.ChildCursor);
-            OrchestrationStopContext pending = ReadStopContext(operationIndex);
+            ref readonly OrchestrationStopContext pending = ref ReadStopContext(operationIndex);
             if (pending.IsValid && cursor < children.Length)
             {
-                OrchestrationStopStatus stop = RequestStop(m_Program.Edge(children[cursor]).TargetOperationIndex, pending);
+                OrchestrationStopStatus stop = RequestStop(m_Program.Edge(children[cursor]).TargetOperationIndex, in pending);
                 if (stop == OrchestrationStopStatus.Running)
                     return Wait(operationIndex, OrchestrationWaitReason.ChildStop);
                 ClearStopContext(operationIndex);
@@ -85,10 +85,10 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             int cursor = state.ChildCursor;
-            OrchestrationStopContext pending = ReadStopContext(operationIndex);
+            ref readonly OrchestrationStopContext pending = ref ReadStopContext(operationIndex);
             if (pending.IsValid && cursor >= 0 && cursor < children.Length)
             {
-                OrchestrationStopStatus stop = RequestStop(m_Program.Edge(children[cursor]).TargetOperationIndex, pending);
+                OrchestrationStopStatus stop = RequestStop(m_Program.Edge(children[cursor]).TargetOperationIndex, in pending);
                 if (stop == OrchestrationStopStatus.Running)
                     return Wait(operationIndex, pending.Cause == (uint)OrchestrationStopCause.LowerPriorityAbort
                         ? OrchestrationWaitReason.PriorityReplacement : OrchestrationWaitReason.ChildStop);

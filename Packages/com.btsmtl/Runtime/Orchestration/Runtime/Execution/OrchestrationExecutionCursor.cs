@@ -302,7 +302,7 @@ namespace BTSMTL.Orchestration
                 if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
                     return OrchestrationStopStatus.Completed;
                 OrchestrationStopContext request = context.AtOperation(operationIndex, m_FrameSlot,
-                    m_Input.Tick).WithMode(OrchestrationStopMode.Request);
+                    m_Input.Tick, OrchestrationStopMode.Request);
                 ref OrchestrationOperationState state = ref OperationState(operationIndex);
                 if (state.Status == OrchestrationOperationStatus.Dormant ||
                     state.Status == OrchestrationOperationStatus.Success ||
@@ -347,7 +347,7 @@ namespace BTSMTL.Orchestration
                 if (!IsStopping(operationIndex))
                     return OrchestrationStopStatus.Completed;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                OperationState(operationIndex).StopContext = ReadStopContext(operationIndex).AtTick(m_Input.Tick);
+                OperationState(operationIndex).StopContext.UpdateTick(m_Input.Tick);
                 ref readonly OrchestrationStopContext context = ref ReadStopContext(operationIndex);
                 OrchestrationStopStatus status;
                 switch (operation.Code)
@@ -388,8 +388,7 @@ namespace BTSMTL.Orchestration
             m_ForceStopDepth++;
             try
             {
-                OrchestrationStopContext force = context.WithMode(OrchestrationStopMode.Force);
-                ForceStopCore(operationIndex, in force);
+                ForceStopCore(operationIndex, in context);
             }
             finally
             {
@@ -407,7 +406,8 @@ namespace BTSMTL.Orchestration
             if (!m_ForceStopVisits.Visit(m_FrameSlot, operationIndex))
                 return;
             m_CurrentOperationIndex = operationIndex;
-            OrchestrationStopContext current = context.AtOperation(operationIndex, m_FrameSlot, m_Input.Tick);
+            OrchestrationStopContext current = context.AtOperation(operationIndex, m_FrameSlot,
+                m_Input.Tick, OrchestrationStopMode.Force);
             bool active = IsActive(operationIndex);
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             switch (operation.Code)

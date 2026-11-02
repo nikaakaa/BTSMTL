@@ -181,10 +181,12 @@ namespace BTSMTL.Orchestration
         internal int StateTransitionEdgeIndex { get; private set; }
         public readonly bool IsValid => Mode != 0;
 
-        public readonly OrchestrationStopContext AtOperation(int operationIndex, int executionFrameIndex, ulong tick)
+        public readonly OrchestrationStopContext AtOperation(int operationIndex, int executionFrameIndex,
+            ulong tick, OrchestrationStopMode mode)
         {
             OrchestrationStopContext context = this;
             context.Tick = tick;
+            context.Mode = mode;
             if (OriginSourceOperationIndex < 0)
             {
                 context.OriginSourceOperationIndex = operationIndex;
@@ -201,26 +203,14 @@ namespace BTSMTL.Orchestration
             return context;
         }
 
-        public readonly OrchestrationStopContext AtTick(ulong tick)
-        {
-            OrchestrationStopContext context = this;
-            context.Tick = tick;
-            return context;
-        }
+        public void UpdateTick(ulong tick) => Tick = tick;
 
-        public readonly OrchestrationStopContext WithMode(OrchestrationStopMode mode)
+        public void RetargetStateExit(int operationIndex, int edgeIndex)
         {
-            OrchestrationStopContext context = this;
-            context.Mode = mode;
-            return context;
-        }
-
-        public readonly OrchestrationStopContext WithReplacement(int operationIndex, int edgeIndex)
-        {
-            OrchestrationStopContext context = this;
-            context.ReplacementOperationIndex = operationIndex;
-            context.ReplacementEdgeIndex = edgeIndex;
-            return context;
+            ReplacementOperationIndex = operationIndex;
+            ReplacementEdgeIndex = edgeIndex;
+            StateTargetOperationIndex = operationIndex;
+            StateTransitionEdgeIndex = edgeIndex;
         }
 
         public readonly OrchestrationStopContext ForStateExit(int operationIndex, int executionFrameIndex,

@@ -106,15 +106,14 @@ namespace BTSMTL.Orchestration
             if (selected < 0 || m_Program.Edge(selected).Priority >= m_Program.Edge(pending).Priority)
                 return;
             int target = m_Program.Edge(selected).TargetOperationIndex;
-            machine.StopContext = machine.StopContext.WithReplacement(target, selected)
-                .ForStateExit(exiting, m_FrameSlot, target, selected);
+            machine.StopContext.RetargetStateExit(target, selected);
             TraceEdge(selected, true, true, exiting);
         }
 
         OrchestrationOperationResult ContinueStateTransition(int machineOperationIndex, int exiting)
         {
             ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
-            machine.StopContext = machine.StopContext.AtTick(m_Input.Tick);
+            machine.StopContext.UpdateTick(m_Input.Tick);
             int target = machine.StopContext.ReplacementOperationIndex;
             OrchestrationStopStatus stop = RequestStop(exiting, in machine.StopContext);
             if (stop == OrchestrationStopStatus.Running)
@@ -207,7 +206,7 @@ namespace BTSMTL.Orchestration
             state.StopContext = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot)
-                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick);
+                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick, OrchestrationStopMode.Request);
             int completedEdge = state.ChildCursor <= 0
                 ? m_Program.StateOnEnterEdge(stateOperationIndex) : m_Program.StateRootEdge(stateOperationIndex);
             if (completedEdge >= 0)
@@ -282,7 +281,7 @@ namespace BTSMTL.Orchestration
             }
             machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(exiting).IdentityId;
             OrchestrationStopContext exitContext = context.ForStateExit(exiting, m_FrameSlot)
-                .AtOperation(exiting, m_FrameSlot, m_Input.Tick);
+                .AtOperation(exiting, m_FrameSlot, m_Input.Tick, context.Mode);
             OrchestrationStopStatus stop = RequestStop(exiting, in exitContext);
             if (stop != OrchestrationStopStatus.Completed)
                 return stop;
@@ -341,7 +340,7 @@ namespace BTSMTL.Orchestration
             int phase = OperationState(stateOperationIndex).ChildCursor;
             bool entered = phase != 0 && phase != 3;
             OrchestrationStopContext exitContext = context.ForStateExit(stateOperationIndex, m_FrameSlot)
-                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick);
+                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick, context.Mode);
             ForceStop(stateOperationIndex, in exitContext);
             if (entered && context.Cause != (uint)OrchestrationStopCause.Shutdown)
             {
