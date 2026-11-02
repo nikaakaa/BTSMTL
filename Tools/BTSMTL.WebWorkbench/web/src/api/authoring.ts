@@ -521,7 +521,7 @@ export interface SkillCreationCatalog {
   containers: { identity: string; name: string; assetPath: string }[];
   admissionProfiles: { identity: string; name: string; assetPath: string }[];
   references: ReferenceBank;
-  skillCreation: { clrType: string; parameters: { name: string; shape: StorageShape }[] };
+  skillCreation: { parameters: { name: string; shape: StorageShape }[] };
   availability: QueryAvailability;
 }
 
