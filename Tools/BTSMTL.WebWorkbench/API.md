@@ -63,7 +63,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 
 响应保留 success／pending、Data、code／message／rawJson 与 cleanupErrors；成功完成为 200、在途为 202、失败为 409。job_lost、preview_mode_mismatch、editor_busy、preview_job_busy、preview_request_invalid、preview_failed 和 preview_cancelled 按原回执显示。网页只持当前根和一个当前 job；编辑、Undo、作者回读、切根、场景发布修订或输入覆盖变化隔离在途和迟到结果，旧路线标过期，匹配的新结果才采用。取消失败保留取消意图和回执并允许手动重试，后续 status 不恢复旧计划；仅轮询真实当前未完 job，不闲时扫描作业。
 
-以上是生产者和网页消费者源码接通的合同。完整 Host／Native 类型、目标 Editor 采用及真实预览未验证；网页 tsc 通过不证明部署、实际服务版本或现场 UI 行为。
+以上合同的生产者和网页消费者源码已接通，项目原 CLI／Host 全 ProjectReference 类型检查也已通过；Main Editor／Native 完整类型、目标 Editor 加载 v2 及真实预览仍未证明。网页 tsc、正式 .NET 根类型通过都不证明部署、实际服务版本或现场 UI 行为，原阶段见[项目接入检查](../../../3C/docs/测试/WorkbenchGameplay接入.md#2026-11-02-网页-quick-v2-源码接续)。
 
 ## 技能与场景作者文件
 

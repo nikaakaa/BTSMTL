@@ -85,7 +85,7 @@
 
 `WorkbenchApplication.Create` 提供默认文件、静态文件与动画资源接口，不做未知路径回退。`PreviewApi` 消费项目实现的 `IPreviewHost`，提供 `/api/preview/host`、`/sources` 和 `/inputs`；运行、控制、作业和档案读取由项目 Host 沿正式 Player 链提供。`GET /api/preview/host` 返回可用状态与各预览档位声明。逐功能路由、请求、返回类型、保存阶段、调用身份、时钟和错误处理统一见[前端接口](API.md)。
 
-quick v2 的生产者与网页消费者源码已接通：复用顶栏场景选择及当前技能 editingView，独立 Timeline 使用真实元素身份，原 store 只持当前根与一个 job。静态计划定位与 Player 真实路线分别消费，未知修订状态、取消意图及原错误回执保留；完整合同见[快速预览第二版](API.md#快速预览第二版)。当前仅有网页 tsc 和公共 Web 工程检查，完整 Host／Native 类型、Editor 采用及实际预览未验证；没有 Vite／wwwroot 发布或现场 UI 检查，不能据源码宣称服务已更新。
+quick v2 的生产者与网页消费者源码已接通：复用顶栏场景选择及当前技能 editingView，独立 Timeline 使用真实元素身份，原 store 只持当前根与一个 job。静态计划定位与 Player 真实路线分别消费，未知修订状态、取消意图及原错误回执保留；完整合同见[快速预览第二版](API.md#快速预览第二版)。网页 tsc、公共 Web 工程及项目原 CLI／Host 全 ProjectReference 类型检查已通过，Main Editor／Native 完整类型、Editor 加载 v2 及实际预览仍未证明；没有 Vite／wwwroot 发布或现场 UI 检查，不能据源码或 .NET 类型宣称服务已更新。
 
 `Contracts/PreviewObservationContracts.cs` 定义宿主无关的帧：无损文本帧号、运行相对秒数、Actor 根变换、通道及可选一致性值。根与几何采用右手坐标、Y 轴向上、米，旋转为 `[x,y,z,w]`；项目负责正式数值和坐标换算。`RawJson` 保留正式读取模型的无损 JSON 文本，页面不重新解析其中的大整数。
 
