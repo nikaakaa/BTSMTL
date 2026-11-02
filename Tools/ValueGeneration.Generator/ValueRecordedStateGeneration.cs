@@ -60,7 +60,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                         Inputs = ValueStorageConstructorInputs(context.Compilation, record, candidate, storage) })
                     .Where(candidate => candidate.Inputs != null).ToArray();
                 if (constructors.Length != 1 || !context.Compilation.IsSymbolAccessibleWithin(constructors[0].Constructor, owner) ||
-                    constructors[0].Inputs.Any(member => !context.Compilation.IsSymbolAccessibleWithin(member.Symbol, owner)))
+                    constructors[0].Inputs.Any(member => !context.Compilation.IsSymbolAccessibleWithin(
+                        member.Symbol is IPropertySymbol property ? property.GetMethod : member.Symbol, owner)))
                 {
                     reason = "原构造展开须唯一对应可访问的原构造与原成员";
                     return false;
