@@ -20,6 +20,8 @@ public sealed record PreviewQuickDocument(string Path, string? SavedRevision, bo
 public sealed record PreviewQuickSource(string Kind, string Identity, string Path, string Revision,
     string SceneRevision, PreviewQuickDocument[] Documents);
 public sealed record PreviewQuickSkill(string Directory, string DisplayName, string Identity);
+public sealed record PreviewQuickScene(PreviewSourceFile Publication, string ScenePath, string SceneGuid, string SceneRevision);
+public sealed record PreviewQuickTimeline(string Path, string ElementId, string Name, string Identity);
 public sealed record PreviewQuickMachine(int Index, int Operation, string? EntryTimeline, string? EntryTimelineId);
 public sealed record PreviewQuickScheme(int Index, string Name, string Revision, string? TimelineId);
 public sealed record PreviewQuickInputDeclaration(string InputId, string Kind, string? Type);
@@ -27,7 +29,7 @@ public sealed record PreviewQuickInputRequest(string InputId, double BufferSecon
 public sealed record PreviewQuickRootDescription(string Owner, string Label, PreviewQuickMachine[] Machines,
     PreviewQuickScheme[] InputSchemes, int CurrentInputScheme, string InputSchemeSource);
 public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
-    int TickRate, PreviewQuickSkill[] Skills, PreviewQuickInputDeclaration[] Inputs,
+    int TickRate, PreviewQuickSkill[] Skills, PreviewQuickTimeline[] Timelines, PreviewQuickInputDeclaration[] Inputs,
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
 
 public sealed record PreviewQuickLocation(string GraphId, string NodeId, string EdgeId, string DisplayPath);
