@@ -2,9 +2,13 @@ namespace BTSMTL.WebWorkbench;
 
 public interface IPreviewHost<out TSourceCatalog, out TInputCatalog>
 {
-    PreviewHostDescription Describe();
+    Task<PreviewHostDescription> Describe(CancellationToken cancellation);
     TSourceCatalog Sources();
     TInputCatalog Inputs(string target, string revision);
+    Task<PreviewQuickReply<PreviewQuickDescription>> DescribeQuick(PreviewQuickTarget target, CancellationToken cancellation);
+    Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, CancellationToken cancellation);
+    Task<PreviewQuickReply<PreviewQuickStatus>> QuickStatus(string jobId, CancellationToken cancellation);
+    Task<PreviewQuickReply<PreviewQuickStatus>> CancelQuick(string jobId, CancellationToken cancellation);
 }
 
 public static class PreviewApi
@@ -16,8 +20,21 @@ public static class PreviewApi
         IPreviewHost<TSourceCatalog, TInputCatalog> host)
     {
         RouteGroupBuilder routes = app.MapGroup("/api/preview");
-        routes.MapGet("/host", () => new { Available = true, Description = host.Describe() });
+        routes.MapGet("/host", async (CancellationToken cancellation) =>
+            new { Available = true, Description = await host.Describe(cancellation) });
         routes.MapGet("/sources", host.Sources);
         routes.MapGet("/inputs", (string scene, string revision) => host.Inputs(scene, revision));
+        routes.MapPost("/quick/describe", async (PreviewQuickTarget target, CancellationToken cancellation) =>
+            QuickResult(await host.DescribeQuick(target, cancellation)));
+        routes.MapPost("/quick/plans", async (PreviewQuickRequest request, CancellationToken cancellation) =>
+            QuickResult(await host.PlanQuick(request, cancellation)));
+        routes.MapGet("/quick/plans/{jobId}", async (string jobId, CancellationToken cancellation) =>
+            QuickResult(await host.QuickStatus(jobId, cancellation)));
+        routes.MapPost("/quick/plans/{jobId}/cancel", async (string jobId, CancellationToken cancellation) =>
+            QuickResult(await host.CancelQuick(jobId, cancellation)));
     }
+
+    static IResult QuickResult<T>(PreviewQuickReply<T> reply) => Results.Json(reply,
+        statusCode: reply.Success ? reply.Pending ? StatusCodes.Status202Accepted : StatusCodes.Status200OK :
+            StatusCodes.Status409Conflict);
 }
