@@ -17,6 +17,8 @@ namespace ThirdPerson.ValueGeneration.Generator
     {
         const string BusinessKeyNamespace = "BTSMTL.Authoring.";
         const string BusinessKeyAttribute = BusinessKeyNamespace + "BtsmtlBusinessKeyAttribute";
+        const string BusinessKeyKindAttribute = BusinessKeyNamespace + "BtsmtlBusinessKeyKindAttribute";
+        const string BusinessKeyExternalAttribute = BusinessKeyNamespace + "BtsmtlBusinessKeyExternalParameterAttribute";
         const string BusinessKeyRuntime = "global::" + BusinessKeyNamespace;
 
         static void EmitBusinessKeySources(GeneratorExecutionContext context)
@@ -31,17 +33,29 @@ namespace ThirdPerson.ValueGeneration.Generator
         sealed class BusinessKeySources
         {
             readonly GeneratorExecutionContext m_Context;
-            readonly Dictionary<ISymbol, AttributeData[]> m_Declarations =
-                new Dictionary<ISymbol, AttributeData[]>(SymbolEqualityComparer.Default);
+            readonly Dictionary<ISymbol, BusinessKeyDeclaration[]> m_Declarations =
+                new Dictionary<ISymbol, BusinessKeyDeclaration[]>(SymbolEqualityComparer.Default);
+            readonly Dictionary<string, List<BusinessKeyDeclaration>> m_ExternalDeclarations =
+                new Dictionary<string, List<BusinessKeyDeclaration>>(StringComparer.Ordinal);
             readonly Dictionary<SyntaxTree, string> m_Revisions = new Dictionary<SyntaxTree, string>();
+            readonly SortedSet<string> m_Files = new SortedSet<string>(StringComparer.Ordinal);
             readonly SortedSet<string> m_Sources = new SortedSet<string>(StringComparer.Ordinal);
             readonly SortedSet<string> m_Constants = new SortedSet<string>(StringComparer.Ordinal);
             readonly SortedSet<string> m_ConstantUses = new SortedSet<string>(StringComparer.Ordinal);
 
-            internal BusinessKeySources(GeneratorExecutionContext context) => m_Context = context;
+            internal BusinessKeySources(GeneratorExecutionContext context)
+            {
+                m_Context = context;
+                foreach (IAssemblySymbol assembly in new[] { context.Compilation.Assembly }
+                    .Concat(context.Compilation.SourceModule.ReferencedAssemblySymbols))
+                    foreach (AttributeData declaration in assembly.GetAttributes().Where(attribute =>
+                        Identity(attribute.AttributeClass) == BusinessKeyExternalAttribute))
+                        AddExternalDeclaration(declaration);
+            }
 
             internal void Collect(SyntaxTree tree)
             {
+                m_Files.Add(Attribute("BtsmtlBusinessKeySourceFileAttribute", Literal(FilePath(tree)), Literal(Revision(tree))));
                 SemanticModel model = m_Context.Compilation.GetSemanticModel(tree);
                 foreach (SyntaxNode node in tree.GetRoot(m_Context.CancellationToken).DescendantNodes())
                 {
@@ -86,7 +100,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                             if (assignmentOperation is ISimpleAssignmentOperation simple)
                                 AddValue(AssignedSymbol(simple.Target), simple.Value);
                             else if (assignmentOperation is ICompoundAssignmentOperation compound)
-                                AddValue(AssignedSymbol(compound.Target), compound.Value, "business_key_compound_assignment");
+                                AddValue(AssignedSymbol(compound.Target), compound.Value, failure: "business_key_compound_assignment");
                             break;
                         case InvocationExpressionSyntax _:
                         case ConstructorInitializerSyntax _:
@@ -112,51 +126,93 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
             }
 
-            AttributeData[] Declarations(ISymbol symbol)
+            void AddExternalDeclaration(AttributeData attribute)
             {
-                if (symbol == null) return Array.Empty<AttributeData>();
+                var type = (INamedTypeSymbol)attribute.ConstructorArguments[0].Value;
+                string methodName = (string)attribute.ConstructorArguments[1].Value;
+                string parameterName = (string)attribute.ConstructorArguments[2].Value;
+                ITypeSymbol[] signature = attribute.ConstructorArguments[6].Values.Select(value => (ITypeSymbol)value.Value).ToArray();
+                IMethodSymbol[] methods = type.GetMembers(methodName).OfType<IMethodSymbol>().Where(method =>
+                    method.Parameters.Length == signature.Length && method.Parameters.Select((parameter, index) =>
+                        SymbolEqualityComparer.Default.Equals(parameter.Type, signature[index])).All(equal => equal)).ToArray();
+                IParameterSymbol parameter = methods.Length == 1
+                    ? methods[0].Parameters.SingleOrDefault(candidate => candidate.Name == parameterName) : null;
+                if (parameter == null)
+                {
+                    Report(attribute, Identity(type) + "." + methodName,
+                        "外部业务键声明必须唯一绑定实际方法签名及参数");
+                    return;
+                }
+                var declaration = new BusinessKeyDeclaration(attribute,
+                    (string)attribute.ConstructorArguments[3].Value, (string)attribute.ConstructorArguments[4].Value,
+                    (int)attribute.ConstructorArguments[5].Value);
+                Validate(parameter, declaration);
+                string key = BindingKey(parameter);
+                if (!m_ExternalDeclarations.TryGetValue(key, out List<BusinessKeyDeclaration> declarations))
+                    m_ExternalDeclarations.Add(key, declarations = new List<BusinessKeyDeclaration>());
+                declarations.Add(declaration);
+            }
+
+            BusinessKeyDeclaration[] Declarations(ISymbol symbol)
+            {
+                if (symbol == null) return Array.Empty<BusinessKeyDeclaration>();
                 symbol = symbol.OriginalDefinition;
-                if (m_Declarations.TryGetValue(symbol, out AttributeData[] declarations)) return declarations;
-                declarations = symbol.GetAttributes().Where(attribute => Identity(attribute.AttributeClass) == BusinessKeyAttribute).ToArray();
+                if (m_Declarations.TryGetValue(symbol, out BusinessKeyDeclaration[] declarations)) return declarations;
+                var values = new List<BusinessKeyDeclaration>();
+                foreach (AttributeData attribute in symbol.GetAttributes().Where(attribute => Identity(attribute.AttributeClass) == BusinessKeyAttribute))
+                {
+                    bool conditional = attribute.ConstructorArguments.Length == 2;
+                    var declaration = new BusinessKeyDeclaration(attribute, (string)attribute.ConstructorArguments[0].Value,
+                        conditional ? null : (string)attribute.ConstructorArguments[1].Value,
+                        (int)attribute.ConstructorArguments[conditional ? 1 : 2].Value);
+                    Validate(symbol, declaration);
+                    values.Add(declaration);
+                }
+                if (m_ExternalDeclarations.TryGetValue(BindingKey(symbol), out List<BusinessKeyDeclaration> external))
+                    values.AddRange(external);
+                declarations = values.ToArray();
                 m_Declarations.Add(symbol, declarations);
+                return declarations;
+            }
+
+            void Validate(ISymbol symbol, BusinessKeyDeclaration declaration)
+            {
                 ITypeSymbol type = symbol is IParameterSymbol parameter ? parameter.Type :
                     symbol is IFieldSymbol field ? field.Type : symbol is IPropertySymbol property ? property.Type : null;
-                foreach (AttributeData declaration in declarations)
-                {
-                    string reason = null;
-                    if (type?.SpecialType != SpecialType.System_String &&
-                        !(type is IArrayTypeSymbol array && array.ElementType.SpecialType == SpecialType.System_String))
-                        reason = "业务键语义只声明原 string 或 string[] 值";
-                    else if (string.IsNullOrWhiteSpace((string)declaration.ConstructorArguments[0].Value) ||
-                        string.IsNullOrWhiteSpace((string)declaration.ConstructorArguments[1].Value))
-                        reason = "业务键语义必须声明正式 domain 和 keyKind";
-                    else if ((int)declaration.ConstructorArguments[2].Value != 0 && (int)declaration.ConstructorArguments[2].Value != 1)
-                        reason = "业务键语义 role 必须为 Declaration 或 Reference";
-                    if (reason != null)
-                        m_Context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration,
-                            declaration.ApplicationSyntaxReference?.GetSyntax(m_Context.CancellationToken).GetLocation(),
-                            BusinessKeySymbol(symbol), reason));
-                }
-                return declarations;
+                string reason = null;
+                if (type?.SpecialType != SpecialType.System_String &&
+                    !(type is IArrayTypeSymbol array && array.ElementType.SpecialType == SpecialType.System_String))
+                    reason = "业务键语义只声明原 string 或 string[] 值";
+                else if (string.IsNullOrWhiteSpace(declaration.Domain) ||
+                    string.IsNullOrWhiteSpace(declaration.KeyKind) == string.IsNullOrWhiteSpace(declaration.KindParameter))
+                    reason = "业务键语义必须声明正式 domain，并选择固定 keyKind 或真实枚举参数 KindParameter";
+                else if (declaration.Role != 0 && declaration.Role != 1)
+                    reason = "业务键语义 role 必须为 Declaration 或 Reference";
+                else if (declaration.KindParameter != null && (!(symbol is IParameterSymbol keyParameter) ||
+                    !(keyParameter.ContainingSymbol is IMethodSymbol method) || !method.Parameters.Any(candidate =>
+                        candidate.Name == declaration.KindParameter && candidate.Type.TypeKind == TypeKind.Enum)))
+                    reason = "KindParameter 必须绑定同一方法的真实枚举参数";
+                if (reason != null) Report(declaration.Attribute, BusinessKeySymbol(symbol), reason);
             }
 
             void AddArguments(IEnumerable<IArgumentOperation> arguments)
             {
-                foreach (IArgumentOperation argument in arguments)
-                    AddValue(argument.Parameter, argument.Value,
+                IArgumentOperation[] bindings = arguments.ToArray();
+                foreach (IArgumentOperation argument in bindings)
+                    AddValue(argument.Parameter, argument.Value, bindings,
                         argument.ArgumentKind == ArgumentKind.DefaultValue ? "business_key_implicit_default" : null);
             }
 
-            void AddValue(ISymbol symbol, IOperation value, string failure = null)
+            void AddValue(ISymbol symbol, IOperation value, IArgumentOperation[] bindings = null, string failure = null)
             {
-                AttributeData[] declarations = Declarations(symbol);
+                BusinessKeyDeclaration[] declarations = Declarations(symbol);
                 if (declarations.Length == 0) return;
                 while (value is IConversionOperation conversion && conversion.IsImplicit)
                     value = conversion.Operand;
                 if (value is IArrayCreationOperation array && array.Initializer != null)
                 {
                     foreach (IOperation element in array.Initializer.ElementValues)
-                        AddValue(symbol, element, failure);
+                        AddValue(symbol, element, bindings, failure);
                     return;
                 }
                 SyntaxNode expression = value.Syntax;
@@ -167,18 +223,54 @@ namespace ThirdPerson.ValueGeneration.Generator
                 string key = constant.HasValue ? constant.Value as string : null;
                 failure = failure ?? (!Path.IsPathRooted(filePath) ? "business_key_source_path_unresolved" :
                     key == null ? "business_key_nonconstant_expression" : null);
-                foreach (AttributeData declaration in declarations)
+                foreach (BusinessKeyDeclaration declaration in declarations)
+                {
+                    string kind = ResolveKind(declaration, bindings, out string kindFailure);
+                    string sourceFailure = failure ?? kindFailure;
                     m_Sources.Add(Attribute("BtsmtlBusinessKeySourceAttribute",
-                        Literal((string)declaration.ConstructorArguments[0].Value),
-                        Literal((string)declaration.ConstructorArguments[1].Value),
-                        BusinessKeyRuntime + "BtsmtlBusinessKeyRole." + ((int)declaration.ConstructorArguments[2].Value == 0 ? "Declaration" : "Reference"),
+                        Literal(declaration.Domain), Literal(kind),
+                        BusinessKeyRuntime + "BtsmtlBusinessKeyRole." + (declaration.Role == 0 ? "Declaration" : "Reference"),
                         Literal(symbol.ContainingAssembly.Identity.ToString()), Literal(BusinessKeySymbol(symbol)),
                         Literal(RootSymbol(owner)), Literal(BusinessKeySymbol(owner)), Literal(filePath),
                         Literal(Revision(expression.SyntaxTree)), Number(expression.SpanStart), Number(expression.Span.Length),
-                        BusinessKeyRuntime + "BtsmtlBusinessKeyResolution." + (failure == null ? "Constant" : "Unresolved"),
-                        Literal(key), Literal(failure)));
+                        BusinessKeyRuntime + "BtsmtlBusinessKeyResolution." + (sourceFailure == null ? "Constant" : "Unresolved"),
+                        Literal(key), Literal(sourceFailure)));
+                }
                 new BusinessKeyConstantUses(this, expression).Visit(value);
             }
+
+            static string ResolveKind(BusinessKeyDeclaration declaration, IArgumentOperation[] bindings, out string failure)
+            {
+                failure = null;
+                if (declaration.KindParameter == null) return declaration.KeyKind;
+                if (bindings == null)
+                {
+                    failure = "business_key_kind_call_unavailable";
+                    return null;
+                }
+                IArgumentOperation selector = bindings.SingleOrDefault(argument => argument.Parameter.Name == declaration.KindParameter);
+                if (selector == null || !selector.Value.ConstantValue.HasValue)
+                {
+                    failure = "business_key_kind_nonconstant";
+                    return null;
+                }
+                string[] kinds = ((INamedTypeSymbol)selector.Parameter.Type).GetMembers().OfType<IFieldSymbol>()
+                    .Where(field => field.HasConstantValue && Equals(field.ConstantValue, selector.Value.ConstantValue.Value))
+                    .SelectMany(field => field.GetAttributes()).Where(attribute => Identity(attribute.AttributeClass) == BusinessKeyKindAttribute &&
+                        (string)attribute.ConstructorArguments[0].Value == declaration.Domain)
+                    .Select(attribute => (string)attribute.ConstructorArguments[1].Value).Distinct(StringComparer.Ordinal).ToArray();
+                if (kinds.Length != 1 || string.IsNullOrWhiteSpace(kinds[0]))
+                {
+                    failure = kinds.Length > 1 ? "business_key_kind_ambiguous" : "business_key_kind_undeclared";
+                    return null;
+                }
+                return kinds[0];
+            }
+
+            void Report(AttributeData attribute, string symbol, string reason) => m_Context.ReportDiagnostic(Diagnostic.Create(
+                InvalidValueDeclaration, attribute.ApplicationSyntaxReference?.GetSyntax(m_Context.CancellationToken).GetLocation(), symbol, reason));
+
+            static string BindingKey(ISymbol symbol) => symbol.ContainingAssembly.Identity + ":" + BusinessKeySymbol(symbol);
 
             void AddConstant(ISymbol symbol, ExpressionSyntax expression)
             {
@@ -224,11 +316,12 @@ namespace ThirdPerson.ValueGeneration.Generator
             internal string Emit()
             {
                 var code = new StringBuilder();
-                code.AppendLine(Attribute("BtsmtlBusinessKeyMetadataAttribute", "1", Literal(m_Context.Compilation.Assembly.Identity.ToString()),
+                code.AppendLine(Attribute("BtsmtlBusinessKeyMetadataAttribute", "2", Literal(m_Context.Compilation.Assembly.Identity.ToString()),
                     Number(m_Context.Compilation.SyntaxTrees.Count()),
                     Number(m_Declarations.Count(item => SymbolEqualityComparer.Default.Equals(item.Key.ContainingAssembly,
                         m_Context.Compilation.Assembly) && item.Value.Length != 0)),
                     Number(m_Sources.Count), Number(m_Constants.Count), Number(m_ConstantUses.Count)));
+                foreach (string row in m_Files) code.AppendLine(row);
                 foreach (string row in m_Sources) code.AppendLine(row);
                 foreach (string row in m_Constants) code.AppendLine(row);
                 foreach (string row in m_ConstantUses) code.AppendLine(row);
@@ -259,6 +352,25 @@ namespace ThirdPerson.ValueGeneration.Generator
             static string Literal(string value) => value == null ? "null" : SymbolDisplay.FormatLiteral(value, true);
             static string Attribute(string name, params string[] arguments) =>
                 "[assembly: " + BusinessKeyRuntime + name + "(" + string.Join(", ", arguments) + ")]";
+
+            sealed class BusinessKeyDeclaration
+            {
+                internal readonly AttributeData Attribute;
+                internal readonly string Domain;
+                internal readonly string KeyKind;
+                internal readonly int Role;
+                internal readonly string KindParameter;
+
+                internal BusinessKeyDeclaration(AttributeData attribute, string domain, string keyKind, int role)
+                {
+                    Attribute = attribute;
+                    Domain = domain;
+                    KeyKind = keyKind;
+                    Role = role;
+                    KindParameter = attribute.NamedArguments.Where(argument => argument.Key == "KindParameter")
+                        .Select(argument => (string)argument.Value.Value).SingleOrDefault();
+                }
+            }
 
             sealed class BusinessKeyConstantUses : OperationWalker
             {
