@@ -129,6 +129,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             void AddExternalDeclaration(AttributeData attribute)
             {
                 var type = (INamedTypeSymbol)attribute.ConstructorArguments[0].Value;
+                if (type == null)
+                {
+                    Report(attribute, BusinessKeyExternalAttribute, "外部业务键声明必须提供真实声明类型");
+                    return;
+                }
                 string methodName = (string)attribute.ConstructorArguments[1].Value;
                 string parameterName = (string)attribute.ConstructorArguments[2].Value;
                 ITypeSymbol[] signature = attribute.ConstructorArguments[6].Values.Select(value => (ITypeSymbol)value.Value).ToArray();
@@ -184,7 +189,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                     !(type is IArrayTypeSymbol array && array.ElementType.SpecialType == SpecialType.System_String))
                     reason = "业务键语义只声明原 string 或 string[] 值";
                 else if (string.IsNullOrWhiteSpace(declaration.Domain) ||
-                    string.IsNullOrWhiteSpace(declaration.KeyKind) == string.IsNullOrWhiteSpace(declaration.KindParameter))
+                    (declaration.KeyKind == null) == (declaration.KindParameter == null) ||
+                    declaration.KeyKind != null && string.IsNullOrWhiteSpace(declaration.KeyKind) ||
+                    declaration.KindParameter != null && string.IsNullOrWhiteSpace(declaration.KindParameter))
                     reason = "业务键语义必须声明正式 domain，并选择固定 keyKind 或真实枚举参数 KindParameter";
                 else if (declaration.Role != 0 && declaration.Role != 1)
                     reason = "业务键语义 role 必须为 Declaration 或 Reference";
@@ -317,7 +324,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 var code = new StringBuilder();
                 code.AppendLine(Attribute("BtsmtlBusinessKeyMetadataAttribute", "2", Literal(m_Context.Compilation.Assembly.Identity.ToString()),
-                    Number(m_Context.Compilation.SyntaxTrees.Count()),
+                    Number(m_Files.Count),
                     Number(m_Declarations.Count(item => SymbolEqualityComparer.Default.Equals(item.Key.ContainingAssembly,
                         m_Context.Compilation.Assembly) && item.Value.Length != 0)),
                     Number(m_Sources.Count), Number(m_Constants.Count), Number(m_ConstantUses.Count)));
