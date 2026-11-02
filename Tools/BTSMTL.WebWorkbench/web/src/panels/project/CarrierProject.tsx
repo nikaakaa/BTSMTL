@@ -127,7 +127,7 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
               <span>{item.name}{item.identity === preview ? ' · 当前预览载体' : ''}</span><small>{item.source}</small>
             </button>;
           }} />}
-      <div className={styles.note}>{shown.length} 个载体 · 配置只读</div>
+      <div className={styles.note}>{shown.length} 个载体</div>
     </div>
     <div className={styles.details}>
       <div className={styles.facts}>
@@ -193,7 +193,7 @@ function CarrierResources({ carrier, target, onSaved, onRefreshed }: {
         ...kinds.map(value => ({ label: value, onSelect: () => setKind(value) })),
       ]}>{kind ?? '全部类别'}</MenuButton>
     </PanelBar>
-    <VirtualList className={styles.list} count={shown.length} rowHeight={44} label="载体只读资源"
+    <VirtualList className={styles.list} count={shown.length} rowHeight={44} label="载体资源"
       revealKey={JSON.stringify(target)} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
       const row = shown[index];
       const choices = choicesFor(row);

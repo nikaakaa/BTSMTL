@@ -614,14 +614,22 @@ export const authoringActions = {
       if (snapshot.status === 'rejected') {
         documents[key] = { ...document, externalChange: true };
         failures.push({ text: `业务键已保存，${target.name} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
-      } else if (blocked.has(target.name)) documents[key] = { ...document, externalChange: true };
-      else {
+      } else {
+        const savedFiles = Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content]));
+        const changedBaselines = [...new Set([...Object.keys(document.edited), ...document.removed])]
+          .filter(path => !paths.has(path) && savedFiles[path] !== document.files[path]);
+        for (const path of changedBaselines)
+          conflicts.push({ owner: target.name, path, reason: '该未保存文件的磁盘内容也已变化' });
+        if (blocked.has(target.name) || changedBaselines.length !== 0) {
+          documents[key] = { ...document, externalChange: true };
+          return;
+        }
         const history = (items: Snapshot[]) => items.map(item => ({ ...item,
           edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
           removed: item.removed.filter(path => !paths.has(path)),
         }));
         documents[key] = { ...document, revision: snapshot.value.revision,
-          files: Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content])),
+          files: savedFiles,
           sourceRevision: null, documentGraphs: null, documentRelations: [], externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
         };
