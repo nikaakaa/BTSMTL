@@ -199,9 +199,13 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
-        public void Open(TimelinePreviewRoot root, TimelinePreviewMode mode, bool showScene)
+        bool m_PendingSaveInputSchemes;
+        int? m_PendingInputScheme;
+
+        public void Open(TimelinePreviewRoot root, TimelinePreviewMode mode, bool showScene,
+            bool saveInputSchemes = true, int? inputScheme = null)
         {
-            Close();
+            Close(saveInputSchemes);
             Error = string.Empty;
             if (m_Provider == null)
             {
@@ -216,6 +220,8 @@ namespace BTSMTL.Timeline.Editor
             m_PendingRoot = root;
             m_PendingMode = mode;
             m_PendingScene = showScene;
+            m_PendingSaveInputSchemes = saveInputSchemes;
+            m_PendingInputScheme = inputScheme;
             ContinueOpen();
         }
 
@@ -223,7 +229,7 @@ namespace BTSMTL.Timeline.Editor
         public void Retry()
         {
             if (Root != null)
-                Open(Root, Mode, ShowsScene);
+                Open(Root, Mode, ShowsScene, InputSchemes.SavesChanges, InputSchemes.SelectedIndex);
         }
 
         void ContinueOpen()
@@ -246,7 +252,7 @@ namespace BTSMTL.Timeline.Editor
             ShowsScene = Mode == TimelinePreviewMode.Real || m_PendingScene;
             m_PendingRoot = null;
             m_Active = true;
-            InputSchemes.Load(Root);
+            InputSchemes.Load(Root, m_PendingSaveInputSchemes, m_PendingInputScheme);
             Error = string.Empty;
             RefreshInputs();
             if (Mode == TimelinePreviewMode.Real)
@@ -555,7 +561,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
         }
 
-        public void Close()
+        public void Close(bool saveInputSchemes = true)
         {
             bool closeSession = IsOpeningSession || m_Real != null;
             if (m_Real != null)
@@ -574,7 +580,8 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
             m_PendingRoot = null;
             IsPlaying = false;
-            InputSchemes.Save();
+            if (saveInputSchemes)
+                InputSchemes.Save();
             m_Active = false;
             RestoreObserverViews();
             ReleaseScene();

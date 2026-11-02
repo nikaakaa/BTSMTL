@@ -35,9 +35,16 @@ namespace BTSMTL.Timeline.Editor
         TimelineAssetPreviewPreferences m_Default;
         string m_InputsFingerprint;
         TimelineAssetPreviewPreferences m_ReadScheme;
+        int? m_Selection;
+
+        public bool SavesChanges { get; private set; } = true;
+        public int SelectedIndex => m_Selection ??
+            (m_Asset != null ? Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1) : 0);
 
         public TimelineAssetPreviewPreferences Current =>
-            m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Current : m_Default;
+            m_Asset != null && m_Asset.Schemes.Count != 0
+                ? m_Selection is { } index ? m_Asset.Schemes[index] : m_Asset.Current
+                : m_Default;
 
         public IReadOnlyList<TimelineAssetPreviewPreferences> All =>
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
@@ -45,14 +52,19 @@ namespace BTSMTL.Timeline.Editor
         public string Path => m_Asset != null ? m_Storage.InputPath(m_Asset) : string.Empty;
         public TimelinePreviewRootIdentity Root => m_Root;
 
-        public void Load(TimelinePreviewRoot root)
+        public void Load(TimelinePreviewRoot root, bool saveChanges = true, int? selection = null)
         {
-            Save();
+            if (saveChanges)
+                Save();
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;
             m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(root.Entry);
             m_Asset = m_Storage.Find(root.Identity);
+            if (selection is { } index && (index < 0 || index >= (m_Asset != null ? m_Asset.Schemes.Count : 1)))
+                throw new System.ArgumentOutOfRangeException(nameof(selection), "所选预览输入方案不存在。");
+            SavesChanges = saveChanges;
+            m_Selection = selection;
             if (m_Asset != null)
                 foreach (TimelineAssetPreviewPreferences scheme in m_Asset.Schemes)
                     if (scheme.InputTimeline)
@@ -77,7 +89,7 @@ namespace BTSMTL.Timeline.Editor
 
         public void Save()
         {
-            if (m_Asset != null)
+            if (SavesChanges && m_Asset != null)
                 TimelineAuthoringSave.Save(m_Asset);
         }
 
