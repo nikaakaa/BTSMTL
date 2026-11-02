@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
-import { authoringApi, type AuthoringCarriers, type ProfileEntryTarget, type QueryAvailability, type ReferenceChoiceTarget } from '../../api/authoring';
-import { isAbort } from '../../api/http';
+import type { ProfileEntryTarget, ReferenceChoiceTarget } from '../../api/authoring';
 import { openPanel } from '../../shell/layout';
 import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
@@ -34,24 +33,6 @@ export function ProjectPanel() {
   const [section, setSection] = useState<'authoring' | 'carriers' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
   const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
-  const [carriers, setCarriers] = useState<AuthoringCarriers | null>(null);
-  const [carrierFailure, setCarrierFailure] = useState<{ text: string; entryId: number | null } | null>(null);
-  const [carrierRefresh, setCarrierRefresh] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    setCarriers(null);
-    setCarrierFailure(null);
-    authoringApi.carriers(controller.signal).then(value => {
-      useAuthoring.setState({ carrierRevision: value.authoringRevision });
-      setCarriers(value);
-    }, error => {
-      if (!isAbort(error)) setCarrierFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
-    });
-    return () => controller.abort();
-  }, [carrierRefresh]);
-  const locateAvailability: QueryAvailability = carriers?.locateAvailability ?? {
-    available: false, reason: carrierFailure?.text ?? '正在读取 Unity 定位可用性',
-  };
   const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
   useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
@@ -65,9 +46,8 @@ export function ProjectPanel() {
     </div>}
     <div className={projectStyles.body}><Tabs<'authoring' | 'carriers' | 'animations'> value={section} onChange={setSection} items={[
       { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
-      { value: 'carriers', label: '载体与资源', content: <CarrierProject target={profileTarget} catalog={carriers} failure={carrierFailure}
-        refresh={() => setCarrierRefresh(value => value + 1)} locateAvailability={locateAvailability} /> },
-      { value: 'animations', label: '动画库', content: <AnimationProject locateAvailability={locateAvailability} /> },
+      { value: 'carriers', label: '载体与资源', content: <CarrierProject target={profileTarget} /> },
+      { value: 'animations', label: '动画库', content: <AnimationProject /> },
     ]} /></div>
   </div>;
 }
@@ -112,7 +92,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
   </Fold></div>;
 }
 
-function AnimationProject({ locateAvailability }: { locateAvailability: QueryAvailability }) {
+function AnimationProject() {
   const [library, setLibrary] = useState<AnimationLibrary | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   useEffect(() => {
@@ -123,10 +103,10 @@ function AnimationProject({ locateAvailability }: { locateAvailability: QueryAva
   }, []);
   if (failure) return <div className={styles.failure}><ErrorLine text={failure.text} entryId={failure.entryId} /></div>;
   if (!library) return <Empty text="读取中" />;
-  return <ResourceView library={library} locateAvailability={locateAvailability} />;
+  return <ResourceView library={library} />;
 }
 
-function ResourceView({ library, locateAvailability }: { library: AnimationLibrary; locateAvailability: QueryAvailability }) {
+function ResourceView({ library }: { library: AnimationLibrary }) {
   const { identity, time, playing } = useWorkbench(useShallow(state => ({ identity: state.identity, time: state.time, playing: state.playing })));
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>(null);
@@ -219,7 +199,7 @@ function ResourceView({ library, locateAvailability }: { library: AnimationLibra
             onChange={value => { if (value !== null) { resourceActions.setPlaying(false); resourceActions.setTime(value); } }} />
           <BarSeparator />
           <FitButton />
-          {clip && <LocateAssetButton key={clip.resource.identity} target={{ kind: 'asset', identity: clip.resource.identity }} availability={locateAvailability} />}
+          {clip && <LocateAssetButton key={clip.resource.identity} target={{ kind: 'asset', identity: clip.resource.identity }} />}
         </PanelBar>
         <ResourceCanvas library={library} />
       </div>

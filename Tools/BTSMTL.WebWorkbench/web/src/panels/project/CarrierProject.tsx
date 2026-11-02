@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { AuthoringCarrier, AuthoringCarriers, CarrierResource, ProfileEntryTarget, QueryAvailability } from '../../api/authoring';
+import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
+import { isAbort } from '../../api/http';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { referenceTargetKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
+import { consoleActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -73,14 +75,26 @@ function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
   return rows;
 }
 
-export function CarrierProject({ target: focusTarget, catalog, failure, refresh, locateAvailability }: {
-  target: ProfileEntryTarget | null; catalog: AuthoringCarriers | null;
-  failure: { text: string; entryId: number | null } | null; refresh(): void; locateAvailability: QueryAvailability;
-}) {
+export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTarget | null }) {
+  const [catalog, setCatalog] = useState<AuthoringCarriers | null>(null);
+  const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => { if (focusTarget !== null) { setSelected(focusTarget.carrierIdentity); setSearch(''); } }, [focusTarget]);
   const { target, preview } = useAuthoring(useShallow(state => ({ target: state.target, preview: authoringDocument(state).previewDefinitionGuid })));
+  useEffect(() => {
+    const controller = new AbortController();
+    setCatalog(null);
+    setFailure(null);
+    authoringApi.carriers(controller.signal).then(value => {
+      useAuthoring.setState({ carrierRevision: value.authoringRevision });
+      setCatalog(value);
+    }, error => {
+      if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
+    });
+    return () => controller.abort();
+  }, [refresh]);
   const shown = useMemo(() => {
     const query = search.toLocaleLowerCase();
     return (catalog?.items ?? []).filter(item => `${item.name} ${item.source} ${item.identity}`.toLocaleLowerCase().includes(query));
@@ -92,7 +106,7 @@ export function CarrierProject({ target: focusTarget, catalog, failure, refresh,
     <div className={styles.browser}>
       <PanelBar>
         <TextInput aria-label="搜索载体" placeholder="搜索载体名称、来源" value={search} className={styles.search} onChange={event => setSearch(event.currentTarget.value)} />
-        <Button variant="ghost" onClick={refresh}>刷新</Button>
+        <Button variant="ghost" onClick={() => setRefresh(value => value + 1)}>刷新</Button>
       </PanelBar>
       {failure ? <ErrorLine {...failure} /> : catalog === null ? <Empty text="正在读取已保存载体" /> :
         !catalog.availability.available ? <Empty text={catalog.availability.reason} /> :
@@ -114,25 +128,21 @@ export function CarrierProject({ target: focusTarget, catalog, failure, refresh,
       {carrier ? <>
         <PanelBar><Button disabled={target?.kind !== 'skill' || preview === carrier.identity}
           onClick={() => authoringActions.selectPreviewCarrier(carrier.identity)}>设为当前技能预览载体</Button>
-          <LocateAssetButton key={carrier.identity} target={{ kind: 'asset', identity: carrier.identity }} availability={locateAvailability} /></PanelBar>
+          <LocateAssetButton key={carrier.identity} target={{ kind: 'asset', identity: carrier.identity }} /></PanelBar>
         <div className={styles.facts}><strong>{carrier.name}</strong><code>{carrier.source}</code><small>{carrier.identity}</small>
           {carrier.vfx === null && <span className={styles.issue}>未配置特效 Profile</span>}
           {carrier.camera === null && <span className={styles.issue}>未配置相机 Profile</span>}
           {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
           {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
         </div>
-        {catalog && !catalog.locateAvailability.available && <div className={styles.note}>Unity 定位不可用：{catalog.locateAvailability.reason}</div>}
-        <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
-          locateAvailability={locateAvailability} />
+        <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
       </> : <Empty text={catalog?.availability.available && focusTarget !== null && selected === focusTarget.carrierIdentity
         ? `引用的来源载体已失效，原身份已保留：${focusTarget.carrierIdentity}` : '选择载体查看表现资源与锚点'} />}
     </div>
   </div>;
 }
 
-function CarrierResources({ carrier, target, locateAvailability }: {
-  carrier: AuthoringCarrier; target: ProfileEntryTarget | null; locateAvailability: QueryAvailability;
-}) {
+function CarrierResources({ carrier, target }: { carrier: AuthoringCarrier; target: ProfileEntryTarget | null }) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<string | null>(null);
   const [selection, setSelection] = useState<ProfileEntryTarget | null>(null);
@@ -179,7 +189,7 @@ function CarrierResources({ carrier, target, locateAvailability }: {
       <code>{selected.source}</code><small>{selected.key}{selected.identity ? ` · ${selected.identity}` : ''}</small>
       {selected.detail && <span>{selected.detail}</span>}
       <LocateAssetButton key={selected.location.kind === 'asset' ? selected.location.identity : JSON.stringify(resourceTarget(carrier, selected))}
-        target={selected.location} availability={locateAvailability} />
+        target={selected.location} />
       {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
         onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}

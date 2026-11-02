@@ -265,7 +265,6 @@ export interface AuthoringCarriers {
   availability: QueryAvailability;
   authoringRevision: string;
   items: AuthoringCarrier[];
-  locateAvailability: QueryAvailability;
 }
 
 export interface BlackboardItem {

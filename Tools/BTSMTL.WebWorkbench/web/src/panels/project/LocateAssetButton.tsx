@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authoringApi, type AssetLocateResult, type QueryAvailability } from '../../api/authoring';
+import { authoringApi, type AssetLocateResult } from '../../api/authoring';
 import { consoleActions } from '../../state/store';
 import { Button } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -9,9 +9,9 @@ export type AssetLocateTarget = { kind: 'asset'; identity: string } | { kind: 'u
 type LocateState = { kind: 'idle' } | { kind: 'pending' } | { kind: 'located'; result: AssetLocateResult }
   | { kind: 'failed'; text: string; entryId: number | null };
 
-export function LocateAssetButton({ target, availability }: { target: AssetLocateTarget; availability: QueryAvailability }) {
+export function LocateAssetButton({ target }: { target: AssetLocateTarget }) {
   const [state, setState] = useState<LocateState>({ kind: 'idle' });
-  const reason = target.kind === 'unavailable' ? target.reason : availability.available ? null : availability.reason;
+  const reason = target.kind === 'unavailable' ? target.reason : null;
   return <>
     <Button variant="ghost" disabled={reason !== null || state.kind === 'pending'}
       tip={reason ?? (state.kind === 'located' ? `${state.result.projectPath}\n${state.result.assetPath}` : '在目标 Unity 工程中选中并定位该资产')}
