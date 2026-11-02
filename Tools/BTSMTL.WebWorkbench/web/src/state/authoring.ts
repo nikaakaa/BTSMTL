@@ -5,7 +5,7 @@ import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
+  type SkillDeleteResult, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
@@ -380,6 +380,7 @@ async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
   }
   try {
     const document = await authoringApi.document(target.name, editingView, signal);
+    signal?.throwIfAborted();
     if (!isCurrentRequest()) return;
     setDocument({ documentGraphs: document.graphs, documentRelations: document.relations, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
@@ -503,8 +504,8 @@ export const authoringActions = {
       setDocument({ loading: false }, target);
       return true;
     } catch (error) {
-      setDocument({ loading: false }, target);
       if (isAbort(error)) return false;
+      setDocument({ loading: false }, target);
       consoleActions.error('作者', error);
       return false;
     }
@@ -565,6 +566,21 @@ export const authoringActions = {
     setDocument({
       edited, removed: [...new Set([...state.removed, ...paths.filter(path => state.files[path] !== undefined)])], version: state.version + 1,
     });
+  },
+
+  acceptSkillDeletion(receipt: Extract<SkillDeleteResult, { deleted: true }>) {
+    const state = get();
+    const target = { kind: 'skill', name: receipt.skill } as const;
+    const documents = { ...state.documents };
+    delete documents[authoringTargetKey(target)];
+    const closing = isActiveTarget(target);
+    if (closing) loadController?.abort();
+    set({ documents, skills: state.skills === null ? null : state.skills.filter(skill => skill !== receipt.skill),
+      carrierRevision: receipt.authoringRevision, ...(closing ? { target: null } : {}) });
+    if (closing) {
+      useWorkbench.setState({ graphRequest: null, timelineRequest: null });
+      publishDocument();
+    }
   },
 
   revert() {
@@ -699,12 +715,15 @@ export const authoringActions = {
   async checkExternal() {
     const { target, revision } = get();
     if (!target || !revision) return;
+    const signal = loadController!.signal;
     try {
-      const changes = await authoringApi.changes(target, revision);
+      const changes = await authoringApi.changes(target, revision, signal);
+      signal.throwIfAborted();
       if (!changes.changed) return;
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
-        const snapshot = await authoringApi.read(target);
+        const snapshot = await authoringApi.read(target, signal);
+        signal.throwIfAborted();
         setDocument({ revision: snapshot.revision, sourceRevision: null,
           version: authoringDocument(useAuthoring.getState(), target).version + 1,
           files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type ProjectItem, type ReferrersResult } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, type ProjectItem, type ReferrersResult, type SkillDeleteResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
 import { authoringActions, authoringDocument, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
@@ -13,6 +13,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { SkillCreationForm } from './SkillCreationForm';
 import { InputPlanCreationForm } from './InputPlanCreationForm';
+import { LocateAssetButton } from './LocateAssetButton';
 import styles from './project.module.css';
 
 const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案' };
@@ -148,18 +149,25 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [deletion, setDeletion] = useState<Extract<SkillDeleteResult, { code: 'skill-referenced' }> | null>(null);
+  const pendingDocument = useAuthoring(state => {
+    const document = state.documents[authoringTargetKey({ kind: 'skill', name: item.owner })];
+    return document?.loading === true || document?.saving === true;
+  });
   useEffect(() => {
     const controller = new AbortController();
     setReferrers(null);
+    setDeletion(null);
+    setFailure(null);
     authoringApi.referrers({ kind: 'skill', name: item.owner }, { identity: item.identity }, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
       if (!isAbort(error)) setFailure({ text: '引用者读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
   }, [item.owner, item.identity, stamp]);
-  const perform = async (action: () => Promise<void>) => {
+  const perform = async (action: () => Promise<void>, refresh = true) => {
     setBusy(true);
     setFailure(null);
-    try { await action(); onChanged(); }
+    try { await action(); if (refresh) onChanged(); }
     catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
     finally { setBusy(false); }
   };
@@ -167,7 +175,20 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(async () => { openPanel(await projectActions.open(item)); })}>打开</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>
-      {item.kind !== 'skill' && <Button variant="ghost" disabled={busy || referrers === null || !referrers.complete || referrers.items.length !== 0}
+      {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
+        tip={pendingDocument ? '等待此技能的读取或保存完成' : '删除整个技能目录；宿主会检查磁盘修订、外部引用、Definition 授予和共享内容'}
+        onClick={() => void perform(async () => {
+          setDeletion(null);
+          const result = await projectActions.removeSkill(item);
+          if (result.deleted) {
+            consoleActions.log('info', 'Project', `${item.name} 技能目录已删除`, JSON.stringify(result));
+            onChanged();
+          }
+          else {
+            if (result.code === 'skill-referenced') setDeletion(result);
+            setFailure({ text: result.message, entryId: consoleActions.log('error', 'Project', result.message, JSON.stringify(result)) });
+          }
+        }, false)}>删除技能目录</Button> : <Button variant="ghost" disabled={busy || referrers === null || !referrers.complete || referrers.items.length !== 0}
         tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入所属技能的未保存修改，可撤销'}
         onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>删除</Button>}
     </PanelBar>
@@ -185,6 +206,27 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
       {item.schemes.map(scheme => <Button key={scheme.index} variant="ghost" disabled={busy}
         onClick={() => void perform(async () => { openPanel(await projectActions.open(item, scheme.index)); })}>打开 {scheme.name}</Button>)}
     </div>}
+    {deletion && <>
+      <div className={styles.heading}>阻止删除的引用 · {deletion.references.length} 项</div>
+      {deletion.references.map((reference, index) => {
+        const source = items.find(value => value.owner === reference.owner && value.file === reference.file);
+        return <div key={index} className={styles.facts}>
+          <strong>{reference.ownerName}</strong>
+          <span>{reference.kind === 'carrier-grant' ? 'Definition 技能授予' : '作者内容引用'} · {reference.view === 'saved' ? '已保存' : '未保存编辑'}</span>
+          <code>{reference.file} · {reference.path}</code>
+          {reference.kind === 'carrier-grant' ? <LocateAssetButton target={{ kind: 'asset', identity: reference.identity }} />
+            : source && <Button variant="ghost" disabled={busy}
+              onClick={() => void perform(async () => { openPanel(await projectActions.open(source)); })}>打开引用者</Button>}
+        </div>;
+      })}
+      {deletion.shared.length > 0 && <div className={styles.heading}>技能拥有的共享内容 · {deletion.shared.length} 项</div>}
+      {deletion.shared.map(shared => <div key={keyOf(shared)} className={styles.facts}>
+        <strong>{shared.name}</strong><span>{kindNames[shared.kind]} · {shared.ownerName}</span><code>{shared.file}</code>
+        <Button variant="ghost" disabled={busy}
+          onClick={() => void perform(async () => { openPanel(await projectActions.open(shared)); })}>打开共享内容</Button>
+      </div>)}
+    </>}
+    {!deletion && <>
     <div className={styles.heading}>引用者{referrers === null ? ' · 读取中' : ` · 已确认 ${referrers.items.length} 项${referrers.complete ? '' : ' · 查询未完整'}`}</div>
     {referrers?.complete && referrers.items.length === 0 && <div className={styles.note}>没有引用者</div>}
     {referrers?.unresolved.map((issue, index) => <div key={index} className={styles.facts}>
@@ -204,6 +246,7 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
         {'contextOwnerName' in reference && <small>调用上下文：{reference.contextOwnerName} · {reference.fieldId}</small>}
       </button>;
     })}
+    </>}
   </div>;
 }
 

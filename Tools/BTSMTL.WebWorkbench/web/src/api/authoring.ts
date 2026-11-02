@@ -1,6 +1,6 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget, SourceFile } from './types';
-import { getJson, getText, postJson, postText, putJson, query } from './http';
+import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
 import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
@@ -227,6 +227,19 @@ export interface SemanticReferenceLocation extends ReferenceLocation {
 
 export type ProjectReferrer = (ReferenceLocation & { identity: string }) |
   (SemanticReferenceLocation & { targets: ReferenceChoiceTarget[] });
+
+export type SkillDeletionReference = ReferenceLocation & {
+  identity: string;
+} & ({ kind: 'authoring'; view: 'saved' | 'editing' } | { kind: 'carrier-grant'; view: 'saved' });
+
+export type SkillDeleteResult = {
+  success: true; deleted: true; skill: string; revision: string; authoringRevision: string;
+} | {
+  success: false; deleted: false; code: 'skill-referenced'; skill: string; revision: string; authoringRevision: string;
+  references: SkillDeletionReference[]; shared: ProjectItem[]; message: string;
+} | {
+  success: false; deleted: false; code: 'source-revision-conflict'; skill: string; message: string;
+};
 
 export type ReferenceSelector = { identity: string; target?: never } | { identity?: never; target: ReferenceChoiceTarget };
 
@@ -564,6 +577,8 @@ export const authoringApi = {
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
   read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
+  deleteSkill: (skill: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
+    deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', name: skill }), request, [409]),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
   document: (skill: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>

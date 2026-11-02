@@ -29,7 +29,7 @@ function reasonOf(status: number, raw: string): string {
   return raw.trim() || `HTTP ${status}`;
 }
 
-async function send(path: string, init: RequestInit): Promise<Response> {
+async function send(path: string, init: RequestInit, acceptedStatuses: readonly number[] = []): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(path, init);
@@ -37,7 +37,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
     if (init.signal?.aborted) throw error;
     throw new ApiError(path, 0, '宿主未响应', error instanceof Error ? error.message : String(error));
   }
-  if (!response.ok) {
+  if (!response.ok && !acceptedStatuses.includes(response.status)) {
     const raw = await response.text();
     throw new ApiError(path, response.status, reasonOf(response.status, raw), raw);
   }
@@ -66,6 +66,16 @@ export async function putJson<T>(path: string, body: unknown, signal?: AbortSign
     signal,
   });
   return response.json() as Promise<T>;
+}
+
+export async function deleteJson<T>(path: string, body: unknown, acceptedStatuses: readonly number[], signal?: AbortSignal): Promise<T> {
+  const response = await send(path, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  }, acceptedStatuses);
+  return response.json();
 }
 
 // 回执原文：作者 JSON 需要保留浮点写法，由调用方按技能 JSON 规则解析。
