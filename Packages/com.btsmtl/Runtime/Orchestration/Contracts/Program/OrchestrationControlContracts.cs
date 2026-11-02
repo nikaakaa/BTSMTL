@@ -40,6 +40,18 @@ namespace BTSMTL.Orchestration
         Failed = 3
     }
 
+    public enum OrchestrationStopMode : byte
+    {
+        Request = 1,
+        Force = 2
+    }
+
+    public static class OrchestrationHostStopCauseRange
+    {
+        public const uint First = 0x10000;
+        public const uint Last = 0x1FFFF;
+    }
+
     public enum OrchestrationWaitReason : byte
     {
         ChildCompletion,
@@ -110,45 +122,161 @@ namespace BTSMTL.Orchestration
         public int InputPortId { get; }
     }
 
-    public readonly struct OrchestrationStopContext
+    public struct OrchestrationStopContext
     {
-        public OrchestrationStopContext(uint cause, int sourceOperationIndex,
-            int replacementOperationIndex)
+        public OrchestrationStopContext(uint cause, OrchestrationStopMode mode, ulong tick,
+            int initiatorOperationIndex, int initiatorExecutionFrameIndex,
+            int replacementOperationIndex = -1, int replacementEdgeIndex = -1)
         {
             Cause = cause;
-            SourceOperationIndex = sourceOperationIndex;
+            Mode = mode;
+            Tick = tick;
+            OriginTick = tick;
+            InitiatorOperationIndex = initiatorOperationIndex;
+            InitiatorExecutionFrameIndex = initiatorExecutionFrameIndex;
+            SourceOperationIndex = initiatorOperationIndex;
+            SourceExecutionFrameIndex = initiatorExecutionFrameIndex;
+            OriginSourceOperationIndex = -1;
+            OriginSourceExecutionFrameIndex = -1;
+            ParentOperationIndex = -1;
+            ParentExecutionFrameIndex = -1;
+            PropagationDepth = 0;
             ReplacementOperationIndex = replacementOperationIndex;
+            ReplacementEdgeIndex = replacementEdgeIndex;
+            StateOperationIndex = -1;
+            StateExecutionFrameIndex = -1;
+            StateTargetOperationIndex = -1;
+            StateTransitionEdgeIndex = -1;
         }
 
-        public uint Cause { get; }
-        public int SourceOperationIndex { get; }
-        public int ReplacementOperationIndex { get; }
-        public bool IsValid => Cause != 0;
+        public uint Cause { get; private set; }
+        public OrchestrationStopMode Mode { get; private set; }
+        public ulong Tick { get; private set; }
+        public ulong OriginTick { get; private set; }
+        public int InitiatorOperationIndex { get; private set; }
+        public int InitiatorExecutionFrameIndex { get; private set; }
+        public int SourceOperationIndex { get; private set; }
+        public int SourceExecutionFrameIndex { get; private set; }
+        public int OriginSourceOperationIndex { get; private set; }
+        public int OriginSourceExecutionFrameIndex { get; private set; }
+        public int ParentOperationIndex { get; private set; }
+        public int ParentExecutionFrameIndex { get; private set; }
+        public int PropagationDepth { get; private set; }
+        public int ReplacementOperationIndex { get; private set; }
+        public int ReplacementEdgeIndex { get; private set; }
+        internal int StateOperationIndex { get; private set; }
+        internal int StateExecutionFrameIndex { get; private set; }
+        internal int StateTargetOperationIndex { get; private set; }
+        internal int StateTransitionEdgeIndex { get; private set; }
+        public readonly bool IsValid => Mode != 0;
+        public readonly OrchestrationStateExitContext StateExit => new OrchestrationStateExitContext(in this);
 
-        public static OrchestrationStopContext SelfAbort(int sourceOperationIndex) =>
+        public readonly OrchestrationStopContext AtOperation(int operationIndex, int executionFrameIndex, ulong tick)
+        {
+            OrchestrationStopContext context = this;
+            context.Tick = tick;
+            if (OriginSourceOperationIndex < 0)
+            {
+                context.OriginSourceOperationIndex = operationIndex;
+                context.OriginSourceExecutionFrameIndex = executionFrameIndex;
+            }
+            if (SourceOperationIndex != operationIndex || SourceExecutionFrameIndex != executionFrameIndex)
+            {
+                context.ParentOperationIndex = SourceOperationIndex;
+                context.ParentExecutionFrameIndex = SourceExecutionFrameIndex;
+                context.SourceOperationIndex = operationIndex;
+                context.SourceExecutionFrameIndex = executionFrameIndex;
+                context.PropagationDepth++;
+            }
+            return context;
+        }
+
+        public readonly OrchestrationStopContext AtTick(ulong tick)
+        {
+            OrchestrationStopContext context = this;
+            context.Tick = tick;
+            return context;
+        }
+
+        public readonly OrchestrationStopContext WithMode(OrchestrationStopMode mode)
+        {
+            OrchestrationStopContext context = this;
+            context.Mode = mode;
+            return context;
+        }
+
+        public readonly OrchestrationStopContext WithReplacement(int operationIndex, int edgeIndex)
+        {
+            OrchestrationStopContext context = this;
+            context.ReplacementOperationIndex = operationIndex;
+            context.ReplacementEdgeIndex = edgeIndex;
+            return context;
+        }
+
+        public readonly OrchestrationStopContext ForStateExit(int operationIndex, int executionFrameIndex,
+            int targetOperationIndex = -1, int transitionEdgeIndex = -1)
+        {
+            OrchestrationStopContext context = this;
+            context.StateOperationIndex = operationIndex;
+            context.StateExecutionFrameIndex = executionFrameIndex;
+            context.StateTargetOperationIndex = targetOperationIndex;
+            context.StateTransitionEdgeIndex = transitionEdgeIndex;
+            return context;
+        }
+
+        public readonly OrchestrationStopContext Resume(in OrchestrationStopContext update)
+        {
+            OrchestrationStopContext context = update;
+            if (Cause == update.Cause && InitiatorOperationIndex == update.InitiatorOperationIndex &&
+                InitiatorExecutionFrameIndex == update.InitiatorExecutionFrameIndex)
+                context.OriginTick = OriginTick;
+            return context;
+        }
+
+        public static OrchestrationStopContext SelfAbort(int initiator, int frame, ulong tick) =>
             new OrchestrationStopContext((uint)OrchestrationStopCause.SelfAbort,
-                sourceOperationIndex, -1);
+                OrchestrationStopMode.Request, tick, initiator, frame);
 
-        public static OrchestrationStopContext LowerPriorityAbort(int sourceOperationIndex,
-            int replacementOperationIndex) =>
-            new OrchestrationStopContext((uint)OrchestrationStopCause.LowerPriorityAbort,
-                sourceOperationIndex, replacementOperationIndex);
+        public static OrchestrationStopContext LowerPriorityAbort(int initiator, int frame, ulong tick,
+            int replacement, int edge) => new OrchestrationStopContext((uint)OrchestrationStopCause.LowerPriorityAbort,
+                OrchestrationStopMode.Request, tick, initiator, frame, replacement, edge);
 
-        public static OrchestrationStopContext StateTransition(int sourceOperationIndex,
-            int replacementOperationIndex) =>
-            new OrchestrationStopContext((uint)OrchestrationStopCause.StateTransition,
-                sourceOperationIndex, replacementOperationIndex);
+        public static OrchestrationStopContext StateTransition(int initiator, int frame, ulong tick,
+            int replacement, int edge) => new OrchestrationStopContext((uint)OrchestrationStopCause.StateTransition,
+                OrchestrationStopMode.Request, tick, initiator, frame, replacement, edge);
 
-        public static OrchestrationStopContext ParentStop(int sourceOperationIndex) =>
+        public static OrchestrationStopContext ParentStop(int initiator, int frame, ulong tick) =>
             new OrchestrationStopContext((uint)OrchestrationStopCause.ParentStop,
-                sourceOperationIndex, -1);
+                OrchestrationStopMode.Request, tick, initiator, frame);
 
-        public static OrchestrationStopContext Reset(int sourceOperationIndex) =>
+        public static OrchestrationStopContext Reset(int initiator, int frame, ulong tick) =>
             new OrchestrationStopContext((uint)OrchestrationStopCause.Reset,
-                sourceOperationIndex, -1);
+                OrchestrationStopMode.Force, tick, initiator, frame);
 
-        public static OrchestrationStopContext Shutdown(int sourceOperationIndex) =>
+        public static OrchestrationStopContext Shutdown(int initiator, int frame, ulong tick) =>
             new OrchestrationStopContext((uint)OrchestrationStopCause.Shutdown,
-                sourceOperationIndex, -1);
+                OrchestrationStopMode.Force, tick, initiator, frame);
+    }
+
+    public readonly struct OrchestrationStateExitContext
+    {
+        readonly OrchestrationStopContext m_Stop;
+
+        internal OrchestrationStateExitContext(in OrchestrationStopContext stop) => m_Stop = stop;
+
+        public bool IsValid => m_Stop.IsValid && m_Stop.StateOperationIndex >= 0;
+        public uint Cause => m_Stop.Cause;
+        public OrchestrationStopMode Mode => m_Stop.Mode;
+        public ulong Tick => m_Stop.Tick;
+        public int SourceStateOperationIndex => m_Stop.StateOperationIndex;
+        public int SourceStateExecutionFrameIndex => m_Stop.StateExecutionFrameIndex;
+        public int TargetStateOperationIndex => m_Stop.StateTargetOperationIndex;
+        public int TransitionEdgeIndex => m_Stop.StateTransitionEdgeIndex;
+        bool HasParentTree => m_Stop.Cause != (uint)OrchestrationStopCause.None &&
+            m_Stop.Cause != (uint)OrchestrationStopCause.StateTransition;
+        public int ParentTreeSourceOperationIndex => HasParentTree ? m_Stop.OriginSourceOperationIndex : -1;
+        public int ParentTreeExecutionFrameIndex => HasParentTree ? m_Stop.OriginSourceExecutionFrameIndex : -1;
+        public int ParentTreeReplacementOperationIndex => HasParentTree ? m_Stop.ReplacementOperationIndex : -1;
+        public int ParentTreeReplacementEdgeIndex => HasParentTree ? m_Stop.ReplacementEdgeIndex : -1;
     }
 }

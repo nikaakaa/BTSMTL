@@ -15,10 +15,9 @@ namespace BTSMTL.Orchestration
                 InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick);
 
         OrchestrationStopStatus StopTimeline(int operationIndex,
-            OrchestrationStopContext context, bool force) =>
+            in OrchestrationStopContext context) =>
             m_Host.Stop(ref this, m_TimelineState, operationIndex,
-                ref OperationState(operationIndex).TimelineRuntimeHandle, in context,
-                force, m_Input.Tick);
+                ref OperationState(operationIndex).TimelineRuntimeHandle, in context);
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
@@ -28,15 +27,29 @@ namespace BTSMTL.Orchestration
             context = default;
             OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
             TValue previousTime = m_TimelineTime;
+            OrchestrationStopContext previousStopContext = m_InvocationStopContext;
             m_TimelineInvocation = invocation;
             m_TimelineTime = time;
+            m_InvocationStopContext = stopContext;
             BeginInvocation();
             try
             {
-                OrchestrationOperationResult result = Advance(invocation.Invocation.Entry);
+                bool exits = invocation.Invocation.Hook == OrchestrationTimelineHook.Disable ||
+                    invocation.Invocation.Hook == OrchestrationTimelineHook.Destroy;
+                OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
+                if (exits)
+                {
+                    CloseExecutionFrame(in stopContext);
+                    entry = new OrchestrationExecutionEntry(entry.OperationIndex,
+                        OrchestrationExecutionContract.Complete, entry.InputPortId);
+                }
+                OrchestrationOperationResult result = Advance(entry);
+                if (exits && result == OrchestrationOperationResult.Failure)
+                    Fail(OrchestrationExecutionErrorCode.TimelineInvocation, entry.OperationIndex,
+                        invocation.Invocation.Token.ClipOrdinal, (int)invocation.Invocation.Hook,
+                        identity: invocation.Invocation.Token.PlaybackIdentity);
                 if (captureContext)
                 {
-                    OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
                     m_Host.ReadEntryContext(ref this, in entry, out context);
                 }
                 return result;
@@ -45,6 +58,7 @@ namespace BTSMTL.Orchestration
             {
                 m_TimelineInvocation = previous;
                 m_TimelineTime = previousTime;
+                m_InvocationStopContext = previousStopContext;
                 m_EntryDepth--;
             }
         }

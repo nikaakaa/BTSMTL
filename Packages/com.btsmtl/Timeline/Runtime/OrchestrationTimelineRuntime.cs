@@ -251,7 +251,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public OrchestrationTimelineBatch<TTime> BeginStop(OrchestrationStateView candidate,
-            int slot, OrchestrationTimelineStopContext context, bool force)
+            int slot, in OrchestrationStopContext context)
         {
             TClock clock = default;
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
@@ -262,11 +262,17 @@ namespace BTSMTL.Timeline.Runtime
             work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
             work.BatchSequence = m_Workspace.NextBatchSequence();
             work.Tick = context.Tick;
-            work.SourceIdentityId = context.SourceIdentityId;
+            work.SourceIdentityId = playback.Start.SourceIdentityId;
             work.PreviousTime = playback.Progress.CursorTime;
             work.PreviousCycle = playback.Progress.Cycle;
             work.Stop = true;
-            work.Proposed.Progress.StopContext = context;
+            work.Proposed.Progress.StopContext = new OrchestrationTimelineStopContext
+            {
+                Cause = context.Cause,
+                Mode = context.Mode,
+                Tick = context.Tick,
+                SourceIdentityId = playback.Start.SourceIdentityId
+            };
             work.Proposed.Progress.HasStopContext = true;
             work.Proposed.Progress.State = OrchestrationTimelinePlaybackStatus.Stopped;
             CopyExitState(candidate, slot);

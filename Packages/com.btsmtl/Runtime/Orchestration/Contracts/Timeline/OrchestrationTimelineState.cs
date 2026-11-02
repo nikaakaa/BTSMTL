@@ -26,6 +26,7 @@ namespace BTSMTL.Orchestration
     public partial struct OrchestrationTimelineStopContext : IEquatable<OrchestrationTimelineStopContext>
     {
         public uint Cause;
+        public OrchestrationStopMode Mode;
         public ulong Tick;
         public int SourceIdentityId;
     }

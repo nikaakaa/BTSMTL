@@ -22,7 +22,9 @@ namespace BTSMTL.Orchestration
         TimelineInvocation,
         OperationNotExecutable,
         ReadOnlyExtension,
-        ValueScheduleInstruction
+        ValueScheduleInstruction,
+        StateExitFailed,
+        ImmediateExtensionWaiting
     }
 
     // 推进路径抛出固定文字前先写入该记录；托管宿主在入口外用 Formatter 组织可读信息。
@@ -83,6 +85,10 @@ namespace BTSMTL.Orchestration
                     return $"{program}Read-only extension '{error.Slot}' at operation '{op}' returned '{(OrchestrationExtensionResult)error.Detail}'.";
                 case OrchestrationExecutionErrorCode.ValueScheduleInstruction:
                     return $"{program}未知的值调度指令 '{(OrchestrationValueScheduleCode)error.Detail}'。";
+                case OrchestrationExecutionErrorCode.StateExitFailed:
+                    return $"{program}State '{error.Slot}' 的 OnExit 入口 '{op}' 返回 Failure。";
+                case OrchestrationExecutionErrorCode.ImmediateExtensionWaiting:
+                    return $"{program}立即完成的扩展 '{error.Slot}' 在操作 '{op}' 返回 Running。";
                 default:
                     return program + "编排推进失败。";
             }
@@ -134,6 +140,10 @@ namespace BTSMTL.Orchestration
                     throw new InvalidOperationException("只读扩展返回失败。");
                 case OrchestrationExecutionErrorCode.ValueScheduleInstruction:
                     throw new InvalidOperationException("未知的值调度指令。");
+                case OrchestrationExecutionErrorCode.StateExitFailed:
+                    throw new InvalidOperationException("State 退出入口返回失败。");
+                case OrchestrationExecutionErrorCode.ImmediateExtensionWaiting:
+                    throw new InvalidOperationException("立即完成的扩展返回跨次等待。");
                 default:
                     throw new InvalidOperationException("编排推进失败。");
             }

@@ -144,7 +144,7 @@ namespace BTSMTL.Orchestration
                 };
             if (selectFrame)
                 SelectExecutionFrame(m_States[m_StateDepth - 1].ExecutionFrameIndex);
-            PushState(state, -1, true, true);
+            PushState(state, default, true, true);
         }
 
         void LeaveScheduledPrediction()

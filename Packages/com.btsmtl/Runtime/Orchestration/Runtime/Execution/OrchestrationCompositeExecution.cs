@@ -56,7 +56,7 @@ namespace BTSMTL.Orchestration
                 {
                     if (UsesSelfAbort(edge.AbortPolicy) && IsActive(edge.TargetOperationIndex))
                     {
-                        OrchestrationStopContext context = OrchestrationStopContext.SelfAbort(edge.TargetOperationIndex);
+                        OrchestrationStopContext context = OrchestrationStopContext.SelfAbort(operationIndex, m_FrameSlot, m_Input.Tick);
                         WriteStopContext(operationIndex, context);
                         OrchestrationStopStatus stop = RequestStop(edge.TargetOperationIndex, context);
                         if (stop == OrchestrationStopStatus.Running)
@@ -96,9 +96,7 @@ namespace BTSMTL.Orchestration
                 state.ChildCursor = -1;
                 if (stop == OrchestrationStopStatus.Failed)
                     return OrchestrationOperationResult.Failure;
-                int replacement = FindChildIndex(children, pending.ReplacementOperationIndex);
-                return TickSelectorFrom(operationIndex, children,
-                    pending.Cause == (uint)OrchestrationStopCause.LowerPriorityAbort && replacement >= 0 ? replacement : 0);
+                return TickSelectorFrom(operationIndex, children, 0);
             }
             if (cursor >= 0 && cursor < children.Length)
             {
@@ -113,9 +111,9 @@ namespace BTSMTL.Orchestration
                     {
                         bool self = selection.Reason == OrchestrationValueSelectionReason.SelfAbort;
                         OrchestrationStopContext context = self
-                            ? OrchestrationStopContext.SelfAbort(current.TargetOperationIndex)
-                            : OrchestrationStopContext.LowerPriorityAbort(current.TargetOperationIndex,
-                                m_Program.Edge(children[selection.Value]).TargetOperationIndex);
+                            ? OrchestrationStopContext.SelfAbort(operationIndex, m_FrameSlot, m_Input.Tick)
+                            : OrchestrationStopContext.LowerPriorityAbort(operationIndex, m_FrameSlot, m_Input.Tick,
+                                m_Program.Edge(children[selection.Value]).TargetOperationIndex, children[selection.Value]);
                         WriteStopContext(operationIndex, context);
                         OrchestrationStopStatus stop = RequestStop(current.TargetOperationIndex, context);
                         if (stop == OrchestrationStopStatus.Running)
@@ -124,7 +122,7 @@ namespace BTSMTL.Orchestration
                         state.ChildCursor = -1;
                         if (stop == OrchestrationStopStatus.Failed)
                             return OrchestrationOperationResult.Failure;
-                        return TickSelectorFrom(operationIndex, children, self ? 0 : selection.Value);
+                        return TickSelectorFrom(operationIndex, children, 0);
                     }
                     OrchestrationOperationResult currentResult = TickEdge(currentIndex);
                     if (currentResult != OrchestrationOperationResult.Failure)
@@ -150,15 +148,26 @@ namespace BTSMTL.Orchestration
             {
                 int edgeIndex = children[i];
                 ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(edgeIndex);
+                if (IsStopping(edge.TargetOperationIndex))
+                {
+                    OrchestrationStopStatus stop = ContinueStop(edge.TargetOperationIndex);
+                    if (stop == OrchestrationStopStatus.Failed)
+                        return OrchestrationOperationResult.Failure;
+                    if (stop == OrchestrationStopStatus.Running)
+                    {
+                        running = true;
+                        stopping = true;
+                        continue;
+                    }
+                    completedMask &= ~(1 << i);
+                }
                 if (completesWithFirstChild && (completedMask & 1) != 0)
                 {
                     if (i == 0)
                         continue;
-                    OrchestrationStopStatus stop = IsStopping(edge.TargetOperationIndex)
-                        ? ContinueStop(edge.TargetOperationIndex)
-                        : IsActive(edge.TargetOperationIndex)
-                            ? RequestStop(edge.TargetOperationIndex, OrchestrationStopContext.ParentStop(operationIndex))
-                            : OrchestrationStopStatus.Completed;
+                    OrchestrationStopStatus stop = IsActive(edge.TargetOperationIndex)
+                        ? RequestStop(edge.TargetOperationIndex, OrchestrationStopContext.ParentStop(operationIndex, m_FrameSlot, m_Input.Tick))
+                        : OrchestrationStopStatus.Completed;
                     if (stop == OrchestrationStopStatus.Failed)
                         return OrchestrationOperationResult.Failure;
                     if (stop == OrchestrationStopStatus.Running)
@@ -170,21 +179,10 @@ namespace BTSMTL.Orchestration
                 }
                 if (!EvaluateCondition(edgeIndex))
                 {
-                    if (IsStopping(edge.TargetOperationIndex))
-                    {
-                        OrchestrationStopStatus stop = ContinueStop(edge.TargetOperationIndex);
-                        if (stop == OrchestrationStopStatus.Failed)
-                            return OrchestrationOperationResult.Failure;
-                        if (stop == OrchestrationStopStatus.Running)
-                        {
-                            running = true;
-                            stopping = true;
-                        }
-                    }
-                    else if (UsesSelfAbort(edge.AbortPolicy) && IsActive(edge.TargetOperationIndex))
+                    if (UsesSelfAbort(edge.AbortPolicy) && IsActive(edge.TargetOperationIndex))
                     {
                         OrchestrationStopStatus stop = RequestStop(edge.TargetOperationIndex,
-                            OrchestrationStopContext.SelfAbort(edge.TargetOperationIndex));
+                            OrchestrationStopContext.SelfAbort(operationIndex, m_FrameSlot, m_Input.Tick));
                         if (stop == OrchestrationStopStatus.Failed)
                             return OrchestrationOperationResult.Failure;
                         if (stop == OrchestrationStopStatus.Running)
@@ -235,16 +233,6 @@ namespace BTSMTL.Orchestration
             }
             OperationState(operationIndex).ChildCursor = -1;
             return OrchestrationOperationResult.Failure;
-        }
-
-        int FindChildIndex(ReadOnlySpan<int> children, int operationIndex)
-        {
-            if (operationIndex < 0)
-                return -1;
-            for (int i = 0; i < children.Length; i++)
-                if (m_Program.Edge(children[i]).TargetOperationIndex == operationIndex)
-                    return i;
-            return -1;
         }
 
         static bool UsesSelfAbort(OrchestrationAbortPolicy policy) =>

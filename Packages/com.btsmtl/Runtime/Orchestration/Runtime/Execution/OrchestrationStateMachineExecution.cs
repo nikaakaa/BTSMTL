@@ -28,13 +28,16 @@ namespace BTSMTL.Orchestration
                 OrchestrationOperationStatus.Success;
         }
 
-        public int CurrentStateExitCause()
+        public OrchestrationStopContext CurrentStopContext()
         {
             if (m_StateDepth != 0)
-                return m_States[m_StateDepth - 1].ExitCause;
-            OrchestrationStopContext source = m_Blackboards.BorrowedStopContext;
-            return m_Blackboards.HasBorrowedState && source.IsValid ? MapExitCause(source.Cause) : -1;
+                return m_States[m_StateDepth - 1].ExitContext;
+            return m_InvocationStopContext.IsValid ? m_InvocationStopContext : m_Blackboards.BorrowedStopContext;
         }
+
+        public OrchestrationStateExitContext CurrentStateExitContext() => CurrentStopContext().StateExit;
+
+        public uint CurrentStateExitCause() => CurrentStateExitContext().Cause;
 
         public bool IsCurrentStateExecution(int stateOperationIndex)
         {
@@ -53,7 +56,10 @@ namespace BTSMTL.Orchestration
             ref OrchestrationOperationState machine = ref OperationState(operationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting >= 0)
+            {
+                RetargetStateTransition(operationIndex, exiting);
                 return ContinueStateTransition(operationIndex, exiting);
+            }
             int active = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
             if (active < 0)
             {
@@ -70,7 +76,19 @@ namespace BTSMTL.Orchestration
             {
                 OrchestrationOperationResult stateResult = Tick(active);
                 if (stateResult == OrchestrationOperationResult.Failure)
+                {
+                    PushState(active, in ReadStopContext(active));
+                    try
+                    {
+                        InvokeHooks(operationIndex, OrchestrationLifecycleHook.StateExited, active, active);
+                    }
+                    finally
+                    {
+                        PopState();
+                    }
+                    machine.ActiveStateIdentityId = 0;
                     return stateResult;
+                }
                 transition = SelectTransition(active, -1, active);
             }
             if (transition < 0)
@@ -78,34 +96,59 @@ namespace BTSMTL.Orchestration
             TraceEdge(transition, true, true, active);
             ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(transition);
             machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(active).IdentityId;
-            machine.PendingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(edge.TargetOperationIndex).IdentityId;
-            machine.TransitionIdentityId = edge.IdentityId;
+            machine.StopContext = OrchestrationStopContext.StateTransition(operationIndex, m_FrameSlot,
+                m_Input.Tick, edge.TargetOperationIndex, transition).ForStateExit(active, m_FrameSlot,
+                edge.TargetOperationIndex, transition);
             return ContinueStateTransition(operationIndex, active);
+        }
+
+        void RetargetStateTransition(int machineOperationIndex, int exiting)
+        {
+            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
+            int pending = machine.StopContext.ReplacementEdgeIndex;
+            int anyState = m_Program.AnyStateEntry(machineOperationIndex);
+            int selected = anyState >= 0 ? SelectTransition(anyState, exiting, exiting) : -1;
+            int source = SelectTransition(exiting, -1, exiting);
+            if (source >= 0 && (selected < 0 || m_Program.Edge(source).Priority < m_Program.Edge(selected).Priority))
+                selected = source;
+            if (selected < 0 || m_Program.Edge(selected).Priority >= m_Program.Edge(pending).Priority)
+                return;
+            int target = m_Program.Edge(selected).TargetOperationIndex;
+            machine.StopContext = machine.StopContext.WithReplacement(target, selected)
+                .ForStateExit(exiting, m_FrameSlot, target, selected);
+            TraceEdge(selected, true, true, exiting);
         }
 
         OrchestrationOperationResult ContinueStateTransition(int machineOperationIndex, int exiting)
         {
             ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
-            int target = m_Program.StateOperationIndex(machine.PendingStateIdentityId);
-            OrchestrationStopStatus stop = RequestStop(exiting, OrchestrationStopContext.StateTransition(exiting, target));
+            machine.StopContext = machine.StopContext.AtTick(m_Input.Tick);
+            int target = machine.StopContext.ReplacementOperationIndex;
+            OrchestrationStopStatus stop = RequestStop(exiting, in machine.StopContext);
             if (stop == OrchestrationStopStatus.Running)
                 return Wait(machineOperationIndex, OrchestrationWaitReason.StateExit);
             if (stop == OrchestrationStopStatus.Failed)
                 return OrchestrationOperationResult.Failure;
             machine.ExitingStateIdentityId = 0;
-            machine.PendingStateIdentityId = 0;
-            machine.TransitionIdentityId = 0;
+            PushState(exiting, in machine.StopContext);
+            try
+            {
+                InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
+                    exiting, exiting);
+                if (target >= 0 && m_Program.Operation(target).Code != OrchestrationOperationCode.StateExit)
+                    InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateTransition,
+                        target, exiting);
+            }
+            finally
+            {
+                PopState();
+            }
+            ClearStopContext(machineOperationIndex);
             if (target < 0 || m_Program.Operation(target).Code == OrchestrationOperationCode.StateExit)
             {
                 machine.ActiveStateIdentityId = 0;
-                InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                    exiting, exiting);
                 return OrchestrationOperationResult.Success;
             }
-            InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                exiting, exiting);
-            InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateTransition,
-                target, exiting);
             ActivateState(machineOperationIndex, target);
             return Tick(target) == OrchestrationOperationResult.Failure
                 ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Running;
@@ -114,17 +157,20 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult TickState(int operationIndex)
         {
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
+            if (state.StopContext.IsValid)
+                return ContinueNaturalStateExit(operationIndex);
             if (state.ChildCursor <= 0)
             {
+                state.ChildCursor = -1;
                 int enterEdge = m_Program.StateOnEnterEdge(operationIndex);
                 if (enterEdge >= 0)
                 {
                     int enter = m_Program.Edge(enterEdge).TargetOperationIndex;
-                    OrchestrationOperationResult result = TickInState(operationIndex, enter, -1);
+                    OrchestrationOperationResult result = TickInState(operationIndex, enter, default);
                     if (result != OrchestrationOperationResult.Success)
                         return result == OrchestrationOperationResult.Running
-                            ? Wait(operationIndex, OrchestrationWaitReason.StateEnter) : result;
-                    ForceStop(enter, OrchestrationStopContext.Reset(enter));
+                            ? Wait(operationIndex, OrchestrationWaitReason.StateEnter) : BeginNaturalStateExit(operationIndex);
+                    ResetOperation(enter);
                 }
                 state.ChildCursor = 1;
             }
@@ -132,7 +178,7 @@ namespace BTSMTL.Orchestration
             if (rootEdge < 0)
                 return OrchestrationOperationResult.Running;
             OrchestrationOperationResult rootResult;
-            PushState(operationIndex, -1);
+            PushState(operationIndex, default);
             try
             {
                 rootResult = TickPersistent(m_Program.Edge(rootEdge).TargetOperationIndex);
@@ -142,22 +188,38 @@ namespace BTSMTL.Orchestration
                 PopState();
             }
             return rootResult == OrchestrationOperationResult.Failure
-                ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Running;
+                ? BeginNaturalStateExit(operationIndex) : OrchestrationOperationResult.Running;
         }
 
-        OrchestrationStopStatus ContinueStateStop(int stateOperationIndex, OrchestrationStopContext context)
+        OrchestrationOperationResult BeginNaturalStateExit(int stateOperationIndex)
+        {
+            OperationState(stateOperationIndex).StopContext = new OrchestrationStopContext(
+                (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
+                stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot);
+            return ContinueNaturalStateExit(stateOperationIndex);
+        }
+
+        OrchestrationOperationResult ContinueNaturalStateExit(int stateOperationIndex) =>
+            ContinueStateStop(stateOperationIndex, in ReadStopContext(stateOperationIndex)) == OrchestrationStopStatus.Running
+                ? Wait(stateOperationIndex, OrchestrationWaitReason.StateExit) : OrchestrationOperationResult.Failure;
+
+        OrchestrationStopStatus ContinueStateStop(int stateOperationIndex, in OrchestrationStopContext context)
         {
             ref OrchestrationOperationState state = ref OperationState(stateOperationIndex);
+            if (state.ChildCursor == 0 || state.ChildCursor == 3)
+                return OrchestrationStopStatus.Completed;
+            OrchestrationStopContext exitContext = StateExitContext(stateOperationIndex, in context);
+            WriteStopContext(stateOperationIndex, in exitContext);
             if (state.ChildCursor < 2)
             {
                 int activeEdge = state.ChildCursor <= 0
                     ? m_Program.StateOnEnterEdge(stateOperationIndex) : m_Program.StateRootEdge(stateOperationIndex);
                 if (activeEdge >= 0)
                 {
-                    PushState(stateOperationIndex, MapExitCause(context.Cause));
+                    PushState(stateOperationIndex, in exitContext);
                     try
                     {
-                        OrchestrationStopStatus activeStop = RequestStop(m_Program.Edge(activeEdge).TargetOperationIndex, context);
+                        OrchestrationStopStatus activeStop = RequestStop(m_Program.Edge(activeEdge).TargetOperationIndex, in exitContext);
                         if (activeStop != OrchestrationStopStatus.Completed)
                             return activeStop;
                     }
@@ -168,54 +230,80 @@ namespace BTSMTL.Orchestration
                 }
                 state.ChildCursor = 2;
             }
+            CompleteStateExit(stateOperationIndex, in exitContext);
+            return OrchestrationStopStatus.Completed;
+        }
+
+        void CompleteStateExit(int stateOperationIndex, in OrchestrationStopContext context)
+        {
+            OperationState(stateOperationIndex).ChildCursor = 3;
             int exitEdge = m_Program.StateOnExitEdge(stateOperationIndex);
             if (exitEdge >= 0)
             {
                 int exit = m_Program.Edge(exitEdge).TargetOperationIndex;
-                OrchestrationOperationResult result = TickInState(stateOperationIndex, exit, MapExitCause(context.Cause));
-                if (result == OrchestrationOperationResult.Running)
-                    return OrchestrationStopStatus.Running;
-                if (result == OrchestrationOperationResult.Failure)
-                    return OrchestrationStopStatus.Failed;
-                ForceStop(exit, OrchestrationStopContext.Reset(exit));
+                PushState(stateOperationIndex, in context);
+                try
+                {
+                    if (Advance(new OrchestrationExecutionEntry(exit, OrchestrationExecutionContract.Complete)) ==
+                        OrchestrationOperationResult.Failure)
+                        Fail(OrchestrationExecutionErrorCode.StateExitFailed, exit, stateOperationIndex);
+                    ResetOperation(exit);
+                }
+                finally
+                {
+                    PopState();
+                }
             }
-            state.ChildCursor = 3;
-            return OrchestrationStopStatus.Completed;
         }
 
-        OrchestrationStopStatus ContinueStateMachineStop(int machineOperationIndex, OrchestrationStopContext context)
+        OrchestrationStopStatus ContinueStateMachineStop(int machineOperationIndex, in OrchestrationStopContext context)
         {
             ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting < 0)
                 exiting = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
-            machine.PendingStateIdentityId = 0;
-            machine.TransitionIdentityId = 0;
             if (exiting < 0)
             {
                 machine.ActiveStateIdentityId = 0;
                 return OrchestrationStopStatus.Completed;
             }
             machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(exiting).IdentityId;
-            OrchestrationStopStatus stop = RequestStop(exiting, context);
+            OrchestrationStopContext exitContext = context.ForStateExit(exiting, m_FrameSlot)
+                .AtOperation(exiting, m_FrameSlot, m_Input.Tick);
+            OrchestrationStopStatus stop = RequestStop(exiting, in exitContext);
             if (stop != OrchestrationStopStatus.Completed)
                 return stop;
             machine.ActiveStateIdentityId = 0;
             machine.ExitingStateIdentityId = 0;
-            InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
-                exiting, exiting);
+            PushState(exiting, in exitContext);
+            try
+            {
+                InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited, exiting, exiting);
+            }
+            finally
+            {
+                PopState();
+            }
             return OrchestrationStopStatus.Completed;
         }
 
-        void ForceStopState(int stateOperationIndex, OrchestrationStopContext context)
+        void ForceStopState(int stateOperationIndex, in OrchestrationStopContext context)
         {
-            PushState(stateOperationIndex, MapExitCause(context.Cause));
+            ref OrchestrationOperationState state = ref OperationState(stateOperationIndex);
+            if (state.ChildCursor == 0 || state.ChildCursor == 3)
+                return;
+            OrchestrationStopContext exitContext = StateExitContext(stateOperationIndex, in context);
+            PushState(stateOperationIndex, in exitContext);
             try
             {
                 foreach (int edgeIndex in m_Program.Outgoing(stateOperationIndex, OrchestrationFlowKind.Enter))
-                    ForceStop(m_Program.Edge(edgeIndex).TargetOperationIndex, context);
-                foreach (int edgeIndex in m_Program.Outgoing(stateOperationIndex, OrchestrationFlowKind.Exit))
-                    ForceStop(m_Program.Edge(edgeIndex).TargetOperationIndex, context);
+                {
+                    int child = m_Program.Edge(edgeIndex).TargetOperationIndex;
+                    if (IsActive(child))
+                        ForceStop(child, in exitContext);
+                }
+                if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
+                    CompleteStateExit(stateOperationIndex, in exitContext);
             }
             finally
             {
@@ -223,16 +311,44 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ForceStopStateMachine(int machineOperationIndex, OrchestrationStopContext context)
+        void ForceStopStateMachine(int machineOperationIndex, in OrchestrationStopContext context)
         {
             ref readonly OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
             int active = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (active >= 0)
-                ForceStop(active, context);
+                ForceStopMachineState(machineOperationIndex, active, in context);
             if (exiting >= 0 && exiting != active)
-                ForceStop(exiting, context);
+                ForceStopMachineState(machineOperationIndex, exiting, in context);
         }
+
+        void ForceStopMachineState(int machineOperationIndex, int stateOperationIndex,
+            in OrchestrationStopContext context)
+        {
+            int phase = OperationState(stateOperationIndex).ChildCursor;
+            bool entered = phase != 0 && phase != 3;
+            OrchestrationStopContext exitContext = context.ForStateExit(stateOperationIndex, m_FrameSlot)
+                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick);
+            ForceStop(stateOperationIndex, in exitContext);
+            if (entered && context.Cause != (uint)OrchestrationStopCause.Shutdown)
+            {
+                PushState(stateOperationIndex, in exitContext);
+                try
+                {
+                    InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
+                        stateOperationIndex, stateOperationIndex);
+                }
+                finally
+                {
+                    PopState();
+                }
+            }
+        }
+
+        OrchestrationStopContext StateExitContext(int stateOperationIndex, in OrchestrationStopContext context) =>
+            context.StateExit.IsValid && context.StateExit.SourceStateOperationIndex == stateOperationIndex &&
+                context.StateExit.SourceStateExecutionFrameIndex == m_FrameSlot
+                ? context : context.ForStateExit(stateOperationIndex, m_FrameSlot);
 
         void ActivateState(int machineOperationIndex, int stateOperationIndex)
         {
@@ -245,7 +361,7 @@ namespace BTSMTL.Orchestration
         {
             bool hasScope = stateContext >= 0;
             if (hasScope)
-                PushState(stateContext, -1);
+                PushState(stateContext, in ReadStopContext(stateContext));
             try
             {
                 ref readonly OrchestrationValueScheduleEntry entry = ref m_TransitionEntries[
@@ -259,9 +375,10 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        OrchestrationOperationResult TickInState(int stateOperationIndex, int targetOperationIndex, int exitCause)
+        OrchestrationOperationResult TickInState(int stateOperationIndex, int targetOperationIndex,
+            in OrchestrationStopContext context)
         {
-            PushState(stateOperationIndex, exitCause);
+            PushState(stateOperationIndex, in context);
             try
             {
                 return Tick(targetOperationIndex);
@@ -272,7 +389,7 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void PushState(int stateOperationIndex, int exitCause,
+        void PushState(int stateOperationIndex, in OrchestrationStopContext context,
             bool hasRootCompletedOverride = false, bool rootCompletedOverride = false)
         {
             if (m_StateDepth + 1 > m_States.Length)
@@ -283,7 +400,7 @@ namespace BTSMTL.Orchestration
             {
                 ExecutionFrameIndex = OperationFrame(stateOperationIndex),
                 OperationIndex = stateOperationIndex,
-                ExitCause = exitCause,
+                ExitContext = context,
                 HasRootCompletedOverride = hasRootCompletedOverride,
                 RootCompletedOverride = rootCompletedOverride,
                 TraceFrameIndex = trace
@@ -292,12 +409,5 @@ namespace BTSMTL.Orchestration
 
         void PopState() => m_StateDepth--;
 
-        static int MapExitCause(uint cause) => cause switch
-        {
-            (uint)OrchestrationStopCause.StateTransition => 0,
-            (uint)OrchestrationStopCause.SelfAbort => 1,
-            (uint)OrchestrationStopCause.LowerPriorityAbort => 2,
-            _ => 3
-        };
     }
 }

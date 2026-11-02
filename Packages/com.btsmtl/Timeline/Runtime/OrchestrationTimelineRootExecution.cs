@@ -183,11 +183,11 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public OrchestrationOperationResult Stop(OrchestrationCandidateState<TValue> candidate,
-            int slot, in OrchestrationTimelineStopContext stop, bool force, in OrchestrationStopContext stopContext)
+            int slot, in OrchestrationStopContext stopContext)
         {
             var runtime = Runtime;
             OrchestrationTimelineStart<OrchestrationTime> start = runtime.Playback(candidate.Timeline, slot).Start;
-            OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginStop(candidate.Timeline, slot, stop, force);
+            OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginStop(candidate.Timeline, slot, in stopContext);
             OrchestrationOperationResult result = Dispatch(candidate, in start, batch, in stopContext);
             if (result == OrchestrationOperationResult.Failure)
                 return result;

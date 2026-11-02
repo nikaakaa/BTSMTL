@@ -53,6 +53,7 @@ namespace BTSMTL.Orchestration
         int m_ScheduledPredictionDepth;
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
+        OrchestrationStopContext m_InvocationStopContext;
 
         internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
             OrchestrationExecutionScratch<TValue> scratch,
@@ -116,6 +117,7 @@ namespace BTSMTL.Orchestration
             m_ScheduledPredictionDepth = 0;
             m_TimelineInvocation = default;
             m_TimelineTime = default;
+            m_InvocationStopContext = default;
             m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.Initialize, -1, frameSlot);
         }
 
@@ -286,7 +288,7 @@ namespace BTSMTL.Orchestration
             return Tick(operationIndex);
         }
 
-        public OrchestrationStopStatus RequestStop(int operationIndex, OrchestrationStopContext context)
+        public OrchestrationStopStatus RequestStop(int operationIndex, in OrchestrationStopContext context)
         {
             BeginInvocation();
             try
@@ -294,6 +296,8 @@ namespace BTSMTL.Orchestration
                 m_CurrentOperationIndex = operationIndex;
                 if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
                     return OrchestrationStopStatus.Completed;
+                OrchestrationStopContext request = context.AtOperation(operationIndex, m_FrameSlot,
+                    m_Input.Tick).WithMode(OrchestrationStopMode.Request);
                 ref OrchestrationOperationState state = ref OperationState(operationIndex);
                 if (state.Status == OrchestrationOperationStatus.Dormant ||
                     state.Status == OrchestrationOperationStatus.Success ||
@@ -305,23 +309,23 @@ namespace BTSMTL.Orchestration
                 if (state.Status == OrchestrationOperationStatus.Running)
                 {
                     state.Status = OrchestrationOperationStatus.Stopping;
-                    WriteStopContext(operationIndex, context);
+                    WriteStopContext(operationIndex, in request);
                     TraceOperation(OrchestrationTraceKind.StopRequested, operationIndex,
-                        stopCause: context.Cause);
-                    if (TryRequestLeafStop(operationIndex, context, out OrchestrationStopStatus requested))
+                        stopCause: request.Cause);
+                    if (TryRequestLeafStop(operationIndex, in request, out OrchestrationStopStatus requested))
                     {
                         if (requested != OrchestrationStopStatus.Running)
                         {
                             TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
                                 requested == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
-                                context.Cause);
+                                request.Cause);
                             ResetOperation(operationIndex);
                         }
                         return requested;
                     }
                 }
-                else if (context.IsValid)
-                    WriteStopContext(operationIndex, context);
+                else
+                    state.StopContext = state.StopContext.Resume(in request);
                 return ContinueStop(operationIndex);
             }
             finally
@@ -338,23 +342,24 @@ namespace BTSMTL.Orchestration
                 if (!IsStopping(operationIndex))
                     return OrchestrationStopStatus.Completed;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                OrchestrationStopContext context = ReadStopContext(operationIndex);
+                OperationState(operationIndex).StopContext = ReadStopContext(operationIndex).AtTick(m_Input.Tick);
+                ref readonly OrchestrationStopContext context = ref ReadStopContext(operationIndex);
                 OrchestrationStopStatus status;
                 switch (operation.Code)
                 {
                     case OrchestrationOperationCode.State:
-                        status = ContinueStateStop(operationIndex, context);
+                        status = ContinueStateStop(operationIndex, in context);
                         break;
                     case OrchestrationOperationCode.StateMachine:
-                        status = ContinueStateMachineStop(operationIndex, context);
+                        status = ContinueStateMachineStop(operationIndex, in context);
                         break;
                     default:
                         bool continuesStop = operation.Code == OrchestrationOperationCode.Extension &&
                             (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                                 OrchestrationExtensionInvocationKind.ContinueStop) != 0;
                         status = OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, continuesStop)
-                            ? ContinueDirectChildStop(operationIndex, context, OrchestrationStopRoute.ChildFlowKind(operation.Code))
-                            : ContinueLeafStop(operationIndex, context);
+                            ? ContinueDirectChildStop(operationIndex, in context, OrchestrationStopRoute.ChildFlowKind(operation.Code))
+                            : ContinueLeafStop(operationIndex, in context);
                         break;
                 }
                 if (status == OrchestrationStopStatus.Running)
@@ -371,14 +376,15 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        public void ForceStop(int operationIndex, OrchestrationStopContext context)
+        public void ForceStop(int operationIndex, in OrchestrationStopContext context)
         {
             BeginInvocation();
             bool ownsVisited = m_ForceStopDepth == 0;
             m_ForceStopDepth++;
             try
             {
-                ForceStopCore(operationIndex, context);
+                OrchestrationStopContext force = context.WithMode(OrchestrationStopMode.Force);
+                ForceStopCore(operationIndex, in force);
             }
             finally
             {
@@ -389,56 +395,57 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ForceStopCore(int operationIndex, OrchestrationStopContext context)
+        void ForceStopCore(int operationIndex, in OrchestrationStopContext context)
         {
             if (operationIndex < 0)
                 return;
             if (!m_ForceStopVisits.Visit(m_FrameSlot, operationIndex))
                 return;
             m_CurrentOperationIndex = operationIndex;
+            OrchestrationStopContext current = context.AtOperation(operationIndex, m_FrameSlot, m_Input.Tick);
             bool active = IsActive(operationIndex);
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Timeline:
                     if (OperationState(operationIndex).TimelineRuntimeHandle != 0)
-                        ForceStopLeaf(operationIndex, context);
+                        ForceStopLeaf(operationIndex, in current);
                     break;
                 case OrchestrationOperationCode.Extension:
                     if (active && (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                          OrchestrationExtensionInvocationKind.ForceStop) != 0)
-                        ForceStopLeaf(operationIndex, context);
-                    ForceStopChildren(operationIndex, context);
+                        ForceStopLeaf(operationIndex, in current);
+                    ForceStopChildren(operationIndex, in current);
                     break;
                 case OrchestrationOperationCode.StateMachine:
-                    ForceStopStateMachine(operationIndex, context);
+                    ForceStopStateMachine(operationIndex, in current);
                     break;
                 case OrchestrationOperationCode.State:
-                    ForceStopState(operationIndex, context);
+                    ForceStopState(operationIndex, in current);
                     break;
                 default:
-                    ForceStopChildren(operationIndex, context);
+                    ForceStopChildren(operationIndex, in current);
                     break;
             }
             if (active)
-                TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: context.Cause);
+                TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: current.Cause);
             if (m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex)
                 ResetOperation(operationIndex);
         }
 
-        void ForceStopChildren(int operationIndex, OrchestrationStopContext context)
+        void ForceStopChildren(int operationIndex, in OrchestrationStopContext context)
         {
             OrchestrationFlowKind kind = OrchestrationStopRoute.ChildFlowKind(m_Program.Operation(operationIndex).Code);
             foreach (int edgeIndex in m_Program.Outgoing(operationIndex, kind))
             {
                 int child = m_Program.Edge(edgeIndex).TargetOperationIndex;
                 if (IsActive(child))
-                    ForceStopCore(child, context);
+                    ForceStopCore(child, in context);
             }
         }
 
         OrchestrationStopStatus ContinueDirectChildStop(int operationIndex,
-            OrchestrationStopContext context, OrchestrationFlowKind kind)
+            in OrchestrationStopContext context, OrchestrationFlowKind kind)
         {
             OrchestrationStopStatus aggregate = OrchestrationStopStatus.Completed;
             foreach (int edgeIndex in m_Program.Outgoing(operationIndex, kind))
@@ -446,7 +453,7 @@ namespace BTSMTL.Orchestration
                 int child = m_Program.Edge(edgeIndex).TargetOperationIndex;
                 if (!IsActive(child))
                     continue;
-                OrchestrationStopStatus status = RequestStop(child, context);
+                OrchestrationStopStatus status = RequestStop(child, in context);
                 if (status == OrchestrationStopStatus.Failed)
                     return status;
                 if (status == OrchestrationStopStatus.Running)
@@ -464,8 +471,6 @@ namespace BTSMTL.Orchestration
             ulong generation = state.Generation;
             state = default;
             state.Generation = generation;
-            state.StopSourceOperationIndex = -1;
-            state.StopReplacementOperationIndex = -1;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.OutputSlotOffset >= 0)
                 for (int i = 0; i < operation.OutputCount; i++)
@@ -493,28 +498,13 @@ namespace BTSMTL.Orchestration
             => m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireOperation,
                 operationIndex, m_FrameSlot);
 
-        OrchestrationStopContext ReadStopContext(int operationIndex)
-        {
-            ref readonly OrchestrationOperationState state = ref OperationState(operationIndex);
-            return new OrchestrationStopContext(state.StopCause,
-                state.StopSourceOperationIndex, state.StopReplacementOperationIndex);
-        }
+        ref readonly OrchestrationStopContext ReadStopContext(int operationIndex) =>
+            ref OperationState(operationIndex).StopContext;
 
-        void WriteStopContext(int operationIndex, OrchestrationStopContext context)
-        {
-            ref OrchestrationOperationState state = ref OperationState(operationIndex);
-            state.StopCause = context.Cause;
-            state.StopSourceOperationIndex = context.SourceOperationIndex;
-            state.StopReplacementOperationIndex = context.ReplacementOperationIndex;
-        }
+        void WriteStopContext(int operationIndex, in OrchestrationStopContext context) =>
+            OperationState(operationIndex).StopContext = context;
 
-        void ClearStopContext(int operationIndex)
-        {
-            ref OrchestrationOperationState state = ref OperationState(operationIndex);
-            state.StopCause = 0;
-            state.StopSourceOperationIndex = -1;
-            state.StopReplacementOperationIndex = -1;
-        }
+        void ClearStopContext(int operationIndex) => OperationState(operationIndex).StopContext = default;
 
         OrchestrationOperationResult Execute(int operationIndex, int inputPortId)
         {

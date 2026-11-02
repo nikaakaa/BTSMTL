@@ -30,11 +30,7 @@ namespace BTSMTL.Orchestration
             in OrchestrationExtensionArguments<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            OrchestrationExtensionResult result = binding.Candidate.Dispatch(binding.ContentIndex, ref context, in invocation);
-            if (binding.Contract.Completion == OrchestrationExtensionCompletion.Immediate &&
-                result == OrchestrationExtensionResult.Running)
-                throw new InvalidOperationException($"立即完成的扩展绑定 '{bindingIndex}' 在操作 '{invocation.OperationIndex}' 返回了 Running。");
-            return result;
+            return binding.Candidate.Dispatch(binding.ContentIndex, ref context, in invocation);
         }
 
         public static OrchestrationExtensionBindings<TValue, TContext> Prepare(

@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
                     value = values.FromBoolean(CurrentStateRootCompleted());
                     return;
                 case OrchestrationValueOpcode.StateExitCause:
-                    value = values.FromBoolean(typed.Argument == CurrentStateExitCause());
+                    value = values.FromBoolean(unchecked((uint)typed.Argument) == CurrentStateExitCause());
                     return;
                 case OrchestrationValueOpcode.Cycle:
                 {
@@ -81,7 +81,7 @@ namespace BTSMTL.Orchestration
                     Span<TValue> outputs = BorrowOutputs(operationIndex, depth, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
+                        m_Input.Tick, CurrentStopContext(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                         inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, binding,
                         m_Host.InvokeReadOnly(binding, in invocation));
@@ -246,10 +246,10 @@ namespace BTSMTL.Orchestration
                             : BorrowOutputs(operationIndex, depth, operation.OutputCount);
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
-                            m_Input.Tick, 0, StateAncestors(operationIndex),
+                            m_Input.Tick, CurrentStopContext(), StateAncestors(operationIndex),
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
-                        OrchestrationOperationResult result = (OrchestrationOperationResult)m_Host.InvokeCandidate(
+                        OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(
                             binding, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,

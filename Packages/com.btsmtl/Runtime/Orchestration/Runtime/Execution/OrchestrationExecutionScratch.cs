@@ -94,7 +94,7 @@ namespace BTSMTL.Orchestration
     {
         internal int ExecutionFrameIndex;
         internal int OperationIndex;
-        internal int ExitCause;
+        internal OrchestrationStopContext ExitContext;
         internal bool HasRootCompletedOverride;
         internal bool RootCompletedOverride;
         internal int TraceFrameIndex;

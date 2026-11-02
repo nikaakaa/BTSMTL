@@ -19,7 +19,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext, bool force, ulong tick)
+            in OrchestrationStopContext stopContext)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>;
 
@@ -117,11 +117,11 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext, bool force, ulong tick)
+            in OrchestrationStopContext stopContext)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue> =>
             m_Timeline.Stop(ref cursor, candidate, operationIndex, ref playbackIdentity, in stopContext,
-                force, tick, ref m_Context);
+                ref m_Context);
 
         public OrchestrationTime ReadTime() => m_Timeline.ReadTime();
 
