@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, type AuthoringTarget, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringTargetKey, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -584,6 +584,53 @@ export const authoringActions = {
     }
   },
 
+  async commitBusinessKeyRename(plan: BusinessKeyRenameResult) {
+    const conflicts = businessKeyMigrationConflicts(plan);
+    if (conflicts.length !== 0)
+      throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}/${item.path}（${item.reason}）`).join('；')}`);
+    return authoringApi.renameBusinessKey({ action: 'commit', target: plan.target, newKey: plan.newKey, expectedRevision: plan.revision });
+  },
+
+  async refreshBusinessKeyRename(result: Extract<BusinessKeyRenameResult, { saved: true }>) {
+    const files = businessKeyMigrationFiles(result);
+    const owners = [...files.values()].filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
+    const [catalogResults, snapshots] = await Promise.all([
+      Promise.allSettled([authoringApi.carriers()]),
+      Promise.allSettled(owners.map(owner => authoringApi.read(owner.target))),
+    ]);
+    const failures: { text: string; entryId: number | null }[] = [];
+    const catalogResult = catalogResults[0];
+    const catalog = catalogResult.status === 'fulfilled' ? catalogResult.value : null;
+    if (catalogResult.status === 'rejected') failures.push({ text: '业务键已保存，载体目录重新读取失败',
+      entryId: consoleActions.error('Project', catalogResult.reason) });
+    const conflicts = businessKeyMigrationConflicts(result);
+    const blocked = new Set(conflicts.map(item => item.owner));
+    const documents = { ...useAuthoring.getState().documents };
+    snapshots.forEach((snapshot, index) => {
+      const { target, paths } = owners[index];
+      const key = authoringTargetKey(target);
+      const document = documents[key];
+      if (document === undefined) return;
+      if (snapshot.status === 'rejected') {
+        documents[key] = { ...document, externalChange: true };
+        failures.push({ text: `业务键已保存，${target.name} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
+      } else if (blocked.has(target.name)) documents[key] = { ...document, externalChange: true };
+      else {
+        const history = (items: Snapshot[]) => items.map(item => ({ ...item,
+          edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
+          removed: item.removed.filter(path => !paths.has(path)),
+        }));
+        documents[key] = { ...document, revision: snapshot.value.revision,
+          files: Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content])),
+          sourceRevision: null, documentGraphs: null, documentRelations: [], externalChange: false,
+          undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
+        };
+      }
+    });
+    set({ documents });
+    return { catalog, conflicts, failures };
+  },
+
   revert() {
     const state = get();
     if (state.revision === null) {
@@ -1109,6 +1156,34 @@ export const hasChanges = (target = get().target) => {
   const document = authoringDocument(useAuthoring.getState(), target);
   return Object.keys(document.edited).length + document.removed.length > 0;
 };
+
+function businessKeyMigrationFiles(plan: BusinessKeyRenameResult) {
+  const owners = new Map<string, { target: Extract<AuthoringTarget, { kind: 'skill' }>; paths: Set<string> }>();
+  for (const reference of plan.references) {
+    const directory = reference.ownerDirectory.replaceAll('\\', '/');
+    const name = directory.slice(directory.lastIndexOf('/') + 1);
+    const target: Extract<AuthoringTarget, { kind: 'skill' }> = { kind: 'skill', name };
+    const owner = owners.get(name) ?? { target, paths: new Set<string>() };
+    owner.paths.add(reference.filePath.replaceAll('\\', '/').slice(directory.length + 1));
+    owners.set(name, owner);
+  }
+  return owners;
+}
+
+export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState()) {
+  const conflicts: { owner: string; path: string; reason: string }[] = [];
+  for (const { target, paths } of businessKeyMigrationFiles(plan).values()) {
+    const document = state.documents[authoringTargetKey(target)];
+    if (document === undefined) continue;
+    for (const path of paths) {
+      const reason = document.saving ? '正在保存' : document.loading ? '正在读取'
+        : document.externalChange ? '磁盘来源已变化'
+        : Object.hasOwn(document.edited, path) || document.removed.includes(path) ? '有未保存修改' : null;
+      if (reason !== null) conflicts.push({ owner: target.name, path, reason });
+    }
+  }
+  return conflicts;
+}
 
 // ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
 

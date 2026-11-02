@@ -99,6 +99,27 @@ export interface ProfileEntryTarget {
   resourceIdentity: string | null;
 }
 
+export type BusinessKeyRenameResult = {
+  projectPath: string;
+  success: true;
+  prepared: true;
+  revision: string;
+  target: ProfileEntryTarget;
+  newKey: string;
+  profiles: { identity: string; source: string }[];
+  sourceChanges: { path: string; sourceRevision: string; spanStart: number; spanLength: number; role: string }[];
+  references: { ownerDirectory: string; sourceRevision: string; filePath: string; graphId: string; nodeId: string;
+    memberPath: string[]; oldKey: string; newKey: string; contextOwners: string[] }[];
+  inputActions: { assetPath: string; sourceRevision: string; actionId: string; newName: string }[];
+  roots: { sourceCodePath: string; entryTypeName: string; recipeType: string; ownerAssetPath: string; outputAssetPath: string | null }[];
+  editorCompilationRequired: boolean;
+  receipt: unknown;
+} & ({ saved: false } | { saved: true });
+
+export type BusinessKeyRenameRequest = Pick<BusinessKeyRenameResult, 'target' | 'newKey'> & (
+  { action: 'prepare' } | { action: 'commit'; expectedRevision: string }
+);
+
 export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
 
 export interface ReferenceBank {
@@ -569,6 +590,8 @@ interface SkillCreationDraft {
 export const authoringApi = {
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
   locateAsset: (identity: string) => postJson<AssetLocateResult>('/api/authoring/locate', { identity }),
+  renameBusinessKey: (request: BusinessKeyRenameRequest, signal?: AbortSignal) =>
+    postJson<BusinessKeyRenameResult>('/api/authoring/business-keys/rename', request, signal),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
