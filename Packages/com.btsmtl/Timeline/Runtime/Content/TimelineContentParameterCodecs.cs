@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline
 {
@@ -9,6 +10,7 @@ namespace BTSMTL.Timeline
     public interface ITimelineContentParameterCodec
     {
         string ContractKind { get; }
+        StableHash SchemaIdentity { get; }
         Type ParameterType { get; }
         byte[] Write(TimelineContentParameters parameters);
         TimelineContentParameters Read(ReadOnlySpan<byte> bytes);
@@ -20,15 +22,17 @@ namespace BTSMTL.Timeline
         readonly Func<TParameters, byte[]> m_Write;
         readonly TimelineContentParameterReader<TParameters> m_Read;
 
-        public TimelineContentParameterCodec(string contractKind, Func<TParameters, byte[]> write,
+        public TimelineContentParameterCodec(string contractKind, StableHash schemaIdentity, Func<TParameters, byte[]> write,
             TimelineContentParameterReader<TParameters> read)
         {
             ContractKind = contractKind;
+            SchemaIdentity = schemaIdentity;
             m_Write = write;
             m_Read = read;
         }
 
         public string ContractKind { get; }
+        public StableHash SchemaIdentity { get; }
         public Type ParameterType => typeof(TParameters);
         public byte[] Write(TimelineContentParameters parameters) => m_Write((TParameters)parameters);
         public TimelineContentParameters Read(ReadOnlySpan<byte> bytes) => m_Read(bytes);

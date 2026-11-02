@@ -1,5 +1,6 @@
 using BTSMTL.Timeline;
 using MemoryPack;
+using System.IO;
 
 namespace ThirdPersonSimulation.Serialization
 {
@@ -17,8 +18,10 @@ namespace ThirdPersonSimulation.Serialization
             var codecs = (TimelineContentParameterCodecs)writer.Options.ServiceProvider.GetService(
                 typeof(TimelineContentParameterCodecs));
             string contractKind = value.ContractKind;
+            ITimelineContentParameterCodec codec = codecs.Require(contractKind);
             writer.WriteValue(contractKind);
-            writer.WriteValue(codecs.Require(contractKind).Write(value));
+            writer.WriteValue(codec.SchemaIdentity.Value);
+            writer.WriteValue(codec.Write(value));
         }
 
 #if NET7_0_OR_GREATER
@@ -28,10 +31,12 @@ namespace ThirdPersonSimulation.Serialization
 #endif
         {
             string contractKind = reader.ReadValue<string>();
-            byte[] bytes = reader.ReadValue<byte[]>();
             var codecs = (TimelineContentParameterCodecs)reader.Options.ServiceProvider.GetService(
                 typeof(TimelineContentParameterCodecs));
-            value = codecs.Require(contractKind).Read(bytes);
+            ITimelineContentParameterCodec codec = codecs.Require(contractKind);
+            if (reader.ReadValue<string>() != codec.SchemaIdentity.Value)
+                throw new InvalidDataException($"Timeline 参数 '{contractKind}' 的生成 schema 不匹配，请沿正式入口重新发布。");
+            value = codec.Read(reader.ReadValue<byte[]>());
         }
     }
 }

@@ -13,6 +13,7 @@ namespace ThirdPersonSimulation.Serialization
             MemoryPackContent.Initialize();
             MemoryPackGeneratedFormatters.Register();
             Motion = new TimelineContentParameterCodec<TimelineContentMotion>(TimelineContentMotion.Kind,
+                MemoryPackContent.GetSchemaHash<TimelineContentMotion>(),
                 value => MemoryPackContent.Serialize(value),
                 bytes => MemoryPackContent.Deserialize<TimelineContentMotion>(bytes));
         }
