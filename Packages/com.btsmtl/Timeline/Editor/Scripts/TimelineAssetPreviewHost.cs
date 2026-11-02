@@ -96,8 +96,8 @@ namespace BTSMTL.Timeline.Editor
             EditorApplication.update += Shared.Update;
             EditorApplication.update += Shared.UpdateCharacterCamera;
             Undo.undoRedoPerformed += Shared.OnUndo;
-            AssemblyReloadEvents.beforeAssemblyReload += Shared.Close;
-            EditorApplication.quitting += Shared.Close;
+            AssemblyReloadEvents.beforeAssemblyReload += () => Shared.Close();
+            EditorApplication.quitting += () => Shared.Close();
             EditorApplication.playModeStateChanged += state =>
             {
                 if (state == PlayModeStateChange.ExitingEditMode)
