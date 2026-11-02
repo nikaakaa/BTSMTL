@@ -332,11 +332,11 @@ namespace BTSMTL.Compilation
                 }
 
                 void Child(Shape result, int edge, Phase phase, OrchestrationExecutionContract contract,
-                    int states = 0, int graphs = 0, bool passesPort = true)
+                    int states = 0, int graphs = 0, int entries = 0, bool passesPort = true)
                 {
                     if (edge >= 0)
                         result.Merge(Visit(m_Edges[edge].TargetOperationIndex, phase, contract,
-                            passesPort ? m_Edges[edge].TargetPortId : 0), states: states, graphs: graphs);
+                            passesPort ? m_Edges[edge].TargetPortId : 0), states: states, graphs: graphs, entries: entries);
                 }
 
                 Shape Output(int operation, int port)
@@ -443,7 +443,7 @@ namespace BTSMTL.Compilation
                             Child(result, m_Structure.StateRootEdges.Span[operation], Phase.Tick, contract,
                                 states: 1, passesPort: false);
                             Child(result, m_Structure.StateOnExitEdges.Span[operation], Phase.Tick,
-                                OrchestrationExecutionContract.Complete, states: 1, passesPort: false);
+                                OrchestrationExecutionContract.Complete, states: 1, entries: 1, passesPort: false);
                             return result;
                         }
                         case OrchestrationOperationCode.Branch:
@@ -497,7 +497,7 @@ namespace BTSMTL.Compilation
                             Child(result, m_Structure.StateRootEdges.Span[operation], Phase.Stop, contract, states: 1);
                             int exit = m_Structure.StateOnExitEdges.Span[operation];
                             Child(result, exit, Phase.Tick, OrchestrationExecutionContract.Complete,
-                                states: 1, passesPort: false);
+                                states: 1, entries: 1, passesPort: false);
                             return result;
                         }
                         case OrchestrationOperationCode.StateMachine:
@@ -547,7 +547,7 @@ namespace BTSMTL.Compilation
                                     result.Merge(Force(child, contract, visited), states: states);
                                 if (op.Code == OrchestrationOperationCode.State)
                                     Child(result, m_Structure.StateOnExitEdges.Span[operation], Phase.Tick,
-                                        OrchestrationExecutionContract.Complete, states: 1, passesPort: false);
+                                        OrchestrationExecutionContract.Complete, states: 1, entries: 1, passesPort: false);
                             }
                             if (!m_ForceCycles[operation])
                                 m_Shapes.Add(key, result);
