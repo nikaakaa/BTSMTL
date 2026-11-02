@@ -78,21 +78,9 @@ namespace BTSMTL.Orchestration
             int transition = anyState >= 0 ? SelectTransition(anyState, active, active) : -1;
             if (transition < 0)
             {
-                OrchestrationOperationResult stateResult = Tick(active);
+                OrchestrationOperationResult stateResult = TickActiveState(operationIndex, active);
                 if (stateResult == OrchestrationOperationResult.Failure)
-                {
-                    PushState(active, in ReadStopContext(active));
-                    try
-                    {
-                        InvokeHooks(operationIndex, OrchestrationLifecycleHook.StateExited, active, active);
-                    }
-                    finally
-                    {
-                        PopState();
-                    }
-                    machine.ActiveStateIdentityId = 0;
                     return stateResult;
-                }
                 transition = SelectTransition(active, -1, active);
             }
             if (transition < 0)
@@ -154,15 +142,33 @@ namespace BTSMTL.Orchestration
                 return OrchestrationOperationResult.Success;
             }
             ActivateState(machineOperationIndex, target);
-            return Tick(target) == OrchestrationOperationResult.Failure
+            return TickActiveState(machineOperationIndex, target) == OrchestrationOperationResult.Failure
                 ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Running;
+        }
+
+        OrchestrationOperationResult TickActiveState(int machineOperationIndex, int stateOperationIndex)
+        {
+            OrchestrationOperationResult result = Tick(stateOperationIndex);
+            if (result == OrchestrationOperationResult.Failure)
+            {
+                PushState(stateOperationIndex, in ReadStopContext(stateOperationIndex));
+                try
+                {
+                    InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
+                        stateOperationIndex, stateOperationIndex);
+                }
+                finally
+                {
+                    PopState();
+                }
+                OperationState(machineOperationIndex).ActiveStateIdentityId = 0;
+            }
+            return result;
         }
 
         OrchestrationOperationResult TickState(int operationIndex)
         {
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
-            if (state.StopContext.IsValid)
-                return ContinueNaturalStateExit(operationIndex);
             if (state.ChildCursor <= 0)
             {
                 state.ChildCursor = -1;
@@ -173,7 +179,7 @@ namespace BTSMTL.Orchestration
                     OrchestrationOperationResult result = TickInState(operationIndex, enter, default);
                     if (result != OrchestrationOperationResult.Success)
                         return result == OrchestrationOperationResult.Running
-                            ? Wait(operationIndex, OrchestrationWaitReason.StateEnter) : BeginNaturalStateExit(operationIndex);
+                            ? Wait(operationIndex, OrchestrationWaitReason.StateEnter) : CompleteFailedState(operationIndex);
                     ResetOperation(enter);
                 }
                 state.ChildCursor = 1;
@@ -192,20 +198,23 @@ namespace BTSMTL.Orchestration
                 PopState();
             }
             return rootResult == OrchestrationOperationResult.Failure
-                ? BeginNaturalStateExit(operationIndex) : OrchestrationOperationResult.Running;
+                ? CompleteFailedState(operationIndex) : OrchestrationOperationResult.Running;
         }
 
-        OrchestrationOperationResult BeginNaturalStateExit(int stateOperationIndex)
+        OrchestrationOperationResult CompleteFailedState(int stateOperationIndex)
         {
-            OperationState(stateOperationIndex).StopContext = new OrchestrationStopContext(
+            ref OrchestrationOperationState state = ref OperationState(stateOperationIndex);
+            state.StopContext = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
-                stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot);
-            return ContinueNaturalStateExit(stateOperationIndex);
+                stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot)
+                .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick);
+            int completedEdge = state.ChildCursor <= 0
+                ? m_Program.StateOnEnterEdge(stateOperationIndex) : m_Program.StateRootEdge(stateOperationIndex);
+            if (completedEdge >= 0)
+                ResetOperation(m_Program.Edge(completedEdge).TargetOperationIndex);
+            CompleteStateExit(stateOperationIndex, in state.StopContext);
+            return OrchestrationOperationResult.Failure;
         }
-
-        OrchestrationOperationResult ContinueNaturalStateExit(int stateOperationIndex) =>
-            ContinueStateStop(stateOperationIndex, in ReadStopContext(stateOperationIndex)) == OrchestrationStopStatus.Running
-                ? Wait(stateOperationIndex, OrchestrationWaitReason.StateExit) : OrchestrationOperationResult.Failure;
 
         OrchestrationStopStatus ContinueStateStop(int stateOperationIndex, in OrchestrationStopContext context)
         {
@@ -306,13 +315,13 @@ namespace BTSMTL.Orchestration
                     if (IsActive(child))
                         ForceStop(child, in exitContext);
                 }
-                if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
-                    CompleteStateExit(stateOperationIndex, in exitContext);
             }
             finally
             {
                 PopState();
             }
+            if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
+                CompleteStateExit(stateOperationIndex, in exitContext);
         }
 
         void ForceStopStateMachine(int machineOperationIndex, in OrchestrationStopContext context)
