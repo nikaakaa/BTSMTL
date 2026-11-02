@@ -174,10 +174,10 @@ namespace BTSMTL.Orchestration
         public int PropagationDepth { get; private set; }
         public int ReplacementOperationIndex { get; private set; }
         public int ReplacementEdgeIndex { get; private set; }
-        internal int StateOperationIndex { get; private set; }
-        internal int StateExecutionFrameIndex { get; private set; }
-        internal int StateTargetOperationIndex { get; private set; }
-        internal int StateTransitionEdgeIndex { get; private set; }
+        public int StateOperationIndex { get; private set; }
+        public int StateExecutionFrameIndex { get; private set; }
+        public int StateTargetOperationIndex { get; private set; }
+        public int StateTransitionEdgeIndex { get; private set; }
         public readonly bool IsValid => Mode != 0;
 
         public readonly bool IsStateExit(int operationIndex, int executionFrameIndex) =>
