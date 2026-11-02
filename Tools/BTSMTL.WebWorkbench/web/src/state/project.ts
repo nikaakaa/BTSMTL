@@ -17,9 +17,11 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
   origin: GraphNavigationOrigin | null = null): Promise<void> {
   const document = await openOwner(target);
   const graph = document.documentGraphs?.find(value => value.id === target.id);
-  if (!graph) throw new Error(document.documentError ?? '此作者图引用已失效，原身份已保留');
+  if (!graph) throw new Error(document.documentError ?? `${target.ownerName} 的当前作者文档中不存在图 ${target.id}`);
+  const node = nodeId === undefined ? null : graph.nodes.find(node => node.id === nodeId);
+  if (node === undefined) throw new Error(`${target.ownerName} 的图 ${target.id} 中不存在引用节点 ${nodeId}`);
   selectionActions.showGraph(graphKey(graph), null, origin);
-  selectionActions.select(nodeId === undefined ? null : { kind: 'node', id: nodeSelectId(graph, graph.nodes.find(node => node.id === nodeId)!) });
+  selectionActions.select(node === null ? null : { kind: 'node', id: nodeSelectId(graph, node) });
 }
 
 export const projectActions = {
@@ -31,6 +33,8 @@ export const projectActions = {
         return 'graph';
       case 'timeline':
         await openOwner(target);
+        if (currentDocument(target.file) === null)
+          throw new Error(`无法打开 Timeline「${target.displayName ?? target.id}」：${target.ownerName} 的当前作者文档中不存在 ${target.file}`);
         selectionActions.select(null);
         selectionActions.showTimeline(target.id, null);
         return 'timeline';
