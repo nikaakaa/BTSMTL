@@ -1,13 +1,18 @@
 import { getJson, postJson, query } from './http';
 import type { Sources } from './types';
 import { readPlayerHost, readPlayerInputCatalog } from './playerRecords';
-import { readQuickDescriptionReply, readQuickStatusReply, type PreviewQuickJobId, type PreviewQuickRequest, type PreviewQuickTarget } from './previewQuickRecords';
+import { readPublishedTimelineScene, readQuickDescriptionReply, readQuickScenes, readQuickStatusReply, type PreviewQuickJobId, type PreviewQuickRequest, type PreviewQuickTarget } from './previewQuickRecords';
 
 const base = '/api/preview';
 
 export const previewApi = {
   host: (signal?: AbortSignal) => getJson<unknown>(`${base}/host`, signal).then(value => readPlayerHost(value)),
-  sources: (signal?: AbortSignal) => getJson<Sources>(`${base}/sources`, signal),
+  sources: (signal?: AbortSignal) => getJson<Sources>(`${base}/sources`, signal).then(sources => ({
+    ...sources, quickScenes: readQuickScenes(sources.quickScenes, 'Preview.sources.quickScenes'),
+    timelines: sources.timelines.map((timeline, index) => ({ ...timeline,
+      scene: readPublishedTimelineScene(timeline.scene, `Preview.sources.timelines[${index}].scene`),
+    })),
+  })),
   inputs: (scene: string, revision: string, signal?: AbortSignal) =>
     getJson<unknown>(`${base}/inputs${query({ scene, revision })}`, signal).then(value => readPlayerInputCatalog(value)),
   describeQuick: (target: PreviewQuickTarget, signal?: AbortSignal) =>

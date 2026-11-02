@@ -1,6 +1,7 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
 import type { PlayerSceneContent, PlayerTimelineContent, PreviewPosition,
   PreviewSampleSource, readPlayerAck, readPlayerCommandResult, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
+import type { readPublishedTimelineScene, readQuickScenes } from './previewQuickRecords';
 
 export interface Field {
   displayName: string;
@@ -56,6 +57,7 @@ export interface ReplayChoice {
 
 export interface Sources {
   scenes: SourceFile[];
+  quickScenes: ReturnType<typeof readQuickScenes>;
   timelines: TimelineSource[];
   replays: ReplayChoice[];
   sceneDirectory: string;
@@ -69,7 +71,7 @@ export interface TimelineSource {
   contentRevision: string;
   bindingRevision: string;
   tickRate: number;
-  scene: unknown;
+  scene: ReturnType<typeof readPublishedTimelineScene>;
   bindings: unknown;
 }
 

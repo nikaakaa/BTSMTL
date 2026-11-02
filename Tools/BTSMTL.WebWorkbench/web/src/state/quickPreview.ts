@@ -1,11 +1,10 @@
 import { previewApi } from '../api/preview';
 import type {
-  PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInput, PreviewQuickRequest,
-  PreviewQuickSource, PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
+  PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInputOverlay, PreviewQuickRequest,
+  PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
 } from '../api/previewQuickRecords';
-import { authoringTargetKey } from '../api/authoring';
-import { useAuthoring } from './authoring';
-import { consoleActions, contentSelectionKey, getState, selectedScene, useWorkbench } from './store';
+import { authoringActions, useAuthoring } from './authoring';
+import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
 type Description = { kind: 'idle' } | { kind: 'loading' } | { kind: 'stale'; reason: string }
   | { kind: 'ready'; reply: PreviewQuickDescriptionReply & { data: PreviewQuickDescription } }
@@ -15,7 +14,7 @@ type Job = { kind: 'idle' }
   | { kind: 'starting' | 'starting-cancelled'; request: PreviewQuickRequest }
   | { kind: 'running' | 'cancelling'; request: PreviewQuickRequest; reply: ActiveReply }
   | { kind: 'settled'; request: PreviewQuickRequest; reply: PreviewQuickStatusReply }
-  | { kind: 'failed'; request: PreviewQuickRequest; reply: ActiveReply | null; reason: string };
+  | { kind: 'failed' | 'cancel-failed'; request: PreviewQuickRequest; reply: ActiveReply | null; reason: string };
 
 export interface QuickPreviewState {
   target: PreviewQuickTarget | null;
@@ -32,30 +31,62 @@ let jobController: AbortController | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
-const targetKey = (target: PreviewQuickTarget | null) => JSON.stringify(target);
-
-export function quickDraftIssue(source: PreviewQuickSource): string | null {
-  const documents = useAuthoring.getState().documents;
-  for (const item of source.documents) {
-    const path = item.path.replaceAll('\\', '/');
-    const name = path.slice(path.lastIndexOf('/') + 1);
-    const document = documents[authoringTargetKey({ kind: 'skill', name })];
-    if (document && (Object.keys(document.edited).length > 0 || document.removed.length > 0))
-      return `${name} 的网页修改尚未保存；当前快预览接口读取 Native 文档，没有接收这份网页草稿`;
+export function quickTargetKey(target: PreviewQuickTarget | null) {
+  const root = target?.root;
+  switch (root?.kind) {
+    case 'webEditingView': return JSON.stringify([target?.scenePath, root.kind, root.skill, root.machine]);
+    case 'nativeDocument': return JSON.stringify([target?.scenePath, root.kind, root.path, root.machine]);
+    case 'timelineAsset': return JSON.stringify([target?.scenePath, root.kind, root.path, root.elementId]);
+    default: return JSON.stringify([target?.scenePath]);
   }
-  return null;
+}
+
+function selectedSource(workbench = getState()) {
+  const sources = workbench.sources;
+  const selection = workbench.contentSelection;
+  if (sources === null || selection === null) return { kind: 'unavailable', reason: '先在顶部选择正式场景或 Timeline' } as const;
+  if (selection.kind === 'timeline') {
+    const timeline = sources.timelines.find(item => item.content.package === selection.package);
+    return timeline === undefined ? { kind: 'unavailable', reason: '所选 Timeline 发布记录已不在来源目录中' } as const
+      : { kind: 'timeline', timeline } as const;
+  }
+  const publication = selectedScene(workbench);
+  if (publication === undefined) return { kind: 'unavailable', reason: '所选场景发布记录已不在来源目录中' } as const;
+  const scene = sources.quickScenes.find(item => item.publication.path === publication.path && item.publication.revision === publication.revision);
+  if (scene === undefined) return { kind: 'unavailable', reason: '所选场景发布记录没有对应修订的 Unity 场景资产身份，请重新读取来源目录' } as const;
+  const target = useAuthoring.getState().target;
+  if (target?.kind !== 'skill') return { kind: 'unavailable', reason: '先在顶部选择本次推导的技能' } as const;
+  return { kind: 'skill', scene, skill: target.name } as const;
+}
+
+function selectionKey(workbench = getState()) {
+  const source = selectedSource(workbench);
+  return JSON.stringify(source.kind === 'timeline' ? [source.kind, source.timeline.content, source.timeline.scene]
+    : source.kind === 'skill' ? [source.kind, source.scene, source.skill] : source);
+}
+const matchesEditingView = (target: PreviewQuickTarget) => target.root?.kind !== 'webEditingView' ||
+  JSON.stringify(target.root.editingView) === JSON.stringify(authoringActions.editingView());
+
+function sourceUnavailableReason(): string | null {
+  const workbench = getState();
+  if (workbench.previewMode !== 'quick') return '先选择快预览档位';
+  const mode = workbench.host?.modes.find(item => item.id === 'quick');
+  if (!mode?.available) return mode?.reason ?? '宿主尚未声明快预览能力';
+  const source = selectedSource(workbench);
+  return source.kind === 'unavailable' ? source.reason : null;
 }
 
 function selectedRequest(request: PreviewQuickRequest): boolean {
   const state = current();
   if (getState().previewMode !== 'quick' || state.description.kind !== 'ready') return false;
+  if ((state.job.kind === 'starting-cancelled' || state.job.kind === 'cancelling' || state.job.kind === 'cancel-failed') && state.job.request === request) return false;
   const description = state.description.reply.data;
   const source = description.source;
   if (source === null) return false;
   const scheme = description.root?.inputSchemes.find(item => item.index === state.scheme);
-  return targetKey(state.target) === targetKey(request.target) && source.revision === request.sourceRevision &&
+  return JSON.stringify(state.target) === JSON.stringify(request.target) && matchesEditingView(request.target) && source.revision === request.sourceRevision &&
     scheme?.index === request.input.scheme && scheme.revision === request.input.revision &&
-    quickDraftIssue(source) === null;
+    description.scenePath === request.target.scenePath;
 }
 
 function ownsRequest(request: PreviewQuickRequest) {
@@ -80,7 +111,7 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
   if (status?.plan && (status.source?.revision !== request.sourceRevision ||
     status.plan.inputScheme !== request.input.scheme || status.plan.inputSchemeRevision !== request.input.revision)) {
     const reason = '宿主计划的来源或输入方案修订与本次请求不一致，未采用该路线';
-    set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason } });
+    set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: { ...reply, data: status }, reason } });
     consoleActions.log('error', '快预览', reason, reply.rawJson);
     return;
   }
@@ -89,9 +120,9 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
     if (!selectedRequest(request) && !cancelling && !status.cancellationRequested) void quickPreview.cancel();
     else schedulePoll(request);
   } else if (status !== null && !status.completed) {
-    set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason: reply.message ?? status.error ?? '作业未完成，状态读取未获推进回执' } });
+    set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: { ...reply, data: status }, reason: reply.message ?? status.error ?? '作业未完成，状态读取未获推进回执' } });
   } else {
-    const selected = selectedRequest(request);
+    const selected = selectedRequest(request) && !cancelling && !status?.cancellationRequested;
     set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' },
       ...(selected && reply.success && status?.plan ? {
         accepted: { request, jobId: status.jobId, plan: status.plan }, seconds: status.plan.clock.origin,
@@ -103,12 +134,12 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
 
 async function readJob(request: PreviewQuickRequest, cancel: boolean) {
   const job = current().job;
-  if (!ownsRequest(request) || (job.kind !== 'running' && job.kind !== 'cancelling' && job.kind !== 'failed') || job.reply === null) return;
+  if (!ownsRequest(request) || (job.kind !== 'running' && job.kind !== 'cancelling' && job.kind !== 'failed' && job.kind !== 'cancel-failed') || job.reply === null) return;
   const receipt = job.reply;
   const status = receipt.data;
   stopPoll();
   const controller = jobController = new AbortController();
-  const cancelling = cancel || job.kind === 'cancelling';
+  const cancelling = cancel || job.kind === 'cancelling' || job.kind === 'cancel-failed';
   if (cancel) set({ job: { kind: 'cancelling', request, reply: receipt } });
   try {
     const reply = await (cancel ? previewApi.cancelQuick(status.jobId, controller.signal) : previewApi.quickStatus(status.jobId, controller.signal));
@@ -117,14 +148,14 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
   } catch (error) {
     if (controller.signal.aborted || !ownsRequest(request)) return;
     consoleActions.error('快预览', error);
-    set({ job: { kind: 'failed', request, reply: receipt, reason: error instanceof Error ? error.message : String(error) } });
+    set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: receipt, reason: error instanceof Error ? error.message : String(error) } });
   }
 }
 
 function invalidateJob() {
   const job = current().job;
   if (job.kind === 'idle') return;
-  if (job.kind === 'settled' || (job.kind === 'failed' && (job.reply === null || job.reply.data.completed))) set({ job: { kind: 'idle' } });
+  if (job.kind === 'settled' || ((job.kind === 'failed' || job.kind === 'cancel-failed') && (job.reply === null || job.reply.data.completed))) set({ job: { kind: 'idle' } });
   else void quickPreview.cancel();
 }
 
@@ -155,12 +186,11 @@ function preparation() {
   if (target === null || target.root === undefined) return { kind: 'unavailable', reason: '选择本次推导的技能根或独立 Timeline' } as const;
   const data = state.description.reply.data;
   if (data.source === null || data.root === null) return { kind: 'unavailable', reason: '宿主没有返回当前根的来源与输入方案' } as const;
-  const issue = quickDraftIssue(data.source);
-  if (issue !== null) return { kind: 'unavailable', reason: issue } as const;
+  if (!matchesEditingView(target)) return { kind: 'unavailable', reason: '网页编辑内容已变化，请重新读取来源' } as const;
   const scheme = data.root.inputSchemes.find(item => item.index === state.scheme);
   if (scheme === undefined) return { kind: 'unavailable', reason: '选择宿主提供的输入方案' } as const;
   if (state.job.kind === 'starting' || state.job.kind === 'starting-cancelled' || state.job.kind === 'running' ||
-    state.job.kind === 'cancelling' || (state.job.kind === 'failed' && state.job.reply !== null && !state.job.reply.data.completed))
+    state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && state.job.reply !== null && !state.job.reply.data.completed))
     return { kind: 'unavailable', reason: state.job.kind === 'cancelling' || state.job.kind === 'starting-cancelled'
       ? '正在取消原作业，等待清理结束' : '原作业尚未结束，请先完成或取消' } as const;
   const directory = state.outputDirectory || workbench.sources?.runDirectory;
@@ -169,14 +199,46 @@ function preparation() {
 }
 
 export const quickPreview = {
-  async describe(target: PreviewQuickTarget) {
+  sourceUnavailableReason,
+  async readSource(machine?: number) {
+    const reason = sourceUnavailableReason();
+    const source = selectedSource();
+    if (reason !== null || source.kind === 'unavailable') return;
     descriptionController?.abort();
-    if (targetKey(target) !== targetKey(current().target)) { invalidateJob(); set({ scheme: null, accepted: null, seconds: 0 }); }
     const controller = descriptionController = new AbortController();
+    const scope = selectionKey();
+    const previousRoot = current().target?.root;
+    let target: PreviewQuickTarget = source.kind === 'skill' ? {
+      scenePath: source.scene.scenePath,
+      root: { kind: 'webEditingView', skill: source.skill, editingView: authoringActions.editingView(),
+        machine: machine ?? (previousRoot?.kind === 'webEditingView' && previousRoot.skill === source.skill ? previousRoot.machine : 0) },
+    } : { scenePath: source.timeline.scene.path,
+      ...(previousRoot?.kind === 'timelineAsset' && previousRoot.elementId === source.timeline.content.timeline ? { root: previousRoot } : {}),
+    };
+    if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
     set({ target, description: { kind: 'loading' } });
+    invalidateJob();
     try {
+      if (source.kind === 'timeline') {
+        const catalog = await previewApi.describeQuick({ scenePath: target.scenePath }, controller.signal);
+        if (controller.signal.aborted || scope !== selectionKey()) return;
+        if (!catalog.success || catalog.data === null) {
+          set({ description: { kind: 'failed', reply: catalog, reason: catalog.message ?? catalog.code ?? '读取场景 Timeline 目录失败' }, scheme: null });
+          consoleActions.log('error', '快预览', catalog.message ?? catalog.code ?? '读取场景 Timeline 目录失败', catalog.rawJson);
+          return;
+        }
+        const matches = catalog.data.timelines.filter(item => item.elementId === source.timeline.content.timeline);
+        if (matches.length !== 1) {
+          set({ description: { kind: 'failed', reply: catalog, reason: `场景授权的独立 Timeline 中无法唯一定位根 ${source.timeline.content.timeline}` }, scheme: null });
+          return;
+        }
+        target = { scenePath: target.scenePath, root: { kind: 'timelineAsset', path: matches[0].path, elementId: matches[0].elementId } };
+        if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
+        set({ target });
+      }
       const reply = await previewApi.describeQuick(target, controller.signal);
       if (controller.signal.aborted) return;
+      if (scope !== selectionKey() || !matchesEditingView(target)) { quickPreview.invalidate('来源或网页编辑内容已变化，请重新读取'); return; }
       if (!reply.success || reply.data === null) {
         set({ description: { kind: 'failed', reply, reason: reply.message ?? reply.code ?? '读取快预览来源失败' }, scheme: null });
         consoleActions.log('error', '快预览', reply.message ?? reply.code ?? '读取快预览来源失败', reply.rawJson);
@@ -206,7 +268,7 @@ export const quickPreview = {
     const result = preparation();
     return result.kind === 'ready' ? null : result.reason;
   },
-  async start(input: Pick<PreviewQuickInput, 'points' | 'conditions'> = {}, rangeEndSeconds?: number) {
+  async start(input: PreviewQuickInputOverlay = {}, rangeEndSeconds?: number) {
     const prepared = preparation();
     if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
     const request: PreviewQuickRequest = {
@@ -221,24 +283,25 @@ export const quickPreview = {
       const reply = await previewApi.planQuick(request);
       if (!ownsRequest(request)) return;
       const cancelling = current().job.kind === 'starting-cancelled' || !selectedRequest(request);
-      accept(request, reply, false);
-      if (cancelling && current().job.kind === 'running') await quickPreview.cancel();
+      accept(request, reply, cancelling);
+      if (cancelling && (current().job.kind === 'running' || current().job.kind === 'cancelling')) await readJob(request, true);
     } catch (error) {
       if (!ownsRequest(request)) return;
       consoleActions.error('快预览', error);
-      set({ job: { kind: 'failed', request, reply: null, reason: error instanceof Error ? error.message : String(error) } });
+      set({ job: { kind: current().job.kind === 'starting-cancelled' ? 'cancel-failed' : 'failed', request, reply: null, reason: error instanceof Error ? error.message : String(error) } });
     }
   },
   async cancel() {
     const job = current().job;
     if (job.kind === 'starting') { set({ job: { kind: 'starting-cancelled', request: job.request } }); return; }
-    if (job.kind === 'running' || job.kind === 'failed') await readJob(job.request, true);
+    if (job.kind === 'running' || job.kind === 'failed' || job.kind === 'cancel-failed') await readJob(job.request, true);
   },
   async readStatus() {
     const job = current().job;
     if (job.kind === 'failed' && job.reply?.data) await readJob(job.request, false);
   },
   seek(seconds: number) { set({ seconds }); },
+  inputChanged() { invalidateJob(); },
   invalidate(reason: string) {
     descriptionController?.abort();
     set({ description: { kind: 'stale', reason } });
@@ -251,9 +314,8 @@ export const quickPreview = {
 };
 
 useWorkbench.subscribe((state, previous) => {
-  const contentChanged = contentSelectionKey(state.contentSelection) !== contentSelectionKey(previous.contentSelection);
-  if (state.previewMode !== previous.previewMode || contentChanged ||
-    selectedScene(state)?.revision !== selectedScene(previous)?.revision) {
+  const contentChanged = selectionKey(state) !== selectionKey(previous);
+  if (state.previewMode !== previous.previewMode || contentChanged) {
     if (state.quickPreview.target !== null) {
       if (contentChanged) quickPreview.clearTarget('场景来源已变化，请重新读取');
       else quickPreview.invalidate('预览档位或场景来源已变化，请重新读取');
@@ -262,12 +324,17 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 useAuthoring.subscribe((authoring, previous) => {
-  if ((authoring.target?.kind !== previous.target?.kind || authoring.target?.name !== previous.target?.name) && current().target !== null) {
-    quickPreview.clearTarget('作者根已变化，等待对应的正式快预览来源');
+  if ((authoring.target?.kind !== previous.target?.kind || authoring.target?.name !== previous.target?.name) &&
+    getState().previewMode === 'quick' && getState().contentSelection?.kind === 'scene') {
+    quickPreview.clearTarget('作者根已变化，请读取当前技能的快预览来源');
     return;
   }
   const state = current();
-  if (state.description.kind !== 'ready' || state.description.reply.data.source === null) return;
-  const issue = quickDraftIssue(state.description.reply.data.source);
-  if (issue !== null) quickPreview.invalidate(issue);
+  if (state.target?.root?.kind !== 'webEditingView' || (state.description.kind !== 'ready' && state.description.kind !== 'loading')) return;
+  const documentsChanged = Object.keys(authoring.documents).filter(key => key.startsWith('skill/')).some(key => {
+    const before = previous.documents[key];
+    const after = authoring.documents[key];
+    return before === undefined || before.files !== after.files || before.revision !== after.revision || before.sourceRevision !== after.sourceRevision;
+  });
+  if (documentsChanged || !matchesEditingView(state.target)) quickPreview.invalidate('网页编辑内容或作者来源已变化，请重新读取');
 });

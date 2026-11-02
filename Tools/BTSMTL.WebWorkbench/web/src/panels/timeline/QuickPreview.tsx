@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickConditionPoint, PreviewQuickDescription, PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
 import type { SkillDocumentGraph } from '../../api/authoring';
-import { quickBounds, quickPlan, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
+import { quickBounds, quickPlan, quickPlanStale, quickPreview, quickTargetKey, type QuickPreviewState } from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -54,35 +54,36 @@ export function QuickPreview() {
   const receipt = 'reply' in job ? job.reply : null;
   const status = receipt?.data;
   const inProgress = job.kind === 'starting' || job.kind === 'starting-cancelled' || job.kind === 'running' || job.kind === 'cancelling';
-  const cancellable = job.kind === 'starting' || job.kind === 'running' || (job.kind === 'failed' && job.reply !== null && !job.reply.data.completed);
+  const cancellable = job.kind === 'starting' || job.kind === 'running' || ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null && !job.reply.data.completed);
   const reason = quickPreview.unavailableReason();
+  const sourceReason = quickPreview.sourceUnavailableReason();
   const message = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
-    : state.target === null ? '现有场景目录尚未提供 Native 场景资产路径，不能用发布包 scene.json 代替' : reason;
+    : sourceReason ?? reason;
   const selectedScheme = description?.root?.inputSchemes.find(item => item.index === state.scheme);
   return <section className={styles.preview} aria-label="快预览路线">
     <PanelBar wrap>
       <strong>快预览</strong>
       {description?.root && <span>{description.root.label}</span>}
-      {description?.root && state.target?.root?.kind === 'nativeDocument' && description.root.machines.length > 1 &&
-        <Select label="根状态机" value={String(state.target.root.machine)}
+      {description?.root && (state.target?.root?.kind === 'nativeDocument' || state.target?.root?.kind === 'webEditingView') && description.root.machines.length > 1 &&
+        <Select label="根状态机" value={String(state.target.root.machine)} disabled={state.description.kind === 'loading'}
           options={description.root.machines.map(machine => ({ value: String(machine.index), label: machine.entryTimeline ?? `状态机 ${machine.index}` }))}
-          onChange={value => { if (state.target?.root?.kind === 'nativeDocument') void quickPreview.describe({ ...state.target,
-            root: { ...state.target.root, machine: Number(value) } }); }} />}
+          onChange={value => void quickPreview.readSource(Number(value))} />}
       {description?.root && <Select label="输入方案" value={state.scheme === null ? null : String(state.scheme)} placeholder="选择输入方案"
         options={description.root.inputSchemes.map(scheme => ({ value: String(scheme.index), label: scheme.name }))}
         onChange={value => quickPreview.selectScheme(Number(value))} />}
-      <Button variant="ghost" disabled={state.target === null || state.description.kind === 'loading' || inProgress}
-        tip={state.target === null ? message ?? undefined : '重新读取 Native 当前作者内容与输入方案'}
-        onClick={() => { if (state.target !== null) void quickPreview.describe(state.target); }}>读取来源</Button>
-      {cancellable && <Button onClick={() => void quickPreview.cancel()}>取消</Button>}
+      <Button variant="ghost" disabled={sourceReason !== null || state.description.kind === 'loading' || inProgress}
+        tip={sourceReason ?? '读取当前场景、作者内容与输入方案'}
+        onClick={() => void quickPreview.readSource()}>读取来源</Button>
+      {cancellable && <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消'}</Button>}
       {job.kind === 'failed' && job.reply !== null && !job.reply.data.completed && <Button onClick={() => void quickPreview.readStatus()}>重读状态</Button>}
       {inProgress && <span role="status">{job.kind === 'starting' ? '提交中' : job.kind === 'starting-cancelled' ? '等待作业身份以取消'
         : job.kind === 'cancelling' ? '取消与清理中' : status?.stage}{status ? ` ${status.samplesDone}/${status.samplesTotal}` : ''}</span>}
     </PanelBar>
     {message && <p className={styles.notice} role="status">{message}</p>}
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
-      { displayName: '推导来源', value: description.source === null ? '尚未选根' : `${description.source.kind}${description.source.documents.some(document => document.hasUnsavedChanges)
-        ? ' · 包含未保存修改' : ' · 已保存作者内容'}` }]} />}
+      { displayName: '推导来源', value: description.source === null ? '尚未选根' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
+        : description.source.documents.some(document => document.hasUnsavedChanges === true) ? '包含未保存修改'
+        : description.source.documents.some(document => document.hasUnsavedChanges === null) ? '保存状态未提供' : '已保存作者内容' }]} />}
     <QuickInputForm description={description} plan={plan} reason={reason} />
     <Fold title="来源与输出">
       <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
@@ -93,13 +94,13 @@ export function QuickPreview() {
         { displayName: '输入方案来源', value: description.root?.inputSchemeSource ?? '未提供' },
         { displayName: '输入方案修订', value: selectedScheme?.revision ?? '未选择' },
         ...description.source.documents.map(document => ({ displayName: document.path,
-          value: `${document.hasUnsavedChanges ? '未保存作者内容' : '已保存作者内容'} · ${document.savedRevision ?? '无磁盘修订'}` })),
+          value: `${document.revision} · ${document.hasUnsavedChanges === null ? '保存状态未提供' : document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision ?? '未提供磁盘修订'}` })),
       ]} />}
       {status && <Facts fields={[{ displayName: '作业', value: status.jobId }, { displayName: '阶段', value: status.stage },
         { displayName: 'Native 模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? 'Unavailable' },
         { displayName: '输出目录', value: status.outputDirectory ?? '尚未提供' }, { displayName: '摘要', value: status.summaryPath ?? '尚未提供' }]} />}
     </Fold>
-    {job.kind === 'failed' && <p className={styles.notice} role="alert">{job.reason}</p>}
+    {(job.kind === 'failed' || job.kind === 'cancel-failed') && <p className={styles.notice} role="alert">{job.reason}</p>}
     {receipt && <div className={styles.notice} role={receipt.success ? 'status' : 'alert'}>
       {[...new Set([receipt.code, receipt.message, status?.error, ...(status?.cleanupErrors ?? []), ...(status?.logErrors ?? [])])]
         .filter(value => value !== null && value !== undefined && value !== '').map((value, index) => <p key={index}>{value}</p>)}
@@ -114,7 +115,7 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
   const target = useWorkbench(state => state.quickPreview.target);
   const selected = useWorkbench(state => state.quickPreview.scheme);
   const scheme = description?.root?.inputSchemes.find(item => item.index === selected);
-  const scope = scheme && target ? JSON.stringify([target.scenePath, target.root, scheme.index, scheme.revision]) : null;
+  const scope = scheme && target ? JSON.stringify([quickTargetKey(target), scheme.index, scheme.revision]) : null;
   const [boundScope, setBoundScope] = useState(scope);
   const [points, setPoints] = useState<{ inputId: string; time: number | null; value: string }[]>([]);
   const [conditions, setConditions] = useState<PreviewQuickConditionPoint[]>([]);
@@ -122,6 +123,9 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
   const [conditionKey, setConditionKey] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<number | null>(null);
   const [issue, setIssue] = useState<string | null>(null);
+  const editPoints = (value: typeof points) => { quickPreview.inputChanged(); setPoints(value); };
+  const editConditions = (value: typeof conditions) => { quickPreview.inputChanged(); setConditions(value); };
+  const editRangeEnd = (value: number | null) => { quickPreview.inputChanged(); setRangeEnd(value); };
   if (scope !== null && scope !== boundScope) {
     setBoundScope(scope);
     setPoints([]);
@@ -139,7 +143,7 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
         return { inputId: point.inputId, time: point.time, value };
       });
       setIssue(null);
-      await quickPreview.start({ ...(inputPoints.length ? { points: inputPoints } : {}), ...(conditions.length ? { conditions } : {}) }, rangeEnd ?? undefined);
+      await quickPreview.start(inputPoints.length || conditions.length ? { points: inputPoints, conditions } : {}, rangeEnd ?? undefined);
     } catch (error) { setIssue(error instanceof Error ? error.message : String(error)); }
   };
   if (description === null || scheme === undefined) return null;
@@ -147,7 +151,7 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
     <PanelBar wrap><Button disabled={reason !== null} tip={reason ?? '按本次来源和输入副本推导，不保存作者输入方案'}
       onClick={() => void generate()}>推导路线</Button>
       <Tip content="留空使用原方案时长；填写只影响本次观察"><label className={styles.cursor}>结束时间
-        <NumberInput value={rangeEnd} min={0} label="本次推导结束时间" onChange={setRangeEnd} /></label></Tip>
+        <NumberInput value={rangeEnd} min={0} label="本次推导结束时间" onChange={editRangeEnd} /></label></Tip>
     </PanelBar>
     {issue && <p className={styles.notice} role="alert">{issue}</p>}
     <Fold title={`本次输入覆盖（${points.length + conditions.length}）`}>
@@ -156,30 +160,30 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
         <Select label="输入声明" placeholder="选择输入" value={inputId}
           options={description.inputs.map(input => ({ value: input.inputId, label: `${input.inputId} · ${input.kind}${input.type ? ` (${input.type})` : ''}` }))}
           onChange={setInputId} />
-        <Button disabled={inputId === null} onClick={() => { if (inputId !== null) setPoints([...points, { inputId, time: seconds, value: '' }]); }}>添加输入</Button>
+        <Button disabled={inputId === null} onClick={() => { if (inputId !== null) editPoints([...points, { inputId, time: seconds, value: '' }]); }}>添加输入</Button>
       </PanelBar>
       {points.map((point, index) => <div className={styles.inputRow} key={index}>
         <span>{point.inputId}</span><NumberInput label={`${point.inputId} 时间`} value={point.time}
-          onChange={time => setPoints(points.map((item, i) => i === index ? { ...item, time } : item))} />
+          onChange={time => editPoints(points.map((item, i) => i === index ? { ...item, time } : item))} />
         <TextInput aria-label={`${point.inputId} 输入值（JSON）`} placeholder="输入值（JSON）" value={point.value}
-          onChange={event => setPoints(points.map((item, i) => i === index ? { ...item, value: event.currentTarget.value } : item))} />
-        <Button variant="ghost" onClick={() => setPoints(points.filter((_, i) => i !== index))}>移除</Button>
+          onChange={event => editPoints(points.map((item, i) => i === index ? { ...item, value: event.currentTarget.value } : item))} />
+        <Button variant="ghost" onClick={() => editPoints(points.filter((_, i) => i !== index))}>移除</Button>
       </div>)}
       <PanelBar wrap><Select label="预览条件" placeholder="先生成路线以读取条件声明" value={conditionKey}
         options={(plan?.conditions ?? []).map(condition => ({ value: condition.key, label: condition.label }))} onChange={setConditionKey} />
-        <Button disabled={conditionKey === null} onClick={() => { if (conditionKey !== null) setConditions([...conditions,
+        <Button disabled={conditionKey === null} onClick={() => { if (conditionKey !== null) editConditions([...conditions,
           { key: conditionKey, time: seconds, satisfied: true, restoreDefault: false }]); }}>本时刻设为成立</Button>
       </PanelBar>
       {conditions.map((condition, index) => <div className={styles.inputRow} key={index}>
         <span>{plan?.conditions.find(item => item.key === condition.key)?.label ?? condition.key}</span>
         <NumberInput label="条件时间" value={condition.time} onChange={time => {
-          if (time !== null) setConditions(conditions.map((item, i) => i === index ? { ...item, time } : item));
+          if (time !== null) editConditions(conditions.map((item, i) => i === index ? { ...item, time } : item));
         }} />
         <label className={styles.cursor}>成立<Checkbox label="条件成立" checked={condition.satisfied}
-          onChange={satisfied => setConditions(conditions.map((item, i) => i === index ? { ...item, satisfied } : item))} /></label>
+          onChange={satisfied => editConditions(conditions.map((item, i) => i === index ? { ...item, satisfied } : item))} /></label>
         <label className={styles.cursor}>恢复默认<Checkbox label="恢复默认条件" checked={condition.restoreDefault}
-          onChange={restoreDefault => setConditions(conditions.map((item, i) => i === index ? { ...item, restoreDefault } : item))} /></label>
-        <Button variant="ghost" onClick={() => setConditions(conditions.filter((_, i) => i !== index))}>移除</Button>
+          onChange={restoreDefault => editConditions(conditions.map((item, i) => i === index ? { ...item, restoreDefault } : item))} /></label>
+        <Button variant="ghost" onClick={() => editConditions(conditions.filter((_, i) => i !== index))}>移除</Button>
       </div>)}
     </Fold>
   </>;

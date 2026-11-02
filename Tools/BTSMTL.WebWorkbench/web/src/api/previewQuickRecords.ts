@@ -1,6 +1,9 @@
 import { array, boolean, identity, nullable, number, object, opaque, text, type Decoder } from './playerRecords';
+import type { SkillEditingView } from './authoring';
 
-const document = object({ path: text, savedRevision: nullable(text), hasUnsavedChanges: boolean });
+export const readQuickScenes = array(object({ publication: object({ path: text, revision: text }), scenePath: text, sceneGuid: text, sceneRevision: text }));
+export const readPublishedTimelineScene = object({ path: text, guid: text, dependencyHash: text });
+const document = object({ path: text, revision: text, savedRevision: nullable(text), hasUnsavedChanges: nullable(boolean) });
 const source = object({ kind: text, identity: text, path: text, revision: text, sceneRevision: text, documents: array(document) });
 const inputDeclaration = object({ inputId: text, kind: text, type: nullable(text) });
 const inputPoint = object({ inputId: text, time: number, value: opaque });
@@ -10,6 +13,7 @@ const scheme = object({ index: number, name: text, revision: text, timelineId: n
 const description = object({
   scenePath: text, carrierPath: text, carrierIdentity: text, tickRate: number,
   skills: array(object({ directory: text, displayName: text, identity: text })),
+  timelines: array(object({ path: text, elementId: text, name: text, identity: text })),
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
     owner: text, label: text, machines: array(object({ index: number, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
@@ -54,14 +58,15 @@ export type PreviewQuickDescriptionReply = ReturnType<typeof readQuickDescriptio
 export type PreviewQuickInputPoint = ReturnType<typeof inputPoint>;
 export type PreviewQuickConditionPoint = ReturnType<typeof conditionPoint>;
 export type PreviewQuickRoot = { kind: 'nativeDocument'; path: string; machine: number }
+  | { kind: 'webEditingView'; skill: string; editingView: SkillEditingView; machine: number }
   | { kind: 'timelineAsset'; path: string; elementId: string };
 export interface PreviewQuickTarget { scenePath: string; root?: PreviewQuickRoot }
-export interface PreviewQuickInput {
+export type PreviewQuickInputOverlay = { points: PreviewQuickInputPoint[]; conditions: PreviewQuickConditionPoint[] }
+  | { points?: never; conditions?: never };
+export type PreviewQuickInput = PreviewQuickInputOverlay & {
   scheme: number;
   revision: string;
-  points?: PreviewQuickInputPoint[];
-  conditions?: PreviewQuickConditionPoint[];
-}
+};
 export interface PreviewQuickRequest {
   mode: 'quick';
   target: PreviewQuickTarget & { root: PreviewQuickRoot };
