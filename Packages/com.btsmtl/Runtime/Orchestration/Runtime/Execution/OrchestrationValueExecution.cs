@@ -249,7 +249,7 @@ namespace BTSMTL.Orchestration
                             m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex),
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
-                        OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(
+                        OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                             binding, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,

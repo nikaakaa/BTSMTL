@@ -24,7 +24,7 @@ namespace BTSMTL.Orchestration
                     ReadExecutionFrame(operationIndex),
                     Span<TValue>.Empty, Span<TValue>.Empty, in m_TimelineInvocation);
                 m_CurrentOperationIndex = operationIndex;
-                OrchestrationExtensionResult result = InvokeCandidate(
+                OrchestrationExtensionResult result = InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                     hook.ExtensionBindingIndex, in invocation);
                 if (result != OrchestrationExtensionResult.Success)
                     Fail(OrchestrationExecutionErrorCode.HookFailed, operationIndex, hook.ExtensionBindingIndex,
@@ -32,13 +32,22 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        OrchestrationExtensionResult InvokeCandidate(int bindingIndex,
+        static OrchestrationExtensionResult InvokeCandidate(ref THost host, ref OrchestrationExecutionError error,
+            int bindingIndex,
             in OrchestrationExtensionArguments<TValue> invocation)
         {
-            OrchestrationExtensionResult result = m_Host.InvokeCandidate(bindingIndex, in invocation);
+            OrchestrationExtensionResult result = host.InvokeCandidate(bindingIndex, in invocation);
             if (result == OrchestrationExtensionResult.Running &&
-                m_Host.ExecutionContract(bindingIndex).Completion == OrchestrationExtensionCompletion.Immediate)
-                Fail(OrchestrationExecutionErrorCode.ImmediateExtensionWaiting, invocation.OperationIndex, bindingIndex);
+                host.ExecutionContract(bindingIndex).Completion == OrchestrationExtensionCompletion.Immediate)
+            {
+                error = new OrchestrationExecutionError
+                {
+                    Code = OrchestrationExecutionErrorCode.ImmediateExtensionWaiting,
+                    OperationIndex = invocation.OperationIndex,
+                    Slot = bindingIndex
+                };
+                OrchestrationExecutionErrorText.Throw(OrchestrationExecutionErrorCode.ImmediateExtensionWaiting);
+            }
             return result;
         }
 
@@ -97,7 +106,7 @@ namespace BTSMTL.Orchestration
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, StopContextStorage(operationIndex),
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
-            OrchestrationExtensionResult result = InvokeCandidate(
+            OrchestrationExtensionResult result = InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                 m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex, in invocation);
             switch (result)
             {
