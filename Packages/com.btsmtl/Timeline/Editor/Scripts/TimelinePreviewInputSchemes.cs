@@ -39,12 +39,15 @@ namespace BTSMTL.Timeline.Editor
 
         public bool SavesChanges { get; private set; } = true;
         public int SelectedIndex => m_Selection ??
-            (m_Asset != null ? Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1) : 0);
+            (m_Asset != null && m_Asset.Schemes.Count != 0
+                ? Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1) : 0);
 
-        public TimelineAssetPreviewPreferences Current =>
+        TimelineAssetPreviewPreferences AuthoredCurrent =>
             m_Asset != null && m_Asset.Schemes.Count != 0
                 ? m_Selection is { } index ? m_Asset.Schemes[index] : m_Asset.Current
                 : m_Default;
+
+        public TimelineAssetPreviewPreferences Current => SavesChanges ? AuthoredCurrent : m_Default;
 
         public IReadOnlyList<TimelineAssetPreviewPreferences> All =>
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
@@ -59,7 +62,7 @@ namespace BTSMTL.Timeline.Editor
             m_Root = root.Identity;
             m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(root.Entry);
             m_Asset = m_Storage.Find(root.Identity);
-            if (selection is { } index && (index < 0 || index >= (m_Asset != null ? m_Asset.Schemes.Count : 1)))
+            if (selection is { } index && (index < 0 || index >= All.Count))
                 throw new System.ArgumentOutOfRangeException(nameof(selection), "所选预览输入方案不存在。");
             SavesChanges = saveChanges;
             m_Selection = selection;
@@ -68,6 +71,8 @@ namespace BTSMTL.Timeline.Editor
                     if (scheme.InputTimeline)
                         TimelineAuthoringGraphBindings.Prepare(scheme.InputTimeline.Data);
             m_Default = new TimelineAssetPreviewPreferences();
+            if (!saveChanges)
+                JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(AuthoredCurrent), m_Default);
             m_InputsFingerprint = null;
             m_ReadScheme = null;
         }
