@@ -150,6 +150,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitValueHashes(context, valueHashes.Values);
             foreach (INamedTypeSymbol type in authoringTypes.Values.OrderBy(Identity, StringComparer.Ordinal))
                 EmitAuthoringFields(context, type);
+            EmitBusinessKeySources(context);
         }
 
         static void EmitTypeDeclaration(StringBuilder code, INamedTypeSymbol type, string baseType = null)
