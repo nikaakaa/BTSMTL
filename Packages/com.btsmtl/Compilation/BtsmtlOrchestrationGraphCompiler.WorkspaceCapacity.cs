@@ -12,7 +12,7 @@ namespace BTSMTL.Compilation
                 OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure,
                 OrchestrationValueSchedule schedule, OrchestrationGraphEntry[] entries)
             {
-                var analysis = new WorkspaceCapacityAnalysis(this, operations, edges, structure, schedule);
+                var analysis = new WorkspaceCapacityAnalysis(this, operations, edges, structure, schedule, entries);
                 return analysis.Build(entries);
             }
 
@@ -60,6 +60,7 @@ namespace BTSMTL.Compilation
                 readonly OrchestrationFlowEdge[] m_Edges;
                 readonly OrchestrationProgramStructure m_Structure;
                 readonly OrchestrationValueSchedule m_Schedule;
+                readonly OrchestrationExecutionContract[] m_EntryContracts;
                 readonly int m_CycleResetPort;
                 readonly List<int>[] m_States;
                 readonly List<int>[] m_TimelineEntries;
@@ -74,13 +75,18 @@ namespace BTSMTL.Compilation
                 internal WorkspaceCapacityAnalysis(
                     Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> compiler,
                     OperationDraft[] operations, OrchestrationFlowEdge[] edges,
-                    OrchestrationProgramStructure structure, OrchestrationValueSchedule schedule)
+                    OrchestrationProgramStructure structure, OrchestrationValueSchedule schedule,
+                    ReadOnlySpan<OrchestrationGraphEntry> entries)
                 {
                     m_Compiler = compiler;
                     m_Operations = operations;
                     m_Edges = edges;
                     m_Structure = structure;
                     m_Schedule = schedule;
+                    m_EntryContracts = new OrchestrationExecutionContract[operations.Length];
+                    Array.Fill(m_EntryContracts, compiler.m_Contract);
+                    foreach (OrchestrationGraphEntry entry in entries)
+                        m_EntryContracts[entry.Execution.OperationIndex] = entry.Execution.Contract;
                     m_CycleResetPort = compiler.Bind(OrchestrationCorePortNames.CycleReset);
                     m_States = Lists(operations.Length);
                     m_TimelineEntries = compiler.TimelineInvocationEntries(operations.Length);
@@ -199,7 +205,7 @@ namespace BTSMTL.Compilation
                         foreach (int entry in m_TimelineEntries[i])
                         {
                             int invocation = entry;
-                            Collect(() => Visit(invocation, Phase.Tick, m_Compiler.m_Contract), 1);
+                            Collect(() => Visit(invocation, Phase.Tick, m_EntryContracts[invocation]), 1);
                         }
                     }
                     foreach (OrchestrationValueScheduleEntry entry in m_Schedule.ValueEntries.Span)
@@ -365,12 +371,12 @@ namespace BTSMTL.Compilation
                     var owners = new HashSet<int>();
                     foreach (int entry in m_TimelineEntries[operation])
                     {
-                        result.Merge(Visit(entry, Phase.Tick, OrchestrationExecutionContract.Complete), rows: rows, entries: 1);
+                        result.Merge(Visit(entry, Phase.Tick, m_EntryContracts[entry]), rows: rows, entries: 1);
                         owners.Add(m_Operations[entry].ExecutionFrameOwnerOperationIndex);
                     }
                     foreach (int owner in owners)
                         foreach (int child in m_OwnerOperations[owner])
-                            result.Merge(Force(child, OrchestrationExecutionContract.Complete, new HashSet<int>()), rows: rows);
+                            result.Merge(Force(child, m_EntryContracts[owner], new HashSet<int>()), rows: rows);
                 }
 
                 Shape Tick(int operation, OrchestrationExecutionContract contract)
