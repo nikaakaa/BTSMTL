@@ -44,17 +44,17 @@ async function send(path: string, init: RequestInit, acceptedStatuses: readonly 
   return response;
 }
 
-export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return (await send(path, { signal })).json() as Promise<T>;
+export async function getJson<T>(path: string, signal?: AbortSignal, acceptedStatuses: readonly number[] = []): Promise<T> {
+  return (await send(path, { signal }, acceptedStatuses)).json() as Promise<T>;
 }
 
-export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal, acceptedStatuses: readonly number[] = []): Promise<T> {
   const response = await send(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
-  });
+  }, acceptedStatuses);
   return response.json() as Promise<T>;
 }
 
