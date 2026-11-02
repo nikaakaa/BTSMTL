@@ -49,8 +49,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     {
                         case VariableDeclaratorSyntax variable:
                             ISymbol symbol = model.GetDeclaredSymbol(variable, m_Context.CancellationToken);
-                            if (symbol is IFieldSymbol field && field.IsConst && field.Type.SpecialType == SpecialType.System_String ||
-                                symbol is ILocalSymbol local && local.IsConst && local.Type.SpecialType == SpecialType.System_String)
+                            if (symbol is IFieldSymbol field && field.IsConst && field.Type.SpecialType == SpecialType.System_String)
                                 AddConstant(symbol, variable.Initializer.Value);
                             if (symbol is IFieldSymbol && variable.Initializer != null)
                                 AddValue(symbol, model.GetOperation(variable.Initializer.Value, m_Context.CancellationToken));
@@ -70,8 +69,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                                 AddValue(propertySymbol, model.GetOperation(property.Initializer.Value, m_Context.CancellationToken));
                             break;
                         case ArrowExpressionClauseSyntax arrow:
-                            ISymbol arrowOwner = model.GetEnclosingSymbol(arrow.Expression.SpanStart, m_Context.CancellationToken);
-                            if (arrowOwner is IMethodSymbol getter && getter.MethodKind == MethodKind.PropertyGet)
+                            if (arrow.Parent is PropertyDeclarationSyntax arrowProperty)
+                                AddValue(model.GetDeclaredSymbol(arrowProperty, m_Context.CancellationToken),
+                                    model.GetOperation(arrow.Expression, m_Context.CancellationToken));
+                            else if (model.GetEnclosingSymbol(arrow.Expression.SpanStart, m_Context.CancellationToken) is IMethodSymbol getter &&
+                                getter.MethodKind == MethodKind.PropertyGet)
                                 AddValue(getter.AssociatedSymbol, model.GetOperation(arrow.Expression, m_Context.CancellationToken));
                             break;
                         case ReturnStatementSyntax result when result.Expression != null:
@@ -188,6 +190,9 @@ namespace ThirdPerson.ValueGeneration.Generator
 
             void AddConstantUse(SyntaxNode expression, ISymbol constant)
             {
+                if (constant is ILocalSymbol local && local.Type.SpecialType == SpecialType.System_String)
+                    AddConstant(local, ((VariableDeclaratorSyntax)local.DeclaringSyntaxReferences.Single()
+                        .GetSyntax(m_Context.CancellationToken)).Initializer.Value);
                 m_ConstantUses.Add(Attribute("BtsmtlBusinessKeyConstantUseAttribute", Literal(FilePath(expression.SyntaxTree)),
                     Number(expression.SpanStart), Number(expression.Span.Length), Literal(constant.ContainingAssembly.Identity.ToString()),
                     Literal(BusinessKeySymbol(constant))));
