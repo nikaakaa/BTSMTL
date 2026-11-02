@@ -440,10 +440,10 @@ namespace BTSMTL.Compilation
                         {
                             int enter = m_Structure.StateOnEnterEdges.Span[operation];
                             Child(result, enter, Phase.Tick, contract, states: 1, passesPort: false);
-                            if (enter >= 0)
-                                result.Merge(Force(m_Edges[enter].TargetOperationIndex, contract, new HashSet<int>()));
                             Child(result, m_Structure.StateRootEdges.Span[operation], Phase.Tick, contract,
                                 states: 1, passesPort: false);
+                            Child(result, m_Structure.StateOnExitEdges.Span[operation], Phase.Tick,
+                                OrchestrationExecutionContract.Complete, states: 1, passesPort: false);
                             return result;
                         }
                         case OrchestrationOperationCode.Branch:

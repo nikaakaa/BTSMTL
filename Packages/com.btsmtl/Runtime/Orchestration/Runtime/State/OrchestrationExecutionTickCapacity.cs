@@ -521,8 +521,7 @@ namespace BTSMTL.Orchestration
                     long enter = StateEntryVisits(m_Program.StateOnEnterEdge(index), phase);
                     long root = StateEntryVisits(m_Program.StateRootEdge(index), phase);
                     count = checked(count + (stop ? Math.Max(enter, root) : checked(enter + root)));
-                    if (stop)
-                        count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), VisitPhase.Tick));
+                    count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), VisitPhase.Tick));
                 }
                 else if (operation.Code != OrchestrationOperationCode.Timeline && operation.Code != OrchestrationOperationCode.Succeed &&
                     (!stop || phase == VisitPhase.ForceStop ||
@@ -611,9 +610,7 @@ namespace BTSMTL.Orchestration
                 if (edgeIndex < 0)
                     return 0;
                 int target = m_Program.Edge(edgeIndex).TargetOperationIndex;
-                long count = BoundedVisits(target, phase);
-                return m_Metric != CapacityMetric.Evaluations && phase == VisitPhase.Tick
-                    ? checked(count + BoundedVisits(target, VisitPhase.ForceStop)) : count;
+                return BoundedVisits(target, phase);
             }
 
             long TransitionVisits(int index)
@@ -773,10 +770,9 @@ namespace BTSMTL.Orchestration
                         count++;
                     else if (operation.Code == OrchestrationOperationCode.StateMachine)
                     {
-                        if (hook.Hook == OrchestrationLifecycleHook.StateEntered)
+                        if (hook.Hook is OrchestrationLifecycleHook.StateEntered or OrchestrationLifecycleHook.StateExited)
                             count = checked(count + 2);
-                        else if (hook.Hook == OrchestrationLifecycleHook.StateExited ||
-                                 hook.Hook == OrchestrationLifecycleHook.StateTransition)
+                        else if (hook.Hook == OrchestrationLifecycleHook.StateTransition)
                             count++;
                     }
                 return count;
