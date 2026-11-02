@@ -48,7 +48,18 @@ namespace BTSMTL.Timeline
             foreach (ITimelineContentParameterCodec codec in codecs)
                 if (!m_Codecs.TryAdd(codec.ContractKind, codec))
                     throw new InvalidOperationException($"Duplicate Timeline parameter codec '{codec.ContractKind}'.");
+            var kinds = new List<string>(m_Codecs.Keys);
+            kinds.Sort(StringComparer.Ordinal);
+            var identities = new string[kinds.Count * 2];
+            for (int i = 0; i < kinds.Count; i++)
+            {
+                identities[i * 2] = kinds[i];
+                identities[i * 2 + 1] = m_Codecs[kinds[i]].SchemaIdentity.Value;
+            }
+            SchemaIdentity = StableHash.Compute(identities);
         }
+
+        public StableHash SchemaIdentity { get; }
 
         public ITimelineContentParameterCodec Require(string contractKind) =>
             m_Codecs.TryGetValue(contractKind, out ITimelineContentParameterCodec codec)

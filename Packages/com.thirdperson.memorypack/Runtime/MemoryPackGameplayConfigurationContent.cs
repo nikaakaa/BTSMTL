@@ -9,15 +9,19 @@ namespace ThirdPersonSimulation.Serialization
     public static class MemoryPackGameplayConfigurationContent
     {
         const string Format = "btsmtl.gameplay-config.memorypack/1";
-        static readonly string s_MetadataFormat = Format + ":" + MemoryPackContent.GetSchemaHash<GameplayConfigMetadata>().Value;
+        public static string FormatIdentity { get; } = Format + ":" + MemoryPackContent.GetSchemaHash<GameplayConfigMetadata>().Value;
+
+        public static StableHash EncodingIdentity { get; } = StableHash.Compute(FormatIdentity,
+            MemoryPackContent.GetSchemaHash<PublishedGameplayConfiguration>().Value,
+            MemoryPackContent.GetSchemaHash<GameplayConfigurationSourceContent[]>().Value);
 
         public static byte[] PublishMetadata(GameplayConfigMetadata metadata) =>
-            MemoryPackContent.Serialize((s_MetadataFormat, metadata));
+            MemoryPackContent.Serialize((FormatIdentity, metadata));
 
         public static GameplayConfigMetadata ReadMetadata(ReadOnlySpan<byte> bytes)
         {
             var content = MemoryPackContent.Deserialize<(string Format, GameplayConfigMetadata Metadata)>(bytes);
-            if (content.Format != s_MetadataFormat)
+            if (content.Format != FormatIdentity)
                 throw new InvalidDataException("Gameplay 配置元数据格式或生成 schema 不匹配，请沿正式入口重新发布。");
             return content.Metadata;
         }

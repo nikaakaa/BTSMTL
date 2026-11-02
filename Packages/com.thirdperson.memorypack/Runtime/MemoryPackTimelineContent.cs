@@ -10,7 +10,7 @@ namespace ThirdPersonSimulation.Serialization
     public static class MemoryPackTimelineContent
     {
         const string Format = "btsmtl.timeline.memorypack/3";
-        static readonly string s_FormatIdentity = Format + ":" + MemoryPackContent.GetSchemaHash<TimelineContentArtifact>().Value;
+        public static string FormatIdentity { get; } = Format + ":" + MemoryPackContent.GetSchemaHash<TimelineContentArtifact>().Value;
         public static TimelineContentParameterCodec<TimelineContentTree> TreeParameters { get; } =
             new TimelineContentParameterCodec<TimelineContentTree>(TimelineContractKinds.TreeClip,
                 MemoryPackContent.GetSchemaHash<TimelineContentTree>(),
@@ -42,7 +42,7 @@ namespace ThirdPersonSimulation.Serialization
             var bytes = new ArrayBufferWriter<byte>();
             var writer = new MemoryPackWriter<ArrayBufferWriter<byte>>(ref bytes, state);
             writer.WriteObjectHeader(2);
-            writer.WriteValue(s_FormatIdentity);
+            writer.WriteValue(FormatIdentity);
             writer.WriteValue(artifact);
             writer.Flush();
             return bytes.WrittenSpan.ToArray();
@@ -57,7 +57,7 @@ namespace ThirdPersonSimulation.Serialization
             {
                 if (!reader.TryReadObjectHeader(out byte count) || count != 2)
                     throw new InvalidDataException("Timeline content record is unsupported.");
-                if (reader.ReadValue<string>() != s_FormatIdentity)
+                if (reader.ReadValue<string>() != FormatIdentity)
                     throw new InvalidDataException("Timeline 内容格式或生成 schema 不匹配，请沿正式入口重新发布。");
                 TimelineContentArtifact artifact = reader.ReadValue<TimelineContentArtifact>();
                 if (reader.Remaining != 0)
@@ -71,7 +71,7 @@ namespace ThirdPersonSimulation.Serialization
 
         public static StableHash ComputeContentHash(IReadOnlyList<TimelineContentUnit> timelines,
             TimelineContentParameterCodecs codecs) =>
-            StableHash.Compute(MemoryPackContent.Serialize((s_FormatIdentity, timelines), codecs));
+            StableHash.Compute(MemoryPackContent.Serialize((FormatIdentity, timelines), codecs));
 
     }
 }
