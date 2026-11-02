@@ -1,5 +1,4 @@
 import { previewApi } from '../api/preview';
-import { isAbort } from '../api/http';
 import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInput, PreviewQuickRequest,
   PreviewQuickSource, PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
@@ -116,7 +115,7 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
     if (controller.signal.aborted) return;
     accept(request, reply, cancelling);
   } catch (error) {
-    if (isAbort(error) || !ownsRequest(request)) return;
+    if (controller.signal.aborted || !ownsRequest(request)) return;
     consoleActions.error('快预览', error);
     set({ job: { kind: 'failed', request, reply: receipt, reason: error instanceof Error ? error.message : String(error) } });
   }
@@ -125,7 +124,7 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
 function invalidateJob() {
   const job = current().job;
   if (job.kind === 'idle') return;
-  if (job.kind === 'settled' || (job.kind === 'failed' && (job.reply === null || job.reply.data?.completed))) set({ job: { kind: 'idle' } });
+  if (job.kind === 'settled' || (job.kind === 'failed' && (job.reply === null || job.reply.data.completed))) set({ job: { kind: 'idle' } });
   else void quickPreview.cancel();
 }
 
@@ -192,7 +191,7 @@ export const quickPreview = {
       const job = current().job;
       if (job.kind !== 'idle' && !selectedRequest(job.request)) invalidateJob();
     } catch (error) {
-      if (isAbort(error)) return;
+      if (controller.signal.aborted) return;
       consoleActions.error('快预览', error);
       set({ description: { kind: 'failed', reply: null, reason: error instanceof Error ? error.message : String(error) }, scheme: null });
       invalidateJob();
