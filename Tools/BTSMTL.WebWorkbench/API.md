@@ -35,7 +35,7 @@
 | 方法与路径 | 参数 | 响应及用途 |
 | --- | --- | --- |
 | `GET /api/preview/host` | 无 | `{available,description}`；description 提供 `filters`、`inputLimit` 和 `modes`，各模式含 `available/reason/createsRun/defaultChannels` |
-| `GET /api/preview/sources` | 无 | `Sources`：`scenes[{path,revision}]`、`timelines`、`replays` 及正式目录 |
+| `GET /api/preview/sources` | 无 | `Sources`：`scenes[{path,revision}]`、`quickScenes[{publication:{path,revision},scenePath,sceneGuid,sceneRevision}]`、`timelines`、`replays` 及正式目录 |
 | `GET /api/preview/inputs` | `scene,revision` | `InputCatalog`：`revision,tickRate,actorTargets,localPlanRangeBasis,players`；各角色含 `localPlans,keys,values,requests` |
 | `GET /api/preview/images` | 无 | `{available,description}`；图片适配能力 |
 | `GET /api/preview/players` | 无 | `{items:PlayerBuild[]}`；`buildId,displayName,fields,rawJson` |
@@ -43,6 +43,27 @@
 `scenes` 的 `path` 与 `revision` 成对传递。`timelines` 每项含可直接用于 Load 的 `content`，以及 `contentIdentity/contentRevision/bindingRevision/tickRate/scene/bindings`；不能把它改装成场景输入来源。
 
 输入选项使用宿主实际返回的 `actorId`、`inputPlanRoot`、`inputPlanRevision` 和 `schemeIndex`。按键类型为 `Button/Scalar/Vector2`，值与请求映射来自声明；按键不能由 UI 按角色名或技能名写死。方案 `rangeEndSeconds` 是日程内的相对秒数，SDK 起点由实际载入决定，不能据此伪造绝对 SDK 帧。
+
+## 快速预览第二版
+
+quick 经项目 Host 调用目标 Editor 的原 Native 资产预览，不在 .NET 执行 Gameplay，也不创建 Player 真实运行。能力 `quick_protocol` 与 Native 协议均为 `btsmtl.native-timeline-preview/2`；Host 核对协议和项目，旧 Editor `/1` 不表示本批已采用。
+
+| 方法与路径 | 输入与输出 |
+| --- | --- |
+| `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root}`，返回真实根、来源文档修订、机器、方案和输入声明。 |
+| `POST /api/preview/quick/plans` | `PreviewQuickRequest{mode:"quick",target,sourceRevision,input,outputDirectory,rangeEndSeconds?,timeoutSeconds?}`，沿原 Native job 开始推导。 |
+| `GET /api/preview/quick/plans/{jobId}` | 读取同一 job 的状态、真实采用档位及计划。 |
+| `POST /api/preview/quick/plans/{jobId}/cancel` | 取消同一 job；请求已发不等于实际取消完成。 |
+
+`root` 使用正式三类联合，不混用来源：`nativeDocument{path,machine}` 读取原 Native 文档内存；`webEditingView{skill,editingView,machine}` 接收原 `SkillAuthoringEditingView` 的完整 Files／RemovedFiles；`timelineAsset{path,elementId}` 指定真实独立资产及必需元素身份。网页技能根使用当前 AuthoringTarget.name，describe 捕获当前 editingView，start 复用同一捕获及其 sourceRevision、真实 input.scheme／revision；不因未保存而切回磁盘或 Native 文档。`input.points` 与 `conditions` 同时提供或同时省略，覆盖仅作用于本次副本。
+
+原 `scenes` 和 Timeline 包语义保留。顶栏同一次场景选择按 publication.path＋revision 精确关联 quickScenes，quick 使用真实 SceneAsset，Real 仍使用原包。独立 Timeline 使用所选来源已有的 scene.path／guid／dependencyHash 和 content.timeline AuthoringId，唯一匹配 describe.timelines.elementId 后提交实际 path＋elementId，不取首元素或推测路径。
+
+Source.documents 中每份文档有实际 revision；网页捕获的 savedRevision／hasUnsavedChanges 为 null，decoder 保留未知状态，不补成 false 或伪造 dirty。结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份，segments／conditions／suggestions 只供原 Timeline／Graph 静态计划定位，不写 Real RouteStore 或实际端口帧。`adoptedMode` 只在原 Fast Host 实际 Ready 后为 quick，否则保留 null／实际值，不从请求 mode 回填。
+
+响应保留 success／pending、Data、code／message／rawJson 与 cleanupErrors；成功完成为 200、在途为 202、失败为 409。job_lost、preview_mode_mismatch、editor_busy、preview_job_busy、preview_request_invalid、preview_failed 和 preview_cancelled 按原回执显示。网页只持当前根和一个当前 job；编辑、Undo、作者回读、切根、场景发布修订或输入覆盖变化隔离在途和迟到结果，旧路线标过期，匹配的新结果才采用。取消失败保留取消意图和回执并允许手动重试，后续 status 不恢复旧计划；仅轮询真实当前未完 job，不闲时扫描作业。
+
+以上是生产者和网页消费者源码接通的合同。完整 Host／Native 类型、目标 Editor 采用及真实预览未验证；网页 tsc 通过不证明部署、实际服务版本或现场 UI 行为。
 
 ## 技能与场景作者文件
 
