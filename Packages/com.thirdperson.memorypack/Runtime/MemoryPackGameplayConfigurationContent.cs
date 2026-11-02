@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using MemoryPack;
 using ThirdPersonGameplay.Configuration;
 
 namespace ThirdPersonSimulation.Serialization
@@ -20,10 +21,19 @@ namespace ThirdPersonSimulation.Serialization
 
         public static GameplayConfigMetadata ReadMetadata(ReadOnlySpan<byte> bytes)
         {
-            var content = MemoryPackContent.Deserialize<(string Format, GameplayConfigMetadata Metadata)>(bytes);
-            if (content.Format != FormatIdentity)
-                throw new InvalidDataException("Gameplay 配置元数据格式或生成 schema 不匹配，请沿正式入口重新发布。");
-            return content.Metadata;
+            var context = new MemoryPackContentContext(MemoryPackContentPart.Full);
+            using var state = MemoryPackReaderOptionalStatePool.Rent(context.Options);
+            var reader = new MemoryPackReader(bytes, state);
+            try
+            {
+                if (!reader.TryReadObjectHeader(out byte count) || count != 2 || reader.ReadValue<string>() != FormatIdentity)
+                    throw new InvalidDataException("Gameplay 配置元数据格式或生成 schema 不匹配，请沿正式入口重新发布。");
+                GameplayConfigMetadata metadata = reader.ReadValue<GameplayConfigMetadata>();
+                if (reader.Remaining != 0)
+                    throw new InvalidDataException("Gameplay 配置元数据包含尾随数据。");
+                return metadata;
+            }
+            finally { reader.Dispose(); }
         }
 
         public static StableHash ComputeIdentity(string sourceId, PublishedGameplayConfiguration configuration) =>
