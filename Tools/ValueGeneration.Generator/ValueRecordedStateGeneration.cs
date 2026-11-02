@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -7,8 +8,10 @@ namespace ThirdPerson.ValueGeneration.Generator
     public sealed partial class ValueGenerator
     {
         const string RecordedStateConstructorAttribute = "ThirdPersonSimulation.ValueRecordedStateConstructorAttribute";
+        const string RecordedStateAttribute = "ThirdPersonSimulation.ValueRecordedStateAttribute";
+        const string RecordedStateContextAttribute = "ThirdPersonSimulation.ValueRecordedStateContextAttribute";
 
-        enum RecordedStateKind { Text, Unmanaged, Record, Constructor }
+        enum RecordedStateKind { Text, Unmanaged, Record, Constructor, Context }
 
         sealed class RecordedStateValue
         {
@@ -16,10 +19,34 @@ namespace ThirdPerson.ValueGeneration.Generator
             internal RecordedStateKind Kind;
             internal Member[] Members;
             internal RecordedStateValue[] Inputs;
+            internal string ContextName;
+        }
+
+        static bool EmitDeclaredRecordedStates(GeneratorExecutionContext context, StringBuilder code, INamedTypeSymbol type)
+        {
+            Member[] storage = StorageMembers(type).Where(member =>
+                !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
+            var names = new HashSet<string>();
+            foreach (IMethodSymbol constructor in type.InstanceConstructors.Where(candidate => HasAttribute(candidate, RecordedStateAttribute)))
+            {
+                AttributeData purpose = constructor.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == RecordedStateAttribute);
+                string name = (string)purpose.ConstructorArguments[0].Value;
+                bool readInputs = purpose.NamedArguments.Any(argument => argument.Key == "ReadInputs" && (bool)argument.Value.Value);
+                Member[] members = ValueStorageConstructorInputs(context.Compilation, type, constructor, storage);
+                if (members == null || !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier("Read" + name + "RecordedState") ||
+                    !names.Add(name))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, constructor.Locations.FirstOrDefault(), Identity(type),
+                        "记录声明须有唯一合法名称，并对应原构造与原成员"));
+                    return false;
+                }
+                if (!EmitRecordedState(context, code, type, constructor, members, name, readInputs)) return false;
+            }
+            return true;
         }
 
         static bool EmitRecordedState(GeneratorExecutionContext context, StringBuilder code, INamedTypeSymbol type,
-            IMethodSymbol constructor, Member[] members)
+            IMethodSymbol constructor, Member[] members, string name = "", bool readInputs = false)
         {
             var inputs = new RecordedStateValue[constructor.Parameters.Length];
             for (int i = 0; i < inputs.Length; i++)
@@ -29,13 +56,31 @@ namespace ThirdPerson.ValueGeneration.Generator
                         Identity(type), "RecordedState 成员 '" + members[i].Symbol.Name + "': " + reason));
                     return false;
                 }
-            code.Append("public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
+            code.Append("public void Write").Append(name).Append("RecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
                 .Append(Runtime).AppendLine("IRecordedRuntimeStateWriter {");
             for (int i = 0; i < inputs.Length; i++)
                 EmitRecordedStateWrite(code, inputs[i], "this." + Escape(members[i].Symbol.Name));
             code.AppendLine("}");
-            code.Append("public static ").Append(TypeName(type)).Append(" ReadRecordedState(ref ")
-                .Append(Runtime).Append("RecordedRuntimeStateReader reader) => new ").Append(TypeName(type)).Append('(')
+            if (readInputs)
+            {
+                code.Append("public static void Read").Append(name).Append("RecordedStateInputs(ref ")
+                    .Append(Runtime).Append("RecordedRuntimeStateReader reader");
+                for (int i = 0; i < inputs.Length; i++)
+                    if (inputs[i].Kind != RecordedStateKind.Context)
+                        code.Append(", out ").Append(TypeName(constructor.Parameters[i].Type)).Append(' ')
+                            .Append(Escape(constructor.Parameters[i].Name));
+                code.AppendLine(") {");
+                for (int i = 0; i < inputs.Length; i++)
+                    if (inputs[i].Kind != RecordedStateKind.Context)
+                        code.Append(Escape(constructor.Parameters[i].Name)).Append(" = ").Append(RecordedStateRead(inputs[i])).AppendLine(";");
+                code.AppendLine("}");
+                return true;
+            }
+            code.Append("public static ").Append(TypeName(type)).Append(" Read").Append(name).Append("RecordedState(ref ")
+                .Append(Runtime).Append("RecordedRuntimeStateReader reader");
+            foreach (RecordedStateValue input in inputs.Where(input => input.Kind == RecordedStateKind.Context))
+                code.Append(", ").Append(TypeName(input.Type)).Append(' ').Append(Escape(input.ContextName));
+            code.Append(") => new ").Append(TypeName(type)).Append('(')
                 .Append(string.Join(", ", inputs.Select(RecordedStateRead))).AppendLine(");");
             return true;
         }
@@ -46,6 +91,12 @@ namespace ThirdPerson.ValueGeneration.Generator
             ITypeSymbol type = parameter.Type;
             value = new RecordedStateValue { Type = type };
             reason = null;
+            if (HasAttribute(parameter, RecordedStateContextAttribute))
+            {
+                value.Kind = RecordedStateKind.Context;
+                value.ContextName = parameter.Name;
+                return true;
+            }
             if (HasAttribute(parameter, RecordedStateConstructorAttribute))
             {
                 if (!(type is INamedTypeSymbol record) || record.TypeKind != TypeKind.Struct || record.IsRefLikeType)
@@ -94,6 +145,8 @@ namespace ThirdPerson.ValueGeneration.Generator
         {
             switch (value.Kind)
             {
+                case RecordedStateKind.Context:
+                    break;
                 case RecordedStateKind.Constructor:
                     for (int i = 0; i < value.Inputs.Length; i++)
                         EmitRecordedStateWrite(code, value.Inputs[i], access + "." + Escape(value.Members[i].Symbol.Name));
@@ -112,6 +165,8 @@ namespace ThirdPerson.ValueGeneration.Generator
         {
             switch (value.Kind)
             {
+                case RecordedStateKind.Context:
+                    return Escape(value.ContextName);
                 case RecordedStateKind.Constructor:
                     return "new " + TypeName(value.Type) + "(" + string.Join(", ", value.Inputs.Select(RecordedStateRead)) + ")";
                 case RecordedStateKind.Record:

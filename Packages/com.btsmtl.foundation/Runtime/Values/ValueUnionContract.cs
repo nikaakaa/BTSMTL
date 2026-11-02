@@ -59,6 +59,17 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Parameter)]
     public sealed class ValueRecordedStateConstructorAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Constructor)]
+    public sealed class ValueRecordedStateAttribute : Attribute
+    {
+        public ValueRecordedStateAttribute(string name = "") => Name = name;
+        public string Name { get; }
+        public bool ReadInputs { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class ValueRecordedStateContextAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Struct)]
     public sealed class ValueStateLayoutAttribute : Attribute { }
 

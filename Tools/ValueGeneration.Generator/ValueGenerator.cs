@@ -79,7 +79,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
-                if (HasAttribute(type, ValueStoragePurposeAttribute))
+                if (HasAttribute(type, ValueStoragePurposeAttribute) ||
+                    type.InstanceConstructors.Any(constructor => HasAttribute(constructor, RecordedStateAttribute)))
                     valueStorageRecords[Identity(type)] = type;
                 if (type.GetMembers().OfType<IMethodSymbol>().Any(method =>
                     HasAttribute(method, "ThirdPersonSimulation.ValueUpdateAttribute")))
@@ -313,10 +314,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             foreach (INamedTypeSymbol owner in owners)
                 EmitTypeDeclaration(code, owner);
             EmitTypeDeclaration(code, type);
-            AttributeData purpose = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
-            bool construct = purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
-            bool useConstructor = purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value);
-            bool recordedState = purpose.NamedArguments.Any(argument => argument.Key == "RecordedState" && (bool)argument.Value.Value);
+            AttributeData purpose = type.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
+            bool construct = purpose != null && purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
+            bool useConstructor = purpose != null && purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value);
+            bool recordedState = purpose != null && purpose.NamedArguments.Any(argument => argument.Key == "RecordedState" && (bool)argument.Value.Value);
             if (recordedState && !useConstructor)
             {
                 context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
@@ -338,9 +339,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 if (!EmitConstructorValueStorage(context, code, type, construct, recordedState)) return null;
             }
-            else
+            else if (purpose != null)
                 EmitValueStorage(code, type, StorageMembers(type).Where(member =>
                     !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct);
+            if (!EmitDeclaredRecordedStates(context, code, type)) return null;
             foreach (INamedTypeSymbol owner in owners)
                 code.AppendLine("}");
             code.AppendLine("} }");
@@ -672,6 +674,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (node is BaseTypeDeclarationSyntax type && (type.AttributeLists.Count > 0 ||
                     type is TypeDeclarationSyntax declaration && declaration.Members.Any(member =>
                         member is MethodDeclarationSyntax method && method.AttributeLists.Count > 0 ||
+                        member is ConstructorDeclarationSyntax constructor && constructor.AttributeLists.Count > 0 ||
                         member is BasePropertyDeclarationSyntax property && property.AttributeLists.Count > 0 ||
                         member is BaseFieldDeclarationSyntax field && field.AttributeLists.Count > 0)))
                     Types.Add(type);
