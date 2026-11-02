@@ -6,6 +6,7 @@ import type {
   Sources, ViewerLive,
 } from '../api/types';
 import type { SkillDocumentGraph } from '../api/authoring';
+import type { QuickPreviewState } from './quickPreview';
 import type {
   PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
@@ -35,6 +36,7 @@ export interface ContentSlice {
   inputCatalogReading: boolean;
   inputCatalogFailure: number | null;
   inputChoices: PlayerInputChoice[];
+  quickPreview: QuickPreviewState;
 }
 
 export const contentSelectionKey = (selection: ContentSelection | null) => selection === null ? null
@@ -225,6 +227,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   sources: null, previewMode: null, contentSelection: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
+  quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, seconds: 0, outputDirectory: '' },
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,
