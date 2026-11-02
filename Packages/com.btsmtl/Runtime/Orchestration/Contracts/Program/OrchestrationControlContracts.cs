@@ -205,11 +205,11 @@ namespace BTSMTL.Orchestration
 
         public void UpdateTick(ulong tick) => Tick = tick;
 
-        public void RetargetStateExit(int operationIndex, int edgeIndex)
+        public void RetargetStateExit(int operationIndex, int edgeIndex, int targetStateOperationIndex)
         {
             ReplacementOperationIndex = operationIndex;
             ReplacementEdgeIndex = edgeIndex;
-            StateTargetOperationIndex = operationIndex;
+            StateTargetOperationIndex = targetStateOperationIndex;
             StateTransitionEdgeIndex = edgeIndex;
         }
 

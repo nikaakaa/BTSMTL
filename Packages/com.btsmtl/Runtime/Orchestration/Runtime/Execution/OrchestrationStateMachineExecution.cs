@@ -87,10 +87,12 @@ namespace BTSMTL.Orchestration
                 return OrchestrationOperationResult.Running;
             TraceEdge(transition, true, true, active);
             ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(transition);
+            int targetState = m_Program.Operation(edge.TargetOperationIndex).Code == OrchestrationOperationCode.StateExit
+                ? -1 : edge.TargetOperationIndex;
             machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(active).IdentityId;
             machine.StopContext = OrchestrationStopContext.StateTransition(operationIndex, m_FrameSlot,
                 m_Input.Tick, edge.TargetOperationIndex, transition).ForStateExit(active, m_FrameSlot,
-                edge.TargetOperationIndex, transition);
+                targetState, transition);
             return ContinueStateTransition(operationIndex, active);
         }
 
@@ -106,7 +108,8 @@ namespace BTSMTL.Orchestration
             if (selected < 0 || m_Program.Edge(selected).Priority >= m_Program.Edge(pending).Priority)
                 return;
             int target = m_Program.Edge(selected).TargetOperationIndex;
-            machine.StopContext.RetargetStateExit(target, selected);
+            int targetState = m_Program.Operation(target).Code == OrchestrationOperationCode.StateExit ? -1 : target;
+            machine.StopContext.RetargetStateExit(target, selected, targetState);
             TraceEdge(selected, true, true, exiting);
         }
 
