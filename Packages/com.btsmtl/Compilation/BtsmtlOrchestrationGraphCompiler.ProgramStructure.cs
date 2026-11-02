@@ -537,8 +537,6 @@ namespace BTSMTL.Compilation
             {
                 foreach (OrchestrationGraphEntry entry in entries)
                 {
-                    if (entry.Execution.Contract != OrchestrationExecutionContract.Complete)
-                        continue;
                     string identity = m_Identity.GraphId;
                     foreach (ProgramReference reference in m_References)
                         if (!reference.HasSourceOperation && reference.Kind == ProgramReferenceKind.Operation &&
@@ -547,6 +545,23 @@ namespace BTSMTL.Compilation
                             identity = reference.Identity;
                             break;
                         }
+                    bool timelineExit = false;
+                    foreach (ProgramSourceMapEntry source in m_SourceMap)
+                    {
+                        ProgramExecutionSource invocation = source.Source;
+                        if (invocation.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
+                            invocation.InvocationCallerKind == ProgramInvocationCallerKind.None &&
+                            invocation.GraphId + "/entry:" + invocation.InvocationCallerId == identity &&
+                            invocation.InvocationCallerId is "OnDisable" or "OnDestroy")
+                            timelineExit = true;
+                    }
+                    if (entry.Execution.Contract != OrchestrationExecutionContract.Complete)
+                    {
+                        if (!timelineExit)
+                            continue;
+                        Error("exit_entry_requires_complete", ProgramSourceTargetKind.Operation, entry.Execution.OperationIndex,
+                            $"退出入口 '{identity}' 必须声明 Complete 执行合同。");
+                    }
                     Validate(entry.Execution.OperationIndex, entry.Execution.InputPortId, identity);
                 }
                 for (int operation = 0; operation < operations.Length; operation++)
