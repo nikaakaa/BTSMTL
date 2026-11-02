@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickConditionPoint, PreviewQuickDescription, PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
 import type { SkillDocumentGraph } from '../../api/authoring';
-import { quickBounds, quickPlan, quickPlanStale, quickPreview } from '../../state/quickPreview';
+import { quickBounds, quickPlan, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -47,7 +47,7 @@ export function QuickPreview() {
   const { mode, state, directory } = useWorkbench(useShallow(current => ({
     mode: current.previewMode, state: current.quickPreview, directory: current.sources?.runDirectory,
   })));
-  const plan = useQuickPlan();
+  const plan = state.accepted?.plan ?? null;
   if (mode !== 'quick') return null;
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const job = state.job;
@@ -83,8 +83,7 @@ export function QuickPreview() {
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
       { displayName: '推导来源', value: description.source === null ? '尚未选根' : `${description.source.kind}${description.source.documents.some(document => document.hasUnsavedChanges)
         ? ' · 包含未保存修改' : ' · 已保存作者内容'}` }]} />}
-    {description && selectedScheme && <QuickInputForm key={`${description.source?.revision}/${selectedScheme.revision}`}
-      description={description} plan={plan} reason={reason} />}
+    <QuickInputForm description={description} plan={plan} reason={reason} />
     <Fold title="来源与输出">
       <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
         onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>
@@ -106,18 +105,32 @@ export function QuickPreview() {
         .filter(value => value !== null && value !== undefined && value !== '').map((value, index) => <p key={index}>{value}</p>)}
     </div>}
     {status && status.notes.length > 0 && <Fold title="推导说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}
-    {plan && <QuickRoute plan={plan} />}
+    {state.accepted && <QuickRoute result={state.accepted} />}
   </section>;
 }
 
-function QuickInputForm({ description, plan, reason }: { description: PreviewQuickDescription; plan: PreviewQuickPlan | null; reason: string | null }) {
+function QuickInputForm({ description, plan, reason }: { description: PreviewQuickDescription | null; plan: PreviewQuickPlan | null; reason: string | null }) {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
+  const target = useWorkbench(state => state.quickPreview.target);
+  const selected = useWorkbench(state => state.quickPreview.scheme);
+  const scheme = description?.root?.inputSchemes.find(item => item.index === selected);
+  const scope = scheme && target ? JSON.stringify([target.scenePath, target.root, scheme.index, scheme.revision]) : null;
+  const [boundScope, setBoundScope] = useState(scope);
   const [points, setPoints] = useState<{ inputId: string; time: number | null; value: string }[]>([]);
   const [conditions, setConditions] = useState<PreviewQuickConditionPoint[]>([]);
   const [inputId, setInputId] = useState<string | null>(null);
   const [conditionKey, setConditionKey] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<number | null>(null);
   const [issue, setIssue] = useState<string | null>(null);
+  if (scope !== null && scope !== boundScope) {
+    setBoundScope(scope);
+    setPoints([]);
+    setConditions([]);
+    setInputId(null);
+    setConditionKey(null);
+    setRangeEnd(null);
+    setIssue(null);
+  }
   const generate = async () => {
     try {
       const inputPoints = points.map(point => {
@@ -129,6 +142,7 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
       await quickPreview.start({ ...(inputPoints.length ? { points: inputPoints } : {}), ...(conditions.length ? { conditions } : {}) }, rangeEnd ?? undefined);
     } catch (error) { setIssue(error instanceof Error ? error.message : String(error)); }
   };
+  if (description === null || scheme === undefined) return null;
   return <>
     <PanelBar wrap><Button disabled={reason !== null} tip={reason ?? '按本次来源和输入副本推导，不保存作者输入方案'}
       onClick={() => void generate()}>推导路线</Button>
@@ -171,10 +185,16 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
   </>;
 }
 
-function QuickRoute({ plan }: { plan: PreviewQuickPlan }) {
+function QuickRoute({ result }: { result: NonNullable<QuickPreviewState['accepted']> }) {
+  const plan = result.plan;
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   const stale = useWorkbench(quickPlanStale);
-  const accepted = useWorkbench(state => state.quickPreview.accepted);
+  const identity = useMemo(() => [
+    { displayName: '结果作业', value: result.jobId }, { displayName: '结果来源修订', value: result.request.sourceRevision },
+    { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
+    { displayName: '输入来源', value: plan.inputSource }, { displayName: '有效输入修订', value: plan.inputRevision },
+    { displayName: '实际输入', value: JSON.stringify(plan.inputsUsed) }, { displayName: '实际条件覆盖', value: JSON.stringify(plan.conditionsUsed) },
+  ], [result, plan]);
   const bounds = quickBounds(plan);
   const span = bounds.last - bounds.first;
   return <>
@@ -206,10 +226,7 @@ function QuickRoute({ plan }: { plan: PreviewQuickPlan }) {
         <span>{suggestion.start}–{suggestion.end} {plan.clock.unit} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
       </div>)}
     </Fold>
-    <IdentityFold fields={[{ displayName: '结果作业', value: accepted?.jobId ?? '' }, { displayName: '结果来源修订', value: accepted?.request.sourceRevision ?? '' },
-      { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
-      { displayName: '输入来源', value: plan.inputSource }, { displayName: '有效输入修订', value: plan.inputRevision },
-      { displayName: '实际输入', value: JSON.stringify(plan.inputsUsed) }, { displayName: '实际条件覆盖', value: JSON.stringify(plan.conditionsUsed) }]} />
+    <IdentityFold fields={identity} />
   </>;
 }
 
