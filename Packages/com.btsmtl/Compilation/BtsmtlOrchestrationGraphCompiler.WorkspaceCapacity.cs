@@ -101,10 +101,7 @@ namespace BTSMTL.Compilation
                         if (code == OrchestrationOperationCode.StateMachine)
                             m_ForceChildren[i].AddRange(m_States[i]);
                         else if (code == OrchestrationOperationCode.State)
-                        {
                             AddForceChildren(i, OrchestrationFlowKind.Enter);
-                            AddForceChildren(i, OrchestrationFlowKind.Exit);
-                        }
                         else
                             AddForceChildren(i, OrchestrationStopRoute.ChildFlowKind(code));
                     }
@@ -368,12 +365,12 @@ namespace BTSMTL.Compilation
                     var owners = new HashSet<int>();
                     foreach (int entry in m_TimelineEntries[operation])
                     {
-                        result.Merge(Visit(entry, Phase.Tick, m_Compiler.m_Contract), rows: rows, entries: 1);
+                        result.Merge(Visit(entry, Phase.Tick, OrchestrationExecutionContract.Complete), rows: rows, entries: 1);
                         owners.Add(m_Operations[entry].ExecutionFrameOwnerOperationIndex);
                     }
                     foreach (int owner in owners)
                         foreach (int child in m_OwnerOperations[owner])
-                            result.Merge(Force(child, m_Compiler.m_Contract, new HashSet<int>()), rows: rows);
+                            result.Merge(Force(child, OrchestrationExecutionContract.Complete, new HashSet<int>()), rows: rows);
                 }
 
                 Shape Tick(int operation, OrchestrationExecutionContract contract)
@@ -494,9 +491,8 @@ namespace BTSMTL.Compilation
                             Child(result, m_Structure.StateOnEnterEdges.Span[operation], Phase.Stop, contract, states: 1);
                             Child(result, m_Structure.StateRootEdges.Span[operation], Phase.Stop, contract, states: 1);
                             int exit = m_Structure.StateOnExitEdges.Span[operation];
-                            Child(result, exit, Phase.Tick, contract, states: 1, passesPort: false);
-                            if (exit >= 0)
-                                result.Merge(Force(m_Edges[exit].TargetOperationIndex, contract, new HashSet<int>()));
+                            Child(result, exit, Phase.Tick, OrchestrationExecutionContract.Complete,
+                                states: 1, passesPort: false);
                             return result;
                         }
                         case OrchestrationOperationCode.StateMachine:
@@ -544,6 +540,9 @@ namespace BTSMTL.Compilation
                                 result.States = states;
                                 foreach (int child in m_ForceChildren[operation])
                                     result.Merge(Force(child, contract, visited), states: states);
+                                if (op.Code == OrchestrationOperationCode.State)
+                                    Child(result, m_Structure.StateOnExitEdges.Span[operation], Phase.Tick,
+                                        OrchestrationExecutionContract.Complete, states: 1, passesPort: false);
                             }
                             if (!m_ForceCycles[operation])
                                 m_Shapes.Add(key, result);

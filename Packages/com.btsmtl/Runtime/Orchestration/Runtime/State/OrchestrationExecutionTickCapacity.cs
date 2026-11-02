@@ -339,6 +339,7 @@ namespace BTSMTL.Orchestration
             CapacityMetric m_Metric;
 
             enum CapacityMetric { Evaluations, TraceEvents, StateFrames }
+            enum VisitPhase { Tick, Stop, ForceStop }
 
             internal ProgramAnalysis(OrchestrationProgram<TValue> program,
                 ReadOnlyMemory<OrchestrationExtensionReference> extensions, int programIndex)
@@ -353,8 +354,8 @@ namespace BTSMTL.Orchestration
                     if (program.Operation(operation).Code == OrchestrationOperationCode.State)
                         states.Add(operation);
                 m_States = states.ToArray();
-                m_BoundedVisits = new[] { new long[program.OperationCount], new long[program.OperationCount] };
-                m_ActiveVisits = new[] { new bool[program.OperationCount], new bool[program.OperationCount] };
+                m_BoundedVisits = new[] { new long[program.OperationCount], new long[program.OperationCount], new long[program.OperationCount] };
+                m_ActiveVisits = new[] { new bool[program.OperationCount], new bool[program.OperationCount], new bool[program.OperationCount] };
                 m_ValueVisits = new long[program.ValueEvaluationSlotCount];
                 StopVisits = new long[program.OperationCount];
                 UncountedEvaluations = new long[program.OperationCount];
@@ -376,13 +377,14 @@ namespace BTSMTL.Orchestration
                     for (int output = -1; output < m_Program.Operation(operation).OutputCount; output++)
                         ValueEvaluations = Math.Max(ValueEvaluations, ValueVisits(operation, output));
                     InvocationEvaluations = Math.Max(InvocationEvaluations,
-                        BoundedVisits(operation, false) + BoundedVisits(operation, true));
+                        checked(BoundedVisits(operation, VisitPhase.Tick) + StoppedVisits(operation)));
                 }
-                // 每个操作都作为根，普通停止的上界同时覆盖 ForceStop 单次 visited 上界 1。
                 for (int root = 0; root < m_Program.OperationCount; root++)
                 {
                     Array.Clear(m_StopVisits, 0, m_StopVisits.Length);
-                    VisitOrdinaryStop(root);
+                    VisitStop(root, VisitPhase.Stop);
+                    Array.Clear(m_StopVisits, 0, m_StopVisits.Length);
+                    VisitStop(root, VisitPhase.ForceStop);
                 }
                 AnalyzeValues(-1);
                 foreach (int state in m_States)
@@ -414,11 +416,10 @@ namespace BTSMTL.Orchestration
                 {
                     int target = targets[index];
                     m_CountTarget = target;
-                    Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
-                    Array.Clear(m_BoundedVisits[1], 0, m_BoundedVisits[1].Length);
+                    ClearBoundedVisits();
                     for (int root = 0; root < rootCount; root++)
                         ExecuteVisits[target] = Math.Max(ExecuteVisits[target],
-                            checked(BoundedVisits(roots[root], false) + BoundedVisits(roots[root], true)));
+                            checked(BoundedVisits(roots[root], VisitPhase.Tick) + StoppedVisits(roots[root])));
                 }
             }
 
@@ -433,13 +434,21 @@ namespace BTSMTL.Orchestration
             {
                 m_CountTarget = -1;
                 m_Metric = metric;
-                Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
-                Array.Clear(m_BoundedVisits[1], 0, m_BoundedVisits[1].Length);
+                ClearBoundedVisits();
                 long maximum = 0;
                 for (int root = 0; root < m_Program.OperationCount; root++)
-                    maximum = Math.Max(maximum, checked(BoundedVisits(root, false) + BoundedVisits(root, true)));
+                    maximum = Math.Max(maximum, checked(BoundedVisits(root, VisitPhase.Tick) + StoppedVisits(root)));
                 return maximum;
             }
+
+            void ClearBoundedVisits()
+            {
+                foreach (long[] visits in m_BoundedVisits)
+                    Array.Clear(visits, 0, visits.Length);
+            }
+
+            long StoppedVisits(int index) => Math.Max(BoundedVisits(index, VisitPhase.Stop),
+                BoundedVisits(index, VisitPhase.ForceStop));
 
             long LocalTraceCost(int index, bool stop)
             {
@@ -491,9 +500,10 @@ namespace BTSMTL.Orchestration
                 return count;
             }
 
-            long BoundedVisits(int index, bool stop)
+            long BoundedVisits(int index, VisitPhase phase)
             {
-                int mode = stop ? 1 : 0;
+                int mode = (int)phase;
+                bool stop = phase != VisitPhase.Tick;
                 if (m_BoundedVisits[mode][index] != 0)
                     return m_BoundedVisits[mode][index] - 1;
                 if (m_ActiveVisits[mode][index])
@@ -505,17 +515,18 @@ namespace BTSMTL.Orchestration
                     stop ? 1 : checked(1 + ValueVisits(index, -1));
                 count = checked(count + 2 * InputVisits(index));
                 if (operation.Code == OrchestrationOperationCode.StateMachine)
-                    count = checked(count + StateMachineVisits(index, stop));
+                    count = checked(count + StateMachineVisits(index, phase));
                 else if (operation.Code == OrchestrationOperationCode.State)
                 {
-                    long enter = StateEntryVisits(m_Program.StateOnEnterEdge(index), stop);
-                    long root = StateEntryVisits(m_Program.StateRootEdge(index), stop);
+                    long enter = StateEntryVisits(m_Program.StateOnEnterEdge(index), phase);
+                    long root = StateEntryVisits(m_Program.StateRootEdge(index), phase);
                     count = checked(count + (stop ? Math.Max(enter, root) : checked(enter + root)));
                     if (stop)
-                        count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), false));
+                        count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), VisitPhase.Tick));
                 }
                 else if (operation.Code != OrchestrationOperationCode.Timeline && operation.Code != OrchestrationOperationCode.Succeed &&
-                    (!stop || OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(index))))
+                    (!stop || phase == VisitPhase.ForceStop ||
+                     OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(index))))
                 {
                     OrchestrationFlowKind kind = OrchestrationStopRoute.ChildFlowKind(operation.Code);
                     bool singleStop = operation.Code == OrchestrationOperationCode.Sequence ||
@@ -524,12 +535,12 @@ namespace BTSMTL.Orchestration
                     foreach (int edgeIndex in m_Program.Outgoing(index, kind))
                     {
                         ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(edgeIndex);
-                        long child = BoundedVisits(edge.TargetOperationIndex, stop);
+                        long child = BoundedVisits(edge.TargetOperationIndex, phase);
                         if (stop)
                             count = checked(count + child);
                         else
                         {
-                            long stopped = BoundedVisits(edge.TargetOperationIndex, true);
+                            long stopped = StoppedVisits(edge.TargetOperationIndex);
                             if (singleStop)
                                 stoppedChild = Math.Max(stoppedChild, stopped);
                             else if (operation.Code == OrchestrationOperationCode.Parallel)
@@ -550,20 +561,21 @@ namespace BTSMTL.Orchestration
                 return count;
             }
 
-            long StateMachineVisits(int index, bool stop)
+            long StateMachineVisits(int index, VisitPhase phase)
             {
+                bool stop = phase != VisitPhase.Tick;
                 long maximum = 0;
                 int any = m_Program.AnyStateEntry(index);
                 foreach (int state in m_States)
                 {
                     if (m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex != index)
                         continue;
-                    long stopped = BoundedVisits(state, true);
+                    long stopped = stop ? BoundedVisits(state, phase) : StoppedVisits(state);
                     if (stop)
                         maximum = Math.Max(maximum, stopped);
                     else
                     {
-                        long executed = BoundedVisits(state, false);
+                        long executed = BoundedVisits(state, VisitPhase.Tick);
                         long target = TransitionTargetVisits(state);
                         if (any >= 0)
                             target = Math.Max(target, TransitionTargetVisits(any));
@@ -589,19 +601,19 @@ namespace BTSMTL.Orchestration
                 {
                     int target = m_Program.Edge(edge).TargetOperationIndex;
                     if (m_Program.Operation(target).Code == OrchestrationOperationCode.State)
-                        maximum = Math.Max(maximum, BoundedVisits(target, false));
+                        maximum = Math.Max(maximum, BoundedVisits(target, VisitPhase.Tick));
                 }
                 return maximum;
             }
 
-            long StateEntryVisits(int edgeIndex, bool stop)
+            long StateEntryVisits(int edgeIndex, VisitPhase phase)
             {
                 if (edgeIndex < 0)
                     return 0;
                 int target = m_Program.Edge(edgeIndex).TargetOperationIndex;
-                long count = BoundedVisits(target, stop);
-                return m_Metric != CapacityMetric.Evaluations && !stop
-                    ? checked(count + BoundedVisits(target, true)) : count;
+                long count = BoundedVisits(target, phase);
+                return m_Metric != CapacityMetric.Evaluations && phase == VisitPhase.Tick
+                    ? checked(count + BoundedVisits(target, VisitPhase.ForceStop)) : count;
             }
 
             long TransitionVisits(int index)
@@ -638,8 +650,10 @@ namespace BTSMTL.Orchestration
                 return m_ValueVisits[slot] = count;
             }
 
-            void VisitOrdinaryStop(int operationIndex)
+            void VisitStop(int operationIndex, VisitPhase phase)
             {
+                if (phase == VisitPhase.ForceStop && m_StopVisits[operationIndex] != 0)
+                    return;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                 if (m_ActiveStops[operationIndex])
                     throw new InvalidOperationException($"Tick stop capacity cannot be proven finite: ordinary-stop control cycle reaches operation '{m_Program.ColdOperation(operationIndex).IdentityId}'.");
@@ -652,19 +666,21 @@ namespace BTSMTL.Orchestration
                 {
                     foreach (int state in m_States)
                         if (m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
-                            VisitOrdinaryStop(state);
+                            VisitStop(state, phase);
                 }
                 else if (operation.Code == OrchestrationOperationCode.State)
                 {
                     int enter = m_Program.StateOnEnterEdge(operationIndex);
                     if (enter >= 0)
-                        VisitOrdinaryStop(m_Program.Edge(enter).TargetOperationIndex);
+                        VisitStop(m_Program.Edge(enter).TargetOperationIndex, phase);
                     int root = m_Program.StateRootEdge(operationIndex);
                     if (root >= 0)
-                        VisitOrdinaryStop(m_Program.Edge(root).TargetOperationIndex);
+                        VisitStop(m_Program.Edge(root).TargetOperationIndex, phase);
                 }
-                else if (OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(operationIndex)))
-                    VisitOrdinaryStopChildren(operationIndex, OrchestrationStopRoute.ChildFlowKind(operation.Code));
+                else if (operation.Code != OrchestrationOperationCode.Timeline &&
+                    (phase == VisitPhase.ForceStop || OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, RequiresContinueStop(operationIndex))))
+                    foreach (int edge in m_Program.Outgoing(operationIndex, OrchestrationStopRoute.ChildFlowKind(operation.Code)))
+                        VisitStop(m_Program.Edge(edge).TargetOperationIndex, phase);
                 m_ActiveStops[operationIndex] = false;
             }
 
@@ -677,12 +693,6 @@ namespace BTSMTL.Orchestration
                 m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Extension &&
                 (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].RequiredInvocations &
                     OrchestrationExtensionInvocationKind.ContinueStop) != 0;
-
-            void VisitOrdinaryStopChildren(int operationIndex, OrchestrationFlowKind kind)
-            {
-                foreach (int edge in m_Program.Outgoing(operationIndex, kind))
-                    VisitOrdinaryStop(m_Program.Edge(edge).TargetOperationIndex);
-            }
 
             void AnalyzeValues(int stateContext)
             {
