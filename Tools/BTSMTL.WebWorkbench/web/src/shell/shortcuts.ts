@@ -1,6 +1,7 @@
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { getState } from '../state/store';
 import { transport } from '../state/transport';
+import { quickBounds, quickPlan, quickPreview } from '../state/quickPreview';
 
 // 运行快捷键：绑定到每个有面板的窗口（主窗口与拆出窗口），同一窗口只绑一次。
 const bound = new Map<Window, { count: number; dispose(): void }>();
@@ -29,6 +30,17 @@ function onKeyDown(event: KeyboardEvent, view: Window) {
     return;
   }
   if (getState().capturing || editable(event.target)) return;
+  if (getState().previewMode === 'quick') {
+    const plan = quickPlan();
+    if (plan === null) return;
+    const bounds = quickBounds(plan);
+    const seconds = getState().quickPreview.seconds;
+    const boundaries = [...new Set([bounds.first, bounds.last, ...plan.segments.flatMap(segment => [segment.start, segment.end])])].sort((a, b) => a - b);
+    const value = event.key === 'Home' ? bounds.first : event.key === 'End' ? bounds.last
+      : event.key === 'ArrowLeft' ? boundaries.filter(time => time < seconds).at(-1) : event.key === 'ArrowRight' ? boundaries.find(time => time > seconds) : undefined;
+    if (value !== undefined) { quickPreview.seek(value); event.preventDefault(); }
+    return;
+  }
   switch (event.key) {
     case ' ': transport.toggle(); break;
     case 'ArrowLeft': transport.step(-1); break;

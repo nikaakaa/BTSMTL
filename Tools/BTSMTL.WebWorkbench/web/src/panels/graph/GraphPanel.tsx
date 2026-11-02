@@ -168,7 +168,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const observedCall = quickMode ? null : pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
-  const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
+  const choices = quickMode ? [] : pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = graph.authoringPath;

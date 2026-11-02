@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickConditionPoint, PreviewQuickDescription, PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
 import type { SkillDocumentGraph } from '../../api/authoring';
-import { quickPlan, quickPreview } from '../../state/quickPreview';
+import { quickBounds, quickPlan, quickPlanStale, quickPreview } from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -13,11 +13,6 @@ import { Button, Checkbox, NumberInput, Select, TextInput, Tip } from '../../ui/
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' ? quickPlan() : null);
-
-export function quickBounds(plan: PreviewQuickPlan) {
-  return plan.segments.reduce((range, segment) => ({ first: Math.min(range.first, segment.start), last: Math.max(range.last, segment.end) }),
-    { first: plan.clock.origin, last: plan.clock.origin + plan.duration });
-}
 
 async function locate(location: PreviewQuickLocation) {
   const graphs = Object.values(useAuthoring.getState().documents).flatMap(document => document.documentGraphs ?? []);
@@ -178,10 +173,13 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
 
 function QuickRoute({ plan }: { plan: PreviewQuickPlan }) {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
+  const stale = useWorkbench(quickPlanStale);
+  const accepted = useWorkbench(state => state.quickPreview.accepted);
   const bounds = quickBounds(plan);
   const span = bounds.last - bounds.first;
   return <>
-    <PanelBar wrap><strong>路线推导</strong><span>{plan.status} · {plan.duration.toFixed(3)} {plan.clock.unit}</span></PanelBar>
+    <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong><span>{plan.status} · {plan.duration.toFixed(3)} {plan.clock.unit}</span></PanelBar>
+    {stale && <p className={styles.notice} role="status">当前内容或输入已变化，新计划采用前保留上一份路线。</p>}
     <input className={styles.scrub} type="range" aria-label={`路线游标（${plan.clock.unit}）`} min={bounds.first} max={bounds.last}
       step="any" value={seconds} onChange={event => quickPreview.seek(Number(event.currentTarget.value))} />
     <div className={styles.route}>
@@ -208,7 +206,8 @@ function QuickRoute({ plan }: { plan: PreviewQuickPlan }) {
         <span>{suggestion.start}–{suggestion.end} {plan.clock.unit} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
       </div>)}
     </Fold>
-    <IdentityFold fields={[{ displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
+    <IdentityFold fields={[{ displayName: '结果作业', value: accepted?.jobId ?? '' }, { displayName: '结果来源修订', value: accepted?.request.sourceRevision ?? '' },
+      { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
       { displayName: '输入来源', value: plan.inputSource }, { displayName: '有效输入修订', value: plan.inputRevision },
       { displayName: '实际输入', value: JSON.stringify(plan.inputsUsed) }, { displayName: '实际条件覆盖', value: JSON.stringify(plan.conditionsUsed) }]} />
   </>;
@@ -216,11 +215,13 @@ function QuickRoute({ plan }: { plan: PreviewQuickPlan }) {
 
 export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   const plan = useQuickPlan();
+  const stale = useWorkbench(quickPlanStale);
+  const seconds = useWorkbench(state => state.quickPreview.seconds);
   if (plan === null) return null;
-  const segments = plan.segments.filter(segment => segment.stateSource?.graphId === graph.id);
-  return <PanelBar wrap><strong>路线推导</strong>{segments.length ? segments.map((segment, index) =>
+  const segments = plan.segments.filter(segment => segment.stateSource?.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
+  return <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
     <Button key={index} variant="ghost" tip={`路线区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) void locate(segment.stateSource).catch(error => consoleActions.error('快预览', error)); }}>
-      {segment.state} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前图没有推导区间</span>}
+      {segment.state} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻该图没有推导区间</span>}
   </PanelBar>;
 }

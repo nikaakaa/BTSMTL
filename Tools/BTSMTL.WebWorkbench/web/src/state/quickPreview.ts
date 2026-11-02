@@ -2,11 +2,11 @@ import { previewApi } from '../api/preview';
 import { isAbort } from '../api/http';
 import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInput, PreviewQuickRequest,
-  PreviewQuickSource, PreviewQuickStatusReply, PreviewQuickTarget,
+  PreviewQuickSource, PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
 } from '../api/previewQuickRecords';
 import { authoringTargetKey } from '../api/authoring';
 import { useAuthoring } from './authoring';
-import { consoleActions, getState, selectedScene, useWorkbench } from './store';
+import { consoleActions, contentSelectionKey, getState, selectedScene, useWorkbench } from './store';
 
 type Description = { kind: 'idle' } | { kind: 'loading' } | { kind: 'stale'; reason: string }
   | { kind: 'ready'; reply: PreviewQuickDescriptionReply & { data: PreviewQuickDescription } }
@@ -23,6 +23,7 @@ export interface QuickPreviewState {
   description: Description;
   scheme: number | null;
   job: Job;
+  accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
   seconds: number;
   outputDirectory: string;
 }
@@ -91,7 +92,12 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
   } else if (status !== null && !status.completed) {
     set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason: reply.message ?? status.error ?? '作业未完成，状态读取未获推进回执' } });
   } else {
-    set({ job: selectedRequest(request) ? { kind: 'settled', request, reply } : { kind: 'idle' }, seconds: 0 });
+    const selected = selectedRequest(request);
+    set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' },
+      ...(selected && reply.success && status?.plan ? {
+        accepted: { request, jobId: status.jobId, plan: status.plan }, seconds: status.plan.clock.origin,
+      } : {}),
+    });
   }
   if (!reply.success) consoleActions.log('error', '快预览', `${reply.code ?? ''} ${reply.message ?? status?.error ?? '快预览失败'}`.trim(), reply.rawJson);
 }
@@ -124,8 +130,18 @@ function invalidateJob() {
 }
 
 export function quickPlan() {
+  return current().accepted?.plan ?? null;
+}
+
+export function quickPlanStale() {
   const state = current();
-  return state.job.kind === 'settled' && selectedRequest(state.job.request) ? state.job.reply.data?.plan ?? null : null;
+  return state.accepted !== null && (!selectedRequest(state.accepted.request) ||
+    state.job.kind !== 'settled' || state.job.request !== state.accepted.request);
+}
+
+export function quickBounds(plan: PreviewQuickPlan) {
+  return plan.segments.reduce((range, segment) => ({ first: Math.min(range.first, segment.start), last: Math.max(range.last, segment.end) }),
+    { first: plan.clock.origin, last: plan.clock.origin + plan.duration });
 }
 
 function preparation() {
@@ -156,9 +172,9 @@ function preparation() {
 export const quickPreview = {
   async describe(target: PreviewQuickTarget) {
     descriptionController?.abort();
-    if (targetKey(target) !== targetKey(current().target)) { invalidateJob(); set({ scheme: null }); }
+    if (targetKey(target) !== targetKey(current().target)) { invalidateJob(); set({ scheme: null, accepted: null, seconds: 0 }); }
     const controller = descriptionController = new AbortController();
-    set({ target, description: { kind: 'loading' }, seconds: 0 });
+    set({ target, description: { kind: 'loading' } });
     try {
       const reply = await previewApi.describeQuick(target, controller.signal);
       if (controller.signal.aborted) return;
@@ -183,7 +199,7 @@ export const quickPreview = {
     }
   },
   selectScheme(scheme: number) {
-    set({ scheme });
+    set({ scheme, accepted: null, seconds: 0 });
     invalidateJob();
   },
   outputDirectory(outputDirectory: string) { set({ outputDirectory }); },
@@ -201,7 +217,7 @@ export const quickPreview = {
       ...(rangeEndSeconds === undefined ? {} : { rangeEndSeconds }),
     };
     stopPoll();
-    set({ job: { kind: 'starting', request }, seconds: 0 });
+    set({ job: { kind: 'starting', request } });
     try {
       const reply = await previewApi.planQuick(request);
       if (!ownsRequest(request)) return;
@@ -226,19 +242,31 @@ export const quickPreview = {
   seek(seconds: number) { set({ seconds }); },
   invalidate(reason: string) {
     descriptionController?.abort();
-    set({ description: { kind: 'stale', reason }, seconds: 0 });
+    set({ description: { kind: 'stale', reason } });
     invalidateJob();
+  },
+  clearTarget(reason: string) {
+    set({ target: null, accepted: null, seconds: 0 });
+    quickPreview.invalidate(reason);
   },
 };
 
 useWorkbench.subscribe((state, previous) => {
-  if (state.previewMode !== previous.previewMode || state.contentSelection !== previous.contentSelection ||
+  const contentChanged = contentSelectionKey(state.contentSelection) !== contentSelectionKey(previous.contentSelection);
+  if (state.previewMode !== previous.previewMode || contentChanged ||
     selectedScene(state)?.revision !== selectedScene(previous)?.revision) {
-    if (state.quickPreview.target !== null) quickPreview.invalidate('预览档位或场景来源已变化，请重新读取');
+    if (state.quickPreview.target !== null) {
+      if (contentChanged) quickPreview.clearTarget('场景来源已变化，请重新读取');
+      else quickPreview.invalidate('预览档位或场景来源已变化，请重新读取');
+    }
   }
 });
 
-useAuthoring.subscribe(() => {
+useAuthoring.subscribe((authoring, previous) => {
+  if ((authoring.target?.kind !== previous.target?.kind || authoring.target?.name !== previous.target?.name) && current().target !== null) {
+    quickPreview.clearTarget('作者根已变化，等待对应的正式快预览来源');
+    return;
+  }
   const state = current();
   if (state.description.kind !== 'ready' || state.description.reply.data.source === null) return;
   const issue = quickDraftIssue(state.description.reply.data.source);

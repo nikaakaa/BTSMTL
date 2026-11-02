@@ -605,13 +605,14 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const runId = useWorkbench(state => state.runId);
   const trace = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { inputTimeline, inputRoot, graphs, curves, selectedCurves } = useWorkbench(useShallow(state => ({
     inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
-    curves: state.archiveCurves, selectedCurves: state.selectedCurves,
+    curves: state.previewMode === 'quick' ? null : state.archiveCurves, selectedCurves: state.selectedCurves,
   })));
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => authoringDocument(state).edited);
@@ -641,15 +642,16 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const focused = params.focus === allTimelines ? null : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
-  const receivedSource = useMemo(() => runId !== null && inputObservation.kind === 'ready' ? {
+  const receivedSource = useMemo(() => !quickMode && runId !== null && inputObservation.kind === 'ready' ? {
     jobId: runId, actorId: inputObservation.input.actorId, stepSeconds: inputObservation.stepSeconds, keys: inputObservation.declarations.keys,
-  } : null, [runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
+  } : null, [quickMode, runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
+    if (quickMode) return [];
     for (const playback of playbacks ?? [])
       if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding) &&
         (caller === null || parentCallMatches(caller.call, playback.call))) {
@@ -657,8 +659,8 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
         result.set(observationKey(observation), observation);
       }
     return [...result.values()];
-  }, [playbacks, focused?.documentId, binding, caller]);
-  const pin = params.pin?.runId === runId && params.pin.documentId === focused?.documentId && matchesDocumentCall(params.pin.observation.call, binding)
+  }, [quickMode, playbacks, focused?.documentId, binding, caller]);
+  const pin = !quickMode && params.pin?.runId === runId && params.pin.documentId === focused?.documentId && matchesDocumentCall(params.pin.observation.call, binding)
     ? params.pin : null;
   const observed = pin?.observation ?? observations.find(observation => observationKey(observation) === params.call)
     ?? (observations.length === 1 ? observations[0] : null);
@@ -789,7 +791,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
-    if (inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
+    if (!quickMode && inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
       void transport.seekTime(inputObservation.originSeconds + seconds);
       return;
     }
@@ -803,7 +805,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     if (transport.source() === 'sealed' && playback && state.seconds !== null)
       void transport.seekTime(state.seconds - playback.cursorSeconds + seconds);
     else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
-  }, [observed, focused, step, inputScheme, inputObservation]);
+  }, [quickMode, observed, focused, step, inputScheme, inputObservation]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
   const [pickedKeys, setPickedKeys] = useState<number[]>([]);
   const curveView = useMemo<CurveView>(() => ({
@@ -853,11 +855,11 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     } : null,
     crumbs: [{ label: focused ? timelineName(focused) : '全部 Timeline' }],
   };
-  const clock = useMemo<PreviewClock>(() => inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: inputObservation.kind === 'ready' }
+  const clock = useMemo<PreviewClock>(() => inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: !quickMode && inputObservation.kind === 'ready' }
       : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
-  [focused?.documentId, observed, inputScheme, inputObservation.kind]);
+  [quickMode, focused?.documentId, observed, inputScheme, inputObservation.kind]);
   const curveClock = useWorkbench(useShallow(state => {
-    if (state.seconds === null || (clock.kind === 'input' && !clock.observing)) return null;
+    if (quickMode || state.seconds === null || (clock.kind === 'input' && !clock.observing)) return null;
     const seconds = previewSeconds(state, clock, null);
     return seconds === null ? null : { sourceSeconds: state.seconds, seconds };
   }));
