@@ -81,7 +81,7 @@ namespace BTSMTL.Orchestration
                     Span<TValue> outputs = BorrowOutputs(operationIndex, depth, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, in CurrentStopContext(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
+                        m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                         inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, binding,
                         m_Host.InvokeReadOnly(binding, in invocation));
@@ -246,7 +246,7 @@ namespace BTSMTL.Orchestration
                             : BorrowOutputs(operationIndex, depth, operation.OutputCount);
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
-                            m_Input.Tick, in CurrentStopContext(), StateAncestors(operationIndex),
+                            m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex),
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(

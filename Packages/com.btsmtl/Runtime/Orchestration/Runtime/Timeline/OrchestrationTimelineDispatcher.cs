@@ -15,7 +15,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext,
+            ReadOnlySpan<OrchestrationStopContext> stopContext,
             ref TContext context)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>;
@@ -26,6 +26,6 @@ namespace BTSMTL.Orchestration
             ref ulong playbackIdentity, in TContext context);
 
         void SelectExecutionFrame(int frameSlot, ref TContext context);
-        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context);
+        void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context);
     }
 }

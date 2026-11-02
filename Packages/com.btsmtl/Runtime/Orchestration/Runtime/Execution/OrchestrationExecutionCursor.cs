@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -317,7 +318,7 @@ namespace BTSMTL.Orchestration
                     WriteStopContext(operationIndex, in request);
                     TraceOperation(OrchestrationTraceKind.StopRequested, operationIndex,
                         stopCause: request.Cause);
-                    if (TryRequestLeafStop(operationIndex, in request, out OrchestrationStopStatus requested))
+                    if (TryRequestLeafStop(operationIndex, out OrchestrationStopStatus requested))
                     {
                         if (requested != OrchestrationStopStatus.Running)
                         {
@@ -364,7 +365,7 @@ namespace BTSMTL.Orchestration
                                 OrchestrationExtensionInvocationKind.ContinueStop) != 0;
                         status = OrchestrationStopRoute.OrdinaryStopUsesChildren(operation.Code, continuesStop)
                             ? ContinueDirectChildStop(operationIndex, in context, OrchestrationStopRoute.ChildFlowKind(operation.Code))
-                            : ContinueLeafStop(operationIndex, in context);
+                            : ContinueLeafStop(operationIndex);
                         break;
                 }
                 if (status == OrchestrationStopStatus.Running)
@@ -506,6 +507,9 @@ namespace BTSMTL.Orchestration
 
         ref readonly OrchestrationStopContext ReadStopContext(int operationIndex) =>
             ref OperationState(operationIndex).StopContext;
+
+        public ReadOnlySpan<OrchestrationStopContext> StopContextStorage(int operationIndex) =>
+            MemoryMarshal.CreateSpan(ref OperationState(operationIndex).StopContext, 1);
 
         void WriteStopContext(int operationIndex, in OrchestrationStopContext context) =>
             OperationState(operationIndex).StopContext = context;

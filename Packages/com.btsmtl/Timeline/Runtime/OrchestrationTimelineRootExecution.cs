@@ -164,12 +164,12 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationCandidateState<TValue> candidate, int slot) => Runtime.Playback(candidate.Timeline, slot);
 
         public OrchestrationOperationResult AdvanceLogic(OrchestrationCandidateState<TValue> candidate,
-            int slot, in OrchestrationTimelineStep<OrchestrationTime> step, in OrchestrationStopContext stopContext)
+            int slot, in OrchestrationTimelineStep<OrchestrationTime> step, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var runtime = Runtime;
             OrchestrationTimelineStart<OrchestrationTime> start = runtime.Playback(candidate.Timeline, slot).Start;
             OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginAdvance(candidate.Timeline, slot, step);
-            OrchestrationOperationResult result = Dispatch(candidate, in start, batch, in stopContext);
+            OrchestrationOperationResult result = Dispatch(candidate, in start, batch, stopContext);
             if (result == OrchestrationOperationResult.Failure)
                 return result;
             if (m_LogicSamples != null)
@@ -183,12 +183,12 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public OrchestrationOperationResult Stop(OrchestrationCandidateState<TValue> candidate,
-            int slot, in OrchestrationStopContext stopContext)
+            int slot, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var runtime = Runtime;
             OrchestrationTimelineStart<OrchestrationTime> start = runtime.Playback(candidate.Timeline, slot).Start;
-            OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginStop(candidate.Timeline, slot, in stopContext);
-            OrchestrationOperationResult result = Dispatch(candidate, in start, batch, in stopContext);
+            OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginStop(candidate.Timeline, slot, in stopContext[0]);
+            OrchestrationOperationResult result = Dispatch(candidate, in start, batch, stopContext);
             if (result == OrchestrationOperationResult.Failure)
                 return result;
             runtime.Complete(candidate.Timeline, slot, in batch);
@@ -197,7 +197,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public bool TryPresent(OrchestrationCandidateState<TValue> candidate,
             in TimelineRuntimePresentationSource source, ulong presentationFrame,
-            float deltaSeconds, float interpolationAlpha, in OrchestrationStopContext stopContext,
+            float deltaSeconds, float interpolationAlpha, ReadOnlySpan<OrchestrationStopContext> stopContext,
             out TimelineRuntimePresentationFrame frame)
         {
             if (!m_Presentation.TryPresent(m_Root.Prepared, in source, presentationFrame,
@@ -210,16 +210,16 @@ namespace BTSMTL.Timeline.Runtime
                 TimelineRuntimeTreeClipRequest tree = frame.Operations.TreeClips[index];
                 m_CurrentTree = tree;
                 OrchestrationTimelineInvocationFacts invocation = m_Root.Entries.CreatePresentationInvocation(in frame, in tree);
-                RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, in stopContext), in invocation);
+                RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, stopContext), in invocation);
             }
             for (int index = 0; index < frame.Events.Count; index++)
             {
                 TimelineRuntimePresentationEvent marker = frame.Events[index];
                 OrchestrationTimelineInvocationFacts invocation = m_Root.Entries.CreatePresentationInvocation(in frame, in marker);
-                RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, in stopContext), in invocation);
+                RequireSuccess(Execute(candidate, TimelineExecutionDomain.Presentation, in invocation, stopContext), in invocation);
             }
             if (source.Sample.EndsPlayback)
-                ReleaseFrames(candidate, TimelineExecutionDomain.Presentation, in source.Start, source.Sample.LogicTick, in stopContext);
+                ReleaseFrames(candidate, TimelineExecutionDomain.Presentation, in source.Start, source.Sample.LogicTick, stopContext);
             return true;
         }
 
@@ -231,7 +231,7 @@ namespace BTSMTL.Timeline.Runtime
 
         OrchestrationOperationResult Dispatch(OrchestrationCandidateState<TValue> candidate,
             in OrchestrationTimelineStart<OrchestrationTime> start,
-            OrchestrationTimelineBatch<OrchestrationTime> batch, in OrchestrationStopContext stopContext)
+            OrchestrationTimelineBatch<OrchestrationTime> batch, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var workspace = m_Workspace.View;
             for (int index = 0; index < batch.Invocations.Length; index++)
@@ -241,7 +241,7 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     OrchestrationTimelineInvocationFacts invocation = OrchestrationTimelineDispatch<TValue, TContext,
                         OrchestrationTime, OrchestrationTimeClock>.ReadInvocationFacts(Runtime);
-                    OrchestrationOperationResult result = Execute(candidate, TimelineExecutionDomain.Logic, in invocation, in stopContext);
+                    OrchestrationOperationResult result = Execute(candidate, TimelineExecutionDomain.Logic, in invocation, stopContext);
                     if (result == OrchestrationOperationResult.Failure)
                         return result;
                 }
@@ -252,13 +252,13 @@ namespace BTSMTL.Timeline.Runtime
             }
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed || batch.Status == OrchestrationTimelinePlaybackStatus.Stopped)
                 ReleaseFrames(candidate, TimelineExecutionDomain.Logic, in start,
-                    m_Workspace.View.Operations[batch.PlaybackSlot].Tick, in stopContext);
+                    m_Workspace.View.Operations[batch.PlaybackSlot].Tick, stopContext);
             return OrchestrationOperationResult.Success;
         }
 
         OrchestrationOperationResult Execute(OrchestrationCandidateState<TValue> candidate,
             TimelineExecutionDomain domain, in OrchestrationTimelineInvocationFacts invocation,
-            in OrchestrationStopContext stopContext)
+            ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             OrchestrationTimelineInvocationToken token = invocation.Invocation.Token;
             OrchestrationTimelineInvocationMetadata metadata = m_Invocations[(token.Marker, token.ClipOrdinal, invocation.Invocation.Hook)];
@@ -299,13 +299,13 @@ namespace BTSMTL.Timeline.Runtime
             try
             {
                 TValue time = default(TNumerics).FromTime(invocation.Invocation.Time);
-                OrchestrationOperationResult result = cursor.AdvanceTimeline(in invocation, in time, in stopContext,
+                OrchestrationOperationResult result = cursor.AdvanceTimeline(in invocation, in time, stopContext,
                     input.HasDiagnostics, out OrchestrationTraceContext traceContext);
                 if (invocation.EndsExecutionFrame && !token.Marker &&
                     m_Bindings.ReleaseInvocation(domain, in metadata, in invocation, in header, ref context) != OrchestrationOperationResult.Success)
                     result = OrchestrationOperationResult.Failure;
                 if (invocation.EndsExecutionFrame)
-                    cursor.CompleteTimelineInvocation(in stopContext);
+                    cursor.CompleteTimelineInvocation(stopContext);
                 Consume(domain, programIndex, metadata, in header, in context, in traceContext);
                 return result;
             }
@@ -319,7 +319,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         void ReleaseFrames(OrchestrationCandidateState<TValue> candidate, TimelineExecutionDomain domain,
-            in OrchestrationTimelineStart<OrchestrationTime> start, ulong tick, in OrchestrationStopContext stopContext)
+            in OrchestrationTimelineStart<OrchestrationTime> start, ulong tick, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             OrchestrationExecutionFrames<TValue> frames = candidate.Frames;
             for (int frameSlot = 0; frameSlot < frames.Capacity; frameSlot++)
@@ -339,7 +339,7 @@ namespace BTSMTL.Timeline.Runtime
                 var cursor = candidate.CreateCursor<TNumerics, THost>(m_Graphs.Programs.Span[programIndex].View,
                     m_Scratches[programIndex].View, frameSlot, m_Bindings.CharacterValueSlots(programIndex), in input,
                     m_Graphs.Graphs.Span[programIndex].Identities.Ordinals, host);
-                cursor.ReleaseExecutionFrame(frameSlot, in stopContext);
+                cursor.ReleaseExecutionFrame(frameSlot, stopContext);
                 Consume(domain, programIndex, null, in header, in context, default);
             }
         }

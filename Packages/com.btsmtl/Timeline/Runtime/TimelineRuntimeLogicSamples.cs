@@ -115,7 +115,7 @@ namespace BTSMTL.Timeline.Runtime
                     inputValues.Slice(0, count * TimelineLogicSampleExtension.InputCount),
                     TimelineLogicSampleExtension.InputCount, count, intervalCount);
                 var invocation = new OrchestrationExtensionArguments<TValue>(
-                    OrchestrationExtensionInvocationKind.Execute, operationIndex, operationGeneration, tick, in OrchestrationStopContext.Empty,
+                    OrchestrationExtensionInvocationKind.Execute, operationIndex, operationGeneration, tick, OrchestrationStopContext.EmptyStorage,
                     stateAncestors, executionFrame, rows, Span<TValue>.Empty, default);
                 OrchestrationExtensionResult result = invoker.Invoke(bindingIndex, ref context, in invocation);
                 if (result != OrchestrationExtensionResult.Success)

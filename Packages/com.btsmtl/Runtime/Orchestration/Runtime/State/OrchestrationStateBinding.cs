@@ -252,7 +252,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyOrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionSource<TValue> BorrowExecutionSource(int frameSlot, ulong tick,
-            in OrchestrationStopContext stopContext) =>
-            new OrchestrationExecutionSource<TValue>(Frames, frameSlot, tick, in stopContext);
+            ReadOnlySpan<OrchestrationStopContext> stopContext) =>
+            new OrchestrationExecutionSource<TValue>(Frames, frameSlot, tick, stopContext);
     }
 }

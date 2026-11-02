@@ -19,14 +19,14 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext)
+            ReadOnlySpan<OrchestrationStopContext> stopContext)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>;
 
         OrchestrationTime ReadTime();
         void ReleasePlayback(OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity);
         void SelectExecutionFrame(int frameSlot);
-        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext);
+        void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext);
         OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick);
 
         // 生产与工作台的区别由诊断类型在编译期决定，执行器不做逐节点开关判断。
@@ -117,10 +117,10 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationStopStatus Stop<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
-            in OrchestrationStopContext stopContext)
+            ReadOnlySpan<OrchestrationStopContext> stopContext)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue> =>
-            m_Timeline.Stop(ref cursor, candidate, operationIndex, ref playbackIdentity, in stopContext,
+            m_Timeline.Stop(ref cursor, candidate, operationIndex, ref playbackIdentity, stopContext,
                 ref m_Context);
 
         public OrchestrationTime ReadTime() => m_Timeline.ReadTime();
@@ -130,8 +130,8 @@ namespace BTSMTL.Orchestration
 
         public void SelectExecutionFrame(int frameSlot) => m_Timeline?.SelectExecutionFrame(frameSlot, ref m_Context);
 
-        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext) =>
-            m_Timeline.ReleaseExecutionFrame(frameSlot, in stopContext, ref m_Context);
+        public void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext) =>
+            m_Timeline.ReleaseExecutionFrame(frameSlot, stopContext, ref m_Context);
 
         public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate, int operationIndex, ulong tick) =>
             m_ClipExit.RequestClipExit(candidate, operationIndex, tick, ref m_Context);

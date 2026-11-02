@@ -212,15 +212,15 @@ namespace BTSMTL.Orchestration
 
         void AcceptTerminal(int operationIndex, int playbackSlot, ulong tick,
             in OrchestrationTimelinePlaybackState<TTime> accepted,
-            in OrchestrationStopContext stopContext, ref TContext context);
+            ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context);
 
         OrchestrationOperationResult ExecuteInvocation(in OrchestrationTimelineInvocationFacts invocation,
-            in OrchestrationStopContext stopContext, ref TContext context);
+            ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context);
 
-        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext, ref TContext context);
+        void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context);
 
         void ReleasePlaybackFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
-            in OrchestrationStopContext stopContext, ref TContext context);
+            ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context);
 
         void SelectExecutionFrame(int frameSlot, ref TContext context);
 

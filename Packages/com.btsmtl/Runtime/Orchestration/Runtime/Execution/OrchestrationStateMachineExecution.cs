@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -28,18 +29,20 @@ namespace BTSMTL.Orchestration
                 OrchestrationOperationStatus.Success;
         }
 
-        public ref readonly OrchestrationStopContext CurrentStopContext()
+        public ReadOnlySpan<OrchestrationStopContext> CurrentStopContextStorage()
         {
             if (m_StateDepth != 0)
-                return ref m_States[m_StateDepth - 1].ExitContext;
+                return MemoryMarshal.CreateSpan(ref m_States[m_StateDepth - 1].ExitContext, 1);
             if (!m_InvocationStopContext.IsEmpty)
-                return ref m_InvocationStopContext[0];
+                return m_InvocationStopContext;
             if (m_Blackboards.HasBorrowedSource)
-                return ref m_Blackboards.BorrowedStopContext;
-            return ref OrchestrationStopContext.Empty;
+                return m_Blackboards.BorrowedStopContextStorage;
+            return OrchestrationStopContext.EmptyStorage;
         }
 
-        public OrchestrationStateExitContext CurrentStateExitContext() => new(in CurrentStopContext());
+        public ref readonly OrchestrationStopContext CurrentStopContext() => ref CurrentStopContextStorage()[0];
+
+        public OrchestrationStateExitContext CurrentStateExitContext() => new(CurrentStopContextStorage());
 
         public uint CurrentStateExitCause() => CurrentStateExitContext().Cause;
 
@@ -363,9 +366,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopContext StateExitContext(int stateOperationIndex, in OrchestrationStopContext context)
         {
-            var exit = new OrchestrationStateExitContext(in context);
-            return exit.IsValid && exit.SourceStateOperationIndex == stateOperationIndex &&
-                exit.SourceStateExecutionFrameIndex == m_FrameSlot
+            return context.IsStateExit(stateOperationIndex, m_FrameSlot)
                 ? context : context.ForStateExit(stateOperationIndex, m_FrameSlot);
         }
 

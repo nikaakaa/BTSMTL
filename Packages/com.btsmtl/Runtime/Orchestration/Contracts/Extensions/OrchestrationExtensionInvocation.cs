@@ -27,18 +27,18 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationStopContext> m_StopContext;
 
         public OrchestrationExtensionArguments(OrchestrationExtensionInvocationKind kind,
-            int operationIndex, ulong operationGeneration, ulong tick, in OrchestrationStopContext stopContext,
+            int operationIndex, ulong operationGeneration, ulong tick, ReadOnlySpan<OrchestrationStopContext> stopContext,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
             ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame,
             ReadOnlySpan<TValue> inputs, Span<TValue> outputs,
             in OrchestrationTimelineInvocationFacts timeline)
-            : this(kind, operationIndex, operationGeneration, tick, in stopContext, stateAncestors, executionFrame,
+            : this(kind, operationIndex, operationGeneration, tick, stopContext, stateAncestors, executionFrame,
                 new OrchestrationExtensionInputRows<TValue>(inputs, inputs.Length, 1, 1), outputs, in timeline)
         {
         }
 
         public OrchestrationExtensionArguments(OrchestrationExtensionInvocationKind kind,
-            int operationIndex, ulong operationGeneration, ulong tick, in OrchestrationStopContext stopContext,
+            int operationIndex, ulong operationGeneration, ulong tick, ReadOnlySpan<OrchestrationStopContext> stopContext,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
             ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame,
             OrchestrationExtensionInputRows<TValue> inputRows, Span<TValue> outputs,
@@ -48,7 +48,7 @@ namespace BTSMTL.Orchestration
             OperationIndex = operationIndex;
             OperationGeneration = operationGeneration;
             Tick = tick;
-            m_StopContext = OrchestrationStopContext.Borrow(in stopContext);
+            m_StopContext = stopContext;
             StateAncestors = stateAncestors;
             ExecutionFrame = executionFrame;
             InputRows = inputRows;
@@ -61,8 +61,9 @@ namespace BTSMTL.Orchestration
         public ulong OperationGeneration { get; }
         public ulong Tick { get; }
         public ref readonly OrchestrationStopContext StopContext => ref m_StopContext[0];
+        public ReadOnlySpan<OrchestrationStopContext> StopContextStorage => m_StopContext;
         public uint StopCause => StopContext.Cause;
-        public OrchestrationStateExitContext StateExit => new(in StopContext);
+        public OrchestrationStateExitContext StateExit => new(m_StopContext);
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
         public ReadOnlySpan<OrchestrationExecutionFrameState> ExecutionFrame { get; }
         public OrchestrationExtensionInputRows<TValue> InputRows { get; }
@@ -106,7 +107,7 @@ namespace BTSMTL.Orchestration
             OperationIndex = arguments.OperationIndex;
             OperationGeneration = arguments.OperationGeneration;
             Tick = arguments.Tick;
-            m_StopContext = OrchestrationStopContext.Borrow(in arguments.StopContext);
+            m_StopContext = arguments.StopContextStorage;
             StateAncestors = arguments.StateAncestors;
             InputRows = new OrchestrationExtensionInputRows<TValue, TOperation>(arguments.InputRows);
             m_Outputs = arguments.Outputs;
@@ -119,8 +120,9 @@ namespace BTSMTL.Orchestration
         public ulong OperationGeneration { get; }
         public ulong Tick { get; }
         public ref readonly OrchestrationStopContext StopContext => ref m_StopContext[0];
+        public ReadOnlySpan<OrchestrationStopContext> StopContextStorage => m_StopContext;
         public uint StopCause => StopContext.Cause;
-        public OrchestrationStateExitContext StateExit => new(in StopContext);
+        public OrchestrationStateExitContext StateExit => new(m_StopContext);
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
         public OrchestrationExtensionInputRows<TValue, TOperation> InputRows { get; }
         public ref readonly OrchestrationExecutionFrameState ExecutionFrame => ref m_ExecutionFrame[0];

@@ -67,14 +67,15 @@ namespace BTSMTL.Orchestration
         public OrchestrationExecutionSource<TValue> Borrow()
         {
             var frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan.View, m_Memory);
-            return new OrchestrationExecutionSource<TValue>(frames, 0, m_Tick, in m_StopContext);
+            return new OrchestrationExecutionSource<TValue>(frames, 0, m_Tick,
+                MemoryMarshal.CreateSpan(ref m_StopContext, 1));
         }
 
         public void WriteRecordedState<TWriter>(ref TWriter writer)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(m_Tick);
-            writer.WriteSpan(OrchestrationStopContext.Borrow(in m_StopContext));
+            writer.WriteSpan<OrchestrationStopContext>(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
             foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, m_Memory))
                 writer.WriteSpan<byte>(m_Memory.AsSpan(region.OffsetBytes, region.SizeBytes));
         }

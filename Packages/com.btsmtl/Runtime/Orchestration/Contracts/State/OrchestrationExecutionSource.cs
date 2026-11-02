@@ -7,14 +7,14 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationStopContext> m_StopContext;
 
         internal OrchestrationExecutionSource(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
-            int frameSlot, ulong tick, in OrchestrationStopContext stopContext)
+            int frameSlot, ulong tick, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             Frames = frames;
             SharedFrames = frames;
             SharedFrameSlot = frameSlot;
             FrameSlot = frameSlot;
             Tick = tick;
-            m_StopContext = OrchestrationStopContext.Borrow(in stopContext);
+            m_StopContext = stopContext;
         }
 
         public ReadOnlyOrchestrationExecutionFrames<TValue> Frames { get; }

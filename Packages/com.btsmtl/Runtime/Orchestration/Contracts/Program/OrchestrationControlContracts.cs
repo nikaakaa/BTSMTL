@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace BTSMTL.Orchestration
@@ -128,12 +127,12 @@ namespace BTSMTL.Orchestration
 
     public struct OrchestrationStopContext
     {
-        static readonly OrchestrationStopContext s_Empty;
+        static OrchestrationStopContext s_Empty;
 
         public static ref readonly OrchestrationStopContext Empty => ref s_Empty;
 
-        public static ReadOnlySpan<OrchestrationStopContext> Borrow(in OrchestrationStopContext context) =>
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(context), 1);
+        public static ReadOnlySpan<OrchestrationStopContext> EmptyStorage =>
+            MemoryMarshal.CreateSpan(ref s_Empty, 1);
 
         public OrchestrationStopContext(uint cause, OrchestrationStopMode mode, ulong tick,
             int initiatorOperationIndex, int initiatorExecutionFrameIndex,
@@ -180,6 +179,9 @@ namespace BTSMTL.Orchestration
         internal int StateTargetOperationIndex { get; private set; }
         internal int StateTransitionEdgeIndex { get; private set; }
         public readonly bool IsValid => Mode != 0;
+
+        public readonly bool IsStateExit(int operationIndex, int executionFrameIndex) =>
+            IsValid && StateOperationIndex == operationIndex && StateExecutionFrameIndex == executionFrameIndex;
 
         public readonly OrchestrationStopContext AtOperation(int operationIndex, int executionFrameIndex,
             ulong tick, OrchestrationStopMode mode)
@@ -262,8 +264,7 @@ namespace BTSMTL.Orchestration
     {
         readonly ReadOnlySpan<OrchestrationStopContext> m_Stop;
 
-        public OrchestrationStateExitContext(in OrchestrationStopContext stop) =>
-            m_Stop = OrchestrationStopContext.Borrow(in stop);
+        public OrchestrationStateExitContext(ReadOnlySpan<OrchestrationStopContext> stop) => m_Stop = stop;
 
         ref readonly OrchestrationStopContext Stop => ref m_Stop[0];
 

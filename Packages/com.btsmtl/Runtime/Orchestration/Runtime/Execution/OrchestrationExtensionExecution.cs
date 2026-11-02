@@ -20,7 +20,7 @@ namespace BTSMTL.Orchestration
                         ? exitingStateOperationIndex : -1;
                 var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
-                    m_Input.Tick, in CurrentStopContext(), StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
+                    m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
                     ReadExecutionFrame(operationIndex),
                     Span<TValue>.Empty, Span<TValue>.Empty, in m_TimelineInvocation);
                 m_CurrentOperationIndex = operationIndex;
@@ -42,7 +42,7 @@ namespace BTSMTL.Orchestration
             return result;
         }
 
-        bool TryRequestLeafStop(int operationIndex, in OrchestrationStopContext context,
+        bool TryRequestLeafStop(int operationIndex,
             out OrchestrationStopStatus status)
         {
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
@@ -50,36 +50,37 @@ namespace BTSMTL.Orchestration
                 (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                     OrchestrationExtensionInvocationKind.RequestStop) != 0)
             {
-                status = InvokeExtensionStop(operationIndex, in context, OrchestrationExtensionInvocationKind.RequestStop);
+                status = InvokeExtensionStop(operationIndex, OrchestrationExtensionInvocationKind.RequestStop);
                 return true;
             }
             status = default;
             return false;
         }
 
-        OrchestrationStopStatus ContinueLeafStop(int operationIndex, in OrchestrationStopContext context)
+        OrchestrationStopStatus ContinueLeafStop(int operationIndex)
         {
             if (m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Timeline)
-                return StopTimeline(operationIndex, in context);
-            return InvokeExtensionStop(operationIndex, in context, OrchestrationExtensionInvocationKind.ContinueStop);
+                return StopTimeline(operationIndex);
+            return InvokeExtensionStop(operationIndex, OrchestrationExtensionInvocationKind.ContinueStop);
         }
 
         void ForceStopLeaf(int operationIndex, in OrchestrationStopContext context)
         {
+            WriteStopContext(operationIndex, in context);
             if (m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Timeline)
             {
-                OrchestrationStopStatus status = StopTimeline(operationIndex, in context);
+                OrchestrationStopStatus status = StopTimeline(operationIndex);
                 if (status != OrchestrationStopStatus.Completed)
                     Fail(OrchestrationExecutionErrorCode.TimelineForceStop, operationIndex, detail: (int)status);
                 return;
             }
-            OrchestrationStopStatus result = InvokeExtensionStop(operationIndex, in context,
+            OrchestrationStopStatus result = InvokeExtensionStop(operationIndex,
                 OrchestrationExtensionInvocationKind.ForceStop);
             if (result != OrchestrationStopStatus.Completed)
                 Fail(OrchestrationExecutionErrorCode.ActionForceStop, operationIndex, detail: (int)result);
         }
 
-        OrchestrationStopStatus InvokeExtensionStop(int operationIndex, in OrchestrationStopContext context,
+        OrchestrationStopStatus InvokeExtensionStop(int operationIndex,
             OrchestrationExtensionInvocationKind kind)
         {
             m_CurrentOperationIndex = operationIndex;
@@ -93,7 +94,7 @@ namespace BTSMTL.Orchestration
                 outputs = BorrowOutputs(operationIndex, m_InputDepth, operation.OutputCount);
             }
             var invocation = new OrchestrationExtensionArguments<TValue>(kind,
-                operationIndex, ReadGeneration(operationIndex), m_Input.Tick, in context,
+                operationIndex, ReadGeneration(operationIndex), m_Input.Tick, StopContextStorage(operationIndex),
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
             OrchestrationExtensionResult result = InvokeCandidate(

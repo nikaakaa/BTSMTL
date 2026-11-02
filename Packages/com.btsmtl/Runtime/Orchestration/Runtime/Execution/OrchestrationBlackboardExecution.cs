@@ -171,7 +171,7 @@ namespace BTSMTL.Orchestration
             try
             {
                 var invocation = new OrchestrationExtensionArguments<TValue>(
-                    OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, in CurrentStopContext(),
+                    OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, CurrentStopContextStorage(),
                     StateAncestors(operationIndex),
                     ReadExecutionFrame(operationIndex),
                     inputs, outputs, in m_TimelineInvocation);

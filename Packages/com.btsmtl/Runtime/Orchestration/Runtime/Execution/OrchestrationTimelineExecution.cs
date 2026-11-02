@@ -8,20 +8,24 @@ namespace BTSMTL.Orchestration
         where TNumerics : struct, IOrchestrationNumerics<TValue>
         where THost : struct, IOrchestrationHost<TValue>
     {
-        OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount) =>
-            m_Host.Tick(ref this, m_TimelineState, operationIndex,
+        OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount)
+        {
+            OperationState(operationIndex).StopContext = new OrchestrationStopContext(
+                (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
+                operationIndex, m_FrameSlot);
+            return m_Host.Tick(ref this, m_TimelineState, operationIndex,
                 m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
                 ref OperationState(operationIndex).TimelineRuntimeHandle,
                 InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick);
+        }
 
-        OrchestrationStopStatus StopTimeline(int operationIndex,
-            in OrchestrationStopContext context) =>
+        OrchestrationStopStatus StopTimeline(int operationIndex) =>
             m_Host.Stop(ref this, m_TimelineState, operationIndex,
-                ref OperationState(operationIndex).TimelineRuntimeHandle, in context);
+                ref OperationState(operationIndex).TimelineRuntimeHandle, StopContextStorage(operationIndex));
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
-            in OrchestrationStopContext stopContext, bool captureContext,
+            ReadOnlySpan<OrchestrationStopContext> stopContext, bool captureContext,
             out OrchestrationTraceContext context)
         {
             context = default;
@@ -30,7 +34,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationStopContext> previousStopContext = m_InvocationStopContext;
             m_TimelineInvocation = invocation;
             m_TimelineTime = time;
-            m_InvocationStopContext = OrchestrationStopContext.Borrow(in stopContext);
+            m_InvocationStopContext = stopContext;
             BeginInvocation();
             try
             {
@@ -39,7 +43,7 @@ namespace BTSMTL.Orchestration
                 OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
                 if (exits)
                 {
-                    CloseExecutionFrame(in stopContext);
+                    CloseExecutionFrame(stopContext);
                     entry = new OrchestrationExecutionEntry(entry.OperationIndex,
                         OrchestrationExecutionContract.Complete, entry.InputPortId);
                 }
@@ -66,12 +70,12 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
             m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
 
-        public void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
+        public void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             BeginInvocation();
             try
             {
-                ReleaseFrame(frameSlot, in stopContext);
+                ReleaseFrame(frameSlot, stopContext);
             }
             finally
             {
@@ -79,12 +83,12 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        public void CompleteTimelineInvocation(in OrchestrationStopContext stopContext)
+        public void CompleteTimelineInvocation(ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             m_EntryDepth++;
             try
             {
-                ReleaseFrame(m_FrameSlot, in stopContext);
+                ReleaseFrame(m_FrameSlot, stopContext);
             }
             finally
             {
@@ -92,14 +96,14 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ReleaseFrame(int frameSlot, in OrchestrationStopContext stopContext)
+        void ReleaseFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             int previousFrame = m_FrameSlot;
             int previousOperation = m_CurrentOperationIndex;
             SelectExecutionFrame(frameSlot);
             try
             {
-                CloseExecutionFrame(in stopContext);
+                CloseExecutionFrame(stopContext);
             }
             finally
             {
@@ -109,7 +113,7 @@ namespace BTSMTL.Orchestration
             ClearExecutionFrame(frameSlot);
         }
 
-        void CloseExecutionFrame(in OrchestrationStopContext stopContext)
+        void CloseExecutionFrame(ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             int ownerOperationIndex = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
             for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
@@ -118,15 +122,15 @@ namespace BTSMTL.Orchestration
                     (OperationState(operationIndex).Status == OrchestrationOperationStatus.Running ||
                      OperationState(operationIndex).Status == OrchestrationOperationStatus.Stopping ||
                      OperationState(operationIndex).TimelineRuntimeHandle != 0))
-                    ForceStop(operationIndex, stopContext);
+                    ForceStop(operationIndex, in stopContext[0]);
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&
                     m_Frames.Header(child).ParentFrameIndex == m_FrameSlot)
                 {
                     if (m_Frames.Header(child).SkillContentId == m_Frames.Header(m_FrameSlot).SkillContentId)
-                        ReleaseFrame(child, in stopContext);
+                        ReleaseFrame(child, stopContext);
                     else
-                        m_Host.ReleaseExecutionFrame(child, in stopContext);
+                        m_Host.ReleaseExecutionFrame(child, stopContext);
                 }
         }
 
