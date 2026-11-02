@@ -366,7 +366,7 @@ useWorkbench.subscribe((state, previous) => {
   if (receipt.stage !== saved.receipt.stage) acceptSaveJob(receipt);
 });
 
-async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
+async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const { revision, version } = authoringDocument(useAuthoring.getState(), target);
   const editingView = authoringActions.editingView();
   const isCurrentRequest = () => {
@@ -380,7 +380,7 @@ async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
   }
   try {
     const document = await authoringApi.document(target.name, editingView, signal);
-    signal?.throwIfAborted();
+    signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     setDocument({ documentGraphs: document.graphs, documentRelations: document.relations, sourceRevision: document.sourceRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
@@ -412,8 +412,7 @@ function reconcileSelection() {
 }
 
 // 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
-async function reloadDocument(target = get().target, signal?: AbortSignal) {
-  if (!target) return;
+async function reloadDocument(target: AuthoringTarget, signal: AbortSignal) {
   await readDocument(target, signal);
   if (isActiveTarget(target)) publishDocument();
 }
@@ -484,6 +483,8 @@ export const authoringActions = {
     const current = get().target;
     if (current && authoringTargetKey(current) === authoringTargetKey(target)) target = current;
     loadController?.abort();
+    if (current !== null && authoringDocument(useAuthoring.getState()).loading)
+      setDocument({ loading: false }, current);
     const controller = loadController = new AbortController();
     useWorkbench.setState({ graphRequest: null, timelineRequest: null });
     const state = useAuthoring.getState();
