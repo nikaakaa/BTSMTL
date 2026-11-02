@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
@@ -11,6 +11,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
 import { LocateAssetButton, type AssetLocateTarget } from './LocateAssetButton';
+import { BusinessKeyRename, BusinessKeyRenameReceipt, type BusinessKeyRenameCompletion } from './BusinessKeyRename';
 import styles from './project.module.css';
 
 interface ResourceRow {
@@ -81,20 +82,22 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
   const [refresh, setRefresh] = useState(0);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [migration, setMigration] = useState<BusinessKeyRenameCompletion | null>(null);
+  const carrierRevision = useAuthoring(state => state.carrierRevision);
   useEffect(() => { if (focusTarget !== null) { setSelected(focusTarget.carrierIdentity); setSearch(''); } }, [focusTarget]);
   const { target, preview } = useAuthoring(useShallow(state => ({ target: state.target, preview: authoringDocument(state).previewDefinitionGuid })));
   useEffect(() => {
+    if (catalog !== null && catalog.authoringRevision === carrierRevision) return;
     const controller = new AbortController();
-    setCatalog(null);
     setFailure(null);
     authoringApi.carriers(controller.signal).then(value => {
-      useAuthoring.setState({ carrierRevision: value.authoringRevision });
       setCatalog(value);
+      useAuthoring.setState({ carrierRevision: value.authoringRevision });
     }, error => {
       if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
-  }, [refresh]);
+  }, [refresh, carrierRevision]);
   const shown = useMemo(() => {
     const query = search.toLocaleLowerCase();
     return (catalog?.items ?? []).filter(item => `${item.name} ${item.source} ${item.identity}`.toLocaleLowerCase().includes(query));
@@ -102,11 +105,18 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
   const carrier = catalog?.items.find(item => item.identity === selected) ?? null;
   const currentPreview = catalog?.items.find(item => item.identity === preview) ?? null;
   const selectedIndex = shown.findIndex(item => item.identity === selected);
+  const onMigrationRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'] = (result, value) => {
+    setMigration({ result, refresh: value });
+    if (value.catalog !== null) {
+      setCatalog(value.catalog);
+      useAuthoring.setState({ carrierRevision: value.catalog.authoringRevision });
+    }
+  };
   return <div className={styles.catalog}>
     <div className={styles.browser}>
       <PanelBar>
         <TextInput aria-label="搜索载体" placeholder="搜索载体名称、来源" value={search} className={styles.search} onChange={event => setSearch(event.currentTarget.value)} />
-        <Button variant="ghost" onClick={() => setRefresh(value => value + 1)}>刷新</Button>
+        <Button variant="ghost" onClick={() => { setCatalog(null); setRefresh(value => value + 1); }}>刷新</Button>
       </PanelBar>
       {failure ? <ErrorLine {...failure} /> : catalog === null ? <Empty text="正在读取已保存载体" /> :
         !catalog.availability.available ? <Empty text={catalog.availability.reason} /> :
@@ -135,14 +145,22 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
           {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
           {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
         </div>
-        <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
+        {migration?.result.target.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
+          onRefreshed={onMigrationRefreshed} />}
+        <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
+          onSaved={result => setMigration({ result, refresh: null })}
+          onRefreshed={onMigrationRefreshed} />
       </> : <Empty text={catalog?.availability.available && focusTarget !== null && selected === focusTarget.carrierIdentity
         ? `引用的来源载体已失效，原身份已保留：${focusTarget.carrierIdentity}` : '选择载体查看表现资源与锚点'} />}
     </div>
   </div>;
 }
 
-function CarrierResources({ carrier, target }: { carrier: AuthoringCarrier; target: ProfileEntryTarget | null }) {
+function CarrierResources({ carrier, target, onSaved, onRefreshed }: {
+  carrier: AuthoringCarrier; target: ProfileEntryTarget | null;
+  onSaved: ComponentProps<typeof BusinessKeyRename>['onSaved'];
+  onRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'];
+}) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<string | null>(null);
   const [selection, setSelection] = useState<ProfileEntryTarget | null>(null);
@@ -190,6 +208,12 @@ function CarrierResources({ carrier, target }: { carrier: AuthoringCarrier; targ
       {selected.detail && <span>{selected.detail}</span>}
       <LocateAssetButton key={selected.location.kind === 'asset' ? selected.location.identity : JSON.stringify(resourceTarget(carrier, selected))}
         target={selected.location} />
+      {selected.entryKind !== 'audio-sound' && <BusinessKeyRename key={referenceTargetKey(resourceTarget(carrier, selected))}
+        target={resourceTarget(carrier, selected)} onSaved={onSaved} onRefreshed={(result, value) => {
+          if (value.catalog !== null) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.target)
+            ? { ...result.target, key: result.newKey } : current);
+          onRefreshed(result, value);
+        }} />}
       {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
         onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}

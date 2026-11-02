@@ -603,7 +603,7 @@ export const authoringActions = {
     const catalog = catalogResult.status === 'fulfilled' ? catalogResult.value : null;
     if (catalogResult.status === 'rejected') failures.push({ text: '业务键已保存，载体目录重新读取失败',
       entryId: consoleActions.error('Project', catalogResult.reason) });
-    const conflicts = businessKeyMigrationConflicts(result);
+    const conflicts = businessKeyMigrationConflicts(result, useAuthoring.getState(), 'refresh');
     const blocked = new Set(conflicts.map(item => item.owner));
     const documents = { ...useAuthoring.getState().documents };
     snapshots.forEach((snapshot, index) => {
@@ -1170,14 +1170,14 @@ function businessKeyMigrationFiles(plan: BusinessKeyRenameResult) {
   return owners;
 }
 
-export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState()) {
+export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState(), phase: 'commit' | 'refresh' = 'commit') {
   const conflicts: { owner: string; path: string; reason: string }[] = [];
   for (const { target, paths } of businessKeyMigrationFiles(plan).values()) {
     const document = state.documents[authoringTargetKey(target)];
     if (document === undefined) continue;
     for (const path of paths) {
       const reason = document.saving ? '正在保存' : document.loading ? '正在读取'
-        : document.externalChange ? '磁盘来源已变化'
+        : phase === 'commit' && document.externalChange ? '磁盘来源已变化'
         : Object.hasOwn(document.edited, path) || document.removed.includes(path) ? '有未保存修改' : null;
       if (reason !== null) conflicts.push({ owner: target.name, path, reason });
     }
