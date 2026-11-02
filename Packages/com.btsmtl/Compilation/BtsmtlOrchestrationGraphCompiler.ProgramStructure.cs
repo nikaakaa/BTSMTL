@@ -608,7 +608,7 @@ namespace BTSMTL.Compilation
                         }
                     }
 
-                    CompleteResult Sequence(int operation, int port = -1)
+                    CompleteResult Sequence(int operation, int port = -1, bool conditions = false)
                     {
                         CompleteResult result = CompleteResult.Success;
                         foreach (int edge in structure.Outgoing(operation, OrchestrationFlowKind.Child))
@@ -617,8 +617,9 @@ namespace BTSMTL.Compilation
                                 continue;
                             if ((result & CompleteResult.Success) == 0)
                                 break;
-                            result = (result & ~CompleteResult.Success) | Visit(edges[edge].TargetOperationIndex,
-                                edges[edge].TargetPortId);
+                            CompleteResult child = Visit(edges[edge].TargetOperationIndex, edges[edge].TargetPortId);
+                            result = (result & ~CompleteResult.Success) | child |
+                                (conditions && edges[edge].HasCondition ? CompleteResult.Failure : 0);
                         }
                         return result;
                     }
@@ -637,8 +638,9 @@ namespace BTSMTL.Compilation
                         switch (op.Code)
                         {
                             case OrchestrationOperationCode.Root:
-                            case OrchestrationOperationCode.Sequence:
                                 return Sequence(operation);
+                            case OrchestrationOperationCode.Sequence:
+                                return Sequence(operation, conditions: true);
                             case OrchestrationOperationCode.StateOnEnter:
                             case OrchestrationOperationCode.StateOnExit:
                             case OrchestrationOperationCode.TimelineEnter:

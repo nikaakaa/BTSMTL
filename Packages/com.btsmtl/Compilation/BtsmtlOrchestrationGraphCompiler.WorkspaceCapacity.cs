@@ -403,8 +403,7 @@ namespace BTSMTL.Compilation
                         case OrchestrationOperationCode.Sequence:
                         case OrchestrationOperationCode.Parallel:
                             Children(result, operation, OrchestrationFlowKind.Child, Phase.Tick, contract,
-                                conditions: op.Code == OrchestrationOperationCode.Parallel || contract == OrchestrationExecutionContract.Resumable,
-                                stops: op.Code == OrchestrationOperationCode.Parallel || contract == OrchestrationExecutionContract.Resumable);
+                                conditions: true, stops: true);
                             return result;
                         case OrchestrationOperationCode.Selector:
                             foreach (int edge in m_Structure.Outgoing(operation, OrchestrationFlowKind.Child))
