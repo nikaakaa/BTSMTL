@@ -133,7 +133,7 @@ namespace BTSMTL.Orchestration
         public static ref readonly OrchestrationStopContext Empty => ref s_Empty;
 
         public static ReadOnlySpan<OrchestrationStopContext> Borrow(in OrchestrationStopContext context) =>
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in context), 1);
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(context), 1);
 
         public OrchestrationStopContext(uint cause, OrchestrationStopMode mode, ulong tick,
             int initiatorOperationIndex, int initiatorExecutionFrameIndex,
