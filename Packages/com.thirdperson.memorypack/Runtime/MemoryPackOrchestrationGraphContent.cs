@@ -14,6 +14,14 @@ namespace ThirdPersonSimulation.Serialization
         public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/10";
         const string OrchestrationEnvelopeContract = "btsmtl.graph-blocks/9";
 
+        public static StableHash FPEncodingIdentity { get; } = StableHash.Compute(
+            FPOrchestrationContractIdentity, OrchestrationEnvelopeContract,
+            MemoryPackContent.GetSchemaHash<GraphExecutionIdentity>().Value,
+            MemoryPackContent.GetSchemaHash<OrchestrationGraphStructure>().Value,
+            MemoryPackContent.GetSchemaHash<OrchestrationGraphParameters<FPValue>>().Value,
+            MemoryPackContent.GetSchemaHash<OrchestrationGraphSourceMap>().Value,
+            MemoryPackContent.GetSchemaHash<(string, GraphExecutionIdentity, byte[], byte[], byte[])>().Value);
+
         sealed class EncodedGraphBlock
         {
             internal EncodedGraphBlock(byte[] bytes)
