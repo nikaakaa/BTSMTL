@@ -27,6 +27,7 @@ namespace BTSMTL.Authoring
         public string KeyKind { get; }
         public BtsmtlBusinessKeyRole Role { get; }
         public string KindParameter { get; set; }
+        public Type KindType { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
@@ -65,6 +66,7 @@ namespace BTSMTL.Authoring
         public BtsmtlBusinessKeyRole Role { get; }
         public System.Collections.Generic.IReadOnlyList<Type> ParameterTypes { get; }
         public string KindParameter { get; set; }
+        public Type KindType { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Assembly)]

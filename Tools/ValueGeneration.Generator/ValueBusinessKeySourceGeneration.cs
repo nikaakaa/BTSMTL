@@ -195,10 +195,17 @@ namespace ThirdPerson.ValueGeneration.Generator
                     reason = "业务键语义必须声明正式 domain，并选择固定 keyKind 或真实枚举参数 KindParameter";
                 else if (declaration.Role != 0 && declaration.Role != 1)
                     reason = "业务键语义 role 必须为 Declaration 或 Reference";
-                else if (declaration.KindParameter != null && (!(symbol is IParameterSymbol keyParameter) ||
-                    !(keyParameter.ContainingSymbol is IMethodSymbol method) || !method.Parameters.Any(candidate =>
-                        candidate.Name == declaration.KindParameter && candidate.Type.TypeKind == TypeKind.Enum)))
-                    reason = "KindParameter 必须绑定同一方法的真实枚举参数";
+                else if (declaration.KindType != null && declaration.KindParameter == null)
+                    reason = "KindType 只用于同次调用的 KindParameter 语义";
+                else if (declaration.KindParameter != null)
+                {
+                    IParameterSymbol selector = symbol is IParameterSymbol keyParameter && keyParameter.ContainingSymbol is IMethodSymbol method
+                        ? method.Parameters.SingleOrDefault(candidate => candidate.Name == declaration.KindParameter) : null;
+                    ITypeSymbol kindType = declaration.KindType ?? selector?.Type;
+                    if (selector == null || kindType?.TypeKind != TypeKind.Enum ||
+                        !(SymbolEqualityComparer.Default.Equals(selector.Type, kindType) || IsBusinessKeyIntegral(selector.Type.SpecialType)))
+                        reason = "KindParameter 必须绑定同一方法的正式枚举参数，或由 KindType 显式声明该整数参数的正式枚举";
+                }
                 if (reason != null) Report(declaration.Attribute, BusinessKeySymbol(symbol), reason);
             }
 
@@ -261,8 +268,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                     failure = "business_key_kind_nonconstant";
                     return null;
                 }
-                string[] kinds = ((INamedTypeSymbol)selector.Parameter.Type).GetMembers().OfType<IFieldSymbol>()
-                    .Where(field => field.HasConstantValue && Equals(field.ConstantValue, selector.Value.ConstantValue.Value))
+                var kindType = (INamedTypeSymbol)(declaration.KindType ?? selector.Parameter.Type);
+                decimal kindValue = Convert.ToDecimal(selector.Value.ConstantValue.Value, CultureInfo.InvariantCulture);
+                string[] kinds = kindType.GetMembers().OfType<IFieldSymbol>()
+                    .Where(field => field.HasConstantValue && Convert.ToDecimal(field.ConstantValue, CultureInfo.InvariantCulture) == kindValue)
                     .SelectMany(field => field.GetAttributes()).Where(attribute => Identity(attribute.AttributeClass) == BusinessKeyKindAttribute &&
                         (string)attribute.ConstructorArguments[0].Value == declaration.Domain)
                     .Select(attribute => (string)attribute.ConstructorArguments[1].Value).Distinct(StringComparer.Ordinal).ToArray();
@@ -278,6 +287,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 InvalidValueDeclaration, attribute.ApplicationSyntaxReference?.GetSyntax(m_Context.CancellationToken).GetLocation(), symbol, reason));
 
             static string BindingKey(ISymbol symbol) => symbol.ContainingAssembly.Identity + ":" + BusinessKeySymbol(symbol);
+
+            static bool IsBusinessKeyIntegral(SpecialType type) => type == SpecialType.System_Byte || type == SpecialType.System_SByte ||
+                type == SpecialType.System_Int16 || type == SpecialType.System_UInt16 || type == SpecialType.System_Int32 ||
+                type == SpecialType.System_UInt32 || type == SpecialType.System_Int64 || type == SpecialType.System_UInt64;
 
             void AddConstant(ISymbol symbol, ExpressionSyntax expression)
             {
@@ -367,6 +380,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 internal readonly string KeyKind;
                 internal readonly int Role;
                 internal readonly string KindParameter;
+                internal readonly ITypeSymbol KindType;
 
                 internal BusinessKeyDeclaration(AttributeData attribute, string domain, string keyKind, int role)
                 {
@@ -376,6 +390,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Role = role;
                     KindParameter = attribute.NamedArguments.Where(argument => argument.Key == "KindParameter")
                         .Select(argument => (string)argument.Value.Value).SingleOrDefault();
+                    KindType = attribute.NamedArguments.Where(argument => argument.Key == "KindType")
+                        .Select(argument => (ITypeSymbol)argument.Value.Value).SingleOrDefault();
                 }
             }
 
