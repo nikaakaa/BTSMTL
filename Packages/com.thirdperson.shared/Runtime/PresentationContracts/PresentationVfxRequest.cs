@@ -1,11 +1,13 @@
+using BTSMTL.Authoring;
+
 namespace ThirdPersonSimulation
 {
     public enum PresentationVfxCommand : byte
     {
-        Play = 1,
-        Stop = 2,
-        Destroy = 3,
-        MaintainStateModifier = 4
+        [BtsmtlBusinessKeyKind("Vfx", "vfx-request")] Play = 1,
+        [BtsmtlBusinessKeyKind("Vfx", "vfx-request")] Stop = 2,
+        [BtsmtlBusinessKeyKind("Vfx", "vfx-request")] Destroy = 3,
+        [BtsmtlBusinessKeyKind("Vfx", "vfx-state-modifier")] MaintainStateModifier = 4
     }
 
     public enum PresentationVfxTarget : byte
@@ -25,8 +27,12 @@ namespace ThirdPersonSimulation
     public readonly partial struct PresentationVfxRequest
     {
         public PresentationVfxRequest(
-            PresentationVfxCommand command, string requestId, string resourceId,
-            PresentationVfxTarget target, string anchorKey, bool hasPoseOverride,
+            PresentationVfxCommand command,
+            [BtsmtlBusinessKey("Vfx", BtsmtlBusinessKeyRole.Reference, KindParameter = nameof(command))] string requestId,
+            [BtsmtlBusinessKey("Vfx", "vfx-resource", BtsmtlBusinessKeyRole.Reference)] string resourceId,
+            PresentationVfxTarget target,
+            [BtsmtlBusinessKey("Vfx", "vfx-anchor", BtsmtlBusinessKeyRole.Reference)] string anchorKey,
+            bool hasPoseOverride,
             PresentationVfxCoordinatesOption coordinatesOption,
             float localPositionX, float localPositionY, float localPositionZ,
             float localEulerAnglesX, float localEulerAnglesY, float localEulerAnglesZ,

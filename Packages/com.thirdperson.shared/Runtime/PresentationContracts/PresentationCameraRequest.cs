@@ -1,5 +1,7 @@
 using System;
 
+using BTSMTL.Authoring;
+
 namespace ThirdPersonSimulation
 {
     public enum PresentationCameraRequestKind : byte
@@ -145,14 +147,14 @@ namespace ThirdPersonSimulation
 
         public static PresentationCameraRequest Sequence(
             PresentationCameraRequestLifecycle lifecycle,
-            string sequenceId,
+            [BtsmtlBusinessKey("Camera", "camera-sequence", BtsmtlBusinessKeyRole.Reference)] string sequenceId,
             int mode,
             int interruptPolicy,
             int priority,
             float weight,
             float blendInSeconds,
             float blendOutSeconds,
-            string targetKey) =>
+            [BtsmtlBusinessKey("Camera", "camera-target", BtsmtlBusinessKeyRole.Reference)] string targetKey) =>
             new PresentationCameraRequest(
                 PresentationCameraRequestKind.Sequence,
                 lifecycle,
@@ -241,7 +243,7 @@ namespace ThirdPersonSimulation
 
         public static PresentationCameraRequest Target(
             PresentationCameraRequestLifecycle lifecycle,
-            string targetKey,
+            [BtsmtlBusinessKey("Camera", "camera-target", BtsmtlBusinessKeyRole.Reference)] string targetKey,
             string anchorKey,
             string aimPointKey,
             string preferredBoneKey,
