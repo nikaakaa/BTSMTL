@@ -14,6 +14,8 @@ public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, str
     public string? ObjectHandle { get; init; }
     public string? ObjectKind { get; init; }
     public int? DefinitionIndex { get; init; }
+    public int? ProgramIndex { get; init; }
+    public PreviewObservationAvailability? ObjectAvailability { get; init; }
 }
 public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, string NodeId,
     string Kind, string Generation, string? Result, PreviewExecutionCall? Call)

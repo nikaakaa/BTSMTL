@@ -7,13 +7,14 @@ namespace BTSMTL.Orchestration
     public readonly partial struct OrchestrationTraceObjectIdentity : IEquatable<OrchestrationTraceObjectIdentity>
     {
         public OrchestrationTraceObjectIdentity(ObjectHandle handle, int slot, int kind, int definitionIndex,
-            int programIndex)
+            int programIndex, OrchestrationTraceAvailability availability = OrchestrationTraceAvailability.Available)
         {
             Handle = handle;
             Slot = slot;
             Kind = kind;
             DefinitionIndex = definitionIndex;
             ProgramIndex = programIndex;
+            Availability = availability;
         }
 
         public ObjectHandle Handle { get; }
@@ -21,14 +22,17 @@ namespace BTSMTL.Orchestration
         public int Kind { get; }
         public int DefinitionIndex { get; }
         public int ProgramIndex { get; }
-        public bool HasValue => !Handle.IsEmpty;
+        public OrchestrationTraceAvailability Availability { get; }
+        public bool HasValue => Availability == OrchestrationTraceAvailability.Available && !Handle.IsEmpty;
+        public static OrchestrationTraceObjectIdentity NotApplicable =>
+            new OrchestrationTraceObjectIdentity(default, 0, 0, 0, 0, OrchestrationTraceAvailability.NotApplicable);
 
         public bool Equals(OrchestrationTraceObjectIdentity other) =>
             Handle.Equals(other.Handle) && Slot == other.Slot && Kind == other.Kind &&
-            DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex;
+            DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex && Availability == other.Availability;
 
         public override bool Equals(object obj) => obj is OrchestrationTraceObjectIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex);
+        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex, Availability);
     }
 
     public enum OrchestrationTraceKind : byte
