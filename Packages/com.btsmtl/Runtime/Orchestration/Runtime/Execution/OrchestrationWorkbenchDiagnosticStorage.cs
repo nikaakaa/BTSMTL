@@ -570,7 +570,9 @@ namespace BTSMTL.Orchestration
             scope.InvocationSourceIndex = invocation.SourceIndex;
             scope.ParentInvocationSourceIndex = parentIndex < 0 ? -1 : m_TraceInvocations[parentIndex].SourceIndex;
             scope.Iteration = cursor.ChildCursor(operationIndex);
-            scope.Generation = cursor.ReadGeneration(operationIndex);
+            bool runnable = cursor.Program.Operation(operationIndex).IsRunnable;
+            scope.Generation = runnable ? cursor.ReadGeneration(operationIndex) : 0;
+            scope.Activation = runnable ? OrchestrationTraceAvailability.Available : OrchestrationTraceAvailability.NotApplicable;
             scope.ActionInstanceId = frame.ActionInstanceId;
             scope.ExecutionGeneration = frame.Generation;
             scope.InvocationGeneration = ReadInvocationGeneration(ref cursor, invocationIndex, operationIndex, out _);

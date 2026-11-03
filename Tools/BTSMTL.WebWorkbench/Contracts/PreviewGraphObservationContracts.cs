@@ -27,8 +27,11 @@ public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, stri
     public uint? StopCause { get; init; }
     public string? StopMode { get; init; }
 }
-public sealed record PreviewLoopScope(string GraphId, string NodeId, string Generation, int Iteration,
-    PreviewExecutionCall Call);
+public sealed record PreviewLoopScope(string GraphId, string NodeId, string? Generation, int Iteration,
+    PreviewExecutionCall Call)
+{
+    public PreviewObservationAvailability? ActivationAvailability { get; init; }
+}
 public sealed record PreviewEdgeOccurrence(string Sequence, string GraphId, string EdgeId,
     bool Selected, bool Passed, PreviewExecutionCall? Call);
 public sealed record PreviewPortSample(string Sequence, string GraphId, string NodeId, string PortId,

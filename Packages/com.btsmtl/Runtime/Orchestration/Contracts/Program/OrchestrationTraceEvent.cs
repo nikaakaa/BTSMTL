@@ -65,17 +65,18 @@ namespace BTSMTL.Orchestration
         public int ParentInvocationSourceIndex;
         public int Iteration;
         public ulong Generation;
+        public OrchestrationTraceAvailability Activation;
         public ulong ActionInstanceId;
         public ulong ExecutionGeneration;
         public ulong InvocationGeneration;
         public ulong ParentInvocationGeneration;
         public ulong PlaybackIdentity;
-        public bool HasValue => Generation != 0;
+        public bool HasValue => Iteration > 0;
 
         public bool Equals(in OrchestrationTraceLoopScope other) =>
             OperationIndex == other.OperationIndex && InvocationSourceIndex == other.InvocationSourceIndex &&
             ParentInvocationSourceIndex == other.ParentInvocationSourceIndex && Iteration == other.Iteration &&
-            Generation == other.Generation && ActionInstanceId == other.ActionInstanceId &&
+            Generation == other.Generation && Activation == other.Activation && ActionInstanceId == other.ActionInstanceId &&
             ExecutionGeneration == other.ExecutionGeneration && InvocationGeneration == other.InvocationGeneration &&
             ParentInvocationGeneration == other.ParentInvocationGeneration && PlaybackIdentity == other.PlaybackIdentity;
     }
