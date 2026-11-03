@@ -76,7 +76,7 @@ interface SaveOutcomeMessage {
 }
 
 export type SaveOutcome = SaveOutcomeMessage & (
-  | { saved: true; compilationState: 'succeeded'; preview: PlayerSkillRefreshReceipt | null }
+  | (SavedCompilation & { preview: PlayerSkillRefreshReceipt | null })
   | { saved: true; compilationState: 'not-required'; preview: PlayerCommandReceipt | null }
   | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
   | { saved: false | null; compilationState: null; preview: null }
@@ -154,7 +154,7 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
-type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState'>;
+type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
@@ -190,9 +190,9 @@ const previewMessages = {
 function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
   const detail = preview === null ? noPreviewReason : `${previewMessages[preview.stage]}${preview.error === null ? '' : `：${preview.error}`}`;
   return {
-    saved: save.saved, compilationState: save.compilationState, preview,
+    saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, preview,
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
-    message: `已保存，编译通过；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
+    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
   };
 }
 
@@ -256,9 +256,10 @@ async function trackPreview(input: {
     await Promise.all([playerService.refresh(), session.refresh()]);
   } catch (error) {
     if (isAbort(error)) return;
+    const outcome = savedOutcome(input.save, receipt, '');
     setDocument({ lastSave: {
-      ...savedOutcome(input.save, receipt, ''), ok: false,
-      message: `已保存，编译通过；${receipt.stage === 'adopted' ? '采用后封存' : '预览状态读取'}失败：${error instanceof Error ? error.message : String(error)}`,
+      ...outcome, ok: false,
+      message: `${outcome.message}；${receipt.stage === 'adopted' ? '采用后封存' : '预览状态读取'}失败：${error instanceof Error ? error.message : String(error)}`,
     } });
     consoleActions.error('预览', error);
   }
@@ -742,7 +743,7 @@ export const authoringActions = {
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
       const currentSkill = accept(result.content, outcome);
-      consoleActions.log('info', '作者', `${target.name} 已保存并编译：${result.compilation.sourceRevision}`);
+      consoleActions.log(outcome.ok ? 'info' : 'error', '作者', `${target.name}：${outcome.message}`, JSON.stringify(result, null, 2));
       if (currentSkill && result.preview !== null && !controller.signal.aborted) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
         void trackPreview({ save: result, receipt: result.preview, controller, viewport });

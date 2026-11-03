@@ -1,7 +1,8 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
-import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget, SourceFile } from './types';
+import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
-import { readPlayerCommandReceipt, readPlayerJobReceipt, type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
+import { array, boolean, choice, nullable, number, object, opaque, optional, readPlayerCommandReceipt, readPlayerCommandResult, readPlayerJobReceipt, text,
+  type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -405,12 +406,33 @@ interface Page<T> {
 
 // 保存：宿主写入文件后用正式编译器编译本技能。成功为 200 与编译回执；
 // 严格读取或编译拒绝为 422，文件仍已保存（saved=true），附原诊断。
-export interface SkillCompilation {
-  compilationKey: string;
-  sourceRevision: string;
-  artifactReceiptPath: string;
-  reused: boolean;
-}
+const graphCompilationWork = choice('Unchanged', 'Sources', 'Parameters', 'Structure');
+const graphPublication = (value: unknown, path = 'Publication.graph') => typeof value === 'object' && value !== null && 'stage' in value
+  ? object({ stage: choice('prepared-by-earlier-skill') })(value, path)
+  : object({ work: graphCompilationWork, milliseconds: object({ encoding: number, total: number }) })(value, path);
+const publicationResult = object({
+  stage: text, root: text, ability: text, sourceRevision: text, entryGraphId: text,
+  graphs: array(object({
+    graphId: text, dependencies: array(opaque), operations: number, sources: number, encodingContract: text, nodeContract: text,
+    numericTarget: text, numericProfile: opaque, structureIdentity: text, parameterIdentity: text, targetParameterIdentity: text,
+    sourceIdentity: text, stateLayoutIdentity: text, executionIdentity: text, contentIdentity: text,
+    compilation: object({ work: nullable(graphCompilationWork), milliseconds: object({ frontend: number, fpAndHash: number }) }),
+    publication: graphPublication,
+  })),
+  output: text, publicationOutput: text, publicationHash: text, publicationEncoding: text,
+  files: array(object({ graphId: nullable(text), kind: text, path: text, stage: text })),
+  spawns: array(opaque), carrierDefinitions: array(opaque), timelineIds: array(text), scalarConversions: array(opaque),
+  scalarRoundingMessage: nullable(text), diagnostics: array(opaque), editorInstallation: text, contentLoad: text, sessionAdoption: text,
+  milliseconds: object({ read: number, compile: number, prepare: number }), success: optional(boolean),
+  receiptFile: optional(object({ path: text, stage: text })),
+  transaction: optional(object({ scope: text, requestCount: number, writtenFileCount: number,
+    milliseconds: object({ prepare: number, commit: number }) })),
+});
+const readSkillCompilation = object({
+  compilationKey: text, sourceRevision: text, artifactReceiptPath: text, artifactReused: boolean,
+  publicationResult: nullable(publicationResult),
+});
+export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
 
 export interface CompiledSkillSaveResult {
   saved: true;
@@ -455,11 +477,7 @@ interface SkillRefreshPackage {
   inputPlans: { id: string; path: string; revision: string; schemes: string[] }[];
 }
 
-interface SkillRefreshCommand {
-  stage: LiveCommandStage;
-  commandId: string | null;
-  ack: unknown;
-}
+type SkillRefreshCommand = LiveCommandResult;
 
 interface SkillRefreshIdentity {
   requestId: string;
@@ -475,6 +493,20 @@ export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
   | { stage: 'adopted'; package: SkillRefreshPackage; command: SkillRefreshCommand & { stage: 'applied' }; error: null; statusPath: string }
   | { stage: 'failed' | 'unavailable'; package: SkillRefreshPackage | null; command: SkillRefreshCommand | null; error: string; statusPath: string | null }
 );
+
+function readSkillRefreshReceipt(receipt: PlayerSkillRefreshReceipt): PlayerSkillRefreshReceipt {
+  const command = receipt.command === null ? null : readPlayerCommandResult(receipt.command, 'SkillRefresh.command');
+  switch (receipt.stage) {
+    case 'accepted':
+      if (command?.stage !== 'submitted') throw new Error('SkillRefresh.accepted.command.stage 需要 submitted');
+      return { ...receipt, command: { ...command, stage: command.stage } };
+    case 'adopted':
+      if (command?.stage !== 'applied') throw new Error('SkillRefresh.adopted.command.stage 需要 applied');
+      return { ...receipt, command: { ...command, stage: command.stage } };
+    case 'failed':
+    case 'unavailable': return { ...receipt, command };
+  }
+}
 
 export interface SkillFormatError {
   code: string;
@@ -611,9 +643,10 @@ export const authoringApi = {
     return result.compilationState === 'not-required' ? { ...result,
       preview: result.preview === null ? null : readPlayerCommandReceipt(result.preview),
       job: result.job === null ? null : readPlayerJobReceipt(result.job),
-    } : result;
+    } : { ...result, compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
+      preview: result.preview === null ? null : readSkillRefreshReceipt(result.preview) };
   },
-  refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal),
+  refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),
   types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。

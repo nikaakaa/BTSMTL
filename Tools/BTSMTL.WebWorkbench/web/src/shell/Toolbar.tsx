@@ -11,6 +11,7 @@ import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
 import { panelMenu } from './GroupActions';
 import { openPanel } from './layout';
 import { QuickCursor } from '../panels/timeline/QuickPreview';
+import { SaveResult } from './SaveResult';
 import styles from './toolbar.module.css';
 
 // 顶部工具栏（D7，只有一行）：左侧内容与技能、运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
@@ -105,13 +106,7 @@ function AuthoringStatus() {
       {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存并应用当前载体配置（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>}
-      {lastSave && (dirty === 0 || !lastSave.ok) && (
-        <Tip content={lastSave.message}>
-          <span className={lastSave.ok ? styles.dim : styles.warn} tabIndex={0}>
-            {lastSave.ok ? '已保存' : lastSave.compilationState === 'failed' ? '编译未通过' : lastSave.saved ? '已保存，尚未应用' : '保存未完成'}
-          </span>
-        </Tip>
-      )}
+      {lastSave && (dirty === 0 || !lastSave.ok) && <SaveResult outcome={lastSave} />}
     </div>
   );
 }
