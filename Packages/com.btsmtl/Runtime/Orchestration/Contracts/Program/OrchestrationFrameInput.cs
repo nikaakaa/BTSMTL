@@ -33,8 +33,9 @@ namespace BTSMTL.Orchestration
 
     public interface IOrchestrationValueObservationSink<TValue> where TValue : unmanaged
     {
+        // context 与 loopScopes 仅在本次同步回调内借用；接收方在返回前取得所需数据的所有权。
         void Observe(in OrchestrationValueOverrideAddress address, in TValue value,
-            in OrchestrationTraceContext context);
+            in OrchestrationTraceContext context, ReadOnlySpan<OrchestrationTraceLoopScope> loopScopes);
     }
 
     public enum OrchestrationValueOverrideKind : byte

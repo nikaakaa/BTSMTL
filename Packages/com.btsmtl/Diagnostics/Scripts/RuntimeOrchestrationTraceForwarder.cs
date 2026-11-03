@@ -181,6 +181,14 @@ namespace BTSMTL.Diagnostics
                         m_InvocationPaths[context.ParentInvocationSourceIndex],
                     ActionInstanceId = context.ActionInstanceId,
                     ActivationGeneration = item.Generation,
+                    NodeActivation = context.NodeActivation,
+                    LoopScopeAvailability = context.LoopScopeAvailability,
+                    LoopScope = context.LoopScope,
+                    LoopSource = context.LoopScope.HasValue ? m_Operations[context.LoopScope.OperationIndex] : default,
+                    LoopInvocationPath = context.LoopScope.HasValue
+                        ? m_InvocationPaths[context.LoopScope.InvocationSourceIndex] : string.Empty,
+                    LoopParentInvocationPath = context.LoopScope.HasValue && context.LoopScope.ParentInvocationSourceIndex >= 0
+                        ? m_InvocationPaths[context.LoopScope.ParentInvocationSourceIndex] : string.Empty,
                     SkillExecutionGeneration = context.SkillExecutionGeneration,
                     GraphInvocationGeneration = context.GraphInvocationGeneration,
                     ParentInvocationGeneration = context.ParentInvocationGeneration,

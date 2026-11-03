@@ -22,7 +22,17 @@ namespace BTSMTL.Orchestration
                 state.ChildCursor = checked(state.ChildCursor + 1);
                 TraceOperation(OrchestrationTraceKind.LoopIterationEnter, operationIndex);
             }
-            OrchestrationOperationResult child = TickEdge(edgeIndex);
+            OrchestrationOperationResult child;
+            int loopFrame = m_FrameSlot;
+            m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.EnterLoopIteration, operationIndex, loopFrame);
+            try
+            {
+                child = TickEdge(edgeIndex);
+            }
+            finally
+            {
+                m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.LeaveLoopIteration, operationIndex, loopFrame);
+            }
             if (child != OrchestrationOperationResult.Running)
                 TraceOperation(OrchestrationTraceKind.LoopIterationComplete, operationIndex, child);
             int mode = m_Program.Payload<OrchestrationModePayload>(operationIndex).Mode;

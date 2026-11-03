@@ -19,7 +19,12 @@ public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, stri
     string Kind, string Generation, string? Result, PreviewExecutionCall? Call)
 {
     public int? LoopIteration { get; init; }
+    public PreviewLoopScope? LoopScope { get; init; }
+    public PreviewObservationAvailability? ActivationAvailability { get; init; }
+    public PreviewObservationAvailability? LoopScopeAvailability { get; init; }
 }
+public sealed record PreviewLoopScope(string GraphId, string NodeId, string Generation, int Iteration,
+    PreviewExecutionCall Call);
 public sealed record PreviewEdgeOccurrence(string Sequence, string GraphId, string EdgeId,
     bool Selected, bool Passed, PreviewExecutionCall? Call);
 public sealed record PreviewPortSample(string Sequence, string GraphId, string NodeId, string PortId,
@@ -27,6 +32,11 @@ public sealed record PreviewPortSample(string Sequence, string GraphId, string N
 {
     public bool SourceAvailable { get; init; }
     public string Reason { get; init; } = string.Empty;
+    public string? Generation { get; init; }
+    public string? ObservationSequence { get; init; }
+    public PreviewLoopScope[]? LoopScopes { get; init; }
+    public PreviewObservationAvailability? ActivationAvailability { get; init; }
+    public PreviewObservationAvailability? LoopScopeAvailability { get; init; }
 }
 public sealed record PreviewRoutePage(string RunId, string ContentRevision, string Protocol,
     PreviewObservationAvailability[] Availability, string FirstFrame, string LastFrame,

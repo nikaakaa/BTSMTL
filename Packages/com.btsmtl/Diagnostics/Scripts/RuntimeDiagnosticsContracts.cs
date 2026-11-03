@@ -749,6 +749,12 @@ namespace BTSMTL.Diagnostics
         public ulong ActionInstanceId;
         public string CallSiteId;
         public ulong ActivationGeneration;
+        public OrchestrationTraceAvailability NodeActivation;
+        public OrchestrationTraceAvailability LoopScopeAvailability;
+        public OrchestrationTraceLoopScope LoopScope;
+        public RuntimeSourceElementHandle LoopSource;
+        public string LoopInvocationPath;
+        public string LoopParentInvocationPath;
         public ulong SkillExecutionGeneration;
         public ulong GraphInvocationGeneration;
         public ulong ParentInvocationGeneration;

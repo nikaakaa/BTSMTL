@@ -10,7 +10,9 @@ namespace BTSMTL.Orchestration
         EnterEntry,
         LeaveEntry,
         RetireOperation,
-        RetireFrame
+        RetireFrame,
+        EnterLoopIteration,
+        LeaveLoopIteration
     }
 
     // 诊断策略：由执行环境插头按值持有，生产与工作台在编译期区分。

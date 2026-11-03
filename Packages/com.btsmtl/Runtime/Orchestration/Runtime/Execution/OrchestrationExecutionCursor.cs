@@ -133,6 +133,7 @@ namespace BTSMTL.Orchestration
         internal ref readonly OrchestrationExecutionFrameState FrameHeader(int frameSlot) => ref m_Frames.Header(frameSlot);
         internal int CurrentStateTraceFrame => m_StateDepth == 0 ? -1 : m_States[m_StateDepth - 1].TraceFrameIndex;
         internal int ChildCursor(int operationIndex) => OperationState(operationIndex).ChildCursor;
+        internal bool HasExecutionScope => m_EntryDepth != 0 || m_InputDepth != 0;
         internal bool IsBorrowedOperation(int operationIndex) => m_Blackboards.IsBorrowedOperation(operationIndex);
         internal int ExecutionFrameOf(int operationIndex) => OperationFrame(operationIndex);
         internal void ReadBlackboardValue(int valueSlot, ref TValue destination) => m_Blackboards.ReadValue(valueSlot, ref destination);

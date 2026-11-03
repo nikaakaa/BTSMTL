@@ -24,6 +24,10 @@ namespace BTSMTL.Orchestration
         int[] m_TraceFrameEntries = Array.Empty<int>();
         int[] m_TraceBorrowedFrameEntries = Array.Empty<int>();
         TraceEntryScope[] m_TraceEntryScopes;
+        OrchestrationTraceLoopScope[] m_LoopScopes;
+        OrchestrationTraceContext m_ObservationContext;
+        int m_LoopDepth;
+        ulong m_ObservationSequence;
         int m_TraceCount;
         int m_StateFrameCount;
         int m_TraceContextCount;
@@ -78,6 +82,11 @@ namespace BTSMTL.Orchestration
             m_TraceFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceBorrowedFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceEntryScopes = new TraceEntryScope[m_Program.Content.WorkspaceCapacity.EntryDepth];
+            int loopCount = 0;
+            for (int operation = 0; operation < m_Program.OperationCount; operation++)
+                if (m_Program.Operation(operation).Code == OrchestrationOperationCode.Loop)
+                    loopCount++;
+            m_LoopScopes = new OrchestrationTraceLoopScope[checked(loopCount * m_TraceEntryScopes.Length)];
             ReadOnlySpan<OrchestrationGraphSource> sources = m_Sources.Span;
             var groupIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
             var groups = new List<List<int>>();
@@ -146,6 +155,7 @@ namespace BTSMTL.Orchestration
                     m_TraceFrameEntries.AsSpan().Fill(-1);
                     m_TraceBorrowedFrameEntries.AsSpan().Fill(-1);
                     m_TraceEntryDepth = 0;
+                    m_LoopDepth = 0;
                     break;
                 case OrchestrationDiagnosticLifecycle.BeginInvocation:
                     m_TraceCount = 0;
@@ -165,6 +175,14 @@ namespace BTSMTL.Orchestration
                     break;
                 case OrchestrationDiagnosticLifecycle.RetireFrame:
                     OrchestrationValueOverride<TValue>.RetireExecutionFrame(cursor.Input.Overrides, in cursor.FrameHeader(frame));
+                    break;
+                case OrchestrationDiagnosticLifecycle.EnterLoopIteration:
+                    if (cursor.Input.CaptureTrace || Observations != null)
+                        WriteLoopScope(ref cursor, operation, out m_LoopScopes[m_LoopDepth++]);
+                    break;
+                case OrchestrationDiagnosticLifecycle.LeaveLoopIteration:
+                    if (cursor.Input.CaptureTrace || Observations != null)
+                        m_LoopDepth--;
                     break;
             }
         }
@@ -240,8 +258,9 @@ namespace BTSMTL.Orchestration
                 int invocationIndex = ResolveTraceInvocation(ref cursor, operationIndex);
                 OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(ref cursor, operationIndex, slot,
                     input, invocationIndex);
-                WriteTraceContext(ref cursor, operationIndex, invocationIndex, out OrchestrationTraceContext context);
-                observations.Observe(in address, in value, in context);
+                WriteTraceContext(ref cursor, operationIndex, invocationIndex, out m_ObservationContext);
+                m_ObservationContext.ObservationSequence = checked(++m_ObservationSequence);
+                observations.Observe(in address, in value, in m_ObservationContext, m_LoopScopes.AsSpan(0, m_LoopDepth));
             }
         }
 
@@ -258,11 +277,11 @@ namespace BTSMTL.Orchestration
             item.Kind = kind;
             item.OperationIndex = operationIndex;
             item.EdgeIndex = -1;
-            item.Generation = cursor.ReadGeneration(operationIndex);
             bool lifecycleOwner = kind is OrchestrationTraceKind.Enter or OrchestrationTraceKind.Running or
                 OrchestrationTraceKind.Complete or OrchestrationTraceKind.StopRequested or
                 OrchestrationTraceKind.Stopped or OrchestrationTraceKind.ForceStopped;
             item.ContextIndex = CaptureTraceContext(ref cursor, operationIndex, lifecycleOwner);
+            item.Generation = m_TraceContexts[item.ContextIndex].NodeGeneration;
             item.StateFrameIndex = cursor.Program.Operation(operationIndex).Code == OrchestrationOperationCode.State
                 ? CaptureStatePath(ref cursor, operationIndex, lifecycleOwner)
                 : cursor.CurrentStateTraceFrame;
@@ -305,8 +324,8 @@ namespace BTSMTL.Orchestration
             item.Kind = OrchestrationTraceKind.Edge;
             item.OperationIndex = operationIndex;
             item.EdgeIndex = edgeIndex;
-            item.Generation = cursor.ReadGeneration(operationIndex);
             item.ContextIndex = CaptureTraceContext(ref cursor, operationIndex);
+            item.Generation = m_TraceContexts[item.ContextIndex].NodeGeneration;
             item.StateFrameIndex = cursor.CurrentStateTraceFrame;
             item.Selected = selected;
             item.Passed = passed;
@@ -506,6 +525,15 @@ namespace BTSMTL.Orchestration
                 ResolveTraceInvocation(ref cursor, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
             context.ExecutionObject = cursor.Input.ExecutionObject;
+            context.OperationIndex = operationIndex;
+            bool runnable = cursor.Program.Operation(operationIndex).IsRunnable;
+            context.NodeGeneration = runnable ? cursor.ReadGeneration(operationIndex) : 0;
+            context.NodeActivation = !runnable ? OrchestrationTraceAvailability.NotApplicable :
+                context.NodeGeneration == 0 ? OrchestrationTraceAvailability.Unavailable : OrchestrationTraceAvailability.Available;
+            context.ObservationSequence = 0;
+            context.LoopScopeAvailability = cursor.HasExecutionScope
+                ? OrchestrationTraceAvailability.Available : OrchestrationTraceAvailability.Unavailable;
+            context.LoopScope = m_LoopDepth == 0 ? default : m_LoopScopes[m_LoopDepth - 1];
             context.SourceIndex = binding.SourceIndex;
             context.InvocationSourceIndex = invocation.SourceIndex;
             context.ParentInvocationSourceIndex = parentIndex < 0 ? -1 : m_TraceInvocations[parentIndex].SourceIndex;
@@ -522,6 +550,29 @@ namespace BTSMTL.Orchestration
             context.ClipOrdinal = frame.ClipOrdinal;
             context.Cycle = frame.Cycle;
             context.Marker = frame.Marker;
+        }
+
+        void WriteLoopScope<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
+            int operationIndex, out OrchestrationTraceLoopScope scope)
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>
+        {
+            int invocationIndex = ResolveTraceInvocation(ref cursor, operationIndex);
+            ref readonly TraceInvocation invocation = ref m_TraceInvocations[invocationIndex];
+            int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
+                ResolveTraceInvocation(ref cursor, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
+            ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
+            scope.OperationIndex = operationIndex;
+            scope.InvocationSourceIndex = invocation.SourceIndex;
+            scope.ParentInvocationSourceIndex = parentIndex < 0 ? -1 : m_TraceInvocations[parentIndex].SourceIndex;
+            scope.Iteration = cursor.ChildCursor(operationIndex);
+            scope.Generation = cursor.ReadGeneration(operationIndex);
+            scope.ActionInstanceId = frame.ActionInstanceId;
+            scope.ExecutionGeneration = frame.Generation;
+            scope.InvocationGeneration = ReadInvocationGeneration(ref cursor, invocationIndex, operationIndex, out _);
+            scope.ParentInvocationGeneration = parentIndex < 0 ? 0 :
+                ReadInvocationGeneration(ref cursor, parentIndex, invocation.OwnerOperationIndex, out _);
+            scope.PlaybackIdentity = frame.TimelineStart.PlaybackIdentity;
         }
 
         int ResolveTraceInvocation<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,

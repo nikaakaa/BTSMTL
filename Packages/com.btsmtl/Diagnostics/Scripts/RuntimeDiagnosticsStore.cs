@@ -593,6 +593,12 @@ namespace BTSMTL.Diagnostics
                    left.ActionInstanceId == right.ActionInstanceId &&
                    string.Equals(left.CallSiteId, right.CallSiteId, StringComparison.Ordinal) &&
                    left.ActivationGeneration == right.ActivationGeneration &&
+                   left.NodeActivation == right.NodeActivation &&
+                   left.LoopScopeAvailability == right.LoopScopeAvailability &&
+                   left.LoopScope.Equals(in right.LoopScope) &&
+                   left.LoopSource.Equals(right.LoopSource) &&
+                   string.Equals(left.LoopInvocationPath, right.LoopInvocationPath, StringComparison.Ordinal) &&
+                   string.Equals(left.LoopParentInvocationPath, right.LoopParentInvocationPath, StringComparison.Ordinal) &&
                    left.SkillExecutionGeneration == right.SkillExecutionGeneration &&
                    left.GraphInvocationGeneration == right.GraphInvocationGeneration &&
                    left.ParentInvocationGeneration == right.ParentInvocationGeneration &&
