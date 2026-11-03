@@ -184,7 +184,8 @@ export const transport = {
   acceptAck(ack: PlayerAck) {
     const command = getState().lastCommand;
     if (command?.commandId === ack.commandId)
-      record(command.type, { commandId: ack.commandId, stage: ack.ok ? 'applied' : 'rejected', adoptedMode: ack.adoptedMode, ack });
+      record(command.type, { commandId: ack.commandId, stage: ack.ok ? 'applied' : 'rejected',
+        adoptedMode: ack.adoptedMode, content: ack.content, clock: ack.clock, ack });
   },
 
   action(name: string) {
