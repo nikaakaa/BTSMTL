@@ -15,7 +15,7 @@ import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
   applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
-  useDocumentGraphHierarchy, useDocumentObservationBinding, useDocumentObservationNotice, type CanvasGroup,
+  useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
@@ -25,7 +25,7 @@ import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
   isStateMachine, layoutGraph, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
-  recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
+  documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
 import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
@@ -117,23 +117,33 @@ export function GraphPanel() {
     loading: authoringDocument(state).loading, error: authoringDocument(state).documentError,
     graphs: authoringDocument(state).documentGraphs, programId: authoringDocument(state).programId })));
   const [params, setParams] = usePanelParams<Params>(defaults);
+  const panelId = usePanelId();
   const request = useWorkbench(state => state.graphRequest);
+  const handled = useRef(0);
+  useEffect(() => {
+    if (!request || request.panelId !== panelId || request.sequence === handled.current) return;
+    handled.current = request.sequence;
+    setParams({ graph: request.key, call: request.observation === null ? null : callKey(request.observation.call),
+      pin: request.observation === null ? null : { ...request.observation, graph: request.key },
+      caller: request.caller, origin: request.origin, viewport: null });
+  }, [request, panelId, setParams]);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
   if (opened.loading || !opened.graphs) return <Empty text="读取中" />;
   if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   const graphs = opened.graphs;
-  const selected = graphs.find(graph => graphKey(graph) === params.graph)
-    ?? graphs.find(graph => graphKey(graph) === request?.key)
-    ?? graphs.find(graph => graph.id === opened.programId);
+  const selected = params.graph === null ? graphs.find(graph => graph.id === opened.programId)
+    : graphs.find(graph => graphKey(graph) === params.graph);
   if (selected === undefined) return <div className={styles.root}>
     <PanelBar><Select label="作者图" value={null} placeholder="选择作者图"
       options={graphs.map(graph => ({ value: graphKey(graph), label: `${graph.ownerName} · ${graphName(graph)}` }))}
       onChange={key => {
         const graph = graphs.find(item => graphKey(item) === key)!;
-        void projectActions.openGraph(graph).catch(reason => consoleActions.error('作者', reason));
+        void projectActions.openGraph(graph, undefined, { origin: null, observation: null, caller: null, panelId })
+          .catch(reason => consoleActions.error('作者', reason));
       }} /></PanelBar>
-    <ReportEmpty text="当前技能没有声明根执行图，请选择要查看的作者图。" />
+    <ReportEmpty text={params.graph === null ? '当前技能没有声明根执行图，请选择要查看的作者图。'
+      : '原先选择的图已不在当前作者文档中；原选择已保留，请明确选择要查看的作者图。'} />
   </div>;
   return <GraphView graphs={graphs} defaultGraph={selected} params={params} setParams={setParams} />;
 }
@@ -149,11 +159,11 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   graphs: SkillDocumentGraph[]; defaultGraph: SkillDocumentGraph; params: Params; setParams(patch: Partial<Params>): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const panelId = usePanelId();
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(routeObservation));
   const routeFrames = useWorkbench(state => state.routeFrames);
   const currentRoute = observation.kind === 'ready' ? observation.route : null;
-  const observationNotice = useDocumentObservationNotice(params.pin?.runId === runId ? params.pin.call : null);
   const hierarchy = useDocumentGraphHierarchy();
 
   const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs, binding), [currentRoute, graphs, binding]);
@@ -161,21 +171,35 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? defaultGraph;
   const key = graphKey(graph);
 
-  const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
-  const graphCalls = currentCalls.filter(item => graphKey(item.graph) === key && (caller === null || parentCallMatches(caller.call, item.call)));
+  const caller = params.caller;
+  const callerNotice = caller === null ? null : caller.runId !== runId ? '原父调用属于另一份运行档案，未选择其它实例'
+    : documentObservationNotice(currentRoute, binding, caller.call);
+  const graphCalls = callerNotice !== null ? [] : currentCalls.filter(item => graphKey(item.graph) === key &&
+    (caller === null || parentCallMatches(caller.call, item.call)));
   const calls = graphCalls.map(item => item.call);
-  const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
-    ? params.pin : null;
+  const pin = params.pin;
+  const pinNotice = pin === null ? null : pin.runId !== runId ? '固定调用属于另一份运行档案，固定身份已保留'
+    : pin.graph !== key ? '固定调用不属于当前作者图，固定身份已保留'
+    : documentObservationNotice(currentRoute, binding, pin.call);
   const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
-  const observedCall = quickMode ? null : pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
+  const observedCall = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
+    : pin !== null ? pin.call : params.call !== null ? calls.find(item => callKey(item) === params.call) ?? null : automatic;
+  const shownCall = pin === null ? observedCall : pin.call;
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
   const choices = quickMode ? [] : pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = graph.authoringPath;
-  const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
+  const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
+  const callNotice = quickMode ? null : pinNotice ?? callerNotice ?? documentObservationNotice(currentRoute, binding)
+    ?? (observation.kind === 'unavailable' ? observation.reason
+      : observedCall !== null ? calls.some(item => callKey(item) === callKey(observedCall)) ? null : '此帧没有固定调用的发生记录，固定身份已保留'
+        : params.call !== null ? '此帧没有所选调用的记录，请重新选择实例或开启跟随当前帧'
+          : availableCalls.length > 1 ? '本帧有多个实际调用，请选择要观察的实例'
+            : caller !== null ? '此帧没有精确匹配原父调用的子调用记录' : '本帧没有对应作者图的实际调用记录');
+  const availabilityNotice = currentRoute?.availability.filter(item => !item.available || !item.complete).map(item => item.reason).join('\n');
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs, binding), [routeFrames, graphs, binding]);
   const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const callCrumbs = useMemo(() => {
@@ -200,30 +224,22 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
 
   useEffect(() => {
     const selection = getState().selection;
-    if (selection?.kind === 'node' && graph.nodes.some(node => nodeSelectId(graph, node) === selection.id) ||
-      selection?.kind === 'edge' && graph.edges.some(edge => edgeSelectId(graph, edge) === selection.id)) {
+    if (selection?.panelId === panelId && (selection.kind === 'node' && graph.nodes.some(node => nodeSelectId(graph, node) === selection.id) ||
+      selection.kind === 'edge' && graph.edges.some(edge => edgeSelectId(graph, edge) === selection.id))) {
       const previous = selection.call ? callKey(selection.call) : null;
       const next = observedCall ? callKey(observedCall) : null;
-      if (previous !== next) selectionActions.select({ ...selection, call: observedCall ?? undefined });
+      if (previous !== next || selection.call === undefined) selectionActions.select({ ...selection, call: observedCall });
     }
-  }, [graph, observedCall]);
+  }, [graph, observedCall, panelId]);
 
   const enter = useCallback((target: GraphNavigationTarget, nodeId?: string) => {
     const source = hierarchy.graphs.get(key)!;
-    const origin = nodeId === undefined ? null : { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId };
-    void projectActions.openGraph(target, undefined, origin).catch(reason => consoleActions.error('作者', reason));
-  }, [hierarchy, key]);
-
-  // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
-  const request = useWorkbench(state => state.graphRequest);
-  const handled = useRef(0);
-  useEffect(() => {
-    if (!request || request.sequence === handled.current) return;
-    handled.current = request.sequence;
-    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key,
-      call: request.observation ? callKey(request.observation.call) : null,
-      pin: request.observation ? { ...request.observation, graph: request.key } : null, caller: null, origin: request.origin, viewport: null });
-  }, [request, graphs, setParams]);
+    const observation = pin !== null ? { runId: pin.runId, call: pin.call }
+      : observedCall === null || runId === null ? null : { runId, call: observedCall };
+    const origin = nodeId === undefined ? null : { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId, observation };
+    void projectActions.openGraph(target, undefined, { origin, observation: null, caller: observation, panelId })
+      .catch(reason => consoleActions.error('作者', reason));
+  }, [hierarchy, key, observedCall, pin, runId, panelId]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const referrers = useMemo(() => graphReferrers(hierarchy, graph), [hierarchy, graph]);
   const [blackboard, setBlackboard] = useState(false);
@@ -247,9 +263,13 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
-          {observationNotice && <span role="status" className={styles.notice}>{observationNotice}</span>}
+          {callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
+          {!quickMode && availabilityNotice && <Tip content={availabilityNotice}><span role="status" className={styles.notice}>运行记录有缺项</span></Tip>}
           {graphOptions.length > 1 && <Select label="作者图" value={key} options={graphOptions}
-            onChange={value => enter(hierarchy.graphs.get(value)!)} />}
+            onChange={value => {
+              void projectActions.openGraph(hierarchy.graphs.get(value)!, undefined, { origin: null, observation: null, caller: null, panelId })
+                .catch(reason => consoleActions.error('作者', reason));
+            }} />}
           <span className={styles.crumbs}>
             {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>
@@ -278,23 +298,24 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
           </span>
           {params.origin !== null && <Button variant="ghost" tip={`${params.origin.ownerName} · ${params.origin.nodeId}`} onClick={() => {
             const source = params.origin!;
-            void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId)
+            void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId,
+              { origin: null, observation: source.observation, caller: null, panelId })
               .catch(reason => consoleActions.error('作者', reason));
           }}>返回引用节点</Button>}
           {referrers.length > 0 && <MenuButton label="已加载引用" caret entries={referrers.map(({ source }) => ({
             label: `${source.ownerName} · ${source.file} · ${source.nodeId} · ${source.fieldId}`,
             onSelect: () => {
-              void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId)
+              void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId,
+                { origin: null, observation: null, caller: null, panelId })
                 .catch(reason => consoleActions.error('作者', reason));
             },
           }))}>已加载引用（{referrers.length}）</MenuButton>}
           {callOptions.length > 1 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
             options={callOptions} placeholder="选择实际调用"
             tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
-          {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
-            tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(observedCall)}`}
+          {shownCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
+            tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(shownCall)}`}
             onClick={togglePin}>固定调用</Button>}
-          {caller !== null && calls.length === 0 && pin === null && <span className={styles.notice}>此帧没有精确匹配的子调用记录</span>}
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
@@ -645,9 +666,13 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const connected = useMemo(() => new Set(layout.edges.flatMap(edge =>
     [`${edge.source!.nodeId}|output:${edge.source!.portId}`, `${edge.target!.nodeId}|input:${edge.target!.portId}`])), [layout]);
   const openReference = useCallback((target: NodeNavigationTarget, nodeId: string) => {
-    const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId };
-    void projectActions.openReference(target, origin).then(panel => { openPanel(panel); }, reason => consoleActions.error('作者', reason));
-  }, [graph.owner, graph.ownerName, graph.id]);
+    const observation = params.pin !== null ? { runId: params.pin.runId, call: params.pin.call }
+      : call === null || runId === null ? null : { runId, call };
+    const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId, observation };
+    void projectActions.openReference(target, origin, panelId).then(panel => {
+      if (panel === 'timeline') openPanel(panel);
+    }, reason => consoleActions.error('作者', reason));
+  }, [graph.owner, graph.ownerName, graph.id, call, params.pin, runId, panelId]);
   const openNode = useCallback((data: NodeData) => {
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
   }, [openReference]);
@@ -668,8 +693,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   }, [panelId, selectCanvas, view]);
   const onNodeClick = useCallback((event: ReactMouseEvent, node: CanvasNode) => {
     if (editable && !event.ctrlKey && !event.shiftKey) selectCanvas([node.id], []);
-    if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call: call ?? undefined });
-  }, [call, editable, selectCanvas]);
+    if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call, panelId });
+  }, [call, editable, selectCanvas, panelId]);
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
     openNode(node.data);
@@ -691,8 +716,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
   const onSelectionEnd = useCallback(() => {
     const picked = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
-    if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId, call: call ?? undefined });
-  }, [nodes, call]);
+    if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId, call, panelId });
+  }, [nodes, call, panelId]);
   const { fitView, screenToFlowPosition } = useReactFlow();
 
   // ── 作者编辑（照 NodeCanvas）：右键添加节点、拖端口连线、Delete 删除、Ctrl+C／Ctrl+V 复制粘贴、拖动写布局 ──
@@ -704,12 +729,12 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
   // 单击连线选中（Ctrl／Shift 加选，预览与作者模式都可选），同时交给检查器。
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
-    selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
+    selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call, panelId });
     const additive = event.ctrlKey || event.shiftKey;
     const next = new Set(additive ? selectedEdges : []);
     if (!next.delete(edge.id)) next.add(edge.id);
     selectCanvas(additive ? nodes.filter(node => node.selected).map(node => node.id) : [], [...next]);
-  }, [graph, call, nodes, selectCanvas, selectedEdges]);
+  }, [graph, call, nodes, selectCanvas, selectedEdges, panelId]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;

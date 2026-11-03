@@ -165,7 +165,8 @@ export interface Selection {
   kind: SelectionKind;
   // 稳定身份，地址 select 参数原样使用。
   id: string;
-  call?: ExecutionCall;
+  call?: ExecutionCall | null;
+  panelId?: string;
 }
 export interface CanvasSelection {
   view: string;
@@ -177,13 +178,16 @@ export interface GraphNavigationOrigin {
   ownerName: string;
   graphId: string;
   nodeId: string;
+  observation: NonNullable<SelectionSlice['timelineRequest']>['observation'];
 }
 export interface SelectionSlice {
   selection: Selection | null;
   canvasSelections: Record<string, CanvasSelection>;
   timelineSelections: Record<string, readonly { box: string; id: string }[]>;
   // 其它面板请求节点图面板显示的图（graphKey）；sequence 让同一张图可重复请求。
-  graphRequest: { key: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
+  graphRequest: { key: string; sequence: number; panelId: string;
+    observation: { runId: PlayerJobId; call: ExecutionCall } | null;
+    caller: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
   // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
   timelineRequest: { documentId: string; sequence: number; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
 }
@@ -371,8 +375,8 @@ export const selectionActions = {
   selectTimelineClips(panelId: string, selection: SelectionSlice['timelineSelections'][string]) {
     set({ timelineSelections: { ...getState().timelineSelections, [panelId]: selection } });
   },
-  showGraph(key: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null, origin: GraphNavigationOrigin | null = null) {
-    set({ graphRequest: { key, observation, origin, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
+  showGraph(request: Omit<NonNullable<SelectionSlice['graphRequest']>, 'sequence'>) {
+    set({ graphRequest: { ...request, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
   },
   showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
     set({ timelineRequest: { documentId, observation, sequence: (getState().timelineRequest?.sequence ?? 0) + 1 } });

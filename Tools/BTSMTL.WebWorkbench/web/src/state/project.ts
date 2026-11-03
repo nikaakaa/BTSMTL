@@ -3,7 +3,8 @@ import { authoringActions, authoringDocument, currentDocument, layoutPath, useAu
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
-import { selectionActions, type GraphNavigationOrigin } from './store';
+import { selectionActions, type GraphNavigationOrigin, type SelectionSlice } from './store';
+import { openPanel } from '../shell/layout';
 
 const ownerOf = (item: Pick<ProjectItem, 'owner'>) => ({ kind: 'skill', name: item.owner } as const);
 
@@ -13,30 +14,35 @@ async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
   return authoringDocument(useAuthoring.getState(), target);
 }
 
+type GraphNavigation = Pick<NonNullable<SelectionSlice['graphRequest']>, 'origin' | 'observation' | 'caller'> & { panelId: string | null };
+
 async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'ownerName'>, nodeId?: string,
-  origin: GraphNavigationOrigin | null = null): Promise<void> {
+  navigation: GraphNavigation | null = null): Promise<void> {
   const document = await openOwner(target);
   const graph = document.documentGraphs?.find(value => value.id === target.id);
   if (!graph) throw new Error(document.documentError ?? `${target.ownerName} 的当前作者文档中不存在图 ${target.id}`);
   const node = nodeId === undefined ? null : graph.nodes.find(node => node.id === nodeId);
   if (node === undefined) throw new Error(`${target.ownerName} 的图 ${target.id} 中不存在引用节点 ${nodeId}`);
-  selectionActions.showGraph(graphKey(graph), null, origin);
-  selectionActions.select(node === null ? null : { kind: 'node', id: nodeSelectId(graph, node) });
+  const panel = openPanel('graph', navigation?.panelId ?? undefined);
+  selectionActions.showGraph({ key: graphKey(graph), panelId: panel.id, observation: navigation?.observation ?? null,
+    caller: navigation?.caller ?? null, origin: navigation?.origin ?? null });
+  selectionActions.select(node === null ? null : { kind: 'node', id: nodeSelectId(graph, node),
+    call: navigation?.observation?.call, panelId: panel.id });
 }
 
 export const projectActions = {
   openGraph,
-  async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin): Promise<'graph' | 'timeline'> {
+  async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin, panelId: string | null = null): Promise<'graph' | 'timeline'> {
     switch (target.kind) {
       case 'graph':
-        await openGraph(target, undefined, origin);
+        await openGraph(target, undefined, { origin, caller: origin.observation, observation: null, panelId });
         return 'graph';
       case 'timeline':
         await openOwner(target);
         if (currentDocument(target.file) === null)
           throw new Error(`无法打开 Timeline「${target.displayName ?? target.id}」：${target.ownerName} 的当前作者文档中不存在 ${target.file}`);
         selectionActions.select(null);
-        selectionActions.showTimeline(target.id, null);
+        selectionActions.showTimeline(target.id, origin.observation);
         return 'timeline';
     }
   },
@@ -48,7 +54,7 @@ export const projectActions = {
       if (item.kind === 'skill' && id === null && document.documentError === null) return 'inspector';
       const graph = document.documentGraphs?.find(value => value.id === id);
       if (!graph) throw new Error(document.documentError ?? '此作者图引用已失效，目录中的原身份已保留');
-      selectionActions.showGraph(graphKey(graph), null);
+      selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id, observation: null, caller: null, origin: null });
       return 'graph';
     }
     if (item.kind === 'timeline') selectionActions.showTimeline(item.identity, null);

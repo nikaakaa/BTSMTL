@@ -5,7 +5,7 @@ import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeReferences, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
+  isPortSample, nodeReferences, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, routeObservation, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
@@ -14,7 +14,7 @@ import {
 import { projectActions } from '../../state/project';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
-import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin, type Selection } from '../../state/store';
+import { consoleActions, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
 import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
@@ -117,9 +117,10 @@ function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNo
   return <div className={styles.field}><FieldLabel label={label} /><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
 }
 
-function openGraph(graph: Pick<GraphDefinition, 'id'>, origin: GraphNavigationOrigin | null = null) {
+function openGraph(graph: Pick<GraphDefinition, 'id'>, caller: NonNullable<SelectionSlice['graphRequest']>['caller'] = null) {
   const target = authoringDocument(useAuthoring.getState()).documentGraphs!.find(item => item.id === graph.id)!;
-  void projectActions.openGraph(target, undefined, origin).then(() => { openPanel('graph'); }, reason => consoleActions.error('作者', reason));
+  void projectActions.openGraph(target, undefined, { origin: null, observation: null, caller, panelId: null })
+    .catch(reason => consoleActions.error('作者', reason));
 }
 
 function Values({ fields }: { fields: Field[] }) {
@@ -222,9 +223,11 @@ function useAuthorGraphs() {
   })));
 }
 
-function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
+function NodeInspector({ id, call, missing }: { id: string; call: Selection['call']; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
   const { graphs, frame, runId } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame, runId: state.runId })));
+  const observation = useWorkbench(useShallow(routeObservation));
+  const route = observation.kind === 'ready' ? observation.route : null;
   const author = useAuthorGraphs();
   const found = useMemo(() => {
     if (!author.on) return findGraphNode(graphs, id);
@@ -235,18 +238,20 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
   if (!found) return missing;
   const { graph, node } = found;
-  const candidates = graphRecords(frame?.route, graph, binding);
-  const observedCall = call ?? singleCall(candidates);
-  const notice = runId === null ? null : documentObservationNotice(frame?.route ?? null, binding, observedCall);
+  const candidates = graphRecords(route, graph, binding);
+  const observedCall = call === undefined ? singleCall(candidates) : call;
+  const notice = runId === null ? null : documentObservationNotice(route, binding, observedCall)
+    ?? (observation.kind === 'unavailable' ? observation.reason : null);
   const records = candidates.filter(item => observedCall !== null && callKey(item.call) === callKey(observedCall) &&
     'nodeId' in item && item.nodeId === node.id);
   const events = records.filter(isNodeOccurrence).sort(compareSequence);
-  const samples = records.filter(isPortSample);
+  const samples = records.filter(isPortSample).sort(compareSequence);
+  const availabilityNotice = route?.availability.filter(item => !item.available || !item.complete).map(item => item.reason).join('\n');
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
   const references = (
     <>
       {editable && <StateBody graph={graph} nodeId={node.id} />}
-      <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
+      <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} call={observedCall} />
     </>
   );
   return (
@@ -256,7 +261,8 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
         : <Fold title="节点" defaultOpen>{references}</Fold>}
       {runId && <Fold title="本帧" defaultOpen>
         {notice !== null ? <div role="status" className={styles.note}>{notice}</div>
-          : <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />}
+          : <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '本帧没有匹配此调用的发生记录'} />}
+        {availabilityNotice && <Tip content={availabilityNotice}><div role="status" className={styles.note}>运行记录有缺项</div></Tip>}
         {observedCall && <>
           {observedCall.actorId !== null && <Value label="角色" value={observedCall.actorId} />}
           <Value label="对象类型" value={observedCall.objectKind ?? '未记录'} />
@@ -280,18 +286,18 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           {ports.map(port => {
             const sample = samples.filter(item => item.portId === port.id && item.direction === port.direction).at(-1);
             return (
-              <Tip key={`${port.direction}:${port.id}`} content={sample && `${sample.valueType} · ${sample.sequence}`}>
+              <Tip key={`${port.direction}:${port.id}`} content={sample ? `${sample.valueType} · ${sample.sequence}` : notice ?? availabilityNotice ?? '此调用在本帧没有该端口的实际样本'}>
               <div className={styles.listRow}>
                 {port.isTrigger ? <i className={styles.exec} /> : <i className={styles.dot} style={{ ['--pc' as string]: portColor(sample?.valueType) }} />}
                 <span className={styles.listText}>{port.displayName}{port.direction === 'input' ? '' : ' →'}</span>
-                <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample?.value ?? ''}</span>
+                <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample === undefined ? '未记录' : sample.value}</span>
               </div>
               </Tip>
             );
           })}
         </div>
       </Fold>}
-      <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
+      <HostRecords records={locatedRecords(route === null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
       {records.length > 0 && <Fold title="原始记录"><Raw value={records} /></Fold>}
       <Identity extra={[
         { displayName: '节点', value: node.id }, { displayName: '图', value: graph.id },
@@ -302,8 +308,9 @@ function NodeInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   );
 }
 
-function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
+function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefinition; nodeId: string; invocationPath: string; call: ExecutionCall | null }) {
   const hierarchy = useDocumentGraphHierarchy();
+  const runId = useWorkbench(state => state.runId);
   const children = nodeReferences(hierarchy, graph, nodeId);
   const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
@@ -315,7 +322,8 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
         <Link key={`${child.kind}:${child.owner}:${child.id}`} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)"
           tip={child.kind === 'timeline' ? '在 Timeline 面板打开' : '在节点图面板打开'}
           onOpen={() => {
-            void projectActions.openReference(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId })
+            void projectActions.openReference(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId,
+              observation: call === null || runId === null ? null : { runId, call } })
               .then(panel => { openPanel(panel); }, reason => consoleActions.error('作者', reason));
           }} />
       ))}
@@ -415,8 +423,10 @@ const childLabel = (target: NodeNavigationTarget) => target.kind === 'timeline' 
 
 // ── Timeline 片段与轨道 ──
 
-function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
+function ClipInspector({ id, call, missing }: { id: string; call: Selection['call']; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const observation = useWorkbench(useShallow(routeObservation));
+  const route = observation.kind === 'ready' ? observation.route : null;
   const schemes = useInputSchemes();
   const { timelines: shownTimelines, routeFrames, frame, graphs, runId } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, routeFrames: state.routeFrames, frame: state.frame, graphs: state.graphs,
@@ -437,7 +447,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       for (const location of recorded.active)
         if (location.call !== null && matchesDocumentCall(location.call, binding) &&
           location.documentId === found.timeline.documentId && location.elementId === found.clip.id &&
-          (call === undefined || callKey(location.call) === callKey(call)))
+          (call === undefined || call !== null && callKey(location.call) === callKey(call)))
           calls.set(callKey(location.call), location.call);
       for (const [key, actualCall] of calls) {
         const previous = result.get(key);
@@ -452,10 +462,12 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
   const { timeline, track, clip } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
   const graph = clipGraph(graphs, clip.graphId);
-  const observedCall = call ?? (instances.length === 1 ? instances[0].call : null);
-  const notice = runId === null ? null : documentObservationNotice(frame?.route ?? null, binding, observedCall);
+  const observedCall = call === undefined ? (instances.length === 1 ? instances[0].call : null) : call;
+  const notice = runId === null ? null : documentObservationNotice(route, binding, observedCall)
+    ?? (observation.kind === 'unavailable' ? observation.reason : null);
   const graphRow = input || !clip.graphId ? null : graph
-    ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+    ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开"
+      onOpen={() => openGraph(graph, route === null || observedCall === null || runId === null ? null : { runId, call: observedCall })} />
     : <Value label="节点图" mono={false} value="当前技能没有这张图" />;
   return (
     <>
@@ -475,7 +487,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
-              const active = frame?.route?.active.some(location => location.call !== null &&
+              const active = route?.active.some(location => location.call !== null &&
                 callKey(location.call) === callKey(item.call) && location.documentId === timeline.documentId && location.elementId === clip.id);
               return (
                 <Tip key={callKey(item.call)} content="跳到已读取的首条活动记录">
@@ -493,7 +505,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
           : frame.route === null ? '档案播放记录尚未提供'
             : '已读取记录中没有匹配来源修订与调用的活动记录')}</div>}
       </Fold>}
-      {!input && <HostRecords records={locatedRecords(frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
+      {!input && <HostRecords records={locatedRecords(route === null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: '合同', value: clip.contract }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),
@@ -531,8 +543,9 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
   );
 }
 
-function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall | undefined; missing: ReactNode }) {
+function TrackInspector({ id, call, missing }: { id: string; call: Selection['call']; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const observation = useWorkbench(useShallow(routeObservation));
   const schemes = useInputSchemes();
   const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
   const { edited, removed, editable } = useAuthoring(useShallow(state => ({
@@ -550,7 +563,7 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
         <Fold title="轨道" defaultOpen><Value label="静音" mono={false} value={track.muted ? '是' : '否'} /></Fold>
       )}
       {input && <NativeInputInspector documentId={timeline.documentId} />}
-      {!input && <HostRecords records={locatedRecords(frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
+      {!input && <HostRecords records={locatedRecords(observation.kind === 'ready' ? frame : null, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
       <Identity extra={[{ displayName: '轨道', value: track.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
     </>
   );

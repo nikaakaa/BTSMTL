@@ -27,7 +27,7 @@ import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { callKey, callLabel, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
+import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
@@ -652,10 +652,12 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
   const playbacks = currentRoute?.playbacks;
-  const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
+  const caller = params.caller;
+  const callerNotice = caller === null ? null : caller.runId !== runId ? '原父调用属于另一份运行档案，未选择其它实例'
+    : documentObservationNotice(currentRoute, binding, caller.call);
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
-    if (quickMode) return [];
+    if (quickMode || callerNotice !== null) return [];
     for (const playback of playbacks ?? [])
       if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding) &&
         (caller === null || parentCallMatches(caller.call, playback.call))) {
@@ -663,22 +665,25 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
         result.set(observationKey(observation), observation);
       }
     return [...result.values()];
-  }, [quickMode, playbacks, focused?.documentId, binding, caller]);
-  const pin = !quickMode && params.pin?.runId === runId && params.pin.documentId === focused?.documentId && matchesDocumentCall(params.pin.observation.call, binding)
-    ? params.pin : null;
-  const observed = pin?.observation ?? observations.find(observation => observationKey(observation) === params.call)
-    ?? (observations.length === 1 ? observations[0] : null);
+  }, [quickMode, playbacks, focused?.documentId, binding, caller, callerNotice]);
+  const pin = params.pin;
+  const pinNotice = pin === null ? null : pin.runId !== runId ? '固定播放属于另一份运行档案，固定身份已保留'
+    : pin.documentId !== focused?.documentId ? '固定播放不属于当前 Timeline，固定身份已保留'
+    : documentObservationNotice(currentRoute, binding, pin.observation.call);
+  const observed = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
+    : pin !== null ? pin.observation : params.call !== null ? observations.find(observation => observationKey(observation) === params.call) ?? null
+      : observations.length === 1 ? observations[0] : null;
   const choices = pin && !observations.some(item => observationKey(item) === observationKey(pin.observation))
     ? [pin.observation, ...observations] : observations;
-  const togglePin = pin ? () => setParams({ pin: null }) : observed === null || runId === null || focused === null ? undefined
+  const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observed === null || runId === null || focused === null ? undefined
     : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs ?? [], binding), [routeFrames, graphs, binding]);
   const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs ?? [], binding), [currentRoute, graphs, binding]);
   const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const parents = useMemo(() => observed === null ? [] : parentGraphCalls(observed.call, recorded), [observed, recorded]);
   const openParent = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => {
-    selectionActions.showGraph(graphKey(graph), { runId, call });
-    openPanel('graph');
+    selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id,
+      observation: { runId, call }, caller: null, origin: null });
   };
   const selectCall = (value: string) => {
     setParams({ call: value, pin: null });
@@ -688,7 +693,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     if ((selection?.kind === 'clip' || selection?.kind === 'track') && selection.id.startsWith(`${focused?.documentId}/`)) {
       const previous = selection.call ? callKey(selection.call) : null;
       const next = observed ? callKey(observed.call) : null;
-      if (previous !== next) selectionActions.select({ ...selection, call: observed?.call });
+      if (previous !== next || selection.call === undefined) selectionActions.select({ ...selection, call: observed === null ? null : observed.call });
     }
   }, [focused?.documentId, observed]);
 
@@ -881,7 +886,9 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     <CurveClockContext.Provider value={curveClock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
-        observations={choices} selectCall={selectCall} pinned={pin !== null} togglePin={togglePin} parents={parents} openParent={openParent} />
+        observations={choices} selectCall={selectCall} pin={pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
+        observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (trace.kind === 'unavailable' ? trace.reason
+          : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : null)} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>
@@ -962,17 +969,20 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   return <MenuButton label="添加输入" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
 }
 
-function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pinned, togglePin, parents, openParent }: {
+function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice }: {
   settings: MenuEntry[]; subject: Subject; origin: number; seek(value: number): void;
   observations: TimelineObservation[]; selectCall(value: string): void;
-  pinned: boolean; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
+  pin: TimelineObservation | null; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
+  observationNotice: string | null;
 }) {
   const clock = useContext(PreviewClockContext);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
   const documentNotice = useDocumentObservationNotice(clock.kind === 'document' ? clock.observation?.call ?? null : null);
+  const shownObservation = pin ?? (clock.kind === 'document' ? clock.observation : null);
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
   const notice = useWorkbench(state => {
+    if (observationNotice !== null) return observationNotice;
     if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
     if (!state.runId) return null;
     if (documentNotice !== null) return documentNotice;
@@ -1001,9 +1011,9 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
       {observations.length > 1 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
         value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
+      {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
+        tip={`${pin !== null ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(shownObservation.call)} · ${shownObservation.domain}`}>固定调用</Button>}
       {clock.kind === 'document' && clock.observation !== null && <>
-        <Button variant="ghost" pressed={pinned} disabled={togglePin === undefined} onClick={togglePin}
-          tip={`${pinned ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(clock.observation.call)} · ${clock.observation.domain}`}>固定调用</Button>
         {clock.observation.call.parentInvocationPath && (parents.length > 1 && openParent
           ? <MenuButton label="选择父调用" variant="ghost" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
             onSelect: () => openParent(item) }))}>上层调用</MenuButton>
@@ -2303,7 +2313,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
             onAnimationDrop(event.dataTransfer);
           }}
           onClick={() => selectTimelineObject(clock, 'clip', selectId)}
-          onDoubleClick={() => openClipGraph(graphId, label)}>
+          onDoubleClick={() => openClipGraph(graphId, label, clock)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
           {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel} data-name>{label}</span>}
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
@@ -2319,14 +2329,16 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
 }
 
 // 照 Timeline Editor：双击片段或标记打开它的节点图。
-function openClipGraph(graphId: string | null, label: string) {
-  const graph = clipGraph(getState().graphs, graphId);
+function openClipGraph(graphId: string | null, label: string, clock: PreviewClock) {
+  const state = getState();
+  const graph = clipGraph(state.graphs, graphId);
   if (!graph) {
     consoleActions.log('warn', 'Timeline', graphId ? `${label} 的节点图不在本次运行中` : `${label} 没有节点图`);
     return;
   }
-  selectionActions.showGraph(graphKey(graph), null);
-  openPanel('graph');
+  const caller = state.runId === null || clock.kind !== 'document' || clock.observation === null ? null
+    : { runId: state.runId, call: clock.observation.call };
+  selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id, observation: null, caller, origin: null });
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
@@ -2386,7 +2398,7 @@ function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, 
       }}
       // 整体平移后保留框选，不改成单选这个标记。
       onClick={() => { if (selectId && !dragged.current) selectTimelineObject(clock, 'clip', selectId); }}
-      onDoubleClick={() => openClipGraph(graphId, label)}>
+      onDoubleClick={() => openClipGraph(graphId, label, clock)}>
       <MarkerTriangle className={styles.markerHead} />
     </button>
     </Tip>

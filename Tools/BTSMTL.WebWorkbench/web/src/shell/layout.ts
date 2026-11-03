@@ -247,9 +247,10 @@ export function resetLayout() {
   syncSlice();
 }
 
-// 按类型打开：已打开时激活第一个实例；没有时在默认位置打开一个。
-export function openPanel(type: PanelType): IDockviewPanel {
-  const existing = instances(type)[0];
+export function openPanel(type: PanelType, panelId?: string): IDockviewPanel {
+  const current = instances(type);
+  const existing = panelId === undefined ? current[0] : current.find(panel => panel.id === panelId);
+  if (panelId !== undefined && existing === undefined) throw new Error(`指定的${panelInfo[type].title}面板已关闭：${panelId}`);
   if (existing) {
     existing.api.setActive();
     return existing;
