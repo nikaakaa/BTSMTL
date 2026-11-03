@@ -50,7 +50,13 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Concat(context.Compilation.SourceModule.ReferencedAssemblySymbols))
                     foreach (AttributeData declaration in assembly.GetAttributes().Where(attribute =>
                         Identity(attribute.AttributeClass) == BusinessKeyExternalAttribute))
+                    {
+                        // 引用程序集的声明类型不在本编译引用范围时，本编译不可能调用该方法，声明不适用。
+                        if (!SymbolEqualityComparer.Default.Equals(assembly, context.Compilation.Assembly) &&
+                            declaration.ConstructorArguments[0].Value is ITypeSymbol { TypeKind: TypeKind.Error })
+                            continue;
                         AddExternalDeclaration(declaration);
+                    }
             }
 
             internal void Collect(SyntaxTree tree)
