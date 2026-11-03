@@ -7,7 +7,6 @@ import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
 import { consoleActions, selectionActions, useWorkbench } from '../../state/store';
-import { openPanel } from '../../shell/layout';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, Checkbox, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import styles from './quickPreview.module.css';
@@ -24,7 +23,6 @@ async function locate(location: PreviewQuickLocation) {
     if (!edge) throw new Error(`来源图 ${location.graphId} 中不存在转移 ${location.edgeId}`);
     selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge) });
   }
-  openPanel('graph');
 }
 
 function LocationButton({ source, label }: { source: PreviewQuickLocation; label: string }) {

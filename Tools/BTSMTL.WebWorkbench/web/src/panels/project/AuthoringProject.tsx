@@ -100,7 +100,6 @@ export function AuthoringProject() {
                 const id = await graphAuthoring.createPage('Subgraph', 'Shared', name);
                 setSelected(JSON.stringify([skill, 'graph', id]));
                 await projectActions.openGraph({ owner: skill, ownerName: skill, id });
-                openPanel('graph');
               }
               setCreating(null);
               setName('');
@@ -132,7 +131,7 @@ export function AuthoringProject() {
                 { value: value.identity, source: `${value.owner}/${value.file}`, targets: [], associated: [], references: null });
             }}
             onClick={event => { setSelected(keyOf(value)); if (event.detail < 2 && choices.length === 1) field!.choose(choices[0]); }}
-            onDoubleClick={() => { void projectActions.open(value).then(openPanel, error => consoleActions.error('Project', error)); }}>
+            onDoubleClick={() => { void projectActions.open(value).catch(error => consoleActions.error('Project', error)); }}>
             <span>{value.name}</span>
             <small>{kindNames[value.kind]} · {value.ownerName} · {value.ownership === 'Shared' ? '共享' : '私有'} · {value.referenceCount} 项引用</small>
           </button>;
@@ -173,7 +172,7 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
   };
   return <div className={styles.details}>
     <PanelBar>
-      <Button variant="ghost" disabled={busy} onClick={() => void perform(async () => { openPanel(await projectActions.open(item)); })}>打开</Button>
+      <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>
       {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
         tip={pendingDocument ? '等待此技能的读取或保存完成' : '删除整个技能目录；宿主会检查磁盘修订、外部引用、Definition 授予和共享内容'}
@@ -204,7 +203,7 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
     })} />}
     {item.kind === 'input-plan' && <div className={styles.facts}>
       {item.schemes.map(scheme => <Button key={scheme.index} variant="ghost" disabled={busy}
-        onClick={() => void perform(async () => { openPanel(await projectActions.open(item, scheme.index)); })}>打开 {scheme.name}</Button>)}
+        onClick={() => void perform(() => projectActions.open(item, scheme.index))}>打开 {scheme.name}</Button>)}
     </div>}
     {deletion && <>
       <div className={styles.heading}>阻止删除的引用 · {deletion.references.length} 项</div>
@@ -216,14 +215,14 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
           <code>{reference.file} · {reference.path}</code>
           {reference.kind === 'carrier-grant' ? <LocateAssetButton target={{ kind: 'asset', identity: reference.identity }} />
             : source && <Button variant="ghost" disabled={busy}
-              onClick={() => void perform(async () => { openPanel(await projectActions.open(source)); })}>打开引用者</Button>}
+              onClick={() => void perform(() => projectActions.open(source))}>打开引用者</Button>}
         </div>;
       })}
       {deletion.shared.length > 0 && <div className={styles.heading}>技能拥有的共享内容 · {deletion.shared.length} 项</div>}
       {deletion.shared.map(shared => <div key={keyOf(shared)} className={styles.facts}>
         <strong>{shared.name}</strong><span>{kindNames[shared.kind]} · {shared.ownerName}</span><code>{shared.file}</code>
         <Button variant="ghost" disabled={busy}
-          onClick={() => void perform(async () => { openPanel(await projectActions.open(shared)); })}>打开共享内容</Button>
+          onClick={() => void perform(() => projectActions.open(shared))}>打开共享内容</Button>
       </div>)}
     </>}
     {!deletion && <>
@@ -239,8 +238,7 @@ function ProjectItemDetails({ item, items, stamp, onChanged }: { item: ProjectIt
         onClick={() => void perform(async () => {
           if ('graphId' in reference) {
             await projectActions.openGraph({ owner: reference.owner, ownerName: reference.ownerName, id: reference.graphId }, reference.nodeId);
-            openPanel('graph');
-          } else if (source) openPanel(await projectActions.open(source));
+          } else if (source) await projectActions.open(source);
         })}>
         <span>{reference.ownerName} · {source?.name ?? reference.file}</span><small>{reference.path}</small>
         {'contextOwnerName' in reference && <small>调用上下文：{reference.contextOwnerName} · {reference.fieldId}</small>}

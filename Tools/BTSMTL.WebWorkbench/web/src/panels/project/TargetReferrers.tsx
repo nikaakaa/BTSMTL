@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type ReferenceChoiceTarget, type ReferrersResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
-import { openPanel } from '../../shell/layout';
 import { authoringActions, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
@@ -56,7 +55,7 @@ export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
       const reference = items[index];
       return <button className={styles.row} disabled={!('graphId' in reference)} onClick={() => {
         if ('graphId' in reference) void projectActions.openGraph({ owner: reference.owner, ownerName: reference.ownerName, id: reference.graphId }, reference.nodeId)
-          .then(() => { openPanel('graph'); }, error => consoleActions.error('Project', error));
+          .catch(error => consoleActions.error('Project', error));
       }}>
         <span>{reference.ownerName} · {reference.file}</span><small>{reference.path}</small>
         {'contextOwnerName' in reference && <small>调用技能：{reference.contextOwnerName} · 字段 {reference.fieldId}</small>}

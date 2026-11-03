@@ -20,7 +20,6 @@ import {
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { usePanelId, usePanelParams } from '../../shell/panel';
-import { openPanel } from '../../shell/layout';
 import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
@@ -669,9 +668,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     const observation = params.pin !== null ? { runId: params.pin.runId, call: params.pin.call }
       : call === null || runId === null ? null : { runId, call };
     const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId, observation };
-    void projectActions.openReference(target, origin, panelId).then(panel => {
-      if (panel === 'timeline') openPanel(panel);
-    }, reason => consoleActions.error('作者', reason));
+    void projectActions.openReference(target, origin, panelId).catch(reason => consoleActions.error('作者', reason));
   }, [graph.owner, graph.ownerName, graph.id, call, params.pin, runId, panelId]);
   const openNode = useCallback((data: NodeData) => {
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);

@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { authoringApi, type BusinessKeyRenameResult, type ProfileEntryTarget } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
-import { openPanel } from '../../shell/layout';
 import { authoringActions, businessKeyMigrationConflicts, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions } from '../../state/store';
@@ -110,7 +109,7 @@ const MigrationImpact = memo(function MigrationImpact({ plan }: { plan: Business
         <Button variant="ghost" onClick={() => {
           const owner = referenceOwner(reference.ownerDirectory);
           void projectActions.openGraph({ owner, ownerName: owner, id: reference.graphId }, reference.nodeId)
-            .then(() => { openPanel('graph'); }, error => consoleActions.error('Project', error));
+            .catch(error => consoleActions.error('Project', error));
         }}>打开引用节点</Button>
       </div>)}
     </details>}

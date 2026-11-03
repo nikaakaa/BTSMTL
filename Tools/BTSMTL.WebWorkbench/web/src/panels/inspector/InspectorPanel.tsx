@@ -1,7 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
-import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
@@ -324,7 +323,7 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
           onOpen={() => {
             void projectActions.openReference(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId,
               observation: call === null || runId === null ? null : { runId, call } })
-              .then(panel => { openPanel(panel); }, reason => consoleActions.error('作者', reason));
+              .catch(reason => consoleActions.error('作者', reason));
           }} />
       ))}
       {transitions.map(edge => {

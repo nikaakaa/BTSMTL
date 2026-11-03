@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationLibrary } from '../../api/types';
 import type { ProfileEntryTarget, ReferenceChoiceTarget } from '../../api/authoring';
-import { openPanel } from '../../shell/layout';
 import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
 import { writeResourceReady } from '../../shell/readiness';
@@ -83,7 +82,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
               label: graph ? `${graph.displayName ?? graph.id} · ${target.nodeId}` : `所属图尚未加载 · ${target.graphId}`,
               disabled: graph === undefined,
               onSelect: () => { if (graph) void projectActions.openGraph(graph, target.nodeId)
-                .then(() => { openPanel('graph'); }, error => consoleActions.error('Project', error)); },
+                .catch(error => consoleActions.error('Project', error)); },
             }, { label: `查看节点 ${target.nodeId} 的引用者`, onSelect: () => onReferrers(target) }];
           })}>来源</MenuButton>}
         </div>;

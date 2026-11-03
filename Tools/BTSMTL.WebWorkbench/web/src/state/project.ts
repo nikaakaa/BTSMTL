@@ -32,37 +32,41 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 
 export const projectActions = {
   openGraph,
-  async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin, panelId: string | null = null): Promise<'graph' | 'timeline'> {
+  async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin, panelId: string | null = null): Promise<void> {
     switch (target.kind) {
       case 'graph':
         await openGraph(target, undefined, { origin, caller: origin.observation, observation: null, panelId });
-        return 'graph';
+        return;
       case 'timeline':
         await openOwner(target);
         if (currentDocument(target.file) === null)
           throw new Error(`无法打开 Timeline「${target.displayName ?? target.id}」：${target.ownerName} 的当前作者文档中不存在 ${target.file}`);
         selectionActions.select(null);
         selectionActions.showTimeline(target.id, origin.observation);
-        return 'timeline';
+        openPanel('timeline');
+        return;
     }
   },
-  async open(item: ProjectItem, schemeIndex?: number): Promise<'graph' | 'timeline' | 'inspector'> {
+  async open(item: ProjectItem, schemeIndex?: number): Promise<void> {
     const document = await openOwner(item);
     selectionActions.select(null);
     if (item.kind === 'skill' || item.kind === 'graph') {
       const id = item.kind === 'skill' ? document.programId : item.identity;
-      if (item.kind === 'skill' && id === null && document.documentError === null) return 'inspector';
+      if (item.kind === 'skill' && id === null && document.documentError === null) {
+        openPanel('inspector');
+        return;
+      }
       const graph = document.documentGraphs?.find(value => value.id === id);
       if (!graph) throw new Error(document.documentError ?? '此作者图引用已失效，目录中的原身份已保留');
       selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id, observation: null, caller: null, origin: null });
-      return 'graph';
+      return;
     }
     if (item.kind === 'timeline') selectionActions.showTimeline(item.identity, null);
     else {
       const plan = currentDocument(item.file) as JsonObject;
       await authoringActions.openInput(ownerOf(item), item.file, schemeIndex ?? numberOf(plan.Selected), plan.Actor as string);
     }
-    return 'timeline';
+    openPanel('timeline');
   },
 
   async rename(item: ProjectItem, name: string, schemeIndex: number | null) {
