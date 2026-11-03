@@ -32,7 +32,18 @@ namespace BTSMTL.Orchestration
             DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex && Availability == other.Availability;
 
         public override bool Equals(object obj) => obj is OrchestrationTraceObjectIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex, Availability);
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = Handle.GetHashCode();
+                hash = hash * 31 + Slot;
+                hash = hash * 31 + Kind;
+                hash = hash * 31 + DefinitionIndex;
+                hash = hash * 31 + ProgramIndex;
+                return hash * 31 + (byte)Availability;
+            }
+        }
     }
 
     public enum OrchestrationTraceKind : byte
