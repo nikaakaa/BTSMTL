@@ -27,7 +27,7 @@ import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
+import { callKey, callLabel, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
@@ -609,7 +609,9 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const binding = useDocumentObservationBinding();
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const runId = useWorkbench(state => state.runId);
-  const trace = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
+  const trace = useWorkbench(useShallow(routeObservation));
+  const routeFrames = useWorkbench(state => state.routeFrames);
+  const currentRoute = trace.kind === 'ready' ? trace.route : null;
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { inputTimeline, inputRoot, graphs, curves, selectedCurves } = useWorkbench(useShallow(state => ({
@@ -649,7 +651,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   } : null, [quickMode, runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
-  const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
+  const playbacks = currentRoute?.playbacks;
   const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
@@ -670,7 +672,9 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     ? [pin.observation, ...observations] : observations;
   const togglePin = pin ? () => setParams({ pin: null }) : observed === null || runId === null || focused === null ? undefined
     : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
-  const recorded = useMemo(() => recordedGraphCalls(trace.frames, trace.current, graphs ?? [], binding), [trace, graphs, binding]);
+  const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs ?? [], binding), [routeFrames, graphs, binding]);
+  const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs ?? [], binding), [currentRoute, graphs, binding]);
+  const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const parents = useMemo(() => observed === null ? [] : parentGraphCalls(observed.call, recorded), [observed, recorded]);
   const openParent = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => {
     selectionActions.showGraph(graphKey(graph), { runId, call });

@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillDocumentGraph, type SkillElements } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
-import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
+import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
   applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, useDocumentObservationNotice, type CanvasGroup,
@@ -23,9 +23,9 @@ import { usePanelId, usePanelParams } from '../../shell/panel';
 import { openPanel } from '../../shell/layout';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  callKey, callLabel, edgeSelectId, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
+  callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
   isStateMachine, layoutGraph, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
-  recordedGraphCalls, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
+  recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
 import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
@@ -150,11 +150,13 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
 }) {
   const binding = useDocumentObservationBinding();
   const runId = useWorkbench(state => state.runId);
-  const observation = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
+  const observation = useWorkbench(useShallow(routeObservation));
+  const routeFrames = useWorkbench(state => state.routeFrames);
+  const currentRoute = observation.kind === 'ready' ? observation.route : null;
   const observationNotice = useDocumentObservationNotice(params.pin?.runId === runId ? params.pin.call : null);
   const hierarchy = useDocumentGraphHierarchy();
 
-  const currentCalls = useMemo(() => recordedGraphCalls([], observation.current, graphs, binding), [observation.current, graphs, binding]);
+  const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs, binding), [currentRoute, graphs, binding]);
   const followed = params.graph === null && currentCalls.length === 1 ? graphKey(currentCalls[0].graph) : null;
   const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? defaultGraph;
   const key = graphKey(graph);
@@ -174,7 +176,8 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const path = graph.authoringPath;
   const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
-  const recorded = useMemo(() => recordedGraphCalls(observation.frames, observation.current, graphs, binding), [observation, graphs, binding]);
+  const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs, binding), [routeFrames, graphs, binding]);
+  const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const callCrumbs = useMemo(() => {
     if (observedCall === null) return null;
     const items: RecordedGraphCall[] = [{ graph, call: observedCall }];
@@ -301,7 +304,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
         <div className={styles.stage}>
           {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
           <AuthoredCanvas graph={graph} call={observedCall}
-            hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />
+            route={currentRoute} hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />
         </div>
       </ReactFlowProvider>
     </div>
@@ -505,6 +508,7 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
 interface GraphCanvasProps {
   graph: SkillDocumentGraph;
   call: ExecutionCall | null;
+  route: RouteFrame | null;
   hierarchy: GraphHierarchy;
   enter(graph: GraphNavigationTarget, nodeId?: string): void;
   params: Params;
@@ -514,7 +518,7 @@ interface GraphCanvasProps {
   elements: SkillElements | null;
 }
 
-function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
   const plan = useQuickPlan();
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   const planned = useMemo(() => new Set(plan?.segments.flatMap(segment => segment.stateSource !== null &&
@@ -534,6 +538,27 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
+  const routeFrames = useWorkbench(state => state.routeFrames);
+  const observedCallKey = call === null ? null : callKey(call);
+  const history = useMemo(() => {
+    const visited = new Map<string, number>(), traveled = new Map<string, number>();
+    if (machine && observedCallKey !== null)
+      for (const frame of routeFrames) {
+        const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
+          matchesDocumentCall(item.call, binding) && callKey(item.call) === observedCallKey;
+        for (const node of frame.nodes)
+          if ((node.kind === 'NodeEntered' || node.kind === 'StateScopeEntered') && matches(node)) {
+            const previous = visited.get(node.nodeId);
+            if (previous === undefined || frame.seconds < previous) visited.set(node.nodeId, frame.seconds);
+          }
+        for (const edge of frame.edges)
+          if (edge.passed && matches(edge)) {
+            const previous = traveled.get(edge.edgeId);
+            if (previous === undefined || frame.seconds < previous) traveled.set(edge.edgeId, frame.seconds);
+          }
+      }
+    return { visited, traveled };
+  }, [routeFrames, graph.id, binding, observedCallKey, machine]);
   const build = useCallback((previous: CanvasNode[]) => {
     const selected = new Set(canvasSelection?.view === view ? canvasSelection.nodes : []);
     // 重建保留已测量的尺寸：否则节点要等重新测量才显示，连线在此之前不画。
@@ -593,28 +618,15 @@ function GraphCanvas({ graph, call, hierarchy, enter, params, setParams, editabl
     });
   }, [layout, graph, machine, hierarchy, authored]);
 
-  // 帧变化时只更新路线状态，节点数组不重建；状态机另按到本帧为止的路线标出走过的状态与转移。
   useEffect(() => {
-    const apply = () => {
-      const state = getState();
-      const records = graphRecords(state.frame?.route, graph, binding).filter(item => call !== null && callKey(item.call) === callKey(call));
-      const history: RouteHistory = { visited: new Set(), traveled: new Set() };
-      if (machine && state.frame !== null) {
-        for (const frame of state.routeFrames) {
-          if (frame.seconds > state.frame.seconds) continue;
-          const matches = (item: typeof frame.nodes[number] | typeof frame.edges[number]) => item.call !== null && item.graphId === graph.id &&
-            matchesDocumentCall(item.call, binding) && call !== null && callKey(item.call) === callKey(call);
-          for (const node of frame.nodes) if (node.kind === 'Enter' && matches(node)) history.visited.add(node.nodeId);
-          for (const edge of frame.edges) if (edge.passed && matches(edge)) history.traveled.add(edge.edgeId);
-        }
-      }
-      store.update(layout.nodes, layout.edges, records, history);
-    };
-    apply();
-    return useWorkbench.subscribe((state, previous) => {
-      if (state.frame !== previous.frame || state.frameIndex !== previous.frameIndex || state.routeFrames !== previous.routeFrames) apply();
-    });
-  }, [store, graph, layout, call, machine, binding]);
+    const records = graphRecords(route, graph, binding).filter(item => callKey(item.call) === observedCallKey);
+    const shown: RouteHistory = { visited: new Set(), traveled: new Set() };
+    if (route !== null) {
+      for (const [id, seconds] of history.visited) if (seconds <= route.seconds) shown.visited.add(id);
+      for (const [id, seconds] of history.traveled) if (seconds <= route.seconds) shown.traveled.add(id);
+    }
+    store.update(records, shown);
+  }, [store, graph, route, binding, observedCallKey, history]);
   useFrameReport(`${graphKey(graph)}|${path}|${call === null ? '' : callKey(call)}`);
 
   const selectedNode = useWorkbench(state => state.selection?.kind === 'node' ? state.selection.id : null);
@@ -1146,7 +1158,7 @@ function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourceP
   const condition = data!.conditions[0];
   return (
     <>
-      <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}>
+      <Tip content={`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次\n${state.detail}` : ''}`}>
         <g data-edge={id}>
           <path d={path} className={styles.edgeHit} />
           <path d={path} className={styles.edge} style={{ ['--ec' as string]: color }} data-status={status} data-faded={faded || undefined}

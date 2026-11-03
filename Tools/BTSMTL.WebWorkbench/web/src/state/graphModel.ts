@@ -2,16 +2,18 @@ import type {
   EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, NodeOccurrence, PortSample, RouteFrame,
 } from '../api/types';
 import type { SkillDocumentGraph, SkillDocumentRelation } from '../api/authoring';
+import type { WorkbenchState } from './store';
 
 // 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
 
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex,
-  call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
+  call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId,
+  call.parentInvocationPath, call.parentInvocationGeneration]);
 export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
   `${call.objectKind ?? '对象类型未记录'} · ${call.objectHandle ?? '句柄未记录'}`;
-export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration}` +
+export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 对象 ${call.objectHandle ?? '句柄未记录'} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration} · ${call.invocationPath}` +
   (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {
   programId: string | null;
@@ -56,7 +58,19 @@ export function nodeName(node: GraphNode) {
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') || type;
 }
 export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'LoopIterationEntered' || item.kind === 'LoopIterationCompleted'
-  ? `${item.kind} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : item.kind;
+  ? `${item.kind} · 激活 ${item.generation} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : `${item.kind} · 激活 ${item.generation}`;
+
+export function routeObservation({ runId, frame, hostFrame }: Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame'>) {
+  if (runId === null) return { kind: 'unavailable', reason: '选择运行以查看实际调用' } as const;
+  if (frame === null || frame.hostFrame !== hostFrame)
+    return { kind: 'unavailable', reason: '正在读取当前档案帧，尚无该帧的实际调用' } as const;
+  if (frame.source === null || frame.source.execution.kind === null || frame.source.execution.identity === null)
+    return { kind: 'unavailable', reason: '此档案帧未记录实际执行身份，调用观察不可用' } as const;
+  if (frame.route === null)
+    return { kind: 'unavailable', reason: frame.availability.filter(item => !item.available || !item.complete)
+      .map(item => item.reason).join('；') || '此档案帧没有调用记录' } as const;
+  return { kind: 'ready', route: frame.route } as const;
+}
 
 // 调用路径已含程序与图身份。
 export const nodeSelectId = (graph: GraphDefinition, node: Pick<GraphNode, 'invocationPath' | 'id'>) => `${graph.actorId}/${node.invocationPath}/${node.id}`;
@@ -95,22 +109,35 @@ export interface RecordedGraphCall {
   call: ExecutionCall;
 }
 
-export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | null, graphs: GraphDefinition[], binding: DocumentObservationBinding): RecordedGraphCall[] {
-  if (current === null) return [];
-  const calls = new Map<string, RecordedGraphCall>();
+export function recordedGraphCalls(frames: RouteFrame[], graphs: GraphDefinition[], binding: DocumentObservationBinding) {
+  const calls = new Map<string, RecordedGraphCall & { frame: RouteFrame }>();
   const byId = new Map<string, GraphDefinition[]>();
   for (const graph of graphs) {
     const matches = byId.get(graph.id) ?? [];
     matches.push(graph);
     byId.set(graph.id, matches);
   }
-  for (const frame of [...frames, current]) {
-    if (frame.seconds > current.seconds) continue;
+  for (const frame of frames) {
     for (const record of [...frame.nodes, ...frame.edges, ...frame.ports.filter(item => item.sourceAvailable)]) {
       if (record.call === null || !matchesDocumentCall(record.call, binding)) continue;
-      for (const graph of byId.get(record.graphId) ?? [])
-        calls.set(`${graphKey(graph)}:${callKey(record.call)}`, { graph, call: record.call });
+      for (const graph of byId.get(record.graphId) ?? []) {
+        const key = `${graphKey(graph)}:${callKey(record.call)}`;
+        const previous = calls.get(key);
+        if (previous === undefined || frame.seconds < previous.frame.seconds) calls.set(key, { graph, call: record.call, frame });
+      }
     }
+  }
+  return [...calls.values()];
+}
+
+export function graphCallsAtFrame(recorded: ReturnType<typeof recordedGraphCalls>, current: RouteFrame | null,
+  currentCalls: RecordedGraphCall[]): RecordedGraphCall[] {
+  if (current === null) return [];
+  const calls = new Map(recorded.filter(item => item.frame.seconds <= current.seconds)
+    .map(item => [`${graphKey(item.graph)}:${callKey(item.call)}`, item] as const));
+  for (const item of currentCalls) {
+    const key = `${graphKey(item.graph)}:${callKey(item.call)}`;
+    if (!calls.has(key)) calls.set(key, { ...item, frame: current });
   }
   return [...calls.values()];
 }

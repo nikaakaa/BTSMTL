@@ -74,7 +74,6 @@ export async function readFrame(index: number, scope: { kind: 'cursor' } | { kin
   const hit = cachedFrame(runId, index);
   if (hit) {
     transport.recordFrames(runId, index, [hit]);
-    publishRoutes(runId, generation);
   }
   else if (scope.kind === 'cursor') await loadCursorPage(runId, page, generation);
   else await loadPage(runId, page, generation, scope.signal);
