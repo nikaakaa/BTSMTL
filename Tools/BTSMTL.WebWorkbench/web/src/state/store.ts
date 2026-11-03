@@ -81,6 +81,7 @@ export interface RunData {
   archiveMetadata: PlayerArchive | null;
   archiveImage: ArchiveImage | null;
   archiveCurves: PlayerDataCurve[] | null;
+  archiveCurveVersion: number;
   curveAvailability: Availability[];
   selectedCurves: string[];
 }
@@ -124,7 +125,7 @@ export const emptyRunData: RunData = {
   routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
   timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
   archiveLayout: null, archiveFrame: null, archiveMetadata: null, archiveImage: null,
-  archiveCurves: null, curveAvailability: [], selectedCurves: [],
+  archiveCurves: null, archiveCurveVersion: 0, curveAvailability: [], selectedCurves: [],
 };
 
 // ── cursor：只能由 transport 写入 ──

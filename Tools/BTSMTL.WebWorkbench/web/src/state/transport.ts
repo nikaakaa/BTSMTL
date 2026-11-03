@@ -1,6 +1,6 @@
 import { playerApi } from '../api/player';
 import { isAbort } from '../api/http';
-import { samePreviewContent, samePreviewLoad, type PlayerJobId, type PreviewPosition } from '../api/playerRecords';
+import { samePreviewContent, samePreviewLoad, type PlayerJobId, type PreviewPosition, type PreviewSampleSource } from '../api/playerRecords';
 import type { Frame, LiveCommand, LiveCommandResult, PlayerAck } from '../api/types';
 import { consoleActions, getState, isCurrent, useWorkbench, type PlayerCommandRecord } from './store';
 
@@ -8,7 +8,7 @@ export type TransportSource = 'sealed' | 'player-live';
 
 const source = 'transport';
 
-export type ArchiveTimebase = Map<number, { hostFrame: string; seconds: number }>;
+export type ArchiveTimebase = Map<number, Pick<Frame, 'hostFrame' | 'seconds' | 'source'>>;
 interface Timebase {
   runId: PlayerJobId;
   frames: ArchiveTimebase;
@@ -50,7 +50,7 @@ async function readTime(context: Timebase, index: number, signal: AbortSignal) {
   const page = await playerApi.frames(context.runId, index, 1, signal);
   signal.throwIfAborted();
   const frame = page.items[0];
-  const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds };
+  const entry = { hostFrame: frame.hostFrame, seconds: frame.seconds, source: frame.source };
   context.frames.set(index, entry);
   return entry;
 }
@@ -202,6 +202,19 @@ export const transport = {
     return timebase?.runId === getState().runId ? timebase.frames.get(index)?.seconds ?? null : null;
   },
 
+  recordPosition(runId: PlayerJobId, index: number, sample: PreviewSampleSource) {
+    if (timebase?.runId !== runId || getState().runId !== runId)
+      return { kind: 'unavailable', reason: '采样点不属于当前打开的档案' } as const;
+    if (transportSource() !== 'sealed') return { kind: 'unavailable', reason: '当前档案尚未封存，不能定位录制帧' } as const;
+    const frame = timebase.frames.get(index);
+    if (frame === undefined) return { kind: 'unavailable', reason: '采样点对应的录制帧时间尚未读取' } as const;
+    if (frame.source === null || sample.execution.kind === null || sample.execution.identity === null)
+      return { kind: 'unavailable', reason: '采样点或录制帧缺少实际执行身份' } as const;
+    if (frame.hostFrame !== sample.clock.position.hostFrame || !samePreviewLoad(frame.source, sample))
+      return { kind: 'unavailable', reason: '采样点与录制帧的来源或内容身份不匹配' } as const;
+    return { kind: 'record', index, seconds: frame.seconds } as const;
+  },
+
   duration(): number | null {
     const first = transport.secondsAt(0), last = transport.secondsAt(frameCount() - 1);
     return first === null || last === null ? null : last - first;
@@ -219,10 +232,10 @@ export const transport = {
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 
-  recordFrames(runId: PlayerJobId, offset: number, frames: ReadonlyArray<Pick<Frame, 'hostFrame' | 'seconds'>>) {
+  recordFrames(runId: PlayerJobId, offset: number, frames: ReadonlyArray<Pick<Frame, 'hostFrame' | 'seconds' | 'source'>>) {
     if (timebase?.runId !== runId) return;
     for (const [index, frame] of frames.entries())
-      timebase.frames.set(offset + index, { hostFrame: frame.hostFrame, seconds: frame.seconds });
+      timebase.frames.set(offset + index, { hostFrame: frame.hostFrame, seconds: frame.seconds, source: frame.source });
     if (frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 

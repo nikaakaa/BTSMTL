@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchiveImage, PlayerCurveSample, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
+import type { PlayerArchiveImage, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -46,7 +46,8 @@ function publishFrame(context: OpenArchive) {
   const state = getState();
   if (isCurrent(context.generation) && state.runId === context.jobId) {
     const frame = readCachedFrame(context.jobId, state.frameIndex);
-    runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
+    runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame },
+      archiveCurveVersion: state.archiveCurveVersion + 1 });
   }
 }
 
@@ -258,14 +259,16 @@ export const archive = {
     });
   },
 
-  curveSamples(jobId: PlayerJobId, curveId: string): PlayerCurveSample[] {
+  curveSamples(jobId: PlayerJobId, curveId: string) {
     return [...cache.entries()].flatMap(([id, frame]) => {
       const curve = frame.curves[curveId];
-      return id.startsWith(jobId + ':') && curve?.kind === 'sampled' ? curve.samples : [];
+      return id.startsWith(jobId + ':') && curve?.kind === 'sampled' ? curve.samples.map(sample => ({ sample,
+        index: Number(id.slice(jobId.length + 1)),
+      })) : [];
     })
-      .sort((left, right) => left.source.clock.seconds - right.source.clock.seconds ||
-          (left.presentationSequence !== null && right.presentationSequence !== null
-            ? BigInt(left.presentationSequence) < BigInt(right.presentationSequence) ? -1 : BigInt(left.presentationSequence) > BigInt(right.presentationSequence) ? 1 : 0
+      .sort((left, right) => left.sample.source.clock.seconds - right.sample.source.clock.seconds ||
+          (left.sample.presentationSequence !== null && right.sample.presentationSequence !== null
+            ? BigInt(left.sample.presentationSequence) < BigInt(right.sample.presentationSequence) ? -1 : BigInt(left.sample.presentationSequence) > BigInt(right.sample.presentationSequence) ? 1 : 0
             : 0));
   },
 

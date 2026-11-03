@@ -11,7 +11,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ClipCurveChannel, SkillElements } from '../../api/authoring';
 import type { ExecutionCall, FrozenInputTimeline, InputWrite } from '../../api/types';
-import type { PlayerDataCurve, PlayerJobId } from '../../api/playerRecords';
+import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
@@ -140,7 +140,9 @@ const observationKey = (observation: TimelineObservation) => JSON.stringify([cal
 type PreviewClock = { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'input'; documentId: string; observing: boolean };
 const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
-const CurveClockContext = createContext<{ sourceSeconds: number; seconds: number } | null>(null);
+type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number }
+  | { kind: 'unavailable'; reason: string };
+const CurveClockContext = createContext<CurveClock>({ kind: 'unavailable', reason: '没有当前帧的来源时钟' });
 function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   if (clock.kind !== 'document' || clock.observation === null) return undefined;
   const { documentId, observation } = clock;
@@ -858,10 +860,16 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const clock = useMemo<PreviewClock>(() => inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: !quickMode && inputObservation.kind === 'ready' }
       : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
   [quickMode, focused?.documentId, observed, inputScheme, inputObservation.kind]);
-  const curveClock = useWorkbench(useShallow(state => {
-    if (quickMode || state.seconds === null || (clock.kind === 'input' && !clock.observing)) return null;
+  const curveClock = useWorkbench(useShallow((state): CurveClock => {
+    if (quickMode || (clock.kind === 'input' && !clock.observing)) return { kind: 'unavailable', reason: '当前没有对应的运行观察' };
+    const frame = state.frame;
+    if (frame === null || frame.hostFrame !== state.hostFrame) return { kind: 'unavailable', reason: '正在读取当前档案帧的来源时钟' };
+    if (frame.source === null) return { kind: 'unavailable', reason: '此档案帧没有记录来源时钟' };
+    if (frame.source.execution.kind === null || frame.source.execution.identity === null)
+      return { kind: 'unavailable', reason: '此档案帧没有记录实际执行身份' };
     const seconds = previewSeconds(state, clock, null);
-    return seconds === null ? null : { sourceSeconds: state.seconds, seconds };
+    return seconds === null ? { kind: 'unavailable', reason: '当前帧没有所选 Timeline 或输入方案的观察时间' }
+      : { kind: 'ready', source: frame.source, seconds };
   }));
 
   return (
@@ -2404,21 +2412,28 @@ function CurveGroupLine({ nest, open, toggle }: { nest: Nest | undefined; open: 
 function CurveLine({ row, nest }: { row: CurveRow; nest: Nest | undefined }) {
   const clock = useContext(CurveClockContext);
   const { range } = useTimelineContext();
-  const { runId, frame, hostFrame, image } = useWorkbench(useShallow(state => ({
+  const { runId, frame, hostFrame, image, curveVersion } = useWorkbench(useShallow(state => ({
     runId: state.runId, frame: state.archiveFrame, hostFrame: state.hostFrame,
-    image: state.archiveImage,
+    image: state.archiveImage, curveVersion: state.archiveCurveVersion,
   })));
   const selectId = runId === null ? null : `curve/${runId}/${row.curve.id}`;
   const selected = useSelected(selectId ?? '', 'track');
-  const samples = useMemo(() => !runId || !clock ? [] : archive.curveSamples(runId, row.curve.id).map(sample => ({
-    sample, seconds: clock.seconds + sample.source.clock.seconds - clock.sourceSeconds,
-  })).filter(point => point.seconds >= range.start && point.seconds <= range.end), [runId, row.curve.id, frame, clock, range]);
+  const records = useMemo(() => runId === null ? [] : archive.curveSamples(runId, row.curve.id), [runId, row.curve.id, curveVersion]);
+  const matching = useMemo(() => clock.kind === 'unavailable' ? [] : records.filter(point => samePreviewLoad(point.sample.source, clock.source)), [records, clock]);
+  const samples = useMemo(() => runId === null || clock.kind === 'unavailable' ? [] : matching.flatMap(({ sample, index }) => {
+    const seconds = clock.seconds + sample.source.clock.seconds - clock.source.clock.seconds;
+    return seconds < range.start || seconds > range.end ? [] : [{ sample, seconds,
+      position: transport.recordPosition(runId, index, sample.source),
+    }];
+  }), [matching, runId, clock, range]);
   const min = samples.length ? Math.min(...samples.map(point => point.sample.value)) : 0;
   const max = samples.length ? Math.max(...samples.map(point => point.sample.value)) : 0;
   const record = frame?.curves[row.curve.id];
-  const reason = !clock ? '没有匹配的运行时钟' : record?.kind === 'failed' ? record.reason
+  const reason = clock.kind === 'unavailable' ? clock.reason : record?.kind === 'failed' ? record.reason
     : record?.kind === 'sampled' ? record.availability.find(item =>
-      (item.channel === row.curve.channel || item.channel === 'data-curves') && !item.available)?.reason ?? null : '正在读取曲线';
+      (item.channel === row.curve.channel || item.channel === 'data-curves') && !item.available)?.reason ??
+      (records.length > 0 && matching.length === 0
+        ? '曲线来源与当前帧的执行或内容身份不匹配' : null) : '正在读取曲线';
   const select = () => { if (selectId !== null) selectionActions.select({ kind: 'track', id: selectId }); };
   // 采样点可能很多，共用一个提示。
   const [sampleTips] = useState(createTipGroup);
@@ -2428,17 +2443,19 @@ function CurveLine({ row, nest }: { row: CurveRow; nest: Nest | undefined }) {
   }>
     {reason ? <Tip name={reason}><span className={styles.curveNotice} data-name>{reason}</span></Tip> : <>
       <svg className={styles.curvePlot} viewBox="0 0 1000 64" preserveAspectRatio="none" aria-label={row.curve.displayName}>
-        {samples.map(({ sample, seconds }, index) => {
+        {samples.map(({ sample, seconds, position }, index) => {
           const matchingImage = sample.presentationSequence === null || image !== null && image.kind !== 'unavailable' &&
             sample.presentationSequence === image.metadata.presentationSequence;
           return <GroupTip key={`${sample.source.clock.position.hostFrame}/${sample.presentationSequence ?? 'logic'}/${index}`} group={sampleTips}
-            content={`${sample.value} ${row.curve.unit}\n${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame} · ${row.curve.clock}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}>
+            content={`${sample.value} ${row.curve.unit}\n${sample.source.clock.positionDisplayName} ${sample.source.clock.position.hostFrame} · ${row.curve.clock}\n来源时间 ${sample.source.clock.seconds} s\n${position.kind === 'record' ? `录制位置 ${position.seconds} s` : position.reason}\n原值 ${sample.rawValue}${sample.presentationSequence === null ? '' : `\n表现序号 ${sample.presentationSequence} · Tick ${sample.presentationTick}`}`}>
             <circle cx={(seconds - range.start) / (range.end - range.start) * 1000}
               cy={max === min ? 32 : 57 - (sample.value - min) / (max - min) * 50} r={2.5}
               data-current={sample.source.clock.position.hostFrame === hostFrame && matchingImage || undefined}
-              onClick={() => {
+              aria-disabled={position.kind === 'unavailable' || undefined}
+              onClick={position.kind === 'unavailable' ? undefined : () => {
                 select();
-                void transport.seekTime(sample.source.clock.seconds);
+                if (getState().runId !== runId) { consoleActions.log('warn', 'Timeline', '所选档案已变化，未定位旧采样点'); return; }
+                transport.seekRecord(position.index);
               }} />
           </GroupTip>;
         })}
