@@ -18,7 +18,7 @@ public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, str
     public PreviewObservationAvailability? ObjectAvailability { get; init; }
 }
 public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, string NodeId,
-    string Kind, string Generation, string? Result, PreviewExecutionCall? Call)
+    string Kind, string? Generation, string? Result, PreviewExecutionCall? Call)
 {
     public int? LoopIteration { get; init; }
     public PreviewLoopScope? LoopScope { get; init; }
@@ -33,7 +33,14 @@ public sealed record PreviewLoopScope(string GraphId, string NodeId, string? Gen
     public PreviewObservationAvailability? ActivationAvailability { get; init; }
 }
 public sealed record PreviewEdgeOccurrence(string Sequence, string GraphId, string EdgeId,
-    bool Selected, bool Passed, PreviewExecutionCall? Call);
+    bool Selected, bool Passed, PreviewExecutionCall? Call)
+{
+    public string? SourceNodeId { get; init; }
+    public string? Generation { get; init; }
+    public PreviewLoopScope? LoopScope { get; init; }
+    public PreviewObservationAvailability? ActivationAvailability { get; init; }
+    public PreviewObservationAvailability? LoopScopeAvailability { get; init; }
+}
 public sealed record PreviewPortSample(string Sequence, string GraphId, string NodeId, string PortId,
     string Direction, string ValueType, string Value, string RawJson, PreviewExecutionCall? Call)
 {
