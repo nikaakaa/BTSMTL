@@ -161,8 +161,17 @@ namespace ThirdPerson.MemoryPackAdapters
             void Visit(ITypeSymbol type)
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
-                if (ContainsParameter(type) || IsUnmanagedValue(type))
+                if (ContainsParameter(type)) return;
+                if (IsUnmanagedValue(type))
+                {
+                    if (visited.Add(Identity(type)) && PaddingReason(type) is string padding)
+                    {
+                        valid = false;
+                        context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, type.Locations.FirstOrDefault(),
+                            Identity(type), padding));
+                    }
                     return;
+                }
                 if (!visited.Add(Identity(type))) return;
                 if (externalLeaves.Contains(Identity(type))) return;
                 if (MemoryPackSequence(type))

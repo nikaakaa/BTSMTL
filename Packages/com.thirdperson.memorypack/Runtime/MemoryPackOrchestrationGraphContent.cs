@@ -10,8 +10,8 @@ namespace ThirdPersonSimulation.Serialization
     public sealed partial class MemoryPackGraphContentPublisher :
         IOrchestrationGraphContentEncoding<Float32Value>, IOrchestrationGraphContentEncoding<FPValue>
     {
-        public const string Float32OrchestrationContractIdentity = "btsmtl.float32-orchestration.memorypack/10";
-        public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/10";
+        public const string Float32OrchestrationContractIdentity = "btsmtl.float32-orchestration.memorypack/11";
+        public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/11";
         const string OrchestrationEnvelopeContract = "btsmtl.graph-blocks/9";
 
         public static StableHash FPEncodingIdentity { get; } = StableHash.Compute(

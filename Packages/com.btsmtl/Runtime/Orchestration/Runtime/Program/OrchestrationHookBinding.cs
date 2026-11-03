@@ -4,11 +4,12 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationHookBinding(OrchestrationLifecycleHook hook, int extensionBindingIndex)
         {
-            Hook = hook;
+            m_Hook = (int)hook;
             ExtensionBindingIndex = extensionBindingIndex;
         }
 
-        public OrchestrationLifecycleHook Hook { get; }
+        readonly int m_Hook;
+        public OrchestrationLifecycleHook Hook => (OrchestrationLifecycleHook)m_Hook;
         public int ExtensionBindingIndex { get; }
     }
 }

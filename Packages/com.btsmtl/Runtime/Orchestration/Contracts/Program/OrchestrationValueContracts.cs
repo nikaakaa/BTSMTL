@@ -4,11 +4,12 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationValueSlotType(OrchestrationValueKind valueKind, int typeIndex)
         {
-            ValueKind = valueKind;
+            m_ValueKind = (int)valueKind;
             TypeIndex = typeIndex;
         }
 
-        public OrchestrationValueKind ValueKind { get; }
+        readonly int m_ValueKind;
+        public OrchestrationValueKind ValueKind => (OrchestrationValueKind)m_ValueKind;
         public int TypeIndex { get; }
     }
 

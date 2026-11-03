@@ -16,7 +16,7 @@ namespace ThirdPersonSimulation
             InWeight = inWeight;
             OutWeight = outWeight;
             WeightedMode = weightedMode;
-            Stepped = stepped;
+            m_Stepped = stepped ? 1 : 0;
         }
 
         public TScalar Time { get; }
@@ -26,7 +26,8 @@ namespace ThirdPersonSimulation
         public TScalar InWeight { get; }
         public TScalar OutWeight { get; }
         public int WeightedMode { get; }
-        public bool Stepped { get; }
+        readonly int m_Stepped;
+        public bool Stepped => m_Stepped != 0;
     }
 
     [ValueStorage]

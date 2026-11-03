@@ -12,10 +12,10 @@ namespace BTSMTL.Orchestration
             TargetOperationIndex = targetOperationIndex;
             SourcePortId = sourcePortId;
             TargetPortId = targetPortId;
-            Kind = kind;
+            m_Kind = (int)kind;
             Order = order;
             Priority = priority;
-            AbortPolicy = abortPolicy;
+            m_AbortPolicy = (int)abortPolicy;
             ConditionOperationIndex = conditionOperationIndex;
         }
 
@@ -24,10 +24,12 @@ namespace BTSMTL.Orchestration
         public int TargetOperationIndex { get; }
         public int SourcePortId { get; }
         public int TargetPortId { get; }
-        public OrchestrationFlowKind Kind { get; }
+        readonly int m_Kind;
+        public OrchestrationFlowKind Kind => (OrchestrationFlowKind)m_Kind;
         public int Order { get; }
         public int Priority { get; }
-        public OrchestrationAbortPolicy AbortPolicy { get; }
+        readonly int m_AbortPolicy;
+        public OrchestrationAbortPolicy AbortPolicy => (OrchestrationAbortPolicy)m_AbortPolicy;
         public int ConditionOperationIndex { get; }
         public bool HasCondition => ConditionOperationIndex >= 0;
 
@@ -60,15 +62,17 @@ namespace BTSMTL.Orchestration
             int sourceIndex, int sourceOutputPortIndex)
         {
             TargetPortIndex = targetPortIndex;
-            ValueKind = valueKind;
-            Source = source;
+            m_ValueKind = (ushort)valueKind;
+            m_Source = (ushort)source;
             SourceIndex = sourceIndex;
             SourceOutputPortIndex = sourceOutputPortIndex;
         }
 
         public int TargetPortIndex { get; }
-        public OrchestrationValueKind ValueKind { get; }
-        public OrchestrationValueInputSource Source { get; }
+        readonly ushort m_ValueKind;
+        readonly ushort m_Source;
+        public OrchestrationValueKind ValueKind => (OrchestrationValueKind)m_ValueKind;
+        public OrchestrationValueInputSource Source => (OrchestrationValueInputSource)m_Source;
         public int SourceIndex { get; }
         public int SourceOutputPortIndex { get; }
     }

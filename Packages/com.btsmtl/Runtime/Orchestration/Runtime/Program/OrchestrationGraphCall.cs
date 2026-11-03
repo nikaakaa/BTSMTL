@@ -7,11 +7,12 @@ namespace BTSMTL.Orchestration
         public OrchestrationGraphParameter(int valueSlot, OrchestrationValueKind valueKind)
         {
             ValueSlot = valueSlot;
-            ValueKind = valueKind;
+            m_ValueKind = (int)valueKind;
         }
 
         public int ValueSlot { get; }
-        public OrchestrationValueKind ValueKind { get; }
+        readonly int m_ValueKind;
+        public OrchestrationValueKind ValueKind => (OrchestrationValueKind)m_ValueKind;
     }
 
     public sealed class OrchestrationGraphCall

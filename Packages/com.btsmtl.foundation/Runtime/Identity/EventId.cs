@@ -16,10 +16,11 @@ namespace ThirdPersonSimulation
             m_B = b;
             m_C = c;
             m_D = d;
-            IsValid = true;
+            m_IsValid = 1;
         }
 
-        public bool IsValid { get; }
+        readonly ulong m_IsValid;
+        public bool IsValid => m_IsValid != 0;
 
         public static EventId Parse(ReadOnlySpan<char> value)
         {

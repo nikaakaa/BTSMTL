@@ -29,6 +29,7 @@ namespace BTSMTL.Compilation
         }
     }
 
+    [ValueStorage(UseConstructor = true)]
     public partial struct SemanticNumberValue
     {
         public SemanticNumberValue(double value, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)
@@ -49,6 +50,7 @@ namespace BTSMTL.Compilation
         }
     }
 
+    [ValueStorage(UseConstructor = true)]
     public partial struct SemanticVector2Value
     {
         public SemanticVector2Value(double x, double y, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)
@@ -72,6 +74,7 @@ namespace BTSMTL.Compilation
         }
     }
 
+    [ValueStorage(UseConstructor = true)]
     public partial struct SemanticVector3Value
     {
         public SemanticVector3Value(double x, double y, double z, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)

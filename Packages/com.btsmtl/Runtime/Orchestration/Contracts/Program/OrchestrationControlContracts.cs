@@ -116,12 +116,13 @@ namespace BTSMTL.Orchestration
             OrchestrationExecutionContract contract, int inputPortId = 0)
         {
             OperationIndex = operationIndex;
-            Contract = contract;
+            m_Contract = (int)contract;
             InputPortId = inputPortId;
         }
 
         public int OperationIndex { get; }
-        public OrchestrationExecutionContract Contract { get; }
+        readonly int m_Contract;
+        public OrchestrationExecutionContract Contract => (OrchestrationExecutionContract)m_Contract;
         public int InputPortId { get; }
     }
 
