@@ -23,6 +23,14 @@ namespace BTSMTL.Graphs
             throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
     }
 
+    [Name("Vector3 Scale")]
+    [Category("Values/Vector3")]
+    public sealed class GraphVector3ScaleNode : PureFunctionNode<Vector3, Vector3, float>
+    {
+        public override Vector3 Invoke(Vector3 value, float scale) =>
+            throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
+    }
+
     [Name("Vector2 Magnitude")]
     [Category("Values/Vector2")]
     public sealed class GraphVector2MagnitudeNode : PureFunctionNode<float, Vector2>

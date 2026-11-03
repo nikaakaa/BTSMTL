@@ -55,7 +55,8 @@ namespace BTSMTL.Orchestration
         Extension,
         Vector2Dot,
         Vector2Cross,
-        ScalarSubtract
+        ScalarSubtract,
+        Vector3Scale
     }
 
     public enum OrchestrationAssignmentOpcode : byte

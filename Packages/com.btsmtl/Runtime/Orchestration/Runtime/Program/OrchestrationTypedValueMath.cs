@@ -73,6 +73,14 @@ namespace BTSMTL.Orchestration
                     return;
                 }
                 case OrchestrationValueOpcode.Vector3Y: result = values.FromScalar(math.Y3(values.Vector3(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.Vector3Scale:
+                {
+                    TVector3 value = values.Vector3(in inputs[arguments[0]]);
+                    TScalar scale = values.Scalar(in inputs[arguments[1]]);
+                    result = values.FromVector3(math.Vector3(math.Multiply(math.X3(value), scale),
+                        math.Multiply(math.Y3(value), scale), math.Multiply(math.Z3(value), scale)));
+                    return;
+                }
                 case OrchestrationValueOpcode.Vector2Magnitude: result = values.FromScalar(math.Magnitude2(values.Vector2(in inputs[arguments[0]]))); return;
                 case OrchestrationValueOpcode.Vector2Normalize:
                 {

@@ -116,6 +116,7 @@ namespace BTSMTL
             AddCalculation("GraphFloatMoveTowardsNode", GraphCalculationKind.FloatMoveTowards);
             AddCalculation("GraphVector3PlanarNode", GraphCalculationKind.Vector3Planar);
             AddCalculation("GraphVector3YNode", GraphCalculationKind.Vector3Y);
+            AddCalculation("GraphVector3ScaleNode", GraphCalculationKind.Vector3Scale);
             AddCalculation("GraphVector2MagnitudeNode", GraphCalculationKind.Vector2Magnitude);
             AddCalculation("GraphVector2NormalizeNode", GraphCalculationKind.Vector2Normalize);
             AddCalculation("GraphVector2SubtractNode", GraphCalculationKind.Vector2Subtract);

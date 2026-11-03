@@ -111,6 +111,7 @@ namespace BTSMTL.Compilation
                             OrchestrationCalculationKind.ScalarMoveTowards => OrchestrationValueOpcode.ScalarMoveTowards,
                             OrchestrationCalculationKind.Vector3Planar => OrchestrationValueOpcode.Vector3Planar,
                             OrchestrationCalculationKind.Vector3Y => OrchestrationValueOpcode.Vector3Y,
+                            OrchestrationCalculationKind.Vector3Scale => OrchestrationValueOpcode.Vector3Scale,
                             OrchestrationCalculationKind.Vector2Magnitude => OrchestrationValueOpcode.Vector2Magnitude,
                             OrchestrationCalculationKind.Vector2Normalize => OrchestrationValueOpcode.Vector2Normalize,
                             OrchestrationCalculationKind.Vector2Subtract => OrchestrationValueOpcode.Vector2Subtract,
