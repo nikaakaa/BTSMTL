@@ -290,7 +290,8 @@ namespace BTSMTL.Orchestration
             item.StopCause = stopCause;
             item.StopMode = stopMode;
             item.WaitReason = waitReason;
-            item.DetailIndex = kind is OrchestrationTraceKind.LoopIterationEnter or OrchestrationTraceKind.LoopIterationComplete
+            item.DetailIndex = kind != OrchestrationTraceKind.Blackboard &&
+                cursor.Program.Operation(operationIndex).Code == OrchestrationOperationCode.Loop
                 ? cursor.ChildCursor(operationIndex) : valueSlot;
             if (kind == OrchestrationTraceKind.Blackboard)
             {

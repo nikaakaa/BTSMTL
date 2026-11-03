@@ -196,7 +196,10 @@ namespace BTSMTL.Diagnostics
                     ClipIndex = context.ClipOrdinal,
                     Flag = item.Passed,
                     StopCause = item.StopCause,
-                    StopMode = item.StopMode
+                    StopMode = item.StopMode,
+                    LoopIteration = item.Kind is not (OrchestrationTraceKind.Edge or OrchestrationTraceKind.Blackboard) &&
+                        m_Program.Operation(item.OperationIndex).Code == OrchestrationOperationCode.Loop
+                        ? item.DetailIndex : -1
                 };
                 RuntimeSourceElementHandle source = m_Operations[item.OperationIndex];
                 switch (item.Kind)
@@ -212,10 +215,6 @@ namespace BTSMTL.Diagnostics
                         if (m_Edges[item.EdgeIndex].IsValid)
                             source = m_Edges[item.EdgeIndex];
                         payload.Status = item.Selected ? "Selected" : "Evaluated";
-                        break;
-                    case OrchestrationTraceKind.LoopIterationEnter:
-                    case OrchestrationTraceKind.LoopIterationComplete:
-                        payload.LoopIteration = item.DetailIndex;
                         break;
                     case OrchestrationTraceKind.Blackboard:
                         if (m_Blackboards.TryGetValue(item.DetailIndex, out RuntimeSourceElementHandle declaration))
