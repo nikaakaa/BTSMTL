@@ -28,7 +28,7 @@ namespace ThirdPersonSimulation
     {
         public PresentationVfxRequest(
             PresentationVfxCommand command,
-            [BtsmtlBusinessKey("Vfx", BtsmtlBusinessKeyRole.Reference, KindParameter = nameof(command))] string requestId,
+            [BtsmtlBusinessKey("Vfx", BtsmtlBusinessKeyRole.Reference, KindParameter = "command")] string requestId,
             [BtsmtlBusinessKey("Vfx", "vfx-resource", BtsmtlBusinessKeyRole.Reference)] string resourceId,
             PresentationVfxTarget target,
             [BtsmtlBusinessKey("Vfx", "vfx-anchor", BtsmtlBusinessKeyRole.Reference)] string anchorKey,
