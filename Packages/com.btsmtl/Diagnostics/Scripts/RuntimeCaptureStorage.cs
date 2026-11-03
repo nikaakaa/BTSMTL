@@ -164,10 +164,12 @@ namespace BTSMTL.Diagnostics
         {
             Source = value.Source;
             RuntimeInstanceKey instance = value.RuntimeInstance;
+            ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in value);
             Instance = value.Kind is RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited
                 ? new RuntimeInstanceKey(RuntimeInstanceKind.StateActivation, instance.CharacterRuntimeId,
-                    instance.GraphRuntimeId, instance.StateId, value.Payload.ActivationGeneration, 0, -1,
-                    value.Payload.ActionInstanceId, instance.CallSiteId, instance.InvocationGeneration)
+                    instance.GraphRuntimeId, instance.StateId, payload.ActivationGeneration, instance.TimelinePlaybackId, -1,
+                    payload.ActionInstanceId, instance.CallSiteId, instance.InvocationGeneration,
+                    instance.SourceOperationIndex, instance.TreeClipOperationIndex, instance.ExecutionObject)
                 : instance;
             ExecutionBranchId = value.ExecutionBranchId;
             RuntimeEpoch = value.RuntimeEpoch;

@@ -26,8 +26,6 @@ namespace BTSMTL.Diagnostics
             RuntimeDiagnosticsStore store,
             int tickRate)
         {
-            if (characterRuntimeId == Guid.Empty)
-                throw new ArgumentException("Character runtime identity is required.", nameof(characterRuntimeId));
             if (sessionId == Guid.Empty)
                 throw new ArgumentException("Runtime diagnostics session identity is required.", nameof(sessionId));
             CharacterRuntimeId = characterRuntimeId;
@@ -149,8 +147,8 @@ namespace BTSMTL.Diagnostics
 
         public void PushRuntimeInstance(RuntimeInstanceKey instance)
         {
-            if (!instance.IsValid || instance.CharacterRuntimeId != CharacterRuntimeId)
-                throw new InvalidOperationException("Runtime diagnostics instance does not belong to this Character target.");
+            if (!instance.IsValid)
+                throw new InvalidOperationException("Runtime diagnostics instance identity is required.");
             m_InstanceStack.Push(instance);
         }
 
@@ -174,7 +172,7 @@ namespace BTSMTL.Diagnostics
             RuntimeSourceElementHandle handle = ResolveSourceHandle(source);
             if (runtimeInstance.IsValid)
                 m_InstanceSources[runtimeInstance] = handle;
-            return PublishCore(Revision, channel, domain, kind, handle, runtimeInstance, payload);
+            return PublishCore(Revision, channel, domain, kind, handle, runtimeInstance, in payload);
         }
 
         public bool Publish(
@@ -189,7 +187,7 @@ namespace BTSMTL.Diagnostics
             if (!Store.ShouldPublish(channel, kind))
                 return false;
             return PublishCore(sourceMap.Revision, channel, domain, kind,
-                ResolveSourceHandle(sourceMap, source), runtimeInstance, payload);
+                ResolveSourceHandle(sourceMap, source), runtimeInstance, in payload);
         }
 
         public bool Publish(
@@ -204,7 +202,7 @@ namespace BTSMTL.Diagnostics
                 return false;
             if (!source.IsValid && runtimeInstance.IsValid)
                 m_InstanceSources.TryGetValue(runtimeInstance, out source);
-            return PublishCore(Revision, channel, domain, kind, source, runtimeInstance, payload);
+            return PublishCore(Revision, channel, domain, kind, source, runtimeInstance, in payload);
         }
 
         bool PublishCore(

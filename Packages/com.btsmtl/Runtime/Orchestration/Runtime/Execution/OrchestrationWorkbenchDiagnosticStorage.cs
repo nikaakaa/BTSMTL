@@ -505,6 +505,7 @@ namespace BTSMTL.Orchestration
             int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
                 ResolveTraceInvocation(ref cursor, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
+            context.ExecutionObject = cursor.Input.ExecutionObject;
             context.SourceIndex = binding.SourceIndex;
             context.InvocationSourceIndex = invocation.SourceIndex;
             context.ParentInvocationSourceIndex = parentIndex < 0 ? -1 : m_TraceInvocations[parentIndex].SourceIndex;
@@ -514,9 +515,9 @@ namespace BTSMTL.Orchestration
             context.ExecutionFrameOwnerOperationIndex = frame.OwnerOperationIndex;
             context.ActionInstanceId = frame.ActionInstanceId;
             context.SkillExecutionGeneration = frame.Generation;
-            context.GraphInvocationGeneration = cursor.ReadGeneration(invocation.OwnerOperationIndex);
+            context.GraphInvocationGeneration = ReadInvocationGeneration(ref cursor, invocationIndex, operationIndex, out _);
             context.ParentInvocationGeneration = parentIndex < 0 ? 0 :
-                cursor.ReadGeneration(m_TraceInvocations[parentIndex].OwnerOperationIndex);
+                ReadInvocationGeneration(ref cursor, parentIndex, invocation.OwnerOperationIndex, out _);
             context.TimelineStart = frame.TimelineStart;
             context.ClipOrdinal = frame.ClipOrdinal;
             context.Cycle = frame.Cycle;

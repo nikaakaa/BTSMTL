@@ -1,5 +1,39 @@
+using System;
+using ThirdPersonSimulation;
+
 namespace BTSMTL.Orchestration
 {
+    [ValueStorage(UseConstructor = true)]
+    public readonly partial struct OrchestrationTraceObjectIdentity : IEquatable<OrchestrationTraceObjectIdentity>
+    {
+        public OrchestrationTraceObjectIdentity(ObjectHandle handle, int slot, int kind, int definitionIndex,
+            int programIndex, Guid runtimeId = default)
+        {
+            Handle = handle;
+            Slot = slot;
+            Kind = kind;
+            DefinitionIndex = definitionIndex;
+            ProgramIndex = programIndex;
+            RuntimeId = runtimeId;
+        }
+
+        public ObjectHandle Handle { get; }
+        public int Slot { get; }
+        public int Kind { get; }
+        public int DefinitionIndex { get; }
+        public int ProgramIndex { get; }
+        public Guid RuntimeId { get; }
+        public bool HasValue => !Handle.IsEmpty;
+
+        public bool Equals(OrchestrationTraceObjectIdentity other) =>
+            Handle.Equals(other.Handle) && Slot == other.Slot && Kind == other.Kind &&
+            DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex &&
+            RuntimeId.Equals(other.RuntimeId);
+
+        public override bool Equals(object obj) => obj is OrchestrationTraceObjectIdentity other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex, RuntimeId);
+    }
+
     public enum OrchestrationTraceKind : byte
     {
         Enter = 1,
@@ -46,6 +80,7 @@ namespace BTSMTL.Orchestration
     // 当前执行或关闭入口的 scope，不追溯节点首次激活时的 hook。
     public struct OrchestrationTraceContext
     {
+        public OrchestrationTraceObjectIdentity ExecutionObject;
         public int SourceIndex;
         public int InvocationSourceIndex;
         public int ParentInvocationSourceIndex;

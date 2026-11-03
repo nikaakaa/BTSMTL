@@ -221,9 +221,10 @@ namespace BTSMTL.Diagnostics
                         payload.BlackboardIsActive = true;
                         break;
                 }
-                RuntimeInstanceKey instance = RuntimeInstanceKey.SkillExecution(m_Diagnostics.CharacterRuntimeId,
+                RuntimeInstanceKey instance = RuntimeInstanceKey.SkillExecution(context.ExecutionObject.RuntimeId,
                     m_Diagnostics.AbilityExecutionRuntimeId, m_ProgramId, context.ActionInstanceId, path,
-                    context.SkillExecutionGeneration, context.GraphInvocationGeneration);
+                    context.SkillExecutionGeneration, context.GraphInvocationGeneration,
+                    context.ExecutionObject, context.TimelineStart.PlaybackIdentity, item.OperationIndex);
                 m_Diagnostics.Publish(channel, RuntimeTraceDomain.Logic, kind, source, instance, in payload);
             }
         }

@@ -225,7 +225,8 @@ namespace BTSMTL.Diagnostics
             string callSiteId = "",
             ulong invocationGeneration = 0,
             int sourceOperationIndex = -1,
-            int treeClipOperationIndex = -1)
+            int treeClipOperationIndex = -1,
+            OrchestrationTraceObjectIdentity executionObject = default)
         {
             Kind = kind;
             CharacterRuntimeId = characterRuntimeId;
@@ -239,6 +240,7 @@ namespace BTSMTL.Diagnostics
             InvocationGeneration = invocationGeneration;
             SourceOperationIndex = sourceOperationIndex;
             TreeClipOperationIndex = treeClipOperationIndex;
+            ExecutionObject = executionObject;
             unchecked
             {
                 int hash = (int)kind;
@@ -252,6 +254,7 @@ namespace BTSMTL.Diagnostics
                 hash = hash * 31 + invocationGeneration.GetHashCode();
                 hash = hash * 31 + sourceOperationIndex;
                 hash = hash * 31 + treeClipOperationIndex;
+                hash = hash * 31 + executionObject.GetHashCode();
                 m_HashCode = hash * 31 + CallSiteId.GetHashCode();
             }
         }
@@ -268,8 +271,11 @@ namespace BTSMTL.Diagnostics
         public ulong InvocationGeneration { get; }
         public int SourceOperationIndex { get; }
         public int TreeClipOperationIndex { get; }
+        public OrchestrationTraceObjectIdentity ExecutionObject { get; }
         [ValuePresence] internal bool HasValueStorage => StateId != null;
-        public bool IsValid => Kind != RuntimeInstanceKind.None && CharacterRuntimeId != Guid.Empty;
+        public bool IsValid => Kind != RuntimeInstanceKind.None &&
+            (ExecutionObject.HasValue || CharacterRuntimeId != Guid.Empty ||
+             GraphRuntimeId != Guid.Empty || TimelinePlaybackId != 0);
 
         public static RuntimeInstanceKey Character(Guid characterId) => new RuntimeInstanceKey(RuntimeInstanceKind.Character, characterId, Guid.Empty, string.Empty, 0, 0, -1);
         public static RuntimeInstanceKey Graph(Guid characterId, Guid graphId) => new RuntimeInstanceKey(RuntimeInstanceKind.Graph, characterId, graphId, string.Empty, 0, 0, -1);
@@ -277,8 +283,10 @@ namespace BTSMTL.Diagnostics
         public static RuntimeInstanceKey State(Guid characterId, Guid graphId, string stateId, ulong generation) => new RuntimeInstanceKey(RuntimeInstanceKind.StateActivation, characterId, graphId, stateId, generation, 0, -1);
         public static RuntimeInstanceKey Timeline(Guid characterId, int sourceOperationIndex, ulong playbackId, ulong actionInstanceId = 0) => new RuntimeInstanceKey(RuntimeInstanceKind.TimelinePlayback, characterId, Guid.Empty, string.Empty, 0, playbackId, -1, actionInstanceId, string.Empty, 0, sourceOperationIndex);
         public static RuntimeInstanceKey TreeClip(Guid characterId, Guid graphId, int sourceOperationIndex, ulong playbackId, int cycle, ulong actionInstanceId = 0, int treeClipOperationIndex = -1) => new RuntimeInstanceKey(RuntimeInstanceKind.TreeClip, characterId, graphId, string.Empty, 0, playbackId, cycle, actionInstanceId, string.Empty, 0, sourceOperationIndex, treeClipOperationIndex);
-        public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, string callSiteId, ulong generation, ulong invocationGeneration = 0) =>
-            new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId, callSiteId, invocationGeneration);
+        public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, string callSiteId, ulong generation, ulong invocationGeneration = 0,
+            OrchestrationTraceObjectIdentity executionObject = default, ulong playbackId = 0, int sourceOperationIndex = -1) =>
+            new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, playbackId, -1,
+                instanceId, callSiteId, invocationGeneration, sourceOperationIndex, executionObject: executionObject);
         // 宿主业务对象：subjectKind 为宿主常量，subjectId 为该对象在宿主内的稳定编号。
         public static RuntimeInstanceKey HostSubject(Guid characterId, string subjectKind, ulong subjectId, ulong actionInstanceId = 0) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.HostSubject, characterId, Guid.Empty, subjectKind, subjectId, 0, -1, actionInstanceId);
@@ -291,6 +299,7 @@ namespace BTSMTL.Diagnostics
                    InvocationGeneration == other.InvocationGeneration &&
                    SourceOperationIndex == other.SourceOperationIndex &&
                    TreeClipOperationIndex == other.TreeClipOperationIndex &&
+                   ExecutionObject.Equals(other.ExecutionObject) &&
                    string.Equals(StateId, other.StateId, StringComparison.Ordinal) &&
                    string.Equals(CallSiteId, other.CallSiteId, StringComparison.Ordinal);
         }
