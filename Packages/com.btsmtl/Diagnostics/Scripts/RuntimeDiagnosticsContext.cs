@@ -72,7 +72,7 @@ namespace BTSMTL.Diagnostics
         public double PresentationTimeSeconds => m_PresentationTimeSeconds;
         public RuntimeInstanceKey CurrentRuntimeInstance => m_InstanceStack.Count > 0
             ? m_InstanceStack.Peek()
-            : RuntimeInstanceKey.Character(CharacterRuntimeId);
+            : CharacterRuntimeId == Guid.Empty ? default : RuntimeInstanceKey.Character(CharacterRuntimeId);
 
         public void AdoptRuntime(RuntimeContentRevision revision, IDebugSourceMap sourceMap)
         {
@@ -244,8 +244,8 @@ namespace BTSMTL.Diagnostics
                 RuntimeTraceDomain.Lifecycle,
                 kind,
                 RuntimeSourceElementHandle.Invalid,
-                RuntimeInstanceKey.Character(CharacterRuntimeId),
-                payload);
+                CharacterRuntimeId == Guid.Empty ? default : RuntimeInstanceKey.Character(CharacterRuntimeId),
+                in payload);
         }
     }
 }
