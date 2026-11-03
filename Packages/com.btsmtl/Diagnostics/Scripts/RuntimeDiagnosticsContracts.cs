@@ -741,6 +741,8 @@ namespace BTSMTL.Diagnostics
         public string Name;
         public string Detail;
         public string Cause;
+        public uint StopCause;
+        public OrchestrationStopMode StopMode;
         public string SourceClockId;
         public string SourceTickKind;
         public string OwnerId;

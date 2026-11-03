@@ -50,7 +50,7 @@ namespace BTSMTL.Orchestration
         void Trace<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationTraceKind kind, int operation, int edge, OrchestrationOperationResult result,
             uint stopCause, OrchestrationWaitReason waitReason, int valueSlot, bool selected, bool passed,
-            in OrchestrationBlackboardSourceContext blackboardSource)
+            in OrchestrationBlackboardSourceContext blackboardSource, OrchestrationStopMode stopMode = default)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>;
 
@@ -159,11 +159,11 @@ namespace BTSMTL.Orchestration
         public void Trace<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationTraceKind kind, int operation, int edge, OrchestrationOperationResult result,
             uint stopCause, OrchestrationWaitReason waitReason, int valueSlot, bool selected, bool passed,
-            in OrchestrationBlackboardSourceContext blackboardSource)
+            in OrchestrationBlackboardSourceContext blackboardSource, OrchestrationStopMode stopMode = default)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue> =>
             m_Diagnostics.Trace(ref cursor, kind, operation, edge, result, stopCause, waitReason, valueSlot,
-                selected, passed, in blackboardSource);
+                selected, passed, in blackboardSource, stopMode);
 
         public int CaptureState<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             int operation, bool rootCompletedOverride)

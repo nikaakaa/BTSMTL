@@ -227,7 +227,7 @@ namespace BTSMTL.BurstCheck
         public void Trace<TNumerics, THost>(ref OrchestrationExecutionCursor<Float32OrchestrationValue, TNumerics, THost> cursor,
             OrchestrationTraceKind kind, int operation, int edge, OrchestrationOperationResult result,
             uint stopCause, OrchestrationWaitReason waitReason, int valueSlot, bool selected, bool passed,
-            in OrchestrationBlackboardSourceContext blackboardSource)
+            in OrchestrationBlackboardSourceContext blackboardSource, OrchestrationStopMode stopMode = default)
             where TNumerics : struct, IOrchestrationNumerics<Float32OrchestrationValue>
             where THost : struct, IOrchestrationHost<Float32OrchestrationValue> { }
 

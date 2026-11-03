@@ -22,6 +22,8 @@ public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, stri
     public PreviewLoopScope? LoopScope { get; init; }
     public PreviewObservationAvailability? ActivationAvailability { get; init; }
     public PreviewObservationAvailability? LoopScopeAvailability { get; init; }
+    public uint? StopCause { get; init; }
+    public string? StopMode { get; init; }
 }
 public sealed record PreviewLoopScope(string GraphId, string NodeId, string Generation, int Iteration,
     PreviewExecutionCall Call);

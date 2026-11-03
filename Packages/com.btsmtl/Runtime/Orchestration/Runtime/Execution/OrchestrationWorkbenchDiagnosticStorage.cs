@@ -266,7 +266,8 @@ namespace BTSMTL.Orchestration
 
         internal void TraceOperation<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
             OrchestrationTraceKind kind, int operationIndex, OrchestrationOperationResult result, uint stopCause,
-            OrchestrationWaitReason waitReason, int valueSlot, in OrchestrationBlackboardSourceContext blackboardSource)
+            OrchestrationWaitReason waitReason, int valueSlot, in OrchestrationBlackboardSourceContext blackboardSource,
+            OrchestrationStopMode stopMode)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>
         {
@@ -287,6 +288,7 @@ namespace BTSMTL.Orchestration
                 : cursor.CurrentStateTraceFrame;
             item.Result = result;
             item.StopCause = stopCause;
+            item.StopMode = stopMode;
             item.WaitReason = waitReason;
             item.DetailIndex = kind is OrchestrationTraceKind.LoopIterationEnter or OrchestrationTraceKind.LoopIterationComplete
                 ? cursor.ChildCursor(operationIndex) : valueSlot;

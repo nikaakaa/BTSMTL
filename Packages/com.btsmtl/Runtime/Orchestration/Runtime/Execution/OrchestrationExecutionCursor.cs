@@ -318,14 +318,14 @@ namespace BTSMTL.Orchestration
                     state.Status = OrchestrationOperationStatus.Stopping;
                     WriteStopContext(operationIndex, in request);
                     TraceOperation(OrchestrationTraceKind.StopRequested, operationIndex,
-                        stopCause: request.Cause);
+                        stopCause: request.Cause, stopMode: request.Mode);
                     if (TryRequestLeafStop(operationIndex, out OrchestrationStopStatus requested))
                     {
                         if (requested != OrchestrationStopStatus.Running)
                         {
                             TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
                                 requested == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
-                                request.Cause);
+                                request.Cause, stopMode: request.Mode);
                             ResetOperation(operationIndex);
                         }
                         return requested;
@@ -373,7 +373,7 @@ namespace BTSMTL.Orchestration
                     return status;
                 TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
                     status == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
-                    context.Cause);
+                    context.Cause, stopMode: context.Mode);
                 ResetOperation(operationIndex);
                 return status;
             }
@@ -435,7 +435,8 @@ namespace BTSMTL.Orchestration
                     break;
             }
             if (active)
-                TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: current.Cause);
+                TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: current.Cause,
+                    stopMode: current.Mode);
             ResetOperation(operationIndex);
         }
 
@@ -705,9 +706,10 @@ namespace BTSMTL.Orchestration
 
         void TraceOperation(OrchestrationTraceKind kind, int operationIndex,
             OrchestrationOperationResult result = default, uint stopCause = 0,
-            OrchestrationWaitReason waitReason = default, int valueSlot = -1)
+            OrchestrationWaitReason waitReason = default, int valueSlot = -1,
+            OrchestrationStopMode stopMode = default)
             => m_Host.Trace(ref this, kind, operationIndex, -1, result,
-                stopCause, waitReason, valueSlot, false, false, default);
+                stopCause, waitReason, valueSlot, false, false, default, stopMode);
 
         void TraceEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation = -1)
             => m_Host.Trace(ref this, OrchestrationTraceKind.Edge, sourceStateOperation,

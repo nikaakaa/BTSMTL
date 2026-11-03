@@ -90,6 +90,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationOperationResult Result;
         public OrchestrationWaitReason WaitReason;
         public uint StopCause;
+        public OrchestrationStopMode StopMode;
         public bool Selected;
         public bool Passed;
         public int DetailIndex;

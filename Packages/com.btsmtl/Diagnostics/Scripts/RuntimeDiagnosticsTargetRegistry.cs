@@ -48,7 +48,9 @@ namespace BTSMTL.Diagnostics
                 throw new ArgumentNullException(nameof(target));
             for (int i = 0; i < s_Targets.Count; i++)
             {
-                if (s_Targets[i].CharacterRuntimeId == target.CharacterRuntimeId)
+                if (s_Targets[i].SessionId == target.SessionId)
+                    throw new InvalidOperationException($"Runtime diagnostics session is already registered: {target.SessionId:N}.");
+                if (target.CharacterRuntimeId != Guid.Empty && s_Targets[i].CharacterRuntimeId == target.CharacterRuntimeId)
                     throw new InvalidOperationException($"Character diagnostics target is already registered: {target.CharacterRuntimeId:N}.");
             }
             s_Targets.Add(target);
@@ -66,7 +68,7 @@ namespace BTSMTL.Diagnostics
         {
             for (int i = 0; i < s_Targets.Count; i++)
             {
-                if (s_Targets[i].CharacterRuntimeId == characterRuntimeId)
+                if (characterRuntimeId != Guid.Empty && s_Targets[i].CharacterRuntimeId == characterRuntimeId)
                 {
                     target = s_Targets[i];
                     return true;

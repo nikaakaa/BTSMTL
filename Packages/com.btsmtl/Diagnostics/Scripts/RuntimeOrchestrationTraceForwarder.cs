@@ -194,7 +194,9 @@ namespace BTSMTL.Diagnostics
                     ParentInvocationGeneration = context.ParentInvocationGeneration,
                     Cycle = context.Cycle,
                     ClipIndex = context.ClipOrdinal,
-                    Flag = item.Passed
+                    Flag = item.Passed,
+                    StopCause = item.StopCause,
+                    StopMode = item.StopMode
                 };
                 RuntimeSourceElementHandle source = m_Operations[item.OperationIndex];
                 switch (item.Kind)

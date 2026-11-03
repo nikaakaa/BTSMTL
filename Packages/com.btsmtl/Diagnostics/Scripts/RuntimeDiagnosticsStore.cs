@@ -585,6 +585,8 @@ namespace BTSMTL.Diagnostics
                    string.Equals(left.Name, right.Name, StringComparison.Ordinal) &&
                    string.Equals(left.Detail, right.Detail, StringComparison.Ordinal) &&
                    string.Equals(left.Cause, right.Cause, StringComparison.Ordinal) &&
+                   left.StopCause == right.StopCause &&
+                   left.StopMode == right.StopMode &&
                    string.Equals(left.SourceClockId, right.SourceClockId, StringComparison.Ordinal) &&
                    string.Equals(left.SourceTickKind, right.SourceTickKind, StringComparison.Ordinal) &&
                    string.Equals(left.OwnerId, right.OwnerId, StringComparison.Ordinal) &&
