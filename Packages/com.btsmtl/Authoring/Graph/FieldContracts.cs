@@ -271,7 +271,9 @@ namespace BTSMTL.Authoring.Graph
 
         bool MatchesValueKind()
         {
-            if (Field.ObjectType != null && !Field.ObjectType.IsInstanceOfType(Value))
+            // 身份引用以字符串身份存放时，ObjectType 描述的是被引用对象，不约束身份值本身。
+            if (Field.ObjectType != null && !(Field.ValueKind == GraphAuthoringFieldValueKind.IdentityReference && Value is string) &&
+                !Field.ObjectType.IsInstanceOfType(Value))
                 return false;
             if (Field.ValueKind == GraphAuthoringFieldValueKind.Polymorphic)
             {
