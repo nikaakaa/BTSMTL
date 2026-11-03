@@ -7,14 +7,13 @@ namespace BTSMTL.Orchestration
     public readonly partial struct OrchestrationTraceObjectIdentity : IEquatable<OrchestrationTraceObjectIdentity>
     {
         public OrchestrationTraceObjectIdentity(ObjectHandle handle, int slot, int kind, int definitionIndex,
-            int programIndex, Guid runtimeId = default)
+            int programIndex)
         {
             Handle = handle;
             Slot = slot;
             Kind = kind;
             DefinitionIndex = definitionIndex;
             ProgramIndex = programIndex;
-            RuntimeId = runtimeId;
         }
 
         public ObjectHandle Handle { get; }
@@ -22,16 +21,14 @@ namespace BTSMTL.Orchestration
         public int Kind { get; }
         public int DefinitionIndex { get; }
         public int ProgramIndex { get; }
-        public Guid RuntimeId { get; }
         public bool HasValue => !Handle.IsEmpty;
 
         public bool Equals(OrchestrationTraceObjectIdentity other) =>
             Handle.Equals(other.Handle) && Slot == other.Slot && Kind == other.Kind &&
-            DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex &&
-            RuntimeId.Equals(other.RuntimeId);
+            DefinitionIndex == other.DefinitionIndex && ProgramIndex == other.ProgramIndex;
 
         public override bool Equals(object obj) => obj is OrchestrationTraceObjectIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex, RuntimeId);
+        public override int GetHashCode() => HashCode.Combine(Handle, Slot, Kind, DefinitionIndex, ProgramIndex);
     }
 
     public enum OrchestrationTraceKind : byte
@@ -112,6 +109,7 @@ namespace BTSMTL.Orchestration
     public struct OrchestrationTraceContext
     {
         public OrchestrationTraceObjectIdentity ExecutionObject;
+        public Guid CharacterRuntimeId;
         public int OperationIndex;
         public ulong NodeGeneration;
         public OrchestrationTraceAvailability NodeActivation;

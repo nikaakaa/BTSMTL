@@ -527,6 +527,7 @@ namespace BTSMTL.Orchestration
                 ResolveTraceInvocation(ref cursor, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
             context.ExecutionObject = cursor.Input.ExecutionObject;
+            context.CharacterRuntimeId = cursor.Input.CharacterRuntimeId;
             context.OperationIndex = operationIndex;
             bool runnable = cursor.Program.Operation(operationIndex).IsRunnable;
             context.NodeGeneration = runnable ? cursor.ReadGeneration(operationIndex) : 0;

@@ -8,7 +8,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> requestIdentityIds, bool captureTrace = false,
             bool captureValues = false,
             Span<OrchestrationValueOverride<TValue>> overrides = default,
-            OrchestrationTraceObjectIdentity executionObject = default)
+            OrchestrationTraceObjectIdentity executionObject = default, Guid characterRuntimeId = default)
         {
             Tick = tick;
             InstanceGeneration = instanceGeneration;
@@ -18,6 +18,7 @@ namespace BTSMTL.Orchestration
             CaptureValues = captureValues;
             Overrides = overrides;
             ExecutionObject = executionObject;
+            CharacterRuntimeId = characterRuntimeId;
         }
 
         public ulong Tick { get; }
@@ -28,6 +29,7 @@ namespace BTSMTL.Orchestration
         public bool CaptureValues { get; }
         public Span<OrchestrationValueOverride<TValue>> Overrides { get; }
         public OrchestrationTraceObjectIdentity ExecutionObject { get; }
+        public Guid CharacterRuntimeId { get; }
         public bool HasDiagnostics => CaptureTrace || CaptureValues || !Overrides.IsEmpty;
     }
 

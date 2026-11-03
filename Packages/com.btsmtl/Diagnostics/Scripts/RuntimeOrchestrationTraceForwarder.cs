@@ -231,7 +231,7 @@ namespace BTSMTL.Diagnostics
                         payload.BlackboardIsActive = true;
                         break;
                 }
-                RuntimeInstanceKey instance = RuntimeInstanceKey.SkillExecution(context.ExecutionObject.RuntimeId,
+                RuntimeInstanceKey instance = RuntimeInstanceKey.SkillExecution(context.CharacterRuntimeId,
                     m_Diagnostics.AbilityExecutionRuntimeId, m_ProgramId, context.ActionInstanceId, path,
                     context.SkillExecutionGeneration, context.GraphInvocationGeneration,
                     context.ExecutionObject, context.TimelineStart.PlaybackIdentity, item.OperationIndex);
