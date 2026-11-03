@@ -133,11 +133,11 @@ export function recordedGraphCalls(frames: RouteFrame[], graphs: GraphDefinition
 export function graphCallsAtFrame(recorded: ReturnType<typeof recordedGraphCalls>, current: RouteFrame | null,
   currentCalls: RecordedGraphCall[]): RecordedGraphCall[] {
   if (current === null) return [];
-  const calls = new Map(recorded.filter(item => item.frame.seconds <= current.seconds)
+  const calls = new Map<string, RecordedGraphCall>(recorded.filter(item => item.frame.seconds <= current.seconds)
     .map(item => [`${graphKey(item.graph)}:${callKey(item.call)}`, item] as const));
   for (const item of currentCalls) {
     const key = `${graphKey(item.graph)}:${callKey(item.call)}`;
-    if (!calls.has(key)) calls.set(key, { ...item, frame: current });
+    if (!calls.has(key)) calls.set(key, item);
   }
   return [...calls.values()];
 }
