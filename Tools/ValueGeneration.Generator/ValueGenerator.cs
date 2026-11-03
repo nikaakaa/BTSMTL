@@ -55,10 +55,13 @@ namespace ThirdPerson.ValueGeneration.Generator
             var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             var valueHashes = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             var authoringTypes = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var storedMemberTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
                     .GetDeclaredSymbol(declaration);
+                if (storedMemberTypes.Add(Identity(type)))
+                    ValidateStoredMemberDeclarations(context, type);
                 if (type.TypeKind == TypeKind.Class && AuthoringTypeHasFields(type))
                     authoringTypes[Identity(type)] = type;
                 if (HasAttribute(type, UnionTemplateAttribute))
