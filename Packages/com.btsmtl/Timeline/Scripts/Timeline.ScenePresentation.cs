@@ -2,7 +2,11 @@ using System;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#else
+using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
+#endif
 
 namespace BTSMTL.Timeline
 {
@@ -27,36 +31,44 @@ namespace BTSMTL.Timeline
     {
     }
 
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Ordered(7), Color(132, 224, 184)]
+#endif
     public sealed class ScenePresentationParameterTrack : SampledTrack
     {
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterTrack;
 
-#if UNITY_EDITOR
         public override Type ClipType => typeof(ScenePresentationParameterCurveClip);
-#endif
     }
 
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Color(132, 224, 184)]
+#endif
     public sealed partial class ScenePresentationParameterCurveClip : SampledClip, ITimelineExternalBindingUseSource
     {
+#if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
+#endif
         string m_TargetBindingId = "target";
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
+#endif
         string m_ParameterBindingId = "openAmount";
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
-        AnimationCurve m_ValueCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+#endif
+        AnimationCurve m_ValueCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 1f);
 
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterCurveClip;
         public override string CurveChannelPrefix => "scene-presentation";
         public override IReadOnlyList<TimelineCurveChannelDescriptor> CurveChannels => new[]
         {
             new TimelineCurveChannelDescriptor(new TimelineCurveChannelId("scene-presentation.value"),
-                typeof(ScenePresentationParameterCurveClip), "Value", new Color32(132, 224, 184, 255),
+                typeof(ScenePresentationParameterCurveClip), "Value", TimelineCurveChannelCatalog.DisplayColor(132, 224, 184),
                 TimelineCurveValueDomain.Unbounded(0f, string.Empty),
-                () => AnimationCurve.Linear(0f, 0f, 1f, 0f),
+                () => TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 0f),
                 owner => ((ScenePresentationParameterCurveClip)owner).ValueCurve,
                 (owner, curve) => ((ScenePresentationParameterCurveClip)owner).SetValueCurve(curve))
         };

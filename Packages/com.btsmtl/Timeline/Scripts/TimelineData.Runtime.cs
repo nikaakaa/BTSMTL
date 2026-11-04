@@ -6,16 +6,23 @@ using System.Collections.Generic;
 using System.Reflection;
 using BTSMTL.Diagnostics;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace BTSMTL.Timeline
 {
     public sealed partial class TimelineData
     {
+        [field: NonSerialized]
         public event Action OnValueChanged;
+        [field: NonSerialized]
         public ulong AuthoringRevision { get; private set; }
 
+#if UNITY_5_3_OR_NEWER
         public int MaxFrame => TimelineTimeGrid.CeilingIndex(DurationTime, TimelineUtility.FrameRate);
+#endif
+        [field: NonSerialized]
         public OrchestrationTime DurationTime { get; private set; }
         public float Duration => DurationTime.AsSingle;
 
@@ -65,11 +72,16 @@ namespace BTSMTL.Timeline
 
         public List<Clip> Clips => m_Clips;
         public List<TimelineMarker> Markers => m_Markers;
+        public virtual Type ClipType => typeof(Clip);
 
+        [NonSerialized]
         public Action OnUpdateMix;
+        [NonSerialized]
         public Action OnMutedStateChanged;
 
+        [field: NonSerialized]
         public TimelineData Timeline { get; protected set; }
+        [field: NonSerialized]
         public OrchestrationTime DurationTime { get; protected set; }
 
         internal void BindTimeline(TimelineData timeline) => Timeline = timeline;
@@ -177,7 +189,9 @@ namespace BTSMTL.Timeline
         public TimelineData Timeline => Track.Timeline;
         public virtual string Name => GetType().Name;
 
+        [NonSerialized]
         public Action OnNameChanged;
+        [NonSerialized]
         public Action OnInspectorRepaint;
 
         internal void BindTrack(Track track) => Track = track;
@@ -561,8 +575,6 @@ namespace BTSMTL.Timeline
             for (int i = 0; i < Markers.Count; i++)
                 DurationTime = OrchestrationTime.Max(DurationTime, OrchestrationTime.Max(OrchestrationTime.FromRaw(1), Markers[i].Time));
         }
-
-        public virtual Type ClipType => typeof(Clip);
 
         public void RemoveClip(Clip clip)
         {

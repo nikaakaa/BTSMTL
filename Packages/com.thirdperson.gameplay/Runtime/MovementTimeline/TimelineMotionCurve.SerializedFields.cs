@@ -1,4 +1,7 @@
+using System;
+using BTSMTL.Diagnostics;
 using BTSMTL.Timeline;
+using ThirdPersonGameplay.Orchestration;
 using ThirdPersonSimulation;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
@@ -33,17 +36,73 @@ namespace ThirdPersonGameplay.Movement.Timeline
             true,
             TimelineExecutionDomain.Logic,
             TimelineOutputKind.LogicFact);
+
+        public static ITimelineContractProvider CreateProvider(
+            TimelineContentParameterCodec<TimelineContentMotion> codec) => new TimelineContractProvider(
+            new[] { Track },
+            new[] { new TimelineClipContract(Clip, null) },
+            new ITimelineContentParameterCodec[] { codec });
     }
 
     public sealed partial class MotionCurveTrack : SampledTrack
     {
         public override string ContractKind => MotionCurveTimelineContracts.TrackKind;
+        public override Type ClipType => typeof(MotionCurveClip);
     }
 
-    public sealed partial class MotionCurveClip : SampledClip
+    public sealed partial class MotionCurveClip : SampledClip, ITimelineContentClosureSource
     {
         public override string ContractKind => MotionCurveTimelineContracts.ClipKind;
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
+        public override string CurveChannelPrefix => "motion";
+        public override TimelineContentSampling CaptureSampling(int weightCurveIndex, int easeInCurveIndex,
+            int easeOutCurveIndex) => new TimelineContentSampling(weightCurveIndex, easeInCurveIndex,
+                easeOutCurveIndex, TimelineSampleSourceMapping.ClipSecondsClampedToSourceRange,
+                ExtraPolationMode.None, TimelineSampleWindow.TraversalWindow, false, 0f);
+
+        public override TimelineContentParameters CaptureContentParameters()
+        {
+#if UNITY_5_3_OR_NEWER
+            TimelineContentCurve x = TimelineContentDiscovery.CaptureSourceCurve("motion.source-x", SourcePositionX);
+            TimelineContentCurve y = TimelineContentDiscovery.CaptureSourceCurve("motion.source-y", SourcePositionY);
+            TimelineContentCurve z = TimelineContentDiscovery.CaptureSourceCurve("motion.source-z", SourcePositionZ);
+            TimelineContentCurve yaw = TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", SourceYaw);
+#else
+            var source = (TimelineContentMotion)ContentResourceParameters;
+            TimelineContentCurve x = source.X;
+            TimelineContentCurve y = source.Y;
+            TimelineContentCurve z = source.Z;
+            TimelineContentCurve yaw = source.Yaw;
+#endif
+            return new TimelineContentMotion(
+                $"timeline:{Track.Timeline.AuthoringId}/track:{Track.AuthoringId}/clip:{AuthoringId}",
+                CurveId, Space, Channel, BlendMode, Priority, ConsumeLowerChannels, x, y, z, yaw);
+        }
+
+        public void CollectContentClosure(TimelineContentClosureBuilder builder)
+        {
+#if UNITY_5_3_OR_NEWER
+            if (builder == null)
+                throw new ArgumentNullException(nameof(builder));
+            if (!m_SourceCurve)
+            {
+                builder.AddError("timeline_motion_curve_missing", AuthoringId, "MotionCurveClip缺少RootMotionCurveAsset正式源引用。");
+                return;
+            }
+            string contentHash = SourceContentHasher.Hash(JsonUtility.ToJson(m_SourceCurve));
+            builder.AddDependency($"motion-curve:{contentHash}", GameplayMotionExtensionContracts.RootMotionDependencyKind,
+                m_SourceCurve.name, contentHash);
+#else
+            builder.AddDependency(ContentResourceDependency.Identity, ContentResourceDependency.Kind,
+                ContentResourceDependency.SourcePath, ContentResourceDependency.ContentHash);
+#endif
+        }
+
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
+        [TimelineAuthoringProperty(IsSourceAsset = true)]
+#endif
+        public SourceCurveAsset SourceCurve => m_SourceCurve;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif

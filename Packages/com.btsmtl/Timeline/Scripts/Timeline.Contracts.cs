@@ -5,7 +5,9 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using BTSMTL.Diagnostics;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -461,7 +463,7 @@ namespace BTSMTL.Timeline
 
     }
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
     public static class TimelineAuthoringTypeCatalog
     {
         static readonly IReadOnlyDictionary<string, Type> s_TrackTypes = BuildTrackTypes();
@@ -476,7 +478,13 @@ namespace BTSMTL.Timeline
         static IReadOnlyDictionary<string, Type> BuildTrackTypes()
         {
             var result = new Dictionary<string, Type>(StringComparer.Ordinal);
-            foreach (Type type in TypeCache.GetTypesDerivedFrom<Track>()
+#if UNITY_EDITOR
+            IEnumerable<Type> types = TypeCache.GetTypesDerivedFrom<Track>();
+#else
+            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(assembly => assembly.GetTypes())
+                .Where(type => typeof(Track).IsAssignableFrom(type));
+#endif
+            foreach (Type type in types
                          .Where(value => value != null && !value.IsAbstract && !value.ContainsGenericParameters))
             {
                 if (Activator.CreateInstance(type) is not Track track || string.IsNullOrWhiteSpace(track.ContractKind))

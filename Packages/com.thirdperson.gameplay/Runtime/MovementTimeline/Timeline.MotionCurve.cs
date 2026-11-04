@@ -13,39 +13,15 @@ namespace ThirdPersonGameplay.Movement.Timeline
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Ordered(1.5f), Color(126, 220, 146)]
     public sealed partial class MotionCurveTrack : SampledTrack
     {
-#if UNITY_EDITOR
-        public override Type ClipType => typeof(MotionCurveClip);
-
-#endif
     }
 
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Color(126, 220, 146)]
-    public sealed partial class MotionCurveClip : SampledClip, ITimelineContentClosureSource,
-        ITimelineClipTimeRangeValidator
+    public sealed partial class MotionCurveClip : SampledClip, ITimelineClipTimeRangeValidator
 #if UNITY_EDITOR
         , ITimelineAuthoringClipSource, ITimelineAuthoringReferenceCurveSource,
         ITimelineAuthoringClipSplitSource, ITimelineAuthoringSourceTimeEditing
 #endif
     {
-        public override string CurveChannelPrefix => "motion";
-        public override TimelineContentSampling CaptureSampling(int weightCurveIndex, int easeInCurveIndex,
-            int easeOutCurveIndex) => new TimelineContentSampling(weightCurveIndex, easeInCurveIndex,
-                easeOutCurveIndex, TimelineSampleSourceMapping.ClipSecondsClampedToSourceRange,
-                ExtraPolationMode.None, TimelineSampleWindow.TraversalWindow, false, 0f);
-
-        public override TimelineContentParameters CaptureContentParameters() => new TimelineContentMotion(
-            $"timeline:{Track.Timeline.AuthoringId}/track:{Track.AuthoringId}/clip:{AuthoringId}",
-            CurveId, Space, Channel, BlendMode, Priority, ConsumeLowerChannels,
-            TimelineContentDiscovery.CaptureSourceCurve("motion.source-x", SourcePositionX),
-            TimelineContentDiscovery.CaptureSourceCurve("motion.source-y", SourcePositionY),
-            TimelineContentDiscovery.CaptureSourceCurve("motion.source-z", SourcePositionZ),
-            TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", SourceYaw));
-
-#if UNITY_EDITOR
-        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
-        [TimelineAuthoringProperty(IsSourceAsset = true)]
-#endif
-        public RootMotionCurveAsset SourceCurve => m_SourceCurve;
         public float SourceDuration => Mathf.Max(0f, SourceEndTime - SourceStartTime);
 
         public bool TryValidateTimeRange(in TimelineClipTimeRange range, out string error)
@@ -60,23 +36,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
             }
             error = string.Empty;
             return true;
-        }
-
-        public void CollectContentClosure(TimelineContentClosureBuilder builder)
-        {
-            if (builder == null)
-                throw new ArgumentNullException(nameof(builder));
-            if (!m_SourceCurve)
-            {
-                builder.AddError("timeline_motion_curve_missing", AuthoringId, "MotionCurveClip缺少RootMotionCurveAsset正式源引用。");
-                return;
-            }
-            string contentHash = SourceContentHasher.Hash(JsonUtility.ToJson(m_SourceCurve));
-            builder.AddDependency(
-                $"motion-curve:{contentHash}",
-                GameplayMotionExtensionContracts.RootMotionDependencyKind,
-                m_SourceCurve.name,
-                contentHash);
         }
 
         public OrchestrationTime CurveEndTime => StartTime + OrchestrationTime.FromSeconds(SourceDuration);
@@ -328,12 +287,4 @@ namespace ThirdPersonGameplay.Movement.Timeline
         public new float SourceEndTime => base.SourceEndTime;
     }
 
-    public static partial class MotionCurveTimelineContracts
-    {
-        public static ITimelineContractProvider CreateProvider(
-            TimelineContentParameterCodec<TimelineContentMotion> codec) => new TimelineContractProvider(
-            new[] { Track },
-            new[] { new TimelineClipContract(Clip, null) },
-            new ITimelineContentParameterCodec[] { codec });
-    }
 }

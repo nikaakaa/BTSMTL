@@ -28,11 +28,7 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("weightCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
             ObjectType = typeof(Curve))]
 #endif
-        public Curve WeightCurve
-#if UNITY_5_3_OR_NEWER
-            = Curve.Linear(0f, 1f, 1f, 1f)
-#endif
-            ;
+        public Curve WeightCurve = TimelineCurveChannelCatalog.Linear(0f, 1f, 1f, 1f);
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
@@ -40,11 +36,7 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("easeInCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
             ObjectType = typeof(Curve))]
 #endif
-        public Curve EaseInCurve
-#if UNITY_5_3_OR_NEWER
-            = Curve.Linear(0f, 0f, 1f, 1f)
-#endif
-            ;
+        public Curve EaseInCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 1f);
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
@@ -52,10 +44,6 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("easeOutCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
             ObjectType = typeof(Curve))]
 #endif
-        public Curve EaseOutCurve
-#if UNITY_5_3_OR_NEWER
-            = Curve.Linear(0f, 0f, 1f, 1f)
-#endif
-            ;
+        public Curve EaseOutCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 1f);
     }
 }

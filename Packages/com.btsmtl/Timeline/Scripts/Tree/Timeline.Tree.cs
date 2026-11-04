@@ -1,13 +1,18 @@
 using System;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace BTSMTL.Timeline
 {
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("31085f11443fe1347b871c5d69db3774"), IconGuid("c7e6321ad8b220a4aa9932b760affad7"), Ordered(3), Color(201, 060, 032)]
+#endif
     public partial class TreeTrack : Track
     {
+        public override Type ClipType => typeof(TreeClip);
 #if UNITY_EDITOR
         [BTSMTL.Authoring.Graph.GraphAuthoringField("executionDomain", typeof(TimelineExecutionDomain),
             AllowedValues = new[] { "Logic", "Presentation" })]
@@ -17,8 +22,6 @@ namespace BTSMTL.Timeline
             get => base.ExecutionDomain;
             set => ConfigureExecutionDomain(value);
         }
-
-        public override Type ClipType => typeof(TreeClip);
 
         public override bool DragValid()
         {
@@ -30,7 +33,9 @@ namespace BTSMTL.Timeline
     }
 
     [Serializable]
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("31085f11443fe1347b871c5d69db3774"), Color(201, 060, 032)]
+#endif
     public partial class TreeClip : Clip, ITimelineOwnedAuthoringIdentity, ITimelineClipExecutionPhaseSource, ITimelineClipExitSource
 #if UNITY_EDITOR
         , ITimelineTerminalTimeAlignedClip, ITimelineTreeClipAuthoringSource
@@ -41,6 +46,8 @@ namespace BTSMTL.Timeline
             AuthoringVisible = false)]
         [TimelineAuthoringProperty(IsSourceAsset = true)]
         public ScriptableObject AssetTree => m_AssetTree.Length == 0 ? null : Timeline.AuthoringDocument.ResolveGraph(m_AssetTree);
+#endif
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public string AssetTreeId => m_AssetTree;
 #endif
 

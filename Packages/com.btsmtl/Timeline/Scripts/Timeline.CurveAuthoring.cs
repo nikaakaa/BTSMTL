@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#else
+using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
+using Color = BTSMTL.Authoring.Graph.GraphAuthoringColor;
+#endif
 
 namespace BTSMTL.Timeline
 {
@@ -82,12 +87,20 @@ namespace BTSMTL.Timeline
         public TimelineCurveTimeDomain TimeDomain { get; }
         public TimelineCurveValueDomain ValueDomain { get; }
         public bool Supports(object owner) => owner != null && OwnerType.IsInstanceOfType(owner) && (m_Availability?.Invoke((Clip)owner) ?? true);
+#if UNITY_5_3_OR_NEWER
         public AnimationCurve CreateDefaultCurve() => TimelineCurveAuthoring.CopyCurve(m_DefaultFactory());
         public bool IsDefault(AnimationCurve curve) => m_DefaultFactory != null && TimelineCurveAuthoring.AreEquivalent(curve, CreateDefaultCurve());
+#else
+        public AnimationCurve CreateDefaultCurve() => m_DefaultFactory();
+#endif
 
         public AnimationCurve Read(object owner)
         {
+#if UNITY_5_3_OR_NEWER
             return TimelineCurveAuthoring.CopyCurve(m_Read(owner));
+#else
+            return m_Read(owner);
+#endif
         }
 
 #if UNITY_EDITOR
@@ -100,6 +113,7 @@ namespace BTSMTL.Timeline
         }
 #endif
 
+#if UNITY_5_3_OR_NEWER
         public void Validate(object owner, AnimationCurve curve)
         {
             if (TimeDomain == TimelineCurveTimeDomain.SourceSeconds)
@@ -107,6 +121,7 @@ namespace BTSMTL.Timeline
             else
                 TimelineCurveAuthoring.ValidateNormalized(curve, ValueDomain, 1);
         }
+#endif
 
     }
 
@@ -145,9 +160,32 @@ namespace BTSMTL.Timeline
         static TimelineCurveChannelDescriptor Sampled(string prefix, Type owner, TimelineSampledCurveChannel channel,
             Func<object, AnimationCurve> read, Action<object, AnimationCurve> replace) =>
             new(new TimelineCurveChannelId(prefix + channel.Suffix), owner, channel.DisplayName,
-                new Color32(channel.Red, channel.Green, channel.Blue, 255), channel.ValueDomain,
-                () => AnimationCurve.Linear(0f, channel.DefaultStart, 1f, channel.DefaultEnd), read, replace,
+                DisplayColor(channel.Red, channel.Green, channel.Blue), channel.ValueDomain,
+                () => Linear(0f, channel.DefaultStart, 1f, channel.DefaultEnd), read, replace,
                 role: channel.Role);
+
+        public static Color DisplayColor(byte red, byte green, byte blue)
+        {
+#if UNITY_5_3_OR_NEWER
+            return new Color32(red, green, blue, 255);
+#else
+            return new Color(red / 255f, green / 255f, blue / 255f);
+#endif
+        }
+
+        public static AnimationCurve Linear(float startTime, float startValue, float endTime, float endValue)
+        {
+#if UNITY_5_3_OR_NEWER
+            return AnimationCurve.Linear(startTime, startValue, endTime, endValue);
+#else
+            double tangent = (endValue - startValue) / (endTime - startTime);
+            return new AnimationCurve(8, 8, new[]
+            {
+                new ThirdPersonSimulation.GameplayAbilityCurveKey<double>(startTime, startValue, tangent, tangent, 0d, 0d, 0, false),
+                new ThirdPersonSimulation.GameplayAbilityCurveKey<double>(endTime, endValue, tangent, tangent, 0d, 0d, 0, false)
+            });
+#endif
+        }
 
         public static TimelineCurveChannelDescriptor Require(Clip owner, string channelId)
         {
@@ -159,6 +197,7 @@ namespace BTSMTL.Timeline
         }
     }
 
+#if UNITY_5_3_OR_NEWER
     public static class TimelineCurveAuthoring
     {
         public static AnimationCurve Read(Clip owner, TimelineCurveChannelId channelId) =>
@@ -313,4 +352,5 @@ namespace BTSMTL.Timeline
             hash *= 1099511628211UL;
         }
     }
+#endif
 }

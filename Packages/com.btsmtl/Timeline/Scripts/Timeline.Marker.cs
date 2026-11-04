@@ -2,7 +2,9 @@ using System;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace BTSMTL.Timeline
 {
@@ -11,6 +13,7 @@ namespace BTSMTL.Timeline
     {
         public const string ContractKind = "marker";
 
+        [NonSerialized]
         Track m_Track;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
@@ -26,6 +29,8 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         [GraphAuthoringField(nameof(m_Graph), GraphAuthoringFieldValueKind.IdentityReference)]
         public ScriptableObject Graph => m_Graph.Length == 0 ? null : m_Track.Timeline.AuthoringDocument.ResolveGraph(m_Graph);
+#endif
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public string GraphId => m_Graph;
 #endif
         public Track Track => m_Track;

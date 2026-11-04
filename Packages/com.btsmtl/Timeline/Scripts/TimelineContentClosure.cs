@@ -4,12 +4,17 @@ using System.Collections.ObjectModel;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#else
+using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
+#endif
 
 namespace BTSMTL.Timeline
 {
     public static class TimelineContentDiscovery
     {
+#if UNITY_5_3_OR_NEWER
         public static TimelineContentCurve CaptureSourceCurve(string channelId, AnimationCurve curve)
         {
             var keys = new TimelineContentCurveKey[curve.length];
@@ -22,6 +27,36 @@ namespace BTSMTL.Timeline
             return new TimelineContentCurve(channelId, channelId, TimelineCurveTimeDomain.SourceSeconds,
                 TimelineCurveValueDomain.Unbounded(0f, string.Empty),
                 (int)curve.preWrapMode, (int)curve.postWrapMode, keys);
+        }
+#endif
+
+        static TimelineContentCurve CaptureCurve(TimelineCurveChannelDescriptor descriptor, AnimationCurve sourceCurve)
+        {
+#if UNITY_5_3_OR_NEWER
+            Keyframe[] keys = sourceCurve?.keys ?? Array.Empty<Keyframe>();
+            var curveKeys = new TimelineContentCurveKey[keys.Length];
+            for (int keyIndex = 0; keyIndex < keys.Length; keyIndex++)
+            {
+                Keyframe key = keys[keyIndex];
+                curveKeys[keyIndex] = new TimelineContentCurveKey(key.time, key.value, key.inTangent,
+                    key.outTangent, key.inWeight, key.outWeight, (int)key.weightedMode);
+            }
+            int preWrapMode = (int)(sourceCurve?.preWrapMode ?? WrapMode.ClampForever);
+            int postWrapMode = (int)(sourceCurve?.postWrapMode ?? WrapMode.ClampForever);
+#else
+            IReadOnlyList<GameplayAbilityCurveKey<double>> keys = sourceCurve?.Keys ?? Array.Empty<GameplayAbilityCurveKey<double>>();
+            var curveKeys = new TimelineContentCurveKey[keys.Count];
+            for (int keyIndex = 0; keyIndex < keys.Count; keyIndex++)
+            {
+                GameplayAbilityCurveKey<double> key = keys[keyIndex];
+                curveKeys[keyIndex] = new TimelineContentCurveKey((float)key.Time, (float)key.Value,
+                    (float)key.InTangent, (float)key.OutTangent, (float)key.InWeight, (float)key.OutWeight, key.WeightedMode);
+            }
+            int preWrapMode = sourceCurve?.PreWrapMode ?? 8;
+            int postWrapMode = sourceCurve?.PostWrapMode ?? 8;
+#endif
+            return new TimelineContentCurve(descriptor.ChannelId.Value, descriptor.DisplayName,
+                descriptor.TimeDomain, descriptor.ValueDomain, preWrapMode, postWrapMode, curveKeys);
         }
 #if UNITY_EDITOR
         public static TimelineContentDiscoveryResult Discover(TimelineAsset asset, TimelineContractCatalog catalog)
@@ -137,29 +172,7 @@ namespace BTSMTL.Timeline
                             case TimelineCurveChannelRole.EaseIn: easeInCurveIndex = curves.Count; break;
                             case TimelineCurveChannelRole.EaseOut: easeOutCurveIndex = curves.Count; break;
                         }
-                        AnimationCurve sourceCurve = descriptor.Read(clip);
-                        Keyframe[] keys = sourceCurve?.keys ?? Array.Empty<Keyframe>();
-                        var curveKeys = new TimelineContentCurveKey[keys.Length];
-                        for (int keyIndex = 0; keyIndex < keys.Length; keyIndex++)
-                        {
-                            Keyframe key = keys[keyIndex];
-                            curveKeys[keyIndex] = new TimelineContentCurveKey(
-                                key.time,
-                                key.value,
-                                key.inTangent,
-                                key.outTangent,
-                                key.inWeight,
-                                key.outWeight,
-                                (int)key.weightedMode);
-                        }
-                        curves.Add(new TimelineContentCurve(
-                            descriptor.ChannelId.Value,
-                            descriptor.DisplayName,
-                            descriptor.TimeDomain,
-                            descriptor.ValueDomain,
-                            (int)(sourceCurve?.preWrapMode ?? WrapMode.ClampForever),
-                            (int)(sourceCurve?.postWrapMode ?? WrapMode.ClampForever),
-                            curveKeys));
+                        curves.Add(CaptureCurve(descriptor, descriptor.Read(clip)));
                     }
                     if (clip is ITimelineExternalBindingUseSource bindingSource && bindingSource.ExternalBindingUses != null)
                     {
