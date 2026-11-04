@@ -22,7 +22,6 @@ namespace BTSMTL.Preview
         PreviewAgentCommandResult HandleProjectCommand(TCommand command);
         void Ack(TCommand command, bool ok, string error);
         void WriteStatus();
-        void SendText(string json);
         void Fail(string stage, Exception failure, string commandId);
         Camera ActiveCamera();
         // 实时画面开始采集时冻结来源，读回完成后由 SendStreamFrame 连同画面一起发出。
@@ -37,6 +36,7 @@ namespace BTSMTL.Preview
         const float StatusInterval = 0.25f;
         readonly MonoBehaviour m_Owner;
         readonly IPreviewAgentProject<TCommand> m_Project;
+        readonly Action<string> m_SendText;
         readonly CancellationTokenSource m_Cancel = new CancellationTokenSource();
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
         PreviewFrameCapture m_StreamCapture;
@@ -46,19 +46,39 @@ namespace BTSMTL.Preview
         float m_MaxFps = 30f;
         int m_StreamQuality = 75;
 
-        // connection 为空表示命令由 Editor 内的调用方直接提交，不经 Host 连接。
         public PreviewAgentRuntime(MonoBehaviour owner, IPreviewAgentProject<TCommand> project,
             PreviewAgentConnection connection)
+            : this(owner, project, connection, connection.SendText) { }
+
+        public PreviewAgentRuntime(MonoBehaviour owner, IPreviewAgentProject<TCommand> project,
+            Action<string> receiveLocalMessage)
+            : this(owner, project, null, receiveLocalMessage) { }
+
+        PreviewAgentRuntime(MonoBehaviour owner, IPreviewAgentProject<TCommand> project,
+            PreviewAgentConnection connection, Action<string> sendText)
         {
             m_Owner = owner;
             m_Project = project;
             Connection = connection;
+            m_SendText = sendText;
+            Application.runInBackground = true;
         }
 
-        public PreviewAgentConnection Connection { get; }
+        PreviewAgentConnection Connection { get; }
         public CancellationToken Cancellation => m_Cancel.Token;
         public bool StreamEnabled { get; set; } = true;
         public bool IsStreaming => StreamEnabled && m_Project.Playback.CanStream;
+
+        public Task ConnectAsync(Uri endpoint, int frameRate)
+        {
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = frameRate;
+            return Connection.ConnectAsync(endpoint);
+        }
+
+        public void SendText(string json) => m_SendText(json);
+
+        public void SendLatestImage(byte[] packet) => Connection.SendLatestImage(packet);
 
         // 返回 false 表示连接已结束并开始退出，本帧不再做后续处理。
         public bool Update()
@@ -240,7 +260,7 @@ namespace BTSMTL.Preview
             try
             {
                 PreviewPngImageArchive.Write(in png, command.path);
-                m_Project.SendText(JsonUtility.ToJson(new PreviewAgentReceipt
+                SendText(JsonUtility.ToJson(new PreviewAgentReceipt
                 {
                     commandId = command.commandId, ok = true, frame = png.Frame, path = command.path
                 }));
