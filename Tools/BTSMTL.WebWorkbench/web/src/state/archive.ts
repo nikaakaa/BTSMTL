@@ -290,6 +290,8 @@ export const archive = {
     for (const request of pages.values()) request.controller.abort();
     pages.clear();
     pending.clear();
+    cache.clear();
+    images.clear();
     frameRequest++;
   },
 
