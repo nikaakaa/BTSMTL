@@ -612,9 +612,11 @@ export interface SkillDocument {
   skill: string;
   programId: string | null;
   sourceRevision: string;
+  inputRevision: string;
   tickRate: number;
   graphs: SkillDocumentGraph[];
   relations: SkillDocumentRelation[];
+  sources: SkillSnapshot[];
 }
 
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;

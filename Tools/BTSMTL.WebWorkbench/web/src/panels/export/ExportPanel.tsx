@@ -12,8 +12,9 @@ const purposeNames = { authoring: '作者内容', runtime: '运行数据' } sati
 
 export function ExportPanel() {
   const [purpose, setPurpose] = useState<SkillExportKind>('authoring');
-  const { target, product, loading } = useAuthoring(useShallow(state => ({
+  const { target, product, loading, documentRevision, sourceRevision } = useAuthoring(useShallow(state => ({
     target: state.target, product: authoringDocument(state).product, loading: authoringDocument(state).loading,
+    documentRevision: authoringDocument(state).documentRevision, sourceRevision: authoringDocument(state).sourceRevision,
   })));
   const operations = useExports(state => state.operations);
   const skill = target?.kind === 'skill' ? target.name : null;
@@ -30,6 +31,10 @@ export function ExportPanel() {
     {skill === null ? <Empty text="选择技能以导出当前作者内容或运行数据" /> : <section className={styles.source}>
       <strong>{skill}</strong>
       <ProductScope product={product} />
+      <IdentityFold fields={[
+        ...(documentRevision === null ? [] : [{ displayName: '作者输入上下文修订', value: documentRevision }]),
+        ...(sourceRevision === null ? [] : [{ displayName: '技能编译来源闭包修订', value: sourceRevision }]),
+      ]} />
       <p>{purpose === 'authoring'
         ? '保留作者树、UID、布局、Timeline 和输入方案，供继续编辑。包含本次编辑视图，不保存文档。'
         : '按本次编辑视图编译运行数据，下载编译清单及其配套内容文件。不保存其它作者内容。'}</p>

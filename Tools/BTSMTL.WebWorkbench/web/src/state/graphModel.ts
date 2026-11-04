@@ -16,26 +16,25 @@ export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
 export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 对象 ${call.objectHandle ?? '句柄未记录'} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration} · ${call.invocationPath}` +
   (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {
-  programId: string | null;
-  sourceRevision: string | null;
+  programs: ReadonlyMap<string, string> | null;
   dirty: boolean;
 }
 export const matchesDocumentCall = (call: ExecutionCall, binding: DocumentObservationBinding) =>
-  !binding.dirty && binding.sourceRevision !== null &&
-  call.programId === binding.programId && call.programRevision === binding.sourceRevision;
+  !binding.dirty && binding.programs?.get(call.programId) === call.programRevision;
 
 export function documentObservationNotice(frame: RouteFrame | null, binding: DocumentObservationBinding,
   selected: ExecutionCall | null = null): string | null {
   if (binding.dirty) return '作者内容已有修改，运行叠加已过期；原档案保留。';
-  if (binding.sourceRevision === null) return '尚未取得当前内容的正式修订，运行叠加不可用。';
+  if (binding.programs === null || binding.programs.size === 0) return '尚未取得当前图的正式运行修订，运行叠加不可用。';
   const expired = '运行档案与当前内容修订不同，叠加已过期；原档案保留。';
-  if (selected !== null) return selected.programId === binding.programId && selected.programRevision === binding.sourceRevision ? null : expired;
+  if (selected !== null) return matchesDocumentCall(selected, binding) ? null
+    : binding.programs.has(selected.programId) ? expired : '所选调用不属于当前作者内容，运行叠加不可用。';
   if (frame === null) return null;
   let outdated = false;
   for (const records of [frame.nodes, frame.edges, frame.ports, frame.playbacks, frame.active])
     for (const record of records)
-      if (record.call !== null && record.call.programId === binding.programId) {
-        if (record.call.programRevision === binding.sourceRevision) return null;
+      if (record.call !== null && binding.programs.has(record.call.programId)) {
+        if (record.call.programRevision === binding.programs.get(record.call.programId)) return null;
         outdated = true;
       }
   return outdated ? expired : '此帧未记录当前作者内容的实际调用，运行叠加不可用。';
@@ -312,7 +311,7 @@ export function graphCrumbs(hierarchy: GraphHierarchy, graph: GraphDefinition): 
   return crumbs;
 }
 
-export const isStateMachine = (graph: GraphDefinition) => graph.edges.some(edge => edge.kind === 'Transition');
+export const isStateMachine = (graph: Pick<SkillDocumentGraph, 'role'>) => graph.role === 'StateMachine';
 
 // 端口值类型色按样本的值类型判断。
 export function portColor(valueType: string | undefined): string {

@@ -589,7 +589,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const minimapWidth = useFlowStore(state => Math.min(204, state.width * 0.3, state.height * 0.3 * 204 / 104));
   // 缩得很小时字已经读不清：只留节点名与连线，隐藏转移标签与端口值。
   const far = useFlowStore(state => state.transform[2] < 0.6);
-  const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
+  const machine = isStateMachine(graph);
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
   const routeFrames = useWorkbench(state => state.routeFrames);

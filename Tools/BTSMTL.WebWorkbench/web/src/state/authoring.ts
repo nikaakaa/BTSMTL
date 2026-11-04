@@ -44,6 +44,7 @@ export interface AuthoringDocument {
   saveRun: { kind: 'waiting' | 'terminal'; receipt: PlayerJobReceipt } | null;
   revision: string | null;
   sourceRevision: string | null;
+  documentRevision: string | null;
   files: Record<string, string>;
   // 编辑过及新建的文件（路径 → 解析后的文档），逐次修改递增 version。
   edited: Record<string, JsonValue>;
@@ -94,7 +95,7 @@ export interface AddedPort {
 
 const newDocument = (): AuthoringDocument => ({
   programId: null, inputActorId: null,
-  inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null,
+  inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
@@ -130,10 +131,18 @@ const isActiveTarget = (target: AuthoringTarget) => {
   return current !== null && authoringTargetKey(current) === authoringTargetKey(target);
 };
 
-export const useDocumentObservationBinding = (): DocumentObservationBinding => useAuthoring(useShallow(state => ({
-  programId: authoringDocument(state).programId, sourceRevision: authoringDocument(state).sourceRevision,
-  dirty: Object.keys(authoringDocument(state).edited).length > 0 || authoringDocument(state).removed.length > 0,
-})));
+export function useDocumentObservationBinding(): DocumentObservationBinding {
+  const { graphs, dirty } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
+    if (state.target?.kind === 'skill') owners.add(state.target.name);
+    return { graphs: document.documentGraphs, dirty: Object.entries(state.documents).some(([key, owner]) =>
+      key.startsWith('skill/') && owners.has(key.slice('skill/'.length)) &&
+      (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
+  }));
+  return useMemo(() => ({ programs: graphs === null ? null : new Map(graphs.map(graph => [graph.programId, graph.programRevision])), dirty }),
+    [graphs, dirty]);
+}
 
 export function useDocumentObservationNotice(call: ExecutionCall | null = null): string | null {
   const binding = useDocumentObservationBinding();
@@ -414,11 +423,14 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
-  const { revision, version } = authoringDocument(useAuthoring.getState(), target);
+  const capturedOwners = Object.entries(useAuthoring.getState().documents)
+    .filter(([key]) => key.startsWith('skill/'))
+    .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
   const isCurrentRequest = () => {
-    const current = authoringDocument(useAuthoring.getState(), target);
-    return current.revision === revision && current.version === version &&
+    const current = useAuthoring.getState().documents;
+    return Object.keys(current).filter(key => key.startsWith('skill/')).length === capturedOwners.length &&
+      capturedOwners.every(owner => current[owner.key].revision === owner.revision && current[owner.key].version === owner.version) &&
       JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
   };
   if (target.kind === 'scenario') {
@@ -429,8 +441,28 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     const document = await authoringApi.document(target.name, editingView, signal);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
-    setDocument({ documentGraphs: document.graphs, documentRelations: document.relations, sourceRevision: document.sourceRevision,
-      documentError: null, tickRate: document.tickRate, programId: document.programId }, target);
+    const documents = { ...useAuthoring.getState().documents };
+    for (const source of document.sources) {
+      const key = authoringTargetKey({ kind: 'skill', name: source.skill });
+      const current = documents[key];
+      if (current === undefined) {
+        documents[key] = { ...newDocument(), product: editingView.product, previewDefinitionGuid: editingView.previewDefinitionGuid,
+          files: Object.fromEntries(source.files.map(file => [file.path, file.content])) };
+      } else {
+        const files = { ...current.files };
+        const edited = { ...current.edited };
+        for (const file of source.files) {
+          if (Object.hasOwn(edited, file.path)) edited[file.path] = parseSkillJson(file.content);
+          else files[file.path] = file.content;
+        }
+        documents[key] = { ...current, files, edited };
+      }
+    }
+    const key = authoringTargetKey(target);
+    documents[key] = { ...documents[key], documentGraphs: document.graphs, documentRelations: document.relations,
+      sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
+      documentError: null, tickRate: document.tickRate, programId: document.programId };
+    set({ documents });
   } catch (error) {
     if (isAbort(error)) throw error;
     if (!isCurrentRequest()) return;
