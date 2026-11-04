@@ -56,6 +56,7 @@ namespace ThirdPersonSimulation.Serialization
             internal byte[] Previous;
             internal string Staged;
             internal int Order;
+            internal bool Shared;
         }
 
         readonly Dictionary<string, Write> m_Writes = new(StringComparer.Ordinal);
@@ -92,12 +93,12 @@ namespace ThirdPersonSimulation.Serialization
 
         public void PreparePublication(string path, byte[] content)
         {
-            if (File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(content))
-                return;
             Prepare(path, content, 2);
         }
 
-        void Prepare(string path, byte[] content, int order)
+        public void PrepareSharedContent(string path, byte[] content) => Prepare(path, content, 0, true);
+
+        void Prepare(string path, byte[] content, int order, bool shared = false)
         {
             path = Path.GetFullPath(path);
             if (m_Writes.TryGetValue(path, out Write existing))
@@ -106,11 +107,15 @@ namespace ThirdPersonSimulation.Serialization
                     throw new InvalidDataException($"同一发布事务为 '{path}' 提供了不同内容。");
                 return;
             }
-            m_Writes.Add(path, new Write { Path = path, Content = content, Order = order,
-                Previous = File.Exists(path) ? File.ReadAllBytes(path) : null });
+            byte[] previous = File.Exists(path) ? File.ReadAllBytes(path) : null;
+            if (previous != null && previous.AsSpan().SequenceEqual(content))
+                return;
+            if (shared && previous != null)
+                throw new InvalidDataException($"不可变共享内容 '{path}' 已存在不同字节。");
+            m_Writes.Add(path, new Write { Path = path, Content = content, Order = order, Shared = shared, Previous = previous });
         }
 
-        public void Commit()
+        public IReadOnlyList<string> Commit()
         {
             Write[] writes = m_Writes.Values.OrderBy(write => write.Order)
                 .ThenBy(write => write.Path, StringComparer.Ordinal).ToArray();
@@ -125,7 +130,20 @@ namespace ThirdPersonSimulation.Serialization
                 }
                 foreach (Write write in writes)
                 {
-                    if (write.Previous == null)
+                    if (write.Shared)
+                    {
+                        try
+                        {
+                            File.Move(write.Staged, write.Path);
+                        }
+                        catch (IOException) when (File.Exists(write.Path))
+                        {
+                            if (!File.ReadAllBytes(write.Path).AsSpan().SequenceEqual(write.Content))
+                                throw new InvalidDataException($"并发发布的共享内容 '{write.Path}' 包含不同字节。");
+                            continue;
+                        }
+                    }
+                    else if (write.Previous == null)
                         File.Move(write.Staged, write.Path);
                     else
                         File.Replace(write.Staged, write.Path, null);
@@ -139,10 +157,16 @@ namespace ThirdPersonSimulation.Serialization
                     try
                     {
                         Write write = committed[index];
+                        if (write.Shared)
+                            continue;
                         if (write.Previous == null)
                             File.Delete(write.Path);
                         else
-                            File.WriteAllBytes(write.Path, write.Previous);
+                        {
+                            write.Staged = write.Path + ".publishing-" + Guid.NewGuid().ToString("N");
+                            File.WriteAllBytes(write.Staged, write.Previous);
+                            File.Replace(write.Staged, write.Path, null);
+                        }
                     }
                     catch (Exception recoveryError)
                     {
@@ -158,6 +182,7 @@ namespace ThirdPersonSimulation.Serialization
                     if (write.Staged != null && File.Exists(write.Staged))
                         File.Delete(write.Staged);
             }
+            return committed.Select(write => write.Path).ToArray();
         }
     }
 }
