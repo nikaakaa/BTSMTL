@@ -1,7 +1,7 @@
 {
     "name": "BTSMTL.Preview",
     "rootNamespace": "BTSMTL.Preview",
-    "references": ["BTSMTL.Foundation"],
+    "references": ["BTSMTL.Foundation", "BTSMTL.Diagnostics"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
