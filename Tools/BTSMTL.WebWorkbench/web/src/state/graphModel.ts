@@ -175,6 +175,8 @@ export const parentCallMatches = (parent: ExecutionCall, call: ExecutionCall) =>
 
 export const parentGraphCalls = (call: ExecutionCall, calls: RecordedGraphCall[]) => calls.filter(item => parentCallMatches(item.call, call));
 
+export const parentCallCandidateNotice = 'Unavailable：记录只提供父调用路径和代次，未记录完整发生实例及恢复祖先关联；匹配项仅为候选。';
+
 export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence & { call: ExecutionCall } => 'kind' in item && 'nodeId' in item;
 export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence & { call: ExecutionCall } => 'edgeId' in item;
 export const isPortSample = (item: RouteRecord): item is PortSample & { call: ExecutionCall } => 'portId' in item;

@@ -23,7 +23,7 @@ import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
-  isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
+  isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallCandidateNotice, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
   documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
@@ -178,7 +178,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const key = graphKey(graph);
 
   const caller = params.caller;
-  const callerNotice = caller === null ? null : caller.runId !== runId ? '原父调用属于另一份运行档案，未选择其它实例'
+  const callerNotice = caller === null ? null : caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例'
     : documentObservationNotice(currentRoute, binding, caller.call);
   const graphCalls = callerNotice !== null ? [] : currentCalls.filter(item => graphKey(item.graph) === key &&
     (caller === null || parentCallMatches(caller.call, item.call)));
@@ -187,7 +187,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const pinNotice = pin === null ? null : pin.runId !== runId ? '固定调用属于另一份运行档案，固定身份已保留'
     : pin.graph !== key ? '固定调用不属于当前作者图，固定身份已保留'
     : documentObservationNotice(currentRoute, binding, pin.call);
-  const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
+  const automatic = caller !== null ? null : params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const observedCall = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
     : pin !== null ? calls.find(item => callKey(item) === callKey(pin.call)) ?? null
@@ -196,7 +196,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
   const choices = quickMode ? [] : pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
-    label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
+    label: `${caller === null ? '' : '父字段匹配候选 · '}${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = graph.authoringPath;
   const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
@@ -205,7 +205,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       : observedCall !== null ? calls.some(item => callKey(item) === callKey(observedCall)) ? null : '此帧没有固定调用的发生记录，固定身份已保留'
         : params.call !== null ? '此帧没有所选调用的记录，请重新选择实例或开启跟随当前帧'
           : availableCalls.length > 1 ? '本帧有多个实际调用，请选择要观察的实例'
-            : caller !== null ? '此帧没有精确匹配原父调用的子调用记录' : '本帧没有对应作者图的实际调用记录');
+            : caller !== null ? availableCalls.length > 0 ? '请选择父字段匹配的调用候选' : '此帧没有父字段匹配的调用候选' : '本帧没有对应作者图的实际调用记录');
   const availabilityNotice = currentRoute?.availability.filter(item => !item.available || !item.complete).map(item => item.reason).join('\n');
   const objectAvailability = observedCall?.objectAvailability;
   const objectNotice = observedCall === null ? null : objectAvailability == null ? '未记录对象来源资格'
@@ -215,16 +215,9 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const callCrumbs = useMemo(() => {
     if (observedCall === null) return null;
-    const items: RecordedGraphCall[] = [{ graph, call: observedCall }];
-    let current = observedCall;
-    let parents = parentGraphCalls(current, recorded);
-    while (parents.length === 1) {
-      items.unshift(parents[0]);
-      current = parents[0].call;
-      parents = parentGraphCalls(current, recorded);
-    }
-    return { items, parent: current.parentInvocationPath ? current : null, choices: parents };
-  }, [graph, observedCall, recorded]);
+    return { call: observedCall, parent: observedCall.parentInvocationPath ? observedCall : null,
+      choices: parentGraphCalls(observedCall, recorded) };
+  }, [observedCall, recorded]);
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
     call: callKey(call), pin: { runId, graph: graphKey(graph), call }, caller: null, origin: null, viewport: null });
 
@@ -285,6 +278,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
           {callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
+          {!quickMode && caller !== null && <span role="status" className={styles.notice}>{parentCallCandidateNotice}</span>}
           {!quickMode && availabilityNotice && <Tip content={availabilityNotice}><span role="status" className={styles.notice}>运行记录有缺项</span></Tip>}
           {objectNotice !== null && <Tip content={objectNotice}><span role="status" className={styles.notice}>{objectNotice}</span></Tip>}
           {graphOptions.length > 1 && <Select label="作者图" value={key} options={graphOptions}
@@ -295,20 +289,17 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
           <span className={styles.crumbs}>
             {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>
-                {callCrumbs.choices.length > 1 && enterCall ? <MenuButton label="选择父调用" entries={callCrumbs.choices.map(item => ({
+                {callCrumbs.choices.length > 0 && enterCall ? <Tip content={parentCallCandidateNotice}><MenuButton label="父调用候选" entries={callCrumbs.choices.map(item => ({
                   label: `${graphName(item.graph)} · ${callLabel(item.call)}`, onSelect: () => enterCall(item),
-                }))}>选择父调用</MenuButton>
-                  : <Tip content={`路径：${callCrumbs.parent.parentInvocationPath}\n代次：${callCrumbs.parent.parentInvocationGeneration ?? '未记录'}`}><span>
+                }))}>父调用候选（{callCrumbs.choices.length}）</MenuButton></Tip>
+                  : <Tip content={`路径：${callCrumbs.parent.parentInvocationPath}\n代次：${callCrumbs.parent.parentInvocationGeneration ?? '未记录'}\n${parentCallCandidateNotice}`}><span>
                     {callCrumbs.parent.parentInvocationGeneration === null ? '父调用代次未记录' : '已加载记录中没有父调用'}
                   </span></Tip>}
                 <i className={styles.crumbArrow} />
               </span>}
-              {callCrumbs.items.map((item, index) => <Tip key={callKey(item.call)} content={callLabel(item.call)}><span className={styles.crumb}>
-                {index > 0 && <i className={styles.crumbArrow} />}
-                {index < callCrumbs.items.length - 1 && enterCall
-                  ? <button className={styles.crumbLink} onClick={() => enterCall(item)}>{graphName(item.graph)}</button>
-                  : <span data-current>{graphName(item.graph)}</span>}
-              </span></Tip>)}
+              <Tip content={callLabel(callCrumbs.call)}><span className={styles.crumb}>
+                <span data-current>{graphName(graph)}</span>
+              </span></Tip>
             </> : crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}

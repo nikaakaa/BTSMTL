@@ -27,7 +27,7 @@ import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
+import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallCandidateNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
@@ -695,7 +695,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const received = useReceivedInput(receivedSource);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
-  const callerNotice = caller === null ? null : caller.runId !== runId ? '原父调用属于另一份运行档案，未选择其它实例'
+  const callerNotice = caller === null ? null : caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例'
     : documentObservationNotice(currentRoute, binding, caller.call);
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
@@ -714,7 +714,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     : documentObservationNotice(currentRoute, binding, pin.observation.call);
   const observed = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
     : pin !== null ? pin.observation : params.call !== null ? observations.find(observation => observationKey(observation) === params.call) ?? null
-      : observations.length === 1 ? observations[0] : null;
+      : caller === null && observations.length === 1 ? observations[0] : null;
   const choices = pin && !observations.some(item => observationKey(item) === observationKey(pin.observation))
     ? [pin.observation, ...observations] : observations;
   const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observed === null || runId === null || focused === null ? undefined
@@ -937,7 +937,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
         observations={choices} selectCall={selectCall} pin={pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
         observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (trace.kind === 'unavailable' ? trace.reason
-          : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : null)} />
+          : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : caller !== null ? parentCallCandidateNotice : null)} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>
@@ -1063,13 +1063,11 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
       {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
         tip={`${pin !== null ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(shownObservation.call)} · ${shownObservation.domain}`}>固定调用</Button>}
       {clock.kind === 'document' && clock.observation !== null && <>
-        {clock.observation.call.parentInvocationPath && (parents.length > 1 && openParent
-          ? <MenuButton label="选择父调用" variant="ghost" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
-            onSelect: () => openParent(item) }))}>上层调用</MenuButton>
-          : <Button variant="ghost" disabled={parents.length !== 1 || openParent === undefined}
-            onClick={parents.length === 1 && openParent ? () => openParent(parents[0]) : undefined}
-            tip={parents.length === 1 ? '在节点图返回同一次实际父调用'
-              : clock.observation.call.parentInvocationGeneration === null ? '本记录没有父调用代次' : '已加载记录中没有匹配的父调用'}>上层调用</Button>)}
+        {clock.observation.call.parentInvocationPath && (parents.length > 0 && openParent
+          ? <Tip content={parentCallCandidateNotice}><MenuButton label="父调用候选" variant="ghost" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
+            onSelect: () => openParent(item) }))}>父调用候选（{parents.length}）</MenuButton></Tip>
+          : <Button variant="ghost" disabled
+            tip={clock.observation.call.parentInvocationGeneration === null ? '本记录没有父调用代次' : 'Unavailable：已加载记录中没有匹配的父调用候选'}>父调用候选</Button>)}
       </>}
       {notice && <Tip name={notice}><span className={styles.hint} data-name>{notice}</span></Tip>}
       <span className={styles.grow} />
