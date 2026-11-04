@@ -143,7 +143,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("curveId", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
         [TimelineAuthoringProperty(Trimmed = true)]
 #endif
@@ -151,38 +151,48 @@ namespace ThirdPersonGameplay.Movement.Timeline
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("space", typeof(SimulationMotionContributionSpace))]
 #endif
         public SimulationMotionContributionSpace Space = SimulationMotionContributionSpace.ActorLocal;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("channel", typeof(SimulationMotionChannel))]
 #endif
         public SimulationMotionChannel Channel = SimulationMotionChannel.Action;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("blendMode", typeof(SimulationMotionBlendMode))]
 #endif
         public SimulationMotionBlendMode BlendMode = SimulationMotionBlendMode.Override;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("priority", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Integer)]
 #endif
         public int Priority = 100;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("consumeLowerChannels", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Boolean)]
 #endif
         public bool ConsumeLowerChannels = true;
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceStartTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
+        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.Start)]
+#endif
+        public new float SourceStartTime => base.SourceStartTime;
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceEndTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
+        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.End)]
+#endif
+        public new float SourceEndTime => base.SourceEndTime;
 #if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif

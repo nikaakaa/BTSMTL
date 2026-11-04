@@ -247,16 +247,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
             ConfigureSource(source, 0f, source.Duration);
         }
 #endif
-#if UNITY_EDITOR
-        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceStartTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
-        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.Start)]
-#endif
-        public new float SourceStartTime => base.SourceStartTime;
-#if UNITY_EDITOR
-        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceEndTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
-        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.End)]
-#endif
-        public new float SourceEndTime => base.SourceEndTime;
     }
 
 }
