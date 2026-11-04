@@ -154,7 +154,7 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
-type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
+type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation' | 'jobError'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
@@ -190,9 +190,9 @@ const previewMessages = {
 function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
   const detail = preview === null ? noPreviewReason : `${previewMessages[preview.stage]}${preview.error === null ? '' : `：${preview.error}`}`;
   return {
-    saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, preview,
+    saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, jobError: save.jobError, preview,
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
-    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
+    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}${save.jobError === null ? '' : `；作业提交失败：${save.jobError}`}`, errors: [],
   };
 }
 
@@ -219,6 +219,36 @@ function acceptSaveJob(receipt: PlayerJobReceipt) {
   if (receipt.stage === 'completed') session.selectRun(receipt.jobId);
 }
 
+async function trackInputPreview(target: AuthoringTarget, preview: NonNullable<InputSaveResult['preview']>,
+  liveId: string, controller: AbortController) {
+  let receipt = preview;
+  const commandId = receipt.commandId;
+  if (commandId === null) return;
+  try {
+    while (receipt.stage === 'sent' || receipt.stage === 'submitted') {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      controller.signal.throwIfAborted();
+      receipt = await playerApi.readCommand(liveId, commandId, controller.signal);
+      controller.signal.throwIfAborted();
+      const document = authoringDocument(useAuthoring.getState(), target);
+      const outcome = document.lastSave;
+      if (outcome?.compilationState !== 'not-required') return;
+      const next = { ...outcome, preview: receipt };
+      const job = document.saveRun?.receipt;
+      setDocument({ lastSave: { ...next, message: inputSaveMessage(next) + (job === undefined ? ''
+        : `；封存作业${stageNames[job.stage]}${job.error === null ? '' : `：${job.error}`}`) } }, target);
+    }
+    if (receipt.stage === 'applied') await playerService.refresh();
+  } catch (error) {
+    if (isAbort(error)) return;
+    const outcome = authoringDocument(useAuthoring.getState(), target).lastSave;
+    if (outcome?.compilationState !== 'not-required') return;
+    setDocument({ lastSave: { ...outcome,
+      message: `${inputSaveMessage(outcome)}；预览状态读取失败：${error instanceof Error ? error.message : String(error)}` } }, target);
+    consoleActions.error('预览', error);
+  }
+}
+
 async function trackPreview(input: {
   save: SavedCompilation; receipt: PlayerSkillRefreshReceipt; controller: AbortController;
   viewport: { width: number; height: number } | null;
@@ -238,7 +268,7 @@ async function trackPreview(input: {
       receipt = next;
     }
     input.controller.signal.throwIfAborted();
-    if (receipt.stage !== 'adopted') return;
+    if (receipt.stage !== 'adopted' || input.save.jobError !== null) return;
     const live = await playerApi.live(receipt.liveId, input.controller.signal);
     input.controller.signal.throwIfAborted();
     const target = live.previewTarget;
@@ -751,6 +781,8 @@ export const authoringActions = {
         setDocument({ inputRevision: { kind: 'saved', items: result.inputs } }, target);
         if (currentSkill && result.job !== null && !controller.signal.aborted) acceptSaveJob(result.job);
         if (currentSkill && stage === 'applied') await playerService.refresh();
+        if (currentSkill && preview !== null && (stage === 'sent' || stage === 'submitted') && selection.kind === 'selected')
+          void trackInputPreview(target, preview, selection.target.liveId, controller);
         if (currentSkill) await session.loadInputs();
         if (currentSkill && result.job !== null) await session.refresh();
         return;
