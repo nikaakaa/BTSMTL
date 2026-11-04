@@ -62,6 +62,8 @@ export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'Loop
 export const loopScopeKey = (scope: LoopScope) => JSON.stringify([callKey(scope.call), scope.graphId, scope.nodeId, scope.generation, scope.iteration]);
 export const loopScopeLabel = (scope: LoopScope) => `${scope.graphId}/${scope.nodeId} · 激活 ${scope.generation ?? '未记录'} · 迭代 ${scope.iteration}`;
 export const portSampleLabel = (sample: PortSample) => `记录 ${sample.sequence} · 观察 ${sample.observationSequence ?? '未记录'} · 激活 ${sample.generation ?? '未记录'}`;
+export const portSampleKey = (sample: PortSample) => JSON.stringify([sample.sequence, sample.observationSequence,
+  sample.generation, sample.loopScopes?.map(loopScopeKey)]);
 
 export function routeObservation({ runId, frame, hostFrame }: Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame'>) {
   if (runId === null) return { kind: 'unavailable', reason: '选择运行以查看实际调用' } as const;

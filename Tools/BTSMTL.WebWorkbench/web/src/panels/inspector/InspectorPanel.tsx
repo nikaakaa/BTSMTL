@@ -4,7 +4,7 @@ import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRe
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
-  isPortSample, nodeReferences, nodeName, nodeOccurrenceLabel, portColor, compareSequence, callKey, callOwnerLabel, routeObservation, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
+  isPortSample, nodeReferences, nodeName, compareSequence, callKey, callOwnerLabel, routeObservation, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
@@ -22,6 +22,7 @@ import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/cont
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
 import { ClipFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TrackFields, TransitionFields } from './FieldEditors';
+import { NodeObservation } from './NodeObservation';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -258,44 +259,9 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
       <Head name={nodeName(node)} sub={graphName(graph)} />
       {editable ? <NodeFields graphId={graph.id} nodeId={node.id}>{references}</NodeFields>
         : <Fold title="节点" defaultOpen>{references}</Fold>}
-      {runId && <Fold title="本帧" defaultOpen>
-        {notice !== null ? <div role="status" className={styles.note}>{notice}</div>
-          : <Value label="状态" mono={false} value={observedCall === null ? '尚未选择实际调用' : events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '本帧没有匹配此调用的发生记录'} />}
-        {availabilityNotice && <Tip content={availabilityNotice}><div role="status" className={styles.note}>运行记录有缺项</div></Tip>}
-        {observedCall && <>
-          {observedCall.actorId !== null && <Value label="角色" value={observedCall.actorId} />}
-          <Value label="对象类型" value={observedCall.objectKind ?? '未记录'} />
-          <Value label="对象句柄" value={observedCall.objectHandle ?? '未记录'} />
-          <Value label="对象槽" value={observedCall.objectSlot === null ? '未记录' : String(observedCall.objectSlot)} />
-          <Value label="定义索引" value={observedCall.definitionIndex === null ? '未记录' : String(observedCall.definitionIndex)} />
-        </>}
-        {events.length ? (
-          <div className={styles.list}>
-            {events.map(item => (
-              <div key={item.sequence} className={styles.listRow}>
-                <span className={styles.listText}>{nodeOccurrenceLabel(item)}</span>
-                <span className={styles.listValue} data-failed={item.result === 'Failure' || undefined}>{item.result}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </Fold>}
-      {runId && ports.length > 0 && <Fold title="端口取值" defaultOpen>
-        <div className={styles.list}>
-          {ports.map(port => {
-            const sample = samples.filter(item => item.portId === port.id && item.direction === port.direction).at(-1);
-            return (
-              <Tip key={`${port.direction}:${port.id}`} content={sample ? `${sample.valueType} · ${sample.sequence}` : notice ?? availabilityNotice ?? '此调用在本帧没有该端口的实际样本'}>
-              <div className={styles.listRow}>
-                {port.isTrigger ? <i className={styles.exec} /> : <i className={styles.dot} style={{ ['--pc' as string]: portColor(sample?.valueType) }} />}
-                <span className={styles.listText}>{port.displayName}{port.direction === 'input' ? '' : ' →'}</span>
-                <span className={styles.listValue} data-sampled={sample ? true : undefined}>{sample === undefined ? '未记录' : sample.value}</span>
-              </div>
-              </Tip>
-            );
-          })}
-        </div>
-      </Fold>}
+      {runId && <NodeObservation key={`${runId}:${frame?.hostFrame}:${observedCall === null ? '' : callKey(observedCall)}`}
+        frame={frame?.hostFrame ?? null} call={observedCall} events={events} samples={samples} ports={ports}
+        notice={notice ?? (availabilityNotice || null)} />}
       <HostRecords records={locatedRecords(route === null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
       {records.length > 0 && <Fold title="原始记录"><Raw value={records} /></Fold>}
       <Identity extra={[
