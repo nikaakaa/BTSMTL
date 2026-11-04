@@ -63,9 +63,10 @@ function selectedStart() {
     if (!state.inputChoices.some(choice => choice.actorId === player.actorId))
       return { kind: 'unavailable', reason: `先为 ${player.actorId} 选择输入方案` } as const;
   }
-  if (state.localLastSdkFrame === null) return { kind: 'unavailable', reason: '填写本次结束 SDK 帧' } as const;
+  const limit = state.host!.inputLimit;
+  if (state.localInputLimit === null) return { kind: 'unavailable', reason: `填写${limit.displayName}` } as const;
   return { kind: 'selected', mode: mode.id, liveId, scene, viewport: state.playerViewport,
-    source: { kind: 'local', lastSdkFrame: state.localLastSdkFrame, players: state.inputChoices } } as const;
+    source: { kind: 'local', [limit.name]: state.localInputLimit, players: state.inputChoices } } as const;
 }
 
 async function refresh() {

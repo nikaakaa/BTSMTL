@@ -138,9 +138,9 @@ function NewScenario({ onCreated }: { onCreated(): void }) {
 }
 
 function LocalInputChoices() {
-  const { scene, catalog, choices, lastSdkFrame, error } = useWorkbench(useShallow(state => ({
-    scene: selectedScene(state), catalog: state.inputCatalog,
-    choices: state.inputChoices, lastSdkFrame: state.localLastSdkFrame, error: state.inputCatalogFailure,
+  const { scene, catalog, choices, limit, limitValue, error } = useWorkbench(useShallow(state => ({
+    scene: selectedScene(state), catalog: state.inputCatalog, limit: state.host?.inputLimit,
+    choices: state.inputChoices, limitValue: state.localInputLimit, error: state.inputCatalogFailure,
   })));
   if (!scene) return <Empty text="先选择场景" />;
   if (error !== null) return <ErrorLine text="输入方案读取失败" entryId={error} />;
@@ -167,7 +167,8 @@ function LocalInputChoices() {
           }}>编辑所选方案</Button>
       </div>;
     })}
-    <NumberInput label="结束 SDK 帧" value={lastSdkFrame} min={1} step={1} onChange={contentActions.setLocalLastSdkFrame} />
+    {limit && <NumberInput label={limit.displayName} value={limitValue}
+      min={Number(limit.minimum)} step={Number(limit.step)} onChange={contentActions.setLocalInputLimit} />}
   </>;
 }
 

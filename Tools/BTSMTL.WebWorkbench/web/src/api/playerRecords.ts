@@ -46,6 +46,13 @@ function object<Shape extends Record<string, Decoder<unknown>>>(shape: Shape) {
     return result as { [Key in keyof Shape]: ReturnType<Shape[Key]> };
   };
 }
+// 宿主声明的项目参数（帧段、输入上限等）不在页面命名，原样保留并随请求送回宿主。
+export type HostFields = { readonly [key: string]: unknown };
+function hosted<Shape extends Record<string, Decoder<unknown>>>(shape: Shape) {
+  const declared = object(shape);
+  return (value: unknown, path = 'Player'): { [Key in keyof Shape]: ReturnType<Shape[Key]> } & HostFields =>
+    ({ ...(value as Record<string, unknown>), ...declared(value, path) });
+}
 
 const jobId = identity<'job'>();
 const liveId = identity<'live'>();
@@ -95,8 +102,8 @@ export const readPlayerInputCatalog = object({
 });
 const replay = object({ kind: choice('replay'), path: text, revision: text });
 const recording = object({ kind: choice('recording'), runId: text, revision: text });
-const local = object({ kind: choice('local'), lastSdkFrame: number, players: array(inputChoice) });
-const device = object({ kind: choice('device'), lastSdkFrame: number });
+const local = hosted({ kind: choice('local'), players: array(inputChoice) });
+const device = hosted({ kind: choice('device') });
 const runSource = (value: unknown, path = 'Player.source') => {
   if (typeof value !== 'object' || value === null || !('kind' in value)) throw new Error(`${path} 缺少 kind`);
   switch (value.kind) {
@@ -164,19 +171,20 @@ export const readLivePlayer = object({
 });
 export const readLivePlayers = array(readLivePlayer);
 export const readViewerStatus = object({ type: choice('status'), live: readLivePlayer });
-export const readPlayerCreationOptions = object({
-  requestId: jobId, firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number),
+// 帧段等项目参数由宿主在创建选项中给出，页面原样送回作业请求。
+export const readPlayerCreationOptions = hosted({
+  requestId: jobId, captureFrames: array(number),
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
   quality: number, channels: array(observationChannel), mode: previewMode,
 });
 
 const playerJobRequest = {
   requestId: jobId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
-  firstSdkFrame: number, lastSdkFrame: number, captureFrames: array(number), outputDirectory: text,
+  captureFrames: array(number), outputDirectory: text,
   width: number, height: number, quality: number,
 };
-export const readPlayerJobRequest = object({ ...playerJobRequest, channels: array(observationChannel), mode: previewMode });
-const readArchivedPlayerJobRequest = object({ ...playerJobRequest, channels: nullable(array(observationChannel)), mode: nullable(previewMode) });
+export const readPlayerJobRequest = hosted({ ...playerJobRequest, channels: array(observationChannel), mode: previewMode });
+const readArchivedPlayerJobRequest = hosted({ ...playerJobRequest, channels: nullable(array(observationChannel)), mode: nullable(previewMode) });
 export const readPlayerJobReceipt = object({
   request: readArchivedPlayerJobRequest,
   stage: jobStage,
@@ -307,11 +315,11 @@ export const readPlayerLogic = object({
   availability: array(availability),
 });
 export const readPlayerPresentation = observationPage(object({
-  source, presentationSequence: text, verifiedSdkFrame: text, previousSdkFrame: text, previousGameplayTick: text,
+  source, presentationSequence: text,
   presentationTick: number, elapsedSeconds: number, interpolationFactor: number, actors: array(actorPose),
 }));
 export const readPlayerCamera = observationPage(object({
-  source, presentationSequence: text, verifiedSdkFrame: text, cameraInstanceId: number, width: number, height: number,
+  source, presentationSequence: text, cameraInstanceId: number, width: number, height: number,
   presentationTick: number, interpolationFactor: number, worldPosition: vector3, worldRotation: quaternion,
   worldToCamera: array(number), projection: array(number),
 }));
@@ -372,7 +380,7 @@ export const readPlayerArchiveImage = object({
 });
 const frameImage = object({
   jobId, archiveJobId: identity<'archive'>(), imageIndex: number, source,
-  sourceHostFrame: text, verifiedHostFrame: text, previousHostFrame: text, previousGameplayTick: text,
+  sourceHostFrame: text, verifiedHostFrame: text, previousHostFrame: text,
   presentationSequence: text, unityFrame: number, cameraInstanceId: number, width: number, height: number,
   flipY: boolean, presentationAvailable: boolean, presentationTick: number, elapsedSeconds: number,
   interpolationFactor: number, mediaType: text, encodedLength: number,

@@ -2534,11 +2534,12 @@ function CurveLine({ row, nest }: { row: CurveRow; nest: Nest | undefined }) {
 function ReceivedGroupLine({ nest, received, open, toggle }: {
   nest: Nest | undefined; received: ReceivedInput; open: boolean; toggle(id: string): void;
 }) {
+  const frameName = useWorkbench(state => state.summary?.frameDisplayName ?? '宿主帧');
   const notice = !received.keys.length && !received.missing.length ? '已读帧内没有非中性输入' : null;
   const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
   return <Line id="received" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
     <GroupToggle open={open} name="实际收到的输入" meta="已读帧" onToggle={() => toggle('received')}
-      tip={`已读 SDK ${scope}，随游标分页读取`} />
+      tip={`已读${frameName} ${scope}，随游标分页读取`} />
   </>}>
     {notice && <Tip name={notice}><span className={styles.curveNotice} data-name>{notice}</span></Tip>}
   </Line>;

@@ -30,7 +30,8 @@ export interface ContentSlice {
   previewMode: PlayerPreviewMode | null;
   contentSelection: ContentSelection | null;
   inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
-  localLastSdkFrame: number | null;
+  // 本地输入方案的录制上限，字段名与含义由宿主 inputLimit 声明。
+  localInputLimit: number | null;
   inputCatalog: InputCatalog | null;
   // 所选场景的输入声明由 session 自动读取；失败时为控制台条目。
   inputCatalogReading: boolean;
@@ -75,7 +76,7 @@ export interface RunData {
   frameKey: string | null;
   // 运行失败或未启动时的原因与控制台记录。
   failure: { reason: string; entryId: number } | null;
-  // 播放器档案：骨架布局与游标所在 SDK 帧的逻辑、骨骼记录；读取中保留上一帧。
+  // 播放器档案：骨架布局与游标所在宿主帧的逻辑、骨骼记录；读取中保留上一帧。
   archiveLayout: ArchivePoseLayout | null;
   archiveFrame: ArchiveFrame | null;
   archiveMetadata: PlayerArchive | null;
@@ -230,7 +231,7 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, previewMode: null, contentSelection: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null,
+  sources: null, previewMode: null, contentSelection: null, inputSource: null, localInputLimit: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
   quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, accepted: null, seconds: 0, outputDirectory: '' },
 
@@ -301,8 +302,8 @@ export const contentActions = {
   selectInputSource(inputSource: ContentSlice['inputSource']) {
     set({ inputSource });
   },
-  setLocalLastSdkFrame(localLastSdkFrame: number | null) {
-    set({ localLastSdkFrame });
+  setLocalInputLimit(localInputLimit: number | null) {
+    set({ localInputLimit });
   },
   setInputCatalog(scenePath: string, inputCatalog: InputCatalog) {
     const state = getState();

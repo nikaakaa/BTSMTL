@@ -155,7 +155,7 @@ function locatedRecords(frame: Frame | null, binding: DocumentObservationBinding
 
 const gap = (item: Availability) => !item.available || !item.complete;
 
-// 身份折叠：运行身份、内容修订、SDK 帧、能力缺项、协议版本，以及所示对象自身的身份。
+// 身份折叠：运行身份、内容修订、宿主帧、能力缺项、协议版本，以及所示对象自身的身份。
 function Identity({ extra = [] }: { extra?: Field[] }) {
   const state = useWorkbench(useShallow(current => ({
     summary: current.summary, hostFrame: current.hostFrame, frame: current.frame, routeProtocol: current.routeProtocol,
@@ -613,14 +613,14 @@ function CurveInspector({ id, missing }: { id: string; missing: ReactNode }) {
 
 function NativeInputInspector({ documentId }: { documentId: string }) {
   const observation = useInputObservation(documentId);
-  const runId = useWorkbench(state => state.runId);
+  const { runId, frameName } = useWorkbench(useShallow(state => ({ runId: state.runId, frameName: state.summary?.frameDisplayName })));
   if (!runId) return null;
   if (observation.kind !== 'ready') return <Fold title="实际采用输入" defaultOpen>
     <div className={styles.note}>{observation.reason}</div>
   </Fold>;
   const { input } = observation;
   return <Fold title="实际采用输入" defaultOpen>
-    <Value label="SDK 帧" value={observation.frame.hostFrame} />
+    <Value label={frameName ?? '宿主帧'} value={observation.frame.hostFrame} />
     <Value label="已收到" value={input.received ? '是' : '否'} />
     {input.received && <>
       {input.values.map(value => <Value key={value.inputId} label={value.inputId}
