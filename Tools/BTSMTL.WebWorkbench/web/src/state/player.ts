@@ -151,6 +151,42 @@ export const playerService = {
     }
   },
 
+  async updateCode(playerBuildId: string) {
+    try {
+      const result = await playerApi.updateCode(crypto.randomUUID(), playerBuildId);
+      const raw = JSON.stringify(result);
+      switch (result.state) {
+        case 'rejected':
+          consoleActions.log('error', source, `代码更新被拒绝：${result.refusals.join('\n')}`, raw);
+          break;
+        case 'unchanged':
+          consoleActions.log('info', source, 'Player 代码没有变化，继续使用当前版本。', raw);
+          break;
+        case 'created':
+          consoleActions.log('info', source, `新代码版本已准备：${result.buildId}。可采用到所选播放器，或从构建菜单启动。`, raw);
+          await playerService.refresh();
+          break;
+      }
+      return result;
+    } catch (error) {
+      consoleActions.error(source, error);
+      return null;
+    }
+  },
+
+  async adoptCode(liveId: string, playerBuildId: string) {
+    releaseDeviceInput();
+    pendingPicks.clear();
+    try {
+      await playerApi.swap(liveId, playerBuildId);
+      await playerService.refresh();
+      return true;
+    } catch (error) {
+      consoleActions.error(source, error);
+      return false;
+    }
+  },
+
   attach(liveId: string | null) {
     if (getState().liveId === liveId && socket) return;
     close();

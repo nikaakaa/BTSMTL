@@ -25,11 +25,9 @@ interface Params {
 }
 
 export function PlayerPanel() {
-  const images = useWorkbench(state => state.images);
   const hostAvailable = useWorkbench(state => state.hostAvailable);
-  const runId = useWorkbench(state => state.runId);
   if (hostAvailable === false) return <Empty text="未接入运行宿主" />;
-  return runId || images ? <PlayerView /> : <Empty text="未接入画面来源" />;
+  return <PlayerView />;
 }
 
 function PlayerView() {
@@ -40,6 +38,13 @@ function PlayerView() {
   })));
   const stage = useRef<HTMLDivElement>(null);
   const [captureBinding, setCaptureBinding] = useState<string | null>(null);
+  const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
+  const codeBusy = codeUpdate !== null && codeUpdate.kind !== 'ready';
+  const updateCode = async (buildId: string) => {
+    setCodeUpdate({ kind: 'compiling', buildId });
+    const result = await playerService.updateCode(buildId);
+    setCodeUpdate(result?.state === 'created' ? { kind: 'ready', buildId: result.buildId } : null);
+  };
   const player = state.live?.player ?? null;
   const source = player?.source;
   const binding = JSON.stringify([state.runId, state.liveId, source?.loadCommandId ?? null, source?.execution ?? null,
@@ -84,6 +89,14 @@ function PlayerView() {
       onSelect: () => void playerService.start(build.buildId, stage.current!.clientWidth),
     })) : [{ label: state.builds ? '画面来源尚未提供可用构建' : '正在读取构建', disabled: true, onSelect: () => {} }]),
   ];
+  if (state.builds?.length) playerMenu.push(
+    { kind: 'separator' }, { kind: 'label', label: '更新构建代码' },
+    ...state.builds.map((build): MenuEntry => ({
+      label: build.displayName, disabled: codeBusy,
+      tip: '使用此构建的 Player 代码生成新版本，失败时保留当前版本。',
+      onSelect: () => void updateCode(build.buildId),
+    })),
+  );
   if (state.liveId) playerMenu.push({ kind: 'separator' }, { label: '停止播放器', onSelect: () => void playerService.stop() });
   const orbitMenu: MenuEntry[] = [
     { label: '重置视角', disabled: !orbit, tip: orbit ? undefined : '环绕相机下可用',
@@ -99,6 +112,16 @@ function PlayerView() {
           <MenuButton label="播放器" variant="ghost" caret entries={playerMenu}>
             <span className={styles.dim}>播放器</span>{selectedLive ? liveLabel(selectedLive) : '无'}
           </MenuButton>
+          {codeUpdate?.kind === 'compiling' && <span className={styles.dim}>正在编译 Player 代码…</span>}
+          {codeUpdate?.kind === 'adopting' && <span className={styles.dim}>正在采用新代码版本…</span>}
+          {codeUpdate?.kind === 'ready' && (state.liveId
+            ? <Button variant="ghost" tip="重启所选播放器并重新载入其现有内容" onClick={async () => {
+              const buildId = codeUpdate.buildId;
+              setCodeUpdate({ kind: 'adopting', buildId });
+              const applied = await playerService.adoptCode(state.liveId!, buildId);
+              setCodeUpdate(applied ? null : { kind: 'ready', buildId });
+            }}>采用新代码版本</Button>
+            : <span className={styles.dim}>新代码版本已生成，可从播放器菜单启动</span>)}
           {state.liveId && <Button variant="ghost" disabled={!!loadBlocked} tip={loadBlocked ?? '载入所选内容'}
             onClick={async () => {
               const result = await playerService.loadContent(content!);

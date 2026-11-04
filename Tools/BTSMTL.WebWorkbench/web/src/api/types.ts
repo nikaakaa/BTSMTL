@@ -439,17 +439,18 @@ export interface VideoFrame {
 
 export type { PlayerJob, PlayerJobReceipt, StartPlayerJobRequest } from './playerRecords';
 
-export interface PlayerCodeUpdate {
-  state: 'created' | 'unchanged' | 'rejected';
+export type PlayerCodeUpdate = {
   buildId: string;
-  parentBuildId: string | null;
   changed?: unknown;
-  refusals?: string[];
   sourceChanges?: unknown[];
   update?: unknown;
   compileMilliseconds?: number;
   totalMilliseconds?: number;
-}
+} & (
+  | { state: 'created'; parentBuildId: string }
+  | { state: 'unchanged'; parentBuildId: null }
+  | { state: 'rejected'; parentBuildId: null; refusals: string[] }
+);
 
 // ── 动画资源 ──
 
