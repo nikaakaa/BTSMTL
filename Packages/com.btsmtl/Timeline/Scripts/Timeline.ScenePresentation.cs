@@ -165,7 +165,12 @@ namespace BTSMTL.Timeline
         static void ValidateClip(Clip clip, List<string> errors)
         {
             ScenePresentationParameterCurveClip parameterClip = clip as ScenePresentationParameterCurveClip;
-            if (parameterClip == null || parameterClip.ValueCurve == null || parameterClip.ValueCurve.length == 0)
+            if (parameterClip == null || parameterClip.ValueCurve == null ||
+#if UNITY_5_3_OR_NEWER
+                parameterClip.ValueCurve.length == 0)
+#else
+                parameterClip.ValueCurve.Keys.Count == 0)
+#endif
                 errors?.Add($"Timeline scene presentation clip '{clip?.AuthoringId}' requires a value curve.");
             if (parameterClip?.Track?.Timeline != null)
             {
