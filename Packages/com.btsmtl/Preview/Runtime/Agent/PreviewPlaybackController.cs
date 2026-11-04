@@ -176,8 +176,11 @@ namespace BTSMTL.Preview
             State = state;
             QualitySettings.vSyncCount = 0;
             Time.captureFramerate = Mode == PreviewExecutionMode.Batch ? m_TickRate : 0;
-            Application.targetFrameRate = Mode == PreviewExecutionMode.Batch || state == PreviewPlaybackState.Seeking
-                ? -1 : m_TickRate;
+            // 批量任务结束后等待下一任务时恢复帧率上限，常驻池中的空闲播放器不空转。
+            bool unlimited = Mode == PreviewExecutionMode.Batch
+                ? state != PreviewPlaybackState.Idle && state != PreviewPlaybackState.Failed
+                : state == PreviewPlaybackState.Seeking;
+            Application.targetFrameRate = unlimited ? -1 : m_TickRate;
         }
 
     }
