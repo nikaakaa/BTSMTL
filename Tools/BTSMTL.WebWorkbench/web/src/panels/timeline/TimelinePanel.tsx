@@ -186,7 +186,10 @@ function recordedLocalPosition(state: WorkbenchState, seconds: number,
     return distance < previousDistance || distance === previousDistance && Math.abs(sample.index - frameIndex) < Math.abs(chosen.index - frameIndex)
       ? sample : chosen;
   }, anchor);
-  return transport.recordPosition(runId, nearest.index, nearest.source);
+  const position = transport.recordPosition(runId, nearest.index, nearest.source);
+  if (position.kind === 'record' && samples.some(sample => sample.index !== nearest.index && sample.cursor === nearest.cursor))
+    consoleActions.log('info', 'Timeline', `本地游标在 ${timeText(nearest.cursor)} 秒未前进，已吸附到距当前游标最近的录制帧 ${position.index}`);
+  return position;
 }
 // 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
 const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
