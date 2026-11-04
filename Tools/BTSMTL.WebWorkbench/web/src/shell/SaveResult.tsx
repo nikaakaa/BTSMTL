@@ -22,7 +22,7 @@ const previewNames = {
 type PreviewCommand = NonNullable<Extract<SaveOutcome, { compilationState: 'not-required' }>['preview']>;
 
 const commandNames = {
-  sent: '命令已发送，等待采用', submitted: '命令已受理，等待采用', applied: '已采用',
+  sent: '命令已发送，等待采用', submitted: '命令已受理，等待采用', applied: '命令已应用',
   rejected: '采用被拒绝', 'not-applied': '尚未采用',
 } satisfies Record<PreviewCommand['stage'], string>;
 
@@ -48,7 +48,7 @@ function resultLabel(outcome: SaveOutcome): string {
 }
 
 function resultDetails(outcome: SaveOutcome): string {
-  const lines = [outcome.message, ...submissionErrors(outcome)];
+  const lines = [outcome.message];
   if (outcome.compilationState === 'not-required') {
     lines.push('输入文件已保存；不需要重新编译技能。', ...commandDetails(outcome.preview));
     return lines.join('\n');
@@ -56,16 +56,22 @@ function resultDetails(outcome: SaveOutcome): string {
   if (outcome.compilationState !== 'succeeded') return lines.join('\n');
   const { compilation, preview } = outcome;
   lines.push(`本次编译：${compilation.artifactReused ? '复用已编译产物' : '执行编译'}`,
-    `本次来源修订：${compilation.sourceRevision}`);
+    `本次来源修订：${compilation.sourceRevision}`, `编译键：${compilation.compilationKey}`,
+    `产物回执路径：${compilation.artifactReceiptPath}`);
   const publication = compilation.publicationResult;
   if (publication === null) lines.push('原发布回执：未提供');
   else {
     lines.push(`原发布回执阶段：${publication.stage}`, `原发布来源修订：${publication.sourceRevision}`,
       `原发布内容版本：${publication.publicationHash}`,
+      `原图产物目录：${publication.output}`, `原发布产物路径：${publication.publicationOutput}`,
       `原回执耗时（毫秒）：读取 ${publication.milliseconds.read}，编译 ${publication.milliseconds.compile}，准备 ${publication.milliseconds.prepare}`,
       `原发布后续阶段：编辑器安装 ${publication.editorInstallation}，内容载入 ${publication.contentLoad}，会话采用 ${publication.sessionAdoption}`);
     if (publication.transaction !== undefined)
       lines.push(`原发布批次耗时（毫秒）：准备 ${publication.transaction.milliseconds.prepare}，提交 ${publication.transaction.milliseconds.commit}`);
+    if (publication.receiptFile !== undefined)
+      lines.push(`原发布回执文件：${publication.receiptFile.path}（${publication.receiptFile.stage}）`);
+    for (const file of publication.files)
+      lines.push(`文件（${file.kind}）：${file.path}；阶段 ${file.stage}${file.graphId === null ? '' : `；图 ${file.graphId}`}`);
     for (const graph of publication.graphs) {
       lines.push(`图 ${graph.graphId}`,
         `编译工作：${graph.compilation.work === null ? '原回执未提供' : workNames[graph.compilation.work]}`,
