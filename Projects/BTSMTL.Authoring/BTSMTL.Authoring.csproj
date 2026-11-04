@@ -35,6 +35,7 @@
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineContentClosure.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineGraphBindings.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineAuthoringFingerprint.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.AuthoringExtensions.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/Timeline.Tree.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Editor/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
