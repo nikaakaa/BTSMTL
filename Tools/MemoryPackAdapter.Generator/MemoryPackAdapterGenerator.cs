@@ -169,12 +169,12 @@ namespace ThirdPerson.MemoryPackAdapters
                 StorageProjection projection = null;
                 if (type is INamedTypeSymbol purposeType && purpose != null)
                 {
-                    projection = Projection(context.Compilation, purposeType, purpose, out string reason);
-                    if (reason != null)
+                    projection = Projection(context.Compilation, purposeType, purpose, out string projectionReason);
+                    if (projectionReason != null)
                     {
                         valid = false;
                         context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter,
-                            type.Locations.FirstOrDefault(), Identity(type), reason));
+                            type.Locations.FirstOrDefault(), Identity(type), projectionReason));
                         return;
                     }
                 }
