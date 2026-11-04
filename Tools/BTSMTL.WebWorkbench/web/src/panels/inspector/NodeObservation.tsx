@@ -1,28 +1,10 @@
 import { useState } from 'react';
-import type { Availability, ExecutionCall, GraphPort, NodeOccurrence, PortSample } from '../../api/types';
+import type { ExecutionCall, GraphPort, NodeOccurrence, PortSample } from '../../api/types';
 import { callKey, callLabel, loopScopeKey, loopScopeLabel, nodeOccurrenceLabel, portSampleKey, portSampleLabel } from '../../state/graphModel';
 import { Fold } from '../../ui/blocks';
 import { Select } from '../../ui/controls';
+import { ObservationAvailability, ObservationDetails } from '../records/records';
 import styles from './inspector.module.css';
-
-function AvailabilityNotice({ value }: { value: Availability | null }) {
-  return value !== null && (!value.available || !value.complete)
-    ? <div role="status" className={styles.note}>{value.channel}：{value.reason}</div> : null;
-}
-
-function Dimensions({ record }: { record: NodeOccurrence | PortSample }) {
-  const scopes = 'loopScopes' in record ? record.loopScopes : record.loopScope === null ? null : [record.loopScope];
-  return <>
-    <AvailabilityNotice value={record.activationAvailability} />
-    <AvailabilityNotice value={record.loopScopeAvailability} />
-    {record.activationAvailability === null && record.generation === null && <div className={styles.note}>此记录未提供节点激活身份。</div>}
-    {record.loopScopeAvailability === null && scopes === null && <div className={styles.note}>此记录未提供循环范围状态。</div>}
-    {scopes?.map(scope => <div key={loopScopeKey(scope)} className={styles.note}>
-      {loopScopeLabel(scope)}<br />{callLabel(scope.call)}
-      <AvailabilityNotice value={scope.activationAvailability} />
-    </div>)}
-  </>;
-}
 
 function PortObservation({ port, samples, reason }: { port: GraphPort; samples: PortSample[]; reason: string }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -35,18 +17,7 @@ function PortObservation({ port, samples, reason }: { port: GraphPort; samples: 
       onChange={setSelected} />}
     {sample === undefined ? <div role="status" className={styles.note}>
       {samples.length > 1 ? '同帧有多次观察，请选择样本。' : reason}
-    </div> : <>
-      <div className={styles.listRow}>
-        <span className={styles.listText}>{sample.valueType}</span>
-        <span className={styles.listValue} data-sampled={sample.sourceAvailable || undefined}>
-          {sample.sourceAvailable ? sample.value : '来源不可用'}
-        </span>
-      </div>
-      <div className={styles.note}>{portSampleLabel(sample)}</div>
-      {!sample.sourceAvailable && <div role="status" className={styles.note}>{sample.reason}</div>}
-      <Dimensions record={sample} />
-      <details><summary>原始样本</summary><pre>{JSON.stringify(sample, null, 2)}</pre></details>
-    </>}
+    </div> : <ObservationDetails record={sample} />}
   </div>;
 }
 
@@ -71,8 +42,7 @@ export function NodeObservation({ frame, call, events, samples, ports, notice }:
       {notice !== null && <div role="status" className={styles.note}>{notice}</div>}
       {call === null ? <div role="status" className={styles.note}>尚未选择实际调用，请在节点图中选择调用实例。</div> : <>
         <div className={styles.note}>{callLabel(call)}</div>
-        <AvailabilityNotice value={call.objectAvailability} />
-        {call.objectAvailability === null && <div className={styles.note}>此调用未提供对象上下文状态。</div>}
+        <ObservationAvailability label="对象来源" value={call.objectAvailability} />
         <div className={styles.note}>对象类型：{call.objectKind ?? '未记录'} · 对象槽：{call.objectSlot ?? '未记录'}</div>
         <div className={styles.note}>定义索引：{call.definitionIndex ?? '未记录'}</div>
         <div className={styles.note}>程序索引：{call.programIndex ?? '未记录'}</div>
@@ -90,11 +60,8 @@ export function NodeObservation({ frame, call, events, samples, ports, notice }:
             <span className={styles.listText}>{nodeOccurrenceLabel(item)}</span>
             <span className={styles.listValue} data-failed={item.result === 'Failure' || undefined}>{item.result}</span>
           </div>
-          {item.stopCause !== null && <div className={styles.note}>StopCause：{item.stopCause}</div>}
-          {item.stopMode !== null && <div className={styles.note}>StopMode：{item.stopMode}</div>}
-          <Dimensions record={item} />
         </div>)}</div>
-        {event !== null && <details open><summary>所选发生记录</summary><pre>{JSON.stringify(event, null, 2)}</pre></details>}
+        {event !== null && <ObservationDetails record={event} />}
       </> : <div className={styles.note}>本帧没有匹配当前选择的节点发生记录。</div>}
     </Fold>
     {ports.length > 0 && <Fold title="端口取值" defaultOpen>
