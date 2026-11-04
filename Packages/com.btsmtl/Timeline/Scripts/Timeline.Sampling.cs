@@ -21,13 +21,15 @@ namespace BTSMTL.Timeline
             StartTime, EndTime, SelfEaseInTime, SelfEaseOutTime, ClipInTime,
             SourceStartTime, SourceEndTime, OtherEaseInTime, OtherEaseOutTime);
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public void ConfigureSourceRange(float sourceStartTime, float sourceEndTime)
         {
             m_SourceStartTime = sourceStartTime;
             m_SourceEndTime = sourceEndTime;
         }
+#endif
 
+#if UNITY_EDITOR
         public override void ApplyTimeRange(in TimelineClipTimeRange range)
         {
             base.ApplyTimeRange(in range);

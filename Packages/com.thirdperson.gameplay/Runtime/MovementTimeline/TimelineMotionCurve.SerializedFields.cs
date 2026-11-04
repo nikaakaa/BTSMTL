@@ -99,6 +99,43 @@ namespace ThirdPersonGameplay.Movement.Timeline
         }
 
 #if UNITY_EDITOR || BTSMTL_AUTHORING
+        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
+        public void Configure(string curveId, SourceCurveAsset sourceCurve, float sourceStartTime,
+            float sourceEndTime, SimulationMotionContributionSpace space, SimulationMotionChannel channel,
+            SimulationMotionBlendMode blendMode, int priority, bool consumeLowerChannels)
+        {
+            ConfigureSource(sourceCurve, sourceStartTime, sourceEndTime);
+            CurveId = curveId;
+            Space = space;
+            Channel = channel;
+            BlendMode = blendMode;
+            Priority = priority;
+            ConsumeLowerChannels = consumeLowerChannels;
+        }
+
+        public void ConfigureSource(SourceCurveAsset source, float sourceStartTime, float sourceEndTime)
+        {
+#if UNITY_EDITOR
+            if (!source)
+                throw new ArgumentNullException(nameof(source));
+            if (!source.TryValidate(out string error))
+                throw new InvalidOperationException(error);
+#endif
+            if (!float.IsFinite(sourceStartTime) || !float.IsFinite(sourceEndTime) ||
+                sourceStartTime < 0f || sourceEndTime <= sourceStartTime
+#if UNITY_EDITOR
+                || sourceEndTime > source.Duration
+#endif
+                )
+                throw new ArgumentException("Motion curve source range is invalid.");
+            m_SourceCurve = source;
+            ConfigureSourceRange(sourceStartTime, sourceEndTime);
+#if UNITY_EDITOR
+            if (Track?.Timeline != null)
+                RebindTimeline();
+#endif
+        }
+
         [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
         [TimelineAuthoringProperty(IsSourceAsset = true)]
 #endif

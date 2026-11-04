@@ -86,20 +86,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
                 (target, sourceStart, sourceEnd, duration) =>
                     UpdateSourceDisplayCurve(target, source, sourceStart, sourceEnd, duration));
 
-        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
-        public void Configure(string curveId, RootMotionCurveAsset sourceCurve, float sourceStartTime,
-            float sourceEndTime, SimulationMotionContributionSpace space, SimulationMotionChannel channel,
-            SimulationMotionBlendMode blendMode, int priority, bool consumeLowerChannels)
-        {
-            ConfigureSource(sourceCurve, sourceStartTime, sourceEndTime);
-            CurveId = curveId;
-            Space = space;
-            Channel = channel;
-            BlendMode = blendMode;
-            Priority = priority;
-            ConsumeLowerChannels = consumeLowerChannels;
-        }
-
         public void SplitSource(Clip copy, OrchestrationTime splitTime)
         {
             var motionCopy = (MotionCurveClip)copy;
@@ -121,20 +107,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
             sourceEnd = (float)Math.Min(SourceCurve.Duration, sourceStart + duration);
         }
 
-        public void ConfigureSource(RootMotionCurveAsset source, float sourceStartTime, float sourceEndTime)
-        {
-            if (!source)
-                throw new ArgumentNullException(nameof(source));
-            if (!source.TryValidate(out string error))
-                throw new InvalidOperationException(error);
-            if (!float.IsFinite(sourceStartTime) || !float.IsFinite(sourceEndTime) ||
-                sourceStartTime < 0f || sourceEndTime <= sourceStartTime || sourceEndTime > source.Duration)
-                throw new ArgumentException("Motion curve source range is invalid.");
-            m_SourceCurve = source;
-            ConfigureSourceRange(sourceStartTime, sourceEndTime);
-            if (Track?.Timeline != null)
-                RebindTimeline();
-        }
 #endif
 
         public Vector3 EvaluatePositionAtTimelineTime(OrchestrationTime timelineTime)
