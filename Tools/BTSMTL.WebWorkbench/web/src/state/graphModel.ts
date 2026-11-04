@@ -65,12 +65,27 @@ export const portSampleLabel = (sample: PortSample) => `记录 ${sample.sequence
 export const portSampleKey = (sample: PortSample) => JSON.stringify([sample.sequence, sample.observationSequence,
   sample.generation, sample.loopScopes?.map(loopScopeKey)]);
 
-export function routeObservation({ runId, frame, hostFrame }: Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame'>) {
+export function routeObservation({ runId, frame, hostFrame, sources, contentSelection }:
+  Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame' | 'sources' | 'contentSelection'>) {
   if (runId === null) return { kind: 'unavailable', reason: '选择运行以查看实际调用' } as const;
   if (frame === null || frame.hostFrame !== hostFrame)
     return { kind: 'unavailable', reason: '正在读取当前档案帧，尚无该帧的实际调用' } as const;
   if (frame.source === null || frame.source.execution.kind === null || frame.source.execution.identity === null)
     return { kind: 'unavailable', reason: '此档案帧未记录实际执行身份，调用观察不可用' } as const;
+  const content = frame.source.content;
+  if (content === null)
+    return { kind: 'unavailable', reason: '此档案帧未记录正式内容身份，调用观察不可用；原档案保留' } as const;
+  if (contentSelection !== null) {
+    const expected = contentSelection.kind === 'scene'
+      ? sources?.scenes.find(item => item.path === contentSelection.path)
+      : sources?.timelines.find(item => item.content.package === contentSelection.package)?.content;
+    if (expected === undefined)
+      return { kind: 'unavailable', reason: '当前选择的正式内容来源尚未取得，运行叠加不可用' } as const;
+    if (content.kind !== contentSelection.kind || content.revision !== expected.revision)
+      return { kind: 'unavailable', reason: '运行帧采用的内容与当前来源种类或修订不同，叠加已过期；原档案保留' } as const;
+    if ('timeline' in expected && content.documentId !== expected.timeline)
+      return { kind: 'unavailable', reason: '运行帧采用的 Timeline 与当前选择不同，叠加已过期；原档案保留' } as const;
+  }
   if (frame.route === null)
     return { kind: 'unavailable', reason: frame.availability.filter(item => !item.available || !item.complete)
       .map(item => item.reason).join('；') || '此档案帧没有调用记录' } as const;
