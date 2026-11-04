@@ -348,7 +348,8 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
                 <Button variant="ghost" tip="收起实际记录" onClick={() => setParams({ observations: false })}><CloseIcon /></Button>
               </PanelBar>
               {callNotice !== null && <div className={styles.notice} role="status">{callNotice}</div>}
-              <ObservationRecords key={JSON.stringify([runId, currentRoute?.hostFrame, key, observedCallKey, selectedNode?.id, selectedEdge?.id])}
+              <ObservationRecords key={JSON.stringify([runId, frameSource?.execution, frameSource?.content,
+                currentRoute?.hostFrame, key, observedCallKey, selectedNode?.id, selectedEdge?.id])}
                 records={selectedRecords} />
             </div>}
         </div>
@@ -371,8 +372,9 @@ function loadTypes(skill: AuthoringTarget) {
         if (!page.hasMore) return result;
       }
     })();
-    typeCatalog = { key, items };
-    items.catch(() => { typeCatalog = null; });
+    const request = { key, items };
+    typeCatalog = request;
+    void items.catch(() => { if (typeCatalog === request) typeCatalog = null; });
   }
   return typeCatalog.items;
 }
@@ -586,6 +588,10 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const store = useMemo(() => new RouteStore(), []);
   const routeFrames = useWorkbench(state => state.routeFrames);
   const observedCallKey = call === null ? null : callKey(call);
+  const generation = useWorkbench(state => state.generation);
+  const contentRevision = useWorkbench(state => state.summary?.contentRevision ?? null);
+  const sourceContent = useWorkbench(state => state.frame?.source?.content ?? null);
+  const observationScope = JSON.stringify([runId, generation, contentRevision, sourceContent, graphKey(graph), route?.hostFrame, observedCallKey]);
   const history = useMemo(() => {
     const visited = new Map<string, number>(), traveled = new Map<string, number>();
     if (machine && observedCallKey !== null)
@@ -671,8 +677,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
       for (const [id, seconds] of history.visited) if (seconds <= route.seconds) shown.visited.add(id);
       for (const [id, seconds] of history.traveled) if (seconds <= route.seconds) shown.traveled.add(id);
     }
-    store.update(records, shown);
-  }, [store, graph, route, binding, observedCallKey, history]);
+    store.update(records, shown, observationScope);
+  }, [store, graph, route, binding, observedCallKey, history, observationScope]);
   useFrameReport(`${graphKey(graph)}|${path}|${call === null ? '' : callKey(call)}`);
 
   const selectedNode = useWorkbench(state => state.selection?.kind === 'node' ? state.selection.id : null);
@@ -700,9 +706,9 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
   }, [openReference]);
   const options = useMemo<ViewOptions>(() => ({
-    store, observationScope: JSON.stringify([runId, graphKey(graph), route?.hostFrame, observedCallKey]),
+    store, observationScope,
     values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned,
-  }), [store, runId, route?.hostFrame, observedCallKey, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned]);
+  }), [store, observationScope, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -1009,7 +1015,8 @@ const themeColor = (name: string) => getComputedStyle(document.documentElement).
 const readableFocus = { minZoom: 1, maxZoom: 1 };
 
 function useNodeState(store: RouteStore, id: string) {
-  return useSyncExternalStore(store.subscribe(`node:${id}`), () => store.node(id));
+  const { observationScope } = useView();
+  return useSyncExternalStore(store.subscribe(`node:${id}`), () => store.node(id, observationScope));
 }
 
 // 状态机的状态：照 Animator 的圆角块，本帧所在的状态描黄并写本地秒数，走过的描金。
@@ -1219,8 +1226,8 @@ function ConnectionLineView({ fromNode, fromHandle, fromX, fromY, toX, toY, from
 
 // 流图连线：执行线用执行色，数据线与源端口同色（Shader Graph）。
 function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
-  const { store, related, labels, enter } = useView();
-  const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
+  const { store, related, labels, enter, observationScope } = useView();
+  const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id, observationScope));
   const color = usePortColor(source, data!.trigger ? null : `out:${data!.edge.source!.portId}`);
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const status = state.passed ? 'passed' : state.rejected ? 'rejected' : 'idle';
@@ -1291,8 +1298,8 @@ function LinkPreview({ source, at }: { source: string; at: XYPosition }) {
 // 转移：从源状态边框到目标状态边框的曲线，照 Animator 把箭头画在线的中点，多条转移汇到同一状态时箭头不堆在一起；
 // 标签取条件图名称，放在靠源状态的三分之一处，不盖住箭头。
 function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<FlowEdge>) {
-  const { store, related, labels, enter } = useView();
-  const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
+  const { store, related, labels, enter, observationScope } = useView();
+  const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id, observationScope));
   const from = useInternalNode(source), to = useInternalNode(target);
   const [hover, setHover] = useState(false);
   if (!from || !to) return null;

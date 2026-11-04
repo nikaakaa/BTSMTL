@@ -35,13 +35,14 @@ export interface RouteHistory {
 }
 
 export class RouteStore {
+  private scope: string | null = null;
   private nodes = new Map<string, NodeState>();
   private edges = new Map<string, EdgeState>();
   private listeners = new Map<string, Set<() => void>>();
   private subscribers = new Map<string, (listener: () => void) => () => void>();
 
-  node = (id: string): NodeState => this.nodes.get(id) ?? idleNode;
-  edge = (id: string): EdgeState => this.edges.get(id) ?? idleEdge;
+  node = (id: string, scope: string): NodeState => scope === this.scope ? this.nodes.get(id) ?? idleNode : idleNode;
+  edge = (id: string, scope: string): EdgeState => scope === this.scope ? this.edges.get(id) ?? idleEdge : idleEdge;
 
   // 每个身份返回同一个订阅函数，供 useSyncExternalStore 稳定使用。
   subscribe(key: string) {
@@ -63,7 +64,9 @@ export class RouteStore {
     this.listeners.get(key)?.forEach(listener => listener());
   }
 
-  update(records: RouteRecord[], history: RouteHistory) {
+  update(records: RouteRecord[], history: RouteHistory, scope: string) {
+    const changedScope = scope !== this.scope;
+    this.scope = scope;
     const nodeRecords = new Map<string, RouteRecord[]>(), edgeRecords = new Map<string, RouteRecord[]>();
     for (const record of records) {
       const groups = isEdgeOccurrence(record) ? edgeRecords : nodeRecords;
@@ -97,7 +100,7 @@ export class RouteStore {
         occurred: events.length, visited, failed: events.some(item => item.result === 'Failure'), events, ports, detail,
         signature: JSON.stringify([visited, events, ports]),
       };
-      if (next.signature === this.node(id).signature) continue;
+      if (!changedScope && next.signature === this.node(id, scope).signature) continue;
       this.nodes.set(id, next);
       this.notify(`node:${id}`);
     }
@@ -118,7 +121,7 @@ export class RouteStore {
         events, occurrences: events.length, selected, passed, traveled, rejected, detail,
         signature: JSON.stringify([traveled, events]),
       };
-      if (next.signature === this.edge(id).signature) continue;
+      if (!changedScope && next.signature === this.edge(id, scope).signature) continue;
       this.edges.set(id, next);
       this.notify(`edge:${id}`);
     }

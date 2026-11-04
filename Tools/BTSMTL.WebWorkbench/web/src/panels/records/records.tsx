@@ -158,7 +158,8 @@ export function FrameSections({ frame }: { frame: Frame }) {
         <ObservationAvailability key={item.channel} label="帧通道" value={item} />)}
       {frame.route !== null && <Fold title="节点、分支与端口观察">
         {frame.route.availability.map(item => <ObservationAvailability key={item.channel} label="观察通道" value={item} />)}
-        <ObservationRecords records={[...frame.route.nodes, ...frame.route.edges, ...frame.route.ports]} />
+        <ObservationRecords key={JSON.stringify([frame.hostFrame, frame.source?.execution, frame.source?.content])}
+          records={[...frame.route.nodes, ...frame.route.edges, ...frame.route.ports]} />
       </Fold>}
       {frame.sections.map((section, index) => (
         <Fold key={index} title={section.displayName} defaultOpen={index === 0}>
