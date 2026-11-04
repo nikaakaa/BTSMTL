@@ -425,7 +425,7 @@ function useNodeCreator(graphId: string) {
       if (!description.availability.available) throw new Error(description.availability.reason ?? `${type} 不可创建`);
       if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
       const ports = description.ports.items.map(entry => ({
-        id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
+        id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow', valueType: entry.port.type,
       }));
       return graphAuthoring.addNode(graphId, type, description.configuration, ports, position);
     } finally { pending.current.delete(controller); }
@@ -810,7 +810,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   }, [editable, graph.id, layout]);
   const portsOf = useCallback((ids: string[]) => Object.fromEntries(ids.map(id => [id, graph.ports
     .filter(port => port.nodeId === id && port.invocationPath === path)
-    .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger }))])), [graph, path]);
+    .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger, valueType: port.valueType }))])), [graph, path]);
   // 系统锚点（入口、出口、任意状态、状态体与片段图的固定节点）不能删除，与 Unity 一致。
   const anchorIds = useMemo(() => new Set(Object.values(elements?.anchors ?? {}).flat().map(anchor => anchor.uid)), [elements]);
   const deleteSelected = () => {
@@ -1177,7 +1177,7 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
   const sample = selected === null ? samples.length === 1 ? samples[0] : undefined
     : samples.find(item => portSampleKey(item) === selected);
   const input = port.direction === 'input';
-  const color = portColor(sample?.valueType);
+  const color = portColor(port.valueType);
   // 照 Shader Graph：连了线实心；没连线的输入在旁边写当前值。
   const linked = connected.has(`${port.nodeId}|${port.direction}:${port.id}`);
   const inline = input && !linked;
@@ -1186,7 +1186,7 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
       ? `${port.id}\n${sample.valueType} · ${sample.sourceAvailable ? sample.value : 'Unavailable'}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
         (sample.loopScopes === null ? sample.loopScopeAvailability?.reason ?? '循环范围未记录' : sample.loopScopes.map(loopScopeLabel).join('\n')) +
         `\n${sample.activationAvailability?.reason ?? ''}`
-      : `${port.id}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
+      : `${port.id}\n${port.valueType}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
       <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
         <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
           position={input ? Position.Left : Position.Right} isConnectable={!!editable}
@@ -1206,15 +1206,12 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
   );
 }
 
-// 端口颜色：执行端口用执行色，数据端口按采样值类型（与端口圆圈一致）。
 function usePortColor(nodeId: string, handleId: string | null | undefined) {
-  const { store, graph } = useView();
+  const { graph } = useView();
   const input = handleId?.startsWith('in:') ?? false;
   const portId = handleId?.slice(handleId.indexOf(':') + 1) ?? '';
-  const samples = useNodeState(store, nodeId).ports[`${input ? 'input' : 'output'}:${portId}`] ?? [];
-  const types = new Set(samples.map(sample => sample.valueType));
-  const trigger = graph.ports.find(port => port.nodeId === nodeId && port.id === portId)?.isTrigger ?? true;
-  return trigger ? 'var(--port-exec)' : portColor(types.size === 1 ? samples[0]?.valueType : undefined);
+  const port = graph.ports.find(item => item.nodeId === nodeId && item.direction === (input ? 'input' : 'output') && item.id === portId);
+  return port?.isTrigger ? 'var(--port-exec)' : portColor(port?.valueType);
 }
 
 // 拖线：与出发端口同色，端点随鼠标；吸附到能接的端口时贴上去，停在接不上的端口时变红。

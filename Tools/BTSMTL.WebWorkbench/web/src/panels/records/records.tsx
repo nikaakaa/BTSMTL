@@ -93,12 +93,15 @@ function CallDetails({ call }: { call: ExecutionCall | null }) {
       { displayName: '程序', value: call.programId }, { displayName: '程序修订', value: call.programRevision },
       { displayName: '程序索引', value: call.programIndex === null ? '未记录' : String(call.programIndex) },
       { displayName: '动作', value: call.actionId }, { displayName: '执行代次', value: call.executionGeneration },
+      { displayName: '执行分支', value: call.executionBranchId ?? '未记录' },
+      { displayName: '运行代次', value: call.runtimeEpoch ?? '未记录' },
       { displayName: '调用路径', value: call.invocationPath }, { displayName: '调用代次', value: call.invocationGeneration },
       { displayName: '父调用路径', value: call.parentInvocationPath ?? '未记录' },
       { displayName: '父调用代次', value: call.parentInvocationGeneration ?? '未记录' },
       { displayName: '播放', value: call.playbackId },
     ]} />
     <ObservationAvailability label="对象来源" value={call.objectAvailability} />
+    <ObservationAvailability label="分支来源" value={call.branchAvailability} />
   </Fold>;
 }
 

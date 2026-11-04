@@ -250,6 +250,7 @@ const call = object({
   actorId: nullable(text), objectSlot: nullable(number), objectHandle: nullable(text),
   objectKind: nullable(text), definitionIndex: nullable(number), programIndex: nullable(number),
   objectAvailability: nullable(availability),
+  executionBranchId: nullable(text), runtimeEpoch: nullable(text), branchAvailability: nullable(availability),
   programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
   actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: nullable(text), playbackId: text,
 });

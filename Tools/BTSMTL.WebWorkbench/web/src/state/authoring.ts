@@ -92,6 +92,7 @@ export interface AddedPort {
   displayName: string;
   direction: 'input' | 'output';
   isTrigger: boolean;
+  valueType: string;
 }
 
 const newDocument = (): AuthoringDocument => ({
@@ -2004,7 +2005,7 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
     if (known.has(id)) continue;
     nodes.push({ id, displayName: (node._name as string | undefined) ?? (node.type as string), invocationPath: path, position: positionOf(id, { x: 0, y: 0 }) });
     for (const port of addedPorts[id] ?? [])
-      ports.push({ nodeId: id, id: port.id, displayName: port.displayName, direction: port.direction, isTrigger: port.isTrigger, invocationPath: path });
+      ports.push({ nodeId: id, id: port.id, displayName: port.displayName, direction: port.direction, isTrigger: port.isTrigger, valueType: port.valueType, invocationPath: path });
   }
   let edges = graph.edges;
   if (sourceNodes) {

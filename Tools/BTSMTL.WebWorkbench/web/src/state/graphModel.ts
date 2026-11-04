@@ -10,10 +10,12 @@ export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorI
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex, call.programIndex,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId,
+  call.executionBranchId, call.runtimeEpoch,
   call.parentInvocationPath, call.parentInvocationGeneration]);
 export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
   `${call.objectKind ?? '对象类型未记录'} · ${call.objectHandle ?? '句柄未记录'}`;
 export const callLabel = (call: ExecutionCall) => `${callOwnerLabel(call)} · 对象 ${call.objectHandle ?? '句柄未记录'} · 动作 ${call.actionId} · 执行 ${call.executionGeneration} · 调用 ${call.invocationGeneration} · ${call.invocationPath}` +
+  ` · 分支 ${call.executionBranchId ?? '未记录'} · 运行代次 ${call.runtimeEpoch ?? '未记录'}` +
   (call.playbackId === '0' ? '' : ` · 播放 ${call.playbackId}`);
 export interface DocumentObservationBinding {
   programs: ReadonlyMap<string, string> | null;

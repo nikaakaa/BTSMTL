@@ -220,6 +220,7 @@ export interface GraphPort {
   displayName: string;
   direction: string;
   isTrigger: boolean;
+  valueType: string;
   invocationPath: string;
 }
 
