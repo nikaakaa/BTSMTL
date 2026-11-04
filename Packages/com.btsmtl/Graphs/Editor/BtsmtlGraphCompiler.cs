@@ -41,7 +41,8 @@ namespace BTSMTL.Graphs.Editor
                 StableHash.Compute(new[] { identity.GraphId, identity.SourceRevision, identity.EncodingContract,
                     identity.NodeContract, identity.NumericTarget }.Concat(identity.Dependencies.SelectMany(
                     dependency => new[] { dependency.Identity, dependency.Revision })).ToArray()).Value,
-                typeof(TLowering).FullName, typeof(TValues).FullName, contentEncoder?.ContractIdentity ?? string.Empty);
+                typeof(TLowering).FullName, typeof(TValues).FullName, contentEncoder?.ContractIdentity ?? string.Empty,
+                encoding.EncodingIdentity.Value);
             if (root.CompilationInputIdentity == inputIdentity)
             {
                 Debug.Log($"Graph '{root.AuthoringId}' is up to date; validation, compilation and asset writes skipped.");
@@ -56,11 +57,11 @@ namespace BTSMTL.Graphs.Editor
         }
 
         static string ComputeCompilationInputIdentity(GraphHostContract contract, string sourceIdentity,
-            string loweringType, string valueAccessType, string contentContract)
+            string loweringType, string valueAccessType, string contentContract, string encodingIdentity)
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/4", sourceIdentity, loweringType, valueAccessType, contentContract,
+                "btsmtl-graph-compiler/5", sourceIdentity, loweringType, valueAccessType, contentContract, encodingIdentity,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
             foreach (GraphHostInputDescriptor input in contract.Inputs)

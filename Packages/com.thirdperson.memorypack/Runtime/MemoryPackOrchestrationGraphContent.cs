@@ -14,11 +14,16 @@ namespace ThirdPersonSimulation.Serialization
         public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/11";
         const string OrchestrationEnvelopeContract = "btsmtl.graph-blocks/9";
 
-        public static StableHash FPEncodingIdentity { get; } = StableHash.Compute(
-            FPOrchestrationContractIdentity, OrchestrationEnvelopeContract,
+        public static StableHash FPEncodingIdentity { get; } = EncodingIdentity<FPValue>(FPOrchestrationContractIdentity);
+        static StableHash? s_Float32EncodingIdentity;
+        public static StableHash Float32EncodingIdentity =>
+            s_Float32EncodingIdentity ??= EncodingIdentity<Float32Value>(Float32OrchestrationContractIdentity);
+
+        static StableHash EncodingIdentity<TValue>(string contract) where TValue : unmanaged => StableHash.Compute(
+            contract, OrchestrationEnvelopeContract,
             MemoryPackContent.GetSchemaHash<GraphExecutionIdentity>().Value,
             MemoryPackContent.GetSchemaHash<OrchestrationGraphStructure>().Value,
-            MemoryPackContent.GetSchemaHash<OrchestrationGraphParameters<FPValue>>().Value,
+            MemoryPackContent.GetSchemaHash<OrchestrationGraphParameters<TValue>>().Value,
             MemoryPackContent.GetSchemaHash<OrchestrationGraphSourceMap>().Value,
             MemoryPackContent.GetSchemaHash<(string, GraphExecutionIdentity, byte[], byte[], byte[])>().Value);
 
@@ -41,6 +46,8 @@ namespace ThirdPersonSimulation.Serialization
 
         string IOrchestrationGraphContentEncoding<Float32Value>.EncodingContract => Float32OrchestrationContractIdentity;
         string IOrchestrationGraphContentEncoding<FPValue>.EncodingContract => FPOrchestrationContractIdentity;
+        StableHash IOrchestrationGraphContentEncoding<Float32Value>.EncodingIdentity => Float32EncodingIdentity;
+        StableHash IOrchestrationGraphContentEncoding<FPValue>.EncodingIdentity => FPEncodingIdentity;
 
         public OrchestrationGraphContent<Float32Value> Create(GraphCompilationIdentity source,
             OrchestrationGraphStructure structure, OrchestrationGraphParameters<Float32Value> parameters,
