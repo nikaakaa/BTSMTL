@@ -8,13 +8,13 @@ import {
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
 import { consoleActions, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
-import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, trackKind } from '../../state/timelineModel';
+import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, timelineObservationNotice, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { Empty, Fold, IdentityFold } from '../../ui/blocks';
@@ -391,6 +391,7 @@ const childLabel = (target: NodeNavigationTarget) => target.kind === 'timeline' 
 
 function ClipInspector({ id, call, missing }: { id: string; call: Selection['call']; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const observation = useWorkbench(useShallow(routeObservation));
   const route = observation.kind === 'ready' ? observation.route : null;
   const schemes = useInputSchemes();
@@ -405,6 +406,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited, removed), [shownTimelines, edited, removed]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const { document: inputGraph } = useCurrentDocument(found?.clip.graphId ? graphPath(found.clip.graphId) : null);
+  const frameSource = route === null ? null : frame?.source ?? null;
   const instances = useMemo(() => {
     const result = new Map<string, { call: ExecutionCall; first: RouteFrame; last: RouteFrame; count: number }>();
     if (!found) return [];
@@ -413,6 +415,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
       for (const location of recorded.active)
         if (location.call !== null && matchesDocumentCall(location.call, binding) &&
           location.documentId === found.timeline.documentId && location.elementId === found.clip.id &&
+          timelineObservationNotice(timelineBinding, frameSource, found.timeline.documentId, location.call) === null &&
           (call === undefined || call !== null && callKey(location.call) === callKey(call)))
           calls.set(callKey(location.call), location.call);
       for (const [key, actualCall] of calls) {
@@ -422,7 +425,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
       }
     }
     return [...result.values()];
-  }, [found, routeFrames, binding, call]);
+  }, [found, routeFrames, binding, timelineBinding, frameSource, call]);
   const marker = useMemo(() => found ? null : findTimelineMarker(timelines, id), [found, timelines, id]);
   if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
@@ -430,6 +433,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
   const graph = clipGraph(graphs, clip.graphId);
   const observedCall = call === undefined ? (instances.length === 1 ? instances[0].call : null) : call;
   const notice = runId === null ? null : documentObservationNotice(route, binding, observedCall)
+    ?? timelineObservationNotice(timelineBinding, frameSource, timeline.documentId, observedCall)
     ?? (observation.kind === 'unavailable' ? observation.reason : null);
   const graphRow = input || !clip.graphId ? null : graph
     ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开"
@@ -471,11 +475,10 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
           : frame.route === null ? '档案播放记录尚未提供'
             : '已读取记录中没有匹配来源修订与调用的活动记录')}</div>}
       </Fold>}
-      {!input && <HostRecords records={locatedRecords(route === null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
+      {!input && <HostRecords records={locatedRecords(route === null || notice !== null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />}
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: '合同', value: clip.contract }, { displayName: 'Timeline', value: timeline.documentId },
         ...(clip.graphId ? [{ displayName: '节点图', value: clip.graphId }] : []),
-        { displayName: 'Timeline 来源修订', value: timeline.contentRevision ?? '未保存或尚未读取来源修订' },
       ]} />
     </>
   );
@@ -511,9 +514,10 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
 
 function TrackInspector({ id, call, missing }: { id: string; call: Selection['call']; missing: ReactNode }) {
   const binding = useDocumentObservationBinding();
+  const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const observation = useWorkbench(useShallow(routeObservation));
   const schemes = useInputSchemes();
-  const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
+  const { timelines: shownTimelines, frame, runId } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame, runId: state.runId })));
   const { edited, removed, editable } = useAuthoring(useShallow(state => ({
     edited: authoringDocument(state).edited, removed: authoringDocument(state).removed, editable: state.author && state.target !== null,
   })));
@@ -522,6 +526,10 @@ function TrackInspector({ id, call, missing }: { id: string; call: Selection['ca
   if (!found) return missing;
   const { timeline, track } = found;
   const input = schemes.some(scheme => scheme.documentId === timeline.documentId);
+  const route = observation.kind === 'ready' ? observation.route : null;
+  const notice = runId === null ? null : documentObservationNotice(route, binding, call ?? null)
+    ?? timelineObservationNotice(timelineBinding, route === null ? null : frame?.source ?? null, timeline.documentId, call ?? null)
+    ?? (observation.kind === 'unavailable' ? observation.reason : null);
   return (
     <>
       <Head icon={<TrackIcon kind={input ? 'in' : trackKind(track)} />} name={track.displayName} sub={timeline.displayName} />
@@ -529,7 +537,8 @@ function TrackInspector({ id, call, missing }: { id: string; call: Selection['ca
         <Fold title="轨道" defaultOpen><Value label="静音" mono={false} value={track.muted ? '是' : '否'} /></Fold>
       )}
       {input && <NativeInputInspector documentId={timeline.documentId} />}
-      {!input && <HostRecords records={locatedRecords(observation.kind === 'ready' ? frame : null, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
+      {!input && notice !== null && <div role="status" className={styles.note}>{notice}</div>}
+      {!input && <HostRecords records={locatedRecords(route === null || notice !== null ? null : frame, binding, call ?? null, (documentId, elementId) => documentId === timeline.documentId && elementId === track.id)} />}
       <Identity extra={[{ displayName: '轨道', value: track.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
     </>
   );
