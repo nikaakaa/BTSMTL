@@ -14,12 +14,14 @@ using UnityEditor;
 
 namespace BTSMTL.Timeline
 {
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
     public interface ITimelineTreeClipAuthoringSource
     {
         string AssetTreeId { get; }
     }
+#endif
 
+#if UNITY_EDITOR
     public interface ITimelineTreeGraphAsset
     {
         string AuthoringId { get; }
@@ -47,19 +49,29 @@ namespace BTSMTL.Timeline
     [Serializable]
     public sealed class TimelineExternalBindingUse
     {
+#if UNITY_5_3_OR_NEWER
         [SerializeField]
+#endif
         string m_BindingId;
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField]
+#endif
         string m_TargetBindingId;
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField]
+#endif
         TimelineBindingValueKind m_ValueKind;
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField]
+#endif
         TimelineBindingAccess m_Access;
 
+#if UNITY_5_3_OR_NEWER
         [SerializeField]
+#endif
         TimelineBindingLifetime m_Lifetime;
 
         public TimelineExternalBindingUse()

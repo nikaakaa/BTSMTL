@@ -38,7 +38,10 @@ namespace BTSMTL.Timeline
 #endif
     public partial class TreeClip : Clip, ITimelineOwnedAuthoringIdentity, ITimelineClipExecutionPhaseSource, ITimelineClipExitSource
 #if UNITY_EDITOR
-        , ITimelineTerminalTimeAlignedClip, ITimelineTreeClipAuthoringSource
+        , ITimelineTerminalTimeAlignedClip
+#endif
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        , ITimelineTreeClipAuthoringSource
 #endif
     {
 #if UNITY_EDITOR
