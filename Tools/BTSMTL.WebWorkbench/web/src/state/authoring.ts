@@ -755,6 +755,7 @@ export const authoringActions = {
 
   editingView(): SkillEditingView {
     const state = get();
+    const scene = selectedScene(useWorkbench.getState());
     return {
       skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('skill/')).map(key => {
         const name = key.slice('skill/'.length);
@@ -767,7 +768,7 @@ export const authoringActions = {
       })),
       previewDefinitionGuid: state.previewDefinitionGuid,
       product: state.product,
-      scene: selectedScene(useWorkbench.getState()),
+      ...(scene === undefined ? {} : { scene }),
     };
   },
 
