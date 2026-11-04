@@ -86,6 +86,27 @@ namespace ThirdPersonSimulation
 
         public void Retain() => m_References++;
 
+        // 生产者据此在没有空闲内存页时让出本次更新，而不是在 Reserve 中等待后台写盘。
+        public bool HasFreePage
+        {
+            get
+            {
+                lock (m_Gate)
+                    return m_Available.Count != 0;
+            }
+        }
+
+        public int PendingPageCount
+        {
+            get
+            {
+                lock (m_Gate)
+                    return m_Pending.Count;
+            }
+        }
+
+        public long ReservedBytes => m_NextPageOffset;
+
         public RecordedFrameSlice Reserve(int maximumBytes)
         {
             if (maximumBytes > m_PageCapacity)
