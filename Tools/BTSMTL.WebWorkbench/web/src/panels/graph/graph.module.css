@@ -18,6 +18,34 @@
   min-height: 0;
 }
 
+.observationDock {
+  position: absolute;
+  z-index: 15;
+  left: 8px;
+  bottom: 8px;
+  width: min(520px, calc(100% - 16px));
+  max-height: min(60%, 520px);
+  overflow: auto;
+  background: var(--popup-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--popup-shadow);
+}
+
+.observationDock > :first-child > button {
+  margin-left: auto;
+}
+
+.sampleChoice {
+  max-width: 140px;
+  font: var(--mono);
+}
+
+.portValue[data-unavailable] {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--reject);
+}
+
 /* 黑板浮层：贴在画布右上，内容滚动 */
 .blackboard {
   position: absolute;

@@ -45,6 +45,28 @@
   padding: 2px 0;
 }
 
+.observations {
+  padding: var(--gap-1) var(--gap-2);
+  min-width: 0;
+}
+
+.observationList {
+  height: 144px;
+  border: 1px solid var(--line);
+  margin: var(--gap-1) 0;
+}
+
+.observationDetail {
+  max-height: 320px;
+  overflow: auto;
+  user-select: text;
+}
+
+.scopes {
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+
 .form {
   display: flex;
   flex-wrap: wrap;

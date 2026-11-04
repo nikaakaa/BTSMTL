@@ -1,25 +1,21 @@
-import { compareSequence, isEdgeOccurrence, isNodeOccurrence, isPortSample, nodeOccurrenceLabel, type RouteRecord } from '../../state/graphModel';
+import type { EdgeOccurrence, NodeOccurrence, PortSample } from '../../api/types';
+import { compareSequence, isEdgeOccurrence, isNodeOccurrence, isPortSample, loopScopeLabel, nodeOccurrenceLabel, type RouteRecord } from '../../state/graphModel';
 
 // 每个节点图实例一份：按节点、连线保存本帧路线状态，只通知状态真正变了的节点与连线（D9）。
-
-export interface PortValue {
-  value: string;
-  valueType: string;
-  sequence: string;
-}
 
 export interface NodeState {
   occurred: number;
   // 本帧之前的路线已进入过。
   visited: boolean;
   failed: boolean;
-  // 键为 `${direction}:${portId}`，取本帧最后一个样本。
-  ports: Record<string, PortValue>;
+  events: NodeOccurrence[];
+  ports: Record<string, PortSample[]>;
   detail: string;
   signature: string;
 }
 
 export interface EdgeState {
+  events: EdgeOccurrence[];
   occurrences: number;
   selected: boolean;
   passed: boolean;
@@ -30,8 +26,8 @@ export interface EdgeState {
   signature: string;
 }
 
-const idleNode: NodeState = { occurred: 0, visited: false, failed: false, ports: {}, detail: '', signature: '' };
-const idleEdge: EdgeState = { occurrences: 0, selected: false, passed: false, traveled: false, rejected: false, detail: '', signature: '' };
+const idleNode: NodeState = { occurred: 0, visited: false, failed: false, events: [], ports: {}, detail: '', signature: '' };
+const idleEdge: EdgeState = { events: [], occurrences: 0, selected: false, passed: false, traveled: false, rejected: false, detail: '', signature: '' };
 
 export interface RouteHistory {
   visited: Set<string>;
@@ -55,7 +51,8 @@ export class RouteStore {
         let set = this.listeners.get(key);
         if (!set) this.listeners.set(key, set = new Set());
         set.add(listener);
-        return () => { set!.delete(listener); };
+        const bucket = set;
+        return () => { bucket.delete(listener); };
       };
       this.subscribers.set(key, subscriber);
     }
@@ -78,12 +75,12 @@ export class RouteStore {
     for (const id of new Set([...this.nodes.keys(), ...nodeRecords.keys(), ...history.visited])) {
       const own = nodeRecords.get(id) ?? [];
       const events = own.filter(isNodeOccurrence).sort(compareSequence);
-      const ports: Record<string, PortValue> = {};
+      const ports: Record<string, PortSample[]> = {};
       for (const sample of own.filter(isPortSample)) {
         const key = `${sample.direction}:${sample.portId}`;
-        const previous = ports[key];
-        if (previous === undefined || BigInt(sample.sequence) > BigInt(previous.sequence))
-          ports[key] = { value: sample.value, valueType: sample.valueType, sequence: sample.sequence };
+        const samples = ports[key];
+        if (samples === undefined) ports[key] = [sample];
+        else samples.push(sample);
       }
       const visited = history.visited.has(id);
       if (own.length === 0 && !visited) {
@@ -91,10 +88,14 @@ export class RouteStore {
         this.notify(`node:${id}`);
         continue;
       }
-      const detail = events.map(item => `${item.sequence} · ${nodeOccurrenceLabel(item)} · ${item.result ?? '结果未记录'}`).join('\n');
+      const detail = events.map(item => `${item.sequence} · ${nodeOccurrenceLabel(item)} · ${item.result ?? '结果未记录'}` +
+        (item.loopScope === null ? '' : ` · ${loopScopeLabel(item.loopScope)}`) +
+        (item.activationAvailability?.reason ? ` · ${item.activationAvailability.reason}` : '') +
+        (item.stopCause === null ? '' : ` · StopCause ${item.stopCause}`) +
+        (item.stopMode === null ? '' : ` · StopMode ${item.stopMode}`)).join('\n');
       const next: NodeState = {
-        occurred: events.length, visited, failed: events.some(item => item.result === 'Failure'), ports, detail,
-        signature: JSON.stringify([visited, detail, ports]),
+        occurred: events.length, visited, failed: events.some(item => item.result === 'Failure'), events, ports, detail,
+        signature: JSON.stringify([visited, events, ports]),
       };
       if (next.signature === this.node(id).signature) continue;
       this.nodes.set(id, next);
@@ -110,10 +111,12 @@ export class RouteStore {
         this.notify(`edge:${id}`);
         continue;
       }
-      const detail = events.map(item => `${item.sequence} · ${item.selected ? '已选择' : '未选择'} · ${item.passed ? '通过' : '未通过'}`).join('\n');
+      const detail = events.map(item => `${item.sequence} · 来源节点 ${item.sourceNodeId ?? '未记录'} · 激活 ${item.generation ?? '未提供'}` +
+        ` · ${item.selected ? '已选择' : '未选择'} · ${item.passed ? '通过' : '未通过'}` +
+        (item.loopScope === null ? '' : ` · ${loopScopeLabel(item.loopScope)}`)).join('\n');
       const next: EdgeState = {
-        occurrences: events.length, selected, passed, traveled, rejected, detail,
-        signature: JSON.stringify([traveled, detail]),
+        events, occurrences: events.length, selected, passed, traveled, rejected, detail,
+        signature: JSON.stringify([traveled, events]),
       };
       if (next.signature === this.edge(id).signature) continue;
       this.edges.set(id, next);

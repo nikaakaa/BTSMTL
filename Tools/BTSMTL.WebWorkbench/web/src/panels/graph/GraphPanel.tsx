@@ -23,7 +23,7 @@ import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor,
+  isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
   documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
@@ -34,6 +34,7 @@ import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import { QuickGraphRoute, useQuickPlan } from '../timeline/QuickPreview';
+import { ObservationRecords } from '../records/records';
 import styles from './graph.module.css';
 
 interface Params {
@@ -45,17 +46,19 @@ interface Params {
   // 视图位置按所看的图与图实例保存。
   viewport: (Viewport & { view: string }) | null;
   values: boolean;
+  observations: boolean;
   dim: boolean;
   relations: boolean;
   minimap: boolean;
   labels: 'brief' | 'all' | 'none';
 }
 const defaults: Params = {
-  graph: null, call: null, pin: null, caller: null, origin: null, viewport: null, values: true, dim: false, relations: false, minimap: false, labels: 'brief',
+  graph: null, call: null, pin: null, caller: null, origin: null, viewport: null, values: true, observations: true, dim: false, relations: false, minimap: false, labels: 'brief',
 };
 
 interface ViewOptions {
   store: RouteStore;
+  observationScope: string;
   values: boolean;
   dim: boolean;
   related: Set<string> | null;
@@ -183,7 +186,8 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const observedCall = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
-    : pin !== null ? pin.call : params.call !== null ? calls.find(item => callKey(item) === params.call) ?? null : automatic;
+    : pin !== null ? calls.find(item => callKey(item) === callKey(pin.call)) ?? null
+      : params.call !== null ? calls.find(item => callKey(item) === params.call) ?? null : automatic;
   const shownCall = pin === null ? observedCall : pin.call;
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
   const choices = quickMode ? [] : pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
@@ -241,6 +245,15 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   }, [hierarchy, key, observedCall, pin, runId, panelId]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const referrers = useMemo(() => graphReferrers(hierarchy, graph), [hierarchy, graph]);
+  const selection = useWorkbench(state => state.selection?.panelId === panelId ? state.selection : null);
+  const selectedNode = selection?.kind === 'node' ? graph.nodes.find(node => nodeSelectId(graph, node) === selection.id) : undefined;
+  const selectedEdge = selection?.kind === 'edge' ? graph.edges.find(edge => edgeSelectId(graph, edge) === selection.id) : undefined;
+  const observedCallKey = observedCall === null ? null : callKey(observedCall);
+  const selectedRecords = useMemo(() => graphRecords(currentRoute, graph, binding).filter(record =>
+    callKey(record.call) === observedCallKey && (selectedNode !== undefined
+      ? isEdgeOccurrence(record) ? record.sourceNodeId === selectedNode.id : record.nodeId === selectedNode.id
+      : selectedEdge !== undefined && isEdgeOccurrence(record) && record.edgeId === selectedEdge.id)),
+  [currentRoute, graph, binding, observedCallKey, selectedNode, selectedEdge]);
   const [blackboard, setBlackboard] = useState(false);
   const graphOptions = [...hierarchy.graphs].map(([value, item]) => ({ value, label: `${item.ownerName} · ${graphName(item)}` }));
 
@@ -248,6 +261,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
     { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, pin: null, caller: null, origin: null }) },
     { kind: 'separator' },
     { kind: 'check', label: '端口值', checked: params.values, onChange: values => setParams({ values }) },
+    { kind: 'check', label: '所选节点／连线的实际记录', checked: params.observations, onChange: observations => setParams({ observations }) },
     { kind: 'check', label: '压暗本帧没走到的节点', checked: params.dim, onChange: dim => setParams({ dim }) },
     { kind: 'check', label: '只突出所选节点的关系', checked: params.relations, onChange: relations => setParams({ relations }) },
     { kind: 'check', label: '小地图', checked: params.minimap, onChange: minimap => setParams({ minimap }) },
@@ -325,6 +339,15 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
           {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
           <AuthoredCanvas graph={graph} call={observedCall}
             route={currentRoute} hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />
+          {!quickMode && params.observations && (selectedNode !== undefined || selectedEdge !== undefined) &&
+            <div className={styles.observationDock}>
+              <PanelBar><span>{selectedNode === undefined ? '分支决策' : nodeName(selectedNode)} · 实际记录</span>
+                <Button variant="ghost" tip="收起实际记录" onClick={() => setParams({ observations: false })}><CloseIcon /></Button>
+              </PanelBar>
+              {callNotice !== null && <div className={styles.notice} role="status">{callNotice}</div>}
+              <ObservationRecords key={JSON.stringify([runId, currentRoute?.hostFrame, key, observedCallKey, selectedNode?.id, selectedEdge?.id])}
+                records={selectedRecords} />
+            </div>}
         </div>
       </ReactFlowProvider>
     </div>
@@ -674,8 +697,9 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
   }, [openReference]);
   const options = useMemo<ViewOptions>(() => ({
-    store, values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned,
-  }), [store, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned]);
+    store, observationScope: JSON.stringify([runId, graphKey(graph), route?.hostFrame, observedCallKey]),
+    values: params.values, dim: params.dim, related, labels: params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned,
+  }), [store, runId, route?.hostFrame, observedCallKey, params.values, params.dim, related, params.labels, enter, openReference, openNode, hierarchy, graph, connected, planned]);
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes(current => applyNodeChanges(changes, current));
     const selectionChanges = changes.filter(change => change.type === 'select');
@@ -1118,7 +1142,6 @@ function PortCell({ port, state, values }: {
   state: ReturnType<RouteStore['node']>;
   values: boolean;
 }) {
-  const { editable, connected } = useView();
   if (!port) return <span className={styles.portEmpty} />;
   const input = port.direction === 'input';
   if (port.isTrigger) return (
@@ -1127,19 +1150,41 @@ function PortCell({ port, state, values }: {
       <span className={styles.portName} data-name>{port.displayName}</span>
     </span>
   );
-  const sample = state.ports[`${port.direction}:${port.id}`];
+  return <ValuePortCell port={port} state={state} values={values} />;
+}
+
+function ValuePortCell({ port, state, values }: { port: GraphPort; state: ReturnType<RouteStore['node']>; values: boolean }) {
+  const { editable, connected, observationScope } = useView();
+  const [choice, setChoice] = useState<{ scope: string; key: string } | null>(null);
+  const samples = state.ports[`${port.direction}:${port.id}`] ?? [];
+  const selected = choice?.scope === observationScope ? choice.key : null;
+  const sample = selected === null ? samples.length === 1 ? samples[0] : undefined
+    : samples.find(item => portSampleKey(item) === selected);
+  const input = port.direction === 'input';
   const color = portColor(sample?.valueType);
   // 照 Shader Graph：连了线实心；没连线的输入在旁边写当前值。
   const linked = connected.has(`${port.nodeId}|${port.direction}:${port.id}`);
   const inline = input && !linked;
   return (
-    <Tip name={port.displayName} content={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : `${port.id}\nUnavailable：当前没有对应端口观察`}>
+    <Tip name={port.displayName} content={sample
+      ? `${port.id}\n${sample.valueType} · ${sample.value}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
+        (sample.loopScopes === null ? sample.loopScopeAvailability?.reason ?? '循环范围未记录' : sample.loopScopes.map(loopScopeLabel).join('\n')) +
+        `\n${sample.activationAvailability?.reason ?? ''}`
+      : `${port.id}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
       <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
         <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
           position={input ? Position.Left : Position.Right} isConnectable={!!editable}
           className={styles.valuePort} data-filled={linked || undefined} />
         <span className={styles.portName} data-name>{port.displayName}</span>
-        {sample && (values || inline) && <span className={styles.portValue} data-inline={inline || undefined}>{sample.value}</span>}
+        {samples.length > 1 && (values || inline) && <span className={`nodrag nopan ${styles.sampleChoice}`} onClick={event => event.stopPropagation()}>
+          <Select label={`${port.displayName}的实际样本`} value={sample === undefined ? null : portSampleKey(sample)}
+            placeholder={`${samples.length} 次观察`} options={samples.map(item => ({ value: portSampleKey(item),
+              label: portSampleLabel(item) + (item.loopScopes === null ? ` · ${item.loopScopeAvailability?.reason ?? '循环来源未记录'}`
+                : item.loopScopes.length === 0 ? ' · 无循环范围' : ` · ${item.loopScopes.map(loopScopeLabel).join(' → ')}`) }))}
+            onChange={key => setChoice({ scope: observationScope, key })} />
+        </span>}
+        {sample && (values || inline) && <span className={styles.portValue} data-inline={inline || undefined}
+          data-unavailable={!sample.sourceAvailable || undefined}>{sample.value}</span>}
       </span>
     </Tip>
   );
@@ -1150,9 +1195,10 @@ function usePortColor(nodeId: string, handleId: string | null | undefined) {
   const { store, graph } = useView();
   const input = handleId?.startsWith('in:') ?? false;
   const portId = handleId?.slice(handleId.indexOf(':') + 1) ?? '';
-  const sample = useNodeState(store, nodeId).ports[`${input ? 'input' : 'output'}:${portId}`];
+  const samples = useNodeState(store, nodeId).ports[`${input ? 'input' : 'output'}:${portId}`] ?? [];
+  const types = new Set(samples.map(sample => sample.valueType));
   const trigger = graph.ports.find(port => port.nodeId === nodeId && port.id === portId)?.isTrigger ?? true;
-  return trigger ? 'var(--port-exec)' : portColor(sample?.valueType);
+  return trigger ? 'var(--port-exec)' : portColor(types.size === 1 ? samples[0]?.valueType : undefined);
 }
 
 // 拖线：与出发端口同色，端点随鼠标；吸附到能接的端口时贴上去，停在接不上的端口时变红。
