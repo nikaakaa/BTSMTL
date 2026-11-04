@@ -167,10 +167,12 @@ export function useTimelineObservationBinding(dirty: boolean): TimelineObservati
     if (receipt === null) return { kind: 'unavailable', reason: '尚未取得当前编辑内容的 Timeline 预览采用回执，运行叠加不可用。' };
     if (sourceRevision === null || receipt.sourceRevision !== sourceRevision)
       return { kind: 'unavailable', reason: '预览回执尚未对应当前完整编辑内容，Timeline 运行叠加不可用。' };
-    if (receipt.stage === 'accepted')
-      return { kind: 'unavailable', reason: '当前 Timeline 已准备，Player 尚未确认采用，运行叠加不可用。' };
-    if (receipt.stage === 'failed' || receipt.stage === 'unavailable') return { kind: 'unavailable', reason: receipt.error };
-    return { kind: 'ready', sceneRevision: receipt.package.sceneRevision, programs: receipt.package.programs };
+    switch (receipt.stage) {
+      case 'accepted': return { kind: 'unavailable', reason: '当前 Timeline 已准备，Player 尚未确认采用，运行叠加不可用。' };
+      case 'failed':
+      case 'unavailable': return { kind: 'unavailable', reason: receipt.error };
+      case 'adopted': return { kind: 'ready', sceneRevision: receipt.package.sceneRevision, programs: receipt.package.programs };
+    }
   }, [dirty, lastSave, sourceRevision]);
 }
 
