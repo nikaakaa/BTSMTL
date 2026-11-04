@@ -182,7 +182,12 @@ export const queryService = {
 
 // 切换运行：取消旧读取，清空结果。
 useWorkbench.subscribe((next, previous) => {
-  if (next.generation !== previous.generation) {
+  if (next.generation !== previous.generation || next.summary?.contentRevision !== previous.summary?.contentRevision ||
+    next.summary?.sceneRevision !== previous.summary?.sceneRevision ||
+    next.summary?.execution.kind !== previous.summary?.execution.kind ||
+    next.summary?.execution.identity !== previous.summary?.execution.identity ||
+    next.summary?.execution.playerBuildId !== previous.summary?.execution.playerBuildId ||
+    next.summary?.execution.editorAssemblyMvid !== previous.summary?.execution.editorAssemblyMvid) {
     stopActive();
     for (const queue of Object.values(pending)) for (const id of [...queue.keys()]) cancel(id);
     update(idle);

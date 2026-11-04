@@ -21,9 +21,10 @@ interface Params {
 
 export function FramesPanel() {
   const [params, setParams] = usePanelParams<Params>({ pinned: null, tab: 'records' });
-  const { runId, generation, frameIndex, hostFrame, current, summary } = useWorkbench(useShallow(state => ({
+  const { runId, generation, frameIndex, hostFrame, current, summary, frameUnavailableReason } = useWorkbench(useShallow(state => ({
     runId: state.runId, generation: state.generation, frameIndex: state.frameIndex, hostFrame: state.hostFrame,
     current: state.frame, summary: state.summary,
+    frameUnavailableReason: state.routeAvailability.filter(item => !item.available || !item.complete).map(item => item.reason).join('；'),
   })));
   const [loaded, setLoaded] = useState<{ key: string } & (
     { kind: 'ready'; frame: Frame } | { kind: 'unavailable'; reason: string }) | null>(null);
@@ -32,7 +33,7 @@ export function FramesPanel() {
   const pinNotice = pinned === null ? null : pinned.runId !== runId || pinned.contentRevision !== summary?.contentRevision
     ? '固定帧属于另一运行或内容修订，固定身份已保留'
     : pinned.index < 0 || pinned.index >= count ? '固定帧不在当前档案范围内，固定身份已保留' : null;
-  const requestKey = JSON.stringify([generation, pinned]);
+  const requestKey = JSON.stringify([generation, summary?.contentRevision, summary?.sceneRevision, summary?.execution, pinned]);
 
   useEffect(() => {
     if (pinned === null || pinNotice !== null) return;
@@ -74,7 +75,7 @@ export function FramesPanel() {
       </PanelBar>
       <div className={styles.body}>
         {!runId ? <Empty text="选择一个运行" /> : readNotice !== null && pinned !== null ? <Empty text={readNotice} />
-          : !frame ? <Empty text={count ? '读取中' : '还没有确认帧'} /> : (
+          : !frame ? <Empty text={frameUnavailableReason || (count ? '读取中' : '还没有确认帧')} /> : (
           <div className={styles.body} key={JSON.stringify([runId, summary?.contentRevision, frame.hostFrame])}>
           <Tabs<Tab> value={params.tab} onChange={tab => setParams({ tab })} items={[
             { value: 'records', label: '帧记录', content: <FrameSections frame={frame} /> },
