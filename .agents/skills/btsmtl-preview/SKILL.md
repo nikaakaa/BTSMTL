@@ -21,7 +21,7 @@ description: 接入或修改 BTSMTL 的 Unity 预览播放器项目适配、组�
 | 报告每帧事实 | `ReportFrame` 返回真实已提交帧、内容身份和准备状态。同一提交边界把实际骨骼、物理、相机和逻辑结果交项目原观察生产者；此返回值不替代观察格式。 |
 | 存档和读档 | `Checkpoints` 返回 `IPreviewCheckpointAdapter`，由项目组合后端、编排与表现状态，并声明实际恢复能力和限制。 |
 
-接入 `PreviewAgentConnection` 的命令、回执及断开状态。命令的 `executionMode` 指定 `batch` 或 `interactive`，项目的相机 `mode` 和预览档位各保留自己的业务字段。将连接失败的 `Failure` 交正式错误回执，宿主断开后沿原生命周期结束播放器。停止时由唯一所有者等待 `CloseAsync`，释放会话和采集资源。
+项目的 MonoBehaviour 持有一份 `PreviewAgentRuntime<TCommand>`，在 `Update`／`LateUpdate`／`OnDestroy` 中转调，并实现 `IPreviewAgentProject<TCommand>`。运行部分持有 `PreviewAgentConnection`、通用命令分派（load、play、pause、step、stream、input、capture、stop）、每帧推进、宿主断开即退出、状态节拍、实时画面节流采集与独立 PNG 截图；项目只提供命令解析、定位与项目命令（返回 `Completed`／`Deferred`／`Unknown`）、回执与状态格式、失败分类、输出相机、实时画面来源封包，以及停止时的封存和会话释放。Editor 内执行传入空连接，由调用方直接提交命令。命令的 `executionMode` 指定 `batch` 或 `interactive`，项目的相机 `mode` 和预览档位各保留自己的业务字段。连接失败的 `Failure` 交正式错误回执，停止时由运行部分唯一等待 `CloseAsync`。
 
 使用 `PreviewPlaybackController` 管理交互和批量状态。只有项目确认的新帧才能传给 `ObserveFrame`，命令接收和调用一次单步都不代表帧已提交。交互按实时推进；批量使用固定帧时长、不限帧率、不推流，任务结束后等待下一任务。Unity `Update` 项目不能用紧循环调用 `Update` 来代替引擎帧。手动 Animator、Animancer、Playables 和物理推进只能由原项目时钟统一持有。
 
