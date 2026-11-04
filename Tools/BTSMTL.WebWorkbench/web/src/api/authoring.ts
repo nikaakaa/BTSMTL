@@ -19,11 +19,10 @@ export type SkillEditingView = {
   scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
 
-export interface SkillSnapshot {
-  skill: string;
-  revision: string;
-  files: SkillFile[];
-}
+const readSkillFile = object({ path: text, content: text });
+const readSkillSnapshot = object({ skill: text, revision: text,
+  files: array(readSkillFile), sourceFiles: array(readSkillFile) });
+export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = { kind: 'skill'; name: string } | { kind: 'scenario'; name: string };
 export const authoringTargetKey = (target: AuthoringTarget) => `${target.kind}/${target.name}`;
@@ -476,7 +475,7 @@ const readSaved = (value: unknown, path = 'SkillSave.saved'): true => {
 };
 const readInputSaveResult = object({
   saved: readSaved, compilationState: choice('not-required'),
-  content: object({ skill: text, revision: text, files: array(object({ path: text, content: text })) }),
+  content: readSkillSnapshot,
   inputs: array(object({ planId: text, path: text, revision: text })),
   preview: nullable(readPlayerCommandResult), job: nullable(readPlayerJobReceipt),
   previewError: nullable(text), jobError: nullable(text),
@@ -550,7 +549,6 @@ export interface SkillFormatError {
   message: string;
 }
 
-const readSkillSnapshot = object({ skill: text, revision: text, files: array(object({ path: text, content: text })) });
 const readSkillFormatError = object({
   code: text, message: text, authoring: optional(nullable(text)), skill: optional(nullable(text)),
   type: optional(nullable(text)), file: optional(nullable(text)), graphId: optional(nullable(text)),
@@ -696,7 +694,7 @@ export const authoringApi = {
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
-  read: (target: AuthoringTarget, signal?: AbortSignal) => getJson<SkillSnapshot>(targetPath(target), signal),
+  read: async (target: AuthoringTarget, signal?: AbortSignal) => readSkillSnapshot(await getJson<unknown>(targetPath(target), signal)),
   deleteSkill: (skill: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
     deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', name: skill }), request, [409]),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
@@ -706,7 +704,8 @@ export const authoringApi = {
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<SkillSaveResult>(targetPath(target), request);
     return result.compilationState === 'not-required' ? readInputSaveResult(result, 'InputSave')
-      : { ...result, compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
+      : { ...result, content: readSkillSnapshot(result.content, 'SkillSave.content'),
+      compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
       jobError: nullable(text)(result.jobError, 'SkillSave.jobError'),
       preview: result.preview === null ? null : readSkillRefreshReceipt(result.preview) };
   },

@@ -21,7 +21,7 @@ export function ExportPanel() {
   const pending = operations.some(operation => operation.kind === 'preparing' && operation.skill === skill && operation.purpose === purpose);
   return <div className={styles.root}>
     <PanelBar wrap>
-      <Select label="导出用途" value={purpose} onChange={setPurpose} options={[
+      <Select<SkillExportKind> label="导出用途" value={purpose} onChange={setPurpose} options={[
         { value: 'authoring', label: purposeNames.authoring }, { value: 'runtime', label: purposeNames.runtime },
       ]} />
       {skill !== null && <Button disabled={loading || pending} onClick={() => void exportActions.prepare({

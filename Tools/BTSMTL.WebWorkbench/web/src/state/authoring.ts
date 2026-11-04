@@ -46,6 +46,7 @@ export interface AuthoringDocument {
   sourceRevision: string | null;
   documentRevision: string | null;
   files: Record<string, string>;
+  sourceFiles: Record<string, string>;
   // 编辑过及新建的文件（路径 → 解析后的文档），逐次修改递增 version。
   edited: Record<string, JsonValue>;
   // 待删除的原文件（删除状态、节点或片段后不再被引用的专属图与 Timeline）。
@@ -96,7 +97,7 @@ export interface AddedPort {
 const newDocument = (): AuthoringDocument => ({
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
-  files: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
+  files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
   documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, previewDefinitionGuid: null, product: null,
@@ -447,15 +448,14 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), product: editingView.product, previewDefinitionGuid: editingView.previewDefinitionGuid,
+          sourceFiles: Object.fromEntries(source.sourceFiles.map(file => [file.path, file.content])),
           files: Object.fromEntries(source.files.map(file => [file.path, file.content])) };
       } else {
-        const files = { ...current.files };
         const edited = { ...current.edited };
         for (const file of source.files) {
           if (Object.hasOwn(edited, file.path)) edited[file.path] = parseSkillJson(file.content);
-          else files[file.path] = file.content;
         }
-        documents[key] = { ...current, files, edited };
+        documents[key] = { ...current, edited };
       }
     }
     const key = authoringTargetKey(target);
@@ -531,7 +531,8 @@ export const authoringActions = {
       throw new Error(`此技能容器已用于未保存草稿 ${containerOwner[0]}，请继续编辑该草稿或选择其他容器`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
-    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), edited, version: 1 } } });
+    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), edited, version: 1,
+      sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
     return target;
@@ -577,7 +578,8 @@ export const authoringActions = {
       if (!opened || (opened.revision === null && !hasChanges(target))) {
         const snapshot = await authoringApi.read(target, controller.signal);
         controller.signal.throwIfAborted();
-        setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
+        setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
+          sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) }, target);
       }
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
@@ -712,6 +714,7 @@ export const authoringActions = {
           removed: item.removed.filter(path => !paths.has(path)),
         }));
         documents[key] = { ...document, revision: snapshot.value.revision,
+          sourceFiles: Object.fromEntries(snapshot.value.sourceFiles.map(file => [file.path, file.content])),
           files: savedFiles,
           sourceRevision: null, documentGraphs: null, documentRelations: [], externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
@@ -755,8 +758,11 @@ export const authoringActions = {
       skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('skill/')).map(key => {
         const name = key.slice('skill/'.length);
         const document = state.documents[key];
-        return [name, { files: Object.entries(workingFiles(document.files, document))
-          .map(([path, content]) => ({ path, content })), removedFiles: document.removed }];
+        const files = { ...document.sourceFiles };
+        for (const [path, content] of Object.entries(workingFiles(document.files, document)))
+          if (content !== document.files[path]) files[path] = content;
+        for (const path of document.removed) delete files[path];
+        return [name, { files: Object.entries(files).map(([path, content]) => ({ path, content })), removedFiles: document.removed }];
       })),
       previewDefinitionGuid: state.previewDefinitionGuid,
       product: state.product,
@@ -795,7 +801,9 @@ export const authoringActions = {
       const history = (items: Snapshot[]) => items.filter(item => !earlierHistory.has(item))
         .map(item => ({ ...item, ...rebase(item) }));
       setDocument({
-        revision: content.revision, sourceRevision: null, files, ...rebase(current), externalChange: false,
+        revision: content.revision, sourceRevision: null, documentRevision: null, files,
+        sourceFiles: Object.fromEntries(content.sourceFiles.map(file => [file.path, file.content])),
+        ...rebase(current), externalChange: false,
         undo: history(current.undo), redo: history(current.redo), version: current.version + 1, saving: false,
         lastSave: currentScene ? lastSave : { ...lastSave,
           message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
@@ -891,7 +899,8 @@ export const authoringActions = {
         signal.throwIfAborted();
         setDocument({ revision: snapshot.revision, sourceRevision: null,
           version: authoringDocument(useAuthoring.getState(), target).version + 1,
-          files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) }, target);
+          files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
+          sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) }, target);
       }
     } catch (error) {
       consoleActions.error('作者', error);
