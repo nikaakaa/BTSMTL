@@ -1,8 +1,8 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
-import { array, boolean, choice, nullable, number, object, opaque, optional, readPlayerCommandReceipt, readPlayerCommandResult, readPlayerJobReceipt, text,
-  type PlayerCommandReceipt, type PlayerJobReceipt, type StartPlayerJobRequest } from './playerRecords';
+import { array, boolean, choice, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
+  type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -444,14 +444,18 @@ export interface CompiledSkillSaveResult {
 }
 
 export interface InputRevision { planId: string; path: string; revision: string }
-export interface InputSaveResult {
-  saved: true;
-  compilationState: 'not-required';
-  content: SkillSnapshot;
-  inputs: InputRevision[];
-  preview: PlayerCommandReceipt | null;
-  job: PlayerJobReceipt | null;
-}
+const readSaved = (value: unknown, path = 'SkillSave.saved'): true => {
+  if (value !== true) throw new Error(`${path} 需要 true`);
+  return value;
+};
+const readInputSaveResult = object({
+  saved: readSaved, compilationState: choice('not-required'),
+  content: object({ skill: text, revision: text, files: array(object({ path: text, content: text })) }),
+  inputs: array(object({ planId: text, path: text, revision: text })),
+  preview: nullable(readPlayerCommandResult), job: nullable(readPlayerJobReceipt),
+  previewError: nullable(text), jobError: nullable(text),
+});
+export type InputSaveResult = ReturnType<typeof readInputSaveResult>;
 
 export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
@@ -640,10 +644,8 @@ export const authoringApi = {
     postJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, { editingView, graphId }, signal),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<SkillSaveResult>(targetPath(target), request);
-    return result.compilationState === 'not-required' ? { ...result,
-      preview: result.preview === null ? null : readPlayerCommandReceipt(result.preview),
-      job: result.job === null ? null : readPlayerJobReceipt(result.job),
-    } : { ...result, compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
+    return result.compilationState === 'not-required' ? readInputSaveResult(result, 'InputSave')
+      : { ...result, compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
       preview: result.preview === null ? null : readSkillRefreshReceipt(result.preview) };
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),

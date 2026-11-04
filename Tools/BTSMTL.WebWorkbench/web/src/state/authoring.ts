@@ -3,13 +3,13 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerCommandReceipt, PlayerJobReceipt } from '../api/playerRecords';
+import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
@@ -77,7 +77,7 @@ interface SaveOutcomeMessage {
 
 export type SaveOutcome = SaveOutcomeMessage & (
   | (SavedCompilation & { preview: PlayerSkillRefreshReceipt | null })
-  | { saved: true; compilationState: 'not-required'; preview: PlayerCommandReceipt | null }
+  | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
   | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
   | { saved: false | null; compilationState: null; preview: null }
 );
@@ -196,6 +196,14 @@ function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt
   };
 }
 
+function inputSaveMessage(outcome: Pick<InputSaveResult, 'preview' | 'previewError' | 'jobError'>) {
+  return ['输入方案已保存，无需编译技能',
+    outcome.previewError === null ? outcome.preview === null ? null : `所选 Player 重载：${outcome.preview.stage}`
+      : `预览提交失败：${outcome.previewError}`,
+    outcome.jobError === null ? null : `作业提交失败：${outcome.jobError}`,
+  ].filter(item => item !== null).join('；');
+}
+
 function acceptSaveJob(receipt: PlayerJobReceipt) {
   const waiting = receipt.stage === 'queued' || receipt.stage === 'running';
   const outcome = get().lastSave;
@@ -203,8 +211,8 @@ function acceptSaveJob(receipt: PlayerJobReceipt) {
   if (outcome) {
     const source = outcome.compilationState === 'succeeded'
       ? savedOutcome(outcome, outcome.preview, '').message
-      : `输入方案已保存${outcome.preview === null ? '' : `；所选 Player 重载：${outcome.preview.stage}`}`;
-    setDocument({ lastSave: { ...outcome, ok: waiting || receipt.stage === 'completed',
+      : outcome.compilationState === 'not-required' ? inputSaveMessage(outcome) : outcome.message;
+    setDocument({ lastSave: { ...outcome, ok: outcome.compilationState === 'not-required' || waiting || receipt.stage === 'completed',
       message: `${source}；封存作业${stageNames[receipt.stage]}${receipt.error === null ? '' : `：${receipt.error}`}`,
     } });
   }
@@ -728,12 +736,13 @@ export const authoringActions = {
       if (result.compilationState === 'not-required') {
         const preview = result.preview;
         const stage = preview?.stage;
-        const detail = result.job === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}`
+        const detail = result.job === null ? result.jobError === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}` : null
           : '新输入封存作业已受理，等待完成；旧观察层已过期';
-        const message = `已保存 ${result.inputs.length} 项输入方案，无需编译技能；${detail}`;
+        const message = `${inputSaveMessage(result)}（${result.inputs.length} 项）${detail === null ? '' : `；${detail}`}`;
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
-          ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
-        consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
+          previewError: result.previewError, jobError: result.jobError, ok: true, message, errors: [] });
+        consoleActions.log(result.previewError !== null || result.jobError !== null || stage === 'rejected' || stage === 'not-applied'
+          ? 'error' : 'info', '作者', message, JSON.stringify(result));
         setDocument({ inputRevision: { kind: 'saved', items: result.inputs } }, target);
         if (currentSkill && result.job !== null && !controller.signal.aborted) acceptSaveJob(result.job);
         if (currentSkill && stage === 'applied') await playerService.refresh();
@@ -755,9 +764,10 @@ export const authoringActions = {
         const message = rejection.stage === 'source-rejected'
           ? `已保存，${rejection.compilationState === 'not-required' ? '输入方案' : '技能内容'}严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
           : `已保存，编译失败（结束代码 ${rejection.exitCode}）`;
-        accept(rejection.content, {
-          ok: false, message, errors, saved: rejection.saved, compilationState: rejection.compilationState, preview: null,
-        });
+        const outcome = { ok: false, message, errors, saved: rejection.saved, preview: null } as const;
+        accept(rejection.content, rejection.compilationState === 'not-required'
+          ? { ...outcome, compilationState: 'not-required', previewError: null, jobError: null }
+          : { ...outcome, compilationState: rejection.compilationState });
         if (rejection.compilationState === 'not-required') setDocument({ inputRevision: { kind: 'rejected', reason: message } }, target);
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           rejection.error ?? ''].filter(Boolean).join('\n'));
