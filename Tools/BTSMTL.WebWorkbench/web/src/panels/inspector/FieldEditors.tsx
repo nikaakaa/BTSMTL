@@ -696,10 +696,10 @@ const belowPath = (path: string[], parent: string[]) => path.length > parent.len
 const rootFields = (fields: FieldMetadata[]) => fields.filter(field =>
   !fields.some(parent => belowPath(field.serializedMemberPath, parent.serializedMemberPath)));
 
-function FieldReferencePicker({ id, label, field, value, onChoose }: {
-  id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; onChoose(choice: ReferenceChoice): void;
+function FieldReferencePicker({ id, label, field, value, configuration, onChoose }: {
+  id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
 }) {
-  return <ReferencePicker id={id} label={label} value={value}
+  return <ReferencePicker id={id} label={label} value={value} configuration={configuration}
     catalog={field.choiceKind === null
       ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
       : field.choicesAvailability.available
@@ -716,19 +716,19 @@ function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: J
   if (choice.references !== null) authoringActions.mergeReferences(choice.references);
 }
 
-function ReferenceCollection({ id, label, field, value, onSet, onSetFields }: {
-  id: string; label: string; field: FieldMetadata; value: JsonValue[]; onSet: SetValue; onSetFields: SetFields;
+function ReferenceCollection({ id, label, field, value, configuration, onSet, onSetFields }: {
+  id: string; label: string; field: FieldMetadata; value: JsonValue[]; configuration: JsonObject; onSet: SetValue; onSetFields: SetFields;
 }) {
   const path = field.serializedMemberPath;
   return <div className={styles.group}>
     <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
     {value.map((element, index) => <div key={index} className={styles.listItem}>
-      <FieldReferencePicker id={`${id}/${index}`} label={`${label} [${index}]`} field={field} value={element}
+      <FieldReferencePicker id={`${id}/${index}`} label={`${label} [${index}]`} field={field} value={element} configuration={configuration}
         onChoose={choice => writeReferenceChoice(choice, [...path, index], choice.value, onSetFields)} />
       <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
         onClick={() => onSet(path, value.filter((_, item) => item !== index).map(item => cloneJson(item)))}><CloseIcon /></Button>
     </div>)}
-    <Row label="添加一项"><FieldReferencePicker id={`${id}/add`} label={`添加${label}`} field={field} value={undefined}
+    <Row label="添加一项"><FieldReferencePicker id={`${id}/add`} label={`添加${label}`} field={field} value={undefined} configuration={configuration}
       onChoose={choice => writeReferenceChoice(choice, path, [...value.map(item => cloneJson(item)), choice.value], onSetFields)} /></Row>
   </div>;
 }
@@ -773,7 +773,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   if (owner.kind === 'node' && Array.isArray(value) && field.flowOutputList)
     return <PortListEditor label={label} value={value as JsonObject[]} shape={shape} keys={path} node={node} outputs={outputs} onSet={onSet} />;
   if (Array.isArray(value) && field.choicesTarget === 'element')
-    return <ReferenceCollection id={id} label={label} field={field} value={value} onSet={onSet} onSetFields={onSetFields} />;
+    return <ReferenceCollection id={id} label={label} field={field} value={value} configuration={node} onSet={onSet} onSetFields={onSetFields} />;
   if (Array.isArray(value) && descendants.length !== 0) {
     const created = shape?.element?.defaultValue;
     const add = created === undefined ? undefined : () => set([...value.map(element => cloneJson(element)), cloneJson(created)]);
@@ -805,7 +805,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
   if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
-    return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value}
+    return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
       onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
   switch (field.valueKind) {
     case 'Boolean':

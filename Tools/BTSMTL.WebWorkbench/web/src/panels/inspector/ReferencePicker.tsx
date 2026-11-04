@@ -1,33 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReferenceChoice } from '../../api/authoring';
 import {
-  acceptsReferenceDrag, readReferenceDrop, referenceValueKey, useReferenceSelection,
+  acceptsReferenceDrag, matchesReferenceChoice, readReferenceDrop, referenceValueKey, useReferenceSelection,
   type ReferenceCatalog,
 } from '../../state/referenceSelection';
-import type { JsonValue } from '../../state/skillJson';
+import type { JsonObject, JsonValue } from '../../state/skillJson';
 import { Button, TextInput } from '../../ui/controls';
 import styles from './referencePicker.module.css';
 
-export function ReferencePicker({ id, label, value, catalog, onChoose }: {
-  id: string; label: string; value: JsonValue | undefined; catalog: ReferenceCatalog;
+export function ReferencePicker({ id, label, value, configuration, catalog, onChoose }: {
+  id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
   onChoose(choice: ReferenceChoice): void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [rejection, setRejection] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
+  const selection = { value, configuration };
   const selected = catalog.kind === 'ready'
-    ? catalog.items.filter(item => referenceValueKey(item.value) === referenceValueKey(value)) : [];
+    ? catalog.items.filter(item => matchesReferenceChoice(item, selection)) : [];
   const invalid = catalog.kind === 'ready' && selected.length === 0 && value !== undefined;
   const query = search.toLocaleLowerCase();
   const items = catalog.kind === 'ready' ? catalog.items.filter(item =>
     [item.name, item.detail, item.source, referenceValueKey(item.value)].some(text => text?.toLocaleLowerCase().includes(query))) : [];
   const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : referenceValueKey(value) ?? '未设置';
-  const focus = () => useReferenceSelection.setState({ field: { id, name: label, catalog, value, choose: onChoose } });
+  const focus = () => useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose } });
   useEffect(() => {
     const current = useReferenceSelection.getState().field;
-    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, catalog, value, choose: onChoose } });
-  }, [id, label, catalog, value, onChoose]);
+    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose } });
+  }, [id, label, catalog, value, configuration, onChoose]);
   useEffect(() => () => {
     if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null });
   }, [id]);
@@ -65,7 +66,7 @@ export function ReferencePicker({ id, label, value, catalog, onChoose }: {
         onChange={event => setSearch(event.currentTarget.value)} />
       <div className={styles.list} role="listbox" aria-label={label}>
         {items.map((item, index) => <button type="button" key={`${index}:${referenceValueKey(item.value)}`}
-          className={styles.item} role="option" aria-selected={referenceValueKey(item.value) === referenceValueKey(value)}
+          className={styles.item} role="option" aria-selected={matchesReferenceChoice(item, selection)}
           onClick={() => choose(item)}>
           <strong>{item.name}</strong>
           <span>{item.detail}</span>

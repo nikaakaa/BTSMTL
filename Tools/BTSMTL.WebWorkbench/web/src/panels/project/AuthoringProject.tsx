@@ -5,7 +5,7 @@ import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
 import { authoringActions, authoringDocument, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
-import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
+import { matchesReferenceChoice, referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
@@ -59,7 +59,7 @@ export function AuthoringProject() {
       `${item.name} ${item.ownerName} ${item.file} ${item.identity}`.toLocaleLowerCase().includes(query));
   }, [items, search, kind, ownership]);
   const item = items?.find(value => keyOf(value) === selected) ?? null;
-  const referencedItem = field?.catalog.kind === 'ready' && field.catalog.items.some(choice => referenceValueKey(choice.value) === referenceValueKey(field.value))
+  const referencedItem = field?.catalog.kind === 'ready' && field.catalog.items.some(choice => matchesReferenceChoice(choice, field))
     ? items?.find(value => referenceValueKey(value.identity) === referenceValueKey(field.value)) : undefined;
   const referencedIndex = referencedItem ? shown.findIndex(value => keyOf(value) === keyOf(referencedItem)) : -1;
   if (available === false) return <Empty text={reason ?? '作者目录不可用'} />;

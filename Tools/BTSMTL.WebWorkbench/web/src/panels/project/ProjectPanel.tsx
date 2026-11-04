@@ -6,7 +6,7 @@ import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } 
 import { panelInfo } from '../../shell/panelTypes';
 import { writeResourceReady } from '../../shell/readiness';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
-import { referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
+import { matchesReferenceChoice, referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { authoringDocument, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
@@ -57,7 +57,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
   const items = field.catalog.kind === 'ready' ? field.catalog.items.filter(choice => `${choice.name} ${choice.detail} ${choice.source}`.toLocaleLowerCase().includes(query)) : [];
-  const selected = items.findIndex(choice => referenceValueKey(choice.value) === referenceValueKey(field.value));
+  const selected = items.findIndex(choice => matchesReferenceChoice(choice, field));
   return <div className={projectStyles.choices}><Fold title={`当前字段：${field.name}`} defaultOpen>
     {field.catalog.kind === 'unavailable' ? <div className={projectStyles.note}>{field.catalog.reason}</div> : <>
       <TextInput aria-label="筛选当前字段候选" placeholder="搜索名称、说明或来源" value={search}
@@ -66,7 +66,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
         revealKey={field.id} revealIndex={selected < 0 ? undefined : selected} render={index => {
           const choice = items[index];
           return <div className={projectStyles.candidateRow}><button className={projectStyles.row} draggable
-          aria-selected={referenceValueKey(choice.value) === referenceValueKey(field.value)}
+          aria-selected={matchesReferenceChoice(choice, field)}
           onClick={() => field.choose(choice)}
           onDragStart={event => { if (field.catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choice); }}>
           <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>

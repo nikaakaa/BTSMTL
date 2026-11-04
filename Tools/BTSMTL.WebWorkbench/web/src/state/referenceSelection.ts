@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
-import { parseSkillJson, stringifySkillJson, type JsonValue } from './skillJson';
+import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
 
 export type ReferenceCatalog =
   | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
@@ -11,6 +11,7 @@ export interface ReferenceFieldSelection {
   name: string;
   catalog: ReferenceCatalog;
   value: JsonValue | undefined;
+  configuration: JsonObject;
   choose(choice: ReferenceChoice): void;
 }
 
@@ -18,6 +19,10 @@ export const useReferenceSelection = create<{ field: ReferenceFieldSelection | n
 
 export const referenceValueKey = (value: JsonValue | undefined) =>
   value === undefined ? undefined : stringifySkillJson(value, '');
+
+export const matchesReferenceChoice = (choice: ReferenceChoice, selection: Pick<ReferenceFieldSelection, 'value' | 'configuration'>) =>
+  referenceValueKey(choice.value) === referenceValueKey(selection.value) && choice.associated.every(field =>
+    referenceValueKey(field.value) === referenceValueKey(getIn(selection.configuration, field.serializedMemberPath)));
 
 export const referenceTargetKey = (target: ReferenceChoiceTarget) => target.kind === 'Node'
   ? JSON.stringify([target.kind, target.graphId, target.nodeId])
