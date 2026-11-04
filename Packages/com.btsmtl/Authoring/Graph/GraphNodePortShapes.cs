@@ -300,7 +300,6 @@ namespace BTSMTL.Authoring.Graph
         public string Declaration { get; }
     }
 
-#if UNITY_EDITOR || BTSMTL_AUTHORING
     // 唯一端口生成器：节点类型级声明在首次读取时解析并缓存，按节点数据与被引用接口产出完整端口。
     public static class GraphNodePortShapes
     {
@@ -439,7 +438,6 @@ namespace BTSMTL.Authoring.Graph
             }
         }
     }
-#endif
 
     // 节点的扩展操作合同：由 GraphNodeExtension 特性指向的合同类型解析，按节点类型缓存。
     public static class GraphNodeContracts
