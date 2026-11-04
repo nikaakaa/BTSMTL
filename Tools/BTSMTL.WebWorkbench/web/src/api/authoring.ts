@@ -15,6 +15,7 @@ export type SkillFile = {
 export type SkillEditingView = {
   skills: Record<string, SkillSaveRequest['content']>;
   previewDefinitionGuid: string | null;
+  product: Pick<AuthoringProduct, 'guid' | 'revision'> | null;
   scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
 
@@ -302,6 +303,9 @@ export interface AuthoringCarriers {
   items: AuthoringCarrier[];
 }
 
+const readAuthoringProducts = object({ items: array(object({ guid: text, name: text, source: text, revision: text })) });
+export type AuthoringProduct = ReturnType<typeof readAuthoringProducts>['items'][number];
+
 export interface BlackboardItem {
   identity: string;
   graphId: string;
@@ -524,13 +528,47 @@ export interface SkillFormatError {
   message: string;
 }
 
-export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
-  | { stage: 'source-rejected'; compilationState: 'not-started' | 'not-required' } & (
-    | { diagnostic: { message: string; errors: SkillFormatError[] }; error?: never }
-    | { diagnostic?: never; error: string }
-  )
-  | { stage: 'compilation-failed'; compilationState: 'failed'; diagnostic?: never; exitCode: number; output: string; error: string; outputPath: string; errorPath: string }
-);
+const readSkillSnapshot = object({ skill: text, revision: text, files: array(object({ path: text, content: text })) });
+const readSkillFormatError = object({
+  code: text, message: text, authoring: optional(nullable(text)), skill: optional(nullable(text)),
+  type: optional(nullable(text)), file: optional(nullable(text)), graphId: optional(nullable(text)),
+  nodeId: optional(nullable(text)), path: optional(nullable(text)),
+});
+const readSaved = (value: unknown, path?: string) => {
+  if (!boolean(value, path)) throw new Error(`${path} 需要 true`);
+  return true as const;
+};
+const readSavedContent = object({ saved: readSaved, content: readSkillSnapshot });
+const readCompilerFailure = object({ exitCode: number, output: text, error: text, outputPath: text, errorPath: text });
+
+function readSourceRejection(value: unknown) {
+  const { diagnostic } = object({ diagnostic: optional(opaque) })(value);
+  const detail = diagnostic === undefined
+    ? { message: object({ error: text })(value).error, errors: [] }
+    : object({ message: text, errors: array(readSkillFormatError) })(diagnostic);
+  const { compilationState } = object({ compilationState: choice('not-started', 'not-required') })(value);
+  if (compilationState === 'not-required') return { ...readSavedContent(value), compilationState, detail };
+  const content = object({ saved: boolean, content: nullable(readSkillSnapshot) })(value);
+  if (content.saved && content.content !== null)
+    return { saved: true as const, content: content.content, compilationState, detail };
+  if (!content.saved && content.content === null)
+    return { saved: false as const, content: null, compilationState, detail };
+  throw new Error('SkillSave.saved 与 content 不一致');
+}
+
+export function readSkillSaveRejection(value: unknown) {
+  const { stage } = object({ stage: choice('source-rejected', 'compilation-failed',
+    'unity-publication-failed', 'unity-publication-rejected') })(value);
+  switch (stage) {
+    case 'source-rejected': return { ...readSourceRejection(value), stage };
+    case 'compilation-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
+      ...object({ compilationState: choice('failed') })(value) };
+    case 'unity-publication-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
+      ...object({ compilationState: choice('succeeded'), publicationState: choice('failed') })(value) };
+    case 'unity-publication-rejected': return { ...readSavedContent(value), stage,
+      ...object({ compilationState: choice('succeeded'), publicationState: choice('failed'), error: text })(value) };
+  }
+}
 
 export interface SkillDocumentGraph extends GraphDefinition {
   authoringPath: string;
@@ -624,6 +662,7 @@ interface SkillCreationDraft {
 }
 
 export const authoringApi = {
+  products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
   locateAsset: (identity: string) => postJson<AssetLocateResult>('/api/authoring/locate', { identity }),
   renameBusinessKey: (request: BusinessKeyRenameRequest, signal?: AbortSignal) =>

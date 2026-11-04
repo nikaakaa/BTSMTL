@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillDeleteResult, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
+  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
@@ -67,6 +67,7 @@ export interface AuthoringDocument {
   documentError: string | null;
   tickRate: number | null;
   previewDefinitionGuid: string | null;
+  product: SkillEditingView['product'];
 }
 
 interface SaveOutcomeMessage {
@@ -78,7 +79,9 @@ interface SaveOutcomeMessage {
 export type SaveOutcome = SaveOutcomeMessage & (
   | (SavedCompilation & { preview: PlayerSkillRefreshReceipt | null })
   | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
-  | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
+  | { saved: boolean; compilationState: 'not-started'; preview: null }
+  | { saved: true; compilationState: 'failed'; preview: null }
+  | { saved: true; compilationState: 'succeeded'; publicationState: 'failed'; preview: null }
   | { saved: false | null; compilationState: null; preview: null }
 );
 
@@ -95,7 +98,7 @@ const newDocument = (): AuthoringDocument => ({
   files: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, previewDefinitionGuid: null,
+  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, previewDefinitionGuid: null, product: null,
 });
 
 const closedDocument = newDocument();
@@ -718,12 +721,17 @@ export const authoringActions = {
         return [name, { files: authoringActions.changedFiles({ kind: 'skill', name }), removedFiles: document.removed }];
       })),
       previewDefinitionGuid: state.previewDefinitionGuid,
+      product: state.product,
       scene: selectedScene(useWorkbench.getState()),
     };
   },
 
   selectPreviewCarrier(identity: string | null) {
     setDocument({ previewDefinitionGuid: identity, version: get().version + 1 });
+  },
+
+  selectProduct(product: SkillEditingView['product']) {
+    setDocument({ product, version: get().version + 1 });
   },
 
   async save() {
@@ -796,18 +804,29 @@ export const authoringActions = {
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 422) {
-        const rejection = JSON.parse(error.raw) as SkillSaveRejection;
-        const errors = rejection.diagnostic?.errors ?? [];
+        const rejection = readSkillSaveRejection(JSON.parse(error.raw));
+        const errors = rejection.stage === 'source-rejected' ? rejection.detail.errors : [];
+        const detail = rejection.stage === 'source-rejected' ? rejection.detail.message : rejection.error;
         const message = rejection.stage === 'source-rejected'
-          ? `已保存，${rejection.compilationState === 'not-required' ? '输入方案' : '技能内容'}严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
-          : `已保存，编译失败（结束代码 ${rejection.exitCode}）`;
-        const outcome = { ok: false, message, errors, saved: rejection.saved, preview: null } as const;
-        accept(rejection.content, rejection.compilationState === 'not-required'
-          ? { ...outcome, compilationState: 'not-required', previewError: null, jobError: null }
-          : { ...outcome, compilationState: rejection.compilationState });
+          ? `${rejection.saved ? '已保存' : '尚未保存'}，${rejection.compilationState === 'not-required' ? '输入方案' : '技能内容'}严格读取拒绝 ${errors.length || 1} 项：${detail}`
+          : rejection.stage === 'compilation-failed' ? `已保存，编译失败（结束代码 ${rejection.exitCode}）`
+            : `已保存且编译成功，Unity 资产发布失败：${detail}`;
+        const outcome = { ok: false, message, errors, preview: null } as const;
+        let lastSave: SaveOutcome;
+        if (rejection.stage === 'source-rejected') {
+          lastSave = rejection.compilationState === 'not-required'
+            ? { ...outcome, saved: true, compilationState: 'not-required', previewError: null, jobError: null }
+            : { ...outcome, saved: rejection.saved, compilationState: 'not-started' };
+        } else if (rejection.stage === 'compilation-failed') {
+          lastSave = { ...outcome, saved: true, compilationState: 'failed' };
+        } else {
+          lastSave = { ...outcome, saved: true, compilationState: 'succeeded', publicationState: 'failed' };
+        }
+        if (rejection.content === null) setDocument({ saving: false, lastSave }, target);
+        else accept(rejection.content, lastSave);
         if (rejection.compilationState === 'not-required') setDocument({ inputRevision: { kind: 'rejected', reason: message } }, target);
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
-          rejection.error ?? ''].filter(Boolean).join('\n'));
+          detail, error.raw].filter(Boolean).join('\n'));
         return;
       }
       const revisionConflict = error instanceof ApiError && error.status === 409;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
+import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type AuthoringProduct, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { referenceTargetKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
@@ -130,6 +130,7 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
       <div className={styles.note}>{shown.length} 个载体</div>
     </div>
     <div className={styles.details}>
+      {target?.kind === 'skill' && <ProductScope refresh={refresh} />}
       <div className={styles.facts}>
         <span>{target?.kind === 'skill' ? `${target.name} 的预览载体` : '打开技能后可选择预览载体'}</span>
         <strong>{preview === null ? '未选择' : currentPreview?.name ?? '原选择已失效，身份已保留'}</strong>
@@ -154,6 +155,32 @@ export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTa
       </> : <Empty text={catalog?.availability.available && focusTarget !== null && selected === focusTarget.carrierIdentity
         ? `引用的来源载体已失效，原身份已保留：${focusTarget.carrierIdentity}` : '选择载体查看表现资源与锚点'} />}
     </div>
+  </div>;
+}
+
+function ProductScope({ refresh }: { refresh: number }) {
+  const [products, setProducts] = useState<AuthoringProduct[] | null>(null);
+  const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
+  const product = useAuthoring(state => authoringDocument(state).product);
+  useEffect(() => {
+    const controller = new AbortController();
+    setFailure(null);
+    authoringApi.products(controller.signal).then(result => setProducts(result.items), (error: unknown) => {
+      if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
+    });
+    return () => controller.abort();
+  }, [refresh]);
+  const current = products?.find(item => item.guid === product?.guid);
+  return <div className={styles.facts}>
+    <span>当前技能的产品范围</span>
+    <MenuButton label="选择产品作者范围" caret entries={[
+      { label: '不选择产品', onSelect: () => authoringActions.selectProduct(null) },
+      ...(products ?? []).map(item => ({ label: item.name, tip: item.source,
+        onSelect: () => authoringActions.selectProduct({ guid: item.guid, revision: item.revision }) })),
+    ]}>{product === null ? '未选择产品' : current?.name ?? '原选择已失效，身份已保留'}</MenuButton>
+    <small>从所选产品读取技能可创建的载体，运行场景另行选择。</small>
+    {current && product && current.revision !== product.revision && <span className={styles.issue}>产品已有新修订，请重新选择后继续。</span>}
+    {failure && <ErrorLine {...failure} />}
   </div>;
 }
 
