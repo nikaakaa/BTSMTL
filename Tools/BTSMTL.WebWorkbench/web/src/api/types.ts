@@ -284,19 +284,20 @@ export interface AuthorTrack {
   markers: { id: string; seconds: number; graphId: string }[];
 }
 
-export interface AuthorTimeline {
+export type AuthorTimeline = {
   documentId: string;
-  contentIdentity: string;
-  contentRevision: string | null;
   displayName: string;
   tracks: AuthorTrack[];
-}
+} & (
+  | { contentIdentity: string; contentRevision: string }
+  | { contentIdentity: null; contentRevision: null }
+);
 
 export interface TimelinePage extends RangePage<{
   actorId: string;
   programId: string;
   programRevision: string;
-  timeline: AuthorTimeline;
+  timeline: Extract<AuthorTimeline, { contentRevision: string }>;
 }> {
   protocol: string;
   runId: string;

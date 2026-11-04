@@ -323,9 +323,9 @@ async function trackPreview(input: {
 }
 
 // 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
-export function documentTimelines(files: Record<string, string>, sourceRevision: string | null): AuthorTimeline[] {
+export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
   return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json'))
-    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject, sourceRevision));
+    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject));
 }
 
 export interface AuthorInputScheme {
@@ -376,9 +376,9 @@ export function useInputContext(documentId: string | null) {
   return { kind: 'ready', scheme, scene, actor, tickRate: catalog.tickRate } as const;
 }
 
-function timelineOf(documentId: string, document: JsonObject, sourceRevision: string | null): AuthorTimeline {
+function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
   return {
-    documentId, contentIdentity: documentId, contentRevision: sourceRevision, displayName: document.m_Name as string,
+    documentId, contentIdentity: null, contentRevision: null, displayName: document.m_Name as string,
     tracks: (document.m_Tracks as JsonObject[]).map(track => ({
       id: track.m_AuthoringId as string, contract: track.ContractKind as string, displayName: track.Name as string,
       muted: track.m_PersistentMuted === true,
@@ -397,10 +397,10 @@ function timelineOf(documentId: string, document: JsonObject, sourceRevision: st
 
 // 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
-  const { documentGraphs, files, target, sourceRevision } = get();
+  const { documentGraphs, files, target } = get();
   useWorkbench.setState({
     graphs: target?.kind === 'skill' ? documentGraphs : null, graphAvailability: [],
-    timelines: target ? documentTimelines(files, sourceRevision) : [],
+    timelines: target ? documentTimelines(files) : [],
   });
   reconcileSelection();
 }
@@ -2055,9 +2055,10 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
     const document = edited[timelinePath(timeline.documentId)] as JsonObject | undefined;
     if (!document) return timeline;
     const names = new Map(timeline.tracks.flatMap(track => track.clips.map(clip => [clip.id, clip.displayName])));
-    const tracks = timelineOf(timeline.documentId, document, null).tracks;
+    const tracks = timelineOf(timeline.documentId, document).tracks;
     return {
       ...timeline,
+      contentIdentity: null,
       contentRevision: null,
       tracks: tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
     };
@@ -2065,7 +2066,7 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
   for (const [path, document] of Object.entries(edited))
     if (path.startsWith('timelines/') && !removed.includes(path)) {
       const id = path.slice('timelines/'.length, -'.json'.length);
-      if (!source.some(timeline => timeline.documentId === id)) result.push(timelineOf(id, document as JsonObject, null));
+      if (!source.some(timeline => timeline.documentId === id)) result.push(timelineOf(id, document as JsonObject));
     }
   return result;
 }
