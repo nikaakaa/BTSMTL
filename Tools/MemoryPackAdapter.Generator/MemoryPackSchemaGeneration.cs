@@ -17,14 +17,17 @@ namespace ThirdPerson.MemoryPackAdapters
             readonly IDictionary<string, LogicalStoragePlan> m_LogicalStorages;
             readonly Func<ITypeSymbol, ITypeSymbol, bool> m_ImplicitReference;
             readonly string m_StringFormat;
+            readonly IDictionary<string, StorageProjection> m_Projections;
 
             internal MemoryPackSchemas(Compilation compilation, IDictionary<string, LogicalStoragePlan> logicalStorages,
-                Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, string stringFormat)
+                Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, string stringFormat,
+                IDictionary<string, StorageProjection> projections)
             {
                 m_Library = compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer").ContainingAssembly.Identity.ToString();
                 m_LogicalStorages = logicalStorages;
                 m_ImplicitReference = implicitReference;
                 m_StringFormat = stringFormat;
+                m_Projections = projections;
             }
 
             internal string Hash(ITypeSymbol type) => Build((code, visited) => AppendType(code, type, visited));
@@ -81,6 +84,22 @@ namespace ThirdPerson.MemoryPackAdapters
                     AppendType(code, record.EnumUnderlyingType, visited);
                     foreach (IFieldSymbol field in record.GetMembers().OfType<IFieldSymbol>().Where(field => field.HasConstantValue))
                         code.Append(field.Name).Append('=').Append(Convert.ToString(field.ConstantValue, CultureInfo.InvariantCulture)).Append('\n');
+                    return;
+                }
+                if (m_Projections.TryGetValue(Identity(type), out StorageProjection projection))
+                {
+                    code.Append("projection ").Append(projection.Purpose).Append(':').Append(projection.Factory.ToDisplayString()).Append('\n');
+                    foreach (IParameterSymbol parameter in projection.Factory.Parameters)
+                        foreach (AttributeData attribute in parameter.GetAttributes().Where(attribute =>
+                            Identity(attribute.AttributeClass) == StorageSourceAttribute || Identity(attribute.AttributeClass) == StorageContextAttribute))
+                            code.Append(attribute.ToString()).Append('\n');
+                    foreach (Member member in projection.Members)
+                    {
+                        code.Append("member ").Append(member.Name).Append('\n');
+                        AppendType(code, member.Type, visited);
+                    }
+                    foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
+                        code.Append("presence ").Append(presence.Name).Append('\n');
                     return;
                 }
                 if (IsUnmanagedValue(type))

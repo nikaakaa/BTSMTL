@@ -56,6 +56,30 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueStorageIgnoreAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class ValueSerializationPurposeAttribute : Attribute
+    {
+        public ValueSerializationPurposeAttribute(string name) => Name = name;
+        public string Name { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Constructor | AttributeTargets.Method)]
+    public sealed class ValueStorageProjectionAttribute : Attribute
+    {
+        public ValueStorageProjectionAttribute(string purpose) => Purpose = purpose;
+        public string Purpose { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class ValueStorageSourceAttribute : Attribute
+    {
+        public ValueStorageSourceAttribute(string path) => Path = path;
+        public string Path { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Parameter)]
+    public sealed class ValueStorageContextAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Parameter)]
     public sealed class ValueRecordedStateConstructorAttribute : Attribute { }
 

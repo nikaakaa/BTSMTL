@@ -30,19 +30,22 @@ namespace ThirdPerson.ValueGeneration
         internal static bool HasValueStorageContract(ITypeSymbol type) => type is INamedTypeSymbol record &&
             (record.TypeKind == TypeKind.Struct || record.TypeKind == TypeKind.Class) &&
             (HasAttribute(record, StorageAttribute) || HasAttribute(record, UnionAttribute) ||
+                record.GetMembers().OfType<IMethodSymbol>().Any(method =>
+                    HasAttribute(method, "ThirdPersonSimulation.ValueStorageProjectionAttribute")) ||
                 record.GetMembers("ReadValueStorage").OfType<IMethodSymbol>().Any() ||
                 record.GetMembers().Any(member => HasAttribute(member, UnionCaseAttribute)));
 
         internal static bool RequiresValueFormatter(ITypeSymbol type) =>
-            SequenceElement(type) is ITypeSymbol element ? RequiresValueFormatter(element) :
+            FixedSequenceElement(type) != null || (SequenceElement(type) is ITypeSymbol element ? RequiresValueFormatter(element) :
                 NullableElement(type) is ITypeSymbol nullable ? RequiresValueFormatter(nullable) :
-                type.IsUnmanagedType && !IsUnmanagedValue(type);
+                type.IsUnmanagedType && !IsUnmanagedValue(type));
 
         internal static bool IsUnmanagedValue(ITypeSymbol type) => IsUnmanagedValue(type, new HashSet<string>());
 
         static bool IsUnmanagedValue(ITypeSymbol type, HashSet<string> path)
         {
             if (!type.IsUnmanagedType) return false;
+            if (FixedSequenceElement(type) != null) return false;
             if (NullableElement(type) is ITypeSymbol nullable) return IsUnmanagedValue(nullable, path);
             if (HasValueStorageContract(type)) return false;
             if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum || !(type is INamedTypeSymbol record))
@@ -83,6 +86,20 @@ namespace ThirdPerson.ValueGeneration
                         return named.TypeArguments[0];
                 }
             }
+            return FixedSequenceElement(type);
+        }
+
+        internal static ITypeSymbol FixedSequenceElement(ITypeSymbol type)
+        {
+            if (!(type is INamedTypeSymbol named) || !named.IsValueType ||
+                !named.GetMembers("Length").OfType<IPropertySymbol>().Any(property => property.Type.SpecialType == SpecialType.System_Int32) ||
+                !named.GetMembers("Capacity").OfType<IPropertySymbol>().Any(property => property.Type.SpecialType == SpecialType.System_Int32))
+                return null;
+            foreach (INamedTypeSymbol contract in named.AllInterfaces.Where(contract =>
+                Identity(contract.OriginalDefinition) == "System.Collections.Generic.IEnumerable<T>"))
+                if (named.GetMembers("Add").OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 1 &&
+                    SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, contract.TypeArguments[0])))
+                    return contract.TypeArguments[0];
             return null;
         }
 
