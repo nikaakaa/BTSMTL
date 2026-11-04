@@ -60,7 +60,7 @@ export function QuickPreview() {
   const selectedScheme = description?.root?.inputSchemes.find(item => item.index === state.scheme);
   return <section className={styles.preview} aria-label="快预览路线">
     <PanelBar wrap>
-      <strong>快预览</strong>
+      <strong>快预览 · 路线</strong>
       {description?.root && <span>{description.root.label}</span>}
       {description?.root && (state.target?.root?.kind === 'nativeDocument' || state.target?.root?.kind === 'webEditingView') && description.root.machines.length > 1 &&
         <Select label="根状态机" value={String(state.target.root.machine)} disabled={state.description.kind === 'loading'}
@@ -82,7 +82,8 @@ export function QuickPreview() {
       { displayName: '推导来源', value: description.source === null ? '尚未选根' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
         : description.source.documents.some(document => document.hasUnsavedChanges === true) ? '包含未保存修改'
         : description.source.documents.some(document => document.hasUnsavedChanges === null) ? '保存状态未提供' : '已保存作者内容' }]} />}
-    <QuickInputForm description={description} plan={plan} reason={reason} />
+    <QuickInputForm key={JSON.stringify([state.target === null ? null : quickTargetKey(state.target),
+      selectedScheme?.index ?? null, selectedScheme?.revision ?? null])} description={description} plan={plan} reason={reason} />
     <Fold title="来源与输出">
       <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
         onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>
@@ -95,7 +96,7 @@ export function QuickPreview() {
           value: `${document.revision} · ${document.hasUnsavedChanges === null ? '保存状态未提供' : document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision ?? '未提供磁盘修订'}` })),
       ]} />}
       {status && <Facts fields={[{ displayName: '作业', value: status.jobId }, { displayName: '阶段', value: status.stage },
-        { displayName: 'Native 模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? 'Unavailable' },
+        { displayName: '执行模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? '未记录' },
         { displayName: '输出目录', value: status.outputDirectory ?? '尚未提供' }, { displayName: '摘要', value: status.summaryPath ?? '尚未提供' }]} />}
     </Fold>
     {(job.kind === 'failed' || job.kind === 'cancel-failed') && <p className={styles.notice} role="alert">{job.reason}</p>}
@@ -110,11 +111,8 @@ export function QuickPreview() {
 
 function QuickInputForm({ description, plan, reason }: { description: PreviewQuickDescription | null; plan: PreviewQuickPlan | null; reason: string | null }) {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
-  const target = useWorkbench(state => state.quickPreview.target);
   const selected = useWorkbench(state => state.quickPreview.scheme);
   const scheme = description?.root?.inputSchemes.find(item => item.index === selected);
-  const scope = scheme && target ? JSON.stringify([quickTargetKey(target), scheme.index, scheme.revision]) : null;
-  const [boundScope, setBoundScope] = useState(scope);
   const [points, setPoints] = useState<{ inputId: string; time: number | null; value: string }[]>([]);
   const [conditions, setConditions] = useState<PreviewQuickConditionPoint[]>([]);
   const [inputId, setInputId] = useState<string | null>(null);
@@ -124,15 +122,6 @@ function QuickInputForm({ description, plan, reason }: { description: PreviewQui
   const editPoints = (value: typeof points) => { quickPreview.inputChanged(); setPoints(value); };
   const editConditions = (value: typeof conditions) => { quickPreview.inputChanged(); setConditions(value); };
   const editRangeEnd = (value: number | null) => { quickPreview.inputChanged(); setRangeEnd(value); };
-  if (scope !== null && scope !== boundScope) {
-    setBoundScope(scope);
-    setPoints([]);
-    setConditions([]);
-    setInputId(null);
-    setConditionKey(null);
-    setRangeEnd(null);
-    setIssue(null);
-  }
   const generate = async () => {
     try {
       const inputPoints = points.map(point => {

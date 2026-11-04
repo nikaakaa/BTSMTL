@@ -279,10 +279,10 @@ function PreviewModeChoice() {
       : state.live?.player?.source?.adoptedMode ?? null,
   })));
   if (!modes?.length && !observing) return null;
-  const adoptedLabel = adoptedMode === null ? 'Unavailable' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
+  const adoptedLabel = adoptedMode === null ? '未记录' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
   return (
     <div className={styles.modes} role="group" aria-label="预览档位">
-      <Tip content="快档推导路线，真档使用正式运行；实际采用以宿主回执为准"><span className={styles.dim}>请求</span></Tip>
+      <Tip content="按宿主提供的可用档位提交请求；实际采用以宿主回执为准"><span className={styles.dim}>请求</span></Tip>
       {modes?.map(mode => (
         <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason} disabled={!mode.available}
           onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
