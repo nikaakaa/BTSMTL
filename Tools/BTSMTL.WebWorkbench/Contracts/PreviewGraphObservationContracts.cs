@@ -5,7 +5,14 @@ public sealed record PreviewModeAvailability(string Id, string DisplayName, bool
     public bool CreatesRun { get; init; }
     public string[] DefaultChannels { get; init; } = [];
 }
-public sealed record PreviewObservationAvailability(string Channel, bool Available, bool Complete, string Reason);
+public sealed record PreviewObservationAvailability(string Channel, bool Available, bool Complete, string Reason)
+{
+    public PreviewDiagnosticCoverage[]? Coverage { get; init; }
+}
+public sealed record PreviewDiagnosticCoverage(int ObjectSlot, string? FirstFrame, string? LastFrame,
+    int LogicFrameCount, int PresentationEvaluationCount, bool StartedBeforeExecution,
+    string PublishedEventCount, string ArchivedEventCount, string FrameMappedEventCount,
+    string DiscardedTraceEventCount, string EvictedStateCount);
 public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, string ProgramRevision,
     string InvocationPath, string? ParentInvocationPath, string ActionId, string ExecutionGeneration,
     string InvocationGeneration, string? ParentInvocationGeneration, string PlaybackId)
