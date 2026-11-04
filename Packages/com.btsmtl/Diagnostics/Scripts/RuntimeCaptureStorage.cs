@@ -68,6 +68,7 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeLiveStateStore m_State;
         readonly List<RuntimeLiveStateChange> m_StateChanges;
         public RuntimeLiveStateRead State { get; private set; }
+        public long EvictedStateCount => m_State.EvictedStateCount;
         public RuntimeCaptureSpanAccumulator TimelineSpans;
         public long TimelineVersion;
         public RuntimeTraceEvent Selected { get; set; }

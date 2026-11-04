@@ -416,6 +416,7 @@ namespace BTSMTL.Diagnostics
 
         public long Version => m_Version;
         public int Capacity => m_MaxChanges;
+        public long EvictedStateCount => m_EvictedStates;
 
         public bool Upsert(in RuntimeTraceEvent traceEvent)
         {

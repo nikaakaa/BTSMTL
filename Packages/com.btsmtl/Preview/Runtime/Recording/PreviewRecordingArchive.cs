@@ -71,7 +71,9 @@ namespace BTSMTL.Preview
                 throw new InvalidOperationException("预览对象诊断源未接受录制。");
         }
 
-        public void Complete(Action detachSources, Action<int, long> diagnosticCompleted)
+        public RuntimeCaptureFileArchive DiagnosticArchive(int index) => m_DiagnosticArchives[index];
+
+        public void Complete(Action detachSources, Action<int, RuntimeCaptureFileArchive> diagnosticCompleted)
         {
             Closed = true;
             detachSources();
@@ -80,7 +82,7 @@ namespace BTSMTL.Preview
                 m_DiagnosticStores[i].EndCapture();
                 RuntimeCaptureFileArchive archive = m_DiagnosticArchives[i];
                 archive.Complete();
-                diagnosticCompleted(i, archive.Version);
+                diagnosticCompleted(i, archive);
             }
             Frames?.Release();
             Images?.Release();

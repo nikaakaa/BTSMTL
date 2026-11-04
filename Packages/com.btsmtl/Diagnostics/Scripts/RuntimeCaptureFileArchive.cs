@@ -121,7 +121,8 @@ namespace BTSMTL.Diagnostics
         public long BytesWritten { get; private set; }
         public int MaximumPendingPages { get; private set; }
         public double LastReadMilliseconds { get; private set; }
-        internal long WrittenEventCount => m_Written;
+        public long WrittenEventCount => m_Written;
+        public long EvictedStateCount => m_State.EvictedStateCount;
 
         public void RequestReset()
         {
