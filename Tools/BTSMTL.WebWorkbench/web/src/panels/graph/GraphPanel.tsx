@@ -1183,7 +1183,7 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
   const inline = input && !linked;
   return (
     <Tip name={port.displayName} content={sample
-      ? `${port.id}\n${sample.valueType} · ${sample.value}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
+      ? `${port.id}\n${sample.valueType} · ${sample.sourceAvailable ? sample.value : 'Unavailable'}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
         (sample.loopScopes === null ? sample.loopScopeAvailability?.reason ?? '循环范围未记录' : sample.loopScopes.map(loopScopeLabel).join('\n')) +
         `\n${sample.activationAvailability?.reason ?? ''}`
       : `${port.id}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
@@ -1200,7 +1200,7 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
             onChange={key => setChoice({ scope: observationScope, key })} />
         </span>}
         {sample && (values || inline) && <span className={styles.portValue} data-inline={inline || undefined}
-          data-unavailable={!sample.sourceAvailable || undefined}>{sample.value}</span>}
+          data-unavailable={!sample.sourceAvailable || undefined}>{sample.sourceAvailable ? sample.value : 'Unavailable'}</span>}
       </span>
     </Tip>
   );

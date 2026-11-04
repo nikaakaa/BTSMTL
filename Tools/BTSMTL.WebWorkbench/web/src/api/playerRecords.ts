@@ -72,7 +72,13 @@ export const readPlayerHost = object({
   })),
 });
 const field = object({ displayName: text, value: text });
-const availability = object({ channel: text, available: boolean, complete: boolean, reason: text });
+const diagnosticCoverage = object({ objectSlot: number, firstFrame: nullable(text), lastFrame: nullable(text),
+  logicFrameCount: number, presentationEvaluationCount: number, startedBeforeExecution: boolean,
+  publishedEventCount: text, archivedEventCount: text, frameMappedEventCount: text,
+  discardedTraceEventCount: text, evictedStateCount: text });
+const availability = object({ channel: text, available: boolean, complete: boolean, reason: text,
+  coverage: nullable(array(diagnosticCoverage)) });
+export type RecordedAvailability = ReturnType<typeof availability>;
 const executionIdentity = object({ kind: nullable(text), identity: nullable(text), playerBuildId: nullable(text), editorAssemblyMvid: nullable(text) });
 const position = object({ hostFrame: text });
 export const readPreviewClock = object({ position, seconds: number, positionDisplayName: text,

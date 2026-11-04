@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ExecutionCall, GraphPort, NodeOccurrence, PortSample } from '../../api/types';
+import type { Availability, ExecutionCall, GraphPort, NodeOccurrence, PortSample } from '../../api/types';
 import { callKey, callLabel, loopScopeKey, loopScopeLabel, nodeOccurrenceLabel, portSampleKey, portSampleLabel } from '../../state/graphModel';
 import { Fold } from '../../ui/blocks';
 import { Select } from '../../ui/controls';
@@ -21,9 +21,9 @@ function PortObservation({ port, samples, reason }: { port: GraphPort; samples: 
   </div>;
 }
 
-export function NodeObservation({ frame, call, events, samples, ports, notice }: {
+export function NodeObservation({ frame, call, events, samples, ports, notice, availability }: {
   frame: string | null; call: ExecutionCall | null; events: NodeOccurrence[]; samples: PortSample[];
-  ports: GraphPort[]; notice: string | null;
+  ports: GraphPort[]; notice: string | null; availability: Availability[];
 }) {
   const [activation, setActivation] = useState<string>('all');
   const [loop, setLoop] = useState<string>('all');
@@ -38,6 +38,10 @@ export function NodeObservation({ frame, call, events, samples, ports, notice }:
   const event = occurrence === null ? null : shownEvents.find(item => item.sequence === occurrence) ?? null;
   const sourceKey = JSON.stringify([frame, call === null ? null : callKey(call), activation, loop]);
   return <>
+    <Fold title="本帧观察通道">
+      {availability.length === 0 ? <div className={styles.note}>此帧没有记录观察通道可用性。</div>
+        : availability.map((value, index) => <ObservationAvailability key={index} label="通道" value={value} />)}
+    </Fold>
     <Fold title="本帧发生记录" defaultOpen>
       {notice !== null && <div role="status" className={styles.note}>{notice}</div>}
       {call === null ? <div role="status" className={styles.note}>尚未选择实际调用，请在节点图中选择调用实例。</div> : <>

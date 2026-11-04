@@ -1,6 +1,6 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
 import type { ExecutionCall, PlayerSceneContent, PlayerTimelineContent, PreviewPosition, RouteFrame as PlayerRouteFrame,
-  PreviewSampleSource, readPlayerAck, readPlayerCommandResult, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
+  PreviewSampleSource, RecordedAvailability, readPlayerAck, readPlayerCommandResult, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
 import type { readPublishedTimelineScene, readQuickScenes } from './previewQuickRecords';
 
 export interface Field {
@@ -8,12 +8,7 @@ export interface Field {
   value: string;
 }
 
-export interface Availability {
-  channel: string;
-  available: boolean;
-  complete: boolean;
-  reason: string;
-}
+export type Availability = RecordedAvailability | Omit<RecordedAvailability, 'coverage'>;
 
 export interface Page<T> {
   items: T[];

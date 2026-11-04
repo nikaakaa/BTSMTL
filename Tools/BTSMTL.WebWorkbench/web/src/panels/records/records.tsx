@@ -56,8 +56,29 @@ const observationRecordLabel = (record: ObservationRecord) => ('portId' in recor
   observationScopes(record).map(scope => ` · ${loopScopeLabel(scope)}`).join('');
 
 export function ObservationAvailability({ value, label }: { value: Availability | null; label: string }) {
-  return <div className={styles.note} role="status">{label}：{value === null ? 'Unavailable · 来源未记录此项可用性'
-    : `${value.channel} · Available=${value.available} · Complete=${value.complete}${value.reason ? ` · ${value.reason}` : ''}`}</div>;
+  return <>
+    <div className={styles.note} role="status">{label}：{value === null ? 'Unavailable · 来源未记录此项可用性'
+      : `${value.channel} · Available=${value.available} · Complete=${value.complete}${value.reason ? ` · ${value.reason}` : ''}`}</div>
+    {value !== null && 'coverage' in value && <Fold title="实际采集覆盖">
+      {value.coverage === null ? <div className={styles.note}>此记录没有覆盖证据。</div>
+        : value.coverage.length === 0 ? <div className={styles.note}>此记录没有对象覆盖条目。</div>
+          : value.coverage.map((coverage, index) => <Fold key={index} title={`对象槽 ${coverage.objectSlot}`}>
+            <Facts fields={[
+              { displayName: '首帧', value: coverage.firstFrame ?? '未记录' },
+              { displayName: '末帧', value: coverage.lastFrame ?? '未记录' },
+              { displayName: '逻辑帧数', value: String(coverage.logicFrameCount) },
+              { displayName: '表现求值次数', value: String(coverage.presentationEvaluationCount) },
+              { displayName: '执行前开启', value: coverage.startedBeforeExecution ? '是' : '否' },
+              { displayName: '已发布事件', value: coverage.publishedEventCount },
+              { displayName: '已归档事件', value: coverage.archivedEventCount },
+              { displayName: '已映射帧事件', value: coverage.frameMappedEventCount },
+              { displayName: 'Trace 丢弃事件', value: coverage.discardedTraceEventCount },
+              { displayName: '状态缓存淘汰', value: coverage.evictedStateCount },
+            ]} />
+            <div className={styles.note}>状态缓存淘汰计数不代表档案事件丢失。</div>
+          </Fold>)}
+    </Fold>}
+  </>;
 }
 
 function CallDetails({ call }: { call: ExecutionCall | null }) {
@@ -90,7 +111,8 @@ export function ObservationDetails({ record }: { record: ObservationRecord }) {
       ...('portId' in record ? [
         { displayName: '节点', value: record.nodeId }, { displayName: '端口', value: `${record.direction}:${record.portId}` },
         { displayName: '观察序号', value: record.observationSequence ?? '未记录' },
-        { displayName: '类型', value: record.valueType }, { displayName: '值', value: record.value },
+        { displayName: '类型', value: record.valueType },
+        { displayName: '值', value: record.sourceAvailable ? record.value : `Unavailable · ${record.reason}` },
         { displayName: 'SourceAvailable', value: String(record.sourceAvailable) }, { displayName: 'Reason', value: record.reason },
       ] : 'edgeId' in record ? [
         { displayName: '连线', value: record.edgeId }, { displayName: '来源节点', value: record.sourceNodeId ?? '未记录' },

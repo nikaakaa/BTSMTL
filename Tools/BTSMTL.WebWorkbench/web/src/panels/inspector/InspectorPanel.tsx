@@ -261,6 +261,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
         : <Fold title="节点" defaultOpen>{references}</Fold>}
       {runId && <NodeObservation key={`${runId}:${frame?.hostFrame}:${observedCall === null ? '' : callKey(observedCall)}`}
         frame={frame?.hostFrame ?? null} call={observedCall} events={events} samples={samples} ports={ports}
+        availability={route?.availability ?? []}
         notice={notice ?? (availabilityNotice || null)} />}
       <HostRecords records={locatedRecords(route === null ? null : frame, binding, observedCall, (documentId, elementId) => documentId === graph.id && elementId === node.id)} />
       {records.length > 0 && <Fold title="原始记录"><Raw value={records} /></Fold>}
