@@ -751,10 +751,10 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
   const request = useWorkbench(state => state.timelineRequest);
-  const handled = useRef(0);
+  const handled = useRef<typeof request>(null);
   useEffect(() => {
-    if (!request || request.sequence === handled.current) return;
-    handled.current = request.sequence;
+    if (!request || request === handled.current) return;
+    handled.current = request;
     const owner = segments.find(segment => segment.documentId === request.documentId);
     if (!owner) return;
     enter(request.documentId);

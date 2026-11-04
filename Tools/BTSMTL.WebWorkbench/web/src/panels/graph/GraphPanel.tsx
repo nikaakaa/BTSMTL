@@ -121,10 +121,10 @@ export function GraphPanel() {
   const [params, setParams] = usePanelParams<Params>(defaults);
   const panelId = usePanelId();
   const request = useWorkbench(state => state.graphRequest);
-  const handled = useRef(0);
+  const handled = useRef<typeof request>(null);
   useEffect(() => {
-    if (!request || request.panelId !== panelId || request.sequence === handled.current) return;
-    handled.current = request.sequence;
+    if (!request || request.panelId !== panelId || request === handled.current) return;
+    handled.current = request;
     setParams({ graph: request.key, call: request.observation === null ? null : callKey(request.observation.call),
       pin: request.observation === null ? null : { ...request.observation, graph: request.key },
       caller: request.caller, origin: request.origin, viewport: null });
