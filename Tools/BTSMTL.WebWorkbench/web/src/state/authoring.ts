@@ -81,7 +81,7 @@ export type SaveOutcome = SaveOutcomeMessage & (
   | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
   | { saved: boolean; compilationState: 'not-started'; preview: null }
   | { saved: true; compilationState: 'failed'; preview: null }
-  | { saved: true; compilationState: 'succeeded'; publicationState: 'failed'; preview: null }
+  | (SavedCompilation & { publicationState: 'failed'; preview: null })
   | { saved: false | null; compilationState: null; preview: null }
 );
 
@@ -820,7 +820,8 @@ export const authoringActions = {
         } else if (rejection.stage === 'compilation-failed') {
           lastSave = { ...outcome, saved: true, compilationState: 'failed' };
         } else {
-          lastSave = { ...outcome, saved: true, compilationState: 'succeeded', publicationState: 'failed' };
+          lastSave = { ...outcome, saved: true, compilationState: 'succeeded', compilation: rejection.compilation,
+            publicationState: 'failed', jobError: null };
         }
         if (rejection.content === null) setDocument({ saving: false, lastSave }, target);
         else accept(rejection.content, lastSave);

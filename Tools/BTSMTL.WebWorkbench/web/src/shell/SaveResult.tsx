@@ -37,6 +37,7 @@ function submissionErrors(outcome: SaveOutcome): string[] {
 }
 
 function resultLabel(outcome: SaveOutcome): string {
+  if ('publicationState' in outcome && outcome.publicationState === 'failed') return '已编译，Unity 资产发布失败';
   const errors = submissionErrors(outcome);
   if (outcome.compilationState === 'not-required')
     return ['输入已保存', ...errors, outcome.preview === null ? null : commandNames[outcome.preview.stage]]

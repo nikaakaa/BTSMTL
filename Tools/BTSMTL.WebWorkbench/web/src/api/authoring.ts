@@ -434,7 +434,7 @@ const publicationResult = object({
 });
 const readSkillCompilation = object({
   compilationKey: text, sourceRevision: text, artifactReceiptPath: text, artifactReused: boolean,
-  publicationResult: nullable(publicationResult),
+  publicationResult: nullable(publicationResult), unityPublication: nullable(opaque),
 });
 export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
 
@@ -534,10 +534,6 @@ const readSkillFormatError = object({
   type: optional(nullable(text)), file: optional(nullable(text)), graphId: optional(nullable(text)),
   nodeId: optional(nullable(text)), path: optional(nullable(text)),
 });
-const readSaved = (value: unknown, path?: string) => {
-  if (!boolean(value, path)) throw new Error(`${path} 需要 true`);
-  return true as const;
-};
 const readSavedContent = object({ saved: readSaved, content: readSkillSnapshot });
 const readCompilerFailure = object({ exitCode: number, output: text, error: text, outputPath: text, errorPath: text });
 
@@ -564,9 +560,9 @@ export function readSkillSaveRejection(value: unknown) {
     case 'compilation-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
       ...object({ compilationState: choice('failed') })(value) };
     case 'unity-publication-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
-      ...object({ compilationState: choice('succeeded'), publicationState: choice('failed') })(value) };
+      ...object({ compilationState: choice('succeeded'), compilation: readSkillCompilation, publicationState: choice('failed') })(value) };
     case 'unity-publication-rejected': return { ...readSavedContent(value), stage,
-      ...object({ compilationState: choice('succeeded'), publicationState: choice('failed'), error: text })(value) };
+      ...object({ compilationState: choice('succeeded'), compilation: readSkillCompilation, publicationState: choice('failed'), error: text })(value) };
   }
 }
 
