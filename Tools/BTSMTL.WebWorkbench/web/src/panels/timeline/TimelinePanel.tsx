@@ -10,7 +10,7 @@ import {
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ClipCurveChannel, SkillElements } from '../../api/authoring';
-import type { ExecutionCall, FrozenInputTimeline, InputWrite } from '../../api/types';
+import type { ExecutionCall, Frame, FrozenInputTimeline, InputWrite } from '../../api/types';
 import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
@@ -32,6 +32,7 @@ import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
+import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationFrameRates, useAnimationLibrary } from '../../state/resources';
 import { acceptsReferenceDrag } from '../../state/referenceSelection';
 import { curveWithKey, curveWithoutKey, evaluateCurve } from '../../state/curveSplit';
@@ -145,9 +146,47 @@ type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number 
 const CurveClockContext = createContext<CurveClock>({ kind: 'unavailable', reason: '没有当前帧的来源时钟' });
 function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
   if (clock.kind !== 'document' || clock.observation === null) return undefined;
-  const { documentId, observation } = clock;
-  return state.frame?.route?.playbacks.find(playback => playback.documentId === documentId &&
+  return playbackFor(state.frame, clock.documentId, clock.observation);
+}
+
+function playbackFor(frame: Frame | null | undefined, documentId: string | null, observation: TimelineObservation) {
+  return frame?.route?.playbacks.find(playback => playback.documentId === documentId &&
     playback.domain === observation.domain && playback.call !== null && callKey(playback.call) === callKey(observation.call));
+}
+
+function recordedLocalPosition(state: WorkbenchState, seconds: number,
+  cursorAt: (frame: Frame, index: number) => number | null): ReturnType<typeof transport.recordPosition> {
+  const { runId, summary, frameIndex } = state;
+  if (runId === null || summary === null) return { kind: 'unavailable', reason: '尚未打开运行档案' };
+  const current = cachedFrame(runId, frameIndex);
+  const cursor = current === undefined ? null : cursorAt(current, frameIndex);
+  if (current === undefined || cursor === null)
+    return { kind: 'unavailable', reason: '当前录制帧没有所选播放或输入的实际本地时间记录' };
+  const source = current.source;
+  if (source === null || source.content === null)
+    return { kind: 'unavailable', reason: '当前记录缺少实际采用内容身份，不能按本地时间定位' };
+  const anchor = { index: frameIndex, cursor, source };
+  const samples = [anchor];
+  for (const direction of [-1, 1]) {
+    let previous = anchor.cursor;
+    for (let index = frameIndex + direction; index >= 0 && index < summary.frameCount; index += direction) {
+      const frame = cachedFrame(runId, index);
+      const local = frame === undefined ? null : cursorAt(frame, index);
+      if (frame === undefined || local === null || frame.source === null || !samePreviewLoad(source, frame.source)) break;
+      if (direction < 0 ? local > previous : local < previous) break;
+      samples.push({ index, cursor: local, source: frame.source });
+      previous = local;
+    }
+  }
+  const start = Math.min(...samples.map(sample => sample.cursor)), end = Math.max(...samples.map(sample => sample.cursor));
+  if (seconds < start || seconds > end)
+    return { kind: 'unavailable', reason: `当前所选观察的已读记录只覆盖本地 ${timeText(start)}—${timeText(end)}；请先按录制帧定位，不能外推或跨圈定位` };
+  const nearest = samples.reduce((chosen, sample) => {
+    const distance = Math.abs(sample.cursor - seconds), previousDistance = Math.abs(chosen.cursor - seconds);
+    return distance < previousDistance || distance === previousDistance && Math.abs(sample.index - frameIndex) < Math.abs(chosen.index - frameIndex)
+      ? sample : chosen;
+  }, anchor);
+  return transport.recordPosition(runId, nearest.index, nearest.source);
 }
 // 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
 const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
@@ -803,19 +842,26 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
     if (!quickMode && inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
-      void transport.seekTime(inputObservation.originSeconds + seconds);
+      if (inputObservation.kind === 'before-start') {
+        consoleActions.log('warn', 'Timeline', `${inputObservation.reason}，当前没有正式输入时间；请先按录制帧定位`);
+        return;
+      }
+      const state = getState();
+      const times = new Map((state.runId === null ? [] : archive.inputFrames(state.runId, inputObservation.input.actorId))
+        .map(sample => [sample.index, sample.seconds]));
+      const position = recordedLocalPosition(state, seconds, (frame, index) =>
+        samePreviewLoad(frame.source, inputObservation.frame.input?.source ?? null) ? times.get(index) ?? null : null);
+      if (position.kind === 'record') transport.seekRecord(position.index);
+      else consoleActions.log('warn', 'Timeline', position.reason);
       return;
     }
     if (!observed) {
       useAuthorCursor.setState({ documentId: focused.documentId, seconds });
       return;
     }
-    // 运行观察：本次播放的起点 = 当前帧运行秒数 − 本地游标，按运行秒数跳到对应帧，画面随档案帧更新。
-    const state = getState();
-    const playback = documentPlayback(state, { kind: 'document', documentId: focused.documentId, observation: observed });
-    if (transport.source() === 'sealed' && playback && state.seconds !== null)
-      void transport.seekTime(state.seconds - playback.cursorSeconds + seconds);
-    else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
+    const position = recordedLocalPosition(getState(), seconds, frame => playbackFor(frame, focused.documentId, observed)?.cursorSeconds ?? null);
+    if (position.kind === 'record') transport.seekRecord(position.index);
+    else consoleActions.log('warn', 'Timeline', position.reason);
   }, [quickMode, observed, focused, step, inputScheme, inputObservation]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
   const [pickedKeys, setPickedKeys] = useState<number[]>([]);
@@ -2580,7 +2626,7 @@ function Overlay({ bounds, origin, follow, onRangeChanged }: {
   const panelId = usePanelId();
   const visible = usePanelVisible();
   const panelWindow = usePanelWindow();
-  const pending = useRef(false);
+  const pending = useRef<number | null>(null);
   const clock = useContext(PreviewClockContext);
 
   const apply = useCallback(() => {
@@ -2601,13 +2647,13 @@ function Overlay({ bounds, origin, follow, onRangeChanged }: {
       tipElement.style.transform = `translateX(calc(${x + 0.5}px - 50%))`;
     }
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
-    if (visible && !pending.current) {
-      pending.current = true;
-      panelWindow.requestAnimationFrame(() => {
-        pending.current = false;
+    if (visible && pending.current === null) {
+      const key = frameKey(state.runId, state.frameIndex);
+      pending.current = panelWindow.requestAnimationFrame(() => {
+        pending.current = null;
         const current = getState();
-        const key = frameKey(current.runId, current.frameIndex);
-        if (current.selectedCurves.some(id => current.archiveFrame?.curves[id] === undefined)) {
+        if (key !== frameKey(current.runId, current.frameIndex) || current.frameKey !== key ||
+          current.selectedCurves.some(id => current.archiveFrame?.curves[id] === undefined)) {
           clearRendered(panelId);
           return;
         }
@@ -2623,10 +2669,12 @@ function Overlay({ bounds, origin, follow, onRangeChanged }: {
         state.archiveFrame !== previous.archiveFrame || state.selectedCurves !== previous.selectedCurves) apply();
     });
     const stopAuthor = useAuthorCursor.subscribe(apply);
-    return () => { stopRun(); stopAuthor(); };
-  }, [apply]);
-
-  useEffect(() => () => clearRendered(panelId), [panelId]);
+    return () => {
+      stopRun(); stopAuthor();
+      if (pending.current !== null) { panelWindow.cancelAnimationFrame(pending.current); pending.current = null; }
+      clearRendered(panelId);
+    };
+  }, [apply, panelWindow, panelId]);
 
   const x = (seconds: number) => `translateX(${Math.floor(valueToPixels(seconds - range.start))}px)`;
   return (
