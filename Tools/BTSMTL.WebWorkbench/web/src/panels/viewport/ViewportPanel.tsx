@@ -24,7 +24,7 @@ export function ViewportPanel() {
 
 function presentationForLogic(state: Pick<WorkbenchState, 'frame' | 'archiveFrame'>) {
   const source = state.frame?.source;
-  if (source === undefined || source === null || source.content === null) return null;
+  if (source === undefined || source === null || source.content === null || source.execution.kind === null || source.execution.identity === null) return null;
   return state.archiveFrame?.presentations.filter(item => samePreviewLoad(item.source, source) &&
     item.source.clock.position.hostFrame === source.clock.position.hostFrame).at(-1) ?? null;
 }

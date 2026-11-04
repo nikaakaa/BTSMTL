@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
-import { clockPosition, positionValue, type LivePlayer } from '../../api/playerRecords';
+import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '../../api/playerRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { session } from '../../state/session';
-import { consoleActions, getState, selectedScene, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import styles from './player.module.css';
@@ -39,10 +39,16 @@ function PlayerView() {
     runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
   })));
   const stage = useRef<HTMLDivElement>(null);
-  const [captureEnabled, setCaptureEnabled] = useState(false);
+  const [captureBinding, setCaptureBinding] = useState<string | null>(null);
   const player = state.live?.player ?? null;
+  const source = player?.source;
+  const binding = JSON.stringify([state.runId, state.liveId, source?.loadCommandId ?? null, source?.execution ?? null,
+    source?.content ?? null, source?.contentRevision ?? null, source?.sceneRevision ?? null, source?.inputSource ?? null, source?.inputRevision ?? null]);
+  const captureEnabled = captureBinding === binding;
   const ready = !state.runId && state.viewerOpen && !!player && ['paused', 'playing', 'stepping', 'seeking'].includes(player.state);
   const orbit = ready && player?.cameraMode === 'orbit';
+
+  useEffect(() => { setCaptureBinding(null); }, [binding, ready]);
 
   useEffect(() => {
     void playerService.refresh();
@@ -63,8 +69,7 @@ function PlayerView() {
     : scene ? 'Unavailable：宿主尚未提供场景载入的输入来源与请求参数声明'
     : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
-  const overlayReason = !state.archiveImage ? '正在读取画面'
-    : state.archiveImage.kind === 'unavailable' ? state.archiveImage.reason : state.archiveImage.overlayReason;
+  const overlayReason = archiveOverlayReason(state.archiveImage);
 
   // 照 Game 视图的 Display 下拉：在用的播放器、启动与停止合成一个菜单。
   const playerMenu: MenuEntry[] = [
@@ -107,13 +112,13 @@ function PlayerView() {
         </>}
         <span className={styles.grow} />
         {ready && player!.inputMode === 'device' && <Button variant="ghost" pressed={captureEnabled} tip="点击画面接管键鼠，Esc 释放"
-          onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>}
+          onClick={() => setCaptureBinding(captureEnabled ? null : binding)}>接管输入</Button>}
         {ready && <Button variant="ghost" onClick={() => void playerService.capture()}>截图</Button>}
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
         {state.runId && <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
           tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>}
       </PanelBar>
-      <Stage stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
+      <Stage key={binding} stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
         captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />
     </div>
   );
@@ -132,8 +137,10 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const panelWindow = usePanelWindow();
   const panelId = usePanelId();
   const visible = usePanelVisible();
+  const livePicture = useSyncExternalStore(playerService.subscribeVideo, playerService.latestVideo);
   const view = useWorkbench(useShallow(state => ({
-    liveId: state.liveId, runId: state.runId, archiveImage: state.archiveImage, hostFrame: state.hostFrame,
+    liveId: state.liveId, runId: state.runId, archiveImage: state.archiveImage, frameKey: state.frameKey,
+    viewerOpen: state.viewerOpen, player: state.live?.player ?? null,
   })));
   const [captured, setCaptured] = useState(false);
   const frameSize = useRef({ width: 16, height: 9 });
@@ -158,6 +165,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     let decoding = false, again = false, alive = true;
     const draw = async () => {
       const frame = currentPicture();
+      const drawnKey = getState().frameKey;
       const canvas = video.current;
       if (!canvas) return;
       if (!frame) {
@@ -185,7 +193,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         frameSize.current = { width: frame.width, height: frame.height };
         overlayDraw.current(frame);
         const state = getState();
-        if (state.runId && state.frameKey) reportRendered(panelId, state.frameKey);
+        if (state.runId && drawnKey && state.frameKey === drawnKey && state.frame?.hostFrame === frame.hostFrame)
+          reportRendered(panelId, drawnKey);
       } catch (error) {
         consoleActions.error('player', error);
       } finally {
@@ -196,7 +205,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     void draw();
     const unsubscribe = playerService.subscribeVideo(() => void draw());
     return () => { alive = false; unsubscribe(); clearRendered(panelId); };
-  }, [visible, panelWindow, panelId, view.liveId, view.runId, view.archiveImage]);
+  }, [visible, panelWindow, panelId, view.liveId, view.runId, view.archiveImage, view.frameKey, view.viewerOpen]);
 
   const overlayRef = useRef(overlay);
   overlayRef.current = overlay;
@@ -244,12 +253,16 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
 
   useEffect(() => {
     const element = stageRef.current;
-    if (!element) return;
+    if (!element || !visible || !ready) return;
     const doc = panelWindow.document;
+    const target = getState();
+    const targetSource = target.live?.player?.source ?? null;
     const release = () => {
       const state = input.current;
       state.keys.clear(); state.dx = state.dy = state.buttons = state.scroll = 0;
-      if (getState().live?.player?.inputMode === 'device') playerService.input(inputMessage(panelWindow, state));
+      const current = getState();
+      if (current.liveId === target.liveId && samePreviewLoad(targetSource, current.live?.player?.source ?? null) &&
+        current.live?.player?.inputMode === 'device') playerService.input(inputMessage(panelWindow, state));
     };
     const lockChanged = () => {
       const locked = doc.pointerLockElement === element;
@@ -323,8 +336,9 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         useWorkbench.setState({ capturing: false });
         release();
       }
+      camera.current = null;
     };
-  }, [panelWindow, stageRef]);
+  }, [panelWindow, stageRef, visible, ready]);
 
   const orbitRef = useRef(orbit);
   orbitRef.current = orbit;
@@ -347,14 +361,18 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     if (camera.current) { playerService.camera(camera.current); camera.current = null; }
   }, [panelWindow]), ready);
 
+  const emptyReason = view.runId
+    ? view.archiveImage === null ? '正在读取档案画面' : view.archiveImage.kind === 'unavailable' ? view.archiveImage.reason : null
+    : !view.liveId ? '启动或选择一个播放器' : !view.viewerOpen ? '播放器画面连接尚未建立'
+    : livePicture !== null ? null : view.player?.error ?? (view.player?.state === 'loading' ? '正在载入所选内容'
+      : view.player?.source ? '等待当前内容的实际画面' : '尚无实际载入内容');
+
   return (
     <div ref={stageRef} className={styles.stage} data-captured={captured || undefined}>
-      {view.runId && !view.archiveImage && <Empty text="正在读取档案画面" />}
-      {view.archiveImage?.kind === 'unavailable' && <Empty text={view.archiveImage.reason} />}
-      {!view.runId && !view.liveId && <Empty text="启动或选择一个播放器" />}
-      <canvas ref={video} className={styles.video} hidden={!!view.runId && (!view.archiveImage || view.archiveImage.kind === 'unavailable') || !view.runId && !view.liveId} />
-      <canvas ref={layer} className={styles.video} hidden={!!view.runId && (!view.archiveImage || view.archiveImage.kind === 'unavailable') || !view.runId && !view.liveId} />
-      {(view.runId || view.liveId) && <Corner stats={stats} />}
+      {emptyReason !== null && <Empty text={emptyReason} />}
+      <canvas ref={video} className={styles.video} hidden={emptyReason !== null} />
+      <canvas ref={layer} className={styles.video} hidden={emptyReason !== null} />
+      {(view.runId || view.liveId) && <Corner stats={stats} video={livePicture} />}
       {captured && <div className={styles.hint}>已接管键鼠 · Esc 释放</div>}
     </div>
   );
@@ -374,18 +392,33 @@ type Picture = Omit<VideoFrame, 'worldToClip' | 'source'> & {
 function currentPicture(): Picture | null {
   const state = getState();
   if (!state.runId) {
+    if (!state.viewerOpen || state.liveId === null) return null;
     const frame = playerService.latestVideo();
     return frame ? { ...frame, actors: [] } : null;
   }
   const image = state.archiveImage;
   if (!image || image.kind === 'unavailable') return null;
-  const camera = image.camera;
+  const camera = archiveOverlayReason(image) === null ? image.camera : null;
   return {
     hostFrame: image.metadata.sourceHostFrame, image: image.image, width: image.metadata.width, height: image.metadata.height,
     mediaType: image.metadata.mediaType, flipY: image.kind === 'frame' && image.metadata.flipY,
     worldToClip: camera ? new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).toArray() : null,
     actors: image.presentation?.actors.map(actor => ({ actorId: actor.actorId, position: actor.worldRoot.position })) ?? [],
   };
+}
+
+function archiveOverlayReason(image: ArchiveImage | null): string | null {
+  if (image === null) return '正在读取画面';
+  if (image.kind === 'unavailable') return image.reason;
+  if (image.overlayReason !== null) return image.overlayReason;
+  if (image.kind !== 'frame' || image.metadata.source.content === null) return '画面未记录实际采用内容身份，不能确认叠加来源';
+  const source = image.metadata.source;
+  if (source.execution.kind === null || source.execution.identity === null) return '画面未记录实际执行身份，不能确认叠加来源';
+  const presentation = image.presentation?.source ?? null, camera = image.camera?.source ?? null;
+  if (!samePreviewLoad(source, presentation) || !samePreviewLoad(source, camera)) return '画面、骨骼与相机的实际来源或内容身份不一致';
+  if (presentation?.clock.position.hostFrame !== source.clock.position.hostFrame || camera?.clock.position.hostFrame !== source.clock.position.hostFrame)
+    return '画面、骨骼与相机的实际来源帧不一致';
+  return null;
 }
 
 // 画布 object-fit: contain 留边时换算到画面 0–1。
@@ -424,17 +457,26 @@ function inputMessage(view: Window, state: { keys: Set<string>; dx: number; dy: 
   return message;
 }
 
-function Corner({ stats }: { stats: boolean }) {
-  const video = useSyncExternalStore(playerService.subscribeVideo, playerService.latestVideo);
+function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) {
   const view = useWorkbench(useShallow(state => ({
     player: state.live?.player ?? null, process: state.live?.state ?? null, runId: state.runId, archiveImage: state.archiveImage,
     hostFrame: state.hostFrame,
     targetPosition: state.targetPosition,
     frameDisplayName: state.summary?.frameDisplayName,
+    logicSource: state.frame?.source ?? null,
     adoptedMode: state.runId !== null ? state.summary?.adoptedMode ?? null : state.live?.player?.adoptedMode ?? null,
   })));
-  const actual = view.player?.source?.clock;
-  const picture = !view.runId ? video?.source.clock : undefined;
+  const actual = view.runId ? undefined : view.player?.source?.clock;
+  const pictureSource = view.runId ? view.archiveImage?.kind === 'frame' ? view.archiveImage.metadata.source : null : video?.source ?? null;
+  const picture = pictureSource?.clock;
+  const adopted = view.runId ? view.logicSource : view.player?.source ?? null;
+  const sourceNotice = pictureSource === null || pictureSource.content === null
+    ? '画面采用内容未记录'
+    : adopted === null || adopted.content === null ? '当前采用内容未记录，无法确认同源'
+    : adopted.execution.kind === null || adopted.execution.identity === null || pictureSource.execution.kind === null || pictureSource.execution.identity === null
+      ? '执行身份未记录，无法确认同源'
+    : !samePreviewLoad(adopted, pictureSource) ? '画面与当前记录的来源或内容不同'
+    : pictureSource.clock.position.hostFrame !== adopted.clock.position.hostFrame ? '画面与当前记录的来源帧不同' : '与当前记录同源、同帧';
   const notices = [
     !view.runId && view.targetPosition !== null && actual
       ? `定位 ${positionValue(view.targetPosition)} / 实际 ${clockPosition(actual)} …` : null,
@@ -444,6 +486,11 @@ function Corner({ stats }: { stats: boolean }) {
   return (
     <>
       {notices.length !== 0 && <div className={styles.badge}>{notices.join(' · ')}</div>}
+      <div className={styles.source} title={`原始播放器画面\n${view.runId ? `Run：${view.runId}` : '实时 Player'}\n${sourceNotice}\n内容类型：${pictureSource?.content?.kind ?? '未记录'}\n实际采用修订：${pictureSource?.content?.revision ?? '未记录'}`}>
+        原始画面 · {view.runId ? `Run ${view.runId}` : '实时 Player'} · {pictureSource?.content?.kind ?? '内容未记录'}
+        {pictureSource?.content && ` · ${pictureSource.content.revision}`}
+        {picture && ` · ${picture.positionDisplayName} ${clockPosition(picture)}`} · {sourceNotice}
+      </div>
       {stats && (
         <div className={styles.stats}>
           <b>Statistics</b>
@@ -452,10 +499,10 @@ function Corner({ stats }: { stats: boolean }) {
           {view.runId ? <div><span>{view.frameDisplayName}</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
             <div><span>播放器</span><span>{view.player ? playerStates[view.player.state] : view.process}</span></div>
             {actual && <div><span>{actual.positionDisplayName}</span><span>{clockPosition(actual)}</span></div>}
-            {picture && <>
+            {pictureSource && picture && <>
               <div><span>画面{picture.positionDisplayName}</span><span>{clockPosition(picture)}</span></div>
-              <div><span>采样序号</span><span>{video!.source.sequence}</span></div>
-              <div><span>画面采用档位</span><span>{video!.source.adoptedMode ?? '未记录'}</span></div>
+              <div><span>采样序号</span><span>{pictureSource.sequence ?? '未记录'}</span></div>
+              <div><span>画面采用档位</span><span>{pictureSource.adoptedMode ?? '未记录'}</span></div>
             </>}
             {view.player?.error && <div className={styles.error}><span>错误</span><span>{view.player.error}</span></div>}
           </>}
