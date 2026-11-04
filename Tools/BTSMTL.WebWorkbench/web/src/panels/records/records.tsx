@@ -151,6 +151,9 @@ export function ObservationRecords({ records }: { records: readonly ObservationR
 export function FrameSections({ frame }: { frame: Frame }) {
   return (
     <>
+      {frame.source === null || frame.source.content === null
+        ? <div className={styles.note} role="status">Unavailable：原帧未记录正式采用的内容来源</div>
+        : <div className={styles.note}>实际内容：{frame.source.content.kind} · {frame.source.content.revision}</div>}
       {frame.availability.filter(item => !item.available || !item.complete).map(item =>
         <ObservationAvailability key={item.channel} label="帧通道" value={item} />)}
       {frame.route !== null && <Fold title="节点、分支与端口观察">

@@ -164,8 +164,11 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const panelId = usePanelId();
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(routeObservation));
+  const frameSource = useWorkbench(state => state.frame?.source ?? null);
   const routeFrames = useWorkbench(state => state.routeFrames);
-  const currentRoute = observation.kind === 'ready' ? observation.route : null;
+  const sourceNotice = observation.kind === 'ready' && (frameSource === null || frameSource.content === null)
+    ? '当前帧未记录正式采用的内容来源，运行叠加不可用' : null;
+  const currentRoute = observation.kind === 'ready' && sourceNotice === null ? observation.route : null;
   const hierarchy = useDocumentGraphHierarchy();
 
   const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs, binding), [currentRoute, graphs, binding]);
@@ -196,7 +199,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const path = graph.authoringPath;
   const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
-  const callNotice = quickMode ? null : pinNotice ?? callerNotice ?? documentObservationNotice(currentRoute, binding)
+  const callNotice = quickMode ? null : pinNotice ?? callerNotice ?? sourceNotice ?? documentObservationNotice(currentRoute, binding)
     ?? (observation.kind === 'unavailable' ? observation.reason
       : observedCall !== null ? calls.some(item => callKey(item) === callKey(observedCall)) ? null : '此帧没有固定调用的发生记录，固定身份已保留'
         : params.call !== null ? '此帧没有所选调用的记录，请重新选择实例或开启跟随当前帧'

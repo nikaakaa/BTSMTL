@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { ObservationQuery } from '../../api/types';
+import type { PlayerJobId } from '../../api/playerRecords';
 import { queryService } from '../../state/query';
 import { useWorkbench } from '../../state/store';
 import { BarSeparator, Empty, Fold, PanelBar } from '../../ui/blocks';
@@ -13,11 +14,12 @@ export function QueryPanel() {
   const { runId, summary } = useWorkbench(useShallow(state => ({ runId: state.runId, summary: state.summary })));
   const result = useSyncExternalStore(queryService.subscribe, queryService.snapshot);
   const [form, setForm] = useState<Record<string, string>>({});
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<{ runId: PlayerJobId; contentRevision: string; hostFrame: string } | null>(null);
 
-  useEffect(() => () => queryService.close(), []);
+  useEffect(() => () => queryService.stop(), []);
   useEffect(() => {
-    setForm(summary ? { firstFrame: summary.firstFrame, lastFrame: summary.lastFrame } : {});
+    const range = result.runId === runId ? result.range : null;
+    setForm(summary ? { firstFrame: range?.firstFrame ?? summary.firstFrame, lastFrame: range?.lastFrame ?? summary.lastFrame } : {});
     setSelected(null);
   }, [summary?.runId]);
 
@@ -30,7 +32,10 @@ export function QueryPanel() {
   };
   const busy = result.reading || result.readingAll;
   const invalid = range() === null ? '填写起止帧' : null;
-  const item = selected !== null ? result.items[selected] : null;
+  const resultNotice = result.runId !== null && result.runId !== runId ? '查询结果属于另一运行，原结果已保留'
+    : result.contentRevision !== null && result.contentRevision !== summary.contentRevision ? '查询结果与当前内容修订不同，原结果已保留' : null;
+  const item = selected !== null && selected.runId === result.runId && selected.contentRevision === result.contentRevision
+    ? result.items.find(frame => frame.hostFrame === selected.hostFrame) : undefined;
   const status = result.total !== null
     ? `${result.total} 个匹配帧 · 当前显示 ${result.items.length}${result.ended ? ' · 已读完档案范围' : ''}` : '';
   return (
@@ -42,10 +47,11 @@ export function QueryPanel() {
           onClick={() => { setSelected(null); void queryService.readAll(range()!, false); }}>连续读取</Button>
         <Button variant="ghost" disabled={!busy} onClick={() => queryService.stop()}>停止</Button>
         <BarSeparator />
-        <Button variant="ghost" disabled={result.nextOffset === null || busy || !result.range}
+        <Button variant="ghost" disabled={resultNotice !== null || result.nextOffset === null || busy || !result.range} tip={resultNotice}
           onClick={() => void queryService.read(result.range!, true)}>下一页</Button>
         {!busy && result.nextOffset !== null && !result.ended && (
-          <Button variant="ghost" disabled={!result.range} onClick={() => void queryService.readAll(result.range!, true)}>继续读取</Button>
+          <Button variant="ghost" disabled={resultNotice !== null || !result.range} tip={resultNotice}
+            onClick={() => void queryService.readAll(result.range!, true)}>继续读取</Button>
         )}
       </PanelBar>
       <div className={styles.form}>
@@ -55,13 +61,16 @@ export function QueryPanel() {
           onChange={event => setForm({ ...form, lastFrame: event.currentTarget.value })} /></label>
       </div>
       {status && <div className={styles.status}>{status}</div>}
-      {!result.items.length ? <Empty text={busy ? '读取中' : '没有结果'} /> : (
+      {resultNotice !== null ? <Empty text={resultNotice} /> : !result.items.length ? <Empty text={busy ? '读取中' : '没有结果'} /> : (
         <div className={styles.split}>
           <VirtualList className={styles.list} count={result.items.length} rowHeight={22} label="查询结果"
             render={index => {
               const frame = result.items[index];
               return (
-                <button className={styles.item} aria-selected={index === selected} onClick={() => setSelected(index)}>
+                <button className={styles.item} aria-selected={item === frame} onClick={() => {
+                  if (result.runId !== null && result.contentRevision !== null)
+                    setSelected({ runId: result.runId, contentRevision: result.contentRevision, hostFrame: frame.hostFrame });
+                }}>
                   <span>{frameName} {frame.hostFrame}</span>
                   <span>{frame.seconds.toFixed(3)} s · {frame.actors.length} 角色</span>
                 </button>
@@ -69,13 +78,13 @@ export function QueryPanel() {
             }} />
           <div className={styles.scroll}>
             {item ? (
-              <>
+              <div key={JSON.stringify(selected)}>
                 <FrameSections frame={item} />
                 <Fold title="宿主记录">
                   <div className={styles.rawBox}><JsonLines text={item.rawJson} /></div>
                 </Fold>
-              </>
-            ) : <Empty text="选择一帧" />}
+              </div>
+            ) : <Empty text={selected === null ? '选择一帧' : '所选帧已不在当前查询页中，选择身份已保留'} />}
           </div>
         </div>
       )}
