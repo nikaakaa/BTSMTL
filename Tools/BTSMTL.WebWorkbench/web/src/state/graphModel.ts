@@ -1,5 +1,5 @@
 import type {
-  EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, NodeOccurrence, PortSample, RouteFrame,
+  EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, LoopScope, NodeOccurrence, PortSample, RouteFrame,
 } from '../api/types';
 import type { SkillDocumentGraph, SkillDocumentRelation } from '../api/authoring';
 import type { WorkbenchState } from './store';
@@ -8,7 +8,7 @@ import type { WorkbenchState } from './store';
 
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
-  call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex,
+  call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex, call.programIndex,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId,
   call.parentInvocationPath, call.parentInvocationGeneration]);
 export const callOwnerLabel = (call: ExecutionCall) => call.actorId ??
@@ -58,7 +58,10 @@ export function nodeName(node: GraphNode) {
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') || type;
 }
 export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'LoopIterationEntered' || item.kind === 'LoopIterationCompleted'
-  ? `${item.kind} · 激活 ${item.generation} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : `${item.kind} · 激活 ${item.generation}`;
+  ? `${item.kind} · 激活 ${item.generation ?? '未记录'} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : `${item.kind} · 激活 ${item.generation ?? '未记录'}`;
+export const loopScopeKey = (scope: LoopScope) => JSON.stringify([callKey(scope.call), scope.graphId, scope.nodeId, scope.generation, scope.iteration]);
+export const loopScopeLabel = (scope: LoopScope) => `${scope.graphId}/${scope.nodeId} · 激活 ${scope.generation ?? '未记录'} · 迭代 ${scope.iteration}`;
+export const portSampleLabel = (sample: PortSample) => `记录 ${sample.sequence} · 观察 ${sample.observationSequence ?? '未记录'} · 激活 ${sample.generation ?? '未记录'}`;
 
 export function routeObservation({ runId, frame, hostFrame }: Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame'>) {
   if (runId === null) return { kind: 'unavailable', reason: '选择运行以查看实际调用' } as const;
@@ -100,7 +103,7 @@ export function singleCall(records: RouteRecord[]): ExecutionCall | null {
 
 export function graphRecords(route: RouteFrame | null | undefined, graph: GraphDefinition, binding: DocumentObservationBinding): RouteRecord[] {
   if (!route) return [];
-  return [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)]
+  return [...route.nodes, ...route.edges, ...route.ports]
     .filter((item): item is RouteRecord => item.call !== null && item.graphId === graph.id && matchesDocumentCall(item.call, binding));
 }
 
@@ -146,7 +149,7 @@ export const parentCallMatches = (parent: ExecutionCall, call: ExecutionCall) =>
   call.parentInvocationPath !== null && call.parentInvocationPath !== '' && call.parentInvocationGeneration !== null &&
   parent.actorId === call.actorId && parent.programId === call.programId && parent.programRevision === call.programRevision &&
   parent.objectSlot === call.objectSlot && parent.objectHandle === call.objectHandle &&
-  parent.objectKind === call.objectKind && parent.definitionIndex === call.definitionIndex &&
+  parent.objectKind === call.objectKind && parent.definitionIndex === call.definitionIndex && parent.programIndex === call.programIndex &&
   parent.actionId === call.actionId && parent.executionGeneration === call.executionGeneration &&
   parent.invocationPath === call.parentInvocationPath && parent.invocationGeneration === call.parentInvocationGeneration;
 

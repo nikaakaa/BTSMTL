@@ -1,5 +1,5 @@
 // 宿主响应类型。64 位整数、帧号、修订与 FP 原值按宿主原样保留为 string。
-import type { PlayerSceneContent, PlayerTimelineContent, PreviewPosition,
+import type { ExecutionCall, PlayerSceneContent, PlayerTimelineContent, PreviewPosition, RouteFrame as PlayerRouteFrame,
   PreviewSampleSource, readPlayerAck, readPlayerCommandResult, readPlayerHost, readViewerMessage, readViewerStatus } from './playerRecords';
 import type { readPublishedTimelineScene, readQuickScenes } from './previewQuickRecords';
 
@@ -182,75 +182,12 @@ export interface Geometry {
 
 // ── 路线与节点图 ──
 
-export interface ExecutionCall {
-  actorId: string | null;
-  objectSlot: number | null;
-  objectHandle: string | null;
-  objectKind: string | null;
-  definitionIndex: number | null;
-  programId: string;
-  programRevision: string;
-  invocationPath: string;
-  parentInvocationPath: string | null;
-  actionId: string;
-  executionGeneration: string;
-  invocationGeneration: string;
-  parentInvocationGeneration: string | null;
-  playbackId: string;
-}
-
-export interface NodeOccurrence {
-  sequence: string;
-  graphId: string;
-  nodeId: string;
-  kind: string;
-  generation: string;
-  loopIteration?: number | null;
-  result: string | null;
-  call: ExecutionCall | null;
-}
-
-export interface EdgeOccurrence {
-  sequence: string;
-  graphId: string;
-  edgeId: string;
-  selected: boolean;
-  passed: boolean;
-  call: ExecutionCall | null;
-}
-
-export interface PortSample {
-  sequence: string;
-  graphId: string;
-  nodeId: string;
-  portId: string;
-  direction: string;
-  valueType: string;
-  value: string;
-  rawJson: string;
-  call: ExecutionCall | null;
-  sourceAvailable: boolean;
-  reason: string;
-}
-
-export interface RoutePlayback {
-  documentId: string;
-  cursorSeconds: number;
-  status: string;
-  call: ExecutionCall | null;
-  domain: string | null;
-}
-
-export interface RouteFrame {
-  hostFrame: string;
-  seconds: number;
-  playbacks: RoutePlayback[];
-  active: AuthoringLocation[];
-  nodes: NodeOccurrence[];
-  edges: EdgeOccurrence[];
-  ports: PortSample[];
-  availability: Availability[];
-}
+export type { ExecutionCall, LoopScope } from './playerRecords';
+export type RouteFrame = PlayerRouteFrame;
+export type NodeOccurrence = RouteFrame['nodes'][number];
+export type EdgeOccurrence = RouteFrame['edges'][number];
+export type PortSample = RouteFrame['ports'][number];
+export type RoutePlayback = RouteFrame['playbacks'][number];
 
 export interface Route {
   runId: string;

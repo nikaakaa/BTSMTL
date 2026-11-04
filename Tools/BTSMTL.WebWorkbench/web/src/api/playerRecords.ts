@@ -234,20 +234,28 @@ export function readViewerMessage(value: unknown, path = 'Player.view') {
 const quaternion = tuple(number, number, number, number);
 const call = object({
   actorId: nullable(text), objectSlot: nullable(number), objectHandle: nullable(text),
-  objectKind: nullable(text), definitionIndex: nullable(number),
+  objectKind: nullable(text), definitionIndex: nullable(number), programIndex: nullable(number),
+  objectAvailability: nullable(availability),
   programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
   actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: nullable(text), playbackId: text,
 });
+const loopScope = object({ graphId: text, nodeId: text, generation: nullable(text), iteration: number, call,
+  activationAvailability: nullable(availability) });
+const activation = { generation: nullable(text), activationAvailability: nullable(availability),
+  loopScopeAvailability: nullable(availability) };
 const location = object({ displayName: text, documentId: text, elementId: text, call: nullable(call) });
 const record = object({ displayName: text, fields: array(field), rawJson: text, locations: array(location) });
 const routeFrame = object({
   hostFrame: text, seconds: number,
   playbacks: array(object({ documentId: text, cursorSeconds: number, status: text, call: nullable(call), domain: nullable(text) })), active: array(location),
-  nodes: array(object({ sequence: text, graphId: text, nodeId: text, kind: text, generation: text,
-    loopIteration: optional(nullable(number)), result: nullable(text), call: nullable(call) })),
-  edges: array(object({ sequence: text, graphId: text, edgeId: text, selected: boolean, passed: boolean, call: nullable(call) })),
+  nodes: array(object({ sequence: text, graphId: text, nodeId: text, kind: text, ...activation,
+    loopIteration: nullable(number), loopScope: nullable(loopScope), result: nullable(text), call: nullable(call),
+    stopCause: nullable(number), stopMode: nullable(text) })),
+  edges: array(object({ sequence: text, graphId: text, edgeId: text, selected: boolean, passed: boolean, call: nullable(call),
+    sourceNodeId: nullable(text), ...activation, loopScope: nullable(loopScope) })),
   ports: array(object({ sequence: text, graphId: text, nodeId: text, portId: text, direction: text, valueType: text,
-    value: text, rawJson: text, call: nullable(call), sourceAvailable: boolean, reason: text })),
+    value: text, rawJson: text, call: nullable(call), sourceAvailable: boolean, reason: text, ...activation,
+    observationSequence: nullable(text), loopScopes: nullable(array(loopScope)) })),
   availability: array(availability),
 });
 const logicPose = object({ position: vector3, rotation: quaternion });
@@ -401,6 +409,9 @@ export type PlayerJobStage = PlayerJobReceipt['stage'];
 export type PlayerJob = ReturnType<typeof readPlayerJob>;
 export type PlayerSummary = ReturnType<typeof readPlayerSummary>;
 export type PlayerFramesPage = ReturnType<typeof readPlayerFrames>;
+export type ExecutionCall = ReturnType<typeof call>;
+export type LoopScope = ReturnType<typeof loopScope>;
+export type RouteFrame = ReturnType<typeof routeFrame>;
 export type PlayerObservationPage = ReturnType<typeof readPlayerObservations>;
 export type PlayerPoseLayout = ReturnType<typeof readPlayerPoseLayout>;
 export type PlayerLogicPage = ReturnType<typeof readPlayerLogic>;
