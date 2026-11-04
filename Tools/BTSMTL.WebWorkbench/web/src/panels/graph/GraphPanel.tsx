@@ -206,6 +206,10 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
           : availableCalls.length > 1 ? '本帧有多个实际调用，请选择要观察的实例'
             : caller !== null ? '此帧没有精确匹配原父调用的子调用记录' : '本帧没有对应作者图的实际调用记录');
   const availabilityNotice = currentRoute?.availability.filter(item => !item.available || !item.complete).map(item => item.reason).join('\n');
+  const objectAvailability = observedCall?.objectAvailability;
+  const objectNotice = observedCall === null ? null : objectAvailability == null ? '未记录对象来源资格'
+    : objectAvailability.reason || (!objectAvailability.available || !objectAvailability.complete
+      ? `${objectAvailability.channel} · Available=${objectAvailability.available} · Complete=${objectAvailability.complete}` : null);
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs, binding), [routeFrames, graphs, binding]);
   const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
   const callCrumbs = useMemo(() => {
@@ -281,6 +285,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
         <PanelBar wrap>
           {callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
           {!quickMode && availabilityNotice && <Tip content={availabilityNotice}><span role="status" className={styles.notice}>运行记录有缺项</span></Tip>}
+          {objectNotice !== null && <Tip content={objectNotice}><span role="status" className={styles.notice}>{objectNotice}</span></Tip>}
           {graphOptions.length > 1 && <Select label="作者图" value={key} options={graphOptions}
             onChange={value => {
               void projectActions.openGraph(hierarchy.graphs.get(value)!, undefined, { origin: null, observation: null, caller: null, panelId })
