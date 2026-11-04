@@ -38,7 +38,7 @@ export function documentObservationNotice(frame: RouteFrame | null, binding: Doc
         if (record.call.programRevision === binding.sourceRevision) return null;
         outdated = true;
       }
-  return outdated ? expired : null;
+  return outdated ? expired : '此帧未记录当前作者内容的实际调用，运行叠加不可用。';
 }
 export const compareSequence = (left: { sequence: string }, right: { sequence: string }) => {
   const a = BigInt(left.sequence), b = BigInt(right.sequence);

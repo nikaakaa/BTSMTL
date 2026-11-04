@@ -16,7 +16,7 @@ import {
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
-import { documentObservationNotice, graphHierarchy, type DocumentObservationBinding } from './graphModel';
+import { documentObservationNotice, graphHierarchy, routeObservation, type DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
 import { session, stageNames } from './session';
@@ -137,7 +137,12 @@ export const useDocumentObservationBinding = (): DocumentObservationBinding => u
 
 export function useDocumentObservationNotice(call: ExecutionCall | null = null): string | null {
   const binding = useDocumentObservationBinding();
-  return useWorkbench(state => state.runId === null ? null : documentObservationNotice(state.frame?.route ?? null, binding, call));
+  return useWorkbench(state => {
+    if (state.runId === null) return null;
+    const observation = routeObservation(state);
+    return documentObservationNotice(observation.kind === 'ready' ? observation.route : null, binding, call)
+      ?? (observation.kind === 'unavailable' ? observation.reason : null);
+  });
 }
 
 export function useDocumentGraphHierarchy() {

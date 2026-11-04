@@ -6,6 +6,7 @@ import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
+import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -32,6 +33,8 @@ export function PlayerPanel() {
 
 function PlayerView() {
   const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false });
+  const authoringSkill = useAuthoring(state => state.target?.kind === 'skill');
+  const documentNotice = useDocumentObservationNotice();
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
     runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
@@ -75,7 +78,8 @@ function PlayerView() {
     : scene ? 'Unavailable：宿主尚未提供场景载入的输入来源与请求参数声明'
     : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
-  const overlayReason = archiveOverlayReason(state.archiveImage);
+  const authoringNotice = authoringSkill ? documentNotice : null;
+  const overlayReason = authoringNotice ?? archiveOverlayReason(state.archiveImage);
 
   // 照 Game 视图的 Display 下拉：在用的播放器、启动与停止合成一个菜单。
   const playerMenu: MenuEntry[] = [
@@ -134,6 +138,7 @@ function PlayerView() {
             <MenuButton label="环绕选项" variant="ghost" className={styles.splitCaret} iconOnly caret entries={orbitMenu}>{null}</MenuButton>
           </span>}
         </>}
+        {state.runId && authoringNotice !== null && <span role="status" className={styles.dim}>{authoringNotice}</span>}
         <span className={styles.grow} />
         {ready && player!.inputMode === 'device' && <Button variant="ghost" pressed={captureEnabled} tip="点击画面接管键鼠，Esc 释放"
           onClick={() => setCaptureBinding(captureEnabled ? null : binding)}>接管输入</Button>}
@@ -142,7 +147,7 @@ function PlayerView() {
         {state.runId && <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
           tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>}
       </PanelBar>
-      <Stage key={binding} stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
+      <Stage key={binding} stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay && overlayReason === null} stats={params.stats}
         captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />
     </div>
   );

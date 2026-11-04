@@ -131,7 +131,8 @@ export function GraphPanel() {
   }, [request, panelId, setParams]);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
-  if (opened.loading || !opened.graphs) return <Empty text="读取中" />;
+  if (opened.loading) return <Empty text="读取中" />;
+  if (opened.graphs === null) return <ReportEmpty text={opened.error ?? '正在读取作者图'} />;
   if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   const graphs = opened.graphs;
   const selected = params.graph === null ? graphs.find(graph => graph.id === opened.programId)
