@@ -79,8 +79,7 @@ namespace BTSMTL.Timeline
             }
 
 #if UNITY_EDITOR
-            if (graphBindings is TimelineAuthoringGraphBindings)
-                TimelineAuthoringGraphBindings.Prepare(timeline);
+            TimelineAuthoringGraphBindings.Prepare(timeline);
 #endif
             if (!timeline.ValidateContent(catalog, errors))
                 return new TimelineContentDiscoveryResult(null, errors, null);

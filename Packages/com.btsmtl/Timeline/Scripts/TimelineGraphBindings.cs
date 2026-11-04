@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
 #endif
@@ -10,6 +12,33 @@ namespace BTSMTL.Timeline
         TimelineGraphBinding ResolveTreeClip(Clip clip, TimelineContentClosureBuilder closure);
         TimelineGraphBinding ResolveMarker(TimelineMarker marker, TimelineContentClosureBuilder closure);
     }
+
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+    public sealed class TimelineGraphSourceBindings : ITimelineGraphBindingSource
+    {
+        readonly IReadOnlyDictionary<string, IReadOnlyList<TimelineContentDependency>> m_Graphs;
+
+        public TimelineGraphSourceBindings(IReadOnlyDictionary<string, IReadOnlyList<TimelineContentDependency>> graphs)
+        {
+            m_Graphs = graphs;
+        }
+
+        public TimelineGraphBinding ResolveTreeClip(Clip clip, TimelineContentClosureBuilder closure) =>
+            Resolve(((ITimelineTreeClipAuthoringSource)clip).AssetTreeId, closure);
+
+        public TimelineGraphBinding ResolveMarker(TimelineMarker marker, TimelineContentClosureBuilder closure) =>
+            Resolve(marker.GraphId, closure);
+
+        TimelineGraphBinding Resolve(string graphId, TimelineContentClosureBuilder closure)
+        {
+            IReadOnlyList<TimelineContentDependency> sources = m_Graphs[graphId];
+            foreach (TimelineContentDependency source in sources)
+                closure.AddDependency(source.Identity, source.Kind, source.SourcePath, source.ContentHash);
+            string identity = TimelineGraphBinding.TreeDependencyIdentity(graphId);
+            return new TimelineGraphBinding(identity, sources.Single(source => source.Identity == identity).ContentHash);
+        }
+    }
+#endif
 
 #if UNITY_EDITOR
     public sealed class TimelineAuthoringGraphBindings : ITimelineGraphBindingSource
