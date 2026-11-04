@@ -30,6 +30,7 @@ export function Toolbar() {
         {quick ? <QuickCursor /> : <><Transport /><FrameField /></>}
       </div>
       <div className={styles.right}>
+        <Button variant="ghost" onClick={() => openPanel('export')}>导出</Button>
         <PreviewModeChoice />
         <MenuButton label="布局" variant="ghost" entries={panelMenu()} caret>布局</MenuButton>
         <Connection />

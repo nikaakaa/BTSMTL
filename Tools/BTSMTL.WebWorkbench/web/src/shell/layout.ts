@@ -30,6 +30,7 @@ const companions: Record<PanelType, PanelType[]> = {
   query: ['timeline', 'query', 'console'],
   console: ['timeline', 'query', 'console'],
   content: ['content'],
+  export: ['timeline', 'query', 'console'],
 };
 
 function dock(): DockviewApi {

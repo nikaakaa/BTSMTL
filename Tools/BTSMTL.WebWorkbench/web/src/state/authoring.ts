@@ -723,7 +723,8 @@ export const authoringActions = {
       skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('skill/')).map(key => {
         const name = key.slice('skill/'.length);
         const document = state.documents[key];
-        return [name, { files: authoringActions.changedFiles({ kind: 'skill', name }), removedFiles: document.removed }];
+        return [name, { files: Object.entries(workingFiles(document.files, document))
+          .map(([path, content]) => ({ path, content })), removedFiles: document.removed }];
       })),
       previewDefinitionGuid: state.previewDefinitionGuid,
       product: state.product,
@@ -743,8 +744,7 @@ export const authoringActions = {
     const { target, saving, removed, revision } = get();
     if (!target || saving) return;
     const editingView = authoringActions.editingView();
-    const content = target.kind === 'skill' ? editingView.skills[target.name]
-      : { files: authoringActions.changedFiles(), removedFiles: removed };
+    const content = { files: authoringActions.changedFiles(target), removedFiles: removed };
     if (target.kind === 'scenario' && !content.files.length && !content.removedFiles.length) return;
     const submittedDocument = authoringDocument(useAuthoring.getState(), target);
     const submittedFiles = workingFiles(submittedDocument.files, submittedDocument);

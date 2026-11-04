@@ -4,6 +4,7 @@ import { PanelFrame } from '../shell/panel';
 import { panelTypes, type PanelType } from '../shell/panelTypes';
 import { ConsolePanel } from './ConsolePanel';
 import { ContentPanel } from './ContentPanel';
+import { ExportPanel } from './export/ExportPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
 import { PlayerPanel } from './player/PlayerPanel';
@@ -26,6 +27,7 @@ const contents: Record<PanelType, FunctionComponent> = {
   query: QueryPanel,
   console: ConsolePanel,
   content: ContentPanel,
+  export: ExportPanel,
 };
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(

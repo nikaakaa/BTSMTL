@@ -438,6 +438,28 @@ const readSkillCompilation = object({
 });
 export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
 
+const readSkillExportHeader = object({
+  stage: choice('export-ready'), kind: choice('authoring', 'runtime'), sourceRevision: text,
+  product: nullable(object({ guid: text, revision: text })), previewDefinitionGuid: nullable(text),
+  tickRate: number, effectProfileGuid: text, fileName: text, downloadUrl: text,
+  files: array(object({ path: text, downloadUrl: text })),
+});
+const readNoExportCompilation = (value: unknown, path = 'SkillExport.compilation'): null => {
+  if (value !== null) throw new Error(`${path}：作者内容导出不包含运行编译结果`);
+  return null;
+};
+function readSkillExport(value: unknown) {
+  const header = readSkillExportHeader(value, 'SkillExport');
+  switch (header.kind) {
+    case 'authoring': return { ...header, kind: header.kind,
+      ...object({ compilation: readNoExportCompilation })(value, 'SkillExport') };
+    case 'runtime': return { ...header, kind: header.kind,
+      ...object({ compilation: readSkillCompilation })(value, 'SkillExport') };
+  }
+}
+export type SkillExport = ReturnType<typeof readSkillExport>;
+export type SkillExportKind = SkillExport['kind'];
+
 export interface CompiledSkillSaveResult {
   saved: true;
   compilationState: 'succeeded';
@@ -658,6 +680,8 @@ interface SkillCreationDraft {
 }
 
 export const authoringApi = {
+  export: async (skill: string, kind: SkillExportKind, editingView: SkillEditingView) =>
+    readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
   locateAsset: (identity: string) => postJson<AssetLocateResult>('/api/authoring/locate', { identity }),
