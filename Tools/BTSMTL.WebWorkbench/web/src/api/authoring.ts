@@ -646,6 +646,7 @@ export const authoringApi = {
     const result = await putJson<SkillSaveResult>(targetPath(target), request);
     return result.compilationState === 'not-required' ? readInputSaveResult(result, 'InputSave')
       : { ...result, compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
+      jobError: nullable(text)(result.jobError, 'SkillSave.jobError'),
       preview: result.preview === null ? null : readSkillRefreshReceipt(result.preview) };
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),
