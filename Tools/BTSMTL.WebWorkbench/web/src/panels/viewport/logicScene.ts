@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-import type { ArchivePose, ArchivePoseLayout, Frame, Geometry, Pose, SweepSegment, Vec3 } from '../../api/types';
-import type { ArchiveFrame } from '../../state/store';
+import type { ArchivePose, ArchivePoseLayout, ArchivePresentationRecord, Frame, Geometry, Pose, SweepSegment, Vec3 } from '../../api/types';
 
 // 逻辑视图的 three 场景。
 // 世界几何只在几何数据变化时建一次；按帧只改角色与查询对象的变换，查询对象从对象池取用。
@@ -252,8 +251,8 @@ export class LogicScene {
     this.requestRender();
   }
 
-  drawArchive(layout: ArchivePoseLayout | null, frame: ArchiveFrame) {
-    const actors = frame.presentations.at(-1)?.actors ?? [];
+  drawPresentation(layout: ArchivePoseLayout | null, presentation: ArchivePresentationRecord | null) {
+    const actors = presentation?.actors ?? [];
     const points: number[] = [];
     for (const actor of actors) {
       const rig = layout?.actors.find(item => item.actorId === actor.actorId && item.rosterIndex === actor.rosterIndex);

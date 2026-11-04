@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { samePreviewLoad, type PlayerJobId } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
-import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
-import { consoleActions, getState, useWorkbench } from '../../state/store';
+import { clearRendered, reportRendered } from '../../shell/readiness';
+import { consoleActions, getState, useWorkbench, type WorkbenchState } from '../../state/store';
 import { BarLabel, BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -18,10 +19,17 @@ interface Params {
 export function ViewportPanel() {
   const runId = useWorkbench(state => state.runId);
   if (!runId) return <Empty text="选择一个运行" />;
-  return <LogicView />;
+  return <LogicView key={runId} runId={runId} />;
 }
 
-function LogicView() {
+function presentationForLogic(state: Pick<WorkbenchState, 'frame' | 'archiveFrame'>) {
+  const source = state.frame?.source;
+  if (source === undefined || source === null || source.content === null) return null;
+  return state.archiveFrame?.presentations.filter(item => samePreviewLoad(item.source, source) &&
+    item.source.clock.position.hostFrame === source.clock.position.hostFrame).at(-1) ?? null;
+}
+
+function LogicView({ runId }: { runId: PlayerJobId }) {
   const [params, setParams] = usePanelParams<Params>({ camera: null });
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<LogicScene | null>(null);
@@ -29,6 +37,10 @@ function LogicView() {
   const visible = usePanelVisible();
   const panelId = usePanelId();
   const frame = useWorkbench(state => state.frame);
+  const presentation = useWorkbench(presentationForLogic);
+  const archiveFrame = useWorkbench(state => state.archiveFrame);
+  const runFailure = useWorkbench(state => state.failure);
+  const bones = archiveFrame?.availability.find(item => item.channel === 'bones');
   const contacts = frame?.availability.find(item => item.channel === 'physics-contacts');
   const actualContacts = frame?.geometry.contacts.some(hit => hit.kind === 'kcc-contact');
   const queryCandidates = frame?.geometry.contacts.some(hit => hit.kind === 'query-candidate');
@@ -60,9 +72,11 @@ function LogicView() {
       const state = getState();
       try {
         created.setGeometry(state.geometry);
-        if (!state.archiveFrame || !state.frame || !state.frameKey) { created.clearFrame(); drawnKey = null; return; }
+        if (!state.frame || !state.frameKey) {
+          created.clearFrame(); drawnKey = null; clearRendered(panelId); return;
+        }
         created.draw(state.frame);
-        created.drawArchive(state.archiveLayout, state.archiveFrame);
+        created.drawPresentation(state.archiveLayout, presentationForLogic(state));
         drawnKey = state.frameKey;
         if (!fitted) { fitted = true; created.fit(); }
       } catch (error) {
@@ -71,7 +85,8 @@ function LogicView() {
     };
     apply();
     const unsubscribe = useWorkbench.subscribe((state, previous) => {
-      if (state.frame !== previous.frame || state.archiveFrame !== previous.archiveFrame || state.geometry !== previous.geometry) apply();
+      if (state.frame !== previous.frame || state.frameKey !== previous.frameKey || state.archiveFrame !== previous.archiveFrame ||
+        state.archiveLayout !== previous.archiveLayout || state.geometry !== previous.geometry) apply();
     });
     return () => {
       unsubscribe();
@@ -86,7 +101,16 @@ function LogicView() {
       <PanelBar wrap>
         <Button variant="ghost" onClick={() => scene.current?.fit()}>适配角色</Button>
         <BarSeparator />
+        <Tip content={`逻辑几何与骨骼记录；不是播放器原始画面\nRun：${runId}`}><span><BarLabel>逻辑视图</BarLabel></span></Tip>
         {frame && <>
+          <BarLabel>记录帧 {frame.hostFrame}</BarLabel>
+          <Tip content={frame.source?.content === null || frame.source?.content === undefined ? '原记录没有实际采用内容身份，不能确认与画面同源'
+            : `内容类型：${frame.source.content.kind}\n实际采用修订：${frame.source.content.revision}\n来源时钟：${frame.source.clock.seconds} 秒\n${frame.source.clock.positionDisplayName}：${frame.source.clock.position.hostFrame}`}>
+            <span><BarLabel>{frame.source?.content ? `${frame.source.content.kind} · ${frame.source.content.revision}` : '采用内容未记录'}</BarLabel></span>
+          </Tip>
+          {!presentation && <Tip content={bones?.available === false ? bones.reason : '当前帧没有与逻辑记录同源的骨骼记录；根、碰撞与命中仍按逻辑记录显示'}>
+            <span><BarLabel>骨骼不可用</BarLabel></span>
+          </Tip>}
           {!contacts?.available && <Tip content={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}><span>
             <BarLabel>{contacts ? '实际接触不可用' : '实际接触未声明'}</BarLabel>
           </span></Tip>}
@@ -97,7 +121,10 @@ function LogicView() {
         </>}
       </PanelBar>
       {failure !== null && <ErrorLine text="逻辑视图绘制失败" entryId={failure} />}
-      <div ref={host} className={styles.canvas} />
+      {runFailure !== null && <ErrorLine text={runFailure.reason} entryId={runFailure.entryId} />}
+      <div ref={host} className={styles.canvas}>
+        {!frame && <div className={styles.message}><Empty text={runFailure?.reason ?? '正在读取当前逻辑帧'} /></div>}
+      </div>
     </div>
   );
 }

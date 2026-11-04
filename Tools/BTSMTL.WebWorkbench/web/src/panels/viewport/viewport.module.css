@@ -19,6 +19,12 @@
   display: block;
 }
 
+.message {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
 .legend {
   display: inline-flex;
   align-items: center;
