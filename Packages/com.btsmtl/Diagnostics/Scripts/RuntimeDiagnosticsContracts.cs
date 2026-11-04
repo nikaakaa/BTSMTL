@@ -858,7 +858,7 @@ namespace BTSMTL.Diagnostics
         public RuntimeTraceEventKind Kind { get; }
         readonly RuntimeTracePayload m_Payload;
         public RuntimeTracePayload Payload => m_Payload;
-        internal static ref readonly RuntimeTracePayload ReadPayload(in RuntimeTraceEvent traceEvent) => ref traceEvent.m_Payload;
+        public static ref readonly RuntimeTracePayload ReadPayload(in RuntimeTraceEvent traceEvent) => ref traceEvent.m_Payload;
         public string GetStatus() => m_Payload.Status;
         public string GetDetail() => m_Payload.Detail;
         public int GetCycle() => m_Payload.Cycle;
