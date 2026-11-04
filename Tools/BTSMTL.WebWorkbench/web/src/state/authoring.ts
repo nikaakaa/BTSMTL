@@ -675,10 +675,8 @@ export const authoringActions = {
   // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
   changedFiles(target = get().target): { path: string; content: string }[] {
     const state = authoringDocument(useAuthoring.getState(), target);
-    const fallback = shapeOf(state.files['skill.json'] ?? '\n');
-    return Object.entries(state.edited).filter(([path]) => !state.removed.includes(path)).map(([path, document]) => ({
-      path, content: writeSkillJson(document, state.files[path] !== undefined ? shapeOf(state.files[path]) : fallback),
-    })).filter(file => file.content !== state.files[file.path]);
+    return Object.entries(workingFiles(state.files, state)).filter(([path, content]) => content !== state.files[path])
+      .map(([path, content]) => ({ path, content }));
   },
 
   editingView(): SkillEditingView {
@@ -705,6 +703,9 @@ export const authoringActions = {
     const content = target.kind === 'skill' ? editingView.skills[target.name]
       : { files: authoringActions.changedFiles(), removedFiles: removed };
     if (target.kind === 'scenario' && !content.files.length && !content.removedFiles.length) return;
+    const submittedDocument = authoringDocument(useAuthoring.getState(), target);
+    const submittedFiles = workingFiles(submittedDocument.files, submittedDocument);
+    const earlierHistory = new Set([...submittedDocument.undo, ...submittedDocument.redo]);
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;
@@ -712,11 +713,15 @@ export const authoringActions = {
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
-      clearHistory(target);
+      const current = authoringDocument(useAuthoring.getState(), target);
+      const files = Object.fromEntries(content.files.map(file => [file.path, file.content]));
+      const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
+        rebaseSavedEdits(current.files, submittedFiles, files, document);
+      const history = (items: Snapshot[]) => items.filter(item => !earlierHistory.has(item))
+        .map(item => ({ ...item, ...rebase(item) }));
       setDocument({
-        revision: content.revision, sourceRevision: null, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
-        edited: {}, removed: [], addedPorts: {}, externalChange: false,
-        version: authoringDocument(useAuthoring.getState(), target).version + 1, saving: false,
+        revision: content.revision, sourceRevision: null, files, ...rebase(current), externalChange: false,
+        undo: history(current.undo), redo: history(current.redo), version: current.version + 1, saving: false,
         lastSave: currentScene ? lastSave : { ...lastSave,
           message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
       }, target);
@@ -1225,6 +1230,29 @@ const snapshot = (): Snapshot => {
     removed: [...state.removed], addedPorts: state.addedPorts,
     selection, canvasSelections, timelineSelections };
 };
+
+function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed'>) {
+  const result = { ...files };
+  const format = shapeOf(files['skill.json'] ?? '\n');
+  for (const [path, value] of Object.entries(document.edited))
+    result[path] = writeSkillJson(value, files[path] !== undefined ? shapeOf(files[path]) : format);
+  for (const path of document.removed) delete result[path];
+  return result;
+}
+
+function rebaseSavedEdits(previousFiles: Record<string, string>, submittedFiles: Record<string, string>,
+  savedFiles: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) {
+  const working = workingFiles(previousFiles, document);
+  const edited: Record<string, JsonValue> = {};
+  const removed: string[] = [];
+  for (const path of new Set([...Object.keys(submittedFiles), ...Object.keys(working)])) {
+    if (working[path] === submittedFiles[path]) continue;
+    if (working[path] === undefined) {
+      if (savedFiles[path] !== undefined) removed.push(path);
+    } else if (working[path] !== savedFiles[path]) edited[path] = parseSkillJson(working[path]);
+  }
+  return { edited, removed, addedPorts: Object.keys(edited).length === 0 ? {} : document.addedPorts };
+}
 
 function record() {
   const state = get();
