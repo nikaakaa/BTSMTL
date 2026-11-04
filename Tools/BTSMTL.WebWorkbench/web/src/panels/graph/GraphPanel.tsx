@@ -323,9 +323,9 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
                 .catch(reason => consoleActions.error('作者', reason));
             },
           }))}>已加载引用（{referrers.length}）</MenuButton>}
-          {callOptions.length > 1 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
+          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
             options={callOptions} placeholder="选择实际调用"
-            tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
+            tip={observedCall ? callLabel(observedCall) : '选择要观察的调用记录'} onChange={selectCall} />}
           {shownCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
             tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(shownCall)}`}
             onClick={togglePin}>固定调用</Button>}

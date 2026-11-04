@@ -1057,7 +1057,7 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
           </Fragment>
         ))}
       </span>
-      {observations.length > 1 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
+      {observations.length > 0 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
         value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
       {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
