@@ -11,6 +11,25 @@ namespace ThirdPerson.MemoryPackAdapters
 {
     public sealed partial class MemoryPackAdapterGenerator
     {
+        static string SchemaKey(ITypeSymbol type, string purpose) => Identity(type) + "|" + purpose;
+
+        static Dictionary<string, HashSet<string>> ReadExternalSchemas(Compilation compilation)
+        {
+            var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (IAssemblySymbol assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+                foreach (AttributeData attribute in assembly.GetAttributes().Where(attribute =>
+                    Identity(attribute.AttributeClass) == "ThirdPersonSimulation.ValueSerializationSchemaAttribute"))
+                {
+                    if (!(attribute.ConstructorArguments[0].Value is ITypeSymbol type) || type.TypeKind == TypeKind.Error)
+                        continue;
+                    string key = SchemaKey(type, (string)attribute.ConstructorArguments[1].Value);
+                    if (!result.TryGetValue(key, out HashSet<string> hashes))
+                        result.Add(key, hashes = new HashSet<string>(StringComparer.Ordinal));
+                    hashes.Add((string)attribute.ConstructorArguments[2].Value);
+                }
+            return result;
+        }
+
         sealed class MemoryPackSchemas
         {
             readonly string m_Library;
@@ -18,19 +37,39 @@ namespace ThirdPerson.MemoryPackAdapters
             readonly Func<ITypeSymbol, ITypeSymbol, bool> m_ImplicitReference;
             readonly string m_StringFormat;
             readonly IDictionary<string, StorageProjection> m_Projections;
+            readonly IDictionary<string, string> m_Purposes;
+            readonly IDictionary<string, HashSet<string>> m_ExternalSchemas;
+            readonly ISet<string> m_LocalTypes;
+            readonly Dictionary<string, string> m_Hashes = new Dictionary<string, string>(StringComparer.Ordinal);
 
             internal MemoryPackSchemas(Compilation compilation, IDictionary<string, LogicalStoragePlan> logicalStorages,
                 Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, string stringFormat,
-                IDictionary<string, StorageProjection> projections)
+                IDictionary<string, StorageProjection> projections, IDictionary<string, string> purposes,
+                IDictionary<string, HashSet<string>> externalSchemas, ISet<string> localTypes)
             {
                 m_Library = compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer").ContainingAssembly.Identity.ToString();
                 m_LogicalStorages = logicalStorages;
                 m_ImplicitReference = implicitReference;
                 m_StringFormat = stringFormat;
                 m_Projections = projections;
+                m_Purposes = purposes;
+                m_ExternalSchemas = externalSchemas;
+                m_LocalTypes = localTypes;
             }
 
-            internal string Hash(ITypeSymbol type) => Build((code, visited) => AppendType(code, type, visited));
+            internal string Purpose(ITypeSymbol type) => m_Purposes.TryGetValue(Identity(type), out string purpose) &&
+                UsesProjection(type, purpose, m_ImplicitReference) ? purpose : null;
+
+            internal string Hash(ITypeSymbol type)
+            {
+                string key = Identity(type);
+                if (!m_Hashes.TryGetValue(key, out string hash))
+                {
+                    hash = Build((code, visited) => AppendType(code, type, visited, Purpose(type), true));
+                    m_Hashes.Add(key, hash);
+                }
+                return hash;
+            }
 
             string Build(Action<StringBuilder, HashSet<string>> append)
             {
@@ -41,7 +80,7 @@ namespace ThirdPerson.MemoryPackAdapters
                         value.ToString("x2", CultureInfo.InvariantCulture)));
             }
 
-            void AppendType(StringBuilder code, ITypeSymbol type, HashSet<string> visited)
+            void AppendType(StringBuilder code, ITypeSymbol type, HashSet<string> visited, string purpose, bool root = false)
             {
                 if (type is INamedTypeSymbol tuple) type = RecordType(tuple);
                 if (IsFloat32Vector4(type))
@@ -52,6 +91,20 @@ namespace ThirdPerson.MemoryPackAdapters
                 string name = TypeName(type);
                 code.Append("type ").Append(name).Append('\n');
                 if (!visited.Add(name)) return;
+                if (purpose != null && !root)
+                {
+                    string childPurpose = UsesProjection(type, purpose, m_ImplicitReference) ? purpose : null;
+                    if (m_LocalTypes.Contains(Identity(type)))
+                    {
+                        code.Append("value-schema ").Append(Hash(type)).Append('\n');
+                        return;
+                    }
+                    if (m_ExternalSchemas.TryGetValue(SchemaKey(type, childPurpose), out HashSet<string> hashes))
+                    {
+                        code.Append("value-schema ").Append(hashes.Single()).Append('\n');
+                        return;
+                    }
+                }
                 if (m_LogicalStorages.TryGetValue(Identity(type), out LogicalStoragePlan logical))
                 {
                     code.AppendLine("logical-storage");
@@ -59,7 +112,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     {
                         code.Append(entry.Name).Append(':').Append(HasAttribute(entry.Symbol, PresenceAttribute)).Append(':')
                             .Append(HasAttribute(entry.Symbol, PayloadAttribute)).Append('\n');
-                        AppendType(code, entry.Type, visited);
+                        AppendType(code, entry.Type, visited, purpose);
                     }
                     return;
                 }
@@ -69,19 +122,19 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (NullableElement(type) is ITypeSymbol nullable)
                 {
                     code.AppendLine("nullable-object");
-                    AppendType(code, nullable, visited);
+                    AppendType(code, nullable, visited, purpose);
                     return;
                 }
                 if (SequenceElement(type) is ITypeSymbol element)
                 {
                     code.AppendLine("collection");
-                    AppendType(code, element, visited);
+                    AppendType(code, element, visited, purpose);
                     return;
                 }
                 if (!(type is INamedTypeSymbol record)) return;
                 if (type.TypeKind == TypeKind.Enum)
                 {
-                    AppendType(code, record.EnumUnderlyingType, visited);
+                    AppendType(code, record.EnumUnderlyingType, visited, purpose);
                     foreach (IFieldSymbol field in record.GetMembers().OfType<IFieldSymbol>().Where(field => field.HasConstantValue))
                         code.Append(field.Name).Append('=').Append(Convert.ToString(field.ConstantValue, CultureInfo.InvariantCulture)).Append('\n');
                     return;
@@ -96,7 +149,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     foreach (Member member in projection.Members)
                     {
                         code.Append("member ").Append(member.Name).Append('\n');
-                        AppendType(code, member.Type, visited);
+                        AppendType(code, member.Type, visited, purpose);
                     }
                     foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
                         code.Append("presence ").Append(presence.Name).Append('\n');
@@ -110,7 +163,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     {
                         code.Append(field.Name).Append('\n');
                         AppendLayout(code, field);
-                        AppendType(code, field.Type, visited);
+                        AppendType(code, field.Type, visited, purpose);
                     }
                     return;
                 }
@@ -118,19 +171,19 @@ namespace ThirdPerson.MemoryPackAdapters
                 foreach (Variant variant in variants)
                 {
                     code.Append("variant ").Append(variant.Discriminator.ToString(CultureInfo.InvariantCulture)).Append('\n');
-                    AppendType(code, variant.Type, visited);
+                    AppendType(code, variant.Type, visited, purpose);
                 }
                 if (variants.Length != 0) return;
                 AttributeData union = record.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == UnionAttribute);
-                if (union != null) AppendType(code, (ITypeSymbol)union.ConstructorArguments[0].Value, visited);
+                if (union != null) AppendType(code, (ITypeSymbol)union.ConstructorArguments[0].Value, visited, purpose);
                 Member[] members = ValueMembers(record, m_ImplicitReference);
                 if (!HasAttribute(record, UnionTemplateAttribute) && members.Any(member => member.IsCase))
-                    AppendType(code, UnionKindMember(record).Type, visited);
+                    AppendType(code, UnionKindMember(record).Type, visited, purpose);
                 foreach (Member member in members)
                 {
                     code.Append("member ").Append(member.Name).Append(':').Append(member.IsCase).Append(':')
                         .Append(HasAttribute(member.Symbol, PayloadAttribute)).Append(':').Append(DeclaredText(member.Symbol)).Append('\n');
-                    AppendType(code, member.Type, visited);
+                    AppendType(code, member.Type, visited, purpose);
                 }
                 foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
                     code.Append("presence ").Append(presence.Name).Append('\n');

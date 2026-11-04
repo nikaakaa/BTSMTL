@@ -104,6 +104,23 @@ namespace ThirdPerson.MemoryPackAdapters
         static string ContextAccess(IParameterSymbol parameter, string stream) => "(" + TypeName(parameter.Type) + ")" +
             stream + ".Options.ServiceProvider.GetService(typeof(" + TypeName(parameter.Type) + "))";
 
+        static bool UsesProjection(ITypeSymbol type, string purpose, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference) =>
+            purpose != null && UsesProjection(type, purpose, implicitReference, new HashSet<string>(StringComparer.Ordinal));
+
+        static bool UsesProjection(ITypeSymbol type, string purpose, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference,
+            HashSet<string> visited)
+        {
+            if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum || !visited.Add(Identity(type))) return false;
+            if (SequenceElement(type) is ITypeSymbol element)
+                return UsesProjection(element, purpose, implicitReference, visited);
+            if (NullableElement(type) is ITypeSymbol nullable)
+                return UsesProjection(nullable, purpose, implicitReference, visited);
+            return type is INamedTypeSymbol record && (record.GetMembers().OfType<IMethodSymbol>().Any(method =>
+                method.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == StorageProjectionAttribute &&
+                    (string)attribute.ConstructorArguments[0].Value == purpose)) ||
+                ValueMembers(record, implicitReference).Any(member => UsesProjection(member.Type, purpose, implicitReference, visited)));
+        }
+
         static string ProjectionConstruction(INamedTypeSymbol type, StorageProjection projection) =>
             (projection.Factory.MethodKind == MethodKind.Constructor ? "new " + TypeName(type) :
                 TypeName(type) + "." + Escape(projection.Factory.Name)) + "(" +

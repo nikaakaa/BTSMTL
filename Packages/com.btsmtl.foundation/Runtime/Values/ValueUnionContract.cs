@@ -80,6 +80,20 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Parameter)]
     public sealed class ValueStorageContextAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    public sealed class ValueSerializationSchemaAttribute : Attribute
+    {
+        public ValueSerializationSchemaAttribute(Type valueType, string purpose, string hash)
+        {
+            ValueType = valueType;
+            Purpose = purpose;
+            Hash = hash;
+        }
+        public Type ValueType { get; }
+        public string Purpose { get; }
+        public string Hash { get; }
+    }
+
     [AttributeUsage(AttributeTargets.Parameter)]
     public sealed class ValueRecordedStateConstructorAttribute : Attribute { }
 

@@ -41,18 +41,25 @@ namespace ThirdPerson.MemoryPackAdapters
             bool stringCodec = stringFormat != null;
             var records = new SortedDictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var projections = new Dictionary<string, StorageProjection>(StringComparer.Ordinal);
+            var purposes = new Dictionary<string, string>(StringComparer.Ordinal);
+            var externalSchemas = ReadExternalSchemas(context.Compilation);
             var logicalStorages = new Dictionary<string, LogicalStoragePlan>(StringComparer.Ordinal);
             var sequences = new SortedDictionary<string, ITypeSymbol>(StringComparer.Ordinal);
             var nullableValues = new SortedDictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var visited = new HashSet<string>(StringComparer.Ordinal);
             var externalLeaves = new HashSet<string>(StringComparer.Ordinal);
+            var generatedExternalLeaves = new HashSet<string>(StringComparer.Ordinal);
             foreach (IAssemblySymbol assembly in context.Compilation.SourceModule.ReferencedAssemblySymbols)
                 if (assembly.Name == "MemoryPack.Core" || assembly.Modules.Any(module =>
                     module.ReferencedAssemblySymbols.Any(reference => reference.Name == "MemoryPack.Core")))
                     foreach (INamedTypeSymbol type in FormatterTypes(assembly.GlobalNamespace))
                         for (INamedTypeSymbol parent = type.BaseType; parent != null; parent = parent.BaseType)
                             if (Identity(parent.OriginalDefinition) == "MemoryPack.MemoryPackFormatter<T>")
+                            {
                                 externalLeaves.Add(Identity(parent.TypeArguments[0]));
+                                if (type.ContainingType?.Name == "MemoryPackGeneratedFormatters")
+                                    generatedExternalLeaves.Add(Identity(parent.TypeArguments[0]));
+                            }
             foreach (var call in receiver.Calls)
             {
                 var method = context.Compilation.GetSemanticModel(call.SyntaxTree).GetSymbolInfo(call).Symbol as IMethodSymbol;
@@ -131,7 +138,17 @@ namespace ThirdPerson.MemoryPackAdapters
                         ValueMembers(record, IsImplicitReference)).Any(member => member.IsCase || HasAttribute(member.Symbol, PayloadAttribute) || HasPayload(member.Type)))
                         changed |= payloadTypes.Add(Identity(record));
             } while (changed);
+            var localTypes = new HashSet<string>(records.Keys.Concat(adaptedSequences.Select(Identity))
+                .Concat(adaptedNullableValues.Select(Identity)), StringComparer.Ordinal);
+            var schemas = new MemoryPackSchemas(context.Compilation, logicalStorages, IsImplicitReference, stringFormat,
+                projections, purposes, externalSchemas, localTypes);
             var code = new StringBuilder();
+            foreach (ITypeSymbol value in records.Values.Cast<ITypeSymbol>().Concat(adaptedSequences).Concat(adaptedNullableValues))
+                code.Append("[assembly: global::ThirdPersonSimulation.ValueSerializationSchemaAttribute(typeof(")
+                    .Append(TypeName(value)).Append("), ")
+                    .Append(schemas.Purpose(value) is string publishedPurpose
+                        ? Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(publishedPurpose, true) : "null")
+                    .Append(", \"").Append(schemas.Hash(value)).AppendLine("\")]");
             code.AppendLine("namespace ThirdPersonSimulation.Serialization {");
             code.AppendLine("internal static partial class MemoryPackGeneratedFormatters {");
             code.AppendLine("internal static void Register() {");
@@ -148,7 +165,6 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("}");
             ordinal = 0;
             bool scopedReferences = (int)((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)context.ParseOptions).LanguageVersion >= 1100;
-            var schemas = new MemoryPackSchemas(context.Compilation, logicalStorages, IsImplicitReference, stringFormat, projections);
             foreach (var record in records.Values)
                 EmitMemoryPackFormatter(code, record, projections.TryGetValue(Identity(record), out StorageProjection projection)
                         ? projection.Members : ValueMembers(record, IsImplicitReference),
@@ -166,6 +182,7 @@ namespace ThirdPerson.MemoryPackAdapters
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
                 if (ContainsParameter(type)) return;
+                if (purpose != null) purposes[Identity(type)] = purpose;
                 StorageProjection projection = null;
                 if (type is INamedTypeSymbol purposeType && purpose != null)
                 {
@@ -212,7 +229,20 @@ namespace ThirdPerson.MemoryPackAdapters
                     return;
                 }
                 if (!visited.Add(Identity(type) + "|" + purpose)) return;
-                if (externalLeaves.Contains(Identity(type))) return;
+                if (externalLeaves.Contains(Identity(type)))
+                {
+                    if (purpose != null && generatedExternalLeaves.Contains(Identity(type)))
+                    {
+                        string schemaPurpose = UsesProjection(type, purpose, IsImplicitReference) ? purpose : null;
+                        if (!externalSchemas.TryGetValue(SchemaKey(type, schemaPurpose), out HashSet<string> hashes) || hashes.Count != 1)
+                        {
+                            valid = false;
+                            context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter,
+                                type.Locations.FirstOrDefault(), Identity(type), "外部生成格式缺少唯一的当前用途 schema，须先重编原格式所属程序集"));
+                        }
+                    }
+                    return;
+                }
                 if (MemoryPackSequence(type))
                 {
                     sequences[Identity(type)] = type;
