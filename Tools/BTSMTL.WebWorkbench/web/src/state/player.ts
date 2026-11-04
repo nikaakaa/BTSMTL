@@ -243,16 +243,18 @@ export const playerService = {
 
   camera: (camera: CameraCommand) => viewerSend({ type: 'camera', ...camera }),
   input(input: InputCommand) {
-    const target = getState().live?.player;
-    if (target?.source == null || target.inputMode !== 'device') return false;
+    const state = getState();
+    const target = state.live?.player;
+    if (state.runId !== null || target?.source == null || target.inputMode !== 'device') return false;
     const sent = viewerSend({ type: 'input', ...input });
     if (sent) deviceInput = input;
     return sent;
   },
   releaseInput: releaseDeviceInput,
   pick(x: number, y: number): string | null {
-    const target = getState().live?.player?.source;
-    if (target == null) return null;
+    const state = getState();
+    const target = state.live?.player?.source;
+    if (state.runId !== null || target == null) return null;
     const commandId = crypto.randomUUID();
     pendingPicks.set(commandId, target);
     if (viewerSend({ type: 'pick', commandId, x, y })) return commandId;
@@ -261,3 +263,9 @@ export const playerService = {
   },
   connected: () => !!socket && socket.readyState === WebSocket.OPEN,
 };
+
+useWorkbench.subscribe((state, previous) => {
+  if (state.runId === previous.runId && state.generation === previous.generation) return;
+  releaseDeviceInput();
+  pendingPicks.clear();
+});
