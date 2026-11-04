@@ -138,7 +138,7 @@ export function recordedGraphCalls(frames: RouteFrame[], graphs: GraphDefinition
     byId.set(graph.id, matches);
   }
   for (const frame of frames) {
-    for (const record of [...frame.nodes, ...frame.edges, ...frame.ports.filter(item => item.sourceAvailable)]) {
+    for (const record of [...frame.nodes, ...frame.edges, ...frame.ports]) {
       if (record.call === null || !matchesDocumentCall(record.call, binding)) continue;
       for (const graph of byId.get(record.graphId) ?? []) {
         const key = `${graphKey(graph)}:${callKey(record.call)}`;
