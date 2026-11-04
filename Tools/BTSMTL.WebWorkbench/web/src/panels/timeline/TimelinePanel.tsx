@@ -18,14 +18,14 @@ import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, currentDocument, defaultChannelCurve,
   graphPath, inputAuthoring, markersTaken, markerTimeTaken, requestReferenceCurves, trackHasCurves, trackOverlap, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
-  useReferenceCurves, useSkillElements, useDocumentObservationBinding, useDocumentObservationNotice, type ReferenceEntry,
+  useReferenceCurves, useSkillElements, useDocumentObservationBinding, useDocumentObservationNotice, useTimelineObservationBinding, type ReferenceEntry,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
 } from '../../state/store';
 import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
-  trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
+  timelineObservationNotice, trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallCandidateNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
@@ -649,11 +649,13 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
   const runId = useWorkbench(state => state.runId);
   const trace = useWorkbench(useShallow(routeObservation));
   const routeFrames = useWorkbench(state => state.routeFrames);
   const currentRoute = trace.kind === 'ready' ? trace.route : null;
+  const frameSource = useWorkbench(state => state.frame?.hostFrame === state.hostFrame ? state.frame.source : null);
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { inputTimeline, inputRoot, graphs, curves, selectedCurves } = useWorkbench(useShallow(state => ({
@@ -702,19 +704,22 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     if (quickMode || callerNotice !== null) return [];
     for (const playback of playbacks ?? [])
       if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding) &&
+        timelineObservationNotice(timelineBinding, frameSource, playback.documentId, playback.call) === null &&
         (caller === null || parentCallMatches(caller.call, playback.call))) {
         const observation = { call: playback.call, domain: playback.domain };
         result.set(observationKey(observation), observation);
       }
     return [...result.values()];
-  }, [quickMode, playbacks, focused?.documentId, binding, caller, callerNotice]);
+  }, [quickMode, playbacks, focused?.documentId, binding, timelineBinding, frameSource, caller, callerNotice]);
   const pin = params.pin;
   const pinNotice = pin === null ? null : pin.runId !== runId ? '固定播放属于另一份运行档案，固定身份已保留'
     : pin.documentId !== focused?.documentId ? '固定播放不属于当前 Timeline，固定身份已保留'
-    : documentObservationNotice(currentRoute, binding, pin.observation.call);
+    : documentObservationNotice(currentRoute, binding, pin.observation.call)
+      ?? timelineObservationNotice(timelineBinding, frameSource, pin.documentId, pin.observation.call);
   const observed = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
     : pin !== null ? pin.observation : params.call !== null ? observations.find(observation => observationKey(observation) === params.call) ?? null
       : caller === null && observations.length === 1 ? observations[0] : null;
+  const timelineNotice = timelineObservationNotice(timelineBinding, frameSource, focused?.documentId ?? null, observed?.call ?? null);
   const choices = pin && !observations.some(item => observationKey(item) === observationKey(pin.observation))
     ? [pin.observation, ...observations] : observations;
   const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observed === null || runId === null || focused === null ? undefined
@@ -936,7 +941,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
         observations={choices} selectCall={selectCall} pin={pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
-        observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (trace.kind === 'unavailable' ? trace.reason
+        observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (inputScheme ? null : timelineNotice) ?? (trace.kind === 'unavailable' ? trace.reason
           : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : caller !== null ? parentCallCandidateNotice : null)} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>

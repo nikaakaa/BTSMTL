@@ -1,6 +1,27 @@
-import type { TrackOverlap } from '../api/authoring';
-import type { AuthorClip, AuthorTimeline, AuthorTrack, FrozenInputTimeline, GraphDefinition } from '../api/types';
+import type { PreviewAuthorProgram, TrackOverlap } from '../api/authoring';
+import type { PreviewSampleSource } from '../api/playerRecords';
+import type { AuthorClip, AuthorTimeline, AuthorTrack, ExecutionCall, FrozenInputTimeline, GraphDefinition } from '../api/types';
 import { inputRootKey } from './store';
+
+export type TimelineObservationBinding =
+  | { kind: 'ready'; sceneRevision: string; programs: PreviewAuthorProgram[] }
+  | { kind: 'unavailable'; reason: string };
+
+export function timelineObservationNotice(binding: TimelineObservationBinding, source: PreviewSampleSource | null,
+  documentId: string | null, call: ExecutionCall | null): string | null {
+  if (binding.kind === 'unavailable') return binding.reason;
+  if (source === null || source.content === null) return '当前帧未记录实际采用内容，Timeline 运行叠加不可用。';
+  if (source.content.kind !== 'scene' || source.content.revision !== binding.sceneRevision)
+    return '当前帧属于另一版预览场景，Timeline 运行叠加已过期；原档案保留。';
+  if (documentId === null) return '请选择要观察的 Timeline。';
+  if (call !== null && call.programIndex === null) return '当前调用未记录程序槽位，无法核对 Timeline 内容修订。';
+  const units = binding.programs.filter(program => call === null ||
+    (program.programId === call.programId && program.programRevision === call.programRevision && program.programIndex === call.programIndex))
+    .flatMap(program => program.timelines.filter(timeline => timeline.documentId === documentId));
+  if (units.length === 0) return '已采用的预览包未声明此调用的 Timeline 内容修订，运行叠加不可用。';
+  const revisions = new Set(units.map(unit => JSON.stringify([unit.contentIdentity, unit.contentRevision])));
+  return revisions.size === 1 ? null : '此 Timeline 对应多个内容修订，请选择实际调用后再观察。';
+}
 
 export type TrackKind = 'anim' | 'motion' | 'act' | 'in' | 'other';
 

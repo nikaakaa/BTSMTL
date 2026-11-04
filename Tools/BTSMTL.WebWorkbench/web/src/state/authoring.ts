@@ -17,7 +17,7 @@ import {
 import { isWeighted, splitCurve } from './curveSplit';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
 import { documentObservationNotice, graphHierarchy, routeObservation, type DocumentObservationBinding } from './graphModel';
-import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
+import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack, type TimelineObservationBinding } from './timelineModel';
 import { playerService } from './player';
 import { session, stageNames } from './session';
 
@@ -154,6 +154,24 @@ export function useDocumentObservationNotice(call: ExecutionCall | null = null):
     return documentObservationNotice(observation.kind === 'ready' ? observation.route : null, binding, call)
       ?? (observation.kind === 'unavailable' ? observation.reason : null);
   });
+}
+
+export function useTimelineObservationBinding(dirty: boolean): TimelineObservationBinding {
+  const { lastSave, sourceRevision } = useAuthoring(useShallow(state => {
+    const document = authoringDocument(state);
+    return { lastSave: document.lastSave, sourceRevision: document.sourceRevision };
+  }));
+  return useMemo(() => {
+    if (dirty) return { kind: 'unavailable', reason: '作者内容已有修改，Timeline 运行叠加已过期；原档案保留。' };
+    const receipt = lastSave?.compilationState === 'succeeded' ? lastSave.preview : null;
+    if (receipt === null) return { kind: 'unavailable', reason: '尚未取得当前编辑内容的 Timeline 预览采用回执，运行叠加不可用。' };
+    if (sourceRevision === null || receipt.sourceRevision !== sourceRevision)
+      return { kind: 'unavailable', reason: '预览回执尚未对应当前完整编辑内容，Timeline 运行叠加不可用。' };
+    if (receipt.stage === 'accepted')
+      return { kind: 'unavailable', reason: '当前 Timeline 已准备，Player 尚未确认采用，运行叠加不可用。' };
+    if (receipt.stage === 'failed' || receipt.stage === 'unavailable') return { kind: 'unavailable', reason: receipt.error };
+    return { kind: 'ready', sceneRevision: receipt.package.sceneRevision, programs: receipt.package.programs };
+  }, [dirty, lastSave, sourceRevision]);
 }
 
 export function useDocumentGraphHierarchy() {

@@ -497,14 +497,33 @@ export interface SkillSaveRequest {
   job?: StartPlayerJobRequest;
 }
 
-interface SkillRefreshPackage {
-  stage: 'offline-scene-written';
-  scenePath: string;
-  sceneRevision: string;
-  skillIdentity: string;
-  program: { programAssetId: string; graphId: string; programRevision: string; contentHash: string } | null;
-  inputPlans: { id: string; path: string; revision: string; schemes: string[] }[];
-}
+const readPreviewInputPlan = object({ id: text, path: text, revision: text, schemes: array(text) });
+const readPreviewAuthorTimeline = object({
+  documentId: text, contentIdentity: text, contentRevision: text, displayName: text,
+  tracks: array(object({ id: text, displayName: text, muted: boolean,
+    clips: array(object({ id: text, contract: text, displayName: nullable(text),
+      startSeconds: number, endSeconds: number, graphId: nullable(text) })),
+    markers: array(object({ id: text, seconds: number, graphId: text })),
+  })),
+});
+const readPreviewAuthorProgram = object({
+  ownerKind: text, ownerId: text, programIndex: number, programAssetId: text, programId: text,
+  programRevision: text, contentHash: text, layoutRevision: nullable(text),
+  graphs: array(object({ id: text, displayName: nullable(text), role: text,
+    nodes: array(object({ id: text, displayName: nullable(text), type: text,
+      position: nullable(object({ x: number, y: number })) })),
+    ports: array(object({ nodeId: text, id: text, displayName: text, direction: text, type: text })),
+    edges: array(object({ id: text, sourceNodeId: text, sourcePortId: nullable(text), targetNodeId: text, targetPortId: nullable(text) })),
+  })),
+  timelines: array(readPreviewAuthorTimeline), inputPlans: array(readPreviewInputPlan),
+});
+const readSkillRefreshPackage = object({
+  stage: choice('offline-scene-written'), scenePath: text, sceneRevision: text, skillIdentity: text,
+  program: nullable(object({ programAssetId: text, graphId: text, programRevision: text, contentHash: text })),
+  inputPlans: array(readPreviewInputPlan), programs: array(readPreviewAuthorProgram),
+});
+type SkillRefreshPackage = ReturnType<typeof readSkillRefreshPackage>;
+export type PreviewAuthorProgram = ReturnType<typeof readPreviewAuthorProgram>;
 
 type SkillRefreshCommand = LiveCommandResult;
 
@@ -528,12 +547,17 @@ function readSkillRefreshReceipt(receipt: PlayerSkillRefreshReceipt): PlayerSkil
   switch (receipt.stage) {
     case 'accepted':
       if (command?.stage !== 'submitted') throw new Error('SkillRefresh.accepted.command.stage 需要 submitted');
-      return { ...receipt, command: { ...command, stage: command.stage } };
+      return { ...receipt, package: readSkillRefreshPackage(receipt.package, 'SkillRefresh.package'),
+        command: { ...command, stage: command.stage } };
     case 'adopted':
       if (command?.stage !== 'applied') throw new Error('SkillRefresh.adopted.command.stage 需要 applied');
-      return { ...receipt, command: { ...command, stage: command.stage } };
+      if (command.content?.revision !== receipt.package.sceneRevision)
+        throw new Error('SkillRefresh.adopted.command.content.revision 与 package.sceneRevision 不一致');
+      return { ...receipt, package: readSkillRefreshPackage(receipt.package, 'SkillRefresh.package'),
+        command: { ...command, stage: command.stage } };
     case 'failed':
-    case 'unavailable': return { ...receipt, command };
+    case 'unavailable': return { ...receipt, command,
+      package: receipt.package === null ? null : readSkillRefreshPackage(receipt.package, 'SkillRefresh.package') };
   }
 }
 
