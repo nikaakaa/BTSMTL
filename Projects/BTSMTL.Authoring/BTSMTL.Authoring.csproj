@@ -25,6 +25,17 @@
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/*SerializedFields.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineData.Content.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineData.Runtime.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.Marker.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.Sampling.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.CurveAuthoring.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.Contracts.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.ScenePresentation.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineContentClosure.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineGraphBindings.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineAuthoringFingerprint.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/Timeline.Tree.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Editor/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
