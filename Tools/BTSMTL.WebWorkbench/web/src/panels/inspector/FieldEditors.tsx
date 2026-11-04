@@ -867,7 +867,7 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
     <Fold title="片段" defaultOpen>
       {children}
       {!timeOnly && animation && <Row label="动画">
-        <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)}
+        <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)} configuration={clip}
           catalog={animationReferenceCatalog(library)} onChoose={choice => set(animation.serializedMemberPath, choice.value)} />
       </Row>}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}

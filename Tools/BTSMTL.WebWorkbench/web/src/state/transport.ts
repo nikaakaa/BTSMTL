@@ -9,6 +9,7 @@ export type TransportSource = 'sealed' | 'player-live';
 const source = 'transport';
 
 export type ArchiveTimebase = Map<number, Pick<Frame, 'hostFrame' | 'seconds' | 'source'>>;
+export type ArchiveRecordPosition = { kind: 'record'; index: number; seconds: number } | { kind: 'unavailable'; reason: string };
 interface Timebase {
   runId: PlayerJobId;
   frames: ArchiveTimebase;
@@ -203,7 +204,7 @@ export const transport = {
     return timebase?.runId === getState().runId ? timebase.frames.get(index)?.seconds ?? null : null;
   },
 
-  recordPosition(runId: PlayerJobId, index: number, sample: PreviewSampleSource) {
+  recordPosition(runId: PlayerJobId, index: number, sample: PreviewSampleSource): ArchiveRecordPosition {
     if (timebase?.runId !== runId || getState().runId !== runId)
       return { kind: 'unavailable', reason: '采样点不属于当前打开的档案' } as const;
     if (transportSource() !== 'sealed') return { kind: 'unavailable', reason: '当前档案尚未封存，不能定位录制帧' } as const;
