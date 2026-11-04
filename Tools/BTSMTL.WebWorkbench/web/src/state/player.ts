@@ -15,6 +15,8 @@ const pendingStartKey = 'btsmtl.player.pending-start';
 let socket: WebSocket | null = null;
 let latest: VideoFrame | null = null;
 let requestedLoad: { commandId: string; content: PlayerPreviewContent } | null = null;
+let deviceInput: InputCommand | null = null;
+const pendingPicks = new Map<string, PreviewSampleSource>();
 const videoListeners = new Set<() => void>();
 const pickListeners = new Set<(pick: PlayerPick) => void>();
 
@@ -41,6 +43,10 @@ function acceptStatus(live: ViewerLive) {
   const sample = live.player?.source ?? null;
   if (sample !== null && !matchesRequestedLoad(sample)) return;
   if (sample !== null) requestedLoad = null;
+  if (!samePreviewLoad(previous, sample)) {
+    pendingPicks.clear();
+    deviceInput = null;
+  }
   useWorkbench.setState({ live, ...(samePreviewLoad(previous, sample) ? {} : initialPlayerTarget) });
   if (latest && !samePreviewLoad(latest.source, sample)) setVideo(null);
 }
@@ -58,9 +64,13 @@ function onMessage(message: ViewerMessage) {
         if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
       }
       break;
-    case 'pick':
-      pickListeners.forEach(listener => listener(message));
+    case 'pick': {
+      const target = pendingPicks.get(message.commandId);
+      pendingPicks.delete(message.commandId);
+      if (target !== undefined && samePreviewLoad(target, getState().live?.player?.source ?? null))
+        pickListeners.forEach(listener => listener(message));
       break;
+    }
     case 'error':
       consoleActions.log('error', source, message.displayName ? `${message.displayName}：${message.error}` : message.error, message.rawJson);
       break;
@@ -71,6 +81,8 @@ function onMessage(message: ViewerMessage) {
 }
 
 function close() {
+  releaseDeviceInput();
+  pendingPicks.clear();
   const current = socket;
   socket = null;
   current?.close();
@@ -97,14 +109,24 @@ async function command(type: string, send: (liveId: string) => Promise<LiveComma
   }
 }
 
-// 无回执的高频消息（相机、输入、点选）走画面连接。
+// 相机、输入与点选走画面连接；点选回执由原命令身份关联。
 function viewerSend(message: LiveCommand) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return false;
   try {
     sendViewerCommand(socket, message);
+    return true;
   } catch (error) {
     consoleActions.error(source, error);
+    return false;
   }
+}
+
+function releaseDeviceInput() {
+  const previous = deviceInput;
+  if (previous === null) return;
+  deviceInput = null;
+  viewerSend({ type: 'input', keys: [], mouseDx: 0, mouseDy: 0, mouseButtons: 0, scroll: 0,
+    x: previous.x, y: previous.y, lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0, padButtons: 0 });
 }
 
 export const playerService = {
@@ -140,12 +162,16 @@ export const playerService = {
       video: frame => { if (socket === opened) acceptVideo(frame); },
       error: error => {
         if (socket !== opened) return;
+        releaseDeviceInput();
+        pendingPicks.clear();
         setVideo(null);
         useWorkbench.setState({ live: null, ...initialPlayerTarget });
         consoleActions.error(source, error);
       },
       close: () => {
         if (socket !== opened) return;
+        pendingPicks.clear();
+        deviceInput = null;
         socket = null;
         setVideo(null);
         useWorkbench.setState({ viewerOpen: false, live: null, ...initialPlayerTarget });
@@ -183,6 +209,8 @@ export const playerService = {
   async stop() {
     const liveId = getState().liveId;
     if (!liveId) return;
+    releaseDeviceInput();
+    pendingPicks.clear();
     try {
       await playerApi.stop(liveId);
     } catch (error) {
@@ -194,6 +222,8 @@ export const playerService = {
 
   loadContent: (content: PlayerPreviewContent) =>
     command('load', async liveId => {
+      releaseDeviceInput();
+      pendingPicks.clear();
       const commandId = crypto.randomUUID();
       const request = requestedLoad = { commandId, content };
       setVideo(null);
@@ -212,7 +242,22 @@ export const playerService = {
   },
 
   camera: (camera: CameraCommand) => viewerSend({ type: 'camera', ...camera }),
-  input: (input: InputCommand) => viewerSend({ type: 'input', ...input }),
-  pick: (x: number, y: number) => viewerSend({ type: 'pick', commandId: crypto.randomUUID(), x, y }),
+  input(input: InputCommand) {
+    const target = getState().live?.player;
+    if (target?.source == null || target.inputMode !== 'device') return false;
+    const sent = viewerSend({ type: 'input', ...input });
+    if (sent) deviceInput = input;
+    return sent;
+  },
+  releaseInput: releaseDeviceInput,
+  pick(x: number, y: number): string | null {
+    const target = getState().live?.player?.source;
+    if (target == null) return null;
+    const commandId = crypto.randomUUID();
+    pendingPicks.set(commandId, target);
+    if (viewerSend({ type: 'pick', commandId, x, y })) return commandId;
+    pendingPicks.delete(commandId);
+    return null;
+  },
   connected: () => !!socket && socket.readyState === WebSocket.OPEN,
 };

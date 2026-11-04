@@ -262,7 +262,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       state.keys.clear(); state.dx = state.dy = state.buttons = state.scroll = 0;
       const current = getState();
       if (current.liveId === target.liveId && samePreviewLoad(targetSource, current.live?.player?.source ?? null) &&
-        current.live?.player?.inputMode === 'device') playerService.input(inputMessage(panelWindow, state));
+        current.live?.player?.inputMode === 'device') playerService.releaseInput();
     };
     const lockChanged = () => {
       const locked = doc.pointerLockElement === element;
