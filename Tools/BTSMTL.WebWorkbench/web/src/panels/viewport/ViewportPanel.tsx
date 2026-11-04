@@ -39,8 +39,14 @@ function LogicView({ runId }: { runId: PlayerJobId }) {
   const frame = useWorkbench(state => state.frame);
   const presentation = useWorkbench(presentationForLogic);
   const archiveFrame = useWorkbench(state => state.archiveFrame);
+  const layout = useWorkbench(state => state.archiveLayout);
   const runFailure = useWorkbench(state => state.failure);
-  const bones = archiveFrame?.availability.find(item => item.channel === 'bones');
+  const bones = archiveFrame?.availability.find(item => (item.channel === 'bones' || item.channel === 'presentation') && !item.available);
+  const boneReason = !presentation ? bones?.reason ?? '当前帧没有与逻辑记录同源的骨骼记录；根、碰撞与命中仍按逻辑记录显示'
+    : layout === null ? '当前档案没有骨架布局'
+    : presentation.actors.every(actor => actor.localBones.length === 0) ? '当前表现记录没有角色骨骼数据'
+    : presentation.actors.every(actor => !layout.actors.some(rig => rig.actorId === actor.actorId && rig.rosterIndex === actor.rosterIndex))
+      ? '当前表现记录没有匹配的角色骨架布局' : null;
   const contacts = frame?.availability.find(item => item.channel === 'physics-contacts');
   const actualContacts = frame?.geometry.contacts.some(hit => hit.kind === 'kcc-contact');
   const queryCandidates = frame?.geometry.contacts.some(hit => hit.kind === 'query-candidate');
@@ -108,7 +114,7 @@ function LogicView({ runId }: { runId: PlayerJobId }) {
             : `内容类型：${frame.source.content.kind}\n实际采用修订：${frame.source.content.revision}\n来源时钟：${frame.source.clock.seconds} 秒\n${frame.source.clock.positionDisplayName}：${frame.source.clock.position.hostFrame}`}>
             <span><BarLabel>{frame.source?.content ? `${frame.source.content.kind} · ${frame.source.content.revision}` : '采用内容未记录'}</BarLabel></span>
           </Tip>
-          {!presentation && <Tip content={bones?.available === false ? bones.reason : '当前帧没有与逻辑记录同源的骨骼记录；根、碰撞与命中仍按逻辑记录显示'}>
+          {boneReason !== null && <Tip content={boneReason}>
             <span><BarLabel>骨骼不可用</BarLabel></span>
           </Tip>}
           {!contacts?.available && <Tip content={contacts?.reason ?? '当前响应未声明实际KCC接触可用性'}><span>

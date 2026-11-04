@@ -469,14 +469,17 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
   const actual = view.runId ? undefined : view.player?.source?.clock;
   const pictureSource = view.runId ? view.archiveImage?.kind === 'frame' ? view.archiveImage.metadata.source : null : video?.source ?? null;
   const picture = pictureSource?.clock;
+  const imageHostFrame = view.runId && view.archiveImage && view.archiveImage.kind !== 'unavailable'
+    ? view.archiveImage.metadata.sourceHostFrame : null;
   const adopted = view.runId ? view.logicSource : view.player?.source ?? null;
+  const compared = view.runId ? '当前逻辑记录' : '当前 Player 状态';
   const sourceNotice = pictureSource === null || pictureSource.content === null
     ? '画面采用内容未记录'
     : adopted === null || adopted.content === null ? '当前采用内容未记录，无法确认同源'
     : adopted.execution.kind === null || adopted.execution.identity === null || pictureSource.execution.kind === null || pictureSource.execution.identity === null
       ? '执行身份未记录，无法确认同源'
-    : !samePreviewLoad(adopted, pictureSource) ? '画面与当前记录的来源或内容不同'
-    : pictureSource.clock.position.hostFrame !== adopted.clock.position.hostFrame ? '画面与当前记录的来源帧不同' : '与当前记录同源、同帧';
+    : !samePreviewLoad(adopted, pictureSource) ? `画面与${compared}的来源或内容不同`
+    : pictureSource.clock.position.hostFrame !== adopted.clock.position.hostFrame ? `画面与${compared}的来源帧不同` : `与${compared}同源、同帧`;
   const notices = [
     !view.runId && view.targetPosition !== null && actual
       ? `定位 ${positionValue(view.targetPosition)} / 实际 ${clockPosition(actual)} …` : null,
@@ -486,10 +489,10 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
   return (
     <>
       {notices.length !== 0 && <div className={styles.badge}>{notices.join(' · ')}</div>}
-      <div className={styles.source} title={`原始播放器画面\n${view.runId ? `Run：${view.runId}` : '实时 Player'}\n${sourceNotice}\n内容类型：${pictureSource?.content?.kind ?? '未记录'}\n实际采用修订：${pictureSource?.content?.revision ?? '未记录'}`}>
+      <div className={styles.source} title={`原始播放器画面\n${view.runId ? `Run：${view.runId}` : '实时 Player'}\n${sourceNotice}\n内容类型：${pictureSource?.content?.kind ?? '未记录'}\n实际采用修订：${pictureSource?.content?.revision ?? '未记录'}\n画面来源帧：${imageHostFrame ?? picture?.position.hostFrame ?? '未记录'}`}>
         原始画面 · {view.runId ? `Run ${view.runId}` : '实时 Player'} · {pictureSource?.content?.kind ?? '内容未记录'}
         {pictureSource?.content && ` · ${pictureSource.content.revision}`}
-        {picture && ` · ${picture.positionDisplayName} ${clockPosition(picture)}`} · {sourceNotice}
+        {picture ? ` · ${picture.positionDisplayName} ${clockPosition(picture)}` : imageHostFrame !== null ? ` · 画面来源帧 ${imageHostFrame}` : ''} · {sourceNotice}
       </div>
       {stats && (
         <div className={styles.stats}>
