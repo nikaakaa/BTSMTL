@@ -65,11 +65,12 @@ export const portSampleLabel = (sample: PortSample) => `记录 ${sample.sequence
 export const portSampleKey = (sample: PortSample) => JSON.stringify([sample.sequence, sample.observationSequence,
   sample.generation, sample.loopScopes?.map(loopScopeKey)]);
 
-export function routeObservation({ runId, frame, hostFrame, sources, contentSelection }:
-  Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame' | 'sources' | 'contentSelection'>) {
+export function routeObservation({ runId, frame, hostFrame, sources, contentSelection, routeAvailability }:
+  Pick<WorkbenchState, 'runId' | 'frame' | 'hostFrame' | 'sources' | 'contentSelection' | 'routeAvailability'>) {
   if (runId === null) return { kind: 'unavailable', reason: '选择运行以查看实际调用' } as const;
   if (frame === null || frame.hostFrame !== hostFrame)
-    return { kind: 'unavailable', reason: '正在读取当前档案帧，尚无该帧的实际调用' } as const;
+    return { kind: 'unavailable', reason: routeAvailability.filter(item => !item.available || !item.complete)
+      .map(item => item.reason).join('；') || '正在读取当前档案帧，尚无该帧的实际调用' } as const;
   if (frame.source === null || frame.source.execution.kind === null || frame.source.execution.identity === null)
     return { kind: 'unavailable', reason: '此档案帧未记录实际执行身份，调用观察不可用' } as const;
   const content = frame.source.content;

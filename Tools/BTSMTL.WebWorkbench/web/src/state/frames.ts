@@ -65,7 +65,7 @@ function loadPage(scope: FrameScope, page: number, signal: AbortSignal): Promise
       if (actual === null || actual.contentRevision !== expected.contentRevision || actual.sceneRevision !== expected.sceneRevision ||
         actual.execution.kind !== expected.execution.kind || actual.execution.identity !== expected.execution.identity ||
         actual.execution.playerBuildId !== expected.execution.playerBuildId || actual.execution.editorAssemblyMvid !== expected.execution.editorAssemblyMvid)
-        throw new Error(`档案帧 ${frame.hostFrame} 的内容或执行来源与本次读取修订不一致，未发布旧帧。`);
+        throw new Error(`档案帧 ${frame.hostFrame} 的内容或执行来源缺失，或与本次读取修订不一致，未发布此帧。`);
     }
     result.items.forEach((frame, offset) => remember(scope, page * framePageSize + offset, frame));
     transport.recordFrames(scope.runId, page * framePageSize, result.items);
@@ -121,5 +121,5 @@ useWorkbench.subscribe((state, previous) => {
   for (const entry of pending.values()) entry.controller.abort();
   pending.clear();
   cache.clear();
-  runActions.setData(state.generation, { routeFrames: [], frame: null, frameKey: null });
+  runActions.setData(state.generation, { routeFrames: [], routeAvailability: [], frame: null, frameKey: null });
 });

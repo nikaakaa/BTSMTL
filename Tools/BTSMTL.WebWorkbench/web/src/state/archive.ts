@@ -335,7 +335,7 @@ export const archive = {
     const page = Math.floor(frameIndex / pageFrames);
     const request = ++frameRequest;
     imageController?.abort();
-    runActions.setData(generation, { frame: null, archiveFrame: null, archiveImage: null });
+    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, archiveImage: null });
     const allowed = new Set([page - 1, page, page + 1]);
     for (const [id, request] of pages) if (!allowed.has(request.page)) {
       request.controller.abort();
@@ -356,7 +356,12 @@ export const archive = {
     readFrame(frameIndex, { kind: 'cursor' }).then(frame => {
       if (request !== frameRequest || !frame || !isCurrent(generation)) return;
       runActions.setData(generation, { frame, routeAvailability: frame.route?.availability ?? [] });
-    }, failed);
+    }, error => {
+      if (request === frameRequest && isCurrent(generation))
+        runActions.setData(generation, { routeAvailability: [{ channel: 'frame-source', available: false, complete: false,
+          reason: error instanceof Error ? error.message : String(error) }] });
+      failed(error);
+    });
     for (const neighbour of [page - 1, page + 1])
       if (neighbour >= 0 && neighbour * pageFrames < summary.frameCount && !cache.has(key(runId, neighbour * pageFrames)))
         void loadPage(context, neighbour).catch(error => {
