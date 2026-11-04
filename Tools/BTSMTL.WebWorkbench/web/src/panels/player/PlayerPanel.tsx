@@ -39,6 +39,7 @@ function PlayerView() {
   const stage = useRef<HTMLDivElement>(null);
   const [captureBinding, setCaptureBinding] = useState<string | null>(null);
   const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
+  const selectedLiveId = state.liveId;
   const codeBusy = codeUpdate !== null && codeUpdate.kind !== 'ready';
   const updateCode = async (buildId: string) => {
     setCodeUpdate({ kind: 'compiling', buildId });
@@ -114,11 +115,11 @@ function PlayerView() {
           </MenuButton>
           {codeUpdate?.kind === 'compiling' && <span className={styles.dim}>正在编译 Player 代码…</span>}
           {codeUpdate?.kind === 'adopting' && <span className={styles.dim}>正在采用新代码版本…</span>}
-          {codeUpdate?.kind === 'ready' && (state.liveId
+          {codeUpdate?.kind === 'ready' && (selectedLiveId
             ? <Button variant="ghost" tip="重启所选播放器并重新载入其现有内容" onClick={async () => {
               const buildId = codeUpdate.buildId;
               setCodeUpdate({ kind: 'adopting', buildId });
-              const applied = await playerService.adoptCode(state.liveId!, buildId);
+              const applied = await playerService.adoptCode(selectedLiveId, buildId);
               setCodeUpdate(applied ? null : { kind: 'ready', buildId });
             }}>采用新代码版本</Button>
             : <span className={styles.dim}>新代码版本已生成，可从播放器菜单启动</span>)}
