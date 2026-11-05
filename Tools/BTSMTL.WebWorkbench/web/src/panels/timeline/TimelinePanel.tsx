@@ -203,7 +203,7 @@ const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, 
   ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && !clock.observing)) && clock.documentId !== null
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
 const quickLocalSeconds = (segment: QuickSegment, seconds: number) => seconds < segment.start || seconds > segment.end ? null
-  : Math.min(segment.localEnd, segment.localStart + seconds - segment.start);
+  : seconds === segment.end ? segment.localEnd : segment.localStart + seconds - segment.start;
 function previewSeconds(state: WorkbenchState, clock: PreviewClock, author: number | null): number | null {
   if (clock.kind === 'quick') return clock.source.kind === 'input' ? state.quickPreview.seconds
     : clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds);

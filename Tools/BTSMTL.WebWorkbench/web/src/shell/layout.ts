@@ -21,7 +21,8 @@ interface Saved {
 }
 
 const readRevisionGraphKey = tuple(text, text, text, text);
-const readGraphSelections = object({ graph: optional(nullable(text)), pin: optional(nullable(object({ graph: text }))) });
+const readGraphSelections = object({ graph: optional(nullable(text)), pin: optional(nullable(object({ graph: text }))),
+  viewport: optional(nullable(object({ view: text }))) });
 
 function migrateGraphSelections(layout: SerializedDockview) {
   const migrate = (value: string) => {
@@ -30,10 +31,13 @@ function migrateGraphSelections(layout: SerializedDockview) {
   };
   for (const panel of Object.values(layout.panels)) {
     if (panel.contentComponent !== 'graph') continue;
-    const { graph, pin } = readGraphSelections(panel.params ?? {}, '保存的节点图面板');
+    const { graph, pin, viewport } = readGraphSelections(panel.params ?? {}, '保存的节点图面板');
+    const separator = viewport?.view.lastIndexOf('|');
     panel.params = { ...panel.params,
       ...(graph === undefined ? {} : { graph: graph === null ? null : migrate(graph) }),
-      ...(pin === undefined ? {} : { pin: pin === null ? null : { ...panel.params?.pin, graph: migrate(pin.graph) } }) };
+      ...(pin === undefined ? {} : { pin: pin === null ? null : { ...panel.params?.pin, graph: migrate(pin.graph) } }),
+      ...(viewport === undefined ? {} : { viewport: viewport === null ? null : { ...panel.params?.viewport,
+        view: `${migrate(viewport.view.slice(0, separator))}${viewport.view.slice(separator)}` } }) };
   }
 }
 

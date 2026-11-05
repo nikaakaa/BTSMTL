@@ -167,7 +167,7 @@ export function quickPlan() {
 
 export function quickPlanStale() {
   const state = current();
-  return state.accepted !== null && (!selectedRequest(state.accepted.request) ||
+  return state.accepted !== null && (getState().previewMode !== 'quick' || state.description.kind !== 'ready' ||
     state.job.kind !== 'settled' || state.job.request !== state.accepted.request);
 }
 
@@ -226,17 +226,17 @@ export const quickPreview = {
   },
   toggle() {
     if (current().playback !== null) { quickPreview.pause(); return; }
-    if (playbackReason() !== null) return;
-    const plan = quickPlan()!;
+    const plan = quickPlan();
+    if (plan === null || quickPlanStale()) return;
     const bounds = quickBounds(plan);
     const origin = current().seconds >= bounds.last ? bounds.first : current().seconds;
     set({ seconds: origin, playback: { origin, startedAt: performance.now() } });
     playbackFrame = requestAnimationFrame(advancePlayback);
   },
   step(direction: -1 | 1) {
-    if (playbackReason() !== null) return;
+    const plan = quickPlan();
+    if (plan === null || quickPlanStale()) return;
     quickPreview.pause();
-    const plan = quickPlan()!;
     const bounds = quickBounds(plan);
     const boundaries = [...new Set([bounds.first, bounds.last, ...plan.segments.flatMap(segment => [segment.start, segment.end])])].sort((a, b) => a - b);
     const seconds = current().seconds;
