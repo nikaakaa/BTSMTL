@@ -1,6 +1,7 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
+import { readResourceRegistrationMetadata, type ResourceRegistrationMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -208,6 +209,7 @@ export interface AuthoringSubtype {
 }
 
 export type FieldMetadata = FieldChoices & {
+  resourceRegistration: ResourceRegistrationMetadata | null;
   businessKeysAvailability: QueryAvailability;
   fieldId: string;
   displayName: string | null;
@@ -866,6 +868,7 @@ function readTypeDescription(text: string): TypeDescription {
   const valueOf = (value: JsonValue, clrType: string) =>
     typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
   for (const field of fields) {
+    field.resourceRegistration = nullable(readResourceRegistrationMetadata)(field.resourceRegistration, `${field.fieldId}.resourceRegistration`);
     field.businessKeysAvailability = readQueryAvailability(field.businessKeysAvailability, `${field.fieldId}.businessKeysAvailability`);
     if (field.choices === null) continue;
     field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),

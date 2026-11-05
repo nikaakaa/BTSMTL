@@ -9,6 +9,7 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
+import { resourceRegistrationApi, type AuthoringDataTransaction, type ResourceRegistrationRequest } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -760,6 +761,40 @@ export const authoringActions = {
   undo() { step('undo', 'redo'); },
   redo() { step('redo', 'undo'); },
 
+  async registerResource(request: Omit<ResourceRegistrationRequest, 'files' | 'removedFiles' | 'expectedRevision'>) {
+    const state = get();
+    if (state.target?.kind !== 'skill') throw new Error('资源登记需要当前技能文档。');
+    if (state.saving || state.loading) throw new Error('当前文档正在读写，请完成后再登记资源。');
+    const target = state.target;
+    const before = snapshot();
+    const submitted = workingFiles(state.files, state);
+    const previousHistory = new Set(state.undo);
+    setDocument({ saving: true }, target);
+    try {
+      const result = await resourceRegistrationApi.register(target.name, { ...request,
+        expectedRevision: state.revision, files: authoringActions.changedFiles(target), removedFiles: state.removed });
+      const current = authoringDocument(useAuthoring.getState(), target);
+      const files = Object.fromEntries(result.files.map(file => [file.path, file.content]));
+      const previousKey = getIn(parseSkillJson(submitted[request.file]), request.memberPath);
+      const rebase = (item: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) => {
+        const content = rebaseSavedEdits(state.files, submitted, files, item);
+        const edited = content.edited[request.file];
+        if (edited !== undefined && getIn(edited, request.memberPath) === previousKey)
+          setIn(edited, request.memberPath, result.reference.key);
+        return content;
+      };
+      setDocument({ files, sourceFiles: dataSourceFiles(current, files), revision: result.revision,
+        sourceRevision: null, documentRevision: null, ...rebase(current),
+        undo: [...state.undo, { ...before, dataTransaction: result.transaction },
+          ...current.undo.filter(item => !previousHistory.has(item)).map(item => ({ ...item, ...rebase(item) }))].slice(-historyLimit),
+        redo: [], saving: false, externalChange: false, version: current.version + 1,
+        lastSave: { ok: true, saved: true, compilationState: 'not-started', preview: null, errors: [],
+          message: '资源键、绑定与当前作者编辑已一并保存；运行内容等待发布和采用。' },
+      }, target);
+      return result;
+    } catch (error) { setDocument({ saving: false }, target); throw error; }
+  },
+
   // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
   changedFiles(target = get().target): { path: string; content: string }[] {
     const state = authoringDocument(useAuthoring.getState(), target);
@@ -1329,6 +1364,7 @@ export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, sta
 // ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
 
 interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections' | 'timelineSelections'> {
+  dataTransaction: AuthoringDataTransaction | null;
   edited: Record<string, JsonValue>;
   removed: string[];
   addedPorts: Record<string, AddedPort[]>;
@@ -1339,7 +1375,7 @@ const historyLimit = 100;
 const snapshot = (): Snapshot => {
   const state = get();
   const { selection, canvasSelections, timelineSelections } = useWorkbench.getState();
-  return { edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
+  return { dataTransaction: null, edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
     removed: [...state.removed], addedPorts: state.addedPorts,
     selection, canvasSelections, timelineSelections };
 };
@@ -1378,14 +1414,43 @@ function record() {
   });
 }
 
-function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
+async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const state = get();
   const previous = state[from].at(-1);
-  if (!previous) return;
-  const { selection, canvasSelections, timelineSelections, ...content } = previous;
-  setDocument({ ...content, [from]: state[from].slice(0, -1), [to]: [...state[to], snapshot()], version: state.version + 1 });
-  useWorkbench.setState({ selection, canvasSelections, timelineSelections });
-  reconcileSelection();
+  if (!previous || state.saving) return;
+  const target = state.target!;
+  const next = { ...snapshot(), dataTransaction: previous.dataTransaction };
+  const { selection, canvasSelections, timelineSelections, dataTransaction, ...content } = previous;
+  if (dataTransaction === null) {
+    setDocument({ ...content, [from]: state[from].slice(0, -1), [to]: [...state[to], next], version: state.version + 1 });
+  } else {
+    if (target.kind !== 'skill') throw new Error('数据事务只能由原技能文档撤销或重做。');
+    setDocument({ saving: true }, target);
+    try {
+      const result = await resourceRegistrationApi.replay(target.name, from, dataTransaction);
+      const current = authoringDocument(useAuthoring.getState(), target);
+      const files = Object.fromEntries(result.files.map(file => [file.path, file.content]));
+      setDocument({ ...content, files, sourceFiles: dataSourceFiles(current, files), revision: result.revision,
+        sourceRevision: null, documentRevision: null, saving: false, externalChange: false,
+        [from]: state[from].slice(0, -1), [to]: [...state[to], next], version: current.version + 1,
+        lastSave: { ok: true, saved: true, compilationState: 'not-started', preview: null, errors: [],
+          message: `资源登记数据已${from === 'undo' ? '撤销' : '重做'}；运行内容等待发布和采用。` },
+      }, target);
+    } catch (error) {
+      setDocument({ saving: false }, target);
+      consoleActions.error('作者数据撤销', error); return;
+    }
+  }
+  if (isActiveTarget(target)) {
+    useWorkbench.setState({ selection, canvasSelections, timelineSelections });
+    reconcileSelection();
+  }
+}
+
+function dataSourceFiles(document: AuthoringDocument, files: Record<string, string>) {
+  const sourceFiles = { ...document.sourceFiles, ...files };
+  for (const path of Object.keys(document.files)) if (!Object.hasOwn(files, path)) delete sourceFiles[path];
+  return sourceFiles;
 }
 
 function clearHistory(target = get().target!) {
