@@ -126,12 +126,12 @@ export function GraphPanel() {
     if (!request || request.panelId !== panelId || request === handled.current) return;
     handled.current = request;
     setParams({ graph: request.key, call: request.observation === null ? null : callKey(request.observation.call),
-      pin: request.observation === null ? null : { ...request.observation, graph: request.key },
+      pin: null,
       caller: request.caller, origin: request.origin, viewport: null });
   }, [request, panelId, setParams]);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
   if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
-  if (opened.loading) return <Empty text="读取中" />;
+  if (opened.loading && opened.graphs === null) return <Empty text="读取中" />;
   if (opened.graphs === null) return <ReportEmpty text={opened.error ?? '正在读取作者图'} />;
   if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
   const graphs = opened.graphs;
@@ -162,6 +162,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   graphs: SkillDocumentGraph[]; defaultGraph: SkillDocumentGraph; params: Params; setParams(patch: Partial<Params>): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const documentNotice = useAuthoring(state => authoringDocument(state).documentError);
   const panelId = usePanelId();
   const runId = useWorkbench(state => state.runId);
   const observation = useWorkbench(useShallow(routeObservation));
@@ -198,7 +199,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${caller === null ? '' : '父字段匹配候选 · '}${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = graph.authoringPath;
-  const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observedCall === null || runId === null ? undefined
+  const togglePin = pin ? () => setParams({ pin: null, call: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
   const callNotice = quickMode ? null : pinNotice ?? callerNotice ?? sourceNotice ?? documentObservationNotice(currentRoute, binding)
     ?? (observation.kind === 'unavailable' ? observation.reason
@@ -219,7 +220,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       choices: parentGraphCalls(observedCall, recorded) };
   }, [observedCall, recorded]);
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
-    call: callKey(call), pin: { runId, graph: graphKey(graph), call }, caller: null, origin: null, viewport: null });
+    call: callKey(call), pin: null, caller: null, origin: null, viewport: null });
 
   const selectCall = (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
@@ -278,6 +279,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
           {callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
+          {documentNotice !== null && <span role="alert" className={styles.notice}>{documentNotice}；保留上次完整作者结构</span>}
           {!quickMode && caller !== null && <span role="status" className={styles.notice}>{parentCallCandidateNotice}</span>}
           {!quickMode && availabilityNotice && <Tip content={availabilityNotice}><span role="status" className={styles.notice}>运行记录有缺项</span></Tip>}
           {objectNotice !== null && <Tip content={objectNotice}><span role="status" className={styles.notice}>{objectNotice}</span></Tip>}

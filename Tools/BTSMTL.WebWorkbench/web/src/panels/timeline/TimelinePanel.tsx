@@ -255,8 +255,8 @@ function DocumentTimeline() {
     reason: state.unavailableReason, error: authoringDocument(state).documentError,
   })));
   const count = useAuthorTimelines().length;
-  if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
-  if (loading) return <Empty text="正在读取内容" />;
+  if (available === false && count === 0) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
+  if (loading && count === 0) return <Empty text="正在读取内容" />;
   if (!target || !count) return <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '在顶栏选择技能')} />;
   return <TimelineWindow />;
 }
@@ -722,7 +722,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const timelineNotice = timelineObservationNotice(timelineBinding, frameSource, focused?.documentId ?? null, observed?.call ?? null);
   const choices = pin && !observations.some(item => observationKey(item) === observationKey(pin.observation))
     ? [pin.observation, ...observations] : observations;
-  const togglePin = pin ? () => setParams({ pin: null, call: null, caller: null }) : observed === null || runId === null || focused === null ? undefined
+  const togglePin = pin ? () => setParams({ pin: null, call: null }) : observed === null || runId === null || focused === null ? undefined
     : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs ?? [], binding), [routeFrames, graphs, binding]);
   const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs ?? [], binding), [currentRoute, graphs, binding]);
@@ -1032,6 +1032,7 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
 }) {
   const clock = useContext(PreviewClockContext);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
+  const structureNotice = useAuthoring(state => authoringDocument(state).documentError);
   const documentNotice = useDocumentObservationNotice(clock.kind === 'document' ? clock.observation?.call ?? null : null);
   const shownObservation = pin ?? (clock.kind === 'document' ? clock.observation : null);
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
@@ -1046,6 +1047,7 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
   return (
     <PanelBar>
       <TimeField origin={origin} seek={seek} />
+      {structureNotice !== null && <span role="alert" className={styles.hint}>{structureNotice}；保留上次完整作者结构</span>}
       {subject.selector && (
         <MenuButton label={subject.selector.label} variant="ghost" className={styles.selector} iconOnly caret entries={subject.selector.entries}>
           <SelectorIcon />

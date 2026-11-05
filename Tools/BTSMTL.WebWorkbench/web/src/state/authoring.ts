@@ -138,7 +138,7 @@ export function useDocumentObservationBinding(): DocumentObservationBinding {
     const document = authoringDocument(state);
     const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
     if (state.target?.kind === 'skill') owners.add(state.target.name);
-    return { graphs: document.documentGraphs, dirty: Object.entries(state.documents).some(([key, owner]) =>
+    return { graphs: document.documentError === null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
       key.startsWith('skill/') && owners.has(key.slice('skill/'.length)) &&
       (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
   }));
@@ -487,7 +487,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   } catch (error) {
     if (isAbort(error)) throw error;
     if (!isCurrentRequest()) return;
-    setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
+    setDocument({ sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
     consoleActions.error('作者', error);
   }
 }
