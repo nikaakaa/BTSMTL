@@ -9,7 +9,7 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
-import { resourceRegistrationApi, type AuthoringDataTransaction, type ResourceRegistrationRequest } from '../api/resourceRegistration';
+import { resourceOperationError, resourceRegistrationApi, type AuthoringDataTransaction, type ResourceRegistrationRequest } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -1441,7 +1441,8 @@ async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
           message: `资源登记数据已${from === 'undo' ? '撤销' : '重做'}；运行内容等待发布和采用。` },
       }, target);
     } catch (error) {
-      setDocument({ saving: false }, target);
+      setDocument({ saving: false, lastSave: { ok: false, saved: false, compilationState: 'not-started', preview: null,
+        errors: [], message: resourceOperationError(error) } }, target);
       consoleActions.error('作者数据撤销', error); return;
     }
   }

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type BusinessKeyMetadata, type ReferenceChoice } from '../../api/authoring';
-import { resourceOperationError, type ResourceRegistrationInput, type ResourceRegistrationMetadata } from '../../api/resourceRegistration';
+import { resourceOperationError, type ResourceRegistrationInput, type ResourceRegistrationMetadata, type ResourceRegistrationResult } from '../../api/resourceRegistration';
 import { authoringActions, authoringDocument, useAuthoring, useCurrentDocument } from '../../state/authoring';
 import type { ReferenceCatalog } from '../../state/referenceSelection';
 import { getIn, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -20,17 +20,24 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
 }) {
   const location = useContext(AuthoringResourceLocation);
   const [asset, setAsset] = useState<{ token: string; source: string } | null>(null);
+  const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>
     <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose}
-      onAssetChoose={location === null ? undefined : setAsset} />
+      onAssetChoose={location === null ? undefined : asset => { setAsset(asset); setCompleted(null); }} />
     {asset !== null && location !== null && <ResourceRegistrationForm key={JSON.stringify([asset, location, memberPath])}
-      asset={asset} metadata={metadata} file={location.file} memberPath={[...location.memberPath, ...memberPath]} />}
+      asset={asset} metadata={metadata} file={location.file} memberPath={[...location.memberPath, ...memberPath]}
+      onComplete={result => { setCompleted(result); setAsset(null); }} />}
+    {completed !== null && <div role="status" className={styles.note}>
+      {completed.reused ? '已复用' : '已登记'}资源键 {completed.reference.key}
+      {completed.instanceCapacity === null ? '' : `，实际实例容量 ${completed.instanceCapacity}`}；作者数据已保存，运行内容待发布和采用。
+    </div>}
     {location === null && <div className={styles.note}>当前字段尚未提供正式作者文档的写入位置。</div>}
   </>;
 }
 
-function ResourceRegistrationForm({ asset, metadata, file, memberPath }: {
+function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplete }: {
   asset: { token: string; source: string }; metadata: ResourceRegistrationMetadata; file: string; memberPath: string[];
+  onComplete(result: ResourceRegistrationResult): void;
 }) {
   const { target, writing, version } = useAuthoring(useShallow(state => ({ target: state.target,
     writing: authoringDocument(state).saving || authoringDocument(state).loading, version: authoringDocument(state).version })));
@@ -75,9 +82,7 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath }: {
     try {
       const result = await authoringActions.registerResource({ package: String(packageId), adapter: adapter!, context: actualContext,
         keyKind: metadata.keyKind, file, memberPath, input });
-      setKey(result.reference.key);
-      if (result.instanceCapacity !== null) setCapacity(result.instanceCapacity);
-      setStatus(`${result.reused ? '已复用' : '已登记'}资源键 ${result.reference.key}${result.instanceCapacity === null ? '' : `，实际实例容量 ${result.instanceCapacity}`}；作者数据已保存，运行内容待发布和采用。`);
+      onComplete(result);
     } catch (error) { setError({ text: resourceOperationError(error), entryId: consoleActions.error('资源登记', error) }); setStatus('登记未完成，当前编辑仍保留。'); }
   };
   return <Fold title="登记项目素材" defaultOpen>
