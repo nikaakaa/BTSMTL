@@ -17,9 +17,10 @@ namespace BTSMTL.Preview
         readonly ConcurrentQueue<string> m_Incoming = new ConcurrentQueue<string>();
         readonly ConcurrentQueue<string> m_Outgoing = new ConcurrentQueue<string>();
         readonly SemaphoreSlim m_SendSignal = new SemaphoreSlim(0);
+        readonly object m_ImageGate = new object();
         Task m_Receive;
         Task m_Send;
-        byte[] m_Image;
+        PreviewImagePacket m_Image;
         int m_State;
 
         public PreviewConnectionState State => (PreviewConnectionState)Volatile.Read(ref m_State);
@@ -43,15 +44,26 @@ namespace BTSMTL.Preview
             m_SendSignal.Release();
         }
 
-        public void SendLatestImage(byte[] packet)
+        public void SendLatestImage(PreviewImagePacket packet)
         {
-            Interlocked.Exchange(ref m_Image, packet);
-            m_SendSignal.Release();
+            lock (m_ImageGate)
+            {
+                if (State != PreviewConnectionState.Connected)
+                {
+                    packet.Release();
+                    return;
+                }
+                PreviewImagePacket previous = m_Image;
+                m_Image = packet;
+                previous?.Release();
+                if (previous == null)
+                    m_SendSignal.Release();
+            }
         }
 
         public async Task CloseAsync()
         {
-            m_Cancel.Cancel();
+            EndConnection(null);
             if (m_Receive != null)
                 await Task.WhenAll(m_Receive, m_Send);
             m_Socket.Dispose();
@@ -101,10 +113,21 @@ namespace BTSMTL.Preview
                     while (m_Outgoing.TryDequeue(out string message))
                         await m_Socket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(message)),
                             WebSocketMessageType.Text, true, m_Cancel.Token);
-                    byte[] image = Interlocked.Exchange(ref m_Image, null);
+                    PreviewImagePacket image;
+                    lock (m_ImageGate)
+                    {
+                        image = m_Image;
+                        m_Image = null;
+                    }
                     if (image != null)
-                        await m_Socket.SendAsync(new ArraySegment<byte>(image),
-                            WebSocketMessageType.Binary, true, m_Cancel.Token);
+                    {
+                        try
+                        {
+                            await m_Socket.SendAsync(new ArraySegment<byte>(image.Buffer, 0, image.Length),
+                                WebSocketMessageType.Binary, true, m_Cancel.Token);
+                        }
+                        finally { image.Release(); }
+                    }
                 }
                 EndConnection(null);
             }
@@ -120,13 +143,18 @@ namespace BTSMTL.Preview
 
         void EndConnection(Exception failure)
         {
-            if (failure == null)
-                Interlocked.CompareExchange(ref m_State, (int)PreviewConnectionState.Closed,
-                    (int)PreviewConnectionState.Connected);
-            else
+            lock (m_ImageGate)
             {
-                Failure = failure;
-                Volatile.Write(ref m_State, (int)PreviewConnectionState.Failed);
+                if (failure == null)
+                    Interlocked.CompareExchange(ref m_State, (int)PreviewConnectionState.Closed,
+                        (int)PreviewConnectionState.Connected);
+                else
+                {
+                    Failure = failure;
+                    Volatile.Write(ref m_State, (int)PreviewConnectionState.Failed);
+                }
+                m_Image?.Release();
+                m_Image = null;
             }
             m_Cancel.Cancel();
         }

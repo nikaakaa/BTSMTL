@@ -33,6 +33,7 @@ namespace BTSMTL.Preview
     // 通用预览代理：命令分派、推进、断开即退出、状态节拍、实时画面节流与独立 PNG 截图。
     public sealed class PreviewAgentRuntime<TCommand> where TCommand : PreviewAgentCommand
     {
+        public const int StreamCapacity = 3;
         const float StatusInterval = 0.25f;
         readonly MonoBehaviour m_Owner;
         readonly IPreviewAgentProject<TCommand> m_Project;
@@ -78,7 +79,7 @@ namespace BTSMTL.Preview
 
         public void SendText(string json) => m_SendText(json);
 
-        public void SendLatestImage(byte[] packet) => Connection.SendLatestImage(packet);
+        public void SendLatestImage(PreviewImagePacket packet) => Connection.SendLatestImage(packet);
 
         // 返回 false 表示连接已结束并开始退出，本帧不再做后续处理。
         public bool Update()
