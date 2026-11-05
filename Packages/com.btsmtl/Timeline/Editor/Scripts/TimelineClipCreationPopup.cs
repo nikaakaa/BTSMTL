@@ -307,6 +307,9 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Reference = reference;
             m_Registration = null;
+            m_File = m_Source = null;
+            m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
+            m_SelectedObject = -1;
             m_File = m_Source = m_Document.ResolveResource(m_Timeline, reference);
         }
 
