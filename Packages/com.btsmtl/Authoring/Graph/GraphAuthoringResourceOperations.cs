@@ -135,6 +135,19 @@ namespace BTSMTL.Authoring.Graph
         public string[] RemovedFiles { get; set; }
     }
 
+    public sealed class GraphAuthoringScopeResourceRegistrationRequest : GraphAuthoringResourceBindingRequest
+    {
+        public GraphAuthoringResourceReference Scope { get; set; }
+        public string ExpectedRevision { get; set; }
+    }
+
+    public sealed class GraphAuthoringScopeReplayRequest
+    {
+        public GraphAuthoringResourceReference Scope { get; set; }
+        public string Adapter { get; set; }
+        public GraphAuthoringDataTransaction Transaction { get; set; }
+    }
+
     public sealed class GraphAuthoringProfileTarget
     {
         public string AssetToken { get; set; }
