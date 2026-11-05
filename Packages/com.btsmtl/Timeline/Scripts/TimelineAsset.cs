@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BTSMTL.Authoring.Graph;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -9,7 +10,14 @@ namespace BTSMTL.Timeline
         [SerializeField]
         TimelineData m_Data = new TimelineData();
 
+        [SerializeField]
+        GraphAuthoringResourceReference m_AuthoringScope;
+
         public TimelineData Data => m_Data;
+        public GraphAuthoringResourceReference AuthoringScope => m_AuthoringScope;
+
+        [GraphAuthoringConfigure]
+        public void ConfigureAuthoringScope(GraphAuthoringResourceReference scope) => m_AuthoringScope = scope;
 
         public bool ValidateContent(TimelineContractCatalog catalog, List<string> errors)
         {
