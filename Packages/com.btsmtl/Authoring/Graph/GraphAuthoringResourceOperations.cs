@@ -83,16 +83,17 @@ namespace BTSMTL.Authoring.Graph
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class GraphAuthoringResourceAttribute : Attribute
     {
-        public GraphAuthoringResourceAttribute(string keyKind, string registrationInput)
+        public GraphAuthoringResourceAttribute(string keyKind, string registrationInput, params Type[] objectTypes)
         {
             KeyKind = keyKind;
             RegistrationInput = registrationInput;
+            ObjectTypes = objectTypes;
         }
 
         public string KeyKind { get; }
         public string RegistrationInput { get; }
         public string ResourceDomain { get; set; }
-        public Type ObjectType { get; set; }
+        public Type[] ObjectTypes { get; }
         public string Owner => "Authoring";
         public string Command => "register-resource";
         public Type ReferenceType => typeof(GraphAuthoringResourceReference);
