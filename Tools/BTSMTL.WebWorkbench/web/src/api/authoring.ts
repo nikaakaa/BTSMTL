@@ -48,6 +48,32 @@ export const readAdapterCatalog = object({ revision: text, changed: boolean, dom
 export type AdapterCatalogDomain = ReturnType<typeof readAdapterCatalogDomain>;
 export type AdapterCatalogItem = Pick<AdapterCatalogDomain, 'adapter' | 'domain'> & AdapterCatalogDomain['items'][number];
 
+const readReferenceReplacementPlan = object({
+  revision: text, domain: text, oldValue: text, newValue: text, context: nullable(text),
+  files: array(object({ path: text, members: array(text), readRevision: text, writeRevision: text })),
+  readFiles: array(object({ path: text, revision: text })), affectedSkills: array(text),
+  runtimeState: choice('pending', 'not-required'),
+});
+export type ReferenceReplacementResult = ReturnType<typeof readReferenceReplacementPlan> & { success: true } & (
+  { saved: false; authorReferenceState: 'prepared' } | { saved: true; authorReferenceState: 'replaced' }
+);
+export type ReferenceReplacementPrepared = Extract<ReferenceReplacementResult, { saved: false }>;
+export type ReferenceReplacementCompleted = Extract<ReferenceReplacementResult, { saved: true }>;
+export type ReferenceReplacementInput = Pick<ReferenceReplacementResult, 'domain' | 'oldValue' | 'newValue' | 'context'>;
+
+export function readReferenceReplacement(value: unknown, action: 'prepare'): ReferenceReplacementPrepared;
+export function readReferenceReplacement(value: unknown, action: 'commit'): ReferenceReplacementCompleted;
+export function readReferenceReplacement(value: unknown, action: 'prepare' | 'commit'): ReferenceReplacementResult {
+  const path = 'ReferenceReplacement';
+  const plan = readReferenceReplacementPlan(value, path);
+  const state = object({ success: readRequiredTrue, saved: boolean, authorReferenceState: choice('prepared', 'replaced') })(value, path);
+  if (action === 'prepare' && !state.saved && state.authorReferenceState === 'prepared')
+    return { ...plan, success: state.success, saved: state.saved, authorReferenceState: state.authorReferenceState };
+  if (action === 'commit' && state.saved && state.authorReferenceState === 'replaced')
+    return { ...plan, success: state.success, saved: state.saved, authorReferenceState: state.authorReferenceState };
+  throw new Error(`${path}：${action} 的保存状态与作者引用阶段不一致`);
+}
+
 function readQueryAvailability(value: unknown, path: string): QueryAvailability {
   const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
   if (available && reason === null) return { available, reason };
@@ -132,18 +158,18 @@ const readBusinessKeys = array(object({ target: readBusinessKeyTarget, declared:
 }));
 export type BusinessKeyMetadata = ReturnType<typeof readBusinessKeys>[number];
 
-const readRenameRequired = (value: unknown, path = 'BusinessKeyRename'): true => {
+const readRequiredTrue = (value: unknown, path = 'Authoring'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
 };
 const readBusinessKeyRenamePlan = object({
-  prepared: readRenameRequired, revision: text, package: text, kind: text, key: text, newKey: text,
+  prepared: readRequiredTrue, revision: text, package: text, kind: text, key: text, newKey: text,
   target: readBusinessKeyTarget, renamedTarget: readBusinessKeyTarget,
   readFiles: array(object({ path: text, revision: text })),
   files: array(object({ path: text, members: array(text), readRevision: text, writeRevision: text })),
-  affectedSkills: array(object({ identity: text, directory: text, package: text, requiresPublication: readRenameRequired })),
+  affectedSkills: array(object({ identity: text, directory: text, package: text, requiresPublication: readRequiredTrue })),
   affectedProfiles: array(object({ adapter: text, package: text, domain: text, contexts: array(text),
-    bindingFiles: array(text), requiresGeneration: readRenameRequired })),
+    bindingFiles: array(text), requiresGeneration: readRequiredTrue })),
   runtimeState: choice('pending', 'not-required'),
 });
 const readRenameRecovery = object({ authorRenameState: choice('recovery-required', 'not-completed'), runtimeState: choice('not-applied') });
