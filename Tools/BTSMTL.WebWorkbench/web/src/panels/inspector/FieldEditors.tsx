@@ -11,11 +11,12 @@ import {
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
-import { Fold } from '../../ui/blocks';
+import { Facts, Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import { ReferencePicker } from './ReferencePicker';
+import { openPanel } from '../../shell/layout';
 import { AuthoringResourceLocation, ResourceRegistrationField } from './ResourceRegistration';
 import type { ReferenceCatalog } from '../../state/referenceSelection';
 import styles from './inspector.module.css';
@@ -415,9 +416,16 @@ function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: 
 
 export function SkillFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
+  const execution = useAuthoring(state => authoringDocument(state).execution);
   const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
   if (target?.kind !== 'skill' || document === null) return null;
   return <AuthoringResourceLocation.Provider value={{ file: 'skill.json', memberPath: [] }}><fieldset className={styles.authorFields} disabled={!editable}>
+    <Fold title="执行 Scope" defaultOpen><Facts fields={[
+      { displayName: '预览 Scope', value: execution.previewScope === null ? '未显式选择' : `${execution.previewScope.package} / ${execution.previewScope.keyKind} / ${execution.previewScope.key} · ${execution.previewScope.context || '公共'}` },
+      { displayName: '实际运行 Scope', value: execution.runtimeScope === null ? '未显式选择' : `${execution.runtimeScope.package} / ${execution.runtimeScope.keyKind} / ${execution.runtimeScope.key} · ${execution.runtimeScope.context || '公共'}` },
+    ]} /><Button onClick={() => openPanel('resources')}>从正式资源目录选择 Scope</Button>
+      <div className={styles.note}>保存与导出按所选 Scope 和实际授予关系准备内容；无法唯一确定时会说明缺项。</div>
+    </Fold>
     <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
       graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />
   </fieldset></AuthoringResourceLocation.Provider>;

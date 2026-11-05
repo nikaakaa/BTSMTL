@@ -44,6 +44,7 @@ export function ProjectPanel() {
   const metadata = businessKey === null ? null : selectedKeys?.find(item => referenceTargetKey(item.target) === referenceTargetKey(businessKey.target)) ?? null;
   const refreshProject = () => setRefresh(value => value + 1);
   return <div className={projectStyles.root}>
+    {carriers !== null && carriers.items.length === 0 && <div className={projectStyles.note}>正式资源目录尚未提供实际执行 Scope，当前没有可选择的预览或运行来源。</div>}
     {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget}
       onBusinessKey={item => setBusinessKey({ source: 'field', target: item.target })} />}
     <div className={projectStyles.choices}><Fold title="业务键">

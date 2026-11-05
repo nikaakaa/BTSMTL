@@ -92,7 +92,7 @@ function AuthoringStatus() {
 
 function ProfileAuthoringStatus() {
   const document = useAuthoring(state => profileDocument(state));
-  if (document === undefined) return <div className={styles.authoring}>正在读取实际 Profile。</div>;
+  if (document === undefined) return <div className={styles.authoring}>实际 Profile 来源尚未就绪。</div>;
   const dirty = profileDirty(document);
   return <div className={styles.authoring}>
     <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={document.writing || !document.undo.length}
