@@ -19,6 +19,8 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/CapabilityCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/PortContracts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringColor.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringResourceReference.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringResourceOperations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPorts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationNodeDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortShapes.cs" />
