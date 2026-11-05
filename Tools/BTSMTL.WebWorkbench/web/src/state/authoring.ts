@@ -622,7 +622,7 @@ export const authoringActions = {
     const scheme = (plan.Schemes as JsonObject[])[schemeIndex];
     setDocument({ inputActorId: actorId });
     selectionActions.select(null);
-    selectionActions.showTimeline(scheme.InputTimeline as string, null);
+    selectionActions.showTimeline(scheme.InputTimeline as string, null, null);
   },
 
   // 取可编辑的文档：首次编辑时从原文解析。同一轮事件里的多次编辑记为一步撤销。
@@ -1599,7 +1599,7 @@ export const inputAuthoring = {
     authoringActions.create(`inputs/${id}.json`, plan);
     setDocument({ inputActorId: plan.Actor as string | null });
     selectionActions.select(null);
-    selectionActions.showTimeline(timeline, null);
+    selectionActions.showTimeline(timeline, null, null);
     return id;
   },
 
@@ -1648,7 +1648,7 @@ export const inputAuthoring = {
       schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
       plan.Selected = schemes.length - 1;
     });
-    selectionActions.showTimeline(timeline, null);
+    selectionActions.showTimeline(timeline, null, null);
   },
 
   removeScheme(path: string, index: number) {

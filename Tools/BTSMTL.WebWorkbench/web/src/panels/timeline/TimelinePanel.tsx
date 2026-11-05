@@ -22,7 +22,7 @@ import {
   useReferenceCurves, useSkillElements, useDocumentObservationBinding, useDocumentObservationNotice, useTimelineObservationBinding, type ReferenceEntry,
 } from '../../state/authoring';
 import {
-  consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type WorkbenchState,
+  consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench, type GraphNavigationOrigin, type WorkbenchState,
 } from '../../state/store';
 import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, trackSelectId, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
@@ -30,6 +30,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
+import { projectActions } from '../../state/project';
 import { quickBounds, quickPreview } from '../../state/quickPreview';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
@@ -102,10 +103,11 @@ interface Params {
   call: string | null;
   pin: { runId: PlayerJobId; documentId: string; observation: TimelineObservation } | null;
   caller: { runId: PlayerJobId; call: ExecutionCall } | null;
+  origin: GraphNavigationOrigin | null;
 }
 type Snap = 'tick' | 'frame' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], curveTracks: [], curveParam: null, curveHeights: {}, follow: true, filter: '', focus: null, snap: 'frame', call: null, pin: null, caller: null,
+  range: null, collapsed: [], curveTracks: [], curveParam: null, curveHeights: {}, follow: true, filter: '', focus: null, snap: 'frame', call: null, pin: null, caller: null, origin: null,
 };
 
 // 标记与游标的吸附步长（秒）；素材帧只属于片段，标记按逻辑 tick；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
@@ -783,9 +785,9 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     const selection = getState().selection;
     if ((selection?.kind === 'clip' || selection?.kind === 'track') && !selection.id.startsWith(`${documentId}/`))
       selectionActions.select(null);
-    setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null, caller: null });
+    setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null, caller: null, origin: null });
   }, [segments, setParams]);
-  const showAll = useCallback(() => setParams({ focus: allTimelines, range: null, call: null, pin: null, caller: null }), [setParams]);
+  const showAll = useCallback(() => setParams({ focus: allTimelines, range: null, call: null, pin: null, caller: null, origin: null }), [setParams]);
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
   const request = useWorkbench(state => state.timelineRequest);
@@ -796,7 +798,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     const owner = segments.find(segment => segment.documentId === request.documentId);
     if (!owner) return;
     enter(request.documentId);
-    setParams({ caller: request.observation });
+    setParams({ caller: request.observation, origin: request.origin });
   }, [request, segments, setParams, enter]);
 
   const rows = useMemo(() => {
@@ -984,6 +986,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
         quickPlayback={quickPlayback}
+        navigationOrigin={params.origin}
         observations={choices} selectCall={selectCall} pin={quickMode || pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
         observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (inputScheme ? null : timelineNotice) ?? (trace.kind === 'unavailable' ? trace.reason
           : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例'
@@ -1070,13 +1073,14 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   return <MenuButton label="添加输入" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
 }
 
-function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice, quickPlayback }: {
+function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice, quickPlayback, navigationOrigin }: {
   settings: MenuEntry[]; subject: Subject; origin: number; seek(value: number): void;
   observations: TimelineObservation[]; selectCall: ((value: string) => void) | undefined;
   pin: TimelineObservation | null; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
   observationNotice: string | null;
   quickPlayback: QuickPlaybackChoice | null;
+  navigationOrigin: GraphNavigationOrigin | null;
 }) {
   const clock = useContext(PreviewClockContext);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
@@ -1121,6 +1125,11 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
       {quickPlayback !== null && <Select variant="ghost" label="推导播放" value={quickPlayback.value}
         options={quickPlayback.options} onChange={quickPlayback.select} />}
+      {navigationOrigin !== null && <Button variant="ghost" tip={`${navigationOrigin.ownerName} · ${navigationOrigin.nodeId}`} onClick={() => {
+        void projectActions.openGraph({ owner: navigationOrigin.owner, ownerName: navigationOrigin.ownerName, id: navigationOrigin.graphId }, navigationOrigin.nodeId,
+          { origin: null, observation: navigationOrigin.observation, caller: null, panelId: null })
+          .catch(error => consoleActions.error('作者', error));
+      }}>返回引用节点</Button>}
       {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
         tip={`${pin !== null ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(shownObservation.call)} · ${shownObservation.domain}`}>固定调用</Button>}
       {clock.kind === 'document' && clock.observation !== null && <>

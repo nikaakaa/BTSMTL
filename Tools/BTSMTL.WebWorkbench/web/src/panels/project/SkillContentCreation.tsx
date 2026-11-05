@@ -29,7 +29,7 @@ export function SkillContentCreation({ kind, skill, elements, onDone }: {
         try {
           if (kind === 'timeline') {
             const id = authoringActions.createTimeline(elements!.timeline, name);
-            selectionActions.showTimeline(id, null);
+            selectionActions.showTimeline(id, null, null);
             openPanel('timeline');
           } else {
             const id = await graphAuthoring.createPage('Subgraph', 'Shared', name);

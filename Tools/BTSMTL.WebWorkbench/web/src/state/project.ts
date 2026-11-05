@@ -42,7 +42,7 @@ export const projectActions = {
         if (currentDocument(target.file) === null)
           throw new Error(`无法打开 Timeline「${target.displayName ?? target.id}」：${target.ownerName} 的当前作者文档中不存在 ${target.file}`);
         selectionActions.select(null);
-        selectionActions.showTimeline(target.id, origin.observation);
+        selectionActions.showTimeline(target.id, origin.observation, origin);
         openPanel('timeline');
         return;
     }
@@ -61,7 +61,7 @@ export const projectActions = {
       selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id, observation: null, caller: null, origin: null });
       return;
     }
-    if (item.kind === 'timeline') selectionActions.showTimeline(item.identity, null);
+    if (item.kind === 'timeline') selectionActions.showTimeline(item.identity, null, null);
     else {
       const plan = currentDocument(item.file) as JsonObject;
       await authoringActions.openInput(ownerOf(item), item.file, schemeIndex ?? numberOf(plan.Selected), plan.Actor as string);

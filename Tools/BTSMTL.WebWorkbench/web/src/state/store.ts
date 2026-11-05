@@ -190,7 +190,7 @@ export interface SelectionSlice {
     observation: { runId: PlayerJobId; call: ExecutionCall } | null;
     caller: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
   // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
-  timelineRequest: { documentId: string; observation: { runId: PlayerJobId; call: ExecutionCall } | null } | null;
+  timelineRequest: { documentId: string; observation: { runId: PlayerJobId; call: ExecutionCall } | null; origin: GraphNavigationOrigin | null } | null;
 }
 
 // ── console ──
@@ -381,8 +381,8 @@ export const selectionActions = {
   showGraph(request: NonNullable<SelectionSlice['graphRequest']>) {
     set({ graphRequest: { ...request } });
   },
-  showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
-    set({ timelineRequest: { documentId, observation } });
+  showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null, origin: GraphNavigationOrigin | null) {
+    set({ timelineRequest: { documentId, observation, origin } });
   },
 };
 
