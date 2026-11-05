@@ -573,10 +573,25 @@ function CameraHistory({ image }: { image: ArchiveImage | null }) {
   if (image === null) return <div><span>历史相机输出</span><span>正在读取画面关联记录</span></div>;
   if (image.kind === 'unavailable') return <div><span>历史相机输出</span><span>{image.reason}</span></div>;
   const camera = image.camera;
-  if (camera === null) return <div><span>历史相机输出</span><span>画面没有同一表现序号与相机实例的记录</span></div>;
+  if (camera === null) return <div><span>历史相机输出</span><span>{image.overlayReason}</span></div>;
   const source = camera.source;
+  const hasOwner = camera.actorRosterIndex !== -1;
   const fields = [
     { label: '相机实例编号', value: camera.cameraInstanceId },
+    { label: '历史绑定采用', value: camera.bindingAdopted ? '已采用' : '未采用' },
+    { label: '角色目录序号', value: camera.actorRosterIndex },
+    { label: '角色身份', value: camera.actorId },
+    { label: '角色实例', value: camera.actorInstanceId },
+    { label: 'rig 实例', value: hasOwner ? camera.rigInstanceId : '本帧未记录' },
+    { label: '绑定身份', value: camera.bindingId },
+    { label: '请求来源', value: camera.requestedSourceId },
+    { label: '请求修订', value: camera.requestedSourceRevision },
+    { label: 'Profile 身份', value: camera.profileId },
+    { label: 'Profile 修订', value: camera.profileRevision },
+    { label: '构图身份', value: camera.compositionId },
+    { label: 'rig 绑定', value: camera.rigBindingId },
+    { label: '虚拟相机', value: camera.virtualCameraId },
+    { label: '输出管线', value: camera.pipeline },
     { label: '表现序号', value: camera.presentationSequence },
     { label: '来源帧', value: `${source.clock.positionDisplayName} ${source.clock.position.hostFrame}` },
     { label: '来源时间', value: `${source.clock.seconds} s` },
@@ -589,6 +604,11 @@ function CameraHistory({ image }: { image: ArchiveImage | null }) {
   ];
   return <>
     <b>历史相机输出</b>
-    {fields.map(field => <div key={field.label}><span>{field.label}</span><span title={String(field.value)}>{field.value}</span></div>)}
+    {!hasOwner && <div><span>来源状态</span><span title="本帧没有角色相机来源，绑定与rig身份未记录；原相机输出矩阵仍保留。">本帧没有角色相机来源</span></div>}
+    {hasOwner && !camera.bindingAdopted && <div><span>采用状态</span><span title="本帧绑定尚未确认采用；以下身份只表达同次历史记录。">本帧绑定未确认采用</span></div>}
+    {fields.map(field => {
+      const shown = field.value === '' ? '本帧未记录' : String(field.value);
+      return <div key={field.label}><span>{field.label}</span><span title={shown}>{shown}</span></div>;
+    })}
   </>;
 }

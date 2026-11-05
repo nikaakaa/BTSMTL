@@ -335,6 +335,9 @@ export const readPlayerPresentation = observationPage(object({
 }));
 export const readPlayerCamera = observationPage(object({
   source, presentationSequence: text, cameraInstanceId: number, width: number, height: number,
+  actorRosterIndex: number, bindingAdopted: boolean, rigInstanceId: number,
+  actorId: text, actorInstanceId: text, bindingId: text, requestedSourceId: text, requestedSourceRevision: text,
+  profileId: text, profileRevision: text, compositionId: text, rigBindingId: text, virtualCameraId: text, pipeline: text,
   presentationTick: number, interpolationFactor: number, worldPosition: vector3, worldRotation: quaternion,
   worldToCamera: array(number), projection: array(number),
 }));

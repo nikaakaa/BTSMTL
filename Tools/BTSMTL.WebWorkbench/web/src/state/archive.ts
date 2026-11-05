@@ -199,8 +199,11 @@ async function imageObservations(context: OpenArchive, metadata: PlayerFrameImag
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
   const camera = cameras.items.find(item => item.presentationSequence === metadata.presentationSequence &&
     item.cameraInstanceId === metadata.cameraInstanceId) ?? null;
-  return { presentation, camera,
-    overlayReason: !presentation ? '画面没有同一表现序号的姿态记录' : !camera ? '画面没有同一相机提交的记录' : null };
+  const reasons = [
+    presentation === null ? poses.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号的姿态记录' : null,
+    camera === null ? cameras.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号与相机实例的记录' : null,
+  ].filter(reason => reason !== null);
+  return { presentation, camera, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
 }
 
 async function loadImage(context: OpenArchive, hostFrame: string, request: number) {
