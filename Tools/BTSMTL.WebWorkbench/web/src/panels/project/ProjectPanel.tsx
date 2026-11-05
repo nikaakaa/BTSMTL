@@ -1,53 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { AnimationLibrary } from '../../api/types';
-import type { ProfileEntryTarget, ReferenceChoiceTarget } from '../../api/authoring';
-import { usePanelAnimationFrame, usePanelApi, usePanelVisible, usePanelWindow } from '../../shell/panel';
+import type { AnimationClip, AnimationLibrary } from '../../api/types';
+import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type ProfileEntryTarget, type ProjectItem, type ReferenceChoiceTarget } from '../../api/authoring';
+import { isAbort } from '../../api/http';
+import { projectApi, type ProjectFileEntry, type ProjectFolderListing } from '../../api/project';
+import { usePanelApi } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
-import { writeResourceReady } from '../../shell/readiness';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
 import { matchesReferenceChoice, referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
-import { authoringDocument, useAuthoring } from '../../state/authoring';
+import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
-import { consoleActions, getState, resourceActions, selectionActions, useWorkbench } from '../../state/store';
-import { BarSeparator, Empty, Fold, PanelBar, Tabs } from '../../ui/blocks';
-import { Button, MenuButton, NumberInput, TextInput } from '../../ui/controls';
+import { consoleActions, getState, resourceActions, selectedScene, useWorkbench } from '../../state/store';
+import { Empty, Fold, PanelBar } from '../../ui/blocks';
+import { Button, MenuButton, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
-import { ResourceScene } from '../resources/resourceScene';
-import { AuthoringProject } from './AuthoringProject';
-import { CarrierProject } from './CarrierProject';
-import { LocateAssetButton } from './LocateAssetButton';
+import { AnimationDetails } from './AnimationDetails';
+import { CarrierDetails } from './CarrierProject';
+import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
+import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
-import styles from '../resources/resources.module.css';
 import projectStyles from './project.module.css';
 
-// Project 的动画库：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色；单击片段在检查器显示资源信息。
-// 素材时间只改 resource 分片，不经过 transport、不移动运行游标（D6）；按 D8 写入 resource* 就绪标记。
+// Project 窗口：直接按磁盘文件夹浏览 Unity 工程与技能、场景方案目录；选中文件按其实际内容显示详情。
 
 export function ProjectPanel() {
   const panel = usePanelApi();
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const field = useReferenceSelection(state => state.field);
-  const [section, setSection] = useState<'authoring' | 'carriers' | 'animations'>(() => getState().identity === null ? 'authoring' : 'animations');
   const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
-  const fieldKind = field?.catalog.kind === 'ready' ? field.catalog.referenceKind : null;
-  useEffect(() => { if (fieldKind === animationReferenceKind) setSection('animations'); }, [field?.id, fieldKind]);
   return <div className={projectStyles.root}>
-    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={target => {
-      setProfileTarget(target);
-      setSection('carriers');
-    }} />}
+    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget} />}
     {referenceTarget && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
       <TargetReferrers target={referenceTarget} />
     </div>}
-    <div className={projectStyles.body}><Tabs<'authoring' | 'carriers' | 'animations'> value={section} onChange={setSection} items={[
-      { value: 'authoring', label: '作者内容', content: <AuthoringProject /> },
-      { value: 'carriers', label: '载体与资源', content: <CarrierProject target={profileTarget} /> },
-      { value: 'animations', label: '动画库', content: <AnimationProject /> },
-    ]} /></div>
+    <div className={projectStyles.body}><ProjectBrowser profileTarget={profileTarget} /></div>
   </div>;
 }
 
@@ -91,188 +80,262 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
   </Fold></div>;
 }
 
-function AnimationProject() {
+type Failure = { text: string; entryId: number | null };
+const parentOf = (path: string) => path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+const ancestorsOf = (path: string) => path.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/'));
+const skillOf = (path: string) => { const parts = path.split('/'); return parts[0] === 'Skills' && parts.length > 1 ? parts[1] : null; };
+const sizeText = (length: number) => length < 1024 ? `${length} B` : length < 1048576 ? `${(length / 1024).toFixed(1)} KB` : `${(length / 1048576).toFixed(1)} MB`;
+
+function useAnimationLibrary() {
   const [library, setLibrary] = useState<AnimationLibrary | null>(null);
-  const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   useEffect(() => {
     let alive = true;
-    resourceCache.library().then(value => { if (alive) setLibrary(value); },
-      error => { if (alive) setFailure({ text: '资源清单读取失败', entryId: consoleActions.error('resources', error) }); });
+    resourceCache.library().then(value => { if (alive) setLibrary(value); }, error => consoleActions.error('resources', error));
     return () => { alive = false; };
   }, []);
-  if (failure) return <div className={styles.failure}><ErrorLine text={failure.text} entryId={failure.entryId} /></div>;
-  if (!library) return <Empty text="读取中" />;
-  return <ResourceView library={library} />;
+  return library;
 }
 
-function ResourceView({ library }: { library: AnimationLibrary }) {
-  const { identity, time, playing } = useWorkbench(useShallow(state => ({ identity: state.identity, time: state.time, playing: state.playing })));
+function useCarriers() {
+  const [catalog, setCatalog] = useState<AuthoringCarriers | null>(null);
+  const revision = useAuthoring(state => state.carrierRevision);
+  useEffect(() => {
+    if (catalog !== null && catalog.authoringRevision === revision) return;
+    const controller = new AbortController();
+    authoringApi.carriers(controller.signal).then(value => {
+      setCatalog(value);
+      useAuthoring.setState({ carrierRevision: value.authoringRevision });
+    }, error => { if (!isAbort(error)) consoleActions.error('Project', error); });
+    return () => controller.abort();
+  }, [revision]);
+  return [catalog, setCatalog] as const;
+}
+
+// 技能作者文件的名称、类型与所有权来自宿主作者目录（一次覆盖全部技能）；目录较慢，按编辑修订共享一份，
+// 文件夹先按磁盘显示，到达后补上作者名称。
+let libraryItems: { key: string; items: Promise<ProjectItem[]> } | null = null;
+
+function useLibraryItems(refresh: number) {
+  const { skill, stamp } = useAuthoring(useShallow(state => ({
+    skill: state.available === false ? null : state.skills?.[0] ?? null,
+    stamp: JSON.stringify(Object.entries(state.documents).map(([key, document]) => [key, document.revision, document.version])),
+  })));
+  const scene = useWorkbench(state => selectedScene(state)?.path ?? null);
+  const key = JSON.stringify([stamp, scene, refresh]);
+  const [items, setItems] = useState<{ key: string; items: ProjectItem[] } | null>(null);
+  useEffect(() => {
+    if (skill === null) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      if (libraryItems?.key !== key) {
+        const request = authoringApi.project({ kind: 'skill', name: skill }, authoringActions.editingView());
+        libraryItems = { key, items: request };
+        request.catch(() => { if (libraryItems?.items === request) libraryItems = null; });
+      }
+      libraryItems.items.then(value => { if (alive) setItems({ key, items: value }); },
+        error => { if (alive && !isAbort(error)) consoleActions.error('Project', error); });
+    }, 150);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [skill, key]);
+  return { items: items?.key === key ? items.items : null, stamp: JSON.stringify([stamp, scene]) };
+}
+
+function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget | null }) {
+  const [listings, setListings] = useState<Record<string, ProjectFolderListing>>({});
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(ancestorsOf('Skills')));
+  const [folder, setFolder] = useState('Skills');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState<SkillContentKind | null>(null);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const requested = useRef(new Set<string>());
+  const library = useAnimationLibrary();
+  const [carriers, setCarriers] = useCarriers();
   const field = useReferenceSelection(state => state.field);
-  const animationField = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind;
+  const { editable, target } = useAuthoring(useShallow(state => ({
+    editable: state.author && state.target?.kind === 'skill' && !authoringDocument(state).loading,
+    target: state.target?.kind === 'skill' ? state.target.name : null,
+  })));
+  const available = useAuthoring(state => state.available);
+  const elements = useSkillElements(editable && available !== false);
+  const { items: skillItems, stamp } = useLibraryItems(refresh);
+
+  const load = useCallback((path: string, force = false) => {
+    if (!force && requested.current.has(path)) return;
+    requested.current.add(path);
+    projectApi.folder(path).then(listing => setListings(previous => ({ ...previous, [path]: listing })), error => {
+      requested.current.delete(path);
+      setFailure({ text: `读取目录 ${path || 'Project'} 失败`, entryId: consoleActions.error('Project', error) });
+    });
+  }, []);
+  const open = useCallback((path: string) => {
+    for (const ancestor of ['', ...ancestorsOf(path)]) load(ancestor);
+    setExpanded(previous => new Set([...previous, ...ancestorsOf(path)]));
+    setFolder(path);
+    setSearch('');
+    setFailure(null);
+  }, [load]);
+  const reveal = useCallback((file: string) => {
+    open(parentOf(file));
+    setSelected(file);
+    setCreating(null);
+  }, [open]);
+  useEffect(() => { for (const path of ['', ...ancestorsOf('Skills')]) load(path); }, [load]);
+
+  const clipsByAsset = useMemo(() => {
+    const map = new Map<string, AnimationClip[]>();
+    for (const clip of library?.clips ?? []) map.set(clip.unityAsset, [...map.get(clip.unityAsset) ?? [], clip]);
+    return map;
+  }, [library]);
+  const carrierBySource = useMemo(() => new Map((carriers?.items ?? []).map(carrier => [carrier.source, carrier])), [carriers]);
+  const itemOf = useCallback((path: string): ProjectItem | null => {
+    const skill = skillOf(path);
+    if (skill === null || skillItems === null) return null;
+    const file = path.split('/').slice(2).join('/');
+    return skillItems.find(item => item.owner === skill && item.file === file) ?? null;
+  }, [skillItems]);
+
+  // 资源条目、动画字段或已选动画来自其它面板时，跳到其所在文件夹。
   useEffect(() => {
-    if (animationField) { setSearch(''); setCategory(null); }
-  }, [field?.id, animationField]);
-  const selectedValue = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind
-    ? field.value : identity;
-  const categories = useMemo(() => [...new Set(library.clips.map(item => item.category))].sort(), [library]);
-  const clips = useMemo(() => {
-    const text = search.trim().toLowerCase();
-    return library.clips.filter(clip => (category === null || clip.category === category) &&
-      `${clip.name} ${clip.category}`.toLowerCase().includes(text));
-  }, [library, search, category]);
-  const clip = library.clips.find(item => item.resource.identity === identity) ?? null;
-  const referencedClip = animationField ? library.clips.find(item => item.resource.identity === field.value) : undefined;
-  const referencedIdentity = referencedClip?.resource.identity;
-  useEffect(() => { if (referencedIdentity !== undefined) resourceActions.select(referencedIdentity); }, [referencedIdentity]);
-  const selectedIndex = clips.findIndex(item => referenceValueKey(selectedValue) === referenceValueKey(item.resource.identity));
-
+    if (profileTarget === null || carriers === null) return;
+    const carrier = carriers.items.find(item => item.identity === profileTarget.carrierIdentity);
+    if (carrier) reveal(carrier.source);
+    else consoleActions.log('error', 'Project', `引用的来源载体已失效，原身份已保留：${profileTarget.carrierIdentity}`);
+  }, [profileTarget, carriers, reveal]);
+  const animationValue = field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind ? field.value : undefined;
+  const initialIdentity = useRef(getState().identity);
   useEffect(() => {
-    if (identity && !clip) consoleActions.log('error', 'resources', `该版本资源清单不包含所选资源 ${identity}`);
-  }, [identity, clip, library]);
+    const value = animationValue ?? initialIdentity.current;
+    if (value === null || value === undefined || library === null) return;
+    initialIdentity.current = null;
+    const clip = library.clips.find(item => referenceValueKey(item.resource.identity) === referenceValueKey(value));
+    if (!clip) return;
+    resourceActions.select(clip.resource.identity);
+    reveal(clip.unityAsset);
+  }, [field?.id, animationValue, library, reveal]);
 
-  const duration = clip?.exportedDuration ?? 0;
-  const outOfRange = !!clip && (time < 0 || time > duration);
-  useEffect(() => {
-    if (outOfRange) consoleActions.log('error', 'resources', `请求的素材秒数 ${time} 超出该片段的实际导出范围 0—${duration}`);
-  }, [outOfRange, time, duration]);
-
-  // 播放：按显示帧推进素材秒数，到结尾停止。
-  const last = useRef<number | null>(null);
-  usePanelAnimationFrame(useCallback((now: number) => {
-    const previous = last.current;
-    last.current = now;
-    if (previous === null) return;
-    const state = getState();
-    const next = Math.min(duration, state.time + (now - previous) / 1000);
-    resourceActions.setTime(next);
-    if (next >= duration) resourceActions.setPlaying(false);
-  }, [duration]), playing && !!clip);
-  useEffect(() => { if (!playing) last.current = null; }, [playing]);
-
-  return (
-    <div className={styles.root}>
-      <div className={styles.side}>
-        <div className={styles.search}>
-          <span className={styles.sectionTitle}>动画库</span>
-          <TextInput className={styles.searchInput} placeholder="搜索片段" value={search} aria-label="搜索片段"
-            onChange={event => setSearch(event.currentTarget.value)} />
-        </div>
-        <PanelBar>
-          <MenuButton label="筛选动画类别" caret entries={[
-            { label: '全部类别', onSelect: () => setCategory(null) },
-            ...categories.map(value => ({ label: value || '未分类', onSelect: () => setCategory(value) })),
-          ]}>{category ?? '全部类别'}</MenuButton>
-        </PanelBar>
-        <VirtualList className={styles.list} count={clips.length} rowHeight={36} label="动画片段"
-          revealKey={field?.id} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
-          const item = clips[index];
-          return (
-            <button className={styles.clip} draggable
-              aria-selected={referenceValueKey(selectedValue) === referenceValueKey(item.resource.identity)}
-              onDragStart={event => writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(item))}
-              onClick={() => {
-                resourceActions.select(item.resource.identity);
-                if (field?.catalog.kind === 'ready' && field.catalog.referenceKind === animationReferenceKind)
-                  field.choose(animationChoice(item));
-                else selectionActions.select({ kind: 'resource', id: item.resource.identity });
-              }}>
-              <span>{item.name}</span>
-              <small>{item.category} · {item.duration.toFixed(3)} s · {item.frameRate} fps</small>
-            </button>
-          );
-        }} />
-        <div className={styles.count}>{clips.length} / {library.clips.length} 段</div>
-      </div>
-      <div className={styles.main}>
-        <PanelBar>
-          <Button variant="ghost" disabled={!clip} onClick={() => {
-            if (!playing && time >= duration) resourceActions.setTime(0);
-            resourceActions.setPlaying(!playing);
-          }}>{playing ? '暂停' : time >= duration && clip ? '重播' : '播放'}</Button>
-          <input className={styles.slider} type="range" min={0} max={duration} step={0.001} value={Math.min(time, duration)}
-            disabled={!clip} aria-label="素材秒数"
-            onChange={event => { resourceActions.setPlaying(false); resourceActions.setTime(Number(event.currentTarget.value)); }} />
-          <NumberInput label="素材秒数" value={Number(time.toFixed(3))} min={0} max={duration} step={0.001} disabled={!clip}
-            onChange={value => { if (value !== null) { resourceActions.setPlaying(false); resourceActions.setTime(value); } }} />
-          <BarSeparator />
-          <FitButton />
-          {clip && <LocateAssetButton key={clip.resource.identity} target={{ kind: 'asset', identity: clip.resource.identity }} />}
-        </PanelBar>
-        <ResourceCanvas library={library} />
-      </div>
-    </div>
-  );
-}
-
-let fitCurrent: (() => void) | null = null;
-function FitButton() {
-  return <Button variant="ghost" onClick={() => fitCurrent?.()}>适配角色</Button>;
-}
-
-// 场景属于面板实例：可见时建立，隐藏、卸载或换窗口时释放；glb 数据在缓存中。
-function ResourceCanvas({ library }: { library: AnimationLibrary }) {
-  const host = useRef<HTMLDivElement>(null);
-  const panelWindow = usePanelWindow();
-  const visible = usePanelVisible();
-  const [failure, setFailure] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!visible || !host.current) return;
-    const scene = new ResourceScene(host.current, panelWindow);
-    let alive = true, loaded = false, shown: string | null = null;
-    let drawn: { identity: string; time: number } | null = null;
-    scene.onRendered = () => {
-      if (!drawn) return;
-      const clip = library.clips.find(item => item.resource.identity === drawn!.identity);
-      if (!clip) return;
-      writeResourceReady({
-        identity: clip.resource.identity, revision: clip.resource.contentRevision, library: library.sha256,
-        source: library.sourceSha256, time: drawn.time,
-      });
-    };
-    const apply = () => {
-      if (!loaded) return;
-      const { identity, time } = getState();
-      const clip = library.clips.find(item => item.resource.identity === identity);
-      writeResourceReady(null);
-      drawn = null;
-      if (!clip || time < 0 || time > clip.exportedDuration) return;
-      try {
-        if (shown !== identity) {
-          scene.showClip(clip);
-          scene.setTime(time);
-          scene.fit();
-          shown = identity;
-        } else scene.setTime(time);
-        drawn = { identity: clip.resource.identity, time };
-      } catch (error) {
-        setFailure(consoleActions.error('resources', error));
+  const listing = listings[folder];
+  const shownFolders = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return (listing?.folders ?? []).filter(entry => entry.name.toLocaleLowerCase().includes(query));
+  }, [listing, search]);
+  const shownFiles = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return (listing?.files ?? []).filter(entry => `${entry.name} ${itemOf(entry.path)?.name ?? ''}`.toLocaleLowerCase().includes(query));
+  }, [listing, search, itemOf]);
+  const treeRows = useMemo(() => {
+    const rows: { path: string; name: string; depth: number }[] = [];
+    const walk = (path: string, depth: number) => {
+      for (const entry of listings[path]?.folders ?? []) {
+        rows.push({ path: entry.path, name: entry.name, depth });
+        if (expanded.has(entry.path)) walk(entry.path, depth + 1);
       }
     };
-    fitCurrent = () => scene.fit();
-    resourceCache.file(library.sha256).then(data => scene.load(data)).then(() => {
-      if (!alive) return;
-      loaded = true;
-      apply();
-    }, error => { if (alive) setFailure(consoleActions.error('resources', error)); });
-    const unsubscribe = useWorkbench.subscribe((state, previous) => {
-      if (state.identity !== previous.identity || state.time !== previous.time) apply();
-    });
-    return () => {
-      alive = false;
-      unsubscribe();
-      if (fitCurrent) fitCurrent = null;
-      writeResourceReady(null);
-      scene.dispose();
-    };
-  }, [visible, panelWindow, library]);
+    walk('', 0);
+    return rows;
+  }, [listings, expanded]);
 
-  return (
-    <div className={styles.canvasWrap}>
-      {failure !== null && <ErrorLine text="动画资源加载失败" entryId={failure} />}
-      <div ref={host} className={styles.canvas} />
+  const selectedFile = selected === null ? null : listings[parentOf(selected)]?.files.find(entry => entry.path === selected) ?? null;
+  const selectedIndex = selectedFile === null ? -1 : shownFolders.length + shownFiles.indexOf(selectedFile);
+  const describe = (file: ProjectFileEntry) => {
+    const item = itemOf(file.path);
+    if (item) return { name: item.name, detail: `${kindNames[item.kind]} · ${item.ownership === 'Shared' ? '共享' : '私有'} · ${file.name}` };
+    const clips = clipsByAsset.get(file.path);
+    if (clips) return { name: file.name, detail: clips.length === 1 ? `动画 · ${clips[0].duration.toFixed(3)} s` : `动画 · ${clips.length} 段` };
+    if (carrierBySource.has(file.path)) return { name: file.name, detail: '角色载体' };
+    return { name: file.name, detail: `${file.extension.replace('.', '') || '文件'} · ${sizeText(file.length)}` };
+  };
+
+  return <div className={projectStyles.browserGrid}>
+    <div className={projectStyles.tree} role="tree" aria-label="Project 文件夹">
+      {treeRows.map(row => <div key={row.path} className={projectStyles.treeRow} role="treeitem"
+        aria-selected={row.path === folder} aria-expanded={expanded.has(row.path)} style={{ paddingLeft: 4 + row.depth * 12 }}>
+        <button className={projectStyles.arrow} aria-label={expanded.has(row.path) ? `收起 ${row.name}` : `展开 ${row.name}`}
+          disabled={listings[row.path]?.folders.length === 0} onClick={() => {
+            load(row.path);
+            setExpanded(previous => { const next = new Set(previous); if (!next.delete(row.path)) next.add(row.path); return next; });
+          }}>{listings[row.path]?.folders.length === 0 ? '' : expanded.has(row.path) ? '▾' : '▸'}</button>
+        <button className={projectStyles.treeName} onClick={() => open(row.path)}>{row.name}</button>
+      </div>)}
     </div>
-  );
+    <div className={projectStyles.browser}>
+      <PanelBar wrap>
+        <Button variant="ghost" disabled={folder === ''} onClick={() => open(parentOf(folder))}>上级</Button>
+        <TextInput aria-label="在当前文件夹中搜索" placeholder="搜索当前文件夹" value={search} className={projectStyles.search}
+          onChange={event => setSearch(event.currentTarget.value)} />
+        <Button variant="ghost" onClick={() => load(folder, true)}>刷新</Button>
+        <MenuButton label="新建作者内容" caret entries={[
+          { label: '技能', onSelect: () => setCreating('skill') },
+          { label: `Timeline${target ? `（${target}）` : ''}`, disabled: !editable || elements === null, onSelect: () => setCreating('timeline') },
+          { label: `共享子图${target ? `（${target}）` : ''}`, disabled: !editable || elements === null, onSelect: () => setCreating('macro') },
+          { label: `输入方案${target ? `（${target}）` : ''}`, disabled: !editable, onSelect: () => setCreating('input') },
+        ]}>新建</MenuButton>
+      </PanelBar>
+      <div className={projectStyles.path} title={folder}>{folder || 'Project'}</div>
+      {failure && <ErrorLine {...failure} />}
+      {listing === undefined ? <Empty text="正在读取文件夹" /> :
+        <VirtualList className={projectStyles.list} count={shownFolders.length + shownFiles.length} rowHeight={40} label="文件夹内容"
+          revealKey={selected ?? undefined} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
+          if (index < shownFolders.length) {
+            const entry = shownFolders[index];
+            return <button className={projectStyles.row} onDoubleClick={() => open(entry.path)} onClick={() => setSelected(null)}>
+              <span>{entry.name}/</span><small>文件夹 · 双击进入</small>
+            </button>;
+          }
+          const file = shownFiles[index - shownFolders.length];
+          const item = itemOf(file.path);
+          const clips = clipsByAsset.get(file.path);
+          const { name, detail } = describe(file);
+          const choices = item && field?.catalog.kind === 'ready'
+            ? field.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(item.identity)) : [];
+          return <button className={projectStyles.row} aria-selected={file.path === selected}
+            draggable={choices.length === 1 || item?.kind === 'graph' || clips?.length === 1}
+            onDragStart={event => {
+              if (field?.catalog.kind === 'ready' && choices.length === 1) writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choices[0]);
+              else if (item?.kind === 'graph') writeReferenceDrag(event.dataTransfer, item.kind,
+                { value: item.identity, source: `${item.owner}/${item.file}`, targets: [], associated: [], references: null });
+              else if (clips?.length === 1) writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(clips[0]));
+            }}
+            onClick={event => {
+              setSelected(file.path);
+              setCreating(null);
+              if (event.detail < 2 && choices.length === 1) field!.choose(choices[0]);
+            }}
+            onDoubleClick={() => { if (item) void projectActions.open(item).catch(error => consoleActions.error('Project', error)); }}>
+            <span>{name}</span><small>{detail}</small>
+          </button>;
+        }} />}
+      <div className={projectStyles.note}>{shownFolders.length + shownFiles.length} 项{skillOf(folder) !== null && skillItems === null ? ' · 正在读取作者名称' : ''}</div>
+    </div>
+    <ProjectDetails file={selectedFile} creating={creating} target={target} elements={elements} library={library}
+      clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
+      carrier={selectedFile ? carrierBySource.get(selectedFile.path) ?? null : null}
+      item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
+      profileTarget={profileTarget} onCatalog={setCarriers}
+      onCreated={() => { setCreating(null); setRefresh(value => value + 1); load(folder, true); }}
+      onChanged={() => { setRefresh(value => value + 1); load(folder, true); }} />
+  </div>;
+}
+
+function ProjectDetails({ file, creating, target, elements, library, clips, carrier, item, items, stamp, profileTarget, onCatalog, onCreated, onChanged }: {
+  file: ProjectFileEntry | null; creating: SkillContentKind | null; target: string | null; elements: ReturnType<typeof useSkillElements>;
+  library: AnimationLibrary | null; clips: AnimationClip[] | null; carrier: AuthoringCarrier | null;
+  item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
+  onCatalog(catalog: AuthoringCarriers): void; onCreated(): void; onChanged(): void;
+}) {
+  if (creating !== null) return <div className={projectStyles.details}>
+    <SkillContentCreation key={creating} kind={creating} skill={target} elements={elements} onDone={onCreated} />
+  </div>;
+  if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;
+  if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;
+  if (clips && library) return <AnimationDetails key={file.path} library={library} clips={clips} />;
+  if (carrier) return <CarrierDetails key={file.path} carrier={carrier}
+    focusTarget={profileTarget?.carrierIdentity === carrier.identity ? profileTarget : null} onCatalog={onCatalog} />;
+  return <div className={projectStyles.details}><div className={projectStyles.facts}>
+    <strong>{file.name}</strong>
+    <code>{file.path}</code>
+    <small>{sizeText(file.length)}{file.guid ? ` · guid ${file.guid}` : ''}</small>
+    {skillOf(file.path) !== null && <span className={projectStyles.note}>作者目录读取完成后显示此文件的作者内容</span>}
+  </div></div>;
 }

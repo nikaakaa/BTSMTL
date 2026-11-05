@@ -14,11 +14,119 @@
   height: 100%;
 }
 
-.catalog {
+.body {
+  container-type: size;
+}
+
+/* 窄面板：左侧文件夹树，右侧上为文件、下为详情；宽面板三栏并排。 */
+.browserGrid {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(120px, 32%) minmax(0, 1fr);
+  grid-template-rows: minmax(140px, 2fr) minmax(0, 3fr);
   height: 100%;
   min-height: 0;
+}
+
+.browserGrid > .tree {
+  grid-row: 1 / span 2;
+}
+
+.browserGrid > .details, .browserGrid > .animation {
+  border-top: 2px solid var(--bg-0);
+}
+
+@container (max-width: 479px) {
+  .browserGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .browserGrid > .tree {
+    display: none;
+  }
+}
+
+@container (min-width: 900px) {
+  .browserGrid {
+    grid-template-columns: minmax(160px, 0.6fr) minmax(240px, 1fr) minmax(320px, 1.4fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .browserGrid > .tree {
+    grid-row: auto;
+  }
+
+  .browserGrid > .details, .browserGrid > .animation {
+    border-top: none;
+  }
+}
+
+.tree {
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  border-right: 2px solid var(--bg-0);
+  padding-block: var(--gap-1);
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  white-space: nowrap;
+}
+
+.treeRow[aria-selected='true'] {
+  background: var(--select);
+}
+
+.treeRow:hover {
+  background: var(--bg-3);
+}
+
+.arrow, .treeName {
+  all: unset;
+  cursor: default;
+}
+
+.arrow {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.treeName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path {
+  padding: var(--gap-1) var(--gap-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.animation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.clipList {
+  flex: none;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.clipList .row {
+  height: 36px;
 }
 
 .browser, .details {

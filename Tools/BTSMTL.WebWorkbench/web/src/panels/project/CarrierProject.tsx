@@ -76,89 +76,43 @@ function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
   return rows;
 }
 
-export function CarrierProject({ target: focusTarget }: { target: ProfileEntryTarget | null }) {
-  const [catalog, setCatalog] = useState<AuthoringCarriers | null>(null);
-  const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
-  const [refresh, setRefresh] = useState(0);
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+// Project 文件夹中选中载体资产时的详情：预览载体选择、产品范围与表现资源。
+export function CarrierDetails({ carrier, focusTarget, onCatalog }: {
+  carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null; onCatalog(catalog: AuthoringCarriers): void;
+}) {
   const [migration, setMigration] = useState<BusinessKeyRenameCompletion | null>(null);
-  const carrierRevision = useAuthoring(state => state.carrierRevision);
-  useEffect(() => { if (focusTarget !== null) { setSelected(focusTarget.carrierIdentity); setSearch(''); } }, [focusTarget]);
   const { target, preview } = useAuthoring(useShallow(state => ({ target: state.target, preview: authoringDocument(state).previewDefinitionGuid })));
-  useEffect(() => {
-    if (catalog !== null && catalog.authoringRevision === carrierRevision) return;
-    const controller = new AbortController();
-    setFailure(null);
-    authoringApi.carriers(controller.signal).then(value => {
-      setCatalog(value);
-      useAuthoring.setState({ carrierRevision: value.authoringRevision });
-    }, error => {
-      if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
-    });
-    return () => controller.abort();
-  }, [refresh, carrierRevision]);
-  const shown = useMemo(() => {
-    const query = search.toLocaleLowerCase();
-    return (catalog?.items ?? []).filter(item => `${item.name} ${item.source} ${item.identity}`.toLocaleLowerCase().includes(query));
-  }, [catalog, search]);
-  const carrier = catalog?.items.find(item => item.identity === selected) ?? null;
-  const currentPreview = catalog?.items.find(item => item.identity === preview) ?? null;
-  const selectedIndex = shown.findIndex(item => item.identity === selected);
   const onMigrationRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'] = (result, value) => {
     setMigration({ result, refresh: value });
     if (value.catalog !== null) {
-      setCatalog(value.catalog);
+      onCatalog(value.catalog);
       useAuthoring.setState({ carrierRevision: value.catalog.authoringRevision });
     }
   };
-  return <div className={styles.catalog}>
-    <div className={styles.browser}>
-      <PanelBar>
-        <TextInput aria-label="搜索载体" placeholder="搜索载体名称、来源" value={search} className={styles.search} onChange={event => setSearch(event.currentTarget.value)} />
-        <Button variant="ghost" onClick={() => { setCatalog(null); setRefresh(value => value + 1); }}>刷新</Button>
-      </PanelBar>
-      {failure ? <ErrorLine {...failure} /> : catalog === null ? <Empty text="正在读取已保存载体" /> :
-        !catalog.availability.available ? <Empty text={catalog.availability.reason} /> :
-          <VirtualList className={styles.list} count={shown.length} rowHeight={48} label="已保存载体"
-            revealKey={JSON.stringify(focusTarget)} revealIndex={selectedIndex < 0 ? undefined : selectedIndex} render={index => {
-            const item = shown[index];
-            return <button className={styles.row} aria-selected={item.identity === selected} onClick={() => setSelected(item.identity)}>
-              <span>{item.name}{item.identity === preview ? ' · 当前预览载体' : ''}</span><small>{item.source}</small>
-            </button>;
-          }} />}
-      <div className={styles.note}>{shown.length} 个载体</div>
+  return <div className={styles.details}>
+    {target?.kind === 'skill' && <ProductScope />}
+    <PanelBar wrap><Button disabled={target?.kind !== 'skill' || preview === carrier.identity}
+      tip={target?.kind === 'skill' ? undefined : '先打开技能'}
+      onClick={() => authoringActions.selectPreviewCarrier(carrier.identity)}>
+      {preview === carrier.identity ? `已是 ${target?.kind === 'skill' ? target.name : ''} 的预览载体` : '设为当前技能预览载体'}</Button>
+      {preview !== null && <Button variant="ghost" onClick={() => authoringActions.selectPreviewCarrier(null)}>清除预览载体</Button>}
+      <LocateAssetButton key={carrier.identity} target={{ kind: 'asset', identity: carrier.identity }} /></PanelBar>
+    <div className={styles.facts}><strong>{carrier.name}</strong><code>{carrier.source}</code><small>{carrier.identity}</small>
+      {carrier.vfx === null && <span className={styles.issue}>未配置特效 Profile</span>}
+      {carrier.camera === null && <span className={styles.issue}>未配置相机 Profile</span>}
+      {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
+      {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
     </div>
-    <div className={styles.details}>
-      {target?.kind === 'skill' && <ProductScope refresh={refresh} />}
-      <div className={styles.facts}>
-        <span>{target?.kind === 'skill' ? `${target.name} 的预览载体` : '打开技能后可选择预览载体'}</span>
-        <strong>{preview === null ? '未选择' : currentPreview?.name ?? '原选择已失效，身份已保留'}</strong>
-        {preview !== null && <Button variant="ghost" onClick={() => authoringActions.selectPreviewCarrier(null)}>清除选择</Button>}
-      </div>
-      {carrier ? <>
-        <PanelBar><Button disabled={target?.kind !== 'skill' || preview === carrier.identity}
-          onClick={() => authoringActions.selectPreviewCarrier(carrier.identity)}>设为当前技能预览载体</Button>
-          <LocateAssetButton key={carrier.identity} target={{ kind: 'asset', identity: carrier.identity }} /></PanelBar>
-        <div className={styles.facts}><strong>{carrier.name}</strong><code>{carrier.source}</code><small>{carrier.identity}</small>
-          {carrier.vfx === null && <span className={styles.issue}>未配置特效 Profile</span>}
-          {carrier.camera === null && <span className={styles.issue}>未配置相机 Profile</span>}
-          {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
-          {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
-        </div>
-        {migration?.result.target.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
-          onRefreshed={onMigrationRefreshed} />}
-        <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
-          migration={migration?.result.target.carrierIdentity === carrier.identity ? migration : null}
-          onSaved={result => setMigration({ result, refresh: null })}
-          onRefreshed={onMigrationRefreshed} />
-      </> : <Empty text={catalog?.availability.available && focusTarget !== null && selected === focusTarget.carrierIdentity
-        ? `引用的来源载体已失效，原身份已保留：${focusTarget.carrierIdentity}` : '选择载体查看表现资源与锚点'} />}
-    </div>
+    {migration?.result.target.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
+      onRefreshed={onMigrationRefreshed} />}
+    <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
+      migration={migration?.result.target.carrierIdentity === carrier.identity ? migration : null}
+      onSaved={result => setMigration({ result, refresh: null })}
+      onRefreshed={onMigrationRefreshed} />
   </div>;
 }
 
-function ProductScope({ refresh }: { refresh: number }) {
+function ProductScope() {
   const [products, setProducts] = useState<AuthoringProduct[] | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const product = useAuthoring(state => authoringDocument(state).product);
@@ -169,7 +123,7 @@ function ProductScope({ refresh }: { refresh: number }) {
       if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
-  }, [refresh]);
+  }, []);
   const current = products?.find(item => item.guid === product?.guid);
   return <div className={styles.facts}>
     <span>当前技能的产品范围</span>
