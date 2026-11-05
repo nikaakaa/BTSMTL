@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -18,6 +18,7 @@ import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
+import { adapterCatalogCache } from './adapterCatalog';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
 import { documentObservationNotice, graphHierarchy, routeObservation, type DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack, type TimelineObservationBinding } from './timelineModel';
@@ -747,13 +748,22 @@ export const authoringActions = {
     }
   },
 
+  async commitReferenceReplacement(plan: ReferenceReplacementPrepared) {
+    const conflicts = referenceReplacementConflicts(plan);
+    if (conflicts.length !== 0)
+      throw new Error(`先处理本次引用替换涉及的网页文档：${conflicts.map(item => `${item.owner}${item.path === null ? '' : `/${item.path}`}（${item.reason}）`).join('；')}`);
+    return authoringApi.commitReferenceReplacement(plan);
+  },
+
   async refreshReferenceReplacement(result: ReferenceReplacementCompleted) {
     const owners = referenceReplacementOwners(result).filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
-    const [catalogResults, snapshots] = await Promise.all([
+    const [catalogResults, snapshots, resourceCatalog] = await Promise.all([
       Promise.allSettled([authoringApi.carriers()]),
       Promise.allSettled(owners.map(owner => authoringApi.read(owner.target))),
+      adapterCatalogCache.refresh(authoringApi.catalog),
     ]);
     const failures: { text: string; entryId: number | null }[] = [];
+    if (resourceCatalog.kind === 'failed') failures.push(resourceCatalog.failure);
     const catalogResult = catalogResults[0];
     const catalog = catalogResult.status === 'fulfilled' ? catalogResult.value : null;
     if (catalogResult.status === 'rejected') failures.push({ text: '作者引用已替换，载体目录重新读取失败',
@@ -795,7 +805,7 @@ export const authoringActions = {
         };
       }
     });
-    set({ documents });
+    set({ documents, ...(catalog === null ? {} : { carrierRevision: catalog.authoringRevision }) });
     return { catalog, conflicts, failures };
   },
 

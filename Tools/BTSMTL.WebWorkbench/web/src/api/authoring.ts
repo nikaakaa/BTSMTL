@@ -766,6 +766,13 @@ interface SkillCreationDraft {
 }
 
 export const authoringApi = {
+  catalog: async (revision: string | null, signal?: AbortSignal) =>
+    readAdapterCatalog(await getJson<unknown>(`/api/authoring/catalog${revision === null ? '' : query({ revision })}`, signal)),
+  prepareReferenceReplacement: async (input: ReferenceReplacementInput, signal?: AbortSignal) =>
+    readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'prepare', ...input }, signal), 'prepare'),
+  commitReferenceReplacement: async (plan: ReferenceReplacementPrepared) =>
+    readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
+      domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
   export: async (skill: string, kind: SkillExportKind, editingView: SkillEditingView) =>
     readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
