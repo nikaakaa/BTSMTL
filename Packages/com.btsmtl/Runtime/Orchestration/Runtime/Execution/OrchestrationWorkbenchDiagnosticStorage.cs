@@ -165,6 +165,9 @@ namespace BTSMTL.Orchestration
                 case OrchestrationDiagnosticLifecycle.EnterEntry:
                     m_TraceFrameEntries[frame] = operation;
                     m_TraceEntryScopes[m_TraceEntryDepth++] = new TraceEntryScope(frame, operation);
+                    if (!cursor.Program.Operation(operation).IsRunnable &&
+                        (cursor.Input.CaptureTrace || Observations != null))
+                        ObserveCall(ref cursor, operation, OrchestrationTraceKind.Enter);
                     break;
                 case OrchestrationDiagnosticLifecycle.LeaveEntry:
                     m_TraceEntryDepth--;
