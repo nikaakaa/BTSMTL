@@ -92,7 +92,7 @@ export function ContentProject() {
           stamp={JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version]))} onChanged={() => setSelected(null)} />
           : node.target !== null && <ContentObject key={node.key} node={node} target={node.target} perform={perform} />}
         {node.target?.kind === 'item' && node.target.item.kind === 'graph' && <div className={styles.note}>图的显示名称由所属节点、片段或 Timeline 推出，可从引用者进入对应对象修改。</div>}
-        {node.referrers.length > 0 && <><div className={styles.heading}>全部引用者 · {node.referrers.length}</div>
+        {node.referrers.length > 0 && <><div className={styles.heading}>当前打开文档中的引用者 · {node.referrers.length}</div>
           {node.referrers.map(reference => <button key={reference.key} className={styles.referrer}
             onClick={() => void perform(() => projectActions.inspect(reference.target))}>{reference.label}</button>)}</>}
       </>}

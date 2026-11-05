@@ -148,7 +148,9 @@ export function projectContents(documents: AuthoringState['documents']) {
     const owner = root.target!.kind === 'item' ? root.target!.item.owner : '';
     const owned = [...items].filter(([, item]) => item.owner === owner && item.kind !== 'skill');
     const shared = owned.filter(([, item]) => item.ownership === 'Shared').map(([key]) => build(key));
-    const unreferenced = owned.filter(([key]) => !assigned.has(key)).map(([key]) => build(key));
+    const unreferenced: ContentNode[] = [];
+    for (const [key] of owned) if (!assigned.has(key) && !uses.has(key)) unreferenced.push(build(key));
+    for (const [key] of owned) if (!assigned.has(key)) unreferenced.push(build(key));
     if (shared.length > 0) root.children.push({ key: `${root.key}/shared`, label: '共享', description: `${shared.length} 项`, target: null, children: shared, referrers: [] });
     if (unreferenced.length > 0) root.children.push({ key: `${root.key}/unreferenced`, label: '其他内容', description: `${unreferenced.length} 项`, target: null, children: unreferenced, referrers: [] });
   }
