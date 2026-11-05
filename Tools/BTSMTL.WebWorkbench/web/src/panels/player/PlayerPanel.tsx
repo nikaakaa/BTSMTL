@@ -61,7 +61,7 @@ function QuickPreviewPicture() {
       <Empty text="在 Timeline 中选择输入并推导路线；动画素材可在 Project 资源视图中预览。" /> : <Facts fields={[
       { displayName: '当前路线', value: accepted.plan.status },
       { displayName: '路线时长', value: `${accepted.plan.duration} ${accepted.plan.clock.unit}` },
-      { displayName: '片段数量', value: accepted.plan.segments.length },
+      { displayName: '片段数量', value: String(accepted.plan.segments.length) },
       { displayName: '输入来源', value: accepted.plan.inputSource },
       { displayName: '输入修订', value: accepted.plan.inputRevision },
     ]} />}
