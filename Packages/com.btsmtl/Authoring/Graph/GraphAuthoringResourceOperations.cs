@@ -47,6 +47,7 @@ namespace BTSMTL.Authoring.Graph
         public string Type { get; set; }
         public string Name { get; set; }
         public string Hierarchy { get; set; }
+        public object Data { get; set; }
     }
 
     public sealed class GraphAuthoringResourceObjectResult
