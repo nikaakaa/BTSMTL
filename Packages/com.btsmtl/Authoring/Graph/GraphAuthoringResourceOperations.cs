@@ -15,6 +15,43 @@ namespace BTSMTL.Authoring.Graph
         public string NativeDefinitionId { get; set; }
     }
 
+    public sealed class GraphAuthoringResourceObjectQuery
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string AssetGuid { get; set; }
+        public string KeyKind { get; set; }
+        public string Domain { get; set; }
+        public string ObjectType { get; set; }
+        public string ProjectionToken => "resource-objects:" + AssetGuid + ":" + KeyKind + ":" + Domain + ":" + ObjectType;
+    }
+
+    public sealed class GraphAuthoringResourceObjectCandidate
+    {
+        public string Token { get; set; }
+        public string Type { get; set; }
+        public string Name { get; set; }
+        public string Hierarchy { get; set; }
+    }
+
+    public sealed class GraphAuthoringResourceObjectsProjection
+    {
+        public string Kind => "resource-objects";
+        public string Token => Query.ProjectionToken;
+        public string Protocol => "authoring-resource-objects/1";
+        public GraphAuthoringResourceObjectQuery Query { get; set; }
+        public GraphAuthoringResourceObjectCandidate[] Objects { get; set; }
+        public string SourceRevision { get; set; }
+    }
+
+    public sealed class GraphAuthoringResourceObjectResult
+    {
+        public bool Available { get; set; }
+        public string Reason { get; set; }
+        public string Revision { get; set; }
+        public GraphAuthoringResourceObjectCandidate[] Items { get; set; }
+    }
+
     [GraphAuthoringAnnotation]
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class GraphAuthoringResourceAttribute : Attribute
