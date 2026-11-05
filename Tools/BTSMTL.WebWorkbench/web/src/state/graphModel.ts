@@ -6,7 +6,8 @@ import type { WorkbenchState } from './store';
 
 // 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
 
-export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
+export const graphKey = (graph: Pick<GraphDefinition, 'actorId' | 'programId' | 'id'>) =>
+  JSON.stringify([graph.actorId, graph.programId, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.objectSlot, call.objectHandle, call.objectKind, call.definitionIndex, call.programIndex,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId,

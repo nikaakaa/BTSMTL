@@ -2,6 +2,8 @@ import type {
   AddPanelPositionOptions, DockviewApi, DockviewGroupPanel, IDockviewPanel, PopoutWindowFailure, SerializedDockview,
 } from 'dockview-react';
 import { consoleActions, layoutActions } from '../state/store';
+import { nullable, object, optional, text, tuple } from '../api/playerRecords';
+import { graphKey } from '../state/graphModel';
 import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, type PanelType } from './panelTypes';
 
 // 布局：保存、恢复、默认布局、按类型打开与多开、拆出窗口（D3、D12）。
@@ -15,6 +17,23 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface Saved {
   layout: SerializedDockview;
+  graphSelectionVersion?: 1;
+}
+
+const readRevisionGraphKey = tuple(nullable(text), text, text, text);
+const readGraphSelections = object({ graph: optional(nullable(text)), pin: optional(nullable(object({ graph: text }))) });
+
+function migrateGraphSelections(layout: SerializedDockview) {
+  const migrate = (value: string) => {
+    const [actorId, programId, , id] = readRevisionGraphKey(JSON.parse(value), '保存的作者图身份');
+    return graphKey({ actorId, programId, id });
+  };
+  for (const panel of Object.values(layout.panels)) {
+    if (panel.contentComponent !== 'graph') continue;
+    const { graph, pin } = readGraphSelections(panel.params ?? {}, '保存的节点图面板');
+    panel.params = { ...panel.params, graph: graph == null ? graph : migrate(graph),
+      pin: pin == null ? pin : { ...panel.params?.pin, graph: migrate(pin.graph) } };
+  }
 }
 
 // 同组页签：按类型找默认所在组。
@@ -180,6 +199,13 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
     return { reason: '保存的布局无法解析' };
   }
   if (!saved.layout?.panels) return { reason: '保存的布局缺少面板数据' };
+  if (saved.graphSelectionVersion !== 1) {
+    try {
+      migrateGraphSelections(saved.layout);
+    } catch (error) {
+      return { reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
   removeRetiredComparison(saved.layout);
   const counts = new Map<PanelType, number>();
   for (const panel of Object.values(saved.layout.panels)) {
@@ -195,7 +221,7 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
 function save() {
   saveTimer = null;
   if (!api) return;
-  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON() } satisfies Saved));
+  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON(), graphSelectionVersion: 1 } satisfies Saved));
 }
 
 export function requestLayoutSave() {
