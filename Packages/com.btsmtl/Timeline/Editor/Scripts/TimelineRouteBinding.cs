@@ -366,6 +366,18 @@ namespace BTSMTL.Timeline.Editor
                 route.Owner.AddClip(route.Inner, time - route.Offset);
         }
 
+        public bool CanDropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip) =>
+            !m_ReadOnly && track is RouteTrack route &&
+            route.Owner.CanDropResource(route.Inner, clip == null ? null : ((RouteClip)clip).Inner);
+
+        public void DropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip,
+            UnityEngine.Object source, double time, Vector2 screenPosition)
+        {
+            var route = (RouteTrack)track;
+            route.Owner.DropResource(route.Inner, clip == null ? null : ((RouteClip)clip).Inner,
+                source, time - route.Offset, screenPosition);
+        }
+
         public void AddMarker(IEmbeddedTimelineTrackBinding track, double time)
         {
             if (track is RouteTrack route)

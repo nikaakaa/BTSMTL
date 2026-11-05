@@ -107,12 +107,7 @@ namespace BTSMTL.Timeline.Editor
                     {
                         if (selected is ITimelineAuthoringResourceClip)
                         {
-                            PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineResourceReplacementPopup(selected, replacement, selection =>
-                            {
-                                if (!IsSourceCurrent()) throw new InvalidOperationException("Timeline 已被外部修改，请重新选择资源。");
-                                selection.Commit(selected);
-                                Rebuild();
-                            }));
+                            ShowResourceReplacement(selected, replacement);
                             return string.Empty;
                         }
                         if (!ApplyImmediate(() =>
@@ -588,6 +583,52 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             ShowAddClipMenu(formalTrack.Source.AuthoringId, time);
+        }
+
+        public bool CanDropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip) =>
+            !IsReadOnly && !ClipAdjustRangeOnly && !ResourceEditing &&
+            track is BtsmtlTimelineTrackBinding formalTrack && !formalTrack.IsLocked &&
+            (clip == null
+                ? typeof(ITimelineAuthoringResourceClip).IsAssignableFrom(formalTrack.Source.ClipType)
+                : clip is BtsmtlTimelineClipBinding formalClip && !formalClip.IsLocked &&
+                  formalClip.Source is ITimelineAuthoringResourceClip);
+
+        public void DropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip,
+            UnityEngine.Object source, double time, Vector2 screenPosition)
+        {
+            if (!CanDropResource(track, clip))
+            {
+                ReportIssue("当前轨道或片段不允许修改正式资源引用。");
+                return;
+            }
+            if (!IsSourceCurrent())
+            {
+                Rebuild();
+                ReportIssue("Timeline 已被外部修改，请重新拖入资源。");
+                return;
+            }
+            m_PopupPosition = screenPosition;
+            if (clip is BtsmtlTimelineClipBinding formalClip)
+            {
+                Select(formalClip);
+                ShowResourceReplacement(formalClip.Source, source);
+            }
+            else
+            {
+                var formalTrack = (BtsmtlTimelineTrackBinding)track;
+                Clip prototype = (Clip)Activator.CreateInstance(formalTrack.Source.ClipType);
+                ShowClipCreationPopup(formalTrack.Source.AuthoringId, prototype.ContractKind, time, source);
+            }
+        }
+
+        void ShowResourceReplacement(Clip clip, UnityEngine.Object source)
+        {
+            PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineResourceReplacementPopup(clip, source, selection =>
+            {
+                if (!IsSourceCurrent()) throw new InvalidOperationException("Timeline 已被外部修改，请重新选择资源。");
+                selection.Commit(clip);
+                Rebuild();
+            }));
         }
 
         public void SetTrackActive(IEmbeddedTimelineTrackBinding track, bool active)
