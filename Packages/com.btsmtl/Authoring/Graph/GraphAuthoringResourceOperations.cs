@@ -214,6 +214,17 @@ namespace BTSMTL.Authoring.Graph
         public string ConfigurationJson { get; set; }
     }
 
+    public sealed class GraphAuthoringProfileResourceConfigurationRequest
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string Context { get; set; }
+        public string KeyKind { get; set; }
+        public string Key { get; set; }
+        public GraphAuthoringProfileTarget Profile { get; set; }
+        public string ConfigurationJson { get; set; }
+    }
+
     public sealed class GraphAuthoringOwnerOperation
     {
         public string Command { get; set; }
@@ -235,6 +246,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringResourceReference Reference { get; set; }
         public string Token { get; set; }
         public int? InstanceCapacity { get; set; }
+        public string ConfigurationJson { get; set; }
     }
 
     public sealed class GraphAuthoringProfileSnapshot
