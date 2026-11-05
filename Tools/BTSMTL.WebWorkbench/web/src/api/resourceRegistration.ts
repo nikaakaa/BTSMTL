@@ -48,9 +48,7 @@ const resultFields = { revision: nullable(text), files: array(object({ path: tex
 const registrationFields = { ...resultFields,
   reference: readResourceReference,
   reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction };
-const readRegistration = object(registrationFields);
 const readScopeRegistration = object({ ...registrationFields, revision: text });
-const readReplay = object(resultFields);
 const readScopeReplay = object({ ...resultFields, revision: text });
 const readScope = object({ scope: readResourceReference, adapter: text, revision: text, resourceDeclarations: array(readResourceDeclaration) });
 export type AuthoringScope = ReturnType<typeof readScope>;
@@ -65,17 +63,11 @@ export const profileQueryKey = (query: ProfileQuery) => JSON.stringify([query.pa
 const readProfileResult = object({ reference: nullable(readResourceReference), reused: boolean, instanceCapacity: nullable(number),
   transaction: readTransaction, profile: readProfile, runtimeState: choice('pending') });
 export type ProfileOperationResult = ReturnType<typeof readProfileResult>;
-export type ResourceRegistrationResult = ReturnType<typeof readRegistration>;
+export type ResourceRegistrationResult = ReturnType<typeof readScopeRegistration>;
 export type ResourceRegistrationInput =
   | { kind: 'asset'; key: string; token: string }
   | { kind: 'instance-resource'; key: string; token: string; instanceCapacity: number }
   | { kind: 'camera-effect'; key: string; token: string; effectKind: string };
-export type ResourceRegistrationRequest = {
-  package: string; adapter: string; context: string; keyKind: string; file: string; memberPath: string[];
-  input: ResourceRegistrationInput; expectedRevision: string | null;
-  files: { path: string; content: string }[]; removedFiles: string[];
-};
-const root = (skill: string) => `/api/authoring/skills/${encodeURIComponent(skill)}`;
 export const resourceRegistrationApi = {
   readScope: (query: ScopeQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/scopes/read', query, signal).then(value => readScope(value)),
@@ -110,12 +102,6 @@ export const resourceRegistrationApi = {
     postJson<unknown>(`/api/authoring/profiles/data/${direction}`, { ...query, transaction }).then(value => readProfileResult(value)),
   objects: (query: ResourceObjectQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/resources/objects', query, signal).then(readResourceObjects),
-  register: (skill: string, request: ResourceRegistrationRequest) => {
-    const { kind, ...input } = request.input;
-    return postJson<unknown>(`${root(skill)}/resources/register`, { ...request, input: { kind, ...input } }).then(value => readRegistration(value));
-  },
-  replay: (skill: string, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
-    postJson<unknown>(`${root(skill)}/data/${direction}`, transaction).then(value => readReplay(value)),
 };
 
 const readFailure = object({ success: boolean, code: choice('resource-registration', 'resource-registration-conflict', 'resource-registration-io'),
