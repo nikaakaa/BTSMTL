@@ -30,6 +30,12 @@ export function ResourceReferenceReplacement({ source, candidates, currentContex
   const [scope, setScope] = useState<'current' | 'all'>(currentContext === null ? 'all' : 'current');
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    controller.current?.abort();
+    setSelectedKey(null);
+    setScope(currentContext === null ? 'all' : 'current');
+    setStage({ kind: 'closed' });
+  }, [source.domain, source.value, currentContext]);
   const context = scope === 'current' ? currentContext : null;
   const choices = candidates.filter(item => item.domain === source.domain && item.value !== source.value &&
     (context === null || item.context === '' || item.context === context));
@@ -40,12 +46,12 @@ export function ResourceReferenceReplacement({ source, candidates, currentContex
     text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('引用替换', error),
   }, raw: error instanceof ApiError ? error.raw : null });
   const edit = () => { controller.current?.abort(); setStage({ kind: 'editing' }); };
-  const prepare = async () => {
+  const prepare = async (selected: AdapterCatalogItem) => {
     controller.current?.abort();
     const pending = controller.current = new AbortController();
     setStage({ kind: 'preparing' });
     try {
-      const plan = await onPrepare({ domain: source.domain, oldValue: source.value, newValue: selected!.value, context }, pending.signal);
+      const plan = await onPrepare({ domain: source.domain, oldValue: source.value, newValue: selected.value, context }, pending.signal);
       pending.signal.throwIfAborted();
       setStage({ kind: 'prepared', plan });
     } catch (error) { if (!isAbort(error)) fail(error); }
@@ -68,14 +74,14 @@ export function ResourceReferenceReplacement({ source, candidates, currentContex
   return <div className={styles.facts}>
     <strong>替换 {source.display} 的作者引用</strong><code>{source.domain} · {source.value}</code>
     {!saved && <>
-      <Select label="引用替换范围" value={scope} disabled={busy} options={[
+      <Select<'current' | 'all'> label="引用替换范围" value={scope} disabled={busy} options={[
         ...(currentContext === null ? [] : [{ value: 'current' as const, label: `当前载体 · ${currentContext}` }]),
         { value: 'all', label: '全部载体中的引用' },
       ]} onChange={value => { setScope(value); setSelectedKey(null); edit(); }} />
       <Select label="替换为目录资源" value={selected === undefined ? null : selectedKey} placeholder="选择同领域的正式目录条目" disabled={busy}
         options={choices.map(item => ({ value: catalogItemKey(item), label: `${item.display} · ${item.adapter} · ${item.context || '公共'} · ${item.value}` }))}
         onChange={value => { setSelectedKey(value); edit(); }} />
-      <PanelBar><Button disabled={busy || selected === undefined || stage.kind === 'preparing'} onClick={() => void prepare()}>
+      <PanelBar><Button disabled={busy || selected === undefined || stage.kind === 'preparing'} onClick={selected === undefined ? undefined : () => void prepare(selected)}>
         {stage.kind === 'preparing' ? '正在准备引用替换' : '准备引用替换'}</Button>
         <Button variant="ghost" disabled={busy} onClick={() => { controller.current?.abort(); setStage({ kind: 'closed' }); }}>取消</Button></PanelBar>
     </>}

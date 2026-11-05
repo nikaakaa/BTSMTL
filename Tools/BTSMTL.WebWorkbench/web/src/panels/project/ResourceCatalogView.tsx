@@ -19,6 +19,8 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
   const [search, setSearch] = useState('');
   useEffect(() => { if (field?.domain != null) setDomain(field.domain); }, [field?.id, field?.domain]);
   const catalogItems = useMemo(() => domains.flatMap(group => group.items.map(item => ({ ...item, adapter: group.adapter, domain: group.domain }))), [domains]);
+  const contextualValues = useMemo(() => new Set(catalogItems.filter(item => item.adapter === currentScope?.adapter && item.context === currentScope.context)
+    .map(item => JSON.stringify([item.adapter, item.domain, item.value]))), [catalogItems, currentScope?.adapter, currentScope?.context]);
   const conflicts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of catalogItems) counts.set(catalogItemKey(item), (counts.get(catalogItemKey(item)) ?? 0) + 1);
@@ -28,8 +30,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
   const fieldItems = activeField?.catalog.kind === 'ready' ? activeField.catalog.items : [];
   const currentValue = activeField?.value;
   const inCurrentScope = (item: AdapterCatalogItem) => currentScope === null ? item.context === '' : item.adapter === currentScope.adapter &&
-    (item.context === currentScope.context || item.context === '' && !catalogItems.some(other =>
-      other.adapter === item.adapter && other.domain === item.domain && other.value === item.value && other.context === currentScope.context));
+    (item.context === currentScope.context || item.context === '' && !contextualValues.has(JSON.stringify([item.adapter, item.domain, item.value])));
   useEffect(() => {
     if (field?.domain == null) return;
     const matches = catalogItems.filter(item => item.domain === field.domain && item.value === field.value && inCurrentScope(item));
