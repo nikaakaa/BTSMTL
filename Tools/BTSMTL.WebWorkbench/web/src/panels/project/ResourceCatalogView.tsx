@@ -8,10 +8,12 @@ import styles from './project.module.css';
 
 export const catalogItemKey = (item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'context'>) =>
   JSON.stringify([item.adapter, item.domain, item.value, item.context]);
+export type ResourceCatalogSelection = { kind: 'catalog'; item: AdapterCatalogItem }
+  | { kind: 'missing'; domain: string; value: string };
 
 export function ResourceCatalogView({ domains, revision, currentScope, field, selected, onSelect, details }: {
   domains: AdapterCatalogDomain[]; revision: string; currentScope: { adapter: string; context: string } | null;
-  field: ReferenceFieldSelection | null; selected: AdapterCatalogItem | null; onSelect(item: AdapterCatalogItem | null): void; details: ReactNode;
+  field: ReferenceFieldSelection | null; selected: ResourceCatalogSelection | null; onSelect(item: ResourceCatalogSelection | null): void; details: ReactNode;
 }) {
   const [domain, setDomain] = useState<string | null>(field?.domain ?? null);
   const [all, setAll] = useState(false);
@@ -29,12 +31,15 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
   const activeField = field?.domain == null ? null : field;
   const fieldItems = activeField?.catalog.kind === 'ready' ? activeField.catalog.items : [];
   const currentValue = activeField?.value;
+  const selectedItem = selected?.kind === 'catalog' ? selected.item : null;
   const inCurrentScope = (item: AdapterCatalogItem) => currentScope === null ? item.context === '' : item.adapter === currentScope.adapter &&
     (item.context === currentScope.context || item.context === '' && !contextualValues.has(JSON.stringify([item.adapter, item.domain, item.value])));
   useEffect(() => {
     if (field?.domain == null) return;
     const matches = catalogItems.filter(item => item.domain === field.domain && item.value === field.value && inCurrentScope(item));
-    onSelect(matches.length === 1 ? matches[0] : null);
+    onSelect(matches.length === 1 ? { kind: 'catalog', item: matches[0] }
+      : matches.length === 0 && typeof field.value === 'string' && field.value !== ''
+        ? { kind: 'missing', domain: field.domain, value: field.value } : null);
   }, [field?.id, field?.domain, field?.value, catalogItems, currentScope?.adapter, currentScope?.context, onSelect]);
   const missing = activeField !== null && typeof currentValue === 'string' && currentValue !== '' &&
     !catalogItems.some(item => item.domain === activeField.domain && item.value === currentValue && inCurrentScope(item));
@@ -42,15 +47,20 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
   const shown = catalogItems.filter(item => (domain === null || item.domain === domain) && (all || currentScope !== null && inCurrentScope(item)) &&
     (!issuesOnly || conflicts.has(catalogItemKey(item))) &&
     `${item.display} ${item.value} ${item.adapter} ${item.context}`.toLocaleLowerCase().includes(query));
-  const rows: ({ kind: 'domain'; domain: string } | { kind: 'item'; item: AdapterCatalogItem })[] = [];
-  for (const name of [...new Set(shown.map(item => item.domain))]) {
+  const showMissing = missing && (domain === null || domain === activeField.domain) &&
+    `${activeField.name} ${currentValue}`.toLocaleLowerCase().includes(query);
+  const rows: ({ kind: 'domain'; domain: string } | { kind: 'item'; item: AdapterCatalogItem }
+    | { kind: 'missing'; domain: string; value: string })[] = [];
+  for (const name of [...new Set([...shown.map(item => item.domain), ...(showMissing ? [activeField.domain!] : [])])]) {
     rows.push({ kind: 'domain', domain: name });
+    if (showMissing && name === activeField.domain && typeof currentValue === 'string')
+      rows.push({ kind: 'missing', domain: name, value: currentValue });
     rows.push(...shown.filter(item => item.domain === name).map(item => ({ kind: 'item' as const, item })));
   }
-  const current = rows.findIndex(row => row.kind === 'item' && row.item.domain === activeField?.domain &&
+  const current = rows.findIndex(row => row.kind === 'missing' || row.kind === 'item' && row.item.domain === activeField?.domain &&
     referenceValueKey(row.item.value) === referenceValueKey(currentValue));
-  const choices = selected !== null && inCurrentScope(selected) && activeField?.domain === selected.domain && activeField.catalog.kind === 'ready'
-    ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(selected.value)) : [];
+  const choices = selectedItem !== null && inCurrentScope(selectedItem) && activeField?.domain === selectedItem.domain && activeField.catalog.kind === 'ready'
+    ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(selectedItem.value)) : [];
   return <div className={styles.contentGrid}>
     <div className={styles.contentTree}>
       <PanelBar wrap>
@@ -72,31 +82,37 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
             revealKey={JSON.stringify([field?.id, currentValue, domain])} revealIndex={current < 0 ? undefined : current} render={index => {
               const row = rows[index];
               if (row.kind === 'domain') return <div className={styles.heading}>{row.domain}</div>;
+              if (row.kind === 'missing') return <button className={styles.row}
+                aria-selected={selected?.kind === 'missing' && selected.domain === row.domain && selected.value === row.value}
+                onClick={() => onSelect(row)}><span>{row.value}<small className={styles.issue}>当前字段引用缺失</small></span>
+                <small>{activeField!.name} · 原值已保留</small></button>;
               const item = row.item;
               const conflict = conflicts.has(catalogItemKey(item));
               const choices = inCurrentScope(item) && activeField?.domain === item.domain && activeField.catalog.kind === 'ready'
                 ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(item.value) && choice.conflict === null) : [];
-              return <button className={styles.row} aria-selected={selected !== null && catalogItemKey(selected) === catalogItemKey(item)}
+              return <button className={styles.row} aria-selected={selectedItem !== null && catalogItemKey(selectedItem) === catalogItemKey(item)}
                 draggable={!conflict && choices.length === 1} onDragStart={event => {
                   if (activeField?.catalog.kind === 'ready' && choices.length === 1)
                     writeReferenceDrag(event.dataTransfer, activeField.catalog.referenceKind, choices[0]);
-                }} onClick={() => onSelect(item)}>
+                }} onClick={() => onSelect({ kind: 'catalog', item })}>
                 <span>{item.display}{conflict && <small className={styles.issue}>目录条目冲突</small>}</span>
                 <small>{item.adapter}{all ? ` · ${item.context || '公共'}` : ''}</small>
               </button>;
             }} />}
-      <div className={styles.note}>{shown.length} 项 · 目录修订 {revision}</div>
+      <div className={styles.note}>{shown.length + (showMissing ? 1 : 0)} 项 · 目录修订 {revision}</div>
     </div>
     <div className={styles.contentDetails}>
       {selected === null ? <Empty text="选择资源查看引用者及引用替换；聚焦引用字段可定位当前值。" /> : <>
-        <div className={styles.facts}><strong>{selected.display}</strong><span>{selected.adapter} · {selected.domain}</span>
-          <code>{selected.value}</code><small>上下文：{selected.context || '公共'}</small></div>
-        {choices.map((choice, index) => <Button key={index} disabled={choice.conflict !== null || conflicts.has(catalogItemKey(selected))}
+        {selected.kind === 'missing' ? <div className={styles.facts}><strong className={styles.issue}>当前引用不在正式目录中</strong>
+          <span>{selected.domain}</span><code>{selected.value}</code><span>原作者值仍保留，可查看引用者并替换为同领域的实际目录条目。</span></div>
+          : <div className={styles.facts}><strong>{selected.item.display}</strong><span>{selected.item.adapter} · {selected.item.domain}</span>
+            <code>{selected.item.value}</code><small>上下文：{selected.item.context || '公共'}</small></div>}
+        {choices.map((choice, index) => <Button key={index} disabled={choice.conflict !== null || conflicts.has(catalogItemKey(selectedItem!))}
           tip={choice.conflict ?? undefined} onClick={() => field!.choose(choice)}>
           {matchesReferenceChoice(choice, field!) ? `已设置 ${field!.name}` : `填入 ${field!.name}`}
         </Button>)}
-        {activeField !== null && activeField.domain !== selected.domain && <div className={styles.note}>
-          当前字段只接受 {activeField.domain}，所选资源属于 {selected.domain}。
+        {activeField !== null && activeField.domain !== (selected.kind === 'catalog' ? selected.item.domain : selected.domain) && <div className={styles.note}>
+          当前字段只接受 {activeField.domain}，所选资源属于 {selected.kind === 'catalog' ? selected.item.domain : selected.domain}。
         </div>}
         {details}
       </>}
