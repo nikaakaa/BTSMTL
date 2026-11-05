@@ -16,7 +16,8 @@ import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AnimationDetails } from './AnimationDetails';
-import { CarrierScopeDetails } from './CarrierProject';
+import { CarrierScopeDetails, carrierProfiles } from './CarrierProject';
+import { ProfileSources, type ProfileLocation } from './ProfileEditor';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
@@ -229,6 +230,14 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
     for (const carrier of carriers?.items ?? []) values.set(carrier.source, [...values.get(carrier.source) ?? [], carrier]);
     return values;
   }, [carriers]);
+  const profilesBySource = useMemo(() => {
+    const values = new Map<string, ProfileLocation[]>();
+    for (const profile of (carriers?.items ?? []).flatMap(carrierProfiles)) {
+      const entries = values.get(profile.source) ?? [];
+      if (!entries.some(item => item.package === profile.package && item.assetToken === profile.assetToken)) values.set(profile.source, [...entries, profile]);
+    }
+    return values;
+  }, [carriers]);
   const itemOf = useCallback((path: string): ProjectItem | null => {
     const skill = skillOf(path);
     if (skill === null || skillItems === null) return null;
@@ -354,6 +363,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
     <ProjectDetails file={selectedFile} creating={creating} target={target} elements={elements} library={library}
       clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
       carriers={selectedFile ? carrierBySource.get(selectedFile.path) ?? [] : []}
+      profiles={selectedFile ? profilesBySource.get(selectedFile.path) ?? [] : []} businessKeys={carriers?.businessKeys ?? []}
       item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
       profileTarget={profileTarget}
       onCreated={() => { setCreating(null); onRefresh(); load(folder, true); }}
@@ -361,9 +371,10 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
   </div>;
 }
 
-function ProjectDetails({ file, creating, target, elements, library, clips, carriers, item, items, stamp, profileTarget, onCreated, onChanged }: {
+function ProjectDetails({ file, creating, target, elements, library, clips, carriers, profiles, businessKeys, item, items, stamp, profileTarget, onCreated, onChanged }: {
   file: ProjectFileEntry | null; creating: SkillContentKind | null; target: string | null; elements: ReturnType<typeof useSkillElements>;
   library: AnimationLibrary | null; clips: AnimationClip[] | null; carriers: AuthoringCarrier[];
+  profiles: ProfileLocation[]; businessKeys: BusinessKeyMetadata[];
   item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
   onCreated(): void; onChanged(): void;
 }) {
@@ -373,7 +384,8 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
   if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;
   if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;
   if (clips && library) return <AnimationDetails key={file.path} library={library} clips={clips} />;
-  if (carriers.length) return <CarrierScopeDetails key={file.path} carriers={carriers} focusTarget={profileTarget} />;
+  if (carriers.length) return <CarrierScopeDetails key={file.path} carriers={carriers} focusTarget={profileTarget} businessKeys={businessKeys} />;
+  if (profiles.length) return <div className={projectStyles.details}><ProfileSources key={file.path} profiles={profiles} businessKeys={businessKeys} /></div>;
   return <div className={projectStyles.details}><div className={projectStyles.facts}>
     <strong>{file.name}</strong>
     <code>{file.path}</code>

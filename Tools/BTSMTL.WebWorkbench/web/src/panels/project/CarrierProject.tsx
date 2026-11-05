@@ -12,6 +12,8 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
 import { LocateAssetButton, type AssetLocateTarget } from './LocateAssetButton';
+import { ProfileSources, type ProfileLocation } from './ProfileEditor';
+import type { BusinessKeyMetadata } from '../../api/authoring';
 import styles from './project.module.css';
 
 interface ResourceRow {
@@ -77,8 +79,16 @@ function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
 }
 
 // Project 文件夹中选中载体资产时的详情：预览载体选择、产品范围与表现资源。
-export function CarrierDetails({ carrier, focusTarget }: {
-  carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null;
+export function carrierProfiles(carrier: AuthoringCarrier): ProfileLocation[] {
+  return [
+    { name: '特效 Profile', profile: carrier.vfx }, { name: '相机 Profile', profile: carrier.camera },
+    { name: '音频 Profile', profile: carrier.audio }, { name: '输入 Profile', profile: carrier.input },
+  ].flatMap(({ name, profile }) => profile === null ? [] : [{ package: carrier.scope.package,
+    assetToken: profile.identity, name, source: profile.source }]);
+}
+
+export function CarrierDetails({ carrier, focusTarget, businessKeys }: {
+  carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null; businessKeys: BusinessKeyMetadata[];
 }) {
   const { target, execution } = useAuthoring(useShallow(state => ({ target: state.target, execution: authoringDocument(state).execution })));
   const scopeKey = resourceReferenceKey(carrier.scope);
@@ -105,21 +115,22 @@ export function CarrierDetails({ carrier, focusTarget }: {
         {carrier.animationLibrary !== null && <span>动画库：{carrier.animationLibrary.source} · {carrier.animationLibrary.clips.length} 个片段</span>}
       </>}
     </div>
+    {carrier.profileUnavailableReason === null && <ProfileSources key={carrier.identity} profiles={carrierProfiles(carrier)} businessKeys={businessKeys} />}
     <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
   </div>;
 }
 
-export function CarrierScopeDetails({ carriers, focusTarget }: { carriers: AuthoringCarrier[]; focusTarget: ProfileEntryTarget | null }) {
+export function CarrierScopeDetails({ carriers, focusTarget, businessKeys }: { carriers: AuthoringCarrier[]; focusTarget: ProfileEntryTarget | null; businessKeys: BusinessKeyMetadata[] }) {
   const [selection, setSelection] = useState<string | null>(null);
-  const identity = focusTarget?.carrierIdentity ?? selection;
-  const carrier = carriers.find(item => item.identity === identity);
+  useEffect(() => { if (focusTarget !== null) setSelection(focusTarget.carrierIdentity); }, [focusTarget?.carrierIdentity]);
+  const carrier = carriers.find(item => item.identity === selection);
   return <div className={styles.details}>
     <PanelBar wrap><Select label="实际执行 Scope" value={carrier?.identity ?? null} placeholder="明确选择实际 Scope"
       options={carriers.map(item => ({ value: item.identity, label: `${item.name} · ${item.nativeKind} · ${item.scope.key} · ${item.scope.context || '公共'}` }))}
       onChange={setSelection} /></PanelBar>
     {carriers.length === 0 && <div className={styles.note}>所选来源尚未声明实际执行 Scope。</div>}
     {carrier === undefined ? <div className={styles.note}>{carriers.length > 1 ? '该来源有多个实际 Scope，请明确选择。' : '请选择实际 Scope。'}</div>
-      : <CarrierDetails key={carrier.identity} carrier={carrier} focusTarget={focusTarget} />}
+      : <CarrierDetails key={carrier.identity} carrier={carrier} focusTarget={focusTarget} businessKeys={businessKeys} />}
   </div>;
 }
 

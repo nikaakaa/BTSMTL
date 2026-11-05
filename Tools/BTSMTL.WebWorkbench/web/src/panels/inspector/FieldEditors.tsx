@@ -47,6 +47,13 @@ function Row({ label, tip, children }: { label: string; tip?: string; children: 
   return <div className={styles.field}><FieldLabel label={label} tip={tip} /><div className={styles.editor}>{children}</div></div>;
 }
 
+export function ConfigurationFields({ value, onSet }: { value: JsonObject; onSet(value: JsonObject): void }) {
+  return <>{Object.entries(value).map(([member, current]) => <ValueEditor key={member} label={memberLabel(member)} value={current}
+    shape={null} keys={[member]} onSet={(keys, next) => {
+      const configuration = cloneJson(value); setIn(configuration, keys, next); onSet(configuration);
+    }} />)}</>;
+}
+
 // 文本：失焦或回车提交；空文本按存储类型写空字符串或 null。
 function TextValue({ value, label, nullable, onSet }: {
   value: string | null; label: string; nullable?: boolean; onSet(value: JsonValue): void;

@@ -60,7 +60,7 @@ const profileConfiguration = (source: AuthoringProfile): JsonObject => {
   return configuration;
 };
 export const profileDirty = (document: ProfileDocument) =>
-  stringifySkillJson(document.configuration, '\n') !== stringifySkillJson(profileConfiguration(document.source), '\n');
+  writeSkillJson(document.configuration, shapeOf(document.source.configurationJson)) !== document.source.configurationJson;
 
 export interface AuthoringDocument {
   programId: string | null;
@@ -792,14 +792,14 @@ export const authoringActions = {
     if (current !== null && profileQueryKey(current) === profileQueryKey(query)) set({ profileTarget: null });
   },
   async openProfile(query: ProfileQuery, signal?: AbortSignal, reload = false) {
-    set({ profileTarget: query });
     const previous = profileDocument(useAuthoring.getState(), query);
-    if (previous !== undefined && !reload) return;
+    if (previous !== undefined && !reload) { set({ profileTarget: query }); return; }
     const source = await resourceRegistrationApi.readProfile(query, signal);
     signal?.throwIfAborted();
     updateProfile(query, previous === undefined ? { source, configuration: profileConfiguration(source), undo: [], redo: [],
       writing: false, failure: null, message: '' } : { ...previous, source,
       configuration: profileDirty(previous) ? previous.configuration : profileConfiguration(source), failure: null, message: '已读取正式来源，当前编辑仍保留。' });
+    set({ profileTarget: query });
   },
   editProfile(query: ProfileQuery, configuration: JsonObject) {
     const document = profileDocument(useAuthoring.getState(), query)!;
@@ -883,10 +883,12 @@ export const authoringActions = {
   },
 
   selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: ResourceReference | null) {
+    set({ profileTarget: null });
     setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
   },
 
   selectProduct(product: SkillEditingView['product']) {
+    set({ profileTarget: null });
     setDocument({ product, version: get().version + 1 });
   },
 

@@ -237,6 +237,15 @@
   border-bottom: 1px solid var(--line);
 }
 
+.profileFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  border: 0;
+  padding: var(--gap-2);
+  min-width: 0;
+}
+
 .referenceDetails {
   flex: none;
   max-height: 240px;
