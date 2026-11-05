@@ -10,6 +10,7 @@ import { animationChoice, animationReferenceKind, resourceCache } from '../../st
 import { matchesReferenceChoice, referenceTargetKey, referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
+import { projectContents } from '../../state/projectContents';
 import { consoleActions, getState, resourceActions, selectedScene, useWorkbench } from '../../state/store';
 import { Empty, Fold, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
@@ -31,19 +32,25 @@ import projectStyles from './project.module.css';
 // Project 窗口：直接按磁盘文件夹浏览 Unity 工程与技能、场景方案目录；选中文件按其实际内容显示详情。
 
 export function ProjectPanel() {
-  const [view, setView] = useState<'content' | 'resources'>('content');
+  const panel = usePanelApi();
+  useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
+  const [view, setView] = useState<'content' | 'resources' | 'files'>('content');
+  const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   return <div className={projectStyles.root}>
     <PanelBar><Button variant="ghost" pressed={view === 'content'} onClick={() => setView('content')}>内容</Button>
-      <Button variant="ghost" pressed={view === 'resources'} onClick={() => setView('resources')}>资源</Button></PanelBar>
-    <div className={projectStyles.body}>{view === 'content' ? <ContentProject /> : <ResourceProject />}</div>
+      <Button variant="ghost" pressed={view === 'resources'} onClick={() => setView('resources')}>资源</Button>
+      <MenuButton label="Project 更多操作" variant="ghost" entries={[
+        { label: '文件视图（排查）', onSelect: () => setView('files') },
+      ]}>更多</MenuButton>
+      {view === 'files' && <span className={projectStyles.note}>文件排查</span>}
+    </PanelBar>
+    <div className={projectStyles.body}>{view === 'content' ? <ContentProject /> : view === 'files'
+      ? <ProjectFiles profileTarget={profileTarget} /> : <ResourceProject onProfileTarget={target => { setProfileTarget(target); setView('files'); }} />}</div>
   </div>;
 }
 
-function ResourceProject() {
-  const panel = usePanelApi();
-  useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
+function ResourceProject({ onProfileTarget }: { onProfileTarget(target: ProfileEntryTarget): void }) {
   const field = useReferenceSelection(state => state.field);
-  const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
   const [refresh, setRefresh] = useState(0);
   const projectCatalog = useLibraryItems(refresh);
@@ -56,7 +63,7 @@ function ResourceProject() {
   const refreshProject = () => setRefresh(value => value + 1);
   return <div className={projectStyles.root}>
     {carriers !== null && carriers.items.length === 0 && <div className={projectStyles.note}>正式资源目录尚未提供实际执行 Scope，当前没有可选择的预览或运行来源。</div>}
-    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget}
+    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={onProfileTarget}
       onBusinessKey={item => setBusinessKey({ source: 'field', target: item.target })} />}
     <div className={projectStyles.choices}><Fold title="业务键">
       <Select<'project' | 'resources'> label="业务键目录来源" value={keySource} onChange={setKeySource} options={[
@@ -76,8 +83,13 @@ function ResourceProject() {
       <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
       <TargetReferrers target={referenceTarget} />
     </div>}
-    <div className={projectStyles.body}><ProjectBrowser profileTarget={profileTarget} projectCatalog={projectCatalog} carriers={carriers} onRefresh={refreshProject} /></div>
   </div>;
+}
+
+function ProjectFiles({ profileTarget }: { profileTarget: ProfileEntryTarget | null }) {
+  const [carriers, , failure] = useCarriers();
+  return <ProjectBrowser profileTarget={profileTarget} carriers={carriers} catalogFailure={failure}
+    onRefresh={() => useAuthoring.setState({ carrierRevision: null })} />;
 }
 
 function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKey }: {
@@ -192,8 +204,8 @@ function useLibraryItems(refresh: number) {
     failure: current?.kind === 'failed' ? current : null, stamp: JSON.stringify([stamp, scene]) };
 }
 
-function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: {
-  profileTarget: ProfileEntryTarget | null; projectCatalog: ReturnType<typeof useLibraryItems>; carriers: AuthoringCarriers | null; onRefresh(): void;
+function ProjectBrowser({ profileTarget, carriers, catalogFailure, onRefresh }: {
+  profileTarget: ProfileEntryTarget | null; carriers: AuthoringCarriers | null; catalogFailure: Failure | null; onRefresh(): void;
 }) {
   const [listings, setListings] = useState<Record<string, ProjectFolderListing>>({});
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -211,7 +223,9 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
   })));
   const available = useAuthoring(state => state.available);
   const elements = useSkillElements(editable && available !== false);
-  const { items: skillItems, stamp } = projectCatalog;
+  const documents = useAuthoring(state => state.documents);
+  const skillItems = useMemo(() => projectContents(documents).items, [documents]);
+  const stamp = JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version]));
 
   const load = useCallback((path: string, force = false) => {
     if (!force && requested.current.has(path)) return;
@@ -255,7 +269,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
   }, [carriers]);
   const itemOf = useCallback((path: string): ProjectItem | null => {
     const skill = skillOf(path);
-    if (skill === null || skillItems === null) return null;
+    if (skill === null) return null;
     const file = path.split('/').slice(2).join('/');
     return skillItems.find(item => item.owner === skill && item.file === file) ?? null;
   }, [skillItems]);
@@ -338,7 +352,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
       </PanelBar>
       {field?.resourceRegistration && selectedFile !== null && <ResourceObjectPicker
         key={JSON.stringify([field.id, selectedFile.path, field.resourceRegistration.objects])} file={selectedFile} field={field}
-        registration={field.resourceRegistration} businessKeys={projectCatalog.businessKeys} failure={projectCatalog.failure} />}
+        registration={field.resourceRegistration} businessKeys={carriers?.businessKeys ?? null} failure={catalogFailure} />}
       <div className={projectStyles.path} title={folder}>{folder || 'Project'}</div>
       {failure && <ErrorLine {...failure} />}
       {listing === undefined ? <Empty text="正在读取文件夹" /> :
@@ -373,14 +387,14 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
             <span>{name}</span><small>{detail}</small>
           </button>;
         }} />}
-      <div className={projectStyles.note}>{shownFolders.length + shownFiles.length} 项{skillOf(folder) !== null && skillItems === null ? ' · 正在读取作者名称' : ''}</div>
+      <div className={projectStyles.note}>{shownFolders.length + shownFiles.length} 项</div>
     </div>
     <ProjectDetails file={selectedFile} creating={creating} target={target} elements={elements} library={library}
       clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
       carriers={selectedFile ? carrierBySource.get(selectedFile.path) ?? [] : []}
       profiles={selectedFile ? profilesBySource.get(selectedFile.path) ?? [] : []} businessKeys={carriers?.businessKeys ?? []}
       profileLocations={[...profilesBySource.values()].flat()}
-      item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
+      item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems} stamp={stamp}
       profileTarget={profileTarget}
       onCreated={() => { setCreating(null); onRefresh(); load(folder, true); }}
       onChanged={() => { onRefresh(); load(folder, true); }} />
