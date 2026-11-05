@@ -14,9 +14,9 @@ import styles from './inspector.module.css';
 
 export const AuthoringResourceLocation = createContext<{ file: string; memberPath: string[] } | null>(null);
 
-export function ResourceRegistrationField({ id, label, value, configuration, catalog, onChoose, metadata, memberPath, objectType }: {
+export function ResourceRegistrationField({ id, label, value, configuration, catalog, onChoose, metadata, memberPath }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
-  onChoose(choice: ReferenceChoice): void; metadata: ResourceRegistrationMetadata; memberPath: string[]; objectType: string | null;
+  onChoose(choice: ReferenceChoice): void; metadata: ResourceRegistrationMetadata; memberPath: string[];
 }) {
   const location = useContext(AuthoringResourceLocation);
   const revision = useAuthoring(state => authoringDocument(state).revision);
@@ -24,9 +24,8 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
   const packageId = getIn(document ?? undefined, ['m_AuthorPackage']);
   const candidates = metadata.candidates;
   const objects: ResourceObjectCapability = typeof packageId !== 'string' ? { kind: 'unavailable', reason: '技能没有正式作者包声明。' }
-    : candidates === undefined ? { kind: 'unavailable', reason: '当前字段没有提供正式资源对象候选合同。' }
-    : !candidates.domain && !objectType ? { kind: 'unavailable', reason: '当前字段未声明资源领域或对象类型，无法查询素材对象。' }
-    : { kind: 'available', scope: { package: packageId, keyKind: candidates.keyKind, domain: candidates.domain, objectType } };
+    : !candidates.availability.available ? { kind: 'unavailable', reason: candidates.availability.reason }
+    : { kind: 'available', scope: { package: packageId, keyKind: candidates.keyKind, domain: candidates.domain, objectType: candidates.objectType } };
   const [asset, setAsset] = useState<ResourceAssetSelection | null>(null);
   const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>

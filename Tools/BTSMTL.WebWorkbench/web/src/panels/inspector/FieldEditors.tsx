@@ -728,10 +728,11 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
           businessKeysAvailability: field.businessKeysAvailability,
           invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
         : { kind: 'unavailable', reason: field.choicesAvailability.reason };
-  return field.resourceRegistration === null
+  const registration = field.resourceReference?.registration ?? null;
+  return registration === null
     ? <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
     : <ResourceRegistrationField id={id} label={label} value={value} configuration={configuration} catalog={catalog}
-      onChoose={onChoose} metadata={field.resourceRegistration} memberPath={registrationPath} objectType={field.objectType} />;
+      onChoose={onChoose} metadata={registration} memberPath={registrationPath} />;
 }
 
 function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {
@@ -831,7 +832,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
     return <Row label={label}>{value == null || value === ''
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
-  if (field.resourceRegistration !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
+  if (field.resourceReference !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
     return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
       onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
   switch (field.valueKind) {
