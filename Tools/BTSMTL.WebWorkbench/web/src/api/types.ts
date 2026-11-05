@@ -461,6 +461,8 @@ export interface AnimationClip {
   unityAsset: string;
   provenance: { description: string };
   resource: { identity: string; guid: string; localFileId: string; contentRevision: string };
+  // 技能 JSON 存储的作者包 animation-clip 键；未登记键或清单早于键导出的片段不作候选。
+  key?: string | null;
 }
 
 export interface AnimationLibrary {

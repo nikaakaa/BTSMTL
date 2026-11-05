@@ -100,33 +100,27 @@ export interface ProfileEntryTarget {
   resourceIdentity: string | null;
 }
 
-export type BusinessKeyRenameResult = {
-  projectPath: string;
+// 作者包内某类别的一个业务键。
+export interface BusinessKeyTarget {
+  package: string;
+  kind: string;
+  key: string;
+}
+
+// 改键计划：键声明、各适配者绑定与技能 JSON 中受影响的文件（仓库相对路径）与成员。
+export type BusinessKeyRenameResult = BusinessKeyTarget & {
   success: true;
   prepared: true;
   revision: string;
-  target: ProfileEntryTarget;
   newKey: string;
-  profiles: { identity: string; source: string }[];
-  sourceChanges: { path: string; sourceRevision: string; spanStart: number; spanLength: number; role: string }[];
-  references: { ownerDirectory: string; sourceRevision: string; filePath: string; graphId: string; nodeId: string;
-    memberPath: string[]; oldKey: string; newKey: string; contextOwners: string[] }[];
-  inputActions: { assetPath: string; sourceRevision: string; actionId: string; newName: string }[];
-  roots: { sourceCodePath: string; entryTypeName: string; recipeType: string; ownerAssetPath: string; outputAssetPath: string | null }[];
-  editorCompilationRequired: boolean;
-  receipt: unknown;
+  files: { path: string; members: string[] }[];
 } & ({ saved: false } | { saved: true });
 
-export type BusinessKeyRenameRequest = Pick<BusinessKeyRenameResult, 'target' | 'newKey'> & (
+export type BusinessKeyRenameRequest = BusinessKeyTarget & { newKey: string } & (
   { action: 'prepare' } | { action: 'commit'; expectedRevision: string }
 );
 
 export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
-
-export interface ReferenceBank {
-  Assets: JsonObject;
-  Values: JsonObject;
-}
 
 export interface ReferenceChoice {
   value: JsonValue;
@@ -136,7 +130,6 @@ export interface ReferenceChoice {
   conflict: string | null;
   targets: ReferenceChoiceTarget[];
   associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
-  references: ReferenceBank | null;
 }
 
 type FieldChoices =
@@ -206,10 +199,11 @@ export interface TypeDescription {
   references: { fieldId: string; serializedMemberPath: string[]; identity: string; owner: string; role: string; ownership: 'Private' | 'Shared' }[];
 }
 
-// 身份表（references.json）一项：作者 JSON 中引用的资产身份。
+// 技能存储值中出现且在作者包绑定中有条目的业务键。
 export interface IdentityItem {
   identity: string;
-  asset: { AssetPath?: string };
+  kind: string;
+  binding: JsonObject;
   referenceCount: number;
 }
 
@@ -289,6 +283,9 @@ export interface AuthoringCarrier {
     actionSoundSlotCount: number } | null;
   input: { identity: string; source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
 }
+
+// 定位目标：作者包键（经所属适配者绑定），或适配者投影直接给出的资产身份（载体、Profile、动画库）。
+export type AssetLocateRequest = (BusinessKeyTarget & { context?: string }) | { asset: string };
 
 export interface AssetLocateResult {
   projectPath: string;
@@ -672,18 +669,14 @@ export interface ScenarioDraftRequest {
 
 export interface SkillCreationCatalog {
   stage: 'creation-catalog';
-  projectPath: string;
-  containers: { identity: string; name: string; assetPath: string }[];
-  admissionProfiles: { identity: string; name: string; assetPath: string }[];
-  authorPackages: string[];
-  references: ReferenceBank;
+  // 作者包与其声明的准入键；技能的适配者容器在首次保存时登记绑定。
+  authorPackages: { name: string; admissionProfiles: string[]; revision: string }[];
   skillCreation: { parameters: { name: string; shape: StorageShape }[] };
   availability: QueryAvailability;
 }
 
 export interface SkillCreationRequest {
   parameters: {
-    containerIdentity: string;
     name: string;
     abilityId: string;
     authorPackage: string;
@@ -695,12 +688,10 @@ export interface SkillCreationRequest {
     startupInputs: JsonObject[];
     trajectory: JsonObject | null;
   };
-  references: SkillCreationCatalog['references'];
 }
 
 interface SkillCreationDraft {
   stage: 'draft';
-  containerIdentity: string;
   files: SkillFile[];
   availability: QueryAvailability;
 }
@@ -710,7 +701,7 @@ export const authoringApi = {
     readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
-  locateAsset: (identity: string) => postJson<AssetLocateResult>('/api/authoring/locate', { identity }),
+  locateAsset: (request: AssetLocateRequest) => postJson<AssetLocateResult>('/api/authoring/locate', request),
   renameBusinessKey: (request: BusinessKeyRenameRequest, signal?: AbortSignal) =>
     postJson<BusinessKeyRenameResult>('/api/authoring/business-keys/rename', request, signal),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),

@@ -17,7 +17,7 @@ export function LocateAssetButton({ target }: { target: AssetLocateTarget }) {
       tip={reason ?? (state.kind === 'located' ? `${state.result.projectPath}\n${state.result.assetPath}` : '在资源管理器中选中该资产的原文件')}
       onClick={target.kind === 'asset' ? () => {
         setState({ kind: 'pending' });
-        void authoringApi.locateAsset(target.identity).then(result => setState({ kind: 'located', result }), (error: unknown) => {
+        void authoringApi.locateAsset({ asset: target.identity }).then(result => setState({ kind: 'located', result }), (error: unknown) => {
           setState({ kind: 'failed', text: error instanceof Error ? error.message : String(error),
             entryId: consoleActions.error('Project', error) });
         });

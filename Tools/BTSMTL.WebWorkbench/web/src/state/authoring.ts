@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
-  type ReferenceBank, type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
+  type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
@@ -546,10 +546,10 @@ export const authoringActions = {
     const state = useAuthoring.getState();
     if (state.skills?.includes(target.name) || state.documents[key] !== undefined)
       throw new Error(`技能目录 ${target.name} 已存在或已经打开，请使用其他名称`);
-    const containerOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
-      (document.edited['references.json'] as JsonObject | undefined)?.Root === request.parameters.containerIdentity);
-    if (containerOwner !== undefined)
-      throw new Error(`此技能容器已用于未保存草稿 ${containerOwner[0]}，请继续编辑该草稿或选择其他容器`);
+    const identityOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
+      (document.edited['skill.json'] as JsonObject | undefined)?.m_AbilityId === request.parameters.abilityId);
+    if (identityOwner !== undefined)
+      throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
     set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), edited, version: 1,
@@ -651,14 +651,6 @@ export const authoringActions = {
     setDocument({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
   },
 
-  mergeReferences(bank: ReferenceBank) {
-    authoringActions.edit('references.json', value => {
-      const references = value as JsonObject;
-      Object.assign(references.Assets as JsonObject, cloneJson(bank.Assets));
-      Object.assign(references.Values as JsonObject, cloneJson(bank.Values));
-    });
-  },
-
   // 删除文件：网页新建的直接丢弃，原有的保存时删除。
   remove(paths: string[]) {
     if (!paths.length) return;
@@ -690,7 +682,8 @@ export const authoringActions = {
     const conflicts = businessKeyMigrationConflicts(plan);
     if (conflicts.length !== 0)
       throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}/${item.path}（${item.reason}）`).join('；')}`);
-    return authoringApi.renameBusinessKey({ action: 'commit', target: plan.target, newKey: plan.newKey, expectedRevision: plan.revision });
+    return authoringApi.renameBusinessKey({ action: 'commit', package: plan.package, kind: plan.kind, key: plan.key,
+      newKey: plan.newKey, expectedRevision: plan.revision });
   },
 
   async refreshBusinessKeyRename(result: Extract<BusinessKeyRenameResult, { saved: true }>) {
@@ -1307,12 +1300,14 @@ export const hasChanges = (target = get().target) => {
 
 function businessKeyMigrationFiles(plan: BusinessKeyRenameResult) {
   const owners = new Map<string, { target: Extract<AuthoringTarget, { kind: 'skill' }>; paths: Set<string> }>();
-  for (const reference of plan.references) {
-    const directory = reference.ownerDirectory.replaceAll('\\', '/');
-    const name = directory.slice(directory.lastIndexOf('/') + 1);
+  // 计划中的文件为仓库相对路径；技能文件位于 Authoring/Skills/<技能>/ 下。
+  for (const file of plan.files) {
+    const parts = file.path.split('/');
+    if (parts[0] !== 'Authoring' || parts[1] !== 'Skills' || parts.length < 4) continue;
+    const name = parts[2];
     const target: Extract<AuthoringTarget, { kind: 'skill' }> = { kind: 'skill', name };
     const owner = owners.get(name) ?? { target, paths: new Set<string>() };
-    owner.paths.add(reference.filePath.replaceAll('\\', '/').slice(directory.length + 1));
+    owner.paths.add(parts.slice(3).join('/'));
     owners.set(name, owner);
   }
   return owners;
@@ -1441,7 +1436,7 @@ function orphanFiles(seeds: string[]): string[] {
   const kept = new Set<string>();
   for (const path of paths) {
     const id = fileIdOf(path);
-    if (path === layoutPath || path === 'references.json' || (id && candidates.has(id))) continue;
+    if (path === layoutPath || (id && candidates.has(id))) continue;
     collectIds(currentDocument(path) ?? null, candidates, kept);
   }
   const keep = [...kept];

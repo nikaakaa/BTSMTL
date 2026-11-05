@@ -209,7 +209,7 @@ function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget |
     const value = animationValue ?? initialIdentity.current;
     if (value === null || value === undefined || library === null) return;
     initialIdentity.current = null;
-    const clip = library.clips.find(item => referenceValueKey(item.resource.identity) === referenceValueKey(value));
+    const clip = library.clips.find(item => item.key != null && referenceValueKey(item.key) === referenceValueKey(value));
     if (!clip) return;
     resourceActions.select(clip.resource.identity);
     reveal(clip.unityAsset);
@@ -294,7 +294,7 @@ function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget |
             onDragStart={event => {
               if (field?.catalog.kind === 'ready' && choices.length === 1) writeReferenceDrag(event.dataTransfer, field.catalog.referenceKind, choices[0]);
               else if (item?.kind === 'graph') writeReferenceDrag(event.dataTransfer, item.kind,
-                { value: item.identity, source: `${item.owner}/${item.file}`, targets: [], associated: [], references: null });
+                { value: item.identity, source: `${item.owner}/${item.file}`, targets: [], associated: [] });
               else if (clips?.length === 1) writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(clips[0]));
             }}
             onClick={event => {

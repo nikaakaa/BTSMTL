@@ -103,10 +103,10 @@ export function CarrierDetails({ carrier, focusTarget, onCatalog }: {
       {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
       {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
     </div>
-    {migration?.result.target.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
+    {migration?.result.profile.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
       onRefreshed={onMigrationRefreshed} />}
     <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
-      migration={migration?.result.target.carrierIdentity === carrier.identity ? migration : null}
+      migration={migration?.result.profile.carrierIdentity === carrier.identity ? migration : null}
       onSaved={result => setMigration({ result, refresh: null })}
       onRefreshed={onMigrationRefreshed} />
   </div>;
@@ -165,9 +165,9 @@ function CarrierResources({ carrier, target, migration, onSaved, onRefreshed }: 
   useEffect(() => {
     if (migration === null || migration.refresh === null || migration.refresh.catalog === null) return;
     const { result } = migration;
-    const renamed = rows.find(row => row.source === result.target.profileSource && row.domain === result.target.domain &&
-      row.entryKind === result.target.entryKind && row.key === result.newKey);
-    if (renamed !== undefined) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.target)
+    const renamed = rows.find(row => row.source === result.profile.profileSource && row.domain === result.profile.domain &&
+      row.entryKind === result.profile.entryKind && row.key === result.newKey);
+    if (renamed !== undefined) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.profile)
       ? resourceTarget(carrier, renamed) : current);
   }, [migration, rows, carrier]);
   const kinds = useMemo(() => [...new Set(rows.map(row => row.kind))], [rows]);

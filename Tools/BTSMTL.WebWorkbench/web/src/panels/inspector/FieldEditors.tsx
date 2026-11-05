@@ -485,7 +485,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
     .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
       ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
-        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [], references: null })) } : field),
+        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
   const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);
   const set: SetValue = (path, value) => setFields([{ keys: path, value }]);
@@ -713,7 +713,6 @@ function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: J
     { keys, value },
     ...choice.associated.map(associated => ({ keys: associated.serializedMemberPath, value: associated.value })),
   ]);
-  if (choice.references !== null) authoringActions.mergeReferences(choice.references);
 }
 
 function ReferenceCollection({ id, label, field, value, configuration, onSet, onSetFields }: {

@@ -44,9 +44,9 @@ export function AnimationDetails({ library, clips }: { library: AnimationLibrary
 
   return <div className={projectStyles.animation}>
     {clips.length > 1 && <div className={projectStyles.clipList}>{clips.map(item =>
-      <button key={item.resource.identity} className={projectStyles.row} draggable
+      <button key={item.resource.identity} className={projectStyles.row} draggable={item.key != null}
         aria-selected={referenceValueKey(item.resource.identity) === referenceValueKey(identity)}
-        onDragStart={event => writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(item))}
+        onDragStart={event => { if (item.key != null) writeReferenceDrag(event.dataTransfer, animationReferenceKind, animationChoice(item)); }}
         onClick={() => resourceActions.select(item.resource.identity)}>
         <span>{item.name}</span><small>{item.duration.toFixed(3)} s · {item.frameRate} fps</small>
       </button>)}</div>}
@@ -68,7 +68,8 @@ export function AnimationDetails({ library, clips }: { library: AnimationLibrary
       <Button variant="ghost" onClick={() => fitCurrent?.()}>适配角色</Button>
       {clip && <LocateAssetButton key={clip.resource.identity} target={{ kind: 'asset', identity: clip.resource.identity }} />}
       {clip && <Button variant="ghost" onClick={() => selectionActions.select({ kind: 'resource', id: clip.resource.identity })}>检查器</Button>}
-      {clip && animationField && <Button onClick={() => animationField.choose(animationChoice(clip))}>填入 {animationField.name}</Button>}
+      {clip && animationField && <Button disabled={clip.key == null} tip={clip.key == null ? '该片段没有登记 animation-clip 键，请先登记键并重新导出动画库' : undefined}
+        onClick={() => animationField.choose(animationChoice(clip))}>填入 {animationField.name}</Button>}
     </PanelBar>
     <ResourceCanvas library={library} />
   </div>;

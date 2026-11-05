@@ -1,15 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { authoringApi, type BusinessKeyRenameResult, type ProfileEntryTarget } from '../../api/authoring';
+import { authoringApi, type BusinessKeyRenameResult, type BusinessKeyTarget, type ProfileEntryTarget } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
-import { authoringActions, businessKeyMigrationConflicts, useAuthoring } from '../../state/authoring';
-import { projectActions } from '../../state/project';
+import { authoringActions, businessKeyMigrationConflicts, currentDocument, useAuthoring } from '../../state/authoring';
+import type { JsonObject } from '../../state/skillJson';
 import { consoleActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
 import { Button, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
 
-type SavedRename = Extract<BusinessKeyRenameResult, { saved: true }>;
+// 已保存的改键结果带上发起改名的载体条目，供载体资源列表重新选中改名后的条目。
+type SavedRename = Extract<BusinessKeyRenameResult, { saved: true }> & { profile: ProfileEntryTarget };
 type RefreshResult = Awaited<ReturnType<typeof authoringActions.refreshBusinessKeyRename>>;
 export type BusinessKeyRenameCompletion = { result: SavedRename; refresh: RefreshResult | null };
 type Failure = { text: string; entryId: number | null; raw: string | null };
@@ -21,7 +22,9 @@ const failureOf = (error: unknown): Failure => ({
   raw: error instanceof ApiError ? error.raw : null,
 });
 
-const referenceOwner = (directory: string) => directory.replaceAll('\\', '/').split('/').at(-1)!;
+// 载体条目类别与作者包键类别（Authoring/Keys/<包>/<类别>.json）的对应。
+const keyKind = (entryKind: string) => entryKind.startsWith('camera-effect-') ? 'camera-effect'
+  : entryKind === 'audio-resource' ? 'audio-event' : entryKind === 'preview-input-key' ? 'input' : entryKind;
 
 export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
   target: ProfileEntryTarget;
@@ -32,14 +35,17 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
   const [stage, setStage] = useState<Stage>({ kind: 'closed' });
   const prepareController = useRef<AbortController | null>(null);
   const authoring = useAuthoring();
+  const authorPackage = (currentDocument('skill.json') as JsonObject | null)?.m_AuthorPackage;
+  const key: BusinessKeyTarget | null = typeof authorPackage === 'string'
+    ? { package: authorPackage, kind: keyKind(target.entryKind), key: target.key } : null;
   const conflicts = useMemo(() => stage.kind === 'prepared' ? businessKeyMigrationConflicts(stage.plan, authoring) : [], [stage, authoring]);
   useEffect(() => () => prepareController.current?.abort(), []);
-  const prepare = async () => {
+  const prepare = async (key: BusinessKeyTarget) => {
     prepareController.current?.abort();
     const controller = prepareController.current = new AbortController();
     setStage({ kind: 'preparing' });
     try {
-      const plan = await authoringApi.renameBusinessKey({ action: 'prepare', target, newKey }, controller.signal);
+      const plan = await authoringApi.renameBusinessKey({ action: 'prepare', ...key, newKey }, controller.signal);
       controller.signal.throwIfAborted();
       setStage({ kind: 'prepared', plan });
     } catch (error) { if (!isAbort(error)) setStage({ kind: 'failed', ...failureOf(error) }); }
@@ -51,33 +57,35 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
     catch (error) { setStage({ kind: 'failed', ...failureOf(error) }); return; }
     if (!result.saved) {
       setStage({ kind: 'failed', text: '宿主未确认保存，请重新准备计划。', raw: JSON.stringify(result, null, 2),
-        entryId: consoleActions.log('error', 'Project', '业务键迁移未保存', JSON.stringify(result)) });
+        entryId: consoleActions.log('error', 'Project', '业务键改名未保存', JSON.stringify(result)) });
       return;
     }
+    const saved: SavedRename = { ...result, profile: target };
     setStage({ kind: 'refreshing' });
-    onSaved(result);
-    const refresh = await authoringActions.refreshBusinessKeyRename(result);
-    onRefreshed(result, refresh);
+    onSaved(saved);
+    const refresh = await authoringActions.refreshBusinessKeyRename(saved);
+    onRefreshed(saved, refresh);
     setStage({ kind: 'closed' });
   };
-  if (stage.kind === 'closed') return <Button variant="ghost" onClick={() => setStage({ kind: 'editing' })}>迁移业务键</Button>;
+  if (key === null) return <Button variant="ghost" disabled tip="先打开技能以确定作者包">改名业务键</Button>;
+  if (stage.kind === 'closed') return <Button variant="ghost" onClick={() => setStage({ kind: 'editing' })}>改名业务键</Button>;
   const busy = stage.kind === 'committing' || stage.kind === 'refreshing';
   return <div className={styles.facts}>
-    <strong>迁移业务键</strong>
-    <span>原键：{target.key}</span>
+    <strong>改名业务键</strong>
+    <span>{key.package} · {key.kind} · 原键：{key.key}</span>
     <TextInput aria-label="新业务键" value={newKey} disabled={busy} onChange={event => {
       prepareController.current?.abort();
       setNewKey(event.currentTarget.value);
       setStage({ kind: 'editing' });
     }} />
     <PanelBar>
-      <Button disabled={busy || stage.kind === 'preparing'} onClick={() => void prepare()}>
-        {stage.kind === 'preparing' ? '正在准备计划' : '准备迁移计划'}
+      <Button disabled={busy || stage.kind === 'preparing'} onClick={() => void prepare(key)}>
+        {stage.kind === 'preparing' ? '正在准备计划' : '准备改名计划'}
       </Button>
       <Button variant="ghost" disabled={busy} onClick={() => { prepareController.current?.abort(); setStage({ kind: 'closed' }); }}>取消</Button>
     </PanelBar>
     {stage.kind === 'prepared' && <>
-      <MigrationImpact plan={stage.plan} />
+      <RenameImpact plan={stage.plan} />
       {conflicts.map(item => <div key={`${item.owner}/${item.path}`} className={styles.issue}>
         {item.owner}/{item.path}：{item.reason}，请先按原保存或还原流程处理。
       </div>)}
@@ -87,38 +95,18 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
     {stage.kind === 'refreshing' && <span>已保存，正在重新读取受影响内容</span>}
     {stage.kind === 'failed' && <>
       <ErrorLine text={stage.text} entryId={stage.entryId} />
-      {stage.raw !== null && <details><summary>来源与恢复回执</summary><pre>{stage.raw}</pre></details>}
+      {stage.raw !== null && <details><summary>宿主回执</summary><pre>{stage.raw}</pre></details>}
     </>}
   </div>;
 }
 
-const MigrationImpact = memo(function MigrationImpact({ plan }: { plan: BusinessKeyRenameResult }) {
+const RenameImpact = memo(function RenameImpact({ plan }: { plan: BusinessKeyRenameResult }) {
   return <div className={styles.facts}>
-    <strong>{plan.target.key} → {plan.newKey}</strong>
-    <span>{plan.profiles.length} 个 Profile · {plan.sourceChanges.length} 处代码引用 · {plan.references.length} 处技能引用 · {plan.inputActions.length} 个输入动作</span>
-    <details open><summary>会修改的 Profile（{plan.profiles.length}）</summary>
-      {plan.profiles.map(profile => <div key={profile.identity}><code>{profile.source}</code></div>)}
-    </details>
-    {plan.sourceChanges.length > 0 && <details><summary>作者来源与代码引用（{plan.sourceChanges.length}）</summary>
-      {[...new Set(plan.sourceChanges.map(change => change.path))].map(path => <div key={path}><code>{path}</code></div>)}
-    </details>}
-    {plan.references.length > 0 && <details open><summary>技能 JSON 引用（{plan.references.length}）</summary>
-      {plan.references.map((reference, index) => <div key={index} className={styles.facts}>
-        <code>{reference.filePath}</code><span>{reference.memberPath.join(' / ')}</span>
-        <span>调用技能：{reference.contextOwners.join('、')}</span>
-        <Button variant="ghost" onClick={() => {
-          const owner = referenceOwner(reference.ownerDirectory);
-          void projectActions.openGraph({ owner, ownerName: owner, id: reference.graphId }, reference.nodeId)
-            .catch(error => consoleActions.error('Project', error));
-        }}>打开引用节点</Button>
-      </div>)}
-    </details>}
-    {plan.inputActions.length > 0 && <details open><summary>输入动作（{plan.inputActions.length}）</summary>
-      {plan.inputActions.map(action => <div key={`${action.assetPath}/${action.actionId}`}><code>{action.assetPath}</code><span> → {action.newName}</span></div>)}
-    </details>}
-    <details><summary>重新生成的作者根（{plan.roots.length}）</summary>
-      {plan.roots.map((root, index) => <div key={index} className={styles.facts}>
-        <code>{root.sourceCodePath}</code><span>{root.ownerAssetPath} → {root.outputAssetPath}</span>
+    <strong>{plan.key} → {plan.newKey}</strong>
+    <span>{plan.files.length} 个作者文件</span>
+    <details open><summary>会修改的文件（{plan.files.length}）</summary>
+      {plan.files.map(file => <div key={file.path} className={styles.facts}>
+        <code>{file.path}</code><span>{file.members.join('、')}</span>
       </div>)}
     </details>
   </div>;
@@ -131,8 +119,8 @@ export function BusinessKeyRenameReceipt({ completion, onRefreshed }: {
   const [reading, setReading] = useState(false);
   const { result, refresh } = completion;
   return <div className={styles.facts}>
-    <strong>已保存：{result.target.key} → {result.newKey}</strong>
-    <span>{result.editorCompilationRequired ? '需要完成 Editor 编译并采用；尚未确认运行生效。' : '已完成保存，运行采用尚未检查。'}</span>
+    <strong>已保存：{result.key} → {result.newKey}</strong>
+    <span>已改写键声明、绑定与技能 JSON；引擎内 Profile 的键由其生产者按绑定更新后运行才生效。</span>
     {refresh === null ? <span>正在重新读取载体目录与受影响文档</span> : <>
       {refresh.conflicts.map(item => <div key={`${item.owner}/${item.path}`} className={styles.issue}>
         {item.owner}/{item.path}：{item.reason}。网页修改已保留，文档已标记外部变化，请先处理这些修改。
@@ -143,6 +131,5 @@ export function BusinessKeyRenameReceipt({ completion, onRefreshed }: {
         void authoringActions.refreshBusinessKeyRename(result).then(value => { onRefreshed(result, value); setReading(false); });
       }}>{reading ? '正在重新读取' : '重新读取已保存结果'}</Button>}
     </>}
-    <details><summary>实际处理回执</summary><pre>{JSON.stringify(result.receipt, null, 2)}</pre></details>
   </div>;
 }

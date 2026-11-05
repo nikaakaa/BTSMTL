@@ -35,9 +35,9 @@ const loadingLibrary = { kind: 'loading' } satisfies AnimationLibraryState;
 export const animationReferenceKind = 'animation-clip';
 
 export const animationChoice = (clip: AnimationClip): ReferenceChoice => ({
-  value: clip.resource.identity, name: clip.name,
+  value: clip.key!, name: clip.name,
   detail: `${clip.category} · ${clip.duration.toFixed(3)} 秒 · ${clip.frameRate} fps`,
-  source: clip.unityAsset, conflict: null, targets: [], associated: [], references: null,
+  source: clip.unityAsset, conflict: null, targets: [], associated: [],
 });
 
 export function animationReferenceCatalog(state: AnimationLibraryState): ReferenceCatalog {
@@ -45,7 +45,7 @@ export function animationReferenceCatalog(state: AnimationLibraryState): Referen
     case 'loading': return { kind: 'unavailable', reason: '动画库清单尚未取得' };
     case 'unavailable': return state;
     case 'ready': return {
-      kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.map(animationChoice),
+      kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.filter(clip => clip.key != null).map(animationChoice),
       invalidReason: '动画引用已失效，当前动画库缺少该动画，请重新导出动画库；原身份已保留',
     };
   }
@@ -59,7 +59,7 @@ export function readAnimationDrop(transfer: DataTransfer, state: AnimationLibrar
   if (drag.kind === 'rejected') return drag;
   if (drag.referenceKind !== animationReferenceKind)
     return { kind: 'rejected', reason: '动画字段只接受动画库片段，原值已保留' };
-  const clip = state.library.clips.find(item => item.resource.identity === drag.value);
+  const clip = state.library.clips.find(item => item.key != null && item.key === drag.value);
   return clip ? { kind: 'selected', clip }
     : { kind: 'rejected', reason: '当前动画库缺少该动画，请重新导出动画库；原值已保留' };
 }
@@ -76,9 +76,9 @@ export function useAnimationLibrary(enabled: boolean): AnimationLibraryState {
   return enabled ? value : loadingLibrary;
 }
 
-// 动画资源身份（guid:localFileId）到素材帧率；资源清单未读到时为 null。
+// 动画片段键到素材帧率；资源清单未读到时为 null。
 export function useAnimationFrameRates(enabled: boolean): ReadonlyMap<string, number> | null {
   const value = useAnimationLibrary(enabled);
   return useMemo(() => value.kind === 'ready'
-    ? new Map(value.library.clips.map(clip => [clip.resource.identity, clip.frameRate])) : null, [value]);
+    ? new Map(value.library.clips.filter(clip => clip.key != null).map(clip => [clip.key!, clip.frameRate])) : null, [value]);
 }
