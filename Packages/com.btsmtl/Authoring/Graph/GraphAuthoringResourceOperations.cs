@@ -117,18 +117,96 @@ namespace BTSMTL.Authoring.Graph
         public string Content { get; set; }
     }
 
-    public sealed class GraphAuthoringResourceRegistrationRequest
+    public abstract class GraphAuthoringResourceBindingRequest
     {
         public string Package { get; set; }
         public string Adapter { get; set; }
         public string Context { get; set; }
         public string KeyKind { get; set; }
+        public GraphAuthoringResourceRegistrationInput Input { get; set; }
+    }
+
+    public sealed class GraphAuthoringResourceRegistrationRequest : GraphAuthoringResourceBindingRequest
+    {
         public string File { get; set; }
         public string[] MemberPath { get; set; }
-        public GraphAuthoringResourceRegistrationInput Input { get; set; }
         public string ExpectedRevision { get; set; }
         public GraphAuthoringDataFile[] Files { get; set; }
         public string[] RemovedFiles { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileTarget
+    {
+        public string AssetToken { get; set; }
+        public string ExpectedRevision { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileQuery
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string AssetToken { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileResourceRegistrationRequest : GraphAuthoringResourceBindingRequest
+    {
+        public GraphAuthoringProfileTarget Profile { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileCapacityRequest
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string Context { get; set; }
+        public string KeyKind { get; set; }
+        public string Key { get; set; }
+        public int InstanceCapacity { get; set; }
+        public GraphAuthoringProfileTarget Profile { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileConfigurationRequest
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public GraphAuthoringProfileTarget Profile { get; set; }
+        public string ConfigurationJson { get; set; }
+    }
+
+    public sealed class GraphAuthoringOwnerOperation
+    {
+        public string Command { get; set; }
+        public string InputType { get; set; }
+        public string ResultType { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileSnapshot
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string AssetToken { get; set; }
+        public string Domain { get; set; }
+        public string Context { get; set; }
+        public string Revision { get; set; }
+        public string ConfigurationJson { get; set; }
+        public GraphAuthoringOwnerOperation[] Operations { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileOperationResult
+    {
+        public GraphAuthoringResourceReference? Reference { get; set; }
+        public bool Reused { get; set; }
+        public int? InstanceCapacity { get; set; }
+        public GraphAuthoringDataTransaction Transaction { get; set; }
+        public GraphAuthoringProfileSnapshot Profile { get; set; }
+        public string RuntimeState => "pending";
+    }
+
+    public sealed class GraphAuthoringProfileReplayRequest
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string AssetToken { get; set; }
+        public GraphAuthoringDataTransaction Transaction { get; set; }
     }
 
     public sealed class GraphAuthoringDataChange
