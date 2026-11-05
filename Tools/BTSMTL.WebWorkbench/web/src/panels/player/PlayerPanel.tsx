@@ -213,17 +213,19 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       decoding = true;
       try {
         const image = await panelWindow.createImageBitmap(frame.image);
-        if (!alive || currentPicture()?.image !== frame.image) { image.close(); return; }
-        if (canvas.width !== frame.width || canvas.height !== frame.height) {
-          canvas.width = frame.width; canvas.height = frame.height;
-          if (layer.current) { layer.current.width = frame.width; layer.current.height = frame.height; }
-        }
-        const context = canvas.getContext('2d')!;
-        context.save();
-        if (frame.flipY) { context.translate(0, frame.height); context.scale(1, -1); }
-        context.drawImage(image, 0, 0, frame.width, frame.height);
-        context.restore();
-        image.close();
+        try {
+          if (!alive || currentPicture()?.image !== frame.image) return;
+          if (canvas.width !== frame.width || canvas.height !== frame.height) {
+            canvas.width = frame.width; canvas.height = frame.height;
+            if (layer.current) { layer.current.width = frame.width; layer.current.height = frame.height; }
+          }
+          const context = canvas.getContext('2d')!;
+          context.save();
+          try {
+            if (frame.flipY) { context.translate(0, frame.height); context.scale(1, -1); }
+            context.drawImage(image, 0, 0, frame.width, frame.height);
+          } finally { context.restore(); }
+        } finally { image.close(); }
         setDecodeFailure(null);
         frameSize.current = { width: frame.width, height: frame.height };
         overlayDraw.current(frame);
@@ -236,7 +238,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
         const overlayCanvas = layer.current;
         if (overlayCanvas) overlayCanvas.getContext('2d')!.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        setDecodeFailure({ image: frame.image, reason: `画面解码失败：${error instanceof Error ? error.message : String(error)}`,
+        setDecodeFailure({ image: frame.image, reason: `画面解码或绘制失败：${error instanceof Error ? error.message : String(error)}`,
           entryId: consoleActions.error('player', error) });
       } finally {
         decoding = false;
