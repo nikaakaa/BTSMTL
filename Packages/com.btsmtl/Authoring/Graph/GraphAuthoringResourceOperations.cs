@@ -64,6 +64,8 @@ namespace BTSMTL.Authoring.Graph
 
         public string KeyKind { get; }
         public string RegistrationInput { get; }
+        public string ResourceDomain { get; set; }
+        public Type ObjectType { get; set; }
         public string Owner => "Authoring";
         public string Command => "register-resource";
         public Type ReferenceType => typeof(GraphAuthoringResourceReference);
