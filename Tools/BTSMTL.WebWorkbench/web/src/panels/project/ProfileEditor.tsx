@@ -34,7 +34,7 @@ export function ProfileSources({ profiles, businessKeys }: { profiles: ProfileLo
   </Fold>;
 }
 
-export function ProfileEditor({ query, location, businessKeys }: { query: ProfileQuery; location: ProfileLocation | undefined; businessKeys: BusinessKeyMetadata[] }) {
+export function ProfileEditor({ query, location }: { query: ProfileQuery; location: ProfileLocation | undefined }) {
   const document = useAuthoring(state => profileDocument(state, query));
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const key = profileQueryKey(query);
@@ -71,7 +71,7 @@ export function ProfileEditor({ query, location, businessKeys }: { query: Profil
       </div>
     </Fold>
     <ProfileResourceConfiguration query={query} />
-    {supports('register-profile-resource') && <ProfileResourceRegistration query={query} businessKeys={businessKeys} />}
+    {supports('register-profile-resource') && <ProfileResourceRegistration query={query} />}
     {supports('set-resource-capacity') && <ProfileResourceCapacity query={query} />}
     {document.message && <div role="status" className={styles.note}>{document.message}</div>}
     <Fold title="Profile 身份"><div className={styles.facts}><small>资产令牌：{source.assetToken}</small><small>作者修订：{source.revision}</small></div></Fold>
@@ -115,11 +115,11 @@ function ProfileResourceConfiguration({ query }: { query: ProfileQuery }) {
   </div></Fold>;
 }
 
-function ProfileResourceRegistration({ query, businessKeys }: { query: ProfileQuery; businessKeys: BusinessKeyMetadata[] }) {
+function ProfileResourceRegistration({ query }: { query: ProfileQuery }) {
   const document = useAuthoring(state => profileDocument(state, query))!;
   const source = document.source;
   return <ResourceRegistrationEditor id={profileQueryKey(query)} label="Profile" packageId={source.package} adapter={source.adapter}
-    declarations={source.resourceDeclarations} resources={source.resources} businessKeys={businessKeys} writing={document.writing}
+    declarations={source.resourceDeclarations} resources={source.resources} writing={document.writing}
     onRegister={(keyKind, input) => authoringActions.registerProfileResource(query, keyKind, input)} />;
 }
 

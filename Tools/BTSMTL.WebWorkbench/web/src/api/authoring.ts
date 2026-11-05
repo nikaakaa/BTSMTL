@@ -162,7 +162,9 @@ const readRequiredTrue = (value: unknown, path = 'Authoring'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
 };
-export type ReferenceChoiceTarget = ProfileEntryTarget | BusinessKeyTarget | { kind: 'Node'; graphId: string; nodeId: string };
+const readResourceTarget = object({ kind: choice('Resource'), domain: text, value: text, context: nullable(text) });
+export type ResourceTarget = ReturnType<typeof readResourceTarget>;
+export type ReferenceChoiceTarget = ProfileEntryTarget | ResourceTarget | { kind: 'Node'; graphId: string; nodeId: string };
 
 export interface ReferenceChoice {
   value: JsonValue;
@@ -171,7 +173,6 @@ export interface ReferenceChoice {
   source: string;
   conflict: string | null;
   targets: ReferenceChoiceTarget[];
-  businessKeys: BusinessKeyMetadata[];
   associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
 }
 
@@ -192,7 +193,6 @@ export interface AuthoringSubtype {
 
 export type FieldMetadata = FieldChoices & {
   resourceReference: ResourceReferenceMetadata | null;
-  businessKeysAvailability: QueryAvailability;
   fieldId: string;
   displayName: string | null;
   type: string;
@@ -858,10 +858,8 @@ function readTypeDescription(text: string): TypeDescription {
     typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
   for (const field of fields) {
     field.resourceReference = nullable(readResourceReferenceMetadata)(field.resourceReference, `${field.fieldId}.resourceReference`);
-    field.businessKeysAvailability = readQueryAvailability(field.businessKeysAvailability, `${field.fieldId}.businessKeysAvailability`);
     if (field.choices === null) continue;
     field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),
-      businessKeys: readBusinessKeys(choice.businessKeys, `${field.fieldId}.choice.businessKeys`),
       associated: choice.associated.map(associated => ({ ...associated,
         value: valueOf(associated.value, fields.find(target => target.fieldId === associated.fieldId)!.clrType),
       })),

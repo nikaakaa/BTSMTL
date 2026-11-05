@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import type { QueryAvailability, ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
+import type { ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
 import type { ResourceObjectCapability } from '../api/resourceRegistration';
 
 export type ReferenceCatalog =
-  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string; businessKeysAvailability: QueryAvailability | null }
+  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
   | { kind: 'unavailable'; reason: string };
 
 export type ResourceAssetSelection = { token: string; source: string; adapter: string };
@@ -35,7 +35,7 @@ export function referenceTargetKey(target: ReferenceChoiceTarget): string {
   switch (target.kind) {
     case 'Node': return JSON.stringify([target.kind, target.graphId, target.nodeId]);
     case 'ProfileEntry': return JSON.stringify([target.kind, target.carrierIdentity, target.profileSource, target.domain, target.entryKind, target.key, target.resourceIdentity]);
-    case 'BusinessKey': return JSON.stringify([target.kind, target.package, target.keyKind, target.key]);
+    case 'Resource': return JSON.stringify([target.kind, target.domain, target.value, target.context]);
     default: { const unhandled: never = target; return unhandled; }
   }
 }

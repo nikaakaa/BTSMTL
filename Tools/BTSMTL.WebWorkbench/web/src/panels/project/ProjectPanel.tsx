@@ -24,7 +24,7 @@ import { ScopeEditor } from './ScopeEditor';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
-import { BusinessKeyDetails, BusinessKeyList } from './BusinessKeys';
+import { businessKeyTargetKey, BusinessKeyDetails, BusinessKeyList } from './BusinessKeys';
 import { ResourceObjectPicker } from './ResourceObjectPicker';
 import { ContentProject } from './ContentProject';
 import projectStyles from './project.module.css';
@@ -57,14 +57,12 @@ function ResourceProject({ onProfileTarget }: { onProfileTarget(target: ProfileE
   const projectCatalog = useLibraryItems();
   const [carriers, , carrierFailure] = useCarriers();
   const [keySource, setKeySource] = useState<'project' | 'resources'>('project');
-  const [businessKey, setBusinessKey] = useState<{ source: 'field' | 'project' | 'resources'; target: BusinessKeyTarget } | null>(null);
-  const selectedKeys = businessKey?.source === 'field' ? field?.catalog.kind === 'ready' ? field.catalog.items.flatMap(choice => choice.businessKeys) : []
-    : businessKey?.source === 'resources' ? carriers?.businessKeys : projectCatalog.businessKeys;
-  const metadata = businessKey === null ? null : selectedKeys?.find(item => referenceTargetKey(item.target) === referenceTargetKey(businessKey.target)) ?? null;
+  const [businessKey, setBusinessKey] = useState<{ source: 'project' | 'resources'; target: BusinessKeyTarget } | null>(null);
+  const selectedKeys = businessKey?.source === 'resources' ? carriers?.businessKeys : projectCatalog.businessKeys;
+  const metadata = businessKey === null ? null : selectedKeys?.find(item => businessKeyTargetKey(item.target) === businessKeyTargetKey(businessKey.target)) ?? null;
   return <div className={projectStyles.root}>
     {carriers !== null && carriers.items.length === 0 && <div className={projectStyles.note}>正式资源目录尚未提供实际执行 Scope，当前没有可选择的预览或运行来源。</div>}
-    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={onProfileTarget}
-      onBusinessKey={item => setBusinessKey({ source: 'field', target: item.target })} />}
+    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={onProfileTarget} />}
     <div className={projectStyles.choices}><Fold title="业务键">
       <Select<'project' | 'resources'> label="业务键目录来源" value={keySource} onChange={setKeySource} options={[
         { value: 'project', label: '作者目录' }, { value: 'resources', label: '资源目录' },
@@ -76,7 +74,7 @@ function ResourceProject({ onProfileTarget }: { onProfileTarget(target: ProfileE
     </Fold></div>
     {businessKey !== null && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>业务键 · 绑定与投影</span><Button variant="ghost" onClick={() => setBusinessKey(null)}>关闭</Button></PanelBar>
-      <BusinessKeyDetails key={referenceTargetKey(businessKey.target)} target={businessKey.target} metadata={metadata} />
+      <BusinessKeyDetails key={businessKeyTargetKey(businessKey.target)} target={businessKey.target} metadata={metadata} />
     </div>}
     {referenceTarget && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
@@ -91,9 +89,8 @@ function ProjectFiles({ profileTarget }: { profileTarget: ProfileEntryTarget | n
     onRefresh={() => useAuthoring.setState({ carrierRevision: null })} />;
 }
 
-function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKey }: {
+function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
   field: ReferenceFieldSelection; onProfileTarget(target: ProfileEntryTarget): void; onReferrers(target: ReferenceChoiceTarget): void;
-  onBusinessKey(item: BusinessKeyMetadata): void;
 }) {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
@@ -101,8 +98,6 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKe
   const selected = items.findIndex(choice => matchesReferenceChoice(choice, field));
   return <div className={projectStyles.choices}><Fold title={`当前字段：${field.name}`} defaultOpen>
     {field.catalog.kind === 'unavailable' ? <div className={projectStyles.note}>{field.catalog.reason}</div> : <>
-      {field.catalog.businessKeysAvailability !== null && !field.catalog.businessKeysAvailability.available &&
-        <div role="status" className={projectStyles.issue}>{field.catalog.businessKeysAvailability.reason}</div>}
       <TextInput aria-label="筛选当前字段候选" placeholder="搜索名称、说明或来源" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
       <VirtualList className={projectStyles.candidateList} count={items.length} rowHeight={48} label={field.name}
@@ -120,7 +115,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKe
               label: `打开 ${target.domain} · ${target.key} · ${target.carrierIdentity}`,
               onSelect: () => onProfileTarget(target),
             }, { label: `查看 ${target.domain} · ${target.key} 的引用者`, onSelect: () => onReferrers(target) }];
-            if (target.kind === 'BusinessKey') return [{ label: `查看 ${target.package} · ${target.keyKind} · ${target.key} 的引用者`, onSelect: () => onReferrers(target) }];
+            if (target.kind === 'Resource') return [{ label: `查看 ${target.domain} · ${target.value} 的引用者`, onSelect: () => onReferrers(target) }];
             const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(value => value.id === target.graphId);
             return [{
               label: graph ? `${graph.displayName ?? graph.id} · ${target.nodeId}` : `所属图尚未加载 · ${target.graphId}`,
@@ -128,8 +123,7 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKe
               onSelect: () => { if (graph) void projectActions.openGraph(graph, target.nodeId)
                 .catch(error => consoleActions.error('Project', error)); },
             }, { label: `查看节点 ${target.nodeId} 的引用者`, onSelect: () => onReferrers(target) }];
-          }), ...choice.businessKeys.map(item => ({ label: `业务键 ${item.target.package} · ${item.target.keyKind} · ${item.target.key}：绑定、投影与改名`,
-            onSelect: () => onBusinessKey(item) }))]}>来源</MenuButton>}
+          })]}>来源</MenuButton>}
         </div>;
       }} />
     </>}
@@ -418,7 +412,7 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
   </div>;
   if (resourceTarget?.kind === 'profile') return <div className={projectStyles.details}>
     <PanelBar><span>当前 Profile 编辑</span><Button variant="ghost" onClick={() => authoringActions.releaseProfile(resourceTarget.query)}>关闭 Profile 编辑</Button></PanelBar>
-    <ProfileEditor key={profileQueryKey(resourceTarget.query)} query={resourceTarget.query} businessKeys={businessKeys}
+    <ProfileEditor key={profileQueryKey(resourceTarget.query)} query={resourceTarget.query}
       location={profileLocations.find(item => item.package === resourceTarget.query.package && item.assetToken === resourceTarget.query.assetToken)} />
   </div>;
   if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;

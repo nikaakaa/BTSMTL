@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BusinessKeyMetadata, ReferenceChoice } from '../../api/authoring';
+import type { ReferenceChoice } from '../../api/authoring';
 import type { ProfileOperationResult, ResourceDeclaration, ResourceReference, ResourceRegistrationInput } from '../../api/resourceRegistration';
 import type { ResourceAssetSelection } from '../../state/referenceSelection';
 import { Fold } from '../../ui/blocks';
@@ -9,9 +9,9 @@ import styles from './project.module.css';
 
 export type RegistrationResource = { reference: ResourceReference; token: string | null; instanceCapacity: number | null };
 
-export function ResourceRegistrationEditor({ id, label, packageId, adapter, declarations, resources, businessKeys, writing, onRegister }: {
+export function ResourceRegistrationEditor({ id, label, packageId, adapter, declarations, resources, writing, onRegister }: {
   id: string; label: string; packageId: string; adapter: string; declarations: ResourceDeclaration[]; resources: RegistrationResource[];
-  businessKeys: BusinessKeyMetadata[]; writing: boolean;
+  writing: boolean;
   onRegister(keyKind: string, input: ResourceRegistrationInput): Promise<ProfileOperationResult | null>;
 }) {
   const [keyKind, setKeyKind] = useState<string | null>(null);
@@ -28,10 +28,9 @@ export function ResourceRegistrationEditor({ id, label, packageId, adapter, decl
   const actualKey = matching.length === 1 ? matching[0].reference.key : key;
   const actualCapacity = existing === undefined ? capacity : existing.instanceCapacity;
   const choices: ReferenceChoice[] = selectedResources.filter(item => item.token !== null).map(item => {
-    const target = { kind: 'BusinessKey' as const, package: item.reference.package, keyKind: item.reference.keyKind, key: item.reference.key };
-    const metadata = businessKeys.find(key => key.target.package === target.package && key.target.keyKind === target.keyKind && key.target.key === target.key);
+    const target = { kind: 'Resource' as const, domain: declaration!.domain!, value: item.reference.key, context: item.reference.context };
     return { value: item.token, name: item.reference.key, detail: item.reference.context || '公共', source: adapter,
-      conflict: null, targets: [target], businessKeys: metadata === undefined ? [] : [metadata], associated: [] };
+      conflict: null, targets: [target], associated: [] };
   });
   const register = async () => {
     let input: ResourceRegistrationInput;
@@ -56,7 +55,7 @@ export function ResourceRegistrationEditor({ id, label, packageId, adapter, decl
       {supported.length === 0 && <div className={styles.note}>本 {label} 没有支持资源登记的正式类别。</div>}
       {declaration !== undefined && <ReferencePicker id={`${id}/resource/${declaration.keyKind}`} label={`${label} 资源`} domain={declaration.domain}
         value={asset?.token} configuration={{}} catalog={{ kind: 'ready', referenceKind: declaration.referenceKind, items: choices,
-          businessKeysAvailability: null, invalidReason: '所选素材来自真实对象候选，登记时由正式领域合同确认。' }}
+          invalidReason: '所选素材来自真实对象候选，登记时由正式领域合同确认。' }}
         onChoose={choice => { setAsset({ token: String(choice.value), source: `${choice.name} · ${choice.detail}`, adapter }); setKey(''); }}
         resourceRegistration={{ keyKind: declaration.keyKind, adapter, objects: declaration.availability.available
           ? { kind: 'available', scope: { package: packageId, keyKind: declaration.keyKind, domain: declaration.domain, objectType: declaration.objectType } }

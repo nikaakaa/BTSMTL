@@ -37,7 +37,7 @@ export const animationReferenceKind = 'animation-clip';
 export const animationChoice = (clip: AnimationClip): ReferenceChoice => ({
   value: clip.key!, name: clip.name,
   detail: `${clip.category} · ${clip.duration.toFixed(3)} 秒 · ${clip.frameRate} fps`,
-  source: clip.unityAsset, conflict: null, targets: [], businessKeys: [], associated: [],
+  source: clip.unityAsset, conflict: null, targets: [], associated: [],
 });
 
 export function animationReferenceCatalog(state: AnimationLibraryState): ReferenceCatalog {
@@ -46,7 +46,6 @@ export function animationReferenceCatalog(state: AnimationLibraryState): Referen
     case 'unavailable': return state;
     case 'ready': return {
       kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.filter(clip => clip.key != null).map(animationChoice),
-      businessKeysAvailability: null,
       invalidReason: '动画引用已失效，当前动画库缺少该动画，请重新导出动画库；原身份已保留',
     };
   }

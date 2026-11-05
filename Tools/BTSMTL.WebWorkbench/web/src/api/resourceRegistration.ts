@@ -7,15 +7,9 @@ function readCapabilityAvailability(value: unknown, path = 'ResourceCapability')
   if (!available && reason !== null) return { available: false as const, reason };
   throw new Error(`${path} 的可用状态与原因不符合正式资源能力合同`);
 }
-const readObjectCapability = object({ owner: choice('Authoring'), command: choice('resource-objects'),
-  queryType: text, resultType: text, keyKind: text, domain: nullable(text), objectType: nullable(text),
-  availability: readCapabilityAvailability });
-export const readResourceRegistrationMetadata = object({ owner: choice('Authoring'), command: choice('register-resource'),
-  keyKind: text, inputKind: choice('asset', 'instance-resource', 'camera-effect'), inputType: text, referenceType: text,
-  candidates: readObjectCapability });
-export type ResourceRegistrationMetadata = ReturnType<typeof readResourceRegistrationMetadata>;
-export const readResourceReferenceMetadata = object({ keyKind: text, domain: nullable(text), objectType: nullable(text),
-  referenceType: text, availability: readCapabilityAvailability, registration: nullable(readResourceRegistrationMetadata) });
+export const readResourceReferenceMetadata = object({ domain: text, selection: nullable(choice('asset', 'mapped')),
+  objectType: nullable(text), profile: nullable(text), mappingInputType: nullable(text), referenceType: text,
+  catalog: object({ owner: choice('Authoring'), command: choice('catalog'), domain: text }), availability: readCapabilityAvailability });
 export type ResourceReferenceMetadata = ReturnType<typeof readResourceReferenceMetadata>;
 export const readResourceReference = object({ package: text, keyKind: text, key: text, context: text });
 export type ResourceReference = ReturnType<typeof readResourceReference>;

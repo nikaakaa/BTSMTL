@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import type { BusinessKeyMetadata, BusinessKeyTarget } from '../../api/authoring';
-import { referenceTargetKey, useReferenceSelection } from '../../state/referenceSelection';
+import { useReferenceSelection } from '../../state/referenceSelection';
 import type { ResourceDeclaration } from '../../api/resourceRegistration';
 import { Empty, Facts } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
-import { TargetReferrers } from './TargetReferrers';
 import styles from './project.module.css';
 
 const bindingNames = { bound: '已绑定', unbound: '未绑定' } satisfies Record<BusinessKeyMetadata['bindings'][number]['state'], string>;
 const projectionNames = { available: '投影可用', missing: '缺少投影', 'not-required': '不要求投影' } satisfies Record<BusinessKeyMetadata['bindings'][number]['projectionState'], string>;
+export const businessKeyTargetKey = (target: BusinessKeyTarget) => JSON.stringify([target.package, target.keyKind, target.key]);
 
 export function BusinessKeyList({ items, declarations, failure, selected, onSelect }: {
   items: BusinessKeyMetadata[] | null; failure: { text: string; entryId: number | null } | null;
@@ -39,7 +39,7 @@ export function BusinessKeyList({ items, declarations, failure, selected, onSele
     </div>}
     <VirtualList className={styles.candidateList} count={shown.length} rowHeight={48} label="正式业务键" render={index => {
       const item = shown[index];
-      return <button className={styles.row} aria-selected={selected !== null && referenceTargetKey(selected) === referenceTargetKey(item.target)}
+      return <button className={styles.row} aria-selected={selected !== null && businessKeyTargetKey(selected) === businessKeyTargetKey(item.target)}
         onClick={() => onSelect(item)}>
         <span>{item.target.key} · {item.target.keyKind}</span>
         <small>{item.target.package} · {item.bindings.filter(binding => binding.state === 'unbound').length} 个未绑定 · {
@@ -74,7 +74,6 @@ export function BusinessKeyDetails({ target, metadata: current }: {
         </Button>}
         {binding.projectionKind !== null && <small>投影类别：{binding.projectionKind}</small>}
       </div>)}
-      <TargetReferrers target={current.target} />
     </>}
   </>;
 }
