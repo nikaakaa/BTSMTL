@@ -138,7 +138,7 @@ export function useDocumentObservationBinding(): DocumentObservationBinding {
     const document = authoringDocument(state);
     const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
     if (state.target?.kind === 'skill') owners.add(state.target.name);
-    return { graphs: document.documentError === null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
+    return { graphs: document.documentError === null && document.sourceRevision !== null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
       key.startsWith('skill/') && owners.has(key.slice('skill/'.length)) &&
       (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
   }));
@@ -730,7 +730,7 @@ export const authoringActions = {
         documents[key] = { ...document, revision: snapshot.value.revision,
           sourceFiles: Object.fromEntries(snapshot.value.sourceFiles.map(file => [file.path, file.content])),
           files: savedFiles,
-          sourceRevision: null, documentGraphs: null, documentRelations: [], externalChange: false,
+          sourceRevision: null, externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
         };
       }
