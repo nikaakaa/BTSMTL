@@ -8,6 +8,7 @@
     <AssemblyName>BTSMTL.Authoring.Workspace</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Remove="$(BtsmtlRoot)\Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Workspace/*.cs" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
