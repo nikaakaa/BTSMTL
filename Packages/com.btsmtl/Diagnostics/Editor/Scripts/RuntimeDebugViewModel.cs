@@ -309,7 +309,7 @@ namespace BTSMTL.Diagnostics.Editor
         public bool TryGetInvocationEvent(RuntimeInstanceKey instance, out RuntimeDebugEventView invocation)
         {
             invocation = default;
-            if (!TryGetInstanceEventHead(EventInstance(instance), out int slot))
+            if (!TryGetInstanceEventHead(instance, out int slot))
                 return false;
             for (; slot != -1; slot = m_NextInstanceEvent[slot])
             {
@@ -330,6 +330,54 @@ namespace BTSMTL.Diagnostics.Editor
             bool found = TryGetLatestInstanceEvent(instance, out int slot);
             eventView = found ? m_Events[slot] : default;
             return found;
+        }
+
+        public bool TryGetTimelinePlaybackInstance(RuntimeInstanceKey instance, out RuntimeInstanceKey playback)
+        {
+            playback = default;
+            if (!TryGetInstanceEvent(instance, out RuntimeDebugEventView source) || !source.Source.IsValid)
+                return false;
+            if (instance.Kind == RuntimeInstanceKind.TimelinePlayback)
+            {
+                playback = instance;
+                return true;
+            }
+            if (instance.Kind != RuntimeInstanceKind.TreeClip)
+                return false;
+            foreach (RuntimeInstanceKey candidate in m_TimelinePlayback.Keys)
+            {
+                if (!TryGetInstanceEvent(candidate, out RuntimeDebugEventView recorded) ||
+                    !MatchesTimelineEvent(in source, in recorded))
+                    continue;
+                if (playback.IsValid)
+                {
+                    playback = default;
+                    return false;
+                }
+                playback = candidate;
+            }
+            return playback.IsValid;
+        }
+
+        static bool MatchesTimelineEvent(in RuntimeDebugEventView source, in RuntimeDebugEventView playback)
+        {
+            ref readonly RuntimeTraceEvent trace = ref source.Event;
+            ref readonly RuntimeTraceEvent recorded = ref playback.Event;
+            if (trace.SessionId != recorded.SessionId || trace.ExecutionBranchId != recorded.ExecutionBranchId ||
+                trace.RuntimeEpoch != recorded.RuntimeEpoch)
+                return false;
+            if (trace.RuntimeInstance.Equals(recorded.RuntimeInstance))
+                return true;
+            OrchestrationTraceObjectIdentity owner = trace.RuntimeInstance.ExecutionObject;
+            OrchestrationTraceObjectIdentity parent = recorded.RuntimeInstance.ExecutionObject;
+            if (trace.RuntimeInstance.Kind != RuntimeInstanceKind.TreeClip ||
+                trace.RuntimeInstance.TimelinePlaybackId != recorded.RuntimeInstance.TimelinePlaybackId ||
+                !owner.HasValue || !parent.HasValue || owner.Slot != parent.Slot || !owner.Handle.Equals(parent.Handle) ||
+                source.Source.TimelineAuthoringId != playback.Source.TimelineAuthoringId)
+                return false;
+            ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in trace);
+            ref readonly RuntimeTracePayload parentPayload = ref RuntimeTraceEvent.ReadPayload(in recorded);
+            return payload.TimelinePlayback.IsValid && payload.TimelinePlayback.Equals(parentPayload.TimelinePlayback);
         }
 
         public bool TryGetTimelineGraphInstance(RuntimeInstanceKey playback,
@@ -505,14 +553,15 @@ namespace BTSMTL.Diagnostics.Editor
             string graphAuthoringId = default)
         {
             destination.Clear();
-            if (!TryGetInstanceEventHead(playback, out int slot))
+            if (!TryGetInstanceEvent(playback, out RuntimeDebugEventView recorded))
                 return;
             if (!m_TimelinePlayback.TryGetValue(playback, out TimelinePlaybackSummaryBuilder builder) ||
                 !MatchesTimeline(builder, timelineAuthoringId, graphAuthoringId))
                 return;
 
-            for (; slot != -1; slot = m_NextInstanceEvent[slot])
-                destination.Add(m_Events[slot]);
+            for (int slot = 0; slot < m_EventCount; slot++)
+                if (MatchesTimelineEvent(in m_Events[slot], in recorded))
+                    destination.Add(m_Events[slot]);
         }
 
         static bool MatchesTimeline(
@@ -547,7 +596,7 @@ namespace BTSMTL.Diagnostics.Editor
             List<RuntimeDebugEventView> destination)
         {
             destination.Clear();
-            if (!TryGetInstanceEventHead(EventInstance(instance), out int slot))
+            if (!TryGetInstanceEventHead(instance, out int slot))
                 return;
             for (; slot != -1; slot = m_NextInstanceEvent[slot])
             {
@@ -682,16 +731,14 @@ namespace BTSMTL.Diagnostics.Editor
             }
 
             var eventView = new RuntimeDebugEventView(in traceEvent, source, sourceName);
-            RuntimeInstanceKey eventInstance = EventInstance(traceEvent.RuntimeInstance);
-            InstanceEventIndex eventIndex = GetInstanceEventIndex(eventInstance);
-            InstanceEventIndex instanceIndex = eventIndex;
+            InstanceEventIndex instanceIndex = GetInstanceEventIndex(traceEvent.RuntimeInstance);
             bool added = !m_EventSlots.TryGetValue(key, out int slot);
             if (added)
             {
                 slot = m_FreeEventSlotCount != 0 ? m_FreeEventSlots[--m_FreeEventSlotCount] : m_EventCount++;
                 m_EventSlots.Add(key, slot);
-                m_NextInstanceEvent[slot] = eventIndex.Head;
-                eventIndex.Head = slot;
+                m_NextInstanceEvent[slot] = instanceIndex.Head;
+                instanceIndex.Head = slot;
             }
             m_Events[slot] = eventView;
             m_EventSourceMaps[slot] = sourceMap;
@@ -700,8 +747,6 @@ namespace BTSMTL.Diagnostics.Editor
             if (traceEvent.RuntimeInstance.IsValid)
             {
                 m_PendingInstances.Add(traceEvent.RuntimeInstance);
-                if (traceEvent.RuntimeInstance.Kind == RuntimeInstanceKind.TreeClip)
-                    instanceIndex = GetInstanceEventIndex(traceEvent.RuntimeInstance);
                 if (instanceIndex.Latest == -1 || traceEvent.Sequence > m_Events[instanceIndex.Latest].Event.Sequence)
                     instanceIndex.Latest = slot;
                 if (added)
@@ -776,10 +821,7 @@ namespace BTSMTL.Diagnostics.Editor
             else if (item.Event.Domain == RuntimeTraceDomain.Presentation && item.Event.Position == m_LatestPresentationFrame)
                 m_PresentationPositionNeedsRefresh = true;
             RuntimeInstanceKey instance = item.Event.RuntimeInstance;
-            RuntimeInstanceKey eventInstance = EventInstance(instance);
-            InstanceEventIndex eventIndex = m_InstanceEvents[eventInstance];
-            InstanceEventIndex instanceIndex = instance.IsValid && instance.Kind == RuntimeInstanceKind.TreeClip
-                ? m_InstanceEvents[instance] : eventIndex;
+            InstanceEventIndex instanceIndex = m_InstanceEvents[instance];
             if (item.Source.IsValid)
             {
                 m_PendingSources.Add(item.Source);
@@ -796,12 +838,12 @@ namespace BTSMTL.Diagnostics.Editor
                     m_RemovedLatestInstances.Add(instance);
                 }
             }
-            if (eventInstance.Kind == RuntimeInstanceKind.TimelinePlayback)
-                m_RemovedTimelinePlaybacks.Add(eventInstance);
-            int head = eventIndex.Head;
+            if (instance.Kind == RuntimeInstanceKind.TimelinePlayback)
+                m_RemovedTimelinePlaybacks.Add(instance);
+            int head = instanceIndex.Head;
             int next = m_NextInstanceEvent[slot];
             if (head == slot)
-                eventIndex.Head = next;
+                instanceIndex.Head = next;
             else
             {
                 int previous = head;
@@ -840,7 +882,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_Events[slot] = default;
             m_EventSourceMaps[slot] = default;
             m_FreeEventSlots[m_FreeEventSlotCount++] = slot;
-            ReleaseInstanceEventIndex(eventInstance, eventIndex);
+            ReleaseInstanceEventIndex(instance, instanceIndex);
         }
 
         InstanceEventIndex GetInstanceEventIndex(RuntimeInstanceKey instance)
@@ -894,7 +936,7 @@ namespace BTSMTL.Diagnostics.Editor
         void RefreshLatestInstanceEvent(RuntimeInstanceKey instance)
         {
             int latest = -1;
-            if (TryGetInstanceEventHead(EventInstance(instance), out int slot))
+            if (TryGetInstanceEventHead(instance, out int slot))
             {
                 for (; slot != -1; slot = m_NextInstanceEvent[slot])
                 {
@@ -920,7 +962,7 @@ namespace BTSMTL.Diagnostics.Editor
         {
             bool found = false;
             ulong sequence = 0;
-            if (TryGetInstanceEventHead(EventInstance(instance), out int slot))
+            if (TryGetInstanceEventHead(instance, out int slot))
             {
                 for (; slot != -1; slot = m_NextInstanceEvent[slot])
                 {
@@ -962,16 +1004,10 @@ namespace BTSMTL.Diagnostics.Editor
             RegisterTimelinePlayback(builder.TimelineAuthoringId, builder.Provenance.SourceGraphAuthoringId ?? string.Empty, playback);
         }
 
-        static RuntimeInstanceKey EventInstance(RuntimeInstanceKey instance) =>
-            instance.Kind == RuntimeInstanceKind.TreeClip
-                ? RuntimeInstanceKey.Timeline(instance.CharacterRuntimeId, instance.SourceOperationIndex,
-                    instance.TimelinePlaybackId, instance.ActionInstanceId)
-                : instance;
-
         void ApplyTimeline(in RuntimeDebugEventView eventView)
         {
             ref readonly RuntimeTraceEvent traceEvent = ref eventView.Event;
-            RuntimeInstanceKey playback = EventInstance(traceEvent.RuntimeInstance);
+            RuntimeInstanceKey playback = traceEvent.RuntimeInstance;
             if (playback.Kind != RuntimeInstanceKind.TimelinePlayback)
                 return;
 
