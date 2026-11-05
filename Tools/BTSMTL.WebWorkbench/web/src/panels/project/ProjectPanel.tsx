@@ -52,6 +52,7 @@ export function ProjectPanel() {
         { value: 'project', label: '作者目录' }, { value: 'resources', label: '资源目录' },
       ]} />
       <BusinessKeyList items={keySource === 'project' ? projectCatalog.businessKeys : carriers?.businessKeys ?? null}
+        declarations={projectCatalog.keyDeclarations}
         failure={keySource === 'project' ? projectCatalog.failure : carrierFailure} selected={businessKey?.target ?? null}
         onSelect={item => setBusinessKey({ source: keySource, target: item.target })} />
     </Fold></div>
@@ -175,6 +176,7 @@ function useLibraryItems(refresh: number) {
   }, [skill, key]);
   const current = result?.key === key ? result : null;
   return { items: current?.kind === 'ready' ? current.value.items : null,
+    keyDeclarations: current?.kind === 'ready' ? current.value.keyDeclarations : null,
     businessKeys: current?.kind === 'ready' ? current.value.businessKeys : null,
     failure: current?.kind === 'failed' ? current : null, stamp: JSON.stringify([stamp, scene]) };
 }

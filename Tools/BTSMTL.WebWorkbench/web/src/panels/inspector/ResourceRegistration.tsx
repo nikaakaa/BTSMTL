@@ -74,8 +74,10 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
   const matches = contextMode === null || adapter === null ? [] : packageKeys.filter(item => item.target.keyKind === metadata.keyKind &&
     item.bindings.some(binding => binding.adapter === adapter && binding.context === actualContext && binding.token === asset.token));
   const actualKey = matches.length === 1 ? matches[0].target.key : key;
-  const selectedExisting = matches.length > 1 ? matches.find(item => item.target.key === key) : null;
-  const inputReady = metadata.inputKind === 'asset' || metadata.inputKind === 'instance-resource' && capacity !== null && Number.isInteger(capacity) && capacity > 0 ||
+  const selectedExisting = matches.length === 1 ? matches[0] : matches.find(item => item.target.key === key);
+  const binding = selectedExisting?.bindings.find(binding => binding.adapter === adapter && binding.context === actualContext && binding.token === asset.token);
+  const actualCapacity = selectedExisting === undefined ? capacity : binding!.instanceCapacity;
+  const inputReady = metadata.inputKind === 'asset' || metadata.inputKind === 'instance-resource' && actualCapacity !== null && Number.isInteger(actualCapacity) && actualCapacity > 0 ||
     metadata.inputKind === 'camera-effect' && effectKind.trim() !== '';
   const canRegister = target?.kind === 'skill' && typeof packageId === 'string' && keys !== null && adapter !== null &&
     contextMode !== null && (contextMode === 'common' || context.trim() !== '') && actualKey.trim() !== '' &&
@@ -84,7 +86,7 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
     let input: ResourceRegistrationInput;
     switch (metadata.inputKind) {
       case 'asset': input = { kind: 'asset', key: actualKey, token: asset.token }; break;
-      case 'instance-resource': input = { kind: 'instance-resource', key: actualKey, token: asset.token, instanceCapacity: capacity! }; break;
+      case 'instance-resource': input = { kind: 'instance-resource', key: actualKey, token: asset.token, instanceCapacity: actualCapacity! }; break;
       case 'camera-effect': input = { kind: 'camera-effect', key: actualKey, token: asset.token, effectKind }; break;
     }
     setError(null); setStatus('正在登记资源并保存当前作者编辑…');
@@ -112,7 +114,8 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
         : matches.length === 1 ? <span>{actualKey}（复用已有绑定）</span>
           : <TextInput aria-label="新资源业务键" value={key} disabled={writing} onChange={event => setKey(event.target.value)} />}</div>
       {metadata.inputKind === 'instance-resource' && <div className={styles.field}><FieldLabel label="实例容量" tip="复用资源时保留正式绑定的实际容量" />
-        <NumberInput label="实例容量" value={capacity} min={1} step={1} disabled={writing} onChange={setCapacity} /></div>}
+        {selectedExisting === undefined ? <NumberInput label="新资源实例容量" value={capacity} min={1} step={1} disabled={writing} onChange={setCapacity} />
+          : <span>{binding!.instanceCapacity === null ? '已有绑定未配置容量，请在实际 Profile 中先配置' : binding!.instanceCapacity}</span>}</div>}
       {metadata.inputKind === 'camera-effect' && <div className={styles.field}><FieldLabel label="效果类别" />
         <TextInput aria-label="正式相机效果类别" value={effectKind} disabled={writing} onChange={event => setEffectKind(event.target.value)} /></div>}
       <Button disabled={!canRegister} onClick={() => void register()}>登记资源并保存当前编辑</Button>

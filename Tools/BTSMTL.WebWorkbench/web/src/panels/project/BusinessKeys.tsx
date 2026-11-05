@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { AuthoringCarriers, BusinessKeyMetadata, BusinessKeyTarget } from '../../api/authoring';
 import { referenceTargetKey, useReferenceSelection } from '../../state/referenceSelection';
+import type { ResourceDeclaration } from '../../api/resourceRegistration';
 import { Empty, Facts } from '../../ui/blocks';
-import { Button, TextInput } from '../../ui/controls';
+import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { BusinessKeyRename, BusinessKeyRenameReceipt, type BusinessKeyRenameCompletion } from './BusinessKeyRename';
@@ -12,19 +13,31 @@ import styles from './project.module.css';
 const bindingNames = { bound: '已绑定', unbound: '未绑定' } satisfies Record<BusinessKeyMetadata['bindings'][number]['state'], string>;
 const projectionNames = { available: '投影可用', missing: '缺少投影', 'not-required': '不要求投影' } satisfies Record<BusinessKeyMetadata['bindings'][number]['projectionState'], string>;
 
-export function BusinessKeyList({ items, failure, selected, onSelect }: {
+export function BusinessKeyList({ items, declarations, failure, selected, onSelect }: {
   items: BusinessKeyMetadata[] | null; failure: { text: string; entryId: number | null } | null;
+  declarations: ResourceDeclaration[] | null;
   selected: BusinessKeyTarget | null; onSelect(item: BusinessKeyMetadata): void;
 }) {
   const [search, setSearch] = useState('');
+  const [keyKind, setKeyKind] = useState<string | null>(null);
   if (failure !== null) return <ErrorLine {...failure} />;
   if (items === null) return <Empty text="正在读取业务键目录" />;
   const query = search.toLocaleLowerCase();
-  const shown = items.filter(item => `${item.target.package} ${item.target.keyKind} ${item.target.key} ${item.referenceKind} ${
+  const declaration = declarations?.find(item => item.keyKind === keyKind);
+  const categoryItems = keyKind === null ? items : items.filter(item => item.target.keyKind === keyKind);
+  const shown = categoryItems.filter(item => `${item.target.package} ${item.target.keyKind} ${item.target.key} ${item.referenceKind} ${item.domain ?? ''} ${
     item.bindings.map(binding => `${binding.adapter} ${binding.context} ${binding.token ?? ''} ${bindingNames[binding.state]} ${projectionNames[binding.projectionState]}`).join(' ')
   }`.toLocaleLowerCase().includes(query));
   return <>
+    {declarations !== null && <div className={styles.declarationFilter}>
+      <Select label="正式业务键类别" value={declaration?.keyKind ?? null} placeholder="全部正式类别"
+        options={declarations.map(item => ({ value: item.keyKind, label: `${item.keyKind}${item.domain === null ? '' : ` · ${item.domain}`}` }))} onChange={setKeyKind} />
+      {keyKind !== null && <Button variant="ghost" onClick={() => setKeyKind(null)}>全部类别</Button>}
+    </div>}
     <TextInput aria-label="搜索业务键" placeholder="搜索作者包、键、绑定或投影状态" value={search} onChange={event => setSearch(event.currentTarget.value)} />
+    {declaration !== undefined && categoryItems.length === 0 && <div className={styles.note}>
+      该正式类别尚无业务键。{declaration.registrationInput === null ? '该类别不提供资源登记操作。' : '可在目标字段或独立 Profile 中登记新的资源键。'}
+    </div>}
     <VirtualList className={styles.candidateList} count={shown.length} rowHeight={48} label="正式业务键" render={index => {
       const item = shown[index];
       return <button className={styles.row} aria-selected={selected !== null && referenceTargetKey(selected) === referenceTargetKey(item.target)}
@@ -63,6 +76,7 @@ export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
         <span className={binding.state === 'unbound' || binding.projectionState === 'missing' ? styles.issue : styles.note}>
           {bindingNames[binding.state]} · {projectionNames[binding.projectionState]}</span>
         <small>绑定令牌：{binding.token ?? '未提供'}</small>
+        <small>实例容量：{binding.instanceCapacity === null ? current.registrationInput === 'instance-resource' ? '未配置' : '不适用' : binding.instanceCapacity}</small>
         {field?.resourceRegistration?.keyKind === current.target.keyKind && binding.token !== null && <Button onClick={() => field.resourceRegistration!.choose({ token: binding.token!,
           adapter: binding.adapter,
           source: `${current.target.package} / ${current.target.keyKind} / ${current.target.key} · ${binding.adapter} / ${binding.context || '公共'}` })}>
