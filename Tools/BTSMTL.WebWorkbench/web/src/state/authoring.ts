@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, businessKeySkillTarget, readSkillSaveRejection, type AuthoringTarget, type BusinessKeyRenamePrepared, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -752,16 +752,8 @@ export const authoringActions = {
     }
   },
 
-  async commitBusinessKeyRename(plan: BusinessKeyRenamePrepared) {
-    const conflicts = businessKeyMigrationConflicts(plan);
-    if (conflicts.length !== 0)
-      throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}${item.path === null ? '' : `/${item.path}`}（${item.reason}）`).join('；')}`);
-    return authoringApi.renameBusinessKey({ action: 'commit', package: plan.target.package, kind: plan.target.keyKind, key: plan.target.key,
-      newKey: plan.renamedTarget.key, expectedRevision: plan.revision });
-  },
-
-  async refreshBusinessKeyRename(result: Extract<BusinessKeyRenameResult, { saved: true }>) {
-    const owners = businessKeyMigrationOwners(result).filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
+  async refreshReferenceReplacement(result: ReferenceReplacementCompleted) {
+    const owners = referenceReplacementOwners(result).filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
     const [catalogResults, snapshots] = await Promise.all([
       Promise.allSettled([authoringApi.carriers()]),
       Promise.allSettled(owners.map(owner => authoringApi.read(owner.target))),
@@ -769,9 +761,9 @@ export const authoringActions = {
     const failures: { text: string; entryId: number | null }[] = [];
     const catalogResult = catalogResults[0];
     const catalog = catalogResult.status === 'fulfilled' ? catalogResult.value : null;
-    if (catalogResult.status === 'rejected') failures.push({ text: '业务键已保存，载体目录重新读取失败',
+    if (catalogResult.status === 'rejected') failures.push({ text: '作者引用已替换，载体目录重新读取失败',
       entryId: consoleActions.error('Project', catalogResult.reason) });
-    const conflicts = businessKeyMigrationConflicts(result, useAuthoring.getState(), 'refresh');
+    const conflicts = referenceReplacementConflicts(result, useAuthoring.getState(), 'refresh');
     const blocked = new Set(conflicts.map(item => item.owner));
     const documents = { ...useAuthoring.getState().documents };
     snapshots.forEach((snapshot, index) => {
@@ -781,7 +773,7 @@ export const authoringActions = {
       if (document === undefined) return;
       if (snapshot.status === 'rejected') {
         documents[key] = { ...document, externalChange: true };
-        failures.push({ text: `业务键已保存，${target.name} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
+        failures.push({ text: `作者引用已替换，${target.name} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
       } else {
         const savedFiles = Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content]));
         const changedBaselines = [...new Set([...Object.keys(document.edited), ...document.removed])]
@@ -1476,17 +1468,18 @@ export const hasChanges = (target = get().target) => {
   return Object.keys(document.edited).length + document.removed.length > 0;
 };
 
-function businessKeyMigrationOwners(plan: BusinessKeyRenameResult) {
-  return plan.affectedSkills.map(skill => {
-    const prefix = `${skill.directory}/`;
-    return { target: businessKeySkillTarget(skill),
-      paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length))) };
+function referenceReplacementOwners(plan: ReferenceReplacementResult) {
+  return plan.affectedSkills.map(name => {
+    const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').endsWith(`/Skills/${name}/skill.json`))!;
+    const prefix = root.path.slice(0, -'skill.json'.length);
+    return { target: { kind: 'skill' as const, name },
+      paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length).replaceAll('\\', '/'))) };
   });
 }
 
-export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState(), phase: 'commit' | 'refresh' = 'commit') {
+export function referenceReplacementConflicts(plan: ReferenceReplacementResult, state = useAuthoring.getState(), phase: 'commit' | 'refresh' = 'commit') {
   const conflicts: { owner: string; path: string | null; reason: string }[] = [];
-  for (const { target, paths } of businessKeyMigrationOwners(plan)) {
+  for (const { target, paths } of referenceReplacementOwners(plan)) {
     const document = state.documents[authoringTargetKey(target)];
     if (document === undefined) continue;
     const documentReason = document.saving ? '正在保存' : document.loading ? '正在读取'

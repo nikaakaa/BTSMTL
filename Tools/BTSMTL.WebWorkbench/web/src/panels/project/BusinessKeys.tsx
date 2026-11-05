@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import type { AuthoringCarriers, BusinessKeyMetadata, BusinessKeyTarget } from '../../api/authoring';
+import type { BusinessKeyMetadata, BusinessKeyTarget } from '../../api/authoring';
 import { referenceTargetKey, useReferenceSelection } from '../../state/referenceSelection';
 import type { ResourceDeclaration } from '../../api/resourceRegistration';
 import { Empty, Facts } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
-import { BusinessKeyRename, BusinessKeyRenameReceipt, type BusinessKeyRenameCompletion } from './BusinessKeyRename';
 import { TargetReferrers } from './TargetReferrers';
 import styles from './project.module.css';
 
@@ -51,22 +50,12 @@ export function BusinessKeyList({ items, declarations, failure, selected, onSele
   </>;
 }
 
-export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
-  target: BusinessKeyTarget; metadata: BusinessKeyMetadata | null; onCatalog(catalog: AuthoringCarriers): void; onChanged(): void;
+export function BusinessKeyDetails({ target, metadata: current }: {
+  target: BusinessKeyTarget; metadata: BusinessKeyMetadata | null;
 }) {
   const field = useReferenceSelection(state => state.field);
-  const [completion, setCompletion] = useState<BusinessKeyRenameCompletion | null>(null);
-  const refreshed = completion?.refresh?.catalog?.businessKeys.find(item => referenceTargetKey(item.target) === referenceTargetKey(completion.result.renamedTarget));
-  const current = completion === null ? metadata : refreshed ?? null;
-  const onRefreshed = (result: BusinessKeyRenameCompletion['result'], refresh: NonNullable<BusinessKeyRenameCompletion['refresh']>) => {
-    setCompletion({ result, refresh });
-    if (refresh.catalog !== null) onCatalog(refresh.catalog);
-    onChanged();
-  };
   return <>
-    {completion !== null && <BusinessKeyRenameReceipt completion={completion} onRefreshed={onRefreshed} />}
-    {current === null ? <Empty text={completion === null ? `${target.package} · ${target.keyKind} · ${target.key} 尚未从所选正式目录取得，绑定状态不可用`
-      : '已保存的键尚未从正式目录读回，当前绑定状态不可用'} /> : <>
+    {current === null ? <Empty text={`${target.package} · ${target.keyKind} · ${target.key} 尚未从所选正式目录取得，绑定状态不可用`} /> : <>
       <Facts fields={[{ displayName: '作者包', value: current.target.package }, { displayName: '键类别', value: current.target.keyKind },
         { displayName: '业务键', value: current.target.key }, { displayName: '声明状态', value: current.declared ? '已声明' : '未声明' },
         { displayName: '引用类别', value: current.referenceKind }]} />
@@ -85,8 +74,6 @@ export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
         </Button>}
         {binding.projectionKind !== null && <small>投影类别：{binding.projectionKind}</small>}
       </div>)}
-      <BusinessKeyRename key={referenceTargetKey(current.target)} target={current.target}
-        onSaved={result => setCompletion({ result, refresh: null })} onRefreshed={onRefreshed} />
       <TargetReferrers target={current.target} />
     </>}
   </>;

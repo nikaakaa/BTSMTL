@@ -54,15 +54,13 @@ export function ProjectPanel() {
 function ResourceProject({ onProfileTarget }: { onProfileTarget(target: ProfileEntryTarget): void }) {
   const field = useReferenceSelection(state => state.field);
   const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
-  const [refresh, setRefresh] = useState(0);
-  const projectCatalog = useLibraryItems(refresh);
-  const [carriers, setCarriers, carrierFailure] = useCarriers();
+  const projectCatalog = useLibraryItems();
+  const [carriers, , carrierFailure] = useCarriers();
   const [keySource, setKeySource] = useState<'project' | 'resources'>('project');
   const [businessKey, setBusinessKey] = useState<{ source: 'field' | 'project' | 'resources'; target: BusinessKeyTarget } | null>(null);
   const selectedKeys = businessKey?.source === 'field' ? field?.catalog.kind === 'ready' ? field.catalog.items.flatMap(choice => choice.businessKeys) : []
     : businessKey?.source === 'resources' ? carriers?.businessKeys : projectCatalog.businessKeys;
   const metadata = businessKey === null ? null : selectedKeys?.find(item => referenceTargetKey(item.target) === referenceTargetKey(businessKey.target)) ?? null;
-  const refreshProject = () => setRefresh(value => value + 1);
   return <div className={projectStyles.root}>
     {carriers !== null && carriers.items.length === 0 && <div className={projectStyles.note}>正式资源目录尚未提供实际执行 Scope，当前没有可选择的预览或运行来源。</div>}
     {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={onProfileTarget}
@@ -78,8 +76,7 @@ function ResourceProject({ onProfileTarget }: { onProfileTarget(target: ProfileE
     </Fold></div>
     {businessKey !== null && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>业务键 · 绑定与投影</span><Button variant="ghost" onClick={() => setBusinessKey(null)}>关闭</Button></PanelBar>
-      <BusinessKeyDetails key={referenceTargetKey(businessKey.target)} target={businessKey.target} metadata={metadata}
-        onCatalog={catalog => { setCarriers(catalog); useAuthoring.setState({ carrierRevision: catalog.authoringRevision }); }} onChanged={refreshProject} />
+      <BusinessKeyDetails key={referenceTargetKey(businessKey.target)} target={businessKey.target} metadata={metadata} />
     </div>}
     {referenceTarget && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
@@ -176,13 +173,13 @@ function useCarriers() {
 // 文件夹先按磁盘显示，到达后补上作者名称。
 let libraryItems: { key: string; items: Promise<AuthoringProject> } | null = null;
 
-function useLibraryItems(refresh: number) {
+function useLibraryItems() {
   const { skill, stamp } = useAuthoring(useShallow(state => ({
     skill: state.available === false ? null : state.skills?.[0] ?? null,
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) => [key, document.revision, document.version])]),
   })));
   const scene = useWorkbench(state => selectedScene(state)?.path ?? null);
-  const key = JSON.stringify([stamp, scene, refresh]);
+  const key = JSON.stringify([stamp, scene]);
   const [result, setResult] = useState<({ key: string; kind: 'ready'; value: AuthoringProject }
     | ({ key: string; kind: 'failed' } & Failure)) | null>(null);
   useEffect(() => {

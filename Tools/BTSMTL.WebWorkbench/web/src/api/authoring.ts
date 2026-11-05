@@ -142,13 +142,6 @@ export interface ProfileEntryTarget {
   resourceIdentity: string | null;
 }
 
-// 作者包内某类别的一个业务键。
-export interface BusinessKeyAddress {
-  package: string;
-  kind: string;
-  key: string;
-}
-
 const readBusinessKeyTarget = object({ kind: choice('BusinessKey'), package: text, keyKind: text, key: text });
 export type BusinessKeyTarget = ReturnType<typeof readBusinessKeyTarget>;
 const readBusinessKeys = array(object({ target: readBusinessKeyTarget, declared: boolean, referenceKind: text,
@@ -162,59 +155,6 @@ const readRequiredTrue = (value: unknown, path = 'Authoring'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
 };
-const readBusinessKeyRenamePlan = object({
-  prepared: readRequiredTrue, revision: text, package: text, kind: text, key: text, newKey: text,
-  target: readBusinessKeyTarget, renamedTarget: readBusinessKeyTarget,
-  readFiles: array(object({ path: text, revision: text })),
-  files: array(object({ path: text, members: array(text), readRevision: text, writeRevision: text })),
-  affectedSkills: array(object({ identity: text, directory: text, package: text, requiresPublication: readRequiredTrue })),
-  affectedProfiles: array(object({ adapter: text, package: text, domain: text, contexts: array(text),
-    bindingFiles: array(text), requiresGeneration: readRequiredTrue })),
-  runtimeState: choice('pending', 'not-required'),
-});
-const readRenameRecovery = object({ authorRenameState: choice('recovery-required', 'not-completed'), runtimeState: choice('not-applied') });
-export type BusinessKeyRenameResult = ReturnType<typeof readBusinessKeyRenamePlan> & { success: true } & (
-  { saved: false; authorRenameState: 'prepared' } | { saved: true; authorRenameState: 'completed' }
-);
-export type BusinessKeyRenamePrepared = Extract<BusinessKeyRenameResult, { saved: false }>;
-export type BusinessKeyRenameCompleted = Extract<BusinessKeyRenameResult, { saved: true }>;
-export type BusinessKeyRenameRejection = { success: false; message: string } & (
-  { code: 'business-key-rename' | 'business-key-rename-conflict' }
-  | ({ code: 'business-key-rename-io' } & ReturnType<typeof readRenameRecovery>)
-);
-
-export type BusinessKeyRenameRequest = BusinessKeyAddress & { newKey: string } & (
-  { action: 'prepare' } | { action: 'commit'; expectedRevision: string }
-);
-
-export const businessKeySkillTarget = (skill: BusinessKeyRenameResult['affectedSkills'][number]): Extract<AuthoringTarget, { kind: 'skill' }> =>
-  ({ kind: 'skill', name: skill.directory.slice(skill.directory.lastIndexOf('/') + 1) });
-
-function readBusinessKeyRenameResponse(value: unknown, action: BusinessKeyRenameRequest['action']): BusinessKeyRenameResult | BusinessKeyRenameRejection {
-  const path = '当前 Host 的正式业务键改名回执不可用';
-  const { success } = object({ success: boolean })(value, path);
-  if (!success) {
-    const rejection = object({ code: choice('business-key-rename', 'business-key-rename-conflict', 'business-key-rename-io'), message: text })(value, path);
-    if (rejection.code === 'business-key-rename-io')
-      return { success, ...rejection, code: rejection.code, ...readRenameRecovery(value, path) };
-    return { success, ...rejection, code: rejection.code };
-  }
-  const plan = readBusinessKeyRenamePlan(value, path);
-  const state = object({ saved: boolean, authorRenameState: choice('prepared', 'completed') })(value, path);
-  if (action === 'prepare' && !state.saved && state.authorRenameState === 'prepared')
-    return { ...plan, success, saved: state.saved, authorRenameState: state.authorRenameState };
-  if (action === 'commit' && state.saved && state.authorRenameState === 'completed')
-    return { ...plan, success, saved: state.saved, authorRenameState: state.authorRenameState };
-  throw new Error(`${path}：${action} 的保存状态与作者改名阶段不一致`);
-}
-
-function renameBusinessKey(request: Extract<BusinessKeyRenameRequest, { action: 'prepare' }>, signal?: AbortSignal): Promise<BusinessKeyRenamePrepared | BusinessKeyRenameRejection>;
-function renameBusinessKey(request: Extract<BusinessKeyRenameRequest, { action: 'commit' }>, signal?: AbortSignal): Promise<BusinessKeyRenameCompleted | BusinessKeyRenameRejection>;
-async function renameBusinessKey(request: BusinessKeyRenameRequest, signal?: AbortSignal): Promise<BusinessKeyRenameResult | BusinessKeyRenameRejection> {
-  const value = await postJson<unknown>('/api/authoring/business-keys/rename', request, signal, [400, 409, 500]);
-  return readBusinessKeyRenameResponse(value, request.action);
-}
-
 export type ReferenceChoiceTarget = ProfileEntryTarget | BusinessKeyTarget | { kind: 'Node'; graphId: string; nodeId: string };
 
 export interface ReferenceChoice {
@@ -828,7 +768,6 @@ export const authoringApi = {
         definitionToken: text, profileUnavailableReason: nullable(text), animationLibrary: nullable(object({ identity: text,
           source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })),
       businessKeys: readBusinessKeys(result.businessKeys, 'Carriers.businessKeys') })),
-  renameBusinessKey,
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
