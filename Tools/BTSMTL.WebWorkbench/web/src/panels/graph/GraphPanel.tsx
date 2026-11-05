@@ -195,7 +195,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       : params.call !== null ? calls.find(item => callKey(item) === params.call) ?? null : automatic;
   const shownCall = pin === null ? observedCall : pin.call;
   const availableCalls = params.graph === null ? currentCalls : graphCalls;
-  const choices = quickMode ? [] : pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
+  const choices = quickMode ? [] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${caller === null ? '' : '父字段匹配候选 · '}${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = graph.authoringPath;
@@ -222,9 +222,9 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
     call: callKey(call), pin: null, caller: null, origin: null, viewport: null });
 
-  const selectCall = (value: string) => {
+  const selectCall = runId === null ? undefined : (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
-    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), pin: null });
+    setParams({ graph: graphKey(choice.graph), call: null, pin: { runId, graph: graphKey(choice.graph), call: choice.call } });
   };
 
   useEffect(() => {
@@ -325,10 +325,10 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
                 .catch(reason => consoleActions.error('作者', reason));
             },
           }))}>已加载引用（{referrers.length}）</MenuButton>}
-          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
-            options={callOptions} placeholder="选择实际调用"
-            tip={observedCall ? callLabel(observedCall) : '选择要观察的调用记录'} onChange={selectCall} />}
-          {shownCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
+          {callOptions.length > 0 && selectCall !== undefined && <Select label="固定某次实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
+            options={callOptions} placeholder="选择并固定实际调用"
+            tip="选择后固定这一次发生实例；解除固定后继续跟随当前帧" onChange={selectCall} />}
+          {!quickMode && shownCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
             tip={`${pin ? '解除固定，按当前帧选择调用' : '固定这次实际调用，拖动时间游标时保留其身份'}\n${callLabel(shownCall)}`}
             onClick={togglePin}>固定调用</Button>}
           <FitButton />

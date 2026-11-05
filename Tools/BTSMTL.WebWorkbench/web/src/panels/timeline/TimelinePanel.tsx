@@ -754,8 +754,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     : pin !== null ? pin.observation : params.call !== null ? observations.find(observation => observationKey(observation) === params.call) ?? null
       : caller === null && observations.length === 1 ? observations[0] : null;
   const timelineNotice = timelineObservationNotice(timelineBinding, frameSource, focused?.documentId ?? null, observed?.call ?? null);
-  const choices = pin && !observations.some(item => observationKey(item) === observationKey(pin.observation))
-    ? [pin.observation, ...observations] : observations;
+  const choices = observations;
   const togglePin = pin ? () => setParams({ pin: null, call: null }) : observed === null || runId === null || focused === null ? undefined
     : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs ?? [], binding), [routeFrames, graphs, binding]);
@@ -766,8 +765,9 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id,
       observation: { runId, call }, caller: null, origin: null });
   };
-  const selectCall = (value: string) => {
-    setParams({ call: value, pin: null });
+  const selectCall = runId === null || focused === null ? undefined : (value: string) => {
+    const observation = choices.find(item => observationKey(item) === value)!;
+    setParams({ call: null, pin: { runId, documentId: focused.documentId, observation } });
   };
   useEffect(() => {
     const selection = getState().selection;
@@ -985,7 +985,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
         quickPlayback={quickPlayback}
-        observations={choices} selectCall={selectCall} pin={pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
+        observations={choices} selectCall={selectCall} pin={quickMode || pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
         observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (inputScheme ? null : timelineNotice) ?? (trace.kind === 'unavailable' ? trace.reason
           : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : caller !== null ? parentCallCandidateNotice : null)} />
       <div className={styles.timeline} ref={setTimelineRef}>
@@ -1070,7 +1070,7 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
 
 function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice, quickPlayback }: {
   settings: MenuEntry[]; subject: Subject; origin: number; seek(value: number): void;
-  observations: TimelineObservation[]; selectCall(value: string): void;
+  observations: TimelineObservation[]; selectCall: ((value: string) => void) | undefined;
   pin: TimelineObservation | null; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
   observationNotice: string | null;
@@ -1114,7 +1114,7 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
           </Fragment>
         ))}
       </span>
-      {observations.length > 0 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
+      {observations.length > 0 && selectCall !== undefined && <Select variant="ghost" label="固定某次实际播放" placeholder="选择并固定实际播放" onChange={selectCall}
         value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
       {quickPlayback !== null && <Select variant="ghost" label="推导播放" value={quickPlayback.value}
