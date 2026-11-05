@@ -13,6 +13,7 @@ import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
 import { LocateAssetButton, type AssetLocateTarget } from './LocateAssetButton';
 import { ProfileSources, type ProfileLocation } from './ProfileEditor';
+import { ScopeResourceSources } from './ScopeEditor';
 import type { BusinessKeyMetadata } from '../../api/authoring';
 import styles from './project.module.css';
 
@@ -115,6 +116,7 @@ export function CarrierDetails({ carrier, focusTarget, businessKeys }: {
         {carrier.animationLibrary !== null && <span>动画库：{carrier.animationLibrary.source} · {carrier.animationLibrary.clips.length} 个片段</span>}
       </>}
     </div>
+    <ScopeResourceSources key={scopeKey} scope={carrier.scope} businessKeys={businessKeys} />
     {carrier.profileUnavailableReason === null && <ProfileSources key={carrier.identity} profiles={carrierProfiles(carrier)} businessKeys={businessKeys} />}
     <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
   </div>;

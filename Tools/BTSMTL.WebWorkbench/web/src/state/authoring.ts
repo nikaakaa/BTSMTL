@@ -9,8 +9,9 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
-import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, type AuthoringDataTransaction, type AuthoringProfile,
-  type ProfileOperationResult, type ProfileQuery, type ResourceReference, type ResourceRegistrationInput, type ResourceRegistrationRequest } from '../api/resourceRegistration';
+import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
+  type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
+  type ResourceReference, type ResourceRegistrationInput, type ResourceRegistrationRequest, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -37,9 +38,21 @@ export interface AuthoringState {
   skills: string[] | null;
   scenarios: string[] | null;
   carrierRevision: string | null;
-  profileTarget: ProfileQuery | null;
+  resourceTarget: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null;
   profiles: Record<string, ProfileDocument>;
+  scopes: Record<string, ScopeDocument>;
 }
+
+export interface ScopeDocument {
+  source: AuthoringScope;
+  undo: AuthoringDataTransaction[];
+  redo: AuthoringDataTransaction[];
+  writing: boolean;
+  failure: { text: string; entryId: number | null } | null;
+  message: string;
+}
+export const scopeDocument = (state: AuthoringState, target = state.resourceTarget?.kind === 'scope' ? state.resourceTarget.query : null) =>
+  target === null ? undefined : state.scopes[scopeQueryKey(target)];
 
 interface ProfileDraft {
   configuration: JsonObject;
@@ -56,7 +69,7 @@ export interface ProfileDocument extends ProfileDraft {
   message: string;
 }
 interface ProfileHistory extends ProfileDraft { transaction: AuthoringDataTransaction | null }
-export const profileDocument = (state: AuthoringState, target = state.profileTarget) =>
+export const profileDocument = (state: AuthoringState, target = state.resourceTarget?.kind === 'profile' ? state.resourceTarget.query : null) =>
   target === null ? undefined : state.profiles[profileQueryKey(target)];
 const profileConfiguration = (json: string): JsonObject => {
   const configuration = parseSkillJson(json);
@@ -161,7 +174,7 @@ const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
   available: null, unavailableReason: null, author: false, target: null, documents: {}, skills: null, scenarios: null, carrierRevision: null,
-  profileTarget: null, profiles: {},
+  resourceTarget: null, profiles: {}, scopes: {},
 }));
 
 export const authoringDocument = (state: AuthoringState, target = state.target): AuthoringDocument =>
@@ -596,8 +609,8 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 useWorkbench.subscribe((state, previous) => {
-  if (state.selection !== null && state.selection !== previous.selection && useAuthoring.getState().profileTarget !== null)
-    useAuthoring.setState({ profileTarget: null });
+  if (state.selection !== null && state.selection !== previous.selection && useAuthoring.getState().resourceTarget !== null)
+    useAuthoring.setState({ resourceTarget: null });
 });
 
 export const authoringActions = {
@@ -652,7 +665,7 @@ export const authoringActions = {
     const state = useAuthoring.getState();
     const key = authoringTargetKey(target);
     const opened = state.documents[key];
-    set({ target, author: true, profileTarget: null, documents: opened ? state.documents
+    set({ target, author: true, resourceTarget: null, documents: opened ? state.documents
       : { ...state.documents, [key]: { ...newDocument(), loading: true } } });
     publishDocument();
     if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
@@ -816,16 +829,51 @@ export const authoringActions = {
     reconcileSelection();
   },
 
-  undo() { if (get().profileTarget !== null) void stepProfile('undo', 'redo'); else void step('undo', 'redo'); },
-  redo() { if (get().profileTarget !== null) void stepProfile('redo', 'undo'); else void step('redo', 'undo'); },
+  undo() { void step('undo', 'redo'); },
+  redo() { void step('redo', 'undo'); },
 
-  activateProfile(query: ProfileQuery) { set({ profileTarget: query }); },
+  activateScope(query: ScopeQuery) { set({ resourceTarget: { kind: 'scope', query } }); },
+  releaseScope(query: ScopeQuery) {
+    const current = get().resourceTarget;
+    if (current?.kind === 'scope' && scopeQueryKey(current.query) === scopeQueryKey(query)) set({ resourceTarget: null });
+  },
+  async openScope(query: ScopeQuery, signal?: AbortSignal, reload = false) {
+    set({ resourceTarget: { kind: 'scope', query } });
+    if (scopeDocument(useAuthoring.getState(), query) !== undefined && !reload) return;
+    const source = await resourceRegistrationApi.readScope(query, signal);
+    signal?.throwIfAborted();
+    const previous = scopeDocument(useAuthoring.getState(), query);
+    updateScope(query, previous === undefined ? { source, undo: [], redo: [], writing: false, failure: null, message: '' }
+      : { ...previous, source, failure: null, message: '已读取所选 Scope 的正式资源声明与绑定修订。' });
+  },
+  async registerScopeResource(query: ScopeQuery, keyKind: string, input: ResourceRegistrationInput) {
+    const document = scopeDocument(useAuthoring.getState(), query);
+    if (document === undefined || document.writing) return null;
+    updateScope(query, { ...document, writing: true, failure: null });
+    try {
+      const result = await resourceRegistrationApi.registerScope(document.source, keyKind, input);
+      updateScope(query, { ...document, source: { ...document.source, revision: result.revision },
+        undo: result.transaction.changes.length ? [...document.undo, result.transaction].slice(-historyLimit) : document.undo,
+        redo: [], writing: false, failure: null,
+        message: `Scope 资源键 ${result.reference.key} ${result.reused ? '已复用' : '已登记'}${
+          result.instanceCapacity === null ? '' : `，实际实例容量 ${result.instanceCapacity}`}；作者数据已保存，运行内容待生成和采用。` });
+      invalidateResourceConsumers();
+      return result;
+    } catch (error) {
+      updateScope(query, { ...document, writing: false, failure: {
+        text: resourceOperationError(error), entryId: consoleActions.error('Scope 资源登记', error),
+      } });
+      return null;
+    }
+  },
+
+  activateProfile(query: ProfileQuery) { set({ resourceTarget: { kind: 'profile', query } }); },
   releaseProfile(query: ProfileQuery) {
-    const current = get().profileTarget;
-    if (current !== null && profileQueryKey(current) === profileQueryKey(query)) set({ profileTarget: null });
+    const current = get().resourceTarget;
+    if (current?.kind === 'profile' && profileQueryKey(current.query) === profileQueryKey(query)) set({ resourceTarget: null });
   },
   async openProfile(query: ProfileQuery, signal?: AbortSignal, reload = false) {
-    set({ profileTarget: query });
+    set({ resourceTarget: { kind: 'profile', query } });
     const opened = profileDocument(useAuthoring.getState(), query);
     if (opened !== undefined && !reload) return;
     const source = await resourceRegistrationApi.readProfile(query, signal);
@@ -839,12 +887,12 @@ export const authoringActions = {
   },
   selectProfileConfiguration(query: ProfileQuery, configurationTarget: ProfileConfigurationTarget) {
     const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ profileTarget: query });
+    set({ resourceTarget: { kind: 'profile', query } });
     updateProfile(query, { ...document, configurationTarget });
   },
   editProfile(query: ProfileQuery, configuration: JsonObject) {
     const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ profileTarget: query });
+    set({ resourceTarget: { kind: 'profile', query } });
     updateProfile(query, { ...document, configuration, configurationTarget: { kind: 'profile' },
       undo: [...document.undo, { ...profileDraft(document), transaction: null }].slice(-historyLimit), redo: [], failure: null });
   },
@@ -853,7 +901,7 @@ export const authoringActions = {
   },
   editProfileResource(query: ProfileQuery, reference: ResourceReference, configuration: JsonObject) {
     const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ profileTarget: query });
+    set({ resourceTarget: { kind: 'profile', query } });
     updateProfile(query, { ...document, configurationTarget: { kind: 'resource', reference },
       resourceConfigurations: { ...document.resourceConfigurations, [resourceReferenceKey(reference)]: configuration },
       undo: [...document.undo, { ...profileDraft(document), transaction: null }].slice(-historyLimit), redo: [], failure: null });
@@ -949,18 +997,19 @@ export const authoringActions = {
   },
 
   selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: ResourceReference | null) {
-    set({ profileTarget: null });
+    set({ resourceTarget: null });
     setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
   },
 
   selectProduct(product: SkillEditingView['product']) {
-    set({ profileTarget: null });
+    set({ resourceTarget: null });
     setDocument({ product, version: get().version + 1 });
   },
 
   async save() {
-    const profile = get().profileTarget;
-    if (profile !== null) return authoringActions.saveProfile(profile);
+    const owner = get().resourceTarget;
+    if (owner?.kind === 'scope') return;
+    if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
     const { target, saving, removed, revision } = get();
     if (!target || saving) return;
     const editingView = authoringActions.editingView();
@@ -1535,7 +1584,7 @@ function rebaseSavedEdits(previousFiles: Record<string, string>, submittedFiles:
 }
 
 function record() {
-  if (get().profileTarget !== null) set({ profileTarget: null });
+  if (get().resourceTarget !== null) set({ resourceTarget: null });
   const state = get();
   if (state.recording) return;
   const target = state.target!;
@@ -1550,7 +1599,11 @@ function updateProfile(query: ProfileQuery, document: ProfileDocument) {
   set({ profiles: { ...useAuthoring.getState().profiles, [profileQueryKey(query)]: document } });
 }
 
-function invalidateProfileConsumers() {
+function updateScope(query: ScopeQuery, document: ScopeDocument) {
+  set({ scopes: { ...useAuthoring.getState().scopes, [scopeQueryKey(query)]: document } });
+}
+
+function invalidateResourceConsumers() {
   set({ carrierRevision: null });
   const state = get();
   if (state.target?.kind === 'skill') setDocument({ sourceRevision: null, version: state.version + 1 });
@@ -1573,7 +1626,7 @@ async function applyProfile(query: ProfileQuery, operation: (source: AuthoringPr
         : `Profile 作者数据已保存${result.reference === null ? '' : `，资源键 ${result.reference.key}${result.reused ? '已复用' : '已登记'}`}${
         result.instanceCapacity === null ? '' : `，实际容量 ${result.instanceCapacity}`}；运行内容待生成和采用。`,
     });
-    invalidateProfileConsumers();
+    invalidateResourceConsumers();
     return result;
   } catch (error) {
     updateProfile(query, { ...document, writing: false, failure: { text: resourceOperationError(error), entryId: consoleActions.error('Profile', error) } });
@@ -1581,8 +1634,26 @@ async function applyProfile(query: ProfileQuery, operation: (source: AuthoringPr
   }
 }
 
-async function stepProfile(from: 'undo' | 'redo', to: 'undo' | 'redo') {
-  const query = get().profileTarget!;
+async function stepScope(query: ScopeQuery, from: 'undo' | 'redo', to: 'undo' | 'redo') {
+  const document = scopeDocument(useAuthoring.getState(), query);
+  if (document === undefined) return;
+  const transaction = document[from].at(-1);
+  if (transaction === undefined || document.writing) return;
+  updateScope(query, { ...document, writing: true, failure: null });
+  try {
+    const result = await resourceRegistrationApi.replayScope(query, from, transaction);
+    updateScope(query, { ...document, source: { ...document.source, revision: result.revision },
+      [from]: document[from].slice(0, -1), [to]: [...document[to], transaction], writing: false, failure: null,
+      message: `Scope 作者数据已${from === 'undo' ? '撤销' : '重做'}，运行内容待生成和采用。` });
+    invalidateResourceConsumers();
+  } catch (error) {
+    updateScope(query, { ...document, writing: false, failure: {
+      text: resourceOperationError(error), entryId: consoleActions.error('Scope 数据撤销', error),
+    } });
+  }
+}
+
+async function stepProfile(query: ProfileQuery, from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const document = profileDocument(useAuthoring.getState(), query);
   if (document === undefined) return;
   const previous = document[from].at(-1);
@@ -1599,13 +1670,16 @@ async function stepProfile(from: 'undo' | 'redo', to: 'undo' | 'redo') {
     updateProfile(query, { ...document, source: result.profile, configuration: previous.configuration, resourceConfigurations: previous.resourceConfigurations,
       [from]: document[from].slice(0, -1), [to]: [...document[to], next], writing: false,
       failure: null, message: `Profile 数据已${from === 'undo' ? '撤销' : '重做'}，运行内容待生成和采用。` });
-    invalidateProfileConsumers();
+    invalidateResourceConsumers();
   } catch (error) {
     updateProfile(query, { ...document, writing: false, failure: { text: resourceOperationError(error), entryId: consoleActions.error('Profile 数据撤销', error) } });
   }
 }
 
 async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
+  const owner = get().resourceTarget;
+  if (owner?.kind === 'profile') return stepProfile(owner.query, from, to);
+  if (owner?.kind === 'scope') return stepScope(owner.query, from, to);
   const state = get();
   const previous = state[from].at(-1);
   if (!previous || state.saving) return;

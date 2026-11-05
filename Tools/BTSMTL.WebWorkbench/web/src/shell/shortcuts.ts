@@ -18,13 +18,13 @@ function onKeyDown(event: KeyboardEvent, view: Window) {
   if (event.ctrlKey || event.metaKey) {
     const key = event.key.toLowerCase();
     const authoring = useAuthoring.getState();
-    if (key === 's' && (authoring.author || authoring.profileTarget !== null)) {
+    if (key === 's' && (authoring.author || authoring.resourceTarget !== null)) {
       event.preventDefault();
       view.document.querySelector<HTMLElement>('input:focus, textarea:focus, [contenteditable="true"]:focus')?.blur();
       void authoringActions.save();
       return;
     }
-    if ((!authoring.author && authoring.profileTarget === null) || editable(event.target) || (key !== 'z' && key !== 'y')) return;
+    if ((!authoring.author && authoring.resourceTarget === null) || editable(event.target) || (key !== 'z' && key !== 'y')) return;
     if (key === 'y' || event.shiftKey) authoringActions.redo(); else authoringActions.undo();
     event.preventDefault();
     return;

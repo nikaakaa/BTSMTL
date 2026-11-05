@@ -17,7 +17,8 @@ export function ResourceObjectPicker({ file, field, registration, businessKeys, 
   businessKeys: BusinessKeyMetadata[] | null; failure: Failure | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [adapter, setAdapter] = useState<string | null>(null);
+  const [selectedAdapter, setAdapter] = useState<string | null>(null);
+  const adapter = registration.adapter ?? selectedAdapter;
   const capability = registration.objects;
   const reason = file.guid === null ? '所选文件没有正式资源 GUID，无法查询其对象。'
     : capability.kind === 'unavailable' ? capability.reason : null;
@@ -28,14 +29,14 @@ export function ResourceObjectPicker({ file, field, registration, businessKeys, 
     <PanelBar wrap>
       <Button variant="ghost" pressed={open} disabled={reason !== null} tip={reason ?? `选择${file.name}中的具体资源对象`}
         onClick={() => setOpen(!open)}>选择资源对象</Button>
-      {open && <Select label="对象来源适配者" value={adapter} placeholder="选择正式适配者"
-        options={adapters.map(value => ({ value, label: value }))} onChange={setAdapter} />}
+      {open && (registration.adapter === undefined ? <Select label="对象来源适配者" value={adapter} placeholder="选择正式适配者"
+        options={adapters.map(value => ({ value, label: value }))} onChange={setAdapter} /> : <span>适配者：{registration.adapter}</span>)}
     </PanelBar>
     {reason !== null && <div className={styles.note}>{reason}</div>}
     {open && reason === null && <>
-      {failure !== null && <ErrorLine {...failure} />}
-      {businessKeys === null && failure === null && <div className={styles.note}>正在读取作者包的正式绑定适配者。</div>}
-      {businessKeys !== null && adapters.length === 0 && <div className={styles.issue}>当前作者包没有提供正式绑定适配者候选。</div>}
+      {registration.adapter === undefined && failure !== null && <ErrorLine {...failure} />}
+      {registration.adapter === undefined && businessKeys === null && failure === null && <div className={styles.note}>正在读取作者包的正式绑定适配者。</div>}
+      {registration.adapter === undefined && businessKeys !== null && adapters.length === 0 && <div className={styles.issue}>当前作者包没有提供正式绑定适配者候选。</div>}
       {adapter !== null && file.guid !== null && capability.kind === 'available' && <ResourceObjectQueryView
         key={JSON.stringify([field.id, capability.scope, adapter, file.guid])}
         query={{ ...capability.scope, adapter, assetGuid: file.guid }} file={file.path} fieldName={field.name} onChoose={registration.choose} />}

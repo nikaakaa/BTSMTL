@@ -18,7 +18,8 @@ import { VirtualList } from '../../ui/VirtualList';
 import { AnimationDetails } from './AnimationDetails';
 import { CarrierScopeDetails, carrierProfiles } from './CarrierProject';
 import { ProfileEditor, ProfileSources, type ProfileLocation } from './ProfileEditor';
-import { profileQueryKey } from '../../api/resourceRegistration';
+import { profileQueryKey, scopeQueryKey } from '../../api/resourceRegistration';
+import { ScopeEditor } from './ScopeEditor';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
@@ -384,14 +385,18 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
   item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
   onCreated(): void; onChanged(): void;
 }) {
-  const openedProfile = useAuthoring(state => state.profileTarget);
+  const resourceTarget = useAuthoring(state => state.resourceTarget);
   if (creating !== null) return <div className={projectStyles.details}>
     <SkillContentCreation key={creating} kind={creating} skill={target} elements={elements} onDone={onCreated} />
   </div>;
-  if (openedProfile !== null) return <div className={projectStyles.details}>
-    <PanelBar><span>当前 Profile 编辑</span><Button variant="ghost" onClick={() => authoringActions.releaseProfile(openedProfile)}>关闭 Profile 编辑</Button></PanelBar>
-    <ProfileEditor key={profileQueryKey(openedProfile)} query={openedProfile} businessKeys={businessKeys}
-      location={profileLocations.find(item => item.package === openedProfile.package && item.assetToken === openedProfile.assetToken)} />
+  if (resourceTarget?.kind === 'scope') return <div className={projectStyles.details}>
+    <PanelBar><span>当前 Scope 资源登记</span><Button variant="ghost" onClick={() => authoringActions.releaseScope(resourceTarget.query)}>关闭 Scope 资源登记</Button></PanelBar>
+    <ScopeEditor key={scopeQueryKey(resourceTarget.query)} query={resourceTarget.query} businessKeys={businessKeys} />
+  </div>;
+  if (resourceTarget?.kind === 'profile') return <div className={projectStyles.details}>
+    <PanelBar><span>当前 Profile 编辑</span><Button variant="ghost" onClick={() => authoringActions.releaseProfile(resourceTarget.query)}>关闭 Profile 编辑</Button></PanelBar>
+    <ProfileEditor key={profileQueryKey(resourceTarget.query)} query={resourceTarget.query} businessKeys={businessKeys}
+      location={profileLocations.find(item => item.package === resourceTarget.query.package && item.assetToken === resourceTarget.query.assetToken)} />
   </div>;
   if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;
   if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;

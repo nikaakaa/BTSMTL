@@ -8,7 +8,7 @@ export type ReferenceCatalog =
   | { kind: 'unavailable'; reason: string };
 
 export type ResourceAssetSelection = { token: string; source: string; adapter: string };
-export type ResourceRegistrationSelection = { keyKind: string; objects: ResourceObjectCapability; choose(asset: ResourceAssetSelection): void };
+export type ResourceRegistrationSelection = { keyKind: string; adapter?: string; objects: ResourceObjectCapability; choose(asset: ResourceAssetSelection): void };
 
 export interface ReferenceFieldSelection {
   id: string;
