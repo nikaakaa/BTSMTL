@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField,
@@ -16,6 +16,8 @@ import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } fro
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import { ReferencePicker } from './ReferencePicker';
+import { AuthoringResourceLocation, ResourceRegistrationField } from './ResourceRegistration';
+import type { ReferenceCatalog } from '../../state/referenceSelection';
 import styles from './inspector.module.css';
 
 // 检查器字段编辑（9.3）：节点字段按宿主类型描述（C# 作者字段合同）给出的值种类编辑，
@@ -132,6 +134,7 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
   label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[];
   graphId?: string | null; scope?: string; onSet: SetValue;
 }): ReactNode {
+  const location = useContext(AuthoringResourceLocation);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
   if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
@@ -159,8 +162,10 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
         ? <span className={styles.issue}>该类型没有正式的创建默认值</span>
         : <Button variant="ghost" onClick={() => onSet(keys, cloneJson(created))}>添加 {label}</Button>}</Row>;
     }
-    return <AuthoringValueFields label={label} type={shape.clrType} value={value as JsonObject} graphId={graphId}
-      identity={JSON.stringify([scope, keys])} onSet={next => onSet(keys, next)} />;
+    return <AuthoringResourceLocation.Provider value={location === null ? null : {
+      file: location.file, memberPath: [...location.memberPath, ...keys.map(String)],
+    }}><AuthoringValueFields label={label} type={shape.clrType} value={value as JsonObject} graphId={graphId}
+      identity={JSON.stringify([scope, keys])} onSet={next => onSet(keys, next)} /></AuthoringResourceLocation.Provider>;
   }
   if (value && typeof value === 'object')
     return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} graphId={graphId} scope={scope} onSet={onSet} />;
@@ -405,10 +410,10 @@ export function SkillFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
   if (target?.kind !== 'skill' || document === null) return null;
-  return <fieldset className={styles.authorFields} disabled={!editable}>
+  return <AuthoringResourceLocation.Provider value={{ file: 'skill.json', memberPath: [] }}><fieldset className={styles.authorFields} disabled={!editable}>
     <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
       graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />
-  </fieldset>;
+  </fieldset></AuthoringResourceLocation.Provider>;
 }
 
 // 节点一栏：名称与按合同描述的字段；children 为同栏的引用行（状态体、子图、转移等）。
@@ -427,7 +432,8 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
   const outputs = (description?.ports ?? []).filter(port => port.direction === 'output');
   return (
-    <>
+    <AuthoringResourceLocation.Provider value={{ file: graphPath(graphId),
+      memberPath: ['allNodes', String(((document as JsonObject).allNodes as JsonObject[]).indexOf(node))] }}>
       <Fold title="节点" defaultOpen>
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
         <DescriptionStatus description={description} issues={issues} />
@@ -448,7 +454,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
         </Fold>
       )}
       <ComputedFields fields={computed} />
-    </>
+    </AuthoringResourceLocation.Provider>
   );
 }
 
@@ -696,17 +702,21 @@ const belowPath = (path: string[], parent: string[]) => path.length > parent.len
 const rootFields = (fields: FieldMetadata[]) => fields.filter(field =>
   !fields.some(parent => belowPath(field.serializedMemberPath, parent.serializedMemberPath)));
 
-function FieldReferencePicker({ id, label, field, value, configuration, onChoose }: {
+function FieldReferencePicker({ id, label, field, value, configuration, onChoose, registrationPath = field.serializedMemberPath }: {
   id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
+  registrationPath?: string[];
 }) {
-  return <ReferencePicker id={id} label={label} value={value} configuration={configuration}
-    catalog={field.choiceKind === null
+  const catalog: ReferenceCatalog = field.choiceKind === null
       ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
       : field.choicesAvailability.available
         ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
           businessKeysAvailability: field.businessKeysAvailability,
           invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
-        : { kind: 'unavailable', reason: field.choicesAvailability.reason }} onChoose={onChoose} />;
+        : { kind: 'unavailable', reason: field.choicesAvailability.reason };
+  return field.resourceRegistration === null
+    ? <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
+    : <ResourceRegistrationField id={id} label={label} value={value} configuration={configuration} catalog={catalog}
+      onChoose={onChoose} metadata={field.resourceRegistration} memberPath={registrationPath} />;
 }
 
 function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {
@@ -724,11 +734,13 @@ function ReferenceCollection({ id, label, field, value, configuration, onSet, on
     <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
     {value.map((element, index) => <div key={index} className={styles.listItem}>
       <FieldReferencePicker id={`${id}/${index}`} label={`${label} [${index}]`} field={field} value={element} configuration={configuration}
+        registrationPath={[...path, String(index)]}
         onChoose={choice => writeReferenceChoice(choice, [...path, index], choice.value, onSetFields)} />
       <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
         onClick={() => onSet(path, value.filter((_, item) => item !== index).map(item => cloneJson(item)))}><CloseIcon /></Button>
     </div>)}
     <Row label="添加一项"><FieldReferencePicker id={`${id}/add`} label={`添加${label}`} field={field} value={undefined} configuration={configuration}
+      registrationPath={[...path, String(value.length)]}
       onChoose={choice => writeReferenceChoice(choice, path, [...value.map(item => cloneJson(item)), choice.value], onSetFields)} /></Row>
   </div>;
 }
@@ -804,7 +816,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
     return <Row label={label}>{value == null || value === ''
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
-  if (field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
+  if (field.resourceRegistration !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
     return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
       onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
   switch (field.valueKind) {

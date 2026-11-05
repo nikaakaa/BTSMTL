@@ -769,10 +769,14 @@ export const authoringActions = {
     const before = snapshot();
     const submitted = workingFiles(state.files, state);
     const previousHistory = new Set(state.undo);
+    const candidate = parseSkillJson(submitted[request.file]);
+    setIn(candidate, request.memberPath, request.input.key);
+    const candidateFile = { path: request.file, content: writeSkillJson(candidate, shapeOf(submitted[request.file])) };
     setDocument({ saving: true }, target);
     try {
       const result = await resourceRegistrationApi.register(target.name, { ...request,
-        expectedRevision: state.revision, files: authoringActions.changedFiles(target), removedFiles: state.removed });
+        expectedRevision: state.revision, files: [...authoringActions.changedFiles(target).filter(file => file.path !== request.file), candidateFile],
+        removedFiles: state.removed });
       const current = authoringDocument(useAuthoring.getState(), target);
       const files = Object.fromEntries(result.files.map(file => [file.path, file.content]));
       const previousKey = getIn(parseSkillJson(submitted[request.file]), request.memberPath);
@@ -785,7 +789,7 @@ export const authoringActions = {
       };
       setDocument({ files, sourceFiles: dataSourceFiles(current, files), revision: result.revision,
         sourceRevision: null, documentRevision: null, ...rebase(current),
-        undo: [...state.undo, { ...before, dataTransaction: result.transaction },
+        undo: [...state.undo, ...(result.transaction.changes.length ? [{ ...before, dataTransaction: result.transaction }] : []),
           ...current.undo.filter(item => !previousHistory.has(item)).map(item => ({ ...item, ...rebase(item) }))].slice(-historyLimit),
         redo: [], saving: false, externalChange: false, version: current.version + 1,
         lastSave: { ok: true, saved: true, compilationState: 'not-started', preview: null, errors: [],

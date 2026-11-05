@@ -13,6 +13,7 @@ export interface ReferenceFieldSelection {
   value: JsonValue | undefined;
   configuration: JsonObject;
   choose(choice: ReferenceChoice): void;
+  chooseAsset?: (asset: { token: string; source: string }) => void;
 }
 
 export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));

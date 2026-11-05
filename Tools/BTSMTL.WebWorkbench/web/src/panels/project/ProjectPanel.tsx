@@ -300,6 +300,8 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
         <TextInput aria-label="在当前文件夹中搜索" placeholder="搜索当前文件夹" value={search} className={projectStyles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => load(folder, true)}>刷新</Button>
+        {field?.chooseAsset && <Button disabled={!selectedFile?.guid} tip={selectedFile?.guid ? `登记到${field.name}` : '选择具有实际资源身份的文件'}
+          onClick={() => field.chooseAsset!({ token: selectedFile!.guid!, source: selectedFile!.path })}>登记所选素材</Button>}
         <MenuButton label="新建作者内容" caret entries={[
           { label: '技能', onSelect: () => setCreating('skill') },
           { label: `Timeline${target ? `（${target}）` : ''}`, disabled: !editable || elements === null, onSelect: () => setCreating('timeline') },

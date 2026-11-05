@@ -1,4 +1,4 @@
-import { postJson } from './http';
+import { ApiError, postJson } from './http';
 import { array, boolean, choice, nullable, number, object, text } from './playerRecords';
 
 export const readResourceRegistrationMetadata = object({ owner: choice('Authoring'), command: choice('register-resource'),
@@ -23,8 +23,20 @@ export type ResourceRegistrationRequest = {
 };
 const root = (skill: string) => `/api/authoring/skills/${encodeURIComponent(skill)}`;
 export const resourceRegistrationApi = {
-  register: (skill: string, request: ResourceRegistrationRequest) =>
-    postJson<unknown>(`${root(skill)}/resources/register`, request).then(value => readRegistration(value)),
+  register: (skill: string, request: ResourceRegistrationRequest) => {
+    const { kind, ...input } = request.input;
+    return postJson<unknown>(`${root(skill)}/resources/register`, { ...request, input: { kind, ...input } }).then(value => readRegistration(value));
+  },
   replay: (skill: string, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
     postJson<unknown>(`${root(skill)}/data/${direction}`, transaction).then(value => readReplay(value)),
 };
+
+const readFailure = object({ success: boolean, code: choice('resource-registration', 'resource-registration-conflict', 'resource-registration-io'),
+  message: text, authorState: choice('not-completed', 'recovery-required'), runtimeState: choice('not-applied') });
+export function resourceOperationError(error: unknown) {
+  if (error instanceof ApiError && [400, 409, 500].includes(error.status)) {
+    const result = readFailure(JSON.parse(error.raw));
+    return `${result.message}；作者状态：${result.authorState === 'recovery-required' ? '需要恢复' : '未完成'}，运行未应用。`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
