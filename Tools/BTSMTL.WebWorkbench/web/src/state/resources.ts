@@ -32,14 +32,16 @@ export type AnimationLibraryState =
 
 const loadingLibrary = { kind: 'loading' } satisfies AnimationLibraryState;
 export const animationReferenceKind = 'animation-clip';
+type ReferencedAnimationClip = AnimationClip & { value: string };
+const hasAnimationValue = (clip: AnimationClip): clip is ReferencedAnimationClip => clip.value !== null;
 
 export function readAnimationDrop(transfer: DataTransfer, state: AnimationLibraryState, catalog: ReferenceCatalog):
-  { kind: 'selected'; clip: AnimationClip } | { kind: 'rejected'; reason: string } {
+  { kind: 'selected'; clip: ReferencedAnimationClip } | { kind: 'rejected'; reason: string } {
   const selection = readReferenceDrop(transfer, catalog);
   if (selection.kind === 'rejected') return selection;
   if (state.kind === 'loading') return { kind: 'rejected', reason: '动画库清单尚未取得，原值已保留' };
   if (state.kind === 'unavailable') return { kind: 'rejected', reason: state.reason };
-  const clips = state.library.clips.filter(item => item.value === selection.choice.value);
+  const clips = state.library.clips.filter((item): item is ReferencedAnimationClip => hasAnimationValue(item) && item.value === selection.choice.value);
   return clips.length === 1 ? { kind: 'selected', clip: clips[0] }
     : { kind: 'rejected', reason: `当前素材库对该资源提供 ${clips.length} 个片段，无法确定素材时长；原值已保留。` };
 }
@@ -60,5 +62,5 @@ export function useAnimationLibrary(enabled: boolean): AnimationLibraryState {
 export function useAnimationFrameRates(enabled: boolean): ReadonlyMap<string, number> | null {
   const value = useAnimationLibrary(enabled);
   return useMemo(() => value.kind === 'ready'
-    ? new Map(value.library.clips.map(clip => [clip.value, clip.frameRate])) : null, [value]);
+    ? new Map(value.library.clips.filter(hasAnimationValue).map(clip => [clip.value, clip.frameRate])) : null, [value]);
 }

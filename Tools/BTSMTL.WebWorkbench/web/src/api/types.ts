@@ -473,7 +473,7 @@ export interface AnimationClip {
   unityAsset: string;
   provenance: { description: string };
   resource: { identity: string; guid: string; localFileId: string; contentRevision: string };
-  value: string;
+  value: string | null;
 }
 
 export interface AnimationLibrary {
