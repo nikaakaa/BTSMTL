@@ -77,6 +77,9 @@ namespace BTSMTL.Timeline.Editor
             UnityEngine.Object source = null) => m_Resources.ResourceReferences(timeline, keyKind, source);
         public UnityEngine.Object ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference) =>
             m_Resources.ResolveResource(timeline, reference);
+        public GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source) =>
+            m_Resources.ResourceObjects(timeline, keyKind, source);
+        public UnityEngine.Object ResolveResourceObject(string token) => m_Resources.ResolveResourceObject(token);
         public void RegisterResource(Clip clip, GraphAuthoringResourceRegistrationInput input,
             Action<GraphAuthoringResourceReference> apply) => m_Resources.RegisterResource(clip, input, apply);
         public bool HasUnsavedChanges => AssetDatabase.LoadAllAssetsAtPath(SourcePath).Any(EditorUtility.IsDirty);
