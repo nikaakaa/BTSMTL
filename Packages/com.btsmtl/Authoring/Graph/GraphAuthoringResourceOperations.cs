@@ -2,6 +2,19 @@ using System;
 
 namespace BTSMTL.Authoring.Graph
 {
+    public sealed class GraphAuthoringExecutionScopeSelection
+    {
+        public GraphAuthoringResourceReference? PreviewScope { get; set; }
+        public GraphAuthoringResourceReference? RuntimeScope { get; set; }
+    }
+
+    public sealed class GraphAuthoringScopeDeclarationRequest
+    {
+        public GraphAuthoringResourceReference Reference { get; set; }
+        public string Adapter { get; set; }
+        public string NativeDefinitionId { get; set; }
+    }
+
     [GraphAuthoringAnnotation]
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class GraphAuthoringResourceAttribute : Attribute
