@@ -179,6 +179,22 @@ namespace BTSMTL.Authoring.Graph
         public string ResultType { get; set; }
     }
 
+    public sealed class GraphAuthoringResourceDeclaration
+    {
+        public string KeyKind { get; set; }
+        public string ReferenceKind { get; set; }
+        public string Domain { get; set; }
+        public string RegistrationInput { get; set; }
+        public string InputType { get; set; }
+    }
+
+    public sealed class GraphAuthoringProfileResource
+    {
+        public GraphAuthoringResourceReference Reference { get; set; }
+        public string Token { get; set; }
+        public int? InstanceCapacity { get; set; }
+    }
+
     public sealed class GraphAuthoringProfileSnapshot
     {
         public string Package { get; set; }
@@ -188,6 +204,8 @@ namespace BTSMTL.Authoring.Graph
         public string Context { get; set; }
         public string Revision { get; set; }
         public string ConfigurationJson { get; set; }
+        public GraphAuthoringResourceDeclaration[] ResourceDeclarations { get; set; }
+        public GraphAuthoringProfileResource[] Resources { get; set; }
         public GraphAuthoringOwnerOperation[] Operations { get; set; }
     }
 
