@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
-  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField,
+  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField, type TypeDescription,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
@@ -363,7 +363,7 @@ function shapeAt(item: StoredField, path: string[]): StorageShape | null {
   return shape;
 }
 
-function descriptionValues(description: Description | null, value: JsonObject) {
+function descriptionValues(description: Pick<Description, 'stored' | 'computed'> | null, value: JsonObject) {
   const values = new Map<string, JsonValue | undefined>();
   for (const item of description?.stored ?? [])
     for (const field of item.fields) values.set(field.fieldId, getIn(value, field.serializedMemberPath));
@@ -394,20 +394,38 @@ function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: 
 }) {
   const skill = useAuthoring(state => state.target);
   const { description, issues } = useDescription(skill, graphId, type, value);
-  const values = descriptionValues(description, value);
   const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.kind, skill?.name, identity]) };
+  return <Fold title={label} defaultOpen>
+    <DescriptionStatus description={description} issues={issues} />
+    <ValueFields value={value} description={description} owner={owner} onSet={onSet} />
+  </Fold>;
+}
+
+export function MetadataConfigurationFields({ description, identity, value, onSet }: {
+  description: TypeDescription; identity: string; value: JsonObject; onSet(value: JsonObject): void;
+}) {
+  const fields = { stored: description.fields.items.filter((item): item is StoredField => !item.computed),
+    computed: description.fields.items.filter((item): item is ComputedField => item.computed === true) };
+  return description.availability.available
+    ? <ValueFields value={value} description={fields} owner={{ kind: 'value', graphId: null, identity }} onSet={onSet} />
+    : <div className={styles.issue}>{description.availability.reason}</div>;
+}
+
+function ValueFields({ value, description, owner, onSet }: {
+  value: JsonObject; description: Pick<Description, 'stored' | 'computed'> | null; owner: ReferenceOwner; onSet(value: JsonObject): void;
+}) {
+  const values = descriptionValues(description, value);
   const setFields: SetFields = changes => {
     const next = cloneJson(value);
     for (const change of changes) setIn(next, change.keys, change.value);
     onSet(next);
   };
   const set: SetValue = (keys, next) => setFields([{ keys, value: next }]);
-  return <Fold title={label} defaultOpen>
-    <DescriptionStatus description={description} issues={issues} />
+  return <>
     {description?.stored.map(item => <StoredItem key={item.member} item={item} node={value} values={values} owner={owner}
       onSet={set} onSetFields={setFields} />)}
     <ComputedFields fields={description?.computed.filter(field => visible(field, values)) ?? []} />
-  </Fold>;
+  </>;
 }
 
 export function SkillFields({ editable }: { editable: boolean }) {
