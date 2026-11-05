@@ -51,9 +51,13 @@ export function ContentProject() {
         onChange={event => setSearch(event.currentTarget.value)} />
         <MenuButton label="新建作者内容" caret entries={[
           { label: '技能', onSelect: () => create('skill') },
-          { label: 'Timeline', disabled: target?.kind !== 'skill', onSelect: () => create('timeline') },
-          { label: '共享子图', disabled: target?.kind !== 'skill', onSelect: () => create('macro') },
-          { label: '输入方案', disabled: target?.kind !== 'skill', onSelect: () => create('input') },
+          { label: '在所属技能下新建 Timeline', disabled: target?.kind !== 'skill', onSelect: () => create('timeline') },
+          { label: '在所属技能下新建共享子图', disabled: target?.kind !== 'skill', onSelect: () => create('macro') },
+          { label: '在所属技能下新建输入方案', disabled: target?.kind !== 'skill', onSelect: () => create('input') },
+          ...(node?.target?.kind === 'node' ? [{ label: '在所选节点的引用字段中创建拥有内容',
+            onSelect: () => void perform(() => projectActions.inspect(node.target!)) }] : []),
+          ...(node?.target?.kind === 'item' && node.target.item.kind === 'timeline' ? [{ label: '在所选 Timeline 中添加轨道或片段',
+            onSelect: () => void perform(() => projectActions.openContent(node.target!)) }] : []),
         ]}>新建</MenuButton>
       </PanelBar>
       {failure && <ErrorLine {...failure} />}

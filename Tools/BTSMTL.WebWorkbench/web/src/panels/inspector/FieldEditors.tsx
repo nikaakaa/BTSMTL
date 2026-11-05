@@ -730,7 +730,7 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
         : { kind: 'unavailable', reason: field.choicesAvailability.reason };
   const registration = field.resourceReference?.registration ?? null;
   return registration === null
-    ? <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
+    ? <ReferencePicker id={id} label={label} domain={field.resourceReference?.domain ?? null} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
     : <ResourceRegistrationField id={id} label={label} value={value} configuration={configuration} catalog={catalog}
       onChoose={onChoose} metadata={registration} memberPath={registrationPath} />;
 }

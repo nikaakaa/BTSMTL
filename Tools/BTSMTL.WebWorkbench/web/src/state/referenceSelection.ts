@@ -13,6 +13,7 @@ export type ResourceRegistrationSelection = { keyKind: string; adapter?: string;
 export interface ReferenceFieldSelection {
   id: string;
   name: string;
+  domain: string | null;
   catalog: ReferenceCatalog;
   value: JsonValue | undefined;
   configuration: JsonObject;

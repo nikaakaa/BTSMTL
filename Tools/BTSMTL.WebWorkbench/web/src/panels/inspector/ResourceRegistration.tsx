@@ -29,7 +29,7 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
   const [asset, setAsset] = useState<ResourceAssetSelection | null>(null);
   const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>
-    <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose}
+    <ReferencePicker id={id} label={label} domain={metadata.candidates.domain} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose}
       resourceRegistration={location === null ? undefined : { keyKind: metadata.keyKind, objects,
         choose: asset => { setAsset(asset); setCompleted(null); } }} />
     {asset !== null && location !== null && <ResourceRegistrationForm key={JSON.stringify([asset, location, memberPath])}

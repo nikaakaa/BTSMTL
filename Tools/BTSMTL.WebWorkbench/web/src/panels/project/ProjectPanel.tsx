@@ -36,6 +36,8 @@ export function ProjectPanel() {
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const [view, setView] = useState<'content' | 'resources' | 'files'>('content');
   const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
+  const field = useReferenceSelection(state => state.field);
+  useEffect(() => { if (field !== null && field.domain !== null) setView('resources'); }, [field?.id, field?.domain]);
   return <div className={projectStyles.root}>
     <PanelBar><Button variant="ghost" pressed={view === 'content'} onClick={() => setView('content')}>内容</Button>
       <Button variant="ghost" pressed={view === 'resources'} onClick={() => setView('resources')}>资源</Button>

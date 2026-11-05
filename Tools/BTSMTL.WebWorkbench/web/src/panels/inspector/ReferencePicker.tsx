@@ -9,10 +9,11 @@ import { Button, TextInput } from '../../ui/controls';
 import { openPanel } from '../../shell/layout';
 import styles from './referencePicker.module.css';
 
-export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, resourceRegistration }: {
+export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, resourceRegistration, domain = null }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
   onChoose(choice: ReferenceChoice): void;
   resourceRegistration?: ResourceRegistrationSelection;
+  domain?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -26,11 +27,11 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
   const items = catalog.kind === 'ready' ? catalog.items.filter(item =>
     [item.name, item.detail, item.source, referenceValueKey(item.value)].some(text => text?.toLocaleLowerCase().includes(query))) : [];
   const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : referenceValueKey(value) ?? '未设置';
-  const focus = () => useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, resourceRegistration } });
+  const focus = () => useReferenceSelection.setState({ field: { id, name: label, domain, catalog, value, configuration, choose: onChoose, resourceRegistration } });
   useEffect(() => {
     const current = useReferenceSelection.getState().field;
-    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, resourceRegistration } });
-  }, [id, label, catalog, value, configuration, onChoose, resourceRegistration]);
+    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, domain, catalog, value, configuration, choose: onChoose, resourceRegistration } });
+  }, [id, label, domain, catalog, value, configuration, onChoose, resourceRegistration]);
   useEffect(() => () => {
     if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null });
   }, [id]);

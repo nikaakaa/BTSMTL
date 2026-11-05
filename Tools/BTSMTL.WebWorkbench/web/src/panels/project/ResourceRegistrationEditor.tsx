@@ -54,7 +54,7 @@ export function ResourceRegistrationEditor({ id, label, packageId, adapter, decl
         options={supported.map(item => ({ value: item.keyKind, label: item.keyKind }))}
         onChange={value => { setKeyKind(value); setAsset(null); setKey(''); setCapacity(null); setEffectKind(''); }} />
       {supported.length === 0 && <div className={styles.note}>本 {label} 没有支持资源登记的正式类别。</div>}
-      {declaration !== undefined && <ReferencePicker id={`${id}/resource/${declaration.keyKind}`} label={`${label} 资源`}
+      {declaration !== undefined && <ReferencePicker id={`${id}/resource/${declaration.keyKind}`} label={`${label} 资源`} domain={declaration.domain}
         value={asset?.token} configuration={{}} catalog={{ kind: 'ready', referenceKind: declaration.referenceKind, items: choices,
           businessKeysAvailability: null, invalidReason: '所选素材来自真实对象候选，登记时由正式领域合同确认。' }}
         onChoose={choice => { setAsset({ token: String(choice.value), source: `${choice.name} · ${choice.detail}`, adapter }); setKey(''); }}
