@@ -108,6 +108,7 @@ namespace BTSMTL.Timeline.Editor
                     SetSharedGraph(AssetDatabase.GetAssetPath(graph), graph);
             }
             timeline.BindAuthoringDocument(this);
+            TimelineAuthoringClipBinding.PrepareResources(timeline);
         }
 
         public ScriptableObject ResolveGraph(string authoringId)

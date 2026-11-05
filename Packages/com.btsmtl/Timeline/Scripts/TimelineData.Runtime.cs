@@ -301,6 +301,41 @@ namespace BTSMTL.Timeline
             UnityEngine.Object referenceObject, OrchestrationTime startTime, OrchestrationTime? endTime = null,
             OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
         {
+            Clip clip = PrepareClip(catalog, track, identity);
+            if (clip is ITimelineAuthoringResourceClip)
+            {
+                TimelineAuthoringGraphBindings.Prepare(this);
+                string kind = GraphAuthoringMemberBindings.Contract(clip).Fields.Single(field =>
+                    field.Annotation<TimelineAuthoringPropertyAttribute>() is { IsSourceAsset: true })
+                    .Annotation<TimelineAuthoringPropertyAttribute>().SourceAssetKind;
+                IReadOnlyList<GraphAuthoringResourceReference> references =
+                    ((ITimelineAuthoringResourceDocument)AuthoringDocument).ResourceReferences(this, kind, referenceObject);
+                if (references.Count != 1)
+                    throw new InvalidOperationException($"资源在本Timeline实际Scope中对应{references.Count}个'{kind}'业务键，请明确登记或选择一个键。");
+                clip.ConfigureAuthoringReference(references[0]);
+                TimelineAuthoringClipBinding.PrepareResource(clip);
+            }
+            else
+                clip.ConfigureAuthoringReference(referenceObject);
+            return CompleteClip(catalog, track, clip, startTime, endTime, easeIn, easeOut, clipIn,
+                TimelineAuthoringClipBinding.SourceAsset(clip));
+        }
+
+        public Clip EnsureClip(TimelineContractCatalog catalog, Track track, string identity,
+            GraphAuthoringResourceReference reference, OrchestrationTime startTime, OrchestrationTime? endTime = null,
+            OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
+        {
+            Clip clip = PrepareClip(catalog, track, identity);
+            TimelineAuthoringGraphBindings.Prepare(this);
+            clip.ConfigureAuthoringReference(reference);
+            if (!endTime.HasValue)
+                TimelineAuthoringClipBinding.PrepareResource(clip);
+            return CompleteClip(catalog, track, clip, startTime, endTime, easeIn, easeOut, clipIn,
+                TimelineAuthoringClipBinding.SourceAsset(clip));
+        }
+
+        Clip PrepareClip(TimelineContractCatalog catalog, Track track, string identity)
+        {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
             Clip clip = m_Tracks.SelectMany(value => value.Clips).SingleOrDefault(value => value.AuthoringId == identity);
@@ -310,7 +345,13 @@ namespace BTSMTL.Timeline
                 clip = (Clip)Activator.CreateInstance(track.ClipType);
             PlaceClip(clip, track);
             clip.ConfigureAuthoringIdentity(identity);
-            clip.ConfigureAuthoringReference(referenceObject);
+            return clip;
+        }
+
+        Clip CompleteClip(TimelineContractCatalog catalog, Track track, Clip clip, OrchestrationTime startTime,
+            OrchestrationTime? endTime, OrchestrationTime easeIn, OrchestrationTime easeOut, OrchestrationTime clipIn,
+            UnityEngine.Object referenceObject)
+        {
             clip.ConfigureTimeRange(startTime, endTime ?? TimelineAuthoringClipBinding.DefaultEndTime(clip, startTime, referenceObject));
             clip.ConfigureEase(easeIn, easeOut);
             clip.ConfigureClipIn(clipIn);
@@ -619,6 +660,9 @@ namespace BTSMTL.Timeline
             if (referenceObject)
                 throw new ArgumentException($"Timeline clip '{ContractKind}' 不接受素材引用。", nameof(referenceObject));
         }
+
+        public virtual void ConfigureAuthoringReference(GraphAuthoringResourceReference reference) =>
+            throw new ArgumentException($"Timeline clip '{ContractKind}' 不接受业务资源引用。", nameof(reference));
 
         public void UpdateMix()
         {

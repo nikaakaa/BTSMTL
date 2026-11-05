@@ -55,6 +55,21 @@ namespace BTSMTL.Timeline
                 ? startTime + OrchestrationTime.FromSeconds(source.GetSourceDuration(referenceObject))
                 : startTime + (clip is SignalClip ? TimelineTimeGrid.Position(1, TimelineUtility.FrameRate) : OrchestrationTime.FromSeconds(0.05d));
 
+        public static void PrepareResource(Clip clip)
+        {
+            if (clip is ITimelineAuthoringResourceClip resource)
+                resource.BindSourceAsset(resource.ResourceReference.IsEmpty ? null :
+                    ((ITimelineAuthoringResourceDocument)clip.Timeline.AuthoringDocument)
+                        .ResolveResource(clip.Timeline, resource.ResourceReference));
+        }
+
+        public static void PrepareResources(TimelineData timeline)
+        {
+            foreach (Track track in timeline.Tracks)
+                foreach (Clip clip in track.Clips)
+                    PrepareResource(clip);
+        }
+
         public static IReadOnlyList<TimelineAuthoringProperty> Properties(Clip clip) =>
             GraphAuthoringMemberBindings.Contract(clip).Fields
                 .Where(field => field.Metadata.AuthoringVisible)
@@ -69,8 +84,10 @@ namespace BTSMTL.Timeline
             GraphAuthoringMemberBindings.ValueType(clip.GetType(), property.PropertyId);
 
         public static void Configure(TimelineData timeline, Clip clip,
-            TimelineAuthoringClipConfiguration configuration) =>
+            TimelineAuthoringClipConfiguration configuration)
+        {
             configuration.Candidate.Apply(clip);
+        }
     }
 }
 #endif
