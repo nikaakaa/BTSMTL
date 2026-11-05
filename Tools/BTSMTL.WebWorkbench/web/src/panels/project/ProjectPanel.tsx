@@ -300,7 +300,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
         <TextInput aria-label="在当前文件夹中搜索" placeholder="搜索当前文件夹" value={search} className={projectStyles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => load(folder, true)}>刷新</Button>
-        {field?.chooseAsset && <Button disabled tip={selectedFile
+        {field?.resourceRegistration && <Button disabled tip={selectedFile
           ? '该文件尚未提供可登记的资源对象；请从业务键的实际绑定资源选择。文件GUID不能代替子对象身份。'
           : '选择具有正式资源对象身份的素材'}>登记所选素材</Button>}
         <MenuButton label="新建作者内容" caret entries={[

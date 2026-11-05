@@ -6,6 +6,8 @@ export type ReferenceCatalog =
   | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string; businessKeysAvailability: QueryAvailability | null }
   | { kind: 'unavailable'; reason: string };
 
+export type ResourceRegistrationSelection = { keyKind: string; choose(asset: { token: string; source: string }): void };
+
 export interface ReferenceFieldSelection {
   id: string;
   name: string;
@@ -13,7 +15,7 @@ export interface ReferenceFieldSelection {
   value: JsonValue | undefined;
   configuration: JsonObject;
   choose(choice: ReferenceChoice): void;
-  chooseAsset?: (asset: { token: string; source: string }) => void;
+  resourceRegistration?: ResourceRegistrationSelection;
 }
 
 export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));

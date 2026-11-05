@@ -2,17 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReferenceChoice } from '../../api/authoring';
 import {
   acceptsReferenceDrag, matchesReferenceChoice, readReferenceDrop, referenceValueKey, useReferenceSelection,
-  type ReferenceCatalog,
+  type ReferenceCatalog, type ResourceRegistrationSelection,
 } from '../../state/referenceSelection';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
 import { Button, TextInput } from '../../ui/controls';
 import { openPanel } from '../../shell/layout';
 import styles from './referencePicker.module.css';
 
-export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, onAssetChoose }: {
+export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, resourceRegistration }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
   onChoose(choice: ReferenceChoice): void;
-  onAssetChoose?: (asset: { token: string; source: string }) => void;
+  resourceRegistration?: ResourceRegistrationSelection;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -26,11 +26,11 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
   const items = catalog.kind === 'ready' ? catalog.items.filter(item =>
     [item.name, item.detail, item.source, referenceValueKey(item.value)].some(text => text?.toLocaleLowerCase().includes(query))) : [];
   const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : referenceValueKey(value) ?? '未设置';
-  const focus = () => useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, chooseAsset: onAssetChoose } });
+  const focus = () => useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, resourceRegistration } });
   useEffect(() => {
     const current = useReferenceSelection.getState().field;
-    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, chooseAsset: onAssetChoose } });
-  }, [id, label, catalog, value, configuration, onChoose, onAssetChoose]);
+    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, catalog, value, configuration, choose: onChoose, resourceRegistration } });
+  }, [id, label, catalog, value, configuration, onChoose, resourceRegistration]);
   useEffect(() => () => {
     if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null });
   }, [id]);
@@ -58,7 +58,7 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
       onClick={() => { focus(); setOpen(!open); }}>
       {title}
     </Button>
-    {onAssetChoose && <Button onClick={() => { focus(); openPanel('resources'); }}>从项目素材登记</Button>}
+    {resourceRegistration && <Button onClick={() => { focus(); openPanel('resources'); }}>从项目素材登记</Button>}
     {catalog.kind === 'unavailable' ? <div className={styles.note}>上下文尚未取得：{catalog.reason}</div>
       : <>{catalog.items.length === 0 && <div className={styles.note}>没有候选</div>}
         {invalid && <div className={styles.issue}>{catalog.invalidReason}</div>}</>}

@@ -63,7 +63,7 @@ export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
         <span className={binding.state === 'unbound' || binding.projectionState === 'missing' ? styles.issue : styles.note}>
           {bindingNames[binding.state]} · {projectionNames[binding.projectionState]}</span>
         <small>绑定令牌：{binding.token ?? '未提供'}</small>
-        {field?.chooseAsset && binding.token !== null && <Button onClick={() => field.chooseAsset!({ token: binding.token!,
+        {field?.resourceRegistration?.keyKind === current.target.keyKind && binding.token !== null && <Button onClick={() => field.resourceRegistration!.choose({ token: binding.token!,
           source: `${current.target.package} / ${current.target.keyKind} / ${current.target.key} · ${binding.adapter} / ${binding.context || '公共'}` })}>
           将实际资源登记到 {field.name}
         </Button>}

@@ -23,7 +23,8 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
   const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>
     <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose}
-      onAssetChoose={location === null ? undefined : asset => { setAsset(asset); setCompleted(null); }} />
+      resourceRegistration={location === null ? undefined : { keyKind: metadata.keyKind,
+        choose: asset => { setAsset(asset); setCompleted(null); } }} />
     {asset !== null && location !== null && <ResourceRegistrationForm key={JSON.stringify([asset, location, memberPath])}
       asset={asset} metadata={metadata} file={location.file} memberPath={[...location.memberPath, ...memberPath]}
       onComplete={result => { setCompleted(result); setAsset(null); }} />}
@@ -66,7 +67,7 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
     item.bindings.some(binding => binding.adapter === adapter && binding.context === actualContext && binding.token === asset.token));
   const actualKey = matches.length === 1 ? matches[0].target.key : key;
   const selectedExisting = matches.length > 1 ? matches.find(item => item.target.key === key) : null;
-  const inputReady = metadata.inputKind === 'asset' || metadata.inputKind === 'instance-resource' && capacity !== null && capacity > 0 ||
+  const inputReady = metadata.inputKind === 'asset' || metadata.inputKind === 'instance-resource' && capacity !== null && Number.isInteger(capacity) && capacity > 0 ||
     metadata.inputKind === 'camera-effect' && effectKind.trim() !== '';
   const canRegister = target?.kind === 'skill' && typeof packageId === 'string' && keys !== null && adapter !== null &&
     contextMode !== null && (contextMode === 'common' || context.trim() !== '') && actualKey.trim() !== '' &&
