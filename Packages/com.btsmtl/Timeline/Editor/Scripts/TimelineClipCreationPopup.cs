@@ -48,7 +48,10 @@ namespace BTSMTL.Timeline.Editor
             m_Create = create;
             m_Properties = TimelineAuthoringClipBinding.Properties(request.Prototype);
             if (request.Prototype is ITimelineAuthoringResourceClip)
+            {
                 m_Resources = new TimelineResourceSelection(request.Prototype, UpdateResource, () => editorWindow.Repaint(), request.Resource);
+                m_Request.Resource = null;
+            }
         }
 
         void UpdateResource(TimelineResourceSelection selection)
