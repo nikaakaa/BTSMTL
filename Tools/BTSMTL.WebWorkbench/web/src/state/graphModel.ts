@@ -167,16 +167,16 @@ export function graphCallsAtFrame(recorded: ReturnType<typeof recordedGraphCalls
 }
 
 export const parentCallMatches = (parent: ExecutionCall, call: ExecutionCall) =>
-  call.parentInvocationPath !== null && call.parentInvocationPath !== '' && call.parentInvocationGeneration !== null &&
-  parent.actorId === call.actorId && parent.programId === call.programId && parent.programRevision === call.programRevision &&
-  parent.objectSlot === call.objectSlot && parent.objectHandle === call.objectHandle &&
-  parent.objectKind === call.objectKind && parent.definitionIndex === call.definitionIndex && parent.programIndex === call.programIndex &&
-  parent.actionId === call.actionId && parent.executionGeneration === call.executionGeneration &&
-  parent.invocationPath === call.parentInvocationPath && parent.invocationGeneration === call.parentInvocationGeneration;
+  call.parentAvailability?.available === true && call.parentCall != null && callKey(parent) === callKey(call.parentCall);
 
 export const parentGraphCalls = (call: ExecutionCall, calls: RecordedGraphCall[]) => calls.filter(item => parentCallMatches(item.call, call));
 
-export const parentCallCandidateNotice = 'Unavailable：记录只提供父调用路径和代次，未记录完整发生实例及恢复祖先关联；匹配项仅为候选。';
+export function parentCallNotice(call: ExecutionCall): string | null {
+  const availability = call.parentAvailability;
+  if (availability == null) return 'Unavailable：此记录未提供父调用来源资格';
+  if (!availability.available) return `${availability.complete ? 'NotApplicable' : 'Unavailable'}：${availability.reason}`;
+  return call.parentCall == null ? 'Unavailable：此记录没有完整父调用身份' : null;
+}
 
 export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence & { call: ExecutionCall } => 'kind' in item && 'nodeId' in item;
 export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence & { call: ExecutionCall } => 'edgeId' in item;

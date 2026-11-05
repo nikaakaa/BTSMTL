@@ -74,6 +74,17 @@ export function ObservationAvailability({ value, label }: { value: Availability 
               { displayName: '已映射帧事件', value: coverage.frameMappedEventCount },
               { displayName: 'Trace 丢弃事件', value: coverage.discardedTraceEventCount },
               { displayName: '状态缓存淘汰', value: coverage.evictedStateCount },
+              { displayName: '采集身份已记录', value: String(coverage.captureIdentityRecorded) },
+              { displayName: '来源帧连续', value: String(coverage.sourceFramesContinuous) },
+              { displayName: '录制身份', value: coverage.recordingId ?? '未记录' },
+              { displayName: '运行身份', value: coverage.runtimeId ?? '未记录' },
+              { displayName: '来源修订', value: coverage.sourceRevision ?? '未记录' },
+              { displayName: '内容版本', value: coverage.contentHash ?? '未记录' },
+              { displayName: '执行分支', value: coverage.executionBranchId ?? '未记录' },
+              { displayName: '运行代次', value: coverage.runtimeEpoch ?? '未记录' },
+              { displayName: '录制通道', value: String(coverage.recordingChannels) },
+              { displayName: '采集中断帧', value: String(coverage.captureInterruptedFrameCount) },
+              { displayName: '身份变化帧', value: String(coverage.identityChangedFrameCount) },
             ]} />
             <div className={styles.note}>状态缓存淘汰计数不代表档案事件丢失。</div>
           </Fold>)}
@@ -102,6 +113,8 @@ function CallDetails({ call }: { call: ExecutionCall | null }) {
     ]} />
     <ObservationAvailability label="对象来源" value={call.objectAvailability} />
     <ObservationAvailability label="分支来源" value={call.branchAvailability} />
+    <ObservationAvailability label="父调用来源" value={call.parentAvailability ?? null} />
+    {call.parentAvailability?.available && call.parentCall != null && <Fold title="完整父调用身份"><CallDetails call={call.parentCall} /></Fold>}
   </Fold>;
 }
 

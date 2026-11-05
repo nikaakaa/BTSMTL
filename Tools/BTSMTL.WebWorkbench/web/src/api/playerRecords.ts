@@ -75,7 +75,11 @@ const field = object({ displayName: text, value: text });
 const diagnosticCoverage = object({ objectSlot: number, firstFrame: nullable(text), lastFrame: nullable(text),
   logicFrameCount: number, presentationEvaluationCount: number, startedBeforeExecution: boolean,
   publishedEventCount: text, archivedEventCount: text, frameMappedEventCount: text,
-  discardedTraceEventCount: text, evictedStateCount: text });
+  discardedTraceEventCount: text, evictedStateCount: text,
+  captureIdentityRecorded: boolean, sourceFramesContinuous: boolean,
+  recordingId: nullable(text), runtimeId: nullable(text), sourceRevision: nullable(text), contentHash: nullable(text),
+  executionBranchId: nullable(text), runtimeEpoch: nullable(text), recordingChannels: number,
+  captureInterruptedFrameCount: number, identityChangedFrameCount: number });
 const availability = object({ channel: text, available: boolean, complete: boolean, reason: text,
   coverage: nullable(array(diagnosticCoverage)) });
 export type RecordedAvailability = ReturnType<typeof availability>;
@@ -246,7 +250,7 @@ export function readViewerMessage(value: unknown, path = 'Player.view') {
   }
 }
 const quaternion = tuple(number, number, number, number);
-const call = object({
+const callIdentity = object({
   actorId: nullable(text), objectSlot: nullable(number), objectHandle: nullable(text),
   objectKind: nullable(text), definitionIndex: nullable(number), programIndex: nullable(number),
   objectAvailability: nullable(availability),
@@ -254,6 +258,9 @@ const call = object({
   programId: text, programRevision: text, invocationPath: text, parentInvocationPath: nullable(text),
   actionId: text, executionGeneration: text, invocationGeneration: text, parentInvocationGeneration: nullable(text), playbackId: text,
 });
+type RecordedCall = ReturnType<typeof callIdentity> & { parentCall: RecordedCall | null; parentAvailability: RecordedAvailability | null };
+const call: Decoder<RecordedCall> = (value, path) => ({ ...callIdentity(value, path),
+  ...object({ parentCall: nullable(call), parentAvailability: nullable(availability) })(value, path) });
 const loopScope = object({ graphId: text, nodeId: text, generation: nullable(text), iteration: number, call,
   activationAvailability: nullable(availability) });
 const activation = { generation: nullable(text), activationAvailability: nullable(availability),
