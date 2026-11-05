@@ -170,6 +170,20 @@ namespace BTSMTL.Authoring.Graph
         public string ExpectedRevision { get; set; }
     }
 
+    public sealed class GraphAuthoringScopeQuery
+    {
+        public GraphAuthoringResourceReference Scope { get; set; }
+        public string Adapter { get; set; }
+    }
+
+    public sealed class GraphAuthoringScopeSnapshot
+    {
+        public GraphAuthoringResourceReference Scope { get; set; }
+        public string Adapter { get; set; }
+        public string Revision { get; set; }
+        public GraphAuthoringResourceDeclaration[] ResourceDeclarations { get; set; }
+    }
+
     public sealed class GraphAuthoringScopeReplayRequest
     {
         public GraphAuthoringResourceReference Scope { get; set; }
@@ -239,6 +253,14 @@ namespace BTSMTL.Authoring.Graph
         public string Domain { get; set; }
         public string RegistrationInput { get; set; }
         public string InputType { get; set; }
+        public string ObjectType { get; set; }
+        public GraphAuthoringResourceAvailability Availability { get; set; }
+    }
+
+    public sealed class GraphAuthoringResourceAvailability
+    {
+        public bool Available { get; set; }
+        public string Reason { get; set; }
     }
 
     public sealed class GraphAuthoringProfileResource
