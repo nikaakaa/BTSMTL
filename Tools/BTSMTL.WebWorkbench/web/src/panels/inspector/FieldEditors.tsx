@@ -716,7 +716,7 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
   return field.resourceRegistration === null
     ? <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
     : <ResourceRegistrationField id={id} label={label} value={value} configuration={configuration} catalog={catalog}
-      onChoose={onChoose} metadata={field.resourceRegistration} memberPath={registrationPath} />;
+      onChoose={onChoose} metadata={field.resourceRegistration} memberPath={registrationPath} objectType={field.objectType} />;
 }
 
 function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {

@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type BusinessKeyMetadata, type ReferenceChoice } from '../../api/authoring';
-import { resourceOperationError, type ResourceRegistrationInput, type ResourceRegistrationMetadata, type ResourceRegistrationResult } from '../../api/resourceRegistration';
+import { resourceOperationError, type ResourceObjectCapability, type ResourceRegistrationInput, type ResourceRegistrationMetadata, type ResourceRegistrationResult } from '../../api/resourceRegistration';
 import { authoringActions, authoringDocument, useAuthoring, useCurrentDocument } from '../../state/authoring';
-import type { ReferenceCatalog } from '../../state/referenceSelection';
+import type { ReferenceCatalog, ResourceAssetSelection } from '../../state/referenceSelection';
 import { getIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { consoleActions } from '../../state/store';
 import { Fold } from '../../ui/blocks';
@@ -14,17 +14,24 @@ import styles from './inspector.module.css';
 
 export const AuthoringResourceLocation = createContext<{ file: string; memberPath: string[] } | null>(null);
 
-export function ResourceRegistrationField({ id, label, value, configuration, catalog, onChoose, metadata, memberPath }: {
+export function ResourceRegistrationField({ id, label, value, configuration, catalog, onChoose, metadata, memberPath, objectType }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
-  onChoose(choice: ReferenceChoice): void; metadata: ResourceRegistrationMetadata; memberPath: string[];
+  onChoose(choice: ReferenceChoice): void; metadata: ResourceRegistrationMetadata; memberPath: string[]; objectType: string | null;
 }) {
   const location = useContext(AuthoringResourceLocation);
   const revision = useAuthoring(state => authoringDocument(state).revision);
-  const [asset, setAsset] = useState<{ token: string; source: string } | null>(null);
+  const { document } = useCurrentDocument('skill.json');
+  const packageId = getIn(document ?? undefined, ['m_AuthorPackage']);
+  const candidates = metadata.candidates;
+  const objects: ResourceObjectCapability = typeof packageId !== 'string' ? { kind: 'unavailable', reason: '技能没有正式作者包声明。' }
+    : candidates === undefined ? { kind: 'unavailable', reason: '当前字段没有提供正式资源对象候选合同。' }
+    : !candidates.domain && !objectType ? { kind: 'unavailable', reason: '当前字段未声明资源领域或对象类型，无法查询素材对象。' }
+    : { kind: 'available', scope: { package: packageId, keyKind: candidates.keyKind, domain: candidates.domain, objectType } };
+  const [asset, setAsset] = useState<ResourceAssetSelection | null>(null);
   const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>
     <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose}
-      resourceRegistration={location === null ? undefined : { keyKind: metadata.keyKind,
+      resourceRegistration={location === null ? undefined : { keyKind: metadata.keyKind, objects,
         choose: asset => { setAsset(asset); setCompleted(null); } }} />
     {asset !== null && location !== null && <ResourceRegistrationForm key={JSON.stringify([asset, location, memberPath])}
       asset={asset} metadata={metadata} file={location.file} memberPath={[...location.memberPath, ...memberPath]}
@@ -38,7 +45,7 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
 }
 
 function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplete }: {
-  asset: { token: string; source: string }; metadata: ResourceRegistrationMetadata; file: string; memberPath: string[];
+  asset: ResourceAssetSelection; metadata: ResourceRegistrationMetadata; file: string; memberPath: string[];
   onComplete(result: ResourceRegistrationResult): void;
 }) {
   const { target, writing, version } = useAuthoring(useShallow(state => ({ target: state.target,
@@ -46,7 +53,7 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
   const { document } = useCurrentDocument('skill.json');
   const packageId = getIn(document ?? undefined, ['m_AuthorPackage']);
   const [keys, setKeys] = useState<BusinessKeyMetadata[] | null>(null);
-  const [adapter, setAdapter] = useState<string | null>(null);
+  const [adapter, setAdapter] = useState<string>(asset.adapter);
   const [contextMode, setContextMode] = useState<'common' | 'specific' | null>(null);
   const [context, setContext] = useState('');
   const [key, setKey] = useState('');
@@ -62,7 +69,7 @@ function ResourceRegistrationForm({ asset, metadata, file, memberPath, onComplet
     return () => controller.abort();
   }, [target, version]);
   const packageKeys = keys?.filter(item => item.target.package === packageId) ?? [];
-  const adapters = [...new Set(packageKeys.flatMap(item => item.bindings.map(binding => binding.adapter)))];
+  const adapters = [...new Set([asset.adapter, ...packageKeys.flatMap(item => item.bindings.map(binding => binding.adapter))])];
   const actualContext = contextMode === 'common' ? '' : context;
   const matches = contextMode === null || adapter === null ? [] : packageKeys.filter(item => item.target.keyKind === metadata.keyKind &&
     item.bindings.some(binding => binding.adapter === adapter && binding.context === actualContext && binding.token === asset.token));

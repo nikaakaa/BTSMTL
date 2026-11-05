@@ -1,9 +1,26 @@
 import { ApiError, postJson } from './http';
-import { array, boolean, choice, nullable, number, object, text } from './playerRecords';
+import { array, boolean, choice, nullable, number, object, optional, text } from './playerRecords';
 
+const readObjectCapability = object({ owner: choice('Authoring'), command: choice('resource-objects'),
+  queryType: text, resultType: text, keyKind: text, domain: nullable(text) });
 export const readResourceRegistrationMetadata = object({ owner: choice('Authoring'), command: choice('register-resource'),
-  keyKind: text, inputKind: choice('asset', 'instance-resource', 'camera-effect'), inputType: text, referenceType: text });
+  keyKind: text, inputKind: choice('asset', 'instance-resource', 'camera-effect'), inputType: text, referenceType: text,
+  candidates: optional(readObjectCapability) });
 export type ResourceRegistrationMetadata = ReturnType<typeof readResourceRegistrationMetadata>;
+export type ResourceObjectQuery = { package: string; adapter: string; assetGuid: string; keyKind: string;
+  domain: string | null; objectType: string | null };
+export type ResourceObjectCapability =
+  | { kind: 'available'; scope: Omit<ResourceObjectQuery, 'adapter' | 'assetGuid'> }
+  | { kind: 'unavailable'; reason: string };
+const readObjectResult = object({ available: boolean, reason: nullable(text), revision: text,
+  items: array(object({ token: text, type: text, name: text, hierarchy: text })) });
+function readResourceObjects(value: unknown) {
+  const result = readObjectResult(value, 'ResourceObjects');
+  if (result.available) return { ...result, available: true as const };
+  if (result.reason === null) throw new Error('ResourceObjects 缺少不可用原因');
+  return { ...result, available: false as const, reason: result.reason };
+}
+export type ResourceObjects = ReturnType<typeof readResourceObjects>;
 const readTransaction = object({ changes: array(object({ path: text, before: nullable(text), after: nullable(text) })) });
 export type AuthoringDataTransaction = ReturnType<typeof readTransaction>;
 const resultFields = { revision: nullable(text), files: array(object({ path: text, content: text })), runtimeState: choice('pending') };
@@ -23,6 +40,8 @@ export type ResourceRegistrationRequest = {
 };
 const root = (skill: string) => `/api/authoring/skills/${encodeURIComponent(skill)}`;
 export const resourceRegistrationApi = {
+  objects: (query: ResourceObjectQuery, signal?: AbortSignal) =>
+    postJson<unknown>('/api/authoring/resources/objects', query, signal).then(readResourceObjects),
   register: (skill: string, request: ResourceRegistrationRequest) => {
     const { kind, ...input } = request.input;
     return postJson<unknown>(`${root(skill)}/resources/register`, { ...request, input: { kind, ...input } }).then(value => readRegistration(value));

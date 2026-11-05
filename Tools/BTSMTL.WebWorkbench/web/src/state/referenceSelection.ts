@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import type { QueryAvailability, ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
+import type { ResourceObjectCapability } from '../api/resourceRegistration';
 
 export type ReferenceCatalog =
   | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string; businessKeysAvailability: QueryAvailability | null }
   | { kind: 'unavailable'; reason: string };
 
-export type ResourceRegistrationSelection = { keyKind: string; choose(asset: { token: string; source: string }): void };
+export type ResourceAssetSelection = { token: string; source: string; adapter: string };
+export type ResourceRegistrationSelection = { keyKind: string; objects: ResourceObjectCapability; choose(asset: ResourceAssetSelection): void };
 
 export interface ReferenceFieldSelection {
   id: string;
