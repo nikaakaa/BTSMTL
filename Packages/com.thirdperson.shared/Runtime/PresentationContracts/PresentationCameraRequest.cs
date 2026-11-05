@@ -50,7 +50,7 @@ namespace ThirdPersonSimulation
             PresentationCameraRequestLifecycle lifecycle,
             string requestId,
             string sequenceId,
-            string resourceId,
+            int resourceIndex,
             string targetKey,
             string anchorKey,
             string aimPointKey,
@@ -76,7 +76,7 @@ namespace ThirdPersonSimulation
             Lifecycle = lifecycle;
             RequestId = Normalize(requestId);
             SequenceId = Normalize(sequenceId);
-            ResourceId = Normalize(resourceId);
+            ResourceIndex = resourceIndex;
             ResourceRevision = Normalize(resourceRevision);
             SourceStartTime = sourceStartTime;
             SourceEndTime = sourceEndTime;
@@ -106,8 +106,7 @@ namespace ThirdPersonSimulation
         public string RequestId { get; }
         [ValueTextRules(NullToEmpty = true)]
         public string SequenceId { get; }
-        [ValueTextRules(NullToEmpty = true)]
-        public string ResourceId { get; }
+        public int ResourceIndex { get; }
         [ValueTextRules(NullToEmpty = true)]
         public string ResourceRevision { get; }
         public float SourceStartTime { get; }
@@ -139,7 +138,7 @@ namespace ThirdPersonSimulation
 
         public PresentationCameraRequest WithActionTarget(string targetActorId) =>
             new PresentationCameraRequest(
-                Kind, Lifecycle, RequestId, SequenceId, ResourceId,
+                Kind, Lifecycle, RequestId, SequenceId, ResourceIndex,
                 targetActorId, AnchorKey, AimPointKey, PreferredBoneKey, Mode, EffectKind,
                 InterruptPolicy, Priority, Weight, BlendInSeconds, BlendOutSeconds,
                 ManualOrbitWeight, PitchWeight, YawWeight, CaptureLockStartOnSubmit,
@@ -160,7 +159,7 @@ namespace ThirdPersonSimulation
                 lifecycle,
                 sequenceId,
                 sequenceId,
-                string.Empty,
+                -1,
                 targetKey,
                 string.Empty,
                 string.Empty,
@@ -181,7 +180,7 @@ namespace ThirdPersonSimulation
             PresentationCameraRequestLifecycle lifecycle,
             string requestId,
             int effectKind,
-            string resourceId,
+            int resourceIndex,
             int priority,
             float weight,
             bool captureLockStartOnSubmit,
@@ -193,7 +192,7 @@ namespace ThirdPersonSimulation
                 lifecycle,
                 requestId,
                 string.Empty,
-                resourceId,
+                resourceIndex,
                 string.Empty,
                 string.Empty,
                 string.Empty,
@@ -224,7 +223,7 @@ namespace ThirdPersonSimulation
                 lifecycle,
                 string.Empty,
                 string.Empty,
-                string.Empty,
+                -1,
                 string.Empty,
                 string.Empty,
                 string.Empty,
@@ -256,7 +255,7 @@ namespace ThirdPersonSimulation
                 lifecycle,
                 string.Empty,
                 string.Empty,
-                string.Empty,
+                -1,
                 targetKey,
                 anchorKey,
                 aimPointKey,
@@ -321,7 +320,6 @@ namespace ThirdPersonSimulation
             RequireUnit(YawWeight, nameof(YawWeight));
             Normalize(RequestId);
             Normalize(SequenceId);
-            Normalize(ResourceId);
             Normalize(AnchorKey);
             Normalize(AimPointKey);
             Normalize(PreferredBoneKey);
