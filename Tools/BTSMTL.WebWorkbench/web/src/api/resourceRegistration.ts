@@ -12,6 +12,10 @@ export type ResourceReference = ReturnType<typeof readResourceReference>;
 export const resourceReferenceKey = (value: ResourceReference) => JSON.stringify([value.package, value.keyKind, value.key, value.context]);
 export const readExecutionScopeSelection = object({ previewScope: nullable(readResourceReference), runtimeScope: nullable(readResourceReference) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
+export const readResourceDeclaration = object({ keyKind: text, referenceKind: text, domain: nullable(text),
+  registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')), inputType: nullable(text) });
+export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
+const readProfileResource = object({ reference: readResourceReference, token: nullable(text), instanceCapacity: nullable(number) });
 export type ResourceObjectQuery = { package: string; adapter: string; assetGuid: string; keyKind: string;
   domain: string | null; objectType: string | null };
 export type ResourceObjectCapability =
@@ -34,7 +38,8 @@ const readRegistration = object({ ...resultFields,
   reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction });
 const readReplay = object(resultFields);
 const readProfile = object({ package: text, adapter: text, assetToken: text, domain: text, context: text,
-  revision: text, configurationJson: text, operations: array(object({ command: text, inputType: text, resultType: text })) });
+  revision: text, configurationJson: text, resourceDeclarations: array(readResourceDeclaration), resources: array(readProfileResource),
+  operations: array(object({ command: text, inputType: text, resultType: text })) });
 export type AuthoringProfile = ReturnType<typeof readProfile>;
 export type ProfileQuery = Pick<AuthoringProfile, 'package' | 'adapter' | 'assetToken'>;
 export const profileQueryKey = (query: ProfileQuery) => JSON.stringify([query.package, query.adapter, query.assetToken]);

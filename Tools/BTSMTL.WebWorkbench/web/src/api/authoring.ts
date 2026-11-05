@@ -1,7 +1,8 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
-import { readExecutionScopeSelection, readResourceReference, readResourceRegistrationMetadata, type ExecutionScopeSelection, type ResourceReference, type ResourceRegistrationMetadata } from './resourceRegistration';
+import { readExecutionScopeSelection, readResourceDeclaration, readResourceReference, readResourceRegistrationMetadata,
+  type ExecutionScopeSelection, type ResourceDeclaration, type ResourceReference, type ResourceRegistrationMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -118,8 +119,9 @@ export interface BusinessKeyAddress {
 const readBusinessKeyTarget = object({ kind: choice('BusinessKey'), package: text, keyKind: text, key: text });
 export type BusinessKeyTarget = ReturnType<typeof readBusinessKeyTarget>;
 const readBusinessKeys = array(object({ target: readBusinessKeyTarget, declared: boolean, referenceKind: text,
+  domain: nullable(text), registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')),
   bindings: array(object({ adapter: text, context: text, token: nullable(text), state: choice('bound', 'unbound'),
-    projectionKind: nullable(text), projectionState: choice('available', 'missing', 'not-required') })),
+    projectionKind: nullable(text), projectionState: choice('available', 'missing', 'not-required'), instanceCapacity: nullable(number) })),
 }));
 export type BusinessKeyMetadata = ReturnType<typeof readBusinessKeys>[number];
 
@@ -289,6 +291,7 @@ export type ProjectItem = ProjectItemBase & (
 
 export interface AuthoringProject extends Page<ProjectItem> {
   catalogRevision: string;
+  keyDeclarations: ResourceDeclaration[];
   businessKeys: BusinessKeyMetadata[];
 }
 
@@ -841,7 +844,8 @@ export const authoringApi = {
     allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal).then(page => page.items),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<ProjectItem, AuthoringProject>(`${targetPath(target)}/queries/project`, { editingView }, signal)
-      .then(result => ({ ...result, businessKeys: readBusinessKeys(result.businessKeys, 'Project.businessKeys') })),
+      .then(result => ({ ...result, keyDeclarations: array(readResourceDeclaration)(result.keyDeclarations, 'Project.keyDeclarations'),
+        businessKeys: readBusinessKeys(result.businessKeys, 'Project.businessKeys') })),
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
