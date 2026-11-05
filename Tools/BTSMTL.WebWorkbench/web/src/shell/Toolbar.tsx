@@ -339,6 +339,7 @@ function PreviewModeChoice() {
       : state.live?.player?.source?.adoptedMode ?? null,
   })));
   if (!modes?.length && !observing) return null;
+  const unavailable = modes?.find(mode => mode.id === selected && !mode.available);
   const adoptedLabel = adoptedMode === null ? '未记录' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
   return (
     <div className={styles.modes} role="group" aria-label="预览档位">
@@ -350,6 +351,7 @@ function PreviewModeChoice() {
       {observing && <Tip content={adoptedMode === null ? '该来源未记录实际采用档位；采用值未知不代表载入失败。' : `宿主记录的实际采用档位：${adoptedMode}`}>
         <span className={styles.dim} role="status">实际采用：{adoptedLabel}</span>
       </Tip>}
+      {unavailable && <span role="status">{unavailable.reason}</span>}
     </div>
   );
 }

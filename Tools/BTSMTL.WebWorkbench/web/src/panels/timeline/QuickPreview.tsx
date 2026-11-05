@@ -72,6 +72,7 @@ export function QuickPreview() {
       <Button variant="ghost" disabled={sourceReason !== null || state.description.kind === 'loading' || inProgress}
         tip={sourceReason ?? '读取当前场景、作者内容与输入方案'}
         onClick={() => void quickPreview.readSource()}>读取来源</Button>
+      {state.description.kind === 'loading' && <Button onClick={() => quickPreview.cancelSourceRead()}>取消读取来源</Button>}
       {cancellable && <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消'}</Button>}
       {job.kind === 'failed' && job.reply !== null && !job.reply.data.completed && <Button onClick={() => void quickPreview.readStatus()}>重读状态</Button>}
       {inProgress && <span role="status">{job.kind === 'starting' ? '提交中' : job.kind === 'starting-cancelled' ? '等待作业身份以取消'
@@ -191,7 +192,7 @@ function QuickRoute({ result }: { result: NonNullable<QuickPreviewState['accepte
   return <>
     <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong><span>{plan.status} · {plan.duration.toFixed(3)} {plan.clock.unit}</span></PanelBar>
     {stale && <p className={styles.notice} role="status">当前内容或输入已变化，新计划采用前保留上一份路线。</p>}
-    <input className={styles.scrub} type="range" aria-label={`路线游标（${plan.clock.unit}）`} min={bounds.first} max={bounds.last}
+    <input className={styles.scrub} type="range" aria-label={`路线游标（${plan.clock.unit}）`} min={bounds.first} max={bounds.last} disabled={stale}
       step="any" value={seconds} onChange={event => quickPreview.seek(Number(event.currentTarget.value))} />
     <div className={styles.route}>
       {plan.segments.map((segment, index) => <div className={styles.segment} key={index}>

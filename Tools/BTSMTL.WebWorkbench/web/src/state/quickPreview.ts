@@ -306,6 +306,11 @@ export const quickPreview = {
     set({ scheme, accepted: null, seconds: 0 });
     invalidateJob();
   },
+  cancelSourceRead() {
+    descriptionController?.abort();
+    descriptionController = null;
+    set({ description: { kind: 'stale', reason: '已取消读取来源，可重新读取。' } });
+  },
   outputDirectory(outputDirectory: string) { set({ outputDirectory }); },
   unavailableReason(): string | null {
     const result = preparation();
