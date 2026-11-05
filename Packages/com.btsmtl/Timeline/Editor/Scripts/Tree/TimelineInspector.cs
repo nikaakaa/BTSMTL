@@ -122,7 +122,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_Resources.Draw();
                 using (new EditorGUI.DisabledScope(!m_Resources.Ready))
-                    if (GUILayout.Button(m_Resources.Registration == null ? "应用资源引用" : "登记并应用资源"))
+                    if (GUILayout.Button("应用资源引用"))
                         m_Resources.Queue(() => ApplyResource(asset, clip));
             }
             if (!string.IsNullOrEmpty(m_ConfigurationError))

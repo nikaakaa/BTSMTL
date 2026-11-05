@@ -20,8 +20,7 @@ namespace BTSMTL.Timeline.Editor
         public OrchestrationTime DefaultEndTime;
         public OrchestrationTime TimelineEndTime;
         public UnityEngine.Object Resource;
-        public GraphAuthoringResourceReference ResourceReference;
-        public GraphAuthoringResourceRegistrationInput ResourceRegistration;
+        public string ResourceReference;
         public Clip Prototype;
         public TimelineAuthoringClipConfiguration Configuration;
         public ScriptableObject TreeGraph;
@@ -59,7 +58,6 @@ namespace BTSMTL.Timeline.Editor
             UnityEngine.Object previous = m_Request.Resource;
             m_Request.Resource = selection.Source;
             m_Request.ResourceReference = selection.Reference;
-            m_Request.ResourceRegistration = selection.Registration;
             foreach (TimelineAuthoringProperty property in m_Properties)
                 if (property.IsSourceAsset) m_Request.Configuration.Set(property.PropertyId, selection.Reference);
             if (m_Request.Resource && previous != m_Request.Resource)
@@ -182,39 +180,37 @@ namespace BTSMTL.Timeline.Editor
     sealed class TimelineResourceSelection
     {
         readonly TimelineData m_Timeline;
-        readonly TimelineAuthoringProperty m_Property;
+        readonly string m_Domain;
         readonly Action<TimelineResourceSelection> m_Changed;
         readonly Action m_Repaint;
         ITimelineAuthoringResourceDocument m_Document;
-        GraphAuthoringResourceReference[] m_Scopes;
-        GraphAuthoringResourceReference m_Scope;
+        GraphAuthoringResourceChoice[] m_Scopes;
+        string m_Scope;
         GraphAuthoringResourceDeclaration m_Declaration;
-        GraphAuthoringResourceReference[] m_References = Array.Empty<GraphAuthoringResourceReference>();
-        GraphAuthoringResourceReference m_Reference;
+        GraphAuthoringResourceChoice[] m_References = Array.Empty<GraphAuthoringResourceChoice>();
+        string m_Reference;
         GraphAuthoringResourceObjectCandidate[] m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
         int m_SelectedObject = -1;
         UnityEngine.Object m_File;
         TimelineAuthoringReferenceValue m_Resolution;
-        GraphAuthoringResourceRegistrationInput m_Registration;
         string m_Error;
 
         internal TimelineResourceSelection(Clip clip, Action<TimelineResourceSelection> changed, Action repaint,
             UnityEngine.Object initialSource = null)
         {
             m_Timeline = clip.Timeline;
-            m_Property = TimelineAuthoringClipBinding.Properties(clip).Single(property => property.IsSourceAsset);
+            m_Domain = TimelineAuthoringClipBinding.ResourceDomain(clip);
             m_Changed = changed;
             m_Repaint = repaint;
-            m_Reference = initialSource ? default : ((ITimelineAuthoringResourceClip)clip).ResourceReference;
+            m_Reference = initialSource ? null : ((ITimelineAuthoringResourceClip)clip).ResourceReference;
             m_File = initialSource;
             Queue(Prepare);
         }
 
         internal UnityEngine.Object Source => m_Resolution.Asset;
-        internal GraphAuthoringResourceRegistrationInput Registration => m_Registration;
-        internal GraphAuthoringResourceReference Reference => m_Registration == null ? m_Reference :
-            new GraphAuthoringResourceReference(m_Scope.Package, m_Property.SourceAssetKind, m_Registration.Key, m_Scope.Context);
-        internal bool Ready => Source && (m_Registration != null || !m_Reference.IsEmpty);
+        internal string Reference => m_Reference;
+        internal bool Ready => m_Declaration != null && !string.IsNullOrEmpty(m_Reference) &&
+            !m_Resolution.IsMissing && (m_Declaration.Selection != "asset" || Source);
 
         internal void Queue(Action action, Action completed = null)
         {
@@ -238,14 +234,11 @@ namespace BTSMTL.Timeline.Editor
             if (m_Document == null) throw new InvalidOperationException("当前 Timeline 没有正式资源文档，请从其作者文档打开。");
             m_Scopes = m_Document.ResourceScopes().ToArray();
             m_Scope = m_Document.ResourceScope(m_Timeline);
-            m_Declaration = null;
-            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Reference);
-            m_Registration = null;
+            m_Declaration = m_Document.ResourceDeclaration(m_Timeline, m_Domain);
+            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference);
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
-            if (m_Scope.IsEmpty) return;
-            m_Declaration = m_Document.ResourceDeclaration(m_Timeline, m_Property.SourceAssetKind);
-            m_References = m_Document.ResourceReferences(m_Timeline, m_Property.SourceAssetKind).ToArray();
-            if (!m_Reference.IsEmpty) m_File = Source;
+            m_References = m_Document.ResourceReferences(m_Timeline, m_Domain).ToArray();
+            if (!string.IsNullOrEmpty(m_Reference)) m_File = Source;
             else if (m_File) SelectSource(m_File);
         }
 
@@ -253,38 +246,39 @@ namespace BTSMTL.Timeline.Editor
         {
             if (m_Scopes != null)
             {
-                int index = Array.IndexOf(m_Scopes, m_Scope);
-                int selected = EditorGUILayout.Popup(new GUIContent("作者 Scope"), index,
-                    m_Scopes.Select(scope => new GUIContent(scope.Key, scope.Package + " / " + scope.Context)).ToArray());
+                int index = Array.FindIndex(m_Scopes, scope => scope.Value == m_Scope);
+                int selected = EditorGUILayout.Popup(new GUIContent("执行范围"), index,
+                    m_Scopes.Select(scope => new GUIContent(scope.Display, scope.Value)).ToArray());
                 if (selected != index)
                 {
-                    GraphAuthoringResourceReference scope = m_Scopes[selected];
+                    string scope = m_Scopes[selected].Value;
                     Queue(() =>
                     {
-                        m_Reference = default;
+                        m_File = null;
                         try { m_Document.SelectResourceScope(m_Timeline, scope); }
                         finally { Prepare(); }
                     });
                 }
-                if (m_Scope.IsEmpty) EditorGUILayout.HelpBox(m_Scopes.Length == 0 ? "当前没有已声明的实际执行 Scope。" : "请明确选择资源所属的作者 Scope。", MessageType.Info);
+                if (string.IsNullOrEmpty(m_Scope)) EditorGUILayout.HelpBox(m_Scopes.Length == 0 ? "当前没有已声明的实际执行范围。" : "请选择载体映射所用的实际执行范围。", MessageType.Info);
             }
             if (m_Declaration != null)
             {
-                int key = Array.IndexOf(m_References, m_Reference);
-                int selected = EditorGUILayout.Popup("业务键", key, m_References.Select(reference => reference.Key).ToArray());
+                int key = Array.FindIndex(m_References, reference => reference.Value == m_Reference);
+                int selected = EditorGUILayout.Popup(new GUIContent("资源"), key,
+                    m_References.Select(reference => new GUIContent(reference.Display, reference.Conflict ?? reference.Value)).ToArray());
                 if (selected != key)
                 {
-                    GraphAuthoringResourceReference reference = m_References[selected];
+                    string reference = m_References[selected].Value;
                     Queue(() => SelectReference(reference));
                 }
-                if (m_Declaration.Availability.Available)
+                if (m_Declaration.Selection == "asset" && m_Declaration.Availability.Available)
                 {
                     UnityEngine.Object source = EditorGUILayout.ObjectField("资源", m_File, typeof(UnityEngine.Object), false);
                     if (source != m_File) Queue(() => SelectSource(source));
                     if (m_Objects.Length != 0)
                     {
                         int choice = EditorGUILayout.Popup(new GUIContent("资源子对象"), m_SelectedObject,
-                            m_Objects.Select(candidate => new GUIContent(candidate.Hierarchy + " · " + candidate.Type, candidate.Token)).ToArray());
+                            m_Objects.Select(candidate => new GUIContent(candidate.Hierarchy + " · " + candidate.Type, candidate.Value)).ToArray());
                         if (choice != m_SelectedObject)
                         {
                             m_SelectedObject = choice;
@@ -293,29 +287,21 @@ namespace BTSMTL.Timeline.Editor
                         }
                     }
                 }
-                else EditorGUILayout.HelpBox(m_Declaration.Availability.Reason, MessageType.Info);
-                if (m_Registration != null)
-                {
-                    m_Registration.Key = EditorGUILayout.TextField("新业务键", m_Registration.Key);
-                    if (m_Registration is GraphAuthoringInstanceResourceRegistrationInput instance)
-                        instance.InstanceCapacity = EditorGUILayout.IntField("实例容量", instance.InstanceCapacity);
-                    if (m_Registration is GraphAuthoringCameraEffectRegistrationInput effect)
-                        effect.EffectKind = EditorGUILayout.TextField("效果类型", effect.EffectKind);
-                }
+                else if (!m_Declaration.Availability.Available)
+                    EditorGUILayout.HelpBox(m_Declaration.Availability.Reason, MessageType.Info);
             }
             if (m_Resolution.IsMissing) EditorGUILayout.HelpBox(m_Resolution.ErrorMessage, MessageType.Error);
             if (m_Error != null) EditorGUILayout.HelpBox(m_Error, MessageType.Error);
         }
 
-        void SelectReference(GraphAuthoringResourceReference reference)
+        void SelectReference(string reference)
         {
             m_Reference = reference;
-            m_Registration = null;
             m_File = null;
             m_Resolution = default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_SelectedObject = -1;
-            m_Resolution = m_Document.ResolveResource(m_Timeline, reference);
+            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, reference);
             m_File = Source;
         }
 
@@ -323,16 +309,17 @@ namespace BTSMTL.Timeline.Editor
         {
             m_File = source;
             m_Resolution = default;
-            m_Reference = default;
-            m_Registration = null;
-            m_References = Array.Empty<GraphAuthoringResourceReference>();
+            m_Reference = null;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_SelectedObject = -1;
             if (!source) return;
-            GraphAuthoringResourceObjectResult result = m_Document.ResourceObjects(m_Timeline, m_Property.SourceAssetKind, source);
+            if (m_Declaration.Selection != "asset")
+                throw new InvalidOperationException("此领域按载体映射，请从目录中选择已配置的名字。");
+            GraphAuthoringResourceObjectResult result = m_Document.ResourceObjects(m_Timeline, m_Domain, source);
             if (!result.Available) throw new InvalidOperationException(result.Reason);
             m_Objects = result.Items;
-            GraphAuthoringResourceObjectCandidate exact = m_Objects.SingleOrDefault(candidate => m_Document.ResolveResourceObject(candidate.Token) == source);
+            GraphAuthoringResourceObjectCandidate exact = m_Objects.SingleOrDefault(candidate =>
+                candidate.Name == source.name && candidate.Type == source.GetType().FullName);
             if (exact != null) SelectObject(exact);
             else if (m_Objects.Length == 0) throw new InvalidOperationException("所选文件没有满足当前正式资源能力声明的对象。");
         }
@@ -340,22 +327,11 @@ namespace BTSMTL.Timeline.Editor
         void SelectObject(GraphAuthoringResourceObjectCandidate candidate)
         {
             m_SelectedObject = Array.IndexOf(m_Objects, candidate);
-            m_Resolution = new TimelineAuthoringReferenceValue(m_Document.ResolveResourceObject(candidate.Token));
-            m_References = m_Document.ResourceReferences(m_Timeline, m_Property.SourceAssetKind, Source).ToArray();
-            m_Registration = null;
-            m_Reference = default;
-            if (m_References.Length == 1) m_Reference = m_References[0];
-            else if (m_References.Length == 0)
-            {
-                if (m_Declaration.RegistrationInput == null) throw new InvalidOperationException("该资源类别没有正式登记操作，请先在原作者入口创建业务键。");
-                Type inputType = typeof(GraphAuthoringResourceRegistrationInput).Assembly.GetType(m_Declaration.InputType, true);
-                m_Registration = (GraphAuthoringResourceRegistrationInput)Activator.CreateInstance(inputType);
-                m_Registration.Token = candidate.Token;
-                m_Registration.Key = candidate.Name;
-            }
+            m_Reference = candidate.Value;
+            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference);
         }
 
-        internal static void ApplyReference(Clip clip, GraphAuthoringResourceReference reference, UnityEngine.Object source)
+        internal static void ApplyReference(Clip clip, string reference, UnityEngine.Object source)
         {
             TimelineAuthoringClipConfiguration configuration = TimelineAuthoringClipBinding.Read(clip);
             foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(clip))
@@ -366,8 +342,7 @@ namespace BTSMTL.Timeline.Editor
 
         internal void Commit(Clip clip)
         {
-            if (m_Registration != null) m_Document.RegisterResource(clip, m_Registration, reference => ApplyReference(clip, reference, Source));
-            else m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference, Source), "选择 Timeline 资源");
+            m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference, Source), "选择 Timeline 资源");
         }
     }
 
@@ -388,7 +363,7 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Selection.Draw();
             using (new EditorGUI.DisabledScope(!m_Selection.Ready))
-                if (GUILayout.Button(m_Selection.Registration == null ? "应用资源引用" : "登记并应用资源"))
+                if (GUILayout.Button("应用资源引用"))
                     m_Selection.Queue(() => m_Apply(m_Selection), () => editorWindow.Close());
         }
     }
