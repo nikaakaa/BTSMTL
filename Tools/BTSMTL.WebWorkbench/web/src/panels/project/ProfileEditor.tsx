@@ -29,12 +29,13 @@ export function ProfileSources({ profiles, businessKeys }: { profiles: ProfileLo
         options={adapters.map(value => ({ value, label: value }))} onChange={setAdapter} />
     </PanelBar>
     {profile !== undefined && adapters.length === 0 && <div className={styles.note}>该作者包尚未提供 Profile 的正式适配者候选。</div>}
-    {profile !== undefined && adapter !== null && <ProfileEditor key={JSON.stringify([locationKey(profile), adapter])}
-      query={{ package: profile.package, adapter, assetToken: profile.assetToken }} location={profile} businessKeys={businessKeys} />}
+    <PanelBar><Button disabled={profile === undefined || adapter === null} onClick={() => authoringActions.activateProfile({
+      package: profile!.package, adapter: adapter!, assetToken: profile!.assetToken,
+    })}>打开实际 Profile</Button></PanelBar>
   </Fold>;
 }
 
-function ProfileEditor({ query, location, businessKeys }: { query: ProfileQuery; location: ProfileLocation; businessKeys: BusinessKeyMetadata[] }) {
+export function ProfileEditor({ query, location, businessKeys }: { query: ProfileQuery; location: ProfileLocation | undefined; businessKeys: BusinessKeyMetadata[] }) {
   const document = useAuthoring(state => profileDocument(state, query));
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const key = profileQueryKey(query);
@@ -50,7 +51,7 @@ function ProfileEditor({ query, location, businessKeys }: { query: ProfileQuery;
   const supports = (command: string) => source.operations.some(operation => operation.command === command);
   const dirty = profileDirty(document);
   return <div onFocusCapture={() => authoringActions.activateProfile(query)} onPointerDownCapture={() => authoringActions.activateProfile(query)}>
-    <div className={styles.facts}><strong>{location.name} · {source.domain}</strong><code>{location.source}</code>
+    <div className={styles.facts}><strong>{location?.name ?? 'Profile'} · {source.domain}</strong>{location && <code>{location.source}</code>}
       <small>{source.package} · {source.adapter} · 上下文 {source.context || '公共'}</small></div>
     {failure && <ErrorLine {...failure} />}{document.failure && <ErrorLine {...document.failure} />}
     <PanelBar wrap>

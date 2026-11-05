@@ -567,6 +567,11 @@ useAuthoring.subscribe((state, previous) => {
   scheduleDocumentReload(target);
 });
 
+useWorkbench.subscribe((state, previous) => {
+  if (state.selection !== null && state.selection !== previous.selection && useAuthoring.getState().profileTarget !== null)
+    useAuthoring.setState({ profileTarget: null });
+});
+
 export const authoringActions = {
   async createSkill(request: SkillCreationRequest) {
     const target = { kind: 'skill', name: request.parameters.name } as const;
@@ -792,14 +797,14 @@ export const authoringActions = {
     if (current !== null && profileQueryKey(current) === profileQueryKey(query)) set({ profileTarget: null });
   },
   async openProfile(query: ProfileQuery, signal?: AbortSignal, reload = false) {
+    set({ profileTarget: query });
     const previous = profileDocument(useAuthoring.getState(), query);
-    if (previous !== undefined && !reload) { set({ profileTarget: query }); return; }
+    if (previous !== undefined && !reload) return;
     const source = await resourceRegistrationApi.readProfile(query, signal);
     signal?.throwIfAborted();
     updateProfile(query, previous === undefined ? { source, configuration: profileConfiguration(source), undo: [], redo: [],
       writing: false, failure: null, message: '' } : { ...previous, source,
       configuration: profileDirty(previous) ? previous.configuration : profileConfiguration(source), failure: null, message: '已读取正式来源，当前编辑仍保留。' });
-    set({ profileTarget: query });
   },
   editProfile(query: ProfileQuery, configuration: JsonObject) {
     const document = profileDocument(useAuthoring.getState(), query)!;
@@ -1491,8 +1496,8 @@ function invalidateProfileConsumers() {
 }
 
 async function applyProfile(query: ProfileQuery, operation: (source: AuthoringProfile) => Promise<ProfileOperationResult>, savesConfiguration: boolean) {
-  const document = profileDocument(useAuthoring.getState(), query)!;
-  if (document.writing) return null;
+  const document = profileDocument(useAuthoring.getState(), query);
+  if (document === undefined || document.writing) return null;
   updateProfile(query, { ...document, writing: true, failure: null });
   try {
     const result = await operation(document.source);
@@ -1514,7 +1519,8 @@ async function applyProfile(query: ProfileQuery, operation: (source: AuthoringPr
 
 async function stepProfile(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const query = get().profileTarget!;
-  const document = profileDocument(useAuthoring.getState(), query)!;
+  const document = profileDocument(useAuthoring.getState(), query);
+  if (document === undefined) return;
   const previous = document[from].at(-1);
   if (previous === undefined || document.writing) return;
   const next = { configuration: cloneJson(document.configuration), transaction: previous.transaction };

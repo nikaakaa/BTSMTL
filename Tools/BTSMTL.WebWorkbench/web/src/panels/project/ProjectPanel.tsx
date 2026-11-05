@@ -17,7 +17,8 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AnimationDetails } from './AnimationDetails';
 import { CarrierScopeDetails, carrierProfiles } from './CarrierProject';
-import { ProfileSources, type ProfileLocation } from './ProfileEditor';
+import { ProfileEditor, ProfileSources, type ProfileLocation } from './ProfileEditor';
+import { profileQueryKey } from '../../api/resourceRegistration';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
@@ -364,6 +365,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
       clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
       carriers={selectedFile ? carrierBySource.get(selectedFile.path) ?? [] : []}
       profiles={selectedFile ? profilesBySource.get(selectedFile.path) ?? [] : []} businessKeys={carriers?.businessKeys ?? []}
+      profileLocations={[...profilesBySource.values()].flat()}
       item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
       profileTarget={profileTarget}
       onCreated={() => { setCreating(null); onRefresh(); load(folder, true); }}
@@ -371,15 +373,22 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
   </div>;
 }
 
-function ProjectDetails({ file, creating, target, elements, library, clips, carriers, profiles, businessKeys, item, items, stamp, profileTarget, onCreated, onChanged }: {
+function ProjectDetails({ file, creating, target, elements, library, clips, carriers, profiles, profileLocations, businessKeys, item, items, stamp, profileTarget, onCreated, onChanged }: {
   file: ProjectFileEntry | null; creating: SkillContentKind | null; target: string | null; elements: ReturnType<typeof useSkillElements>;
   library: AnimationLibrary | null; clips: AnimationClip[] | null; carriers: AuthoringCarrier[];
   profiles: ProfileLocation[]; businessKeys: BusinessKeyMetadata[];
+  profileLocations: ProfileLocation[];
   item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
   onCreated(): void; onChanged(): void;
 }) {
+  const openedProfile = useAuthoring(state => state.profileTarget);
   if (creating !== null) return <div className={projectStyles.details}>
     <SkillContentCreation key={creating} kind={creating} skill={target} elements={elements} onDone={onCreated} />
+  </div>;
+  if (openedProfile !== null) return <div className={projectStyles.details}>
+    <PanelBar><span>当前 Profile 编辑</span><Button variant="ghost" onClick={() => authoringActions.releaseProfile(openedProfile)}>关闭 Profile 编辑</Button></PanelBar>
+    <ProfileEditor key={profileQueryKey(openedProfile)} query={openedProfile} businessKeys={businessKeys}
+      location={profileLocations.find(item => item.package === openedProfile.package && item.assetToken === openedProfile.assetToken)} />
   </div>;
   if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;
   if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;
