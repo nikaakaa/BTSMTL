@@ -58,9 +58,12 @@ namespace BTSMTL.Timeline
         public static void PrepareResource(Clip clip)
         {
             if (clip is ITimelineAuthoringResourceClip resource)
-                resource.BindSourceAsset(resource.ResourceReference.IsEmpty ? null :
-                    ((ITimelineAuthoringResourceDocument)clip.Timeline.AuthoringDocument)
+            {
+                resource.BindResourceResolution(default);
+                if (!resource.ResourceReference.IsEmpty)
+                    resource.BindResourceResolution(((ITimelineAuthoringResourceDocument)clip.Timeline.AuthoringDocument)
                         .ResolveResource(clip.Timeline, resource.ResourceReference));
+            }
         }
 
         public static void PrepareResources(TimelineData timeline)

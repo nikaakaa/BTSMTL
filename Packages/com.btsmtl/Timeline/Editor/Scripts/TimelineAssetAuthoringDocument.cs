@@ -77,7 +77,7 @@ namespace BTSMTL.Timeline.Editor
             m_Resources.ResourceDeclaration(timeline, keyKind);
         public IReadOnlyList<GraphAuthoringResourceReference> ResourceReferences(TimelineData timeline, string keyKind,
             UnityEngine.Object source = null) => m_Resources.ResourceReferences(timeline, keyKind, source);
-        public UnityEngine.Object ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference) =>
+        public TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference) =>
             m_Resources.ResolveResource(timeline, reference);
         public GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source) =>
             m_Resources.ResourceObjects(timeline, keyKind, source);

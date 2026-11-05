@@ -24,6 +24,12 @@ namespace BTSMTL.Timeline
 
         public static TimelineAuthoringReferenceValue Reference(Clip clip)
         {
+            if (clip is ITimelineAuthoringResourceClip resource)
+            {
+                TimelineAuthoringReferenceValue resolution = resource.ResourceResolution;
+                if (resolution.Asset || resolution.IsMissing)
+                    return resolution;
+            }
             UnityEngine.Object asset = ReferenceAsset(clip);
             if (asset)
                 return new TimelineAuthoringReferenceValue(asset);

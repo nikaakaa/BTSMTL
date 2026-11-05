@@ -507,6 +507,7 @@ namespace BTSMTL.Timeline
 
         public void CommitAuthoringBatch()
         {
+            TimelineAuthoringGraphBindings.Prepare(this);
             AlignTerminalTimeClips();
             m_AuthoringBatchDepth--;
             UpdateMix();
@@ -534,6 +535,7 @@ namespace BTSMTL.Timeline
             {
                 UpdateSerializedTimeline();
                 action?.Invoke();
+                TimelineAuthoringGraphBindings.Prepare(this);
                 Init();
                 if (AlignTerminalTimeClips())
                     Init();

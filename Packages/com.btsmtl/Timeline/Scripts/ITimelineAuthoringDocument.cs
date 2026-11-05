@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline
             UnityEngine.Object source = null);
         GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source);
         UnityEngine.Object ResolveResourceObject(string token);
-        UnityEngine.Object ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference);
+        TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference);
         void RegisterResource(Clip clip, GraphAuthoringResourceRegistrationInput input,
             Action<GraphAuthoringResourceReference> apply);
     }
@@ -33,6 +33,8 @@ namespace BTSMTL.Timeline
     public interface ITimelineAuthoringResourceClip
     {
         GraphAuthoringResourceReference ResourceReference { get; }
+        TimelineAuthoringReferenceValue ResourceResolution { get; }
+        void BindResourceResolution(TimelineAuthoringReferenceValue resolution);
         void BindSourceAsset(UnityEngine.Object source);
     }
 }
