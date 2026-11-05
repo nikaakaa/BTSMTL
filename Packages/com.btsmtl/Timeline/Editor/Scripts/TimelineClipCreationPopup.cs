@@ -209,7 +209,7 @@ namespace BTSMTL.Timeline.Editor
 
         internal UnityEngine.Object Source => m_Resolution.Asset;
         internal string Reference => m_Reference;
-        internal bool Ready => m_Declaration != null && !string.IsNullOrEmpty(m_Reference) &&
+        internal bool Ready => m_Declaration != null && m_Declaration.Availability.Available && m_Error == null && !string.IsNullOrEmpty(m_Reference) &&
             !m_Resolution.IsMissing && (m_Declaration.Selection != "asset" || Source);
 
         internal void Queue(Action action, Action completed = null)
