@@ -476,5 +476,6 @@ export type PlayerArchiveRange = { firstFrame: string; lastFrame: string; offset
 
 export const newPlayerJobId = (): PlayerJobId => crypto.randomUUID() as PlayerJobId;
 export const readPlayerJobId = jobId;
+export { runSource as readPlayerRunSource };
 
 export { array, boolean, choice, hosted, identity, nullable, number, object, opaque, optional, text, tuple, type Decoder };

@@ -3,7 +3,7 @@ import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFil
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ExecutionScopeSelection, type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
-import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
+import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
   type StartPlayerJobRequest } from './playerRecords';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
@@ -506,13 +506,13 @@ const readInputSaveResult = object({
 });
 export type InputSaveResult = ReturnType<typeof readInputSaveResult>;
 
-const readSaveAbsence = (value: unknown, path = 'SkillSave'): null => {
-  if (value !== null) throw new Error(`${path}：未请求编译与应用的保存需要空回执`);
+const readNull = (value: unknown, path = 'Authoring'): null => {
+  if (value !== null) throw new Error(`${path} 需要 null`);
   return null;
 };
 const readPendingSaveResult = object({
   saved: readSaved, compilationState: choice('not-requested'), runtimeState: choice('pending'),
-  content: readSkillSnapshot, compilation: readSaveAbsence, preview: readSaveAbsence,
+  content: readSkillSnapshot, compilation: readNull, preview: readNull,
 });
 const readUnavailableSaveResult = object({
   saved: readSaved, compilationState: choice('not-started'), runtimeState: choice('pending'), content: readSkillSnapshot,
@@ -579,26 +579,33 @@ export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
   | { stage: 'failed' | 'unavailable'; adoptedSceneRevision: null; package: SkillRefreshPackage | null; command: SkillRefreshCommand | null; error: string; statusPath: string | null }
 );
 
-function readSkillRefreshReceipt(receipt: PlayerSkillRefreshReceipt): PlayerSkillRefreshReceipt {
-  const progress = object({ phases: preparationPhases, adoptedSceneRevision: nullable(text) })(receipt, 'SkillRefresh');
-  if (receipt.stage !== 'adopted' && progress.adoptedSceneRevision !== null)
+function readSkillRefreshReceipt(value: unknown, path = 'SkillRefresh'): PlayerSkillRefreshReceipt {
+  const receipt = object({ requestId: text, liveId: text, playerBuildId: nullable(text), sourceRevision: text,
+    baseSceneRevision: text, source: readPlayerRunSource, phases: preparationPhases, adoptedSceneRevision: nullable(text),
+    stage: choice('accepted', 'adopted', 'failed', 'unavailable'), package: opaque, command: nullable(readPlayerCommandResult) })(value, path);
+  if (receipt.stage !== 'adopted' && receipt.adoptedSceneRevision !== null)
     throw new Error('SkillRefresh 尚未采用时不能提供已采用场景修订');
-  const command = receipt.command === null ? null : readPlayerCommandResult(receipt.command, 'SkillRefresh.command');
+  const command = receipt.command;
   switch (receipt.stage) {
     case 'accepted':
       if (command?.stage !== 'submitted') throw new Error('SkillRefresh.accepted.command.stage 需要 submitted');
-      return { ...receipt, phases: progress.phases, package: readSkillRefreshPackage(receipt.package, 'SkillRefresh.package'),
+      return { ...receipt, ...object({ error: readNull, statusPath: text })(value, path), stage: receipt.stage, adoptedSceneRevision: null,
+        package: readSkillRefreshPackage(receipt.package, `${path}.package`),
         command: { ...command, stage: command.stage } };
-    case 'adopted':
-      if (progress.adoptedSceneRevision === null) throw new Error('SkillRefresh.adopted 缺少实际采用场景修订');
+    case 'adopted': {
+      if (receipt.adoptedSceneRevision === null) throw new Error('SkillRefresh.adopted 缺少实际采用场景修订');
       if (command?.stage !== 'applied') throw new Error('SkillRefresh.adopted.command.stage 需要 applied');
-      if (command.content?.revision !== receipt.package.sceneRevision)
+      const prepared = readSkillRefreshPackage(receipt.package, `${path}.package`);
+      if (command.content?.revision !== prepared.sceneRevision)
         throw new Error('SkillRefresh.adopted.command.content.revision 与 package.sceneRevision 不一致');
-      return { ...receipt, ...progress, adoptedSceneRevision: progress.adoptedSceneRevision, package: readSkillRefreshPackage(receipt.package, 'SkillRefresh.package'),
+      return { ...receipt, ...object({ error: readNull, statusPath: text })(value, path), stage: receipt.stage,
+        adoptedSceneRevision: receipt.adoptedSceneRevision, package: prepared,
         command: { ...command, stage: command.stage } };
+    }
     case 'failed':
-    case 'unavailable': return { ...receipt, phases: progress.phases, command,
-      package: receipt.package === null ? null : readSkillRefreshPackage(receipt.package, 'SkillRefresh.package') };
+    case 'unavailable': return { ...receipt, ...object({ error: text, statusPath: nullable(text) })(value, path),
+      stage: receipt.stage, adoptedSceneRevision: null, command,
+      package: receipt.package === null ? null : readSkillRefreshPackage(receipt.package, `${path}.package`) };
   }
 }
 
