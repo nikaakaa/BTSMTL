@@ -21,6 +21,7 @@ import { SkillContentCreation, type SkillContentKind } from './SkillContentCreat
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
 import { BusinessKeyDetails, BusinessKeyList } from './BusinessKeys';
+import { ResourceObjectPicker } from './ResourceObjectPicker';
 import projectStyles from './project.module.css';
 
 // Project 窗口：直接按磁盘文件夹浏览 Unity 工程与技能、场景方案目录；选中文件按其实际内容显示详情。
@@ -300,9 +301,6 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
         <TextInput aria-label="在当前文件夹中搜索" placeholder="搜索当前文件夹" value={search} className={projectStyles.search}
           onChange={event => setSearch(event.currentTarget.value)} />
         <Button variant="ghost" onClick={() => load(folder, true)}>刷新</Button>
-        {field?.resourceRegistration && <Button disabled tip={selectedFile
-          ? '该文件尚未提供可登记的资源对象；请从业务键的实际绑定资源选择。文件GUID不能代替子对象身份。'
-          : '选择具有正式资源对象身份的素材'}>登记所选素材</Button>}
         <MenuButton label="新建作者内容" caret entries={[
           { label: '技能', onSelect: () => setCreating('skill') },
           { label: `Timeline${target ? `（${target}）` : ''}`, disabled: !editable || elements === null, onSelect: () => setCreating('timeline') },
@@ -310,6 +308,9 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
           { label: `输入方案${target ? `（${target}）` : ''}`, disabled: !editable, onSelect: () => setCreating('input') },
         ]}>新建</MenuButton>
       </PanelBar>
+      {field?.resourceRegistration && selectedFile !== null && <ResourceObjectPicker
+        key={JSON.stringify([field.id, selectedFile.path, field.resourceRegistration.objects])} file={selectedFile} field={field}
+        registration={field.resourceRegistration} businessKeys={projectCatalog.businessKeys} failure={projectCatalog.failure} />}
       <div className={projectStyles.path} title={folder}>{folder || 'Project'}</div>
       {failure && <ErrorLine {...failure} />}
       {listing === undefined ? <Empty text="正在读取文件夹" /> :

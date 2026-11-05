@@ -230,6 +230,13 @@
   height: 120px;
 }
 
+.resourceObjects {
+  flex: none;
+  max-height: 260px;
+  overflow: auto;
+  border-bottom: 1px solid var(--line);
+}
+
 .referenceDetails {
   flex: none;
   max-height: 240px;
