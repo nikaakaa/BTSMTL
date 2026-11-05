@@ -16,6 +16,7 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
   const [profile, setProfile] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [abilityId, setAbilityId] = useState('');
+  const [authorPackage, setAuthorPackage] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [candidateOrder, setCandidateOrder] = useState('');
   const [sourceOrder, setSourceOrder] = useState('');
@@ -44,7 +45,7 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
       try {
         const target = await authoringActions.createSkill({
           parameters: {
-            containerIdentity: container!, name, abilityId, displayName, admissionProfile: profile!,
+            containerIdentity: container!, name, abilityId, authorPackage: authorPackage!, displayName, admissionProfile: profile!,
             candidateOrder: Number(candidateOrder), sourceOrder: Number(sourceOrder),
             entryGraph: withGraph ? { name: graphName } : null, startupInputs: [], trajectory: null,
           },
@@ -62,6 +63,8 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
     {catalog.containers.length === 0 && <small>项目中没有尚未绑定作者来源的技能容器。</small>}
     <label>目录与技能名称<TextInput aria-label="目录与技能名称" required value={name} disabled={busy} onChange={event => setName(event.currentTarget.value)} /></label>
     <label>技能 ID<TextInput aria-label="技能 ID" required value={abilityId} disabled={busy} onChange={event => setAbilityId(event.currentTarget.value)} /></label>
+    <Select label="作者包" placeholder="选择业务键所属的作者包" value={authorPackage} disabled={busy}
+      options={catalog.authorPackages.map(value => ({ value, label: value }))} onChange={setAuthorPackage} />
     <label>显示名称<TextInput aria-label="显示名称" required value={displayName} disabled={busy} onChange={event => setDisplayName(event.currentTarget.value)} /></label>
     <Select label="准入配置" placeholder="选择准入配置" value={profile} disabled={busy}
       options={catalog.admissionProfiles.map(value => ({ value: value.identity, label: `${value.name} · ${value.assetPath}` }))} onChange={setProfile} />
@@ -73,7 +76,7 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
     <small>先创建未保存草稿；启动输入为 0 项，轨迹模块未声明。</small>
     {failure && <ErrorLine {...failure} />}
     <PanelBar>
-      <Button type="submit" disabled={busy || container === null || profile === null}>{busy ? '正在创建草稿' : '创建草稿'}</Button>
+      <Button type="submit" disabled={busy || container === null || profile === null || authorPackage === null}>{busy ? '正在创建草稿' : '创建草稿'}</Button>
       <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>取消</Button>
     </PanelBar>
   </form>;

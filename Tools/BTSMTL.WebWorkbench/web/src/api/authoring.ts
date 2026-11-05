@@ -675,6 +675,7 @@ export interface SkillCreationCatalog {
   projectPath: string;
   containers: { identity: string; name: string; assetPath: string }[];
   admissionProfiles: { identity: string; name: string; assetPath: string }[];
+  authorPackages: string[];
   references: ReferenceBank;
   skillCreation: { parameters: { name: string; shape: StorageShape }[] };
   availability: QueryAvailability;
@@ -685,6 +686,7 @@ export interface SkillCreationRequest {
     containerIdentity: string;
     name: string;
     abilityId: string;
+    authorPackage: string;
     displayName: string;
     admissionProfile: string;
     candidateOrder: number;
