@@ -233,7 +233,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldDescriptor Field { get; }
         public string FieldId => Field == null ? m_FieldId : Field.FieldId.Value;
         public object Value { get; }
-        public bool IsMissing => Value == null || Value.Equals(null);
+        public bool IsMissing => Value is GraphAuthoringResourceReference reference ? reference.IsEmpty : Value == null || Value.Equals(null);
         public string CanonicalValue => Value switch
         {
             string text => text,
@@ -272,7 +272,9 @@ namespace BTSMTL.Authoring.Graph
         bool MatchesValueKind()
         {
             // 身份引用以字符串身份存放时，ObjectType 描述的是被引用对象，不约束身份值本身。
-            if (Field.ObjectType != null && !(Field.ValueKind == GraphAuthoringFieldValueKind.IdentityReference && Value is string) &&
+            bool resourceReference = Value is GraphAuthoringResourceReference && Field.ValueKind is
+                GraphAuthoringFieldValueKind.IdentityReference or GraphAuthoringFieldValueKind.AssetReference;
+            if (Field.ObjectType != null && !resourceReference && !(Field.ValueKind == GraphAuthoringFieldValueKind.IdentityReference && Value is string) &&
                 !Field.ObjectType.IsInstanceOfType(Value))
                 return false;
             if (Field.ValueKind == GraphAuthoringFieldValueKind.Polymorphic)
@@ -293,8 +295,8 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.Vector3 => Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Quaternion => Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Enum => Value is string || Value.GetType().IsEnum,
-                GraphAuthoringFieldValueKind.AssetReference => Field.ValueType.IsInstanceOfType(Value),
-                GraphAuthoringFieldValueKind.IdentityReference => Value is string || Field.ValueType.IsInstanceOfType(Value),
+                GraphAuthoringFieldValueKind.AssetReference => resourceReference || Field.ValueType.IsInstanceOfType(Value),
+                GraphAuthoringFieldValueKind.IdentityReference => Value is string || resourceReference || Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Object => true,
                 _ => false
             };
