@@ -7,6 +7,11 @@ export const readResourceRegistrationMetadata = object({ owner: choice('Authorin
   keyKind: text, inputKind: choice('asset', 'instance-resource', 'camera-effect'), inputType: text, referenceType: text,
   candidates: optional(readObjectCapability) });
 export type ResourceRegistrationMetadata = ReturnType<typeof readResourceRegistrationMetadata>;
+export const readResourceReference = object({ package: text, keyKind: text, key: text, context: text });
+export type ResourceReference = ReturnType<typeof readResourceReference>;
+export const resourceReferenceKey = (value: ResourceReference) => JSON.stringify([value.package, value.keyKind, value.key, value.context]);
+export const readExecutionScopeSelection = object({ previewScope: nullable(readResourceReference), runtimeScope: nullable(readResourceReference) });
+export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
 export type ResourceObjectQuery = { package: string; adapter: string; assetGuid: string; keyKind: string;
   domain: string | null; objectType: string | null };
 export type ResourceObjectCapability =
@@ -25,7 +30,7 @@ const readTransaction = object({ changes: array(object({ path: text, before: nul
 export type AuthoringDataTransaction = ReturnType<typeof readTransaction>;
 const resultFields = { revision: nullable(text), files: array(object({ path: text, content: text })), runtimeState: choice('pending') };
 const readRegistration = object({ ...resultFields,
-  reference: object({ package: text, keyKind: text, key: text, context: text }),
+  reference: readResourceReference,
   reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction });
 const readReplay = object(resultFields);
 export type ResourceRegistrationResult = ReturnType<typeof readRegistration>;

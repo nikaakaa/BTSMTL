@@ -16,7 +16,7 @@ import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AnimationDetails } from './AnimationDetails';
-import { CarrierDetails } from './CarrierProject';
+import { CarrierScopeDetails } from './CarrierProject';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
@@ -224,7 +224,11 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
     for (const clip of library?.clips ?? []) map.set(clip.unityAsset, [...map.get(clip.unityAsset) ?? [], clip]);
     return map;
   }, [library]);
-  const carrierBySource = useMemo(() => new Map((carriers?.items ?? []).map(carrier => [carrier.source, carrier])), [carriers]);
+  const carrierBySource = useMemo(() => {
+    const values = new Map<string, AuthoringCarrier[]>();
+    for (const carrier of carriers?.items ?? []) values.set(carrier.source, [...values.get(carrier.source) ?? [], carrier]);
+    return values;
+  }, [carriers]);
   const itemOf = useCallback((path: string): ProjectItem | null => {
     const skill = skillOf(path);
     if (skill === null || skillItems === null) return null;
@@ -279,7 +283,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
     if (item) return { name: item.name, detail: `${kindNames[item.kind]} · ${item.ownership === 'Shared' ? '共享' : '私有'} · ${file.name}` };
     const clips = clipsByAsset.get(file.path);
     if (clips) return { name: file.name, detail: clips.length === 1 ? `动画 · ${clips[0].duration.toFixed(3)} s` : `动画 · ${clips.length} 段` };
-    if (carrierBySource.has(file.path)) return { name: file.name, detail: '角色载体' };
+    if (carrierBySource.has(file.path)) return { name: file.name, detail: `${carrierBySource.get(file.path)!.length} 个执行 Scope` };
     return { name: file.name, detail: `${file.extension.replace('.', '') || '文件'} · ${sizeText(file.length)}` };
   };
 
@@ -349,7 +353,7 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
     </div>
     <ProjectDetails file={selectedFile} creating={creating} target={target} elements={elements} library={library}
       clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
-      carrier={selectedFile ? carrierBySource.get(selectedFile.path) ?? null : null}
+      carriers={selectedFile ? carrierBySource.get(selectedFile.path) ?? [] : []}
       item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
       profileTarget={profileTarget}
       onCreated={() => { setCreating(null); onRefresh(); load(folder, true); }}
@@ -357,9 +361,9 @@ function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: 
   </div>;
 }
 
-function ProjectDetails({ file, creating, target, elements, library, clips, carrier, item, items, stamp, profileTarget, onCreated, onChanged }: {
+function ProjectDetails({ file, creating, target, elements, library, clips, carriers, item, items, stamp, profileTarget, onCreated, onChanged }: {
   file: ProjectFileEntry | null; creating: SkillContentKind | null; target: string | null; elements: ReturnType<typeof useSkillElements>;
-  library: AnimationLibrary | null; clips: AnimationClip[] | null; carrier: AuthoringCarrier | null;
+  library: AnimationLibrary | null; clips: AnimationClip[] | null; carriers: AuthoringCarrier[];
   item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
   onCreated(): void; onChanged(): void;
 }) {
@@ -369,8 +373,7 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
   if (file === null) return <div className={projectStyles.details}><Empty text="选择文件查看内容；双击文件夹进入，双击作者文件打开编辑器" /></div>;
   if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;
   if (clips && library) return <AnimationDetails key={file.path} library={library} clips={clips} />;
-  if (carrier) return <CarrierDetails key={file.path} carrier={carrier}
-    focusTarget={profileTarget?.carrierIdentity === carrier.identity ? profileTarget : null} />;
+  if (carriers.length) return <CarrierScopeDetails key={file.path} carriers={carriers} focusTarget={profileTarget} />;
   return <div className={projectStyles.details}><div className={projectStyles.facts}>
     <strong>{file.name}</strong>
     <code>{file.path}</code>

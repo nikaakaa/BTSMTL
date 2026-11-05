@@ -9,7 +9,7 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
-import { resourceOperationError, resourceRegistrationApi, type AuthoringDataTransaction, type ResourceRegistrationRequest } from '../api/resourceRegistration';
+import { resourceOperationError, resourceRegistrationApi, type AuthoringDataTransaction, type ResourceReference, type ResourceRegistrationRequest } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -69,7 +69,7 @@ export interface AuthoringDocument {
   documentRelations: SkillDocumentRelation[];
   documentError: string | null;
   tickRate: number | null;
-  previewDefinitionGuid: string | null;
+  execution: SkillEditingView['execution'];
   product: SkillEditingView['product'];
 }
 
@@ -102,7 +102,7 @@ const newDocument = (): AuthoringDocument => ({
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, previewDefinitionGuid: null, product: null,
+  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, execution: { previewScope: null, runtimeScope: null }, product: null,
 });
 
 const closedDocument = newDocument();
@@ -469,7 +469,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const key = authoringTargetKey({ kind: 'skill', name: source.skill });
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), product: editingView.product, previewDefinitionGuid: editingView.previewDefinitionGuid,
+        documents[key] = { ...newDocument(), product: editingView.product, execution: editingView.execution,
           sourceFiles: Object.fromEntries(source.sourceFiles.map(file => [file.path, file.content])),
           files: Object.fromEntries(source.files.map(file => [file.path, file.content])) };
       } else {
@@ -819,14 +819,14 @@ export const authoringActions = {
         for (const path of document.removed) delete files[path];
         return [name, { files: Object.entries(files).map(([path, content]) => ({ path, content })), removedFiles: document.removed }];
       })),
-      previewDefinitionGuid: state.previewDefinitionGuid,
+      execution: state.execution,
       product: state.product,
       ...(scene === undefined ? {} : { scene }),
     };
   },
 
-  selectPreviewCarrier(identity: string | null) {
-    setDocument({ previewDefinitionGuid: identity, version: get().version + 1 });
+  selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: ResourceReference | null) {
+    setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
   },
 
   selectProduct(product: SkillEditingView['product']) {

@@ -1,7 +1,7 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
-import { readResourceRegistrationMetadata, type ResourceRegistrationMetadata } from './resourceRegistration';
+import { readExecutionScopeSelection, readResourceReference, readResourceRegistrationMetadata, type ExecutionScopeSelection, type ResourceReference, type ResourceRegistrationMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -15,7 +15,7 @@ export type SkillFile = {
 
 export type SkillEditingView = {
   skills: Record<string, SkillSaveRequest['content']>;
-  previewDefinitionGuid: string | null;
+  execution: ExecutionScopeSelection;
   product: Pick<AuthoringProduct, 'guid' | 'revision'> | null;
   scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
@@ -339,6 +339,12 @@ export type ReferrersResult = {
 export interface CarrierResource { key: string; name: string; identity: string }
 
 export interface AuthoringCarrier {
+  scope: ResourceReference;
+  nativeKind: string;
+  nativeDefinitionId: string;
+  definitionToken: string;
+  profileUnavailableReason: string | null;
+  animationLibrary: { identity: string; source: string; clips: CarrierResource[] } | null;
   identity: string;
   name: string;
   source: string;
@@ -520,7 +526,7 @@ export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
 
 const readSkillExportHeader = object({
   stage: choice('export-ready'), kind: choice('authoring', 'runtime'), sourceRevision: text,
-  product: nullable(object({ guid: text, revision: text })), previewDefinitionGuid: nullable(text),
+  product: nullable(object({ guid: text, revision: text })), execution: nullable(readExecutionScopeSelection),
   tickRate: number, effectProfileGuid: text, fileName: text, downloadUrl: text,
   files: array(object({ path: text, downloadUrl: text })),
 });
@@ -791,6 +797,9 @@ export const authoringApi = {
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal)
     .then(result => ({ ...result, availability: readQueryAvailability(result.availability, 'Carriers.availability'),
+      items: result.items.map(item => ({ ...item, ...object({ scope: readResourceReference, nativeKind: text, nativeDefinitionId: text,
+        definitionToken: text, profileUnavailableReason: nullable(text), animationLibrary: nullable(object({ identity: text,
+          source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })),
       businessKeys: readBusinessKeys(result.businessKeys, 'Carriers.businessKeys') })),
   locateAsset: (request: AssetLocateRequest) => postJson<AssetLocateResult>('/api/authoring/locate', request),
   renameBusinessKey,

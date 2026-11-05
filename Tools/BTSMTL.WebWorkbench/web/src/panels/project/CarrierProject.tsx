@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type AuthoringCarrier, type AuthoringProduct, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
+import { resourceReferenceKey } from '../../api/resourceRegistration';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { referenceTargetKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, MenuButton, TextInput } from '../../ui/controls';
+import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
@@ -79,22 +80,46 @@ function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
 export function CarrierDetails({ carrier, focusTarget }: {
   carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null;
 }) {
-  const { target, preview } = useAuthoring(useShallow(state => ({ target: state.target, preview: authoringDocument(state).previewDefinitionGuid })));
+  const { target, execution } = useAuthoring(useShallow(state => ({ target: state.target, execution: authoringDocument(state).execution })));
+  const scopeKey = resourceReferenceKey(carrier.scope);
+  const preview = execution.previewScope !== null && resourceReferenceKey(execution.previewScope) === scopeKey;
+  const runtime = execution.runtimeScope !== null && resourceReferenceKey(execution.runtimeScope) === scopeKey;
   return <div className={styles.details}>
     {target?.kind === 'skill' && <ProductScope />}
-    <PanelBar wrap><Button disabled={target?.kind !== 'skill' || preview === carrier.identity}
+    <PanelBar wrap><Button disabled={target?.kind !== 'skill' || preview}
       tip={target?.kind === 'skill' ? undefined : '先打开技能'}
-      onClick={() => authoringActions.selectPreviewCarrier(carrier.identity)}>
-      {preview === carrier.identity ? `已是 ${target?.kind === 'skill' ? target.name : ''} 的预览载体` : '设为当前技能预览载体'}</Button>
-      {preview !== null && <Button variant="ghost" onClick={() => authoringActions.selectPreviewCarrier(null)}>清除预览载体</Button>}
-      <LocateAssetButton key={carrier.identity} target={{ kind: 'asset', identity: carrier.identity }} /></PanelBar>
+      onClick={() => authoringActions.selectExecutionScope('previewScope', carrier.scope)}>
+      {preview ? '已选为预览 Scope' : '设为当前技能预览 Scope'}</Button>
+      <Button disabled={target?.kind !== 'skill' || runtime} onClick={() => authoringActions.selectExecutionScope('runtimeScope', carrier.scope)}>
+        {runtime ? '已选为实际运行 Scope' : '设为当前技能实际运行 Scope'}</Button>
+      {target?.kind === 'skill' && execution.previewScope !== null && <Button variant="ghost" onClick={() => authoringActions.selectExecutionScope('previewScope', null)}>清除预览 Scope</Button>}
+      {target?.kind === 'skill' && execution.runtimeScope !== null && <Button variant="ghost" onClick={() => authoringActions.selectExecutionScope('runtimeScope', null)}>清除实际运行 Scope</Button>}
+      <LocateAssetButton key={carrier.definitionToken} target={{ kind: 'asset', identity: carrier.definitionToken }} /></PanelBar>
     <div className={styles.facts}><strong>{carrier.name}</strong><code>{carrier.source}</code><small>{carrier.identity}</small>
-      {carrier.vfx === null && <span className={styles.issue}>未配置特效 Profile</span>}
-      {carrier.camera === null && <span className={styles.issue}>未配置相机 Profile</span>}
-      {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
-      {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
+      <small>{carrier.nativeKind} · 定义 {carrier.nativeDefinitionId} · 上下文 {carrier.scope.context || '公共'}</small>
+      {carrier.profileUnavailableReason !== null ? <span className={styles.note}>{carrier.profileUnavailableReason}</span> : <>
+        {carrier.vfx === null && <span className={styles.issue}>未配置特效 Profile</span>}
+        {carrier.camera === null && <span className={styles.issue}>未配置相机 Profile</span>}
+        {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
+        {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
+        {carrier.animationLibrary !== null && <span>动画库：{carrier.animationLibrary.source} · {carrier.animationLibrary.clips.length} 个片段</span>}
+      </>}
     </div>
     <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
+  </div>;
+}
+
+export function CarrierScopeDetails({ carriers, focusTarget }: { carriers: AuthoringCarrier[]; focusTarget: ProfileEntryTarget | null }) {
+  const [selection, setSelection] = useState<string | null>(null);
+  const identity = focusTarget?.carrierIdentity ?? selection;
+  const carrier = carriers.find(item => item.identity === identity);
+  return <div className={styles.details}>
+    <PanelBar wrap><Select label="实际执行 Scope" value={carrier?.identity ?? null} placeholder="明确选择实际 Scope"
+      options={carriers.map(item => ({ value: item.identity, label: `${item.name} · ${item.nativeKind} · ${item.scope.key} · ${item.scope.context || '公共'}` }))}
+      onChange={setSelection} /></PanelBar>
+    {carriers.length === 0 && <div className={styles.note}>所选来源尚未声明实际执行 Scope。</div>}
+    {carrier === undefined ? <div className={styles.note}>{carriers.length > 1 ? '该来源有多个实际 Scope，请明确选择。' : '请选择实际 Scope。'}</div>
+      : <CarrierDetails key={carrier.identity} carrier={carrier} focusTarget={focusTarget} />}
   </div>;
 }
 

@@ -20,7 +20,7 @@ export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
   const { skill, stamp } = useAuthoring(useShallow(state => ({
     skill: state.target?.kind === 'skill' ? state.target.name : null,
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) =>
-      [key, document.revision, document.version, document.previewDefinitionGuid])]),
+      [key, document.revision, document.version, document.execution])]),
   })));
   const scene = useWorkbench(state => selectedScene(state));
   const key = JSON.stringify([skill, target, stamp, scene]);

@@ -77,7 +77,8 @@ function ExportResult({ operation }: { operation: ExportOperation }) {
           <IdentityFold fields={[
             { displayName: '导出修订', value: operation.result.sourceRevision },
             { displayName: 'Tick Rate', value: String(operation.result.tickRate) },
-            { displayName: '预览 Definition', value: operation.result.previewDefinitionGuid ?? '未绑定' },
+            { displayName: '预览 Scope', value: operation.result.execution?.previewScope ? JSON.stringify(operation.result.execution.previewScope) : '未选择' },
+            { displayName: '实际运行 Scope', value: operation.result.execution?.runtimeScope ? JSON.stringify(operation.result.execution.runtimeScope) : '未选择' },
             { displayName: 'Effect Profile', value: operation.result.effectProfileGuid },
             ...(operation.result.kind === 'runtime' ? [{ displayName: '编译身份', value: operation.result.compilation.compilationKey }] : []),
           ]} />
