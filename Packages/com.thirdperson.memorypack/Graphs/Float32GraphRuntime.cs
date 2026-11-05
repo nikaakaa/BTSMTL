@@ -19,6 +19,10 @@ namespace ThirdPersonSimulation.Serialization
         public GraphExecutionResult Execute(GraphInvocationContext invocation, IGraphHostContext hostContext) =>
             Execute(invocation, hostContext, default);
 
+        public static OrchestrationGraphContent<Float32OrchestrationValue> ReadPublishedContent(
+            BtsmtlGraphRoot graph, string numericTarget) =>
+            graph.RequireExecutionData<Float32OrchestrationValue>(MemoryPackGraphContentPublisher.Instance, numericTarget);
+
         public static GraphHostContract CreatePublishedHostContract(BtsmtlGraphRoot graph,
             OrchestrationGraphContent<Float32OrchestrationValue> content, string contractId,
             string revision, string updateEventId, IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
