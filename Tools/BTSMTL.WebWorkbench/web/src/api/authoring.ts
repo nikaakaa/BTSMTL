@@ -41,6 +41,13 @@ export type QueryAvailability =
   | { available: true; reason: null }
   | { available: false; reason: string };
 
+const readAdapterCatalogDomain = object({ adapter: text, domain: text, items: array(object({
+  value: text, display: text, context: text, revision: text, data: opaque,
+})) });
+export const readAdapterCatalog = object({ revision: text, changed: boolean, domains: nullable(array(readAdapterCatalogDomain)) });
+export type AdapterCatalogDomain = ReturnType<typeof readAdapterCatalogDomain>;
+export type AdapterCatalogItem = Pick<AdapterCatalogDomain, 'adapter' | 'domain'> & AdapterCatalogDomain['items'][number];
+
 function readQueryAvailability(value: unknown, path: string): QueryAvailability {
   const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
   if (available && reason === null) return { available, reason };
