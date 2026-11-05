@@ -94,11 +94,7 @@ function ScopeAuthoringStatus() {
   const document = useAuthoring(state => scopeDocument(state));
   if (document === undefined) return <div className={styles.authoring}>实际 Scope 来源尚未就绪。</div>;
   return <div className={styles.authoring}>
-    <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={document.writing || !document.undo.length}
-      tip="撤销当前 Scope（Ctrl+Z）" onClick={() => authoringActions.undo()}><UndoIcon /></Button>
-    <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={document.writing || !document.redo.length}
-      tip="重做当前 Scope（Ctrl+Y）" onClick={() => authoringActions.redo()}><RedoIcon /></Button>
-    <span>Scope · {document.source.scope.key} · {document.writing ? '正在提交' : '登记即保存'}</span>
+    <span>Scope · {document.source.scope.key} · 声明只读</span>
   </div>;
 }
 

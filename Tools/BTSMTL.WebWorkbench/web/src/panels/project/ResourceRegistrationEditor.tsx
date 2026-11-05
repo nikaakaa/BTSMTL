@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { BusinessKeyMetadata, ReferenceChoice } from '../../api/authoring';
-import type { ProfileOperationResult, ResourceDeclaration, ResourceReference, ResourceRegistrationInput, ResourceRegistrationResult } from '../../api/resourceRegistration';
+import type { ProfileOperationResult, ResourceDeclaration, ResourceReference, ResourceRegistrationInput } from '../../api/resourceRegistration';
 import type { ResourceAssetSelection } from '../../state/referenceSelection';
 import { Fold } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
@@ -12,7 +12,7 @@ export type RegistrationResource = { reference: ResourceReference; token: string
 export function ResourceRegistrationEditor({ id, label, packageId, adapter, declarations, resources, businessKeys, writing, onRegister }: {
   id: string; label: string; packageId: string; adapter: string; declarations: ResourceDeclaration[]; resources: RegistrationResource[];
   businessKeys: BusinessKeyMetadata[]; writing: boolean;
-  onRegister(keyKind: string, input: ResourceRegistrationInput): Promise<ProfileOperationResult | ResourceRegistrationResult | null>;
+  onRegister(keyKind: string, input: ResourceRegistrationInput): Promise<ProfileOperationResult | null>;
 }) {
   const [keyKind, setKeyKind] = useState<string | null>(null);
   const [asset, setAsset] = useState<ResourceAssetSelection | null>(null);

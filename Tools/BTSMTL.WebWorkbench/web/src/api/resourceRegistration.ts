@@ -44,12 +44,6 @@ function readResourceObjects(value: unknown) {
 export type ResourceObjects = ReturnType<typeof readResourceObjects>;
 const readTransaction = object({ changes: array(object({ path: text, before: nullable(text), after: nullable(text) })) });
 export type AuthoringDataTransaction = ReturnType<typeof readTransaction>;
-const resultFields = { revision: nullable(text), files: array(object({ path: text, content: text })), runtimeState: choice('pending') };
-const registrationFields = { ...resultFields,
-  reference: readResourceReference,
-  reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction };
-const readScopeRegistration = object({ ...registrationFields, revision: text });
-const readScopeReplay = object({ ...resultFields, revision: text });
 const readScope = object({ scope: readResourceReference, adapter: text, revision: text, resourceDeclarations: array(readResourceDeclaration) });
 export type AuthoringScope = ReturnType<typeof readScope>;
 export type ScopeQuery = Pick<AuthoringScope, 'scope' | 'adapter'>;
@@ -63,7 +57,6 @@ export const profileQueryKey = (query: ProfileQuery) => JSON.stringify([query.pa
 const readProfileResult = object({ reference: nullable(readResourceReference), reused: boolean, instanceCapacity: nullable(number),
   transaction: readTransaction, profile: readProfile, runtimeState: choice('pending') });
 export type ProfileOperationResult = ReturnType<typeof readProfileResult>;
-export type ResourceRegistrationResult = ReturnType<typeof readScopeRegistration>;
 export type ResourceRegistrationInput =
   | { kind: 'asset'; key: string; token: string }
   | { kind: 'instance-resource'; key: string; token: string; instanceCapacity: number }
@@ -71,14 +64,6 @@ export type ResourceRegistrationInput =
 export const resourceRegistrationApi = {
   readScope: (query: ScopeQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/scopes/read', query, signal).then(value => readScope(value)),
-  registerScope: (source: AuthoringScope, keyKind: string, value: ResourceRegistrationInput) => {
-    const { kind, ...input } = value;
-    return postJson<unknown>('/api/authoring/scopes/resources/register', { scope: source.scope, adapter: source.adapter,
-      package: source.scope.package, context: source.scope.context, expectedRevision: source.revision, keyKind, input: { kind, ...input } })
-      .then(value => readScopeRegistration(value));
-  },
-  replayScope: (query: ScopeQuery, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
-    postJson<unknown>(`/api/authoring/scopes/data/${direction}`, { ...query, transaction }).then(value => readScopeReplay(value)),
   readProfile: (query: ProfileQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/profiles/read', query, signal).then(value => readProfile(value)),
   registerProfile: (profile: AuthoringProfile, keyKind: string, value: ResourceRegistrationInput) => {

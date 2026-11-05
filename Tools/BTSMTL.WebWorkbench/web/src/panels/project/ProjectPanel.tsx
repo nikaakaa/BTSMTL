@@ -413,8 +413,8 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
     <SkillContentCreation key={creating} kind={creating} skill={target} elements={elements} onDone={onCreated} />
   </div>;
   if (resourceTarget?.kind === 'scope') return <div className={projectStyles.details}>
-    <PanelBar><span>当前 Scope 资源登记</span><Button variant="ghost" onClick={() => authoringActions.releaseScope(resourceTarget.query)}>关闭 Scope 资源登记</Button></PanelBar>
-    <ScopeEditor key={scopeQueryKey(resourceTarget.query)} query={resourceTarget.query} businessKeys={businessKeys} />
+    <PanelBar><span>当前 Scope 声明</span><Button variant="ghost" onClick={() => authoringActions.releaseScope(resourceTarget.query)}>关闭 Scope 声明</Button></PanelBar>
+    <ScopeEditor key={scopeQueryKey(resourceTarget.query)} query={resourceTarget.query} />
   </div>;
   if (resourceTarget?.kind === 'profile') return <div className={projectStyles.details}>
     <PanelBar><span>当前 Profile 编辑</span><Button variant="ghost" onClick={() => authoringActions.releaseProfile(resourceTarget.query)}>关闭 Profile 编辑</Button></PanelBar>

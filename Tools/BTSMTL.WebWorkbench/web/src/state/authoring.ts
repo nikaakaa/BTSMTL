@@ -45,11 +45,6 @@ export interface AuthoringState {
 
 export interface ScopeDocument {
   source: AuthoringScope;
-  undo: AuthoringDataTransaction[];
-  redo: AuthoringDataTransaction[];
-  writing: boolean;
-  failure: { text: string; entryId: number | null } | null;
-  message: string;
 }
 export const scopeDocument = (state: AuthoringState, target = state.resourceTarget?.kind === 'scope' ? state.resourceTarget.query : null) =>
   target === null ? undefined : state.scopes[scopeQueryKey(target)];
@@ -834,29 +829,7 @@ export const authoringActions = {
     if (scopeDocument(useAuthoring.getState(), query) !== undefined && !reload) return;
     const source = await resourceRegistrationApi.readScope(query, signal);
     signal?.throwIfAborted();
-    const previous = scopeDocument(useAuthoring.getState(), query);
-    updateScope(query, previous === undefined ? { source, undo: [], redo: [], writing: false, failure: null, message: '' }
-      : { ...previous, source, failure: null, message: '已读取所选 Scope 的正式资源声明与绑定修订。' });
-  },
-  async registerScopeResource(query: ScopeQuery, keyKind: string, input: ResourceRegistrationInput) {
-    const document = scopeDocument(useAuthoring.getState(), query);
-    if (document === undefined || document.writing) return null;
-    updateScope(query, { ...document, writing: true, failure: null });
-    try {
-      const result = await resourceRegistrationApi.registerScope(document.source, keyKind, input);
-      updateScope(query, { ...document, source: { ...document.source, revision: result.revision },
-        undo: result.transaction.changes.length ? [...document.undo, result.transaction].slice(-historyLimit) : document.undo,
-        redo: [], writing: false, failure: null,
-        message: `Scope 资源键 ${result.reference.key} ${result.reused ? '已复用' : '已登记'}${
-          result.instanceCapacity === null ? '' : `，实际实例容量 ${result.instanceCapacity}`}；作者数据已保存，运行内容待生成和采用。` });
-      invalidateResourceConsumers();
-      return result;
-    } catch (error) {
-      updateScope(query, { ...document, writing: false, failure: {
-        text: resourceOperationError(error), entryId: consoleActions.error('Scope 资源登记', error),
-      } });
-      return null;
-    }
+    updateScope(query, { source });
   },
 
   activateProfile(query: ProfileQuery) { set({ resourceTarget: { kind: 'profile', query } }); },
@@ -1588,25 +1561,6 @@ async function applyProfile(query: ProfileQuery, operation: (source: AuthoringPr
   }
 }
 
-async function stepScope(query: ScopeQuery, from: 'undo' | 'redo', to: 'undo' | 'redo') {
-  const document = scopeDocument(useAuthoring.getState(), query);
-  if (document === undefined) return;
-  const transaction = document[from].at(-1);
-  if (transaction === undefined || document.writing) return;
-  updateScope(query, { ...document, writing: true, failure: null });
-  try {
-    const result = await resourceRegistrationApi.replayScope(query, from, transaction);
-    updateScope(query, { ...document, source: { ...document.source, revision: result.revision },
-      [from]: document[from].slice(0, -1), [to]: [...document[to], transaction], writing: false, failure: null,
-      message: `Scope 作者数据已${from === 'undo' ? '撤销' : '重做'}，运行内容待生成和采用。` });
-    invalidateResourceConsumers();
-  } catch (error) {
-    updateScope(query, { ...document, writing: false, failure: {
-      text: resourceOperationError(error), entryId: consoleActions.error('Scope 数据撤销', error),
-    } });
-  }
-}
-
 async function stepProfile(query: ProfileQuery, from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const document = profileDocument(useAuthoring.getState(), query);
   if (document === undefined) return;
@@ -1633,7 +1587,7 @@ async function stepProfile(query: ProfileQuery, from: 'undo' | 'redo', to: 'undo
 async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const owner = get().resourceTarget;
   if (owner?.kind === 'profile') return stepProfile(owner.query, from, to);
-  if (owner?.kind === 'scope') return stepScope(owner.query, from, to);
+  if (owner?.kind === 'scope') return;
   const state = get();
   const previous = state[from].at(-1);
   if (!previous || state.saving) return;
