@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ClipCurveChannel, SkillElements } from '../../api/authoring';
 import type { ExecutionCall, Frame, FrozenInputTimeline, InputWrite } from '../../api/types';
+import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
 import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
@@ -29,6 +30,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallCandidateNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
+import { quickBounds, quickPreview } from '../../state/quickPreview';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
@@ -42,7 +44,7 @@ import {
 } from '../../state/curveEdit';
 import { cloneJson, numberOf, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { QuickPreview } from './QuickPreview';
+import { QuickPreview, useQuickPlan } from './QuickPreview';
 import {
   Button, ContextMenu, createTipGroup, GroupTip, MenuButton, NumberInput, Select, TextInput, Tip, TipGroup, type MenuEntry,
 } from '../../ui/controls';
@@ -138,8 +140,12 @@ function useClipGrid(snap: Snap, tick: number | null): ClipGridOf {
 }
 type TimelineObservation = { call: ExecutionCall; domain: string };
 const observationKey = (observation: TimelineObservation) => JSON.stringify([callKey(observation.call), observation.domain]);
+type QuickSegment = PreviewQuickPlan['segments'][number];
+type QuickPlaybackChoice = { value: string; options: { value: string; label: string }[]; select(value: string): void };
+
 type PreviewClock = { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
-  | { kind: 'input'; documentId: string; observing: boolean };
+  | { kind: 'input'; documentId: string; observing: boolean }
+  | { kind: 'quick'; documentId: string | null; source: { kind: 'input' } | { kind: 'timeline'; segment: QuickSegment | null } };
 const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
 type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number }
   | { kind: 'unavailable'; reason: string };
@@ -196,9 +202,14 @@ const useAuthorCursor = create<{ documentId: string | null; seconds: number }>((
 const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, clock: PreviewClock) =>
   ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && !clock.observing)) && clock.documentId !== null
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
-const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'input'
-    ? author ?? state.archiveFrame?.input?.inputTimeSeconds ?? null
+const quickLocalSeconds = (segment: QuickSegment, seconds: number) => seconds < segment.start || seconds > segment.end ? null
+  : Math.min(segment.localEnd, segment.localStart + seconds - segment.start);
+function previewSeconds(state: WorkbenchState, clock: PreviewClock, author: number | null): number | null {
+  if (clock.kind === 'quick') return clock.source.kind === 'input' ? state.quickPreview.seconds
+    : clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds);
+  return clock.kind === 'input' ? author ?? state.archiveFrame?.input?.inputTimeSeconds ?? null
     : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
+}
 // 游标秒数：运行档案、运行观察或编辑游标。
 function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
   const author = useAuthorCursor(cursor => authorCursorOf(cursor, clock));
@@ -688,6 +699,29 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
 
   // 技能文档看单个 Timeline：所选的那条，否则第一条；选“全部 Timeline”时按组列出。
   const focused = params.focus === allTimelines ? null : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
+  const quickPlan = useQuickPlan();
+  const quickSegments = useMemo(() => quickPlan?.segments.map((segment, index) => ({ segment, index }))
+    .filter(item => item.segment.timelineId === focused?.documentId) ?? [], [quickPlan, focused?.documentId]);
+  const quickEnd = useMemo(() => quickPlan === null ? null : quickBounds(quickPlan).last, [quickPlan]);
+  const [quickSelection, setQuickSelection] = useState<{ plan: PreviewQuickPlan; documentId: string; index: number } | null>(null);
+  const selectedQuick = quickSelection?.plan === quickPlan && quickSelection?.documentId === focused?.documentId ? quickSelection.index : null;
+  const activeQuick = useWorkbench(state => {
+    const seconds = state.quickPreview.seconds;
+    const active = quickSegments.filter(({ segment }) => segment.start <= seconds &&
+      (seconds < segment.end || seconds === quickEnd && seconds === segment.end));
+    return active.length === 1 ? active[0].index : null;
+  });
+  const quickSegment = quickSegments.find(item => item.index === (selectedQuick ?? activeQuick))?.segment
+    ?? (selectedQuick === null && quickSegments.length === 1 ? quickSegments[0].segment : null);
+  const quickInputTimeline = useWorkbench(state => state.quickPreview.description.kind === 'ready'
+    ? state.quickPreview.description.reply.data.root?.inputSchemes.find(scheme => scheme.index === quickPlan?.inputScheme)?.timelineId ?? null : null);
+  const quickInput = focused !== null && focused.documentId === quickInputTimeline;
+  const quickPlayback: QuickPlaybackChoice | null = quickPlan === null || focused === null || quickSegments.length === 0 ? null : {
+    value: selectedQuick === null ? 'follow' : String(selectedQuick),
+    options: [{ value: 'follow', label: '跟随当前路线' }, ...quickSegments.map(({ segment, index }) => ({ value: String(index),
+      label: `播放 ${segment.playback} · 循环 ${segment.cycle} · 出现 ${segment.occurrence} · ${segment.start}—${segment.end} s` }))],
+    select: value => setQuickSelection(value === 'follow' ? null : { plan: quickPlan, documentId: focused.documentId, index: Number(value) }),
+  };
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const receivedSource = useMemo(() => !quickMode && runId !== null && inputObservation.kind === 'ready' ? {
@@ -849,6 +883,14 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     if (!focused) return;
     const raw = Math.max(0, Math.min(focused.length, value));
     const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
+    if (quickPlan !== null) {
+      if (quickInput) quickPreview.seek(seconds);
+      else if (quickSegment === null) consoleActions.log('warn', 'Timeline', '当前路线没有唯一的推导播放，请选择具体播放、循环与出现次数');
+      else if (seconds < quickSegment.localStart || seconds > quickSegment.localEnd)
+        consoleActions.log('warn', 'Timeline', `所选推导区间只覆盖本地 ${timeText(quickSegment.localStart)}—${timeText(quickSegment.localEnd)} 秒，不能跨圈或外推定位`);
+      else quickPreview.seek(quickSegment.start + seconds - quickSegment.localStart);
+      return;
+    }
     if (!quickMode && inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
       if (inputObservation.kind === 'before-start') {
         consoleActions.log('warn', 'Timeline', `${inputObservation.reason}，当前没有正式输入时间；请先按录制帧定位`);
@@ -870,7 +912,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     const position = recordedLocalPosition(getState(), seconds, frame => playbackFor(frame, focused.documentId, observed)?.cursorSeconds ?? null);
     if (position.kind === 'record') transport.seekRecord(position.index);
     else consoleActions.log('warn', 'Timeline', position.reason);
-  }, [quickMode, observed, focused, step, inputScheme, inputObservation]);
+  }, [quickMode, quickPlan, quickInput, quickSegment, observed, focused, step, inputScheme, inputObservation]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
   const [pickedKeys, setPickedKeys] = useState<number[]>([]);
   const curveView = useMemo<CurveView>(() => ({
@@ -920,9 +962,11 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     } : null,
     crumbs: [{ label: focused ? timelineName(focused) : '全部 Timeline' }],
   };
-  const clock = useMemo<PreviewClock>(() => inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: !quickMode && inputObservation.kind === 'ready' }
+  const clock = useMemo<PreviewClock>(() => quickPlan !== null ? { kind: 'quick', documentId: focused?.documentId ?? null,
+      source: quickInput ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } }
+    : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: !quickMode && inputObservation.kind === 'ready' }
       : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
-  [quickMode, focused?.documentId, observed, inputScheme, inputObservation.kind]);
+  [quickMode, quickPlan, quickInput, quickSegment, focused?.documentId, observed, inputScheme, inputObservation.kind]);
   const curveClock = useWorkbench(useShallow((state): CurveClock => {
     if (quickMode || (clock.kind === 'input' && !clock.observing)) return { kind: 'unavailable', reason: '当前没有对应的运行观察' };
     const frame = state.frame;
@@ -940,6 +984,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
     <CurveClockContext.Provider value={curveClock}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
+        quickPlayback={quickPlayback}
         observations={choices} selectCall={selectCall} pin={pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
         observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (inputScheme ? null : timelineNotice) ?? (trace.kind === 'unavailable' ? trace.reason
           : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例' : caller !== null ? parentCallCandidateNotice : null)} />
@@ -1023,12 +1068,13 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   return <MenuButton label="添加输入" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
 }
 
-function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice }: {
+function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice, quickPlayback }: {
   settings: MenuEntry[]; subject: Subject; origin: number; seek(value: number): void;
   observations: TimelineObservation[]; selectCall(value: string): void;
   pin: TimelineObservation | null; togglePin: (() => void) | undefined; parents: RecordedGraphCall[];
   openParent: ((item: RecordedGraphCall) => void) | undefined;
   observationNotice: string | null;
+  quickPlayback: QuickPlaybackChoice | null;
 }) {
   const clock = useContext(PreviewClockContext);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
@@ -1038,6 +1084,10 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
   const notice = useWorkbench(state => {
     if (observationNotice !== null) return observationNotice;
+    if (clock.kind === 'quick') return clock.source.kind === 'input' ? '当前输入方案使用路线全局时间'
+      : clock.source.segment === null ? '当前路线没有唯一的推导播放，请选择具体播放、循环与出现次数'
+        : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds) === null ? '当前路线时刻不在所选推导播放区间内'
+          : '推导游标；实际路线与数值需使用真预览';
     if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
     if (!state.runId) return null;
     if (documentNotice !== null) return documentNotice;
@@ -1067,6 +1117,8 @@ function TimelineToolbar({ settings, subject, origin, seek, observations, select
       {observations.length > 0 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
         value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
+      {quickPlayback !== null && <Select variant="ghost" label="推导播放" value={quickPlayback.value}
+        options={quickPlayback.options} onChange={quickPlayback.select} />}
       {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
         tip={`${pin !== null ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(shownObservation.call)} · ${shownObservation.domain}`}>固定调用</Button>}
       {clock.kind === 'document' && clock.observation !== null && <>
