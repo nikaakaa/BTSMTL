@@ -78,7 +78,7 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
     {stage.kind === 'prepared' && <>
       <RenameImpact plan={stage.plan} />
       {conflicts.map(item => <div key={`${item.owner}/${item.path}`} className={styles.issue}>
-        {item.owner}/{item.path}：{item.reason}，请先按原保存或还原流程处理。
+        {item.owner}{item.path !== null && `/${item.path}`}：{item.reason}，请先按原保存或还原流程处理。
       </div>)}
       <Button disabled={conflicts.length !== 0} onClick={() => void commit(stage.plan)}>确认提交此计划</Button>
     </>}
@@ -106,18 +106,18 @@ const RenameImpact = memo(function RenameImpact({ plan }: { plan: BusinessKeyRen
     <strong>{plan.target.package} · {plan.target.keyKind} · {plan.target.key} → {plan.renamedTarget.key}</strong>
     <span>{plan.authorRenameState === 'prepared' ? '作者改名计划已准备，尚未提交。' : '作者改名已完成。'}</span>
     <span>{plan.runtimeState === 'pending'
-      ? plan.saved ? '运行内容待应用：需完成下列技能发布与绑定范围生成，再由正式运行入口采用。'
-        : '提交后，运行内容仍需完成下列技能发布与绑定范围生成。'
+      ? plan.saved ? '运行内容待应用：需按下列影响清单完成发布或生成，再由正式运行入口采用。'
+        : '提交后，运行内容仍需按下列影响清单完成发布或生成。'
       : '本次无需应用运行内容。'}</span>
     <details><summary>计划修订</summary><code>{plan.revision}</code></details>
-    <details open><summary>会修改的文件（{plan.files.length}）</summary>
+    <details open><summary>{plan.saved ? '已修改' : '会修改'}的文件（{plan.files.length}）</summary>
       {plan.files.map(file => <div key={file.path} className={styles.facts}>
         <code>{file.path}</code><span>字段位置：{file.members.join('、')}</span>
         <small>读取修订：<code>{file.readRevision}</code></small>
         <small>写入修订：<code>{file.writeRevision}</code></small>
       </div>)}
     </details>
-    <details><summary>计划读取的文件（{plan.readFiles.length}）</summary>
+    <details><summary>本次读取的文件（{plan.readFiles.length}）</summary>
       {plan.readFiles.map(file => <div key={file.path} className={styles.facts}>
         <code>{file.path}</code><small>读取修订：<code>{file.revision}</code></small>
       </div>)}
@@ -150,7 +150,7 @@ export function BusinessKeyRenameReceipt({ completion, onRefreshed }: {
     <RenameImpact plan={result} />
     {refresh === null ? <span>正在重新读取载体目录与受影响文档</span> : <>
       {refresh.conflicts.map(item => <div key={`${item.owner}/${item.path}`} className={styles.issue}>
-        {item.owner}/{item.path}：{item.reason}。网页修改已保留，文档已标记外部变化，请先处理这些修改。
+        {item.owner}{item.path !== null && `/${item.path}`}：{item.reason}。网页修改已保留，文档已标记外部变化，请先处理这些修改。
       </div>)}
       {refresh.failures.map((failure, index) => <ErrorLine key={index} {...failure} />)}
       {(refresh.failures.length > 0 || refresh.conflicts.length > 0) && <Button variant="ghost" disabled={reading} onClick={() => {

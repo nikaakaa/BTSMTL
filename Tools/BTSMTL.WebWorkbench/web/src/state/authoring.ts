@@ -683,7 +683,7 @@ export const authoringActions = {
   async commitBusinessKeyRename(plan: BusinessKeyRenamePrepared) {
     const conflicts = businessKeyMigrationConflicts(plan);
     if (conflicts.length !== 0)
-      throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}/${item.path}（${item.reason}）`).join('；')}`);
+      throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}${item.path === null ? '' : `/${item.path}`}（${item.reason}）`).join('；')}`);
     return authoringApi.renameBusinessKey({ action: 'commit', package: plan.target.package, kind: plan.target.keyKind, key: plan.target.key,
       newKey: plan.renamedTarget.key, expectedRevision: plan.revision });
   },
@@ -1308,15 +1308,19 @@ function businessKeyMigrationOwners(plan: BusinessKeyRenameResult) {
 }
 
 export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState(), phase: 'commit' | 'refresh' = 'commit') {
-  const conflicts: { owner: string; path: string; reason: string }[] = [];
+  const conflicts: { owner: string; path: string | null; reason: string }[] = [];
   for (const { target, paths } of businessKeyMigrationOwners(plan)) {
     const document = state.documents[authoringTargetKey(target)];
     if (document === undefined) continue;
+    const documentReason = document.saving ? '正在保存' : document.loading ? '正在读取'
+      : phase === 'commit' && document.externalChange ? '磁盘来源已变化' : null;
+    if (documentReason !== null) {
+      conflicts.push({ owner: target.name, path: null, reason: documentReason });
+      continue;
+    }
     for (const path of paths) {
-      const reason = document.saving ? '正在保存' : document.loading ? '正在读取'
-        : phase === 'commit' && document.externalChange ? '磁盘来源已变化'
-        : Object.hasOwn(document.edited, path) || document.removed.includes(path) ? '有未保存修改' : null;
-      if (reason !== null) conflicts.push({ owner: target.name, path, reason });
+      if (Object.hasOwn(document.edited, path) || document.removed.includes(path))
+        conflicts.push({ owner: target.name, path, reason: '有未保存修改' });
     }
   }
   return conflicts;
