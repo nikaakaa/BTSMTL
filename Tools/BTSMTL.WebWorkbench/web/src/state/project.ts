@@ -34,6 +34,7 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 
 export const projectActions = {
   openGraph,
+  openOwner,
   async inspect(target: ContentTarget): Promise<void> {
     const owner = target.kind === 'item' ? target.item : target;
     const document = await openOwner(owner);

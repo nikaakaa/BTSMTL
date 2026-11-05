@@ -35,14 +35,14 @@ export function ContentProject() {
   };
   for (const root of contents.tree) visit(root, 0, true);
   const node = selected === null ? undefined : all.get(selected);
-  const owner = node?.target?.kind === 'item' ? node.target.item.owner : node?.target?.owner;
+  const owner = node?.target?.kind === 'item' ? node.target.item : node?.target;
   const perform = async (action: () => Promise<void>) => {
     setFailure(null);
     try { await action(); }
     catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
   };
   const create = (kind: SkillContentKind) => void perform(async () => {
-    if (owner !== undefined) await authoringActions.open({ kind: 'skill', name: owner });
+    if (kind !== 'skill' && owner != null) await projectActions.openOwner(owner);
     setCreating(kind);
   });
   return <div className={styles.contentGrid}>
@@ -108,7 +108,7 @@ function ContentObject({ node, target, perform }: { node: ContentNode; target: E
     {target.kind !== 'clip' && <>
       <TextInput aria-label="对象名称" value={name} onChange={event => setName(event.currentTarget.value)} />
       <Button disabled={!name.trim()} onClick={() => void perform(async () => {
-        await authoringActions.open({ kind: 'skill', name: target.owner });
+        await projectActions.openOwner(target);
         if (target.kind === 'node') graphAuthoring.setNodeValues(target.graphId, target.nodeId, [{ keys: ['_name'], value: name }]);
         else authoringActions.setTrackValue(target.timelineId, target.id, ['Name'], name);
       })}>应用名称</Button>
