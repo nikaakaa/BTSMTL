@@ -56,13 +56,12 @@ namespace BTSMTL.Graphs
         bool m_Disposed;
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<TValue> encoding, IReadOnlyList<IOrchestrationExtension> extensions)
+            OrchestrationGraphContent<TValue> content, IReadOnlyList<IOrchestrationExtension> extensions)
         {
             m_Source = source;
             m_Contract = contract;
-            m_Bindings = new HostedGraphBindings<TValue, TNumerics>(source, contract, encoding);
+            m_Bindings = new HostedGraphBindings<TValue, TNumerics>(source, contract, content);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
-            OrchestrationGraphContent<TValue> content = m_Bindings.Content;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, new[] { new OrchestrationRootAdmission(
                     new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },

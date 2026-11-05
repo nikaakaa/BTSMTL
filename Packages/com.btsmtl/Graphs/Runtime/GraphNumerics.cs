@@ -25,26 +25,22 @@ namespace BTSMTL.Graphs
             int framesCapacity, int operationsCapacity, int rosterCapacity, int savedOutputsCapacity, int valuesCapacity);
     }
 
-    // Encoding 为所选数值方案编排值对应的 IOrchestrationGraphContentEncoding，由集成层提供。
+    // Content 为所选数值方案的 OrchestrationGraphContent，由装配边界提供。
     public sealed class GraphRuntimeSetup
     {
-        public GraphRuntimeSetup(BtsmtlGraphRoot source, GraphHostContract contract, object encoding,
+        public GraphRuntimeSetup(BtsmtlGraphRoot source, GraphHostContract contract, object content,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
             Source = source ?? throw new ArgumentNullException(nameof(source));
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
-            Encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
+            Content = content;
             Extensions = extensions ?? throw new ArgumentNullException(nameof(extensions));
         }
 
         public BtsmtlGraphRoot Source { get; }
         public GraphHostContract Contract { get; }
-        public object Encoding { get; }
+        public object Content { get; }
         public IReadOnlyList<IOrchestrationExtension> Extensions { get; }
-
-        public IOrchestrationGraphContentEncoding<TValue> RequireEncoding<TValue>() where TValue : unmanaged =>
-            Encoding as IOrchestrationGraphContentEncoding<TValue> ??
-            throw new ArgumentException($"图内容编码 '{Encoding.GetType()}' 不支持编排值 '{typeof(TValue)}'。");
     }
 
     // 图级生命周期：不暴露编排值类型；需要直接读写编排值时使用 HostedGraphRuntime。

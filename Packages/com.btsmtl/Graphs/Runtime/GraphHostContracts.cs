@@ -691,12 +691,11 @@ namespace BTSMTL.Graphs
         }
 
         public static GraphHostContract FromPublishedGraph<TValue>(BtsmtlGraphRoot graph,
-            IOrchestrationGraphContentEncoding<TValue> encoding,
+            OrchestrationGraphContent<TValue> content,
             string contractId, string revision, string updateEventId,
             IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
             IReadOnlyList<string> domains, string numericTarget) where TValue : unmanaged
         {
-            OrchestrationGraphContent<TValue> content = graph.RequireExecutionData(encoding, numericTarget);
             var inputs = new List<GraphHostInputDescriptor>();
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (ref readonly OrchestrationGraphHostInput input in content.Structure.HostInputs.Span)

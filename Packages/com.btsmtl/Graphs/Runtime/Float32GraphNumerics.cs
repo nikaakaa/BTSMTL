@@ -63,7 +63,7 @@ namespace BTSMTL.Graphs
 
         public IGraphRuntimeCore<TContext> CreateGraphRuntime<TContext>(GraphRuntimeSetup setup) where TContext : struct =>
             new HostedGraphRuntime<Float32OrchestrationValue, Float32GraphNumerics, TContext>(setup.Source, setup.Contract,
-                setup.RequireEncoding<Float32OrchestrationValue>(), setup.Extensions);
+                (OrchestrationGraphContent<Float32OrchestrationValue>)setup.Content, setup.Extensions);
 
         public Float32Scalar FromSingle(float value) => Float32Scalar.FromSingle(value);
         public float ToSingle(Float32Scalar value) => value.ToSingle();

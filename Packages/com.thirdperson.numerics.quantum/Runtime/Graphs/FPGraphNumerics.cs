@@ -63,7 +63,7 @@ namespace ThirdPersonSimulation.QuantumNumerics
 
         public IGraphRuntimeCore<TContext> CreateGraphRuntime<TContext>(GraphRuntimeSetup setup) where TContext : struct =>
             new HostedGraphRuntime<FPOrchestrationValue, FPGraphNumerics, TContext>(setup.Source, setup.Contract,
-                setup.RequireEncoding<FPOrchestrationValue>(), setup.Extensions);
+                (OrchestrationGraphContent<FPOrchestrationValue>)setup.Content, setup.Extensions);
 
         public FP FromSingle(float value) => QuantumScalarBoundary.ConvertExternal(value, nameof(value));
         public float ToSingle(FP value) => value.AsFloat;
