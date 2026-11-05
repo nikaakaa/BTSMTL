@@ -158,7 +158,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (m_Request.StartTime < OrchestrationTime.Zero || m_Request.EndTime <= m_Request.StartTime)
                 return "帧范围必须满足 Start < End。";
-            if (m_Resources != null && !m_Resources.Ready) return "请选择实际 Scope、资源对象及对应业务键。";
+            if (m_Resources != null && !m_Resources.Ready) return "请选择可用的资源；载体映射领域需先选择执行范围。";
             if (m_Request.Prototype is ITimelineAuthoringClipSource source && !m_Request.Resource)
                 return source.SourceMissingError;
             if (IsTreeClip && m_Request.TreeGraph == null && string.IsNullOrWhiteSpace(m_Request.NewTreeGraphName))
@@ -244,7 +244,7 @@ namespace BTSMTL.Timeline.Editor
 
         internal void Draw()
         {
-            if (m_Scopes != null)
+            if (m_Scopes != null && m_Declaration?.Selection == "mapped")
             {
                 int index = Array.FindIndex(m_Scopes, scope => scope.Value == m_Scope);
                 int selected = EditorGUILayout.Popup(new GUIContent("执行范围"), index,
