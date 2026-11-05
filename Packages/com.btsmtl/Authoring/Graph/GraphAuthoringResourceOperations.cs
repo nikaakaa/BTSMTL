@@ -37,17 +37,26 @@ namespace BTSMTL.Authoring.Graph
 
     public sealed class GraphAuthoringAssetRegistrationInput : GraphAuthoringResourceRegistrationInput
     {
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonIgnore]
+#endif
         public override string Kind => "asset";
     }
 
     public sealed class GraphAuthoringInstanceResourceRegistrationInput : GraphAuthoringResourceRegistrationInput
     {
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonIgnore]
+#endif
         public override string Kind => "instance-resource";
         public int InstanceCapacity { get; set; }
     }
 
     public sealed class GraphAuthoringCameraEffectRegistrationInput : GraphAuthoringResourceRegistrationInput
     {
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonIgnore]
+#endif
         public override string Kind => "camera-effect";
         public string EffectKind { get; set; }
     }

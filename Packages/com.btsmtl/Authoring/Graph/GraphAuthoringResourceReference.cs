@@ -5,6 +5,9 @@ namespace BTSMTL.Authoring.Graph
     [Serializable]
     public struct GraphAuthoringResourceReference : IEquatable<GraphAuthoringResourceReference>
     {
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonConstructor]
+#endif
         public GraphAuthoringResourceReference(string package, string keyKind, string key, string context)
         {
             Package = package;
