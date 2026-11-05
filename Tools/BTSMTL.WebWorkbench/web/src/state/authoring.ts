@@ -171,7 +171,7 @@ export function useTimelineObservationBinding(dirty: boolean): TimelineObservati
       case 'accepted': return { kind: 'unavailable', reason: '当前 Timeline 已准备，Player 尚未确认采用，运行叠加不可用。' };
       case 'failed':
       case 'unavailable': return { kind: 'unavailable', reason: receipt.error };
-      case 'adopted': return { kind: 'ready', sceneRevision: receipt.package.sceneRevision, programs: receipt.package.programs };
+      case 'adopted': return { kind: 'ready', sceneRevision: receipt.adoptedSceneRevision, programs: receipt.package.programs };
     }
   }, [dirty, lastSave, sourceRevision]);
 }

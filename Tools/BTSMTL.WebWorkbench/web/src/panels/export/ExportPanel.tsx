@@ -3,6 +3,9 @@ import { useShallow } from 'zustand/react/shallow';
 import type { SkillEditingView, SkillExportKind } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { exportActions, useExports, type ExportOperation } from '../../state/exports';
+import { consoleActions } from '../../state/store';
+import { openPanel } from '../../shell/layout';
+import { compilationDetails } from '../../ui/compilationReport';
 import { Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -77,6 +80,13 @@ function ExportResult({ operation }: { operation: ExportOperation }) {
             { displayName: 'Effect Profile', value: operation.result.effectProfileGuid },
             ...(operation.result.kind === 'runtime' ? [{ displayName: '编译身份', value: operation.result.compilation.compilationKey }] : []),
           ]} />
+          {operation.result.kind === 'runtime' && <Button variant="ghost" onClick={() => {
+            if (operation.result.kind !== 'runtime') return;
+            const entryId = consoleActions.log('info', '导出', `${operation.skill} 运行数据编译结果`,
+              `${compilationDetails(operation.result.compilation).join('\n')}\n\n${JSON.stringify(operation.result.compilation, null, 2)}`);
+            consoleActions.focus(entryId);
+            openPanel('console');
+          }}>查看编译与发布结果</Button>}
         </>}
   </Fold>;
 }

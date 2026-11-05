@@ -1,19 +1,9 @@
-import type { SkillCompilation } from '../api/authoring';
 import type { SaveOutcome } from '../state/authoring';
 import { consoleActions } from '../state/store';
 import { Button, Tip } from '../ui/controls';
+import { compilationDetails, preparationPhaseDetails } from '../ui/compilationReport';
 import { openPanel } from './layout';
 import styles from './toolbar.module.css';
-
-type Publication = NonNullable<SkillCompilation['publicationResult']>;
-type GraphWork = NonNullable<Publication['graphs'][number]['compilation']['work']>;
-
-const workNames = {
-  Unchanged: '无变化，结构与参数复用',
-  Sources: '更新来源，结构与参数复用',
-  Parameters: '生成参数，结构复用',
-  Structure: '编译结构',
-} satisfies Record<GraphWork, string>;
 
 const previewNames = {
   accepted: '等待采用', adopted: '已采用', failed: '采用失败', unavailable: '预览不可用',
@@ -56,40 +46,14 @@ function resultDetails(outcome: SaveOutcome): string {
   }
   if (outcome.compilationState !== 'succeeded') return lines.join('\n');
   const { compilation, preview } = outcome;
-  lines.push(`本次编译：${compilation.artifactReused ? '复用已编译产物' : '执行编译'}`,
-    `本次来源修订：${compilation.sourceRevision}`, `编译键：${compilation.compilationKey}`,
-    `产物回执路径：${compilation.artifactReceiptPath}`);
-  const publication = compilation.publicationResult;
-  if (publication === null) lines.push('原发布回执：未提供');
-  else {
-    lines.push(`原发布回执阶段：${publication.stage}`, `原发布来源修订：${publication.sourceRevision}`,
-      `原发布内容版本：${publication.publicationHash}`,
-      `原图产物目录：${publication.output}`, `原发布产物路径：${publication.publicationOutput}`,
-      `原回执耗时（毫秒）：读取 ${publication.milliseconds.read}，编译 ${publication.milliseconds.compile}，准备 ${publication.milliseconds.prepare}`,
-      `原发布后续阶段：编辑器安装 ${publication.editorInstallation}，内容载入 ${publication.contentLoad}，会话采用 ${publication.sessionAdoption}`);
-    if (publication.transaction !== undefined)
-      lines.push(`原发布批次耗时（毫秒）：准备 ${publication.transaction.milliseconds.prepare}，提交 ${publication.transaction.milliseconds.commit}`);
-    if (publication.receiptFile !== undefined)
-      lines.push(`原发布回执文件：${publication.receiptFile.path}（${publication.receiptFile.stage}）`);
-    for (const file of publication.files)
-      lines.push(`文件（${file.kind}）：${file.path}；阶段 ${file.stage}${file.graphId === null ? '' : `；图 ${file.graphId}`}`);
-    for (const graph of publication.graphs) {
-      lines.push(`图 ${graph.graphId}`,
-        `编译工作：${graph.compilation.work === null ? '原回执未提供' : workNames[graph.compilation.work]}`,
-        `原编译耗时（毫秒）：前端 ${graph.compilation.milliseconds.frontend}，数值与身份 ${graph.compilation.milliseconds.fpAndHash}`,
-        'work' in graph.publication
-          ? `发布工作：${workNames[graph.publication.work]}；原编码耗时 ${graph.publication.milliseconds.encoding} 毫秒，原发布耗时 ${graph.publication.milliseconds.total} 毫秒`
-          : '发布工作：已由同批较早技能准备，本回执未提供耗时',
-        `结构版本：${graph.structureIdentity}`, `参数版本：${graph.parameterIdentity}`,
-        `目标参数版本：${graph.targetParameterIdentity}`, `来源版本：${graph.sourceIdentity}`,
-        `状态布局版本：${graph.stateLayoutIdentity}`, `执行版本：${graph.executionIdentity}`, `内容版本：${graph.contentIdentity}`);
-    }
-  }
+  lines.push(...compilationDetails(compilation));
   if (preview === null) {
     lines.push('当前预览：未提交，未取得实际采用回执');
     return lines.join('\n');
   }
   lines.push(`当前预览阶段：${preview.stage}（${previewNames[preview.stage]}）`);
+  lines.push(...preparationPhaseDetails(preview.phases, '本次预览刷新阶段'),
+    `实际采用场景版本：${preview.adoptedSceneRevision ?? '尚未确认采用'}`);
   if (preview.package === null) lines.push('本次准备包：未提供');
   else {
     lines.push(`本次准备包阶段：${preview.package.stage}`, `本次准备的场景版本：${preview.package.sceneRevision}`);
@@ -105,6 +69,8 @@ function commandDetails(command: PreviewCommand | null): string[] {
   if (command === null) lines.push('当前命令：未提供');
   else {
     lines.push(`当前命令阶段：${command.stage}（${commandNames[command.stage]}）`);
+    lines.push(command.milliseconds === null ? '命令发送至实际 ACK 耗时：尚未取得'
+      : `命令发送至实际 ACK 耗时：${command.milliseconds} 毫秒`);
     const ack = command.ack;
     if (ack === null) lines.push('实际 ACK：尚未收到，尚无实际采用版本');
     else {

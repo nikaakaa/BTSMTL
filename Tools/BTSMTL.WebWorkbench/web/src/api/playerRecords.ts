@@ -206,6 +206,7 @@ export const readPlayerJobReceipt = object({
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
   adoptedMode: nullable(text), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
+  milliseconds: nullable(number),
 });
 export const readPlayerAck = object({
   type: choice('ack'), commandId: text, ok: boolean,
@@ -452,4 +453,4 @@ export type PlayerArchiveRange = { firstFrame: string; lastFrame: string; offset
 export const newPlayerJobId = (): PlayerJobId => crypto.randomUUID() as PlayerJobId;
 export const readPlayerJobId = jobId;
 
-export { array, boolean, choice, identity, nullable, number, object, opaque, optional, text, tuple, type Decoder };
+export { array, boolean, choice, hosted, identity, nullable, number, object, opaque, optional, text, tuple, type Decoder };
