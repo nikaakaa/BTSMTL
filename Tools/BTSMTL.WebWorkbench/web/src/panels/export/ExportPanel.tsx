@@ -50,7 +50,7 @@ export function ExportPanel() {
 
 function ProductScope({ product }: { product: SkillEditingView['product'] }) {
   return product === null ? <div className={styles.note}>未选择 Product 作者范围</div>
-    : <dl className={styles.scope}><dt>Product</dt><dd>{product.guid}</dd><dt>版本</dt><dd>{product.revision}</dd></dl>;
+    : <dl className={styles.scope}><dt>Product</dt><dd>{product.value}</dd><dt>版本</dt><dd>{product.revision}</dd></dl>;
 }
 
 function ExportResult({ operation }: { operation: ExportOperation }) {

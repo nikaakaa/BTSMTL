@@ -17,7 +17,7 @@ export type SkillFile = {
 export type SkillEditingView = {
   skills: Record<string, SkillSaveRequest['content']>;
   execution: ExecutionScopeSelection;
-  product: Pick<AuthoringProduct, 'guid' | 'revision'> | null;
+  product: Pick<AuthoringProduct, 'value' | 'revision'> | null;
   scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
 
@@ -348,7 +348,7 @@ export interface AuthoringCarriers {
   businessKeys: BusinessKeyMetadata[];
 }
 
-const readAuthoringProducts = object({ items: array(object({ guid: text, name: text, source: text, revision: text })) });
+const readAuthoringProducts = object({ items: array(object({ value: text, name: text, source: text, revision: text })) });
 export type AuthoringProduct = ReturnType<typeof readAuthoringProducts>['items'][number];
 
 export interface BlackboardItem {
@@ -500,7 +500,7 @@ export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
 
 const readSkillExportHeader = object({
   stage: choice('export-ready'), kind: choice('authoring', 'runtime'), sourceRevision: text,
-  product: nullable(object({ guid: text, revision: text })), execution: nullable(readExecutionScopeSelection),
+  product: nullable(object({ value: text, revision: text })), execution: nullable(readExecutionScopeSelection),
   tickRate: number, effectProfileGuid: text, fileName: text, downloadUrl: text,
   files: array(object({ path: text, downloadUrl: text })),
 });

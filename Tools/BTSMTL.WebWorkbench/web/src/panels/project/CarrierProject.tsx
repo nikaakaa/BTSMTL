@@ -138,13 +138,13 @@ function ProductScope() {
     });
     return () => controller.abort();
   }, []);
-  const current = products?.find(item => item.guid === product?.guid);
+  const current = products?.find(item => item.value === product?.value);
   return <div className={styles.facts}>
     <span>当前技能的产品范围</span>
     <MenuButton label="选择产品作者范围" caret entries={[
       { label: '不选择产品', onSelect: () => authoringActions.selectProduct(null) },
       ...(products ?? []).map(item => ({ label: item.name, tip: item.source,
-        onSelect: () => authoringActions.selectProduct({ guid: item.guid, revision: item.revision }) })),
+        onSelect: () => authoringActions.selectProduct({ value: item.value, revision: item.revision }) })),
     ]}>{product === null ? '未选择产品' : current?.name ?? '原选择已失效，身份已保留'}</MenuButton>
     <small>从所选产品读取技能可创建的载体，运行场景另行选择。</small>
     {current && product && current.revision !== product.revision && <span className={styles.issue}>产品已有新修订，请重新选择后继续。</span>}
