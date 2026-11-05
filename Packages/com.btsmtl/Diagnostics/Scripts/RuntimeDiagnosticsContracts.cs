@@ -762,6 +762,7 @@ namespace BTSMTL.Diagnostics
         public ulong ParentInvocationGeneration;
         public string ParentInvocationPath;
         public ulong CallSequence;
+        public string ProgramRevision;
         public ulong ParentCallSequence;
         public int ParentProgramIndex;
         public Guid ParentExecutionBranchId;

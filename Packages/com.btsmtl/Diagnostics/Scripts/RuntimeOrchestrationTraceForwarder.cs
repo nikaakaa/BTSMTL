@@ -16,6 +16,7 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeDiagnosticsContext m_Diagnostics;
         readonly RuntimeOrchestrationValueCapture<TValue> m_Capture;
         readonly string m_ProgramId;
+        readonly string m_ProgramRevision;
         readonly RuntimeSourceElementHandle[] m_Operations;
         readonly string[] m_OperationNodeIds;
         readonly RuntimeSourceElementHandle[] m_Edges;
@@ -24,12 +25,13 @@ namespace BTSMTL.Diagnostics
 
         public RuntimeOrchestrationTraceForwarder(OrchestrationProgram<TValue> program,
             ReadOnlySpan<OrchestrationGraphSource> sources, OrchestrationIdentityTable identities, string programId,
-            RuntimeDiagnosticsContext diagnostics, RuntimeOrchestrationValueCapture<TValue> capture)
+            RuntimeDiagnosticsContext diagnostics, RuntimeOrchestrationValueCapture<TValue> capture, string programRevision)
         {
             m_Program = program ?? throw new ArgumentNullException(nameof(program));
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_Capture = capture ?? throw new ArgumentNullException(nameof(capture));
             m_ProgramId = programId ?? string.Empty;
+            m_ProgramRevision = programRevision;
             m_Operations = new RuntimeSourceElementHandle[program.OperationCount];
             m_OperationNodeIds = new string[program.OperationCount];
             m_InvocationPaths = new string[sources.Length];
@@ -193,6 +195,7 @@ namespace BTSMTL.Diagnostics
                     GraphInvocationGeneration = context.GraphInvocationGeneration,
                     ParentInvocationGeneration = context.ParentInvocationGeneration,
                     CallSequence = context.CallSequence,
+                    ProgramRevision = m_ProgramRevision,
                     ParentCallSequence = context.ParentCallSequence,
                     ParentProgramIndex = context.ParentProgramIndex,
                     ParentExecutionBranchId = context.ParentExecutionBranchId,
