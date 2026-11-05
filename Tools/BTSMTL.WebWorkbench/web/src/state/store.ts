@@ -102,7 +102,7 @@ export interface ArchiveFrame {
 
 interface ArchiveImageObservation {
   presentation: ArchivePresentationRecord | null;
-  camera: PlayerCameraPage['page']['items'][number] | null;
+  cameras: PlayerCameraPage['page']['items'];
   overlayReason: string | null;
 }
 

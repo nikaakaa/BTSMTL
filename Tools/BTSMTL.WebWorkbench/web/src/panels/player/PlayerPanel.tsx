@@ -447,7 +447,7 @@ function currentPicture(): Picture | null {
   }
   const image = state.archiveImage;
   if (!image || image.kind === 'unavailable') return null;
-  const camera = archiveOverlayReason(image) === null ? image.camera : null;
+  const camera = archiveOverlayReason(image) === null ? image.cameras[0] : null;
   return {
     hostFrame: image.metadata.sourceHostFrame, image: image.image, width: image.metadata.width, height: image.metadata.height,
     mediaType: image.metadata.mediaType, flipY: image.metadata.flipY,
@@ -463,7 +463,7 @@ function archiveOverlayReason(image: ArchiveImage | null): string | null {
   if (image.metadata.source.content === null) return '画面未记录实际采用内容身份，不能确认叠加来源';
   const source = image.metadata.source;
   if (source.execution.kind === null || source.execution.identity === null) return '画面未记录实际执行身份，不能确认叠加来源';
-  const presentation = image.presentation?.source ?? null, camera = image.camera?.source ?? null;
+  const presentation = image.presentation?.source ?? null, camera = image.cameras[0]?.source ?? null;
   if (!samePreviewLoad(source, presentation) || !samePreviewLoad(source, camera)) return '画面、骨骼与相机的实际来源或内容身份不一致';
   if (presentation?.clock.position.hostFrame !== source.clock.position.hostFrame || camera?.clock.position.hostFrame !== source.clock.position.hostFrame)
     return '画面、骨骼与相机的实际来源帧不一致';
@@ -572,8 +572,14 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
 function CameraHistory({ image }: { image: ArchiveImage | null }) {
   if (image === null) return <div><span>历史相机输出</span><span>正在读取画面关联记录</span></div>;
   if (image.kind === 'unavailable') return <div><span>历史相机输出</span><span>{image.reason}</span></div>;
-  const camera = image.camera;
-  if (camera === null) return <div><span>历史相机输出</span><span>{image.overlayReason}</span></div>;
+  if (image.cameras.length === 0) return <div><span>历史相机输出</span><span>{image.overlayReason}</span></div>;
+  return <>
+    <b>历史相机输出 · {image.cameras.length} 条记录</b>
+    {image.cameras.map((camera, index) => <CameraHistoryRecord key={`${camera.actorRosterIndex}/${camera.actorInstanceId}/${camera.rigInstanceId}/${index}`} camera={camera} />)}
+  </>;
+}
+
+function CameraHistoryRecord({ camera }: { camera: Extract<ArchiveImage, { kind: 'frame' }>['cameras'][number] }) {
   const source = camera.source;
   const hasOwner = camera.actorRosterIndex !== -1;
   const fields = [
@@ -603,7 +609,7 @@ function CameraHistory({ image }: { image: ArchiveImage | null }) {
     { label: '插值比例', value: camera.interpolationFactor },
   ];
   return <>
-    <b>历史相机输出</b>
+    <b>角色相机记录</b>
     {!hasOwner && <div><span>来源状态</span><span title="本帧没有角色相机来源，绑定与rig身份未记录；原相机输出矩阵仍保留。">本帧没有角色相机来源</span></div>}
     {hasOwner && !camera.bindingAdopted && <div><span>采用状态</span><span title="本帧绑定尚未确认采用；以下身份只表达同次历史记录。">本帧绑定未确认采用</span></div>}
     {fields.map(field => {

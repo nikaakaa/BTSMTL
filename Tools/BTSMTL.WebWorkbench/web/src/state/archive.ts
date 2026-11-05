@@ -197,13 +197,14 @@ async function imageObservations(context: OpenArchive, metadata: PlayerFrameImag
     channel('camera', readAll(offset => playerApi.camera(context.jobId, range(offset), signal))),
   ]);
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
-  const camera = cameras.items.find(item => item.presentationSequence === metadata.presentationSequence &&
-    item.cameraInstanceId === metadata.cameraInstanceId) ?? null;
+  const cameraRecords = cameras.items.filter(item => item.presentationSequence === metadata.presentationSequence &&
+    item.cameraInstanceId === metadata.cameraInstanceId);
   const reasons = [
     presentation === null ? poses.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号的姿态记录' : null,
-    camera === null ? cameras.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号与相机实例的记录' : null,
+    cameraRecords.length === 0 ? cameras.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号与相机实例的记录'
+      : cameraRecords.length > 1 ? `画面关联 ${cameraRecords.length} 条角色相机记录，叠加来源无法唯一确定；历史身份分别保留` : null,
   ].filter(reason => reason !== null);
-  return { presentation, camera, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
+  return { presentation, cameras: cameraRecords, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
 }
 
 async function loadImage(context: OpenArchive, hostFrame: string, request: number) {
