@@ -12,7 +12,20 @@ public sealed record PreviewObservationAvailability(string Channel, bool Availab
 public sealed record PreviewDiagnosticCoverage(int ObjectSlot, string? FirstFrame, string? LastFrame,
     int LogicFrameCount, int PresentationEvaluationCount, bool StartedBeforeExecution,
     string PublishedEventCount, string ArchivedEventCount, string FrameMappedEventCount,
-    string DiscardedTraceEventCount, string EvictedStateCount);
+    string DiscardedTraceEventCount, string EvictedStateCount)
+{
+    public bool CaptureIdentityRecorded { get; init; }
+    public bool SourceFramesContinuous { get; init; }
+    public string? RecordingId { get; init; }
+    public string? RuntimeId { get; init; }
+    public string? SourceRevision { get; init; }
+    public string? ContentHash { get; init; }
+    public string? ExecutionBranchId { get; init; }
+    public string? RuntimeEpoch { get; init; }
+    public int RecordingChannels { get; init; }
+    public int CaptureInterruptedFrameCount { get; init; }
+    public int IdentityChangedFrameCount { get; init; }
+}
 public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, string ProgramRevision,
     string InvocationPath, string? ParentInvocationPath, string ActionId, string ExecutionGeneration,
     string InvocationGeneration, string? ParentInvocationGeneration, string PlaybackId)
