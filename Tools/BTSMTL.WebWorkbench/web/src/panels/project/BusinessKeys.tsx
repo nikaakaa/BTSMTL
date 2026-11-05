@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { AuthoringCarriers, BusinessKeyMetadata, BusinessKeyTarget } from '../../api/authoring';
-import { referenceTargetKey } from '../../state/referenceSelection';
+import { referenceTargetKey, useReferenceSelection } from '../../state/referenceSelection';
 import { Empty, Facts } from '../../ui/blocks';
-import { TextInput } from '../../ui/controls';
+import { Button, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { BusinessKeyRename, BusinessKeyRenameReceipt, type BusinessKeyRenameCompletion } from './BusinessKeyRename';
@@ -41,6 +41,7 @@ export function BusinessKeyList({ items, failure, selected, onSelect }: {
 export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
   target: BusinessKeyTarget; metadata: BusinessKeyMetadata | null; onCatalog(catalog: AuthoringCarriers): void; onChanged(): void;
 }) {
+  const field = useReferenceSelection(state => state.field);
   const [completion, setCompletion] = useState<BusinessKeyRenameCompletion | null>(null);
   const refreshed = completion?.refresh?.catalog?.businessKeys.find(item => referenceTargetKey(item.target) === referenceTargetKey(completion.result.renamedTarget));
   const current = completion === null ? metadata : refreshed ?? null;
@@ -62,6 +63,10 @@ export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
         <span className={binding.state === 'unbound' || binding.projectionState === 'missing' ? styles.issue : styles.note}>
           {bindingNames[binding.state]} · {projectionNames[binding.projectionState]}</span>
         <small>绑定令牌：{binding.token ?? '未提供'}</small>
+        {field?.chooseAsset && binding.token !== null && <Button onClick={() => field.chooseAsset!({ token: binding.token!,
+          source: `${current.target.package} / ${current.target.keyKind} / ${current.target.key} · ${binding.adapter} / ${binding.context || '公共'}` })}>
+          将实际资源登记到 {field.name}
+        </Button>}
         {binding.projectionKind !== null && <small>投影类别：{binding.projectionKind}</small>}
       </div>)}
       <BusinessKeyRename key={referenceTargetKey(current.target)} target={current.target}
