@@ -15,6 +15,33 @@ namespace BTSMTL.Authoring.Graph
         public string NativeDefinitionId { get; set; }
     }
 
+    public sealed class GraphAuthoringAbilityRuntimeQuery
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string Ability { get; set; }
+    }
+
+    public sealed class GraphAuthoringAbilityRuntimeConfigurationRequest
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string Ability { get; set; }
+        public string AssetPath { get; set; }
+        public string ExpectedRevision { get; set; }
+    }
+
+    public sealed class GraphAuthoringAbilityRuntimeSnapshot
+    {
+        public string Package { get; set; }
+        public string Adapter { get; set; }
+        public string Ability { get; set; }
+        public string AssetPath { get; set; }
+        public bool Configured => AssetPath != null;
+        public string Revision { get; set; }
+        public GraphAuthoringDataTransaction Transaction { get; set; }
+    }
+
     public sealed class GraphAuthoringResourceObjectQuery
     {
         public string Package { get; set; }
