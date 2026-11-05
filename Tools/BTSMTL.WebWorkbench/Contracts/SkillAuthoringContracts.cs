@@ -14,7 +14,7 @@ public sealed record SkillAuthoringChanges(string Skill, string Revision, bool C
     SkillAuthoringFileRevision[] Files);
 public sealed record SkillAuthoringWrite([property: JsonRequired] SkillAuthoringFile[] Files,
     [property: JsonRequired] string[] RemovedFiles);
-public sealed record SkillAuthoringProductScope([property: JsonRequired] string Guid, [property: JsonRequired] string Revision);
+public sealed record SkillAuthoringProductScope([property: JsonRequired] string Value, [property: JsonRequired] string Revision);
 public sealed record SkillAuthoringEditingView(
     [property: JsonRequired] IReadOnlyDictionary<string, SkillAuthoringWrite> Skills,
     GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null, SkillAuthoringProductScope? Product = null);
@@ -29,7 +29,7 @@ public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string Gra
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(SkillAuthoringProfileEntryTarget), "ProfileEntry")]
 [JsonDerivedType(typeof(SkillAuthoringNodeTarget), "Node")]
-[JsonDerivedType(typeof(SkillAuthoringBusinessKeyTarget), "BusinessKey")]
+[JsonDerivedType(typeof(SkillAuthoringResourceTarget), "Resource")]
 public abstract record SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringProfileEntryTarget([property: JsonRequired] string CarrierIdentity,
     [property: JsonRequired] string ProfileSource, [property: JsonRequired] string Domain,
@@ -37,8 +37,8 @@ public sealed record SkillAuthoringProfileEntryTarget([property: JsonRequired] s
     string? ResourceIdentity = null) : SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringNodeTarget([property: JsonRequired] string GraphId,
     [property: JsonRequired] string NodeId) : SkillAuthoringReferenceTarget;
-public sealed record SkillAuthoringBusinessKeyTarget([property: JsonRequired] string Package,
-    [property: JsonRequired] string KeyKind, [property: JsonRequired] string Key) : SkillAuthoringReferenceTarget;
+public sealed record SkillAuthoringResourceTarget([property: JsonRequired] string Domain,
+    [property: JsonRequired] string Value, string? Context = null) : SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringReferenceQuery(string? Identity = null,
     int Offset = 0, int Limit = 128, SkillAuthoringEditingView? EditingView = null,
     SkillAuthoringReferenceTarget? Target = null);
