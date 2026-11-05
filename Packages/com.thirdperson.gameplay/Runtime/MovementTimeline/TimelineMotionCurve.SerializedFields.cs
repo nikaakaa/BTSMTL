@@ -137,7 +137,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
         }
 
         [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
-        [TimelineAuthoringProperty(IsSourceAsset = true)]
+        [TimelineAuthoringProperty(IsSourceAsset = true, SourceAssetKind = "motion-curve")]
 #endif
         public SourceCurveAsset SourceCurve => m_SourceCurve;
 #if UNITY_5_3_OR_NEWER
