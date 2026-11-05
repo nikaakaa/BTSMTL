@@ -48,8 +48,9 @@ namespace BTSMTL.Diagnostics
                 throw new ArgumentNullException(nameof(target));
             for (int i = 0; i < s_Targets.Count; i++)
             {
-                if (s_Targets[i].SessionId == target.SessionId)
-                    throw new InvalidOperationException($"Runtime diagnostics session is already registered: {target.SessionId:N}.");
+                // 同一诊断会话可同时登记角色与载体等多个目标；只拒绝同一目标重复登记。
+                if (ReferenceEquals(s_Targets[i], target))
+                    throw new InvalidOperationException($"Runtime diagnostics target is already registered: {target.DisplayName}.");
                 if (target.CharacterRuntimeId != Guid.Empty && s_Targets[i].CharacterRuntimeId == target.CharacterRuntimeId)
                     throw new InvalidOperationException($"Character diagnostics target is already registered: {target.CharacterRuntimeId:N}.");
             }
