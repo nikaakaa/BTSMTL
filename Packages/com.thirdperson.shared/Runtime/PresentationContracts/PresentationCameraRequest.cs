@@ -49,7 +49,7 @@ namespace ThirdPersonSimulation
             PresentationCameraRequestKind kind,
             PresentationCameraRequestLifecycle lifecycle,
             string requestId,
-            string sequenceId,
+            int sequenceIndex,
             int resourceIndex,
             string targetKey,
             string anchorKey,
@@ -75,7 +75,7 @@ namespace ThirdPersonSimulation
             Kind = kind;
             Lifecycle = lifecycle;
             RequestId = Normalize(requestId);
-            SequenceId = Normalize(sequenceId);
+            SequenceIndex = sequenceIndex;
             ResourceIndex = resourceIndex;
             ResourceRevision = Normalize(resourceRevision);
             SourceStartTime = sourceStartTime;
@@ -104,8 +104,7 @@ namespace ThirdPersonSimulation
         public PresentationCameraRequestLifecycle Lifecycle { get; }
         [ValueTextRules(NullToEmpty = true)]
         public string RequestId { get; }
-        [ValueTextRules(NullToEmpty = true)]
-        public string SequenceId { get; }
+        public int SequenceIndex { get; }
         public int ResourceIndex { get; }
         [ValueTextRules(NullToEmpty = true)]
         public string ResourceRevision { get; }
@@ -138,7 +137,7 @@ namespace ThirdPersonSimulation
 
         public PresentationCameraRequest WithActionTarget(string targetActorId) =>
             new PresentationCameraRequest(
-                Kind, Lifecycle, RequestId, SequenceId, ResourceIndex,
+                Kind, Lifecycle, RequestId, SequenceIndex, ResourceIndex,
                 targetActorId, AnchorKey, AimPointKey, PreferredBoneKey, Mode, EffectKind,
                 InterruptPolicy, Priority, Weight, BlendInSeconds, BlendOutSeconds,
                 ManualOrbitWeight, PitchWeight, YawWeight, CaptureLockStartOnSubmit,
@@ -146,7 +145,7 @@ namespace ThirdPersonSimulation
 
         public static PresentationCameraRequest Sequence(
             PresentationCameraRequestLifecycle lifecycle,
-            [BtsmtlBusinessKey("Camera", "camera-sequence", BtsmtlBusinessKeyRole.Reference)] string sequenceId,
+            int sequenceIndex,
             int mode,
             int interruptPolicy,
             int priority,
@@ -157,8 +156,8 @@ namespace ThirdPersonSimulation
             new PresentationCameraRequest(
                 PresentationCameraRequestKind.Sequence,
                 lifecycle,
-                sequenceId,
-                sequenceId,
+                string.Empty,
+                sequenceIndex,
                 -1,
                 targetKey,
                 string.Empty,
@@ -191,7 +190,7 @@ namespace ThirdPersonSimulation
                 PresentationCameraRequestKind.Effect,
                 lifecycle,
                 requestId,
-                string.Empty,
+                -1,
                 resourceIndex,
                 string.Empty,
                 string.Empty,
@@ -222,7 +221,7 @@ namespace ThirdPersonSimulation
                 PresentationCameraRequestKind.Response,
                 lifecycle,
                 string.Empty,
-                string.Empty,
+                -1,
                 -1,
                 string.Empty,
                 string.Empty,
@@ -254,7 +253,7 @@ namespace ThirdPersonSimulation
                 PresentationCameraRequestKind.Target,
                 lifecycle,
                 string.Empty,
-                string.Empty,
+                -1,
                 -1,
                 targetKey,
                 anchorKey,
@@ -319,7 +318,6 @@ namespace ThirdPersonSimulation
             RequireUnit(PitchWeight, nameof(PitchWeight));
             RequireUnit(YawWeight, nameof(YawWeight));
             Normalize(RequestId);
-            Normalize(SequenceId);
             Normalize(AnchorKey);
             Normalize(AimPointKey);
             Normalize(PreferredBoneKey);
