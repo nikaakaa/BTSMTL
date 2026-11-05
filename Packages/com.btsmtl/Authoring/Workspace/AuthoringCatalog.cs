@@ -37,35 +37,61 @@ namespace BTSMTL.Authoring.Workspace
         };
     }
 
+    public sealed class AuthoringCatalogResolution
+    {
+        internal AuthoringCatalogResolution(AuthoringCatalogEntry entry, string state, string reason, string revision)
+        { Entry = entry; State = state; Reason = reason; Revision = revision; }
+        public AuthoringCatalogEntry Entry { get; }
+        public string State { get; }
+        public string Reason { get; }
+        public string Revision { get; }
+        public bool Available => State == "available";
+    }
+
     public sealed class AuthoringCatalogSnapshot
     {
+        readonly IReadOnlyDictionary<(string Domain, string Value), AuthoringCatalogEntry[]> m_Entries;
         internal AuthoringCatalogSnapshot(string revision, IReadOnlyList<AuthoringCatalogEntry> entries,
             IReadOnlyDictionary<string, string> inputs)
         {
             Revision = revision;
             Entries = entries;
             Inputs = inputs;
+            m_Entries = entries.GroupBy(item => (item.Domain, item.Value)).ToDictionary(group => group.Key, group => group.ToArray());
         }
 
         public string Revision { get; }
         public IReadOnlyList<AuthoringCatalogEntry> Entries { get; }
         public IReadOnlyDictionary<string, string> Inputs { get; }
 
-        public bool TryResolve(string domain, string value, string context, out AuthoringCatalogEntry entry)
+        public AuthoringCatalogResolution Resolve(string domain, string value, string context)
         {
-            AuthoringCatalogEntry[] candidates = Entries.Where(item => item.Domain == domain && item.Value == value &&
-                (item.Context == context || item.Context == "")).ToArray();
+            AuthoringCatalogEntry[] candidates = m_Entries.TryGetValue((domain, value), out AuthoringCatalogEntry[] available)
+                ? available.Where(item => item.Context == context || item.Context == "").ToArray() : Array.Empty<AuthoringCatalogEntry>();
             AuthoringCatalogEntry[] exact = candidates.Where(item => item.Context == context).ToArray();
             AuthoringCatalogEntry[] selected = exact.Length != 0 ? exact : candidates;
-            if (selected.Length > 1)
-                throw new InvalidDataException($"领域 '{domain}'、引用 '{value}'、上下文 '{context}' 命中多个适配者目录条目：{string.Join(", ", selected.Select(item => item.File))}。");
-            entry = selected.SingleOrDefault();
-            return entry != null;
+            string state = selected.Length == 1 ? "available" : selected.Length == 0 ? "missing" : "conflict";
+            string reason = state == "available" ? null : state == "missing"
+                ? $"领域 '{domain}' 的引用 '{value}' 不在上下文 '{context}' 的适配者目录中。"
+                : $"领域 '{domain}'、引用 '{value}'、上下文 '{context}' 命中多个适配者目录条目：{string.Join(", ", selected.Select(item => item.File))}。";
+            string revision = AuthoringCommits.Revision(domain + "\n" + value + "\n" + context + "\n" + state + "\n" +
+                string.Join("\n", selected.OrderBy(item => item.File, StringComparer.Ordinal)
+                    .Select(item => item.Adapter + "\n" + item.Context + "\n" + item.Revision)));
+            return new AuthoringCatalogResolution(selected.Length == 1 ? selected[0] : null, state, reason, revision);
         }
 
-        public AuthoringCatalogEntry Require(string domain, string value, string context, string file, string pointer) =>
-            TryResolve(domain, value, context, out AuthoringCatalogEntry entry) ? entry : throw new InvalidDataException(
-                $"{file}:{pointer}: 领域 '{domain}' 的引用 '{value}' 不在上下文 '{context}' 的适配者目录中。");
+        public bool TryResolve(string domain, string value, string context, out AuthoringCatalogEntry entry)
+        {
+            AuthoringCatalogResolution resolution = Resolve(domain, value, context);
+            entry = resolution.Entry;
+            return resolution.Available;
+        }
+
+        public AuthoringCatalogEntry Require(string domain, string value, string context, string file, string pointer)
+        {
+            AuthoringCatalogResolution resolution = Resolve(domain, value, context);
+            return resolution.Available ? resolution.Entry : throw new InvalidDataException($"{file}:{pointer}: {resolution.Reason}");
+        }
 
         public JObject ToJson(string knownRevision = null)
         {
@@ -129,8 +155,6 @@ namespace BTSMTL.Authoring.Workspace
             string adapter = Path.GetFileName(adapterPath), domain = Path.GetFileNameWithoutExtension(file);
             AuthoringCatalogEntry[] entries = JArray.Parse(text).Cast<JObject>()
                 .Select(item => new AuthoringCatalogEntry(adapter, domain, file, item)).ToArray();
-            foreach (var duplicate in entries.GroupBy(item => (item.Value, item.Context)).Where(group => group.Count() > 1))
-                throw new InvalidDataException($"目录 '{file}' 的引用 '{duplicate.Key.Value}'、上下文 '{duplicate.Key.Context}' 重复。");
             return new Cached { Text = text, Revision = revision, Entries = entries };
         }
     }
