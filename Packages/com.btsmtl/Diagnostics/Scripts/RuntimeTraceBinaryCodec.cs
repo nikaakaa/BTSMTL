@@ -12,7 +12,7 @@ namespace BTSMTL.Diagnostics
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable, IServiceProvider, IBufferWriter<byte>
     {
-        internal const string Protocol = "btsmtl.runtime-trace.memorypack/14";
+        internal const string Protocol = "btsmtl.runtime-trace.memorypack/15";
         const uint Magic = 0x43525442;
         static readonly string s_FormatIdentity;
         static readonly int s_StringSlots;

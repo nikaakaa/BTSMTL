@@ -5,7 +5,7 @@ namespace BTSMTL.Orchestration
 {
     // 工作台采集存储：Trace、调用作用域绑定、值观察与覆盖退休；按需准备，采集期间复用。
     // 只由工作台诊断插头经执行器回调写入，执行器本身不认识本类型。
-    public sealed class OrchestrationWorkbenchDiagnosticStorage<TValue> where TValue : unmanaged
+    public sealed partial class OrchestrationWorkbenchDiagnosticStorage<TValue> where TValue : unmanaged
     {
         readonly OrchestrationProgram<TValue> m_Program;
         readonly ReadOnlyMemory<OrchestrationGraphSource> m_Sources;
@@ -271,7 +271,11 @@ namespace BTSMTL.Orchestration
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>
         {
-            if (!cursor.Input.CaptureTrace || cursor.IsPredictiveEvaluation)
+            if (cursor.IsPredictiveEvaluation)
+                return;
+            if (cursor.Input.CaptureTrace || Observations != null)
+                ObserveCall(ref cursor, operationIndex, kind);
+            if (!cursor.Input.CaptureTrace)
                 return;
             ref OrchestrationTraceEvent<TValue> item = ref m_TraceEvents[m_TraceCount++];
             item = default;
@@ -554,6 +558,7 @@ namespace BTSMTL.Orchestration
             context.ClipOrdinal = frame.ClipOrdinal;
             context.Cycle = frame.Cycle;
             context.Marker = frame.Marker;
+            ReadCall(ref cursor, operationIndex, invocationIndex, parentIndex, ref context);
         }
 
         void WriteLoopScope<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
@@ -579,6 +584,7 @@ namespace BTSMTL.Orchestration
             scope.ParentInvocationGeneration = parentIndex < 0 ? 0 :
                 ReadInvocationGeneration(ref cursor, parentIndex, invocation.OwnerOperationIndex, out _);
             scope.PlaybackIdentity = frame.TimelineStart.PlaybackIdentity;
+            scope.CallSequence = ReadObservedCall(ref cursor, operationIndex);
         }
 
         int ResolveTraceInvocation<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,

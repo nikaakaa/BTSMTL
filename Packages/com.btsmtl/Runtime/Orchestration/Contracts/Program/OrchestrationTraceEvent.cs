@@ -82,6 +82,7 @@ namespace BTSMTL.Orchestration
         public ulong InvocationGeneration;
         public ulong ParentInvocationGeneration;
         public ulong PlaybackIdentity;
+        public ulong CallSequence;
         public bool HasValue => Iteration > 0;
 
         public bool Equals(in OrchestrationTraceLoopScope other) =>
@@ -89,7 +90,8 @@ namespace BTSMTL.Orchestration
             ParentInvocationSourceIndex == other.ParentInvocationSourceIndex && Iteration == other.Iteration &&
             Generation == other.Generation && Activation == other.Activation && ActionInstanceId == other.ActionInstanceId &&
             ExecutionGeneration == other.ExecutionGeneration && InvocationGeneration == other.InvocationGeneration &&
-            ParentInvocationGeneration == other.ParentInvocationGeneration && PlaybackIdentity == other.PlaybackIdentity;
+            ParentInvocationGeneration == other.ParentInvocationGeneration && PlaybackIdentity == other.PlaybackIdentity &&
+            CallSequence == other.CallSequence;
     }
 
     public struct OrchestrationTraceEvent<TValue> where TValue : unmanaged
@@ -146,6 +148,12 @@ namespace BTSMTL.Orchestration
         public int ClipOrdinal;
         public int Cycle;
         public bool Marker;
+        public ulong CallSequence;
+        public ulong ParentCallSequence;
+        public int ParentProgramIndex;
+        public Guid ParentExecutionBranchId;
+        public ulong ParentRuntimeEpoch;
+        public OrchestrationTraceAvailability ParentCallAvailability;
     }
 
     public readonly struct OrchestrationTraceBatch

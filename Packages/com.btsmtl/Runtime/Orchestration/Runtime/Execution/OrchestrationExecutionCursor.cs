@@ -131,6 +131,7 @@ namespace BTSMTL.Orchestration
         internal OrchestrationTimelineInvocationFacts TimelineInvocation => m_TimelineInvocation;
         internal int FrameCapacity => m_Frames.Capacity;
         internal ref readonly OrchestrationExecutionFrameState FrameHeader(int frameSlot) => ref m_Frames.Header(frameSlot);
+        internal int DiagnosticProgramIndex(int frameSlot) => m_Frames.Plan.ProgramIndex(m_Frames.Header(frameSlot).SkillContentId);
         internal int CurrentStateTraceFrame => m_StateDepth == 0 ? -1 : m_States[m_StateDepth - 1].TraceFrameIndex;
         internal int ChildCursor(int operationIndex) => OperationState(operationIndex).ChildCursor;
         internal bool HasExecutionScope => m_EntryDepth != 0 || m_InputDepth != 0;

@@ -39,6 +39,8 @@ public sealed record PreviewExecutionCall(string? ActorId, string ProgramId, str
     public string? RuntimeEpoch { get; init; }
     public PreviewObservationAvailability? BranchAvailability { get; init; }
     public PreviewObservationAvailability? ObjectAvailability { get; init; }
+    public PreviewExecutionCall? ParentCall { get; init; }
+    public PreviewObservationAvailability? ParentAvailability { get; init; }
 }
 public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, string NodeId,
     string Kind, string? Generation, string? Result, PreviewExecutionCall? Call)

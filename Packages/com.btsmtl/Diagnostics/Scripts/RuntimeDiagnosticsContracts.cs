@@ -761,6 +761,12 @@ namespace BTSMTL.Diagnostics
         public ulong GraphInvocationGeneration;
         public ulong ParentInvocationGeneration;
         public string ParentInvocationPath;
+        public ulong CallSequence;
+        public ulong ParentCallSequence;
+        public int ParentProgramIndex;
+        public Guid ParentExecutionBranchId;
+        public ulong ParentRuntimeEpoch;
+        public OrchestrationTraceAvailability ParentCallAvailability;
         public ulong StartTick;
         public ulong EndTick;
         public ulong Revision;
