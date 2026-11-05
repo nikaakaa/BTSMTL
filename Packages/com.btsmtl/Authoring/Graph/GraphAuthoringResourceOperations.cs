@@ -113,17 +113,26 @@ namespace BTSMTL.Authoring.Graph
     [System.Text.Json.Serialization.JsonDerivedType(typeof(GraphAuthoringProfileInstanceMappingInput), "instance-resource")]
     [System.Text.Json.Serialization.JsonDerivedType(typeof(GraphAuthoringProfileCameraEffectMappingInput), "camera-effect")]
 #endif
-    public abstract class GraphAuthoringProfileMappingInput
+    public abstract partial class GraphAuthoringProfileMappingInput
     {
 #if NET8_0_OR_GREATER
         [System.Text.Json.Serialization.JsonIgnore]
 #endif
         public abstract string Kind { get; }
-        public string Name { get; set; }
-        public string Token { get; set; }
+        [GraphAuthoringField(GraphAuthoringFieldValueKind.String, DisplayName = "映射名称", NonEmpty = true)]
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonInclude]
+#endif
+        public string Name;
+        [GraphAuthoringField(GraphAuthoringFieldValueKind.AssetReference, DisplayName = "资源对象", NonEmpty = true,
+            PickerKind = "profile-object")]
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonInclude]
+#endif
+        public string Token;
     }
 
-    public sealed class GraphAuthoringProfileAssetMappingInput : GraphAuthoringProfileMappingInput
+    public sealed partial class GraphAuthoringProfileAssetMappingInput : GraphAuthoringProfileMappingInput
     {
 #if NET8_0_OR_GREATER
         [System.Text.Json.Serialization.JsonIgnore]
@@ -131,22 +140,31 @@ namespace BTSMTL.Authoring.Graph
         public override string Kind => "asset";
     }
 
-    public sealed class GraphAuthoringProfileInstanceMappingInput : GraphAuthoringProfileMappingInput
+    public sealed partial class GraphAuthoringProfileInstanceMappingInput : GraphAuthoringProfileMappingInput
     {
 #if NET8_0_OR_GREATER
         [System.Text.Json.Serialization.JsonIgnore]
 #endif
         public override string Kind => "instance-resource";
-        public int InstanceCapacity { get; set; }
+        [GraphAuthoringField(GraphAuthoringFieldValueKind.Integer, DisplayName = "实例容量", HasMinimum = true, Minimum = 1)]
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonInclude]
+#endif
+        public int InstanceCapacity;
     }
 
-    public sealed class GraphAuthoringProfileCameraEffectMappingInput : GraphAuthoringProfileMappingInput
+    public sealed partial class GraphAuthoringProfileCameraEffectMappingInput : GraphAuthoringProfileMappingInput
     {
 #if NET8_0_OR_GREATER
         [System.Text.Json.Serialization.JsonIgnore]
 #endif
         public override string Kind => "camera-effect";
-        public string EffectKind { get; set; }
+        [GraphAuthoringField(GraphAuthoringFieldValueKind.String, DisplayName = "效果类别", NonEmpty = true,
+            PickerKind = "camera-effect-kind")]
+#if NET8_0_OR_GREATER
+        [System.Text.Json.Serialization.JsonInclude]
+#endif
+        public string EffectKind;
     }
 
     public sealed class GraphAuthoringProfileMappingRequest

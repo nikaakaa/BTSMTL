@@ -21,6 +21,9 @@ public sealed record SkillAuthoringEditingView(
 public sealed record SkillAuthoringTypeQuery([property: JsonRequired] string Type,
     JsonElement? Configuration = null, string? GraphId = null, int Offset = 0, int Limit = 128,
     SkillAuthoringEditingView? EditingView = null);
+public sealed record SkillAuthoringConfigurationQuery([property: JsonRequired] string Type,
+    JsonElement? Configuration = null, GraphAuthoringScopeQuery? Scope = null,
+    GraphAuthoringProfileQuery? Profile = null, string? Domain = null, int Offset = 0, int Limit = 128);
 public sealed record SkillAuthoringPageQuery(int Offset = 0, int Limit = 128, string? GraphId = null,
     SkillAuthoringEditingView? EditingView = null);
 public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string GraphId,
