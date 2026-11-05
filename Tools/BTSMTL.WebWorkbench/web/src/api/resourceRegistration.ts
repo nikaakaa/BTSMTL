@@ -23,7 +23,8 @@ export const resourceReferenceKey = (value: ResourceReference) => JSON.stringify
 export const readExecutionScopeSelection = object({ previewScope: nullable(readResourceReference), runtimeScope: nullable(readResourceReference) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
 export const readResourceDeclaration = object({ keyKind: text, referenceKind: text, domain: nullable(text),
-  registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')), inputType: nullable(text) });
+  registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')), inputType: nullable(text),
+  objectType: nullable(text), availability: readCapabilityAvailability });
 export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
 const readProfileResource = object({ reference: readResourceReference, token: nullable(text), instanceCapacity: nullable(number),
   configurationJson: nullable(text) });
@@ -44,10 +45,17 @@ export type ResourceObjects = ReturnType<typeof readResourceObjects>;
 const readTransaction = object({ changes: array(object({ path: text, before: nullable(text), after: nullable(text) })) });
 export type AuthoringDataTransaction = ReturnType<typeof readTransaction>;
 const resultFields = { revision: nullable(text), files: array(object({ path: text, content: text })), runtimeState: choice('pending') };
-const readRegistration = object({ ...resultFields,
+const registrationFields = { ...resultFields,
   reference: readResourceReference,
-  reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction });
+  reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction };
+const readRegistration = object(registrationFields);
+const readScopeRegistration = object({ ...registrationFields, revision: text });
 const readReplay = object(resultFields);
+const readScopeReplay = object({ ...resultFields, revision: text });
+const readScope = object({ scope: readResourceReference, adapter: text, revision: text, resourceDeclarations: array(readResourceDeclaration) });
+export type AuthoringScope = ReturnType<typeof readScope>;
+export type ScopeQuery = Pick<AuthoringScope, 'scope' | 'adapter'>;
+export const scopeQueryKey = (query: ScopeQuery) => JSON.stringify([resourceReferenceKey(query.scope), query.adapter]);
 const readProfile = object({ package: text, adapter: text, assetToken: text, domain: text, context: text,
   revision: text, configurationJson: text, resourceDeclarations: array(readResourceDeclaration), resources: array(readProfileResource),
   operations: array(object({ command: text, inputType: text, resultType: text })) });
@@ -69,6 +77,16 @@ export type ResourceRegistrationRequest = {
 };
 const root = (skill: string) => `/api/authoring/skills/${encodeURIComponent(skill)}`;
 export const resourceRegistrationApi = {
+  readScope: (query: ScopeQuery, signal?: AbortSignal) =>
+    postJson<unknown>('/api/authoring/scopes/read', query, signal).then(value => readScope(value)),
+  registerScope: (source: AuthoringScope, keyKind: string, value: ResourceRegistrationInput) => {
+    const { kind, ...input } = value;
+    return postJson<unknown>('/api/authoring/scopes/resources/register', { scope: source.scope, adapter: source.adapter,
+      package: source.scope.package, context: source.scope.context, expectedRevision: source.revision, keyKind, input: { kind, ...input } })
+      .then(value => readScopeRegistration(value));
+  },
+  replayScope: (query: ScopeQuery, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
+    postJson<unknown>(`/api/authoring/scopes/data/${direction}`, { ...query, transaction }).then(value => readScopeReplay(value)),
   readProfile: (query: ProfileQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/profiles/read', query, signal).then(value => readProfile(value)),
   registerProfile: (profile: AuthoringProfile, keyKind: string, value: ResourceRegistrationInput) => {
