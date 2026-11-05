@@ -11,6 +11,7 @@ import { session } from '../../state/session';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
+import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './player.module.css';
 
 const playerStates: Record<PlayerState, string> = {
@@ -175,6 +176,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     viewerOpen: state.viewerOpen, player: state.live?.player ?? null,
   })));
   const [captured, setCaptured] = useState(false);
+  const [decodeFailure, setDecodeFailure] = useState<{ image: Blob; reason: string; entryId: number | null } | null>(null);
   const frameSize = useRef({ width: 16, height: 9 });
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
@@ -222,22 +224,33 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         context.drawImage(image, 0, 0, frame.width, frame.height);
         context.restore();
         image.close();
+        setDecodeFailure(null);
         frameSize.current = { width: frame.width, height: frame.height };
         overlayDraw.current(frame);
         const state = getState();
         if (state.runId && drawnKey && state.frameKey === drawnKey && state.frame?.hostFrame === frame.hostFrame)
           reportRendered(panelId, drawnKey);
       } catch (error) {
-        consoleActions.error('player', error);
+        if (!alive || currentPicture()?.image !== frame.image) return;
+        clearRendered(panelId);
+        canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
+        const overlayCanvas = layer.current;
+        if (overlayCanvas) overlayCanvas.getContext('2d')!.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        setDecodeFailure({ image: frame.image, reason: `画面解码失败：${error instanceof Error ? error.message : String(error)}`,
+          entryId: consoleActions.error('player', error) });
       } finally {
         decoding = false;
         if (again && alive) { again = false; void draw(); }
       }
     };
     void draw();
-    const unsubscribe = playerService.subscribeVideo(() => void draw());
-    return () => { alive = false; unsubscribe(); clearRendered(panelId); };
-  }, [visible, panelWindow, panelId, view.liveId, view.runId, view.archiveImage, view.frameKey, view.viewerOpen]);
+    const unsubscribeVideo = playerService.subscribeVideo(() => { if (getState().runId === null) void draw(); });
+    const unsubscribeState = useWorkbench.subscribe((state, previous) => {
+      if (state.liveId !== previous.liveId || state.runId !== previous.runId || state.archiveImage !== previous.archiveImage ||
+        state.frameKey !== previous.frameKey || state.viewerOpen !== previous.viewerOpen) void draw();
+    });
+    return () => { alive = false; unsubscribeVideo(); unsubscribeState(); clearRendered(panelId); };
+  }, [visible, panelWindow, panelId]);
 
   const overlayRef = useRef(overlay);
   overlayRef.current = overlay;
@@ -393,15 +406,17 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     if (camera.current) { playerService.camera(camera.current); camera.current = null; }
   }, [panelWindow]), ready);
 
-  const emptyReason = view.runId
+  const currentFailure = decodeFailure !== null && currentPicture()?.image === decodeFailure.image ? decodeFailure : null;
+  const emptyReason = currentFailure?.reason ?? (view.runId
     ? view.archiveImage === null ? '正在读取档案画面' : view.archiveImage.kind === 'unavailable' ? view.archiveImage.reason : null
     : !view.liveId ? '启动或选择一个播放器' : !view.viewerOpen ? '播放器画面连接尚未建立'
     : livePicture !== null ? null : view.player?.error ?? (view.player?.state === 'loading' ? '正在载入所选内容'
-      : view.player?.source ? '等待当前内容的实际画面' : '尚无实际载入内容');
+      : view.player?.source ? '等待当前内容的实际画面' : '尚无实际载入内容'));
 
   return (
     <div ref={stageRef} className={styles.stage} data-captured={captured || undefined}>
-      {emptyReason !== null && <Empty text={emptyReason} />}
+      {currentFailure !== null ? <ErrorLine text={currentFailure.reason} entryId={currentFailure.entryId} />
+        : emptyReason !== null && <Empty text={emptyReason} />}
       <canvas ref={video} className={styles.video} hidden={emptyReason !== null} />
       <canvas ref={layer} className={styles.video} hidden={emptyReason !== null} />
       {(view.runId || view.liveId) && <Corner stats={stats} video={livePicture} />}
