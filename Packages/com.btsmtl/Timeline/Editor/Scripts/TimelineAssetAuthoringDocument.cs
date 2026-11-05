@@ -201,7 +201,10 @@ namespace BTSMTL.Timeline.Editor
                 return;
             foreach (UnityEngine.Object asset in ReadLocalGraphs(path, destroyed))
                 if (asset is TimelineAsset timeline && (destroyed == null || !destroyed.Contains(asset.GetInstanceID())))
+                {
                     timeline.Data.BindAuthoringDocument(s_LocalGraphs[path].Document);
+                    TimelineAuthoringClipBinding.PrepareResources(timeline.Data);
+                }
         }
 
         static void OnGraphChanged(Graph source) =>
@@ -250,7 +253,10 @@ namespace BTSMTL.Timeline.Editor
             {
                 string path = AssetDatabase.GetAssetPath(timeline);
                 if (!paths.Contains(path) && s_LocalGraphs.ContainsKey(path) && !destroyed.Contains(timeline.GetInstanceID()))
+                {
                     timeline.Data.BindAuthoringDocument(s_LocalGraphs[path].Document);
+                    TimelineAuthoringClipBinding.PrepareResources(timeline.Data);
+                }
             }
         }
 
