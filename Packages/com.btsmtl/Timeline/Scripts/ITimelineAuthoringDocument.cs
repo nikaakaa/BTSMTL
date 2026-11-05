@@ -39,7 +39,7 @@ namespace BTSMTL.Timeline
         IReadOnlyList<GraphAuthoringResourceChoice> ResourceReferences(TimelineData timeline, string domain,
             UnityEngine.Object source = null);
         GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string domain, UnityEngine.Object source);
-        UnityEngine.Object ResolveResourceObject(string value);
+        UnityEngine.Object ResolveResourceObject(TimelineData timeline, string domain, string value);
         TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, string domain, string value);
     }
 

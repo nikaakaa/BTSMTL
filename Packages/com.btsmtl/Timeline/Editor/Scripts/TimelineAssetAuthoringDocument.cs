@@ -82,7 +82,8 @@ namespace BTSMTL.Timeline.Editor
             m_Resources.ResolveResource(timeline, domain, value);
         public GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source) =>
             m_Resources.ResourceObjects(timeline, keyKind, source);
-        public UnityEngine.Object ResolveResourceObject(string token) => m_Resources.ResolveResourceObject(token);
+        public UnityEngine.Object ResolveResourceObject(TimelineData timeline, string domain, string value) =>
+            m_Resources.ResolveResourceObject(timeline, domain, value);
         public bool HasUnsavedChanges => AssetDatabase.LoadAllAssetsAtPath(SourcePath).Any(EditorUtility.IsDirty);
         public IGraphNodeInterfaceResolver PrepareAuthoringContext(ScriptableObject graph)
         {
