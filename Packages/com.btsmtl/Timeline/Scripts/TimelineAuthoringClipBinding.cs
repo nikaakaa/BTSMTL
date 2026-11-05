@@ -39,11 +39,15 @@ namespace BTSMTL.Timeline
         public static bool Supports(this TimelineAuthoringProperty property, Clip clip, UnityEngine.Object source) =>
             !property.SourceMappingOnly || source is ITimelineAuthoringSourceAsset;
 
-        public static UnityEngine.Object SourceAsset(Clip clip) =>
-            GraphAuthoringMemberBindings.Contract(clip).Fields
+        public static UnityEngine.Object SourceAsset(Clip clip)
+        {
+            if (clip is ITimelineAuthoringClipSource source)
+                return source.SourceAsset;
+            return GraphAuthoringMemberBindings.Contract(clip).Fields
                 .Where(field => field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true)
                 .Select(field => (UnityEngine.Object)field.Read(clip))
                 .SingleOrDefault();
+        }
 
         public static OrchestrationTime DefaultEndTime(Clip clip, OrchestrationTime startTime,
             UnityEngine.Object referenceObject) =>
