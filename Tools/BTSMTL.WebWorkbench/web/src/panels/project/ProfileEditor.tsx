@@ -21,11 +21,11 @@ export function ProfileSources({ context = null }: { context?: string | null }) 
     });
     return () => controller.abort();
   }, []);
-  const profiles = source?.items.filter(item => context === null || item.context === context) ?? [];
+  const profiles = source?.kind === 'ready' ? source.items.filter(item => context === null || item.context === context) : [];
   const profile = profiles.find(item => profileQueryKey(item) === selected);
   return <Fold title="独立 Profile 编辑" defaultOpen>
     {failure && <ErrorLine {...failure} />}
-    {source !== null && !source.availability.available && <div className={styles.issue}>{source.availability.reason}</div>}
+    {source?.kind === 'unavailable' && <div className={styles.issue}>{source.reason}</div>}
     <PanelBar wrap><Select label="实际 Profile 资产" value={profile === undefined ? null : profileQueryKey(profile)} placeholder="选择实际 Profile"
       options={profiles.map(item => ({ value: profileQueryKey(item), label: `${item.display} · ${item.adapter}` }))} onChange={setSelected} />
     </PanelBar>

@@ -68,10 +68,15 @@ const readProfileResult = object({ value: nullable(text), reused: boolean, insta
   transaction: readTransaction, profile: readProfile, runtimeState: choice('pending') });
 export type ProfileOperationResult = ReturnType<typeof readProfileResult>;
 export type ResourceMappingInput = JsonObject & { kind: string };
-const readProfiles = object({ availability: readCapabilityAvailability, revision: text, items: array(object({
+const readProfileLocation = object({
   adapter: text, group: text, assetToken: text, domain: text, context: text, display: text, source: text,
-})) });
-export type ProfileLocation = ReturnType<typeof readProfiles>['items'][number];
+});
+function readProfiles(value: unknown) {
+  const { availability } = object({ availability: readCapabilityAvailability })(value, 'Profiles');
+  if (!availability.available) return { kind: 'unavailable' as const, reason: availability.reason };
+  return { kind: 'ready' as const, ...object({ revision: text, items: array(readProfileLocation) })(value, 'Profiles') };
+}
+export type ProfileLocation = ReturnType<typeof readProfileLocation>;
 export const resourceRegistrationApi = {
   profiles: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/profiles', signal).then(value => readProfiles(value)),
   readScope: (query: ScopeQuery, signal?: AbortSignal) =>
