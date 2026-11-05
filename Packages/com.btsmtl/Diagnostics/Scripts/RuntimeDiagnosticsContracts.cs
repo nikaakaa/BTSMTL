@@ -871,11 +871,6 @@ namespace BTSMTL.Diagnostics
         public int GetCycle() => m_Payload.Cycle;
         public ulong GetActionInstanceId() => m_Payload.ActionInstanceId;
         public string GetCause() => m_Payload.Cause;
-        public string GetParentInvocationPath() => m_Payload.ParentInvocationPath;
-        public ulong GetParentInvocationGeneration() => m_Payload.ParentInvocationGeneration;
-        public Guid GetParentGraphRuntimeId() => m_Payload.TimelinePlayback.IsValid &&
-            string.Equals(m_Payload.ParentInvocationPath, m_Payload.TimelinePlayback.SourceInvocationPath, StringComparison.Ordinal)
-            ? m_Payload.TimelinePlayback.SourceGraphRuntimeId : RuntimeInstance.GraphRuntimeId;
     }
 
     public interface IRuntimeDiagnosticsContextSource

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Diagnostics.Editor
@@ -305,21 +306,91 @@ namespace BTSMTL.Diagnostics.Editor
             return TryGetLatestInstanceEvent(instance, out int slot) &&
                    m_EventSourceMaps[slot].TryGetInvocation(path, out invocation);
         }
-        public bool TryGetParentInvocation(RuntimeInstanceKey instance, out string path,
-            out Guid runtimeId, out ulong generation)
+        public bool TryGetInvocationEvent(RuntimeInstanceKey instance, out RuntimeDebugEventView invocation)
         {
-            if (instance.Kind == RuntimeInstanceKind.SkillExecution &&
-                TryGetLatestInstanceEvent(instance, out int slot))
+            invocation = default;
+            if (!TryGetInstanceEventHead(EventInstance(instance), out int slot))
+                return false;
+            for (; slot != -1; slot = m_NextInstanceEvent[slot])
             {
                 ref readonly RuntimeTraceEvent traceEvent = ref m_Events[slot].Event;
-                path = traceEvent.GetParentInvocationPath();
-                generation = traceEvent.GetParentInvocationGeneration();
-                runtimeId = traceEvent.GetParentGraphRuntimeId();
-                return !string.IsNullOrEmpty(path);
+                ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in traceEvent);
+                if (traceEvent.RuntimeInstance.Equals(instance) && traceEvent.RuntimeInstance.ExecutionObject.HasValue &&
+                    payload.CallSequence != 0 && m_Events[slot].Source.IsValid &&
+                    m_EventSourceMaps[slot].TryGetInvocation(instance.CallSiteId, out RuntimeGraphInvocation source) &&
+                    source.GraphId == m_Events[slot].Source.GraphAuthoringId &&
+                    traceEvent.Sequence > invocation.Event.Sequence)
+                    invocation = m_Events[slot];
             }
-            path = null;
-            runtimeId = Guid.Empty;
-            generation = 0;
+            return invocation.Event.Sequence != 0;
+        }
+
+        public bool TryGetInstanceEvent(RuntimeInstanceKey instance, out RuntimeDebugEventView eventView)
+        {
+            bool found = TryGetLatestInstanceEvent(instance, out int slot);
+            eventView = found ? m_Events[slot] : default;
+            return found;
+        }
+
+        public bool TryGetTimelineGraphInstance(RuntimeInstanceKey playback,
+            RuntimeTimelinePlaybackProvenance provenance, out RuntimeInstanceKey graphInstance)
+        {
+            graphInstance = default;
+            if (!TryGetParentInvocation(playback, out RuntimeDebugEventView parent, out _))
+                return false;
+            RuntimeInstanceKey candidate = parent.Event.RuntimeInstance;
+            if (parent.Source.GraphAuthoringId != provenance.SourceGraphAuthoringId ||
+                candidate.GraphRuntimeId != provenance.SourceGraphRuntimeId ||
+                candidate.ActivationGeneration != provenance.SkillExecutionGeneration ||
+                candidate.InvocationGeneration != provenance.SourceActivationGeneration ||
+                !candidate.CallSiteId.Equals(provenance.SourceInvocationPath))
+                return false;
+            graphInstance = candidate;
+            return true;
+        }
+
+        public bool TryGetParentInvocation(RuntimeInstanceKey instance, out RuntimeDebugEventView parent,
+            out OrchestrationTraceAvailability availability)
+        {
+            parent = default;
+            availability = OrchestrationTraceAvailability.Unavailable;
+            RuntimeDebugEventView invocation;
+            bool found = instance.Kind == RuntimeInstanceKind.SkillExecution
+                ? TryGetInvocationEvent(instance, out invocation)
+                : TryGetInstanceEvent(instance, out invocation);
+            if (!found || !invocation.Source.IsValid)
+                return false;
+            ref readonly RuntimeTracePayload child = ref RuntimeTraceEvent.ReadPayload(in invocation.Event);
+            availability = child.ParentCallAvailability;
+            if (availability != OrchestrationTraceAvailability.Available)
+                return false;
+            OrchestrationTraceObjectIdentity executionObject = instance.ExecutionObject;
+            if (!executionObject.HasValue)
+            {
+                availability = OrchestrationTraceAvailability.Unavailable;
+                return false;
+            }
+            for (int slot = 0; slot < m_EventCount; slot++)
+            {
+                ref readonly RuntimeDebugEventView candidate = ref m_Events[slot];
+                ref readonly RuntimeTraceEvent trace = ref candidate.Event;
+                ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in trace);
+                OrchestrationTraceObjectIdentity owner = trace.RuntimeInstance.ExecutionObject;
+                if (trace.RuntimeInstance.Kind != RuntimeInstanceKind.SkillExecution || !owner.HasValue ||
+                    owner.Slot != executionObject.Slot || !owner.Handle.Equals(executionObject.Handle) ||
+                    owner.ProgramIndex != child.ParentProgramIndex ||
+                    trace.SessionId != invocation.Event.SessionId ||
+                    trace.ExecutionBranchId != child.ParentExecutionBranchId || trace.RuntimeEpoch != child.ParentRuntimeEpoch ||
+                    payload.CallSequence != child.ParentCallSequence || !candidate.Source.IsValid ||
+                    !m_EventSourceMaps[slot].TryGetInvocation(trace.RuntimeInstance.CallSiteId, out RuntimeGraphInvocation source) ||
+                    source.GraphId != candidate.Source.GraphAuthoringId)
+                    continue;
+                if (trace.Sequence > parent.Event.Sequence)
+                    parent = candidate;
+            }
+            if (parent.Event.Sequence != 0)
+                return true;
+            availability = OrchestrationTraceAvailability.Unavailable;
             return false;
         }
         public ulong InvocationSequence(RuntimeInstanceKey instance) =>

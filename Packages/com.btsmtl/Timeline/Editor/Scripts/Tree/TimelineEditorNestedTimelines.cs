@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Compilation.Analysis;
+using BTSMTL.Diagnostics;
+using BTSMTL.Diagnostics.Editor;
 using BTSMTL.Orchestration;
 using Slate;
 using UnityEditor;
@@ -22,11 +24,17 @@ namespace BTSMTL.Timeline.Editor
             public BtsmtlSlateTimelineViewState View;
             public List<string> Expanded;
             public int ContextIndex;
+            [NonSerialized] public bool RuntimeReadOnly;
+            [NonSerialized] public RuntimeInstanceKey RuntimeScope;
+            [NonSerialized] public RuntimeInstanceKey RuntimePlayback;
+            [NonSerialized] public bool RuntimePinned;
+            [NonSerialized] public (Guid Session, Guid Branch, ulong Epoch) RuntimeOccurrence;
         }
 
         [SerializeField] List<TimelineNavigationFrame> m_TimelineNavigation = new();
         [SerializeField] List<string> m_NestedExpanded = new();
         readonly Dictionary<string, List<EmbeddedTimelineSubTimeline>> m_NestedViews = new(StringComparer.Ordinal);
+        readonly List<RuntimeTimelinePlaybackDebugSummary> m_RuntimeNestedPlaybacks = new();
         // 从调用进入被调 Timeline 后，起点选调用所属技能的根。
         string m_NestedContextRequest;
 
@@ -35,8 +43,9 @@ namespace BTSMTL.Timeline.Editor
             m_NestedViews.Clear();
             if (m_SlateProjection == null)
                 return;
-            TimelineAssetPreviewHost preview = TimelineAssetPreviewHost.Shared;
-            preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] parents);
+            TimelinePreviewRouteSegment[] parents = Array.Empty<TimelinePreviewRouteSegment>();
+            if (!m_RuntimeObservationReadOnly)
+                TimelineAssetPreviewHost.Shared.TryGetPlayback(SourceAsset, out parents);
             var shown = new HashSet<(string Element, string Graph, string Node)>();
             foreach (TimelineOrchestrationQuery query in m_TimelineQueries)
                 foreach (OrchestrationStaticTimelineCall call in query.Query.TimelineCalls)
@@ -90,7 +99,8 @@ namespace BTSMTL.Timeline.Editor
                     else OnAuthoringIssue("被调 Timeline 无法解析：" + call.CalleeIdentity);
                 }
             };
-            TimelinePreviewRouteSegment[] played = TimelineAssetPreviewHost.Shared.Route.Where(segment =>
+            TimelinePreviewRouteSegment[] played = m_RuntimeObservationReadOnly ? Array.Empty<TimelinePreviewRouteSegment>()
+                : TimelineAssetPreviewHost.Shared.Route.Where(segment =>
                 segment.Source == source && segment.CallerClipId == call.CallerElementId &&
                 callers.Any(caller => caller.Playback == segment.CallerPlayback) &&
                 (segment.Recorded is not { } record || record.OperationIndex == call.OperationIndex)).ToArray();
@@ -190,6 +200,11 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenNestedTimeline(TimelineOrchestrationQuery query, OrchestrationStaticTimelineCall call, TimelineAsset source)
         {
+            if (m_RuntimeObservationReadOnly)
+            {
+                OpenRuntimeNestedTimeline(call, source);
+                return;
+            }
             string note;
             if (m_OrchestrationHost.TryGetOrchestrationQueries(source.Data, out IReadOnlyList<TimelineOrchestrationQuery> queries,
                 out string reason))
@@ -205,9 +220,75 @@ namespace BTSMTL.Timeline.Editor
             m_NestedContextRequest = query.Owner;
         }
 
-        void NavigateTimeline(TimelineAsset target, string note)
+        void OpenRuntimeNestedTimeline(OrchestrationStaticTimelineCall call, TimelineAsset source)
         {
-            int existing = m_TimelineNavigation.FindIndex(frame => frame.Source == target);
+            if (!TryResolveRuntimeObservation(out RuntimeTimelinePlaybackDebugSummary parent, out string message))
+            {
+                ShowNotification(new GUIContent(message));
+                return;
+            }
+            RuntimeDebugViewModel view = RuntimeDebugSession.Shared.ViewModel;
+            if (!view.TryGetInstanceEvent(parent.Playback, out RuntimeDebugEventView parentEvent))
+            {
+                ShowNotification(new GUIContent("父 Timeline 的实际播放记录不可用（Unavailable）。"));
+                return;
+            }
+            view.CopyTimelinePlaybackSummaries(source.Data.AuthoringId, call.Location.GraphId, m_RuntimeNestedPlaybacks);
+            for (int index = m_RuntimeNestedPlaybacks.Count - 1; index >= 0; index--)
+            {
+                RuntimeTimelinePlaybackDebugSummary child = m_RuntimeNestedPlaybacks[index];
+                if (!child.Provenance.HasCaller || child.Provenance.CallerPlaybackId != parent.Playback.TimelinePlaybackId ||
+                    child.Provenance.CallerClipAuthoringId != call.CallerElementId ||
+                    child.Provenance.SourceNodeAuthoringId != call.Location.NodeId ||
+                    child.Playback.CharacterRuntimeId != parent.Playback.CharacterRuntimeId ||
+                    child.Playback.ActionInstanceId != parent.Playback.ActionInstanceId ||
+                    !view.TryGetInstanceEvent(child.Playback, out RuntimeDebugEventView childEvent) ||
+                    childEvent.Event.SessionId != parentEvent.Event.SessionId ||
+                    childEvent.Event.ExecutionBranchId != parentEvent.Event.ExecutionBranchId ||
+                    childEvent.Event.RuntimeEpoch != parentEvent.Event.RuntimeEpoch)
+                    m_RuntimeNestedPlaybacks.RemoveAt(index);
+            }
+            if (m_RuntimeNestedPlaybacks.Count == 0)
+            {
+                ShowNotification(new GUIContent("当前历史位置没有此引用的子 Timeline 播放记录（Unavailable）。"));
+                return;
+            }
+            var occurrence = (parentEvent.Event.SessionId, parentEvent.Event.ExecutionBranchId, parentEvent.Event.RuntimeEpoch);
+            if (m_RuntimeNestedPlaybacks.Count == 1)
+            {
+                NavigateRuntimeTimeline(source, m_RuntimeNestedPlaybacks[0], occurrence, false);
+                return;
+            }
+            var menu = new GenericMenu();
+            foreach (RuntimeTimelinePlaybackDebugSummary child in m_RuntimeNestedPlaybacks)
+                menu.AddItem(new GUIContent($"Pin 播放 #{child.Playback.TimelinePlaybackId} · 动作 {child.Playback.ActionInstanceId} · 调用 {child.Provenance.SourceActivationGeneration}"),
+                    false, () => NavigateRuntimeTimeline(source, child, occurrence, true));
+            menu.ShowAsContext();
+        }
+
+        void NavigateRuntimeTimeline(TimelineAsset source, RuntimeTimelinePlaybackDebugSummary child,
+            (Guid Session, Guid Branch, ulong Epoch) occurrence, bool pin)
+        {
+            RuntimeDebugViewModel view = RuntimeDebugSession.Shared.ViewModel;
+            if (!view.TryGetInstanceEvent(child.Playback, out RuntimeDebugEventView current) ||
+                !occurrence.Equals((current.Event.SessionId, current.Event.ExecutionBranchId, current.Event.RuntimeEpoch)) ||
+                !view.TryGetTimelineGraphInstance(child.Playback, child.Provenance, out RuntimeInstanceKey graph))
+            {
+                ShowNotification(new GUIContent("所选子 Timeline 的调用发生或作者来源已不可用（Unavailable）。"));
+                return;
+            }
+            NavigateTimeline(source, string.Empty, child.Playback);
+            ApplyRuntimeLocator(child.Provenance.SourceGraphAuthoringId, child.Provenance.SourceNodeAuthoringId);
+            SetRuntimeObservationReadOnly(true);
+            SetRuntimeObservationScope(graph);
+            SelectRuntimeObservationPlayback(child.Playback, pin);
+            TimelineRuntimeObservationBridge.RefreshWindow(this);
+        }
+
+        void NavigateTimeline(TimelineAsset target, string note, RuntimeInstanceKey playback = default)
+        {
+            int existing = m_TimelineNavigation.FindIndex(frame => frame.Source == target &&
+                (!playback.IsValid || frame.RuntimePlayback.Equals(playback)));
             if (existing >= 0)
             {
                 ReturnToTimeline(existing);
@@ -217,7 +298,10 @@ namespace BTSMTL.Timeline.Editor
             {
                 Source = SourceAsset, Graph = m_SourceGraphAuthoringId, Node = m_SourceNodeGuid,
                 Ownership = m_OwnershipLabel, View = m_SlateProjection.CaptureViewState(),
-                Expanded = new List<string>(m_NestedExpanded), ContextIndex = m_StateContextIndex
+                Expanded = new List<string>(m_NestedExpanded), ContextIndex = m_StateContextIndex,
+                RuntimeReadOnly = m_RuntimeObservationReadOnly, RuntimeScope = m_RuntimeObservationScope,
+                RuntimePlayback = m_RuntimeObservationPlayback, RuntimePinned = m_RuntimeObservationPinned,
+                RuntimeOccurrence = m_RuntimePlaybackOccurrence
             });
             m_NestedExpanded.Clear();
             BindAsset(target, string.Empty, string.Empty);
@@ -235,6 +319,12 @@ namespace BTSMTL.Timeline.Editor
             EditorApplication.delayCall -= RefreshStateQueries;
             RefreshStateQueries();
             m_SlateProjection.RestoreViewState(frame.View);
+            SetRuntimeObservationReadOnly(frame.RuntimeReadOnly);
+            m_RuntimeObservationScope = frame.RuntimeScope;
+            m_RuntimeObservationPlayback = frame.RuntimePlayback;
+            m_RuntimeObservationPinned = frame.RuntimePinned;
+            m_RuntimePlaybackOccurrence = frame.RuntimeOccurrence;
+            TimelineRuntimeObservationBridge.RefreshWindow(this);
         }
 
         void AddTimelineBreadcrumbs(VisualElement header)

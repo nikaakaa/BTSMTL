@@ -128,6 +128,7 @@ namespace BTSMTL.Timeline.Editor
         RuntimeInstanceKey m_RuntimeObservationScope;
         RuntimeInstanceKey m_RuntimeObservationPlayback;
         bool m_RuntimeObservationPinned;
+        (System.Guid Session, System.Guid Branch, ulong Epoch) m_RuntimePlaybackOccurrence;
         long m_RuntimePlaybackSelectionRevision = -1;
         RuntimeDebugViewModel m_RuntimePlaybackSelectionView;
         readonly List<RuntimeTimelinePlaybackDebugSummary> m_RuntimeObservationSummaries =
@@ -162,6 +163,7 @@ namespace BTSMTL.Timeline.Editor
         public bool RuntimeObservationReadOnly => m_RuntimeObservationReadOnly;
         public RuntimeInstanceKey RuntimeObservationScope => m_RuntimeObservationScope;
         public RuntimeInstanceKey RuntimeObservationPlayback => m_RuntimeObservationPlayback;
+        public bool RuntimeObservationPinned => m_RuntimeObservationPinned;
         public string AuthoringRevision => m_Timeline == null
             ? string.Empty
             : TimelineAuthoringFingerprint.Compute(m_Timeline);
@@ -186,10 +188,24 @@ namespace BTSMTL.Timeline.Editor
             out RuntimeTimelinePlaybackDebugSummary summary,
             out string message)
         {
-            RuntimeDebugViewModel view = RuntimeDebugSession.Shared.ViewModel;
+            RuntimeDebugSession session = RuntimeDebugSession.Shared;
+            if (session.IsReadingHistory || session.HistoryError.Length != 0)
+            {
+                summary = default;
+                message = session.IsReadingHistory ? "正在读取所选历史位置，运行叠加暂不可用。" : session.HistoryError;
+                return false;
+            }
+            RuntimeDebugViewModel view = session.ViewModel;
+            if (m_RuntimeObservationPinned && (!view.TryGetInstanceEvent(m_RuntimeObservationPlayback, out RuntimeDebugEventView selectedEvent) ||
+                !m_RuntimePlaybackOccurrence.Equals((selectedEvent.Event.SessionId, selectedEvent.Event.ExecutionBranchId, selectedEvent.Event.RuntimeEpoch))))
+            {
+                summary = default;
+                message = "固定的 Timeline 播放不在当前分支、代次或历史位置中（Unavailable）。";
+                return false;
+            }
             long selectionRevision = m_Timeline == null ? 0 : view.GetTimelinePlaybackRevision(
                 m_Timeline.AuthoringId, SourceGraphAuthoringId);
-            if (m_Timeline != null && m_RuntimeObservationPlayback.IsValid &&
+            if (m_RuntimeObservationPinned && m_Timeline != null && m_RuntimeObservationPlayback.IsValid &&
                 ReferenceEquals(view, m_RuntimePlaybackSelectionView) &&
                 selectionRevision == m_RuntimePlaybackSelectionRevision &&
                 view.TryGetTimelinePlaybackSummary(
@@ -218,9 +234,18 @@ namespace BTSMTL.Timeline.Editor
                     activePlayback = summaries[index].Playback;
                     activeCount++;
                 }
-                if (activeCount == 1 && !m_RuntimeObservationPlayback.Equals(activePlayback))
+                if (activeCount > 1)
                 {
-                    m_RuntimeObservationPlayback = activePlayback;
+                    m_RuntimeObservationPlayback = default;
+                    summary = default;
+                    message = "当前 Timeline 存在并发播放，请在“观察选项 / Timeline 实例”中显式 Pin。";
+                    return false;
+                }
+                RuntimeInstanceKey followed = activeCount == 1 ? activePlayback
+                    : summaries.Count == 1 ? summaries[0].Playback : default;
+                if (!m_RuntimeObservationPlayback.Equals(followed))
+                {
+                    m_RuntimeObservationPlayback = followed;
                     ClearRuntimeTimelineObservation();
                 }
             }
@@ -267,6 +292,8 @@ namespace BTSMTL.Timeline.Editor
 
         public void SelectRuntimeObservationPlayback(RuntimeInstanceKey playback, bool pin = false)
         {
+            m_RuntimePlaybackOccurrence = pin && RuntimeDebugSession.Shared.ViewModel.TryGetInstanceEvent(playback, out RuntimeDebugEventView occurrence)
+                ? (occurrence.Event.SessionId, occurrence.Event.ExecutionBranchId, occurrence.Event.RuntimeEpoch) : default;
             if (m_RuntimeObservationPlayback.Equals(playback))
             {
                 m_RuntimeObservationPinned = pin;
@@ -299,7 +326,9 @@ namespace BTSMTL.Timeline.Editor
                 return true;
             RuntimeTimelinePlaybackProvenance provenance = summary.Provenance;
             if (m_RuntimeObservationScope.Kind == RuntimeInstanceKind.SkillExecution)
-                return summary.Playback.ActionInstanceId == m_RuntimeObservationScope.ActionInstanceId &&
+                return summary.Playback.CharacterRuntimeId == m_RuntimeObservationScope.CharacterRuntimeId &&
+                       provenance.SourceGraphRuntimeId == m_RuntimeObservationScope.GraphRuntimeId &&
+                       summary.Playback.ActionInstanceId == m_RuntimeObservationScope.ActionInstanceId &&
                        provenance.SkillExecutionGeneration == m_RuntimeObservationScope.ActivationGeneration &&
                        provenance.SourceActivationGeneration == m_RuntimeObservationScope.InvocationGeneration &&
                        provenance.SourceInvocationPath.Equals(m_RuntimeObservationScope.CallSiteId);
@@ -388,6 +417,7 @@ namespace BTSMTL.Timeline.Editor
                 ClearRuntimeObservationSelection();
                 m_SlateProjection?.ClearRuntimeOverlay();
             }
+            RefreshNestedViews();
         }
 
         public void SetRuntimeObservationStatus(string message)
@@ -584,12 +614,13 @@ namespace BTSMTL.Timeline.Editor
             }
             if (clip is TreeClip assetClip && assetClip.AssetTree)
             {
-                if (OpenAssetTree(assetClip))
+                EditorApplication.delayCall += () =>
                 {
-                    AssetTreeOpened?.Invoke(this, assetClip);
-                    return;
-                }
-                ShowNotification(new GUIContent("TreeClip 的正式 FlowCanvas SkillGraph 打开失败。"));
+                    if (OpenAssetTree(assetClip))
+                        AssetTreeOpened?.Invoke(this, assetClip);
+                    else
+                        ShowNotification(new GUIContent("TreeClip 的正式 FlowCanvas SkillGraph 打开失败。"));
+                };
                 return;
             }
             if (clip is not TreeClip treeClip)
@@ -739,6 +770,7 @@ namespace BTSMTL.Timeline.Editor
         static TimelineRuntimeObservationBridge()
         {
             RuntimeDebugSession.Shared.Changed += Refresh;
+            RuntimeDebugSession.Shared.HistoryCursorChanged += OnHistoryCursorChanged;
             TimelineWorkspaceModeBridge.RuntimeDebugEnabledChanged += OnRuntimeDebugEnabledChanged;
             TimelineEditorWindow.WindowOpened += RefreshWindow;
             TimelineEditorWindow.WindowClosed += OnWindowClosed;
@@ -761,6 +793,13 @@ namespace BTSMTL.Timeline.Editor
         {
             s_ObservedView = null;
             Refresh();
+        }
+
+        static void OnHistoryCursorChanged()
+        {
+            IReadOnlyList<TimelineEditorWindow> windows = TimelineEditorWindow.OpenWindows;
+            for (int index = 0; index < windows.Count; index++)
+                RefreshWindow(windows[index]);
         }
 
         static void Refresh()

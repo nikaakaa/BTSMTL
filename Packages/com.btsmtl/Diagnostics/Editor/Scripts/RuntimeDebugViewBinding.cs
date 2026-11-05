@@ -27,7 +27,9 @@ namespace BTSMTL.Diagnostics.Editor
         NoInstance,
         NoSelection,
         MultipleRuntimeInstances,
-        PinnedInstanceMissing
+        PinnedInstanceMissing,
+        ReadingHistory,
+        HistoryUnavailable
     }
 
     public sealed class RuntimeDebugViewBinding
@@ -70,6 +72,8 @@ namespace BTSMTL.Diagnostics.Editor
                     RuntimeDebugViewBindingStatus.NoSelection => "Enable Follow or select a runtime instance.",
                     RuntimeDebugViewBindingStatus.MultipleRuntimeInstances => "Multiple runtime instances are available. Pin one execution.",
                     RuntimeDebugViewBindingStatus.PinnedInstanceMissing => "The pinned runtime instance is absent from this snapshot.",
+                    RuntimeDebugViewBindingStatus.ReadingHistory => "正在读取所选历史位置，运行叠加暂不可用。",
+                    RuntimeDebugViewBindingStatus.HistoryUnavailable => "所选历史记录不可用，运行叠加已清除。",
                     _ => string.Empty
                 };
             }
@@ -123,7 +127,8 @@ namespace BTSMTL.Diagnostics.Editor
             session?.ReleaseLiveInterest(this);
         }
 
-        public RuntimeDebugTargetResolution Refresh(RuntimeDebugSession session, RuntimeTraceChannel channels)
+        public RuntimeDebugTargetResolution Refresh(RuntimeDebugSession session, RuntimeTraceChannel channels,
+            RuntimeInstanceKey? scopedInstance = null)
         {
             m_Resolution = m_Mode == RuntimeDebugViewBindingMode.Pinned
                 ? session.ResolvePinnedTarget(m_BoundCharacterRuntimeId)
@@ -138,6 +143,17 @@ namespace BTSMTL.Diagnostics.Editor
 
             session.EnsureLiveInterest(this, channels);
 
+            if (session.HistoryError.Length != 0)
+            {
+                m_Status = RuntimeDebugViewBindingStatus.HistoryUnavailable;
+                return m_Resolution;
+            }
+            if (session.IsReadingHistory)
+            {
+                m_Status = RuntimeDebugViewBindingStatus.ReadingHistory;
+                return m_Resolution;
+            }
+
             RuntimeDebugViewModel view = session.ViewModel;
             if (m_BoundCharacterRuntimeId != view.Target.CharacterRuntimeId)
             {
@@ -148,6 +164,17 @@ namespace BTSMTL.Diagnostics.Editor
 
             if (m_Mode == RuntimeDebugViewBindingMode.Following)
             {
+                if (scopedInstance.HasValue)
+                {
+                    m_SelectedInstance = scopedInstance.Value;
+                    m_Status = m_SelectedInstance.IsValid &&
+                        (Kind == RuntimeDebugViewKind.Graph
+                            ? view.ContainsGraphInstance(m_Request.Source.GraphAuthoringId, m_SelectedInstance)
+                            : view.TryGetTimelinePlaybackSummary(m_Request.Source.TimelineAuthoringId, m_SelectedInstance,
+                                out _, m_Request.Source.GraphAuthoringId))
+                        ? RuntimeDebugViewBindingStatus.Ready : RuntimeDebugViewBindingStatus.NoInstance;
+                    return m_Resolution;
+                }
                 IReadOnlyList<RuntimeInstanceKey> instances = ResolveInstances(view);
                 if (instances.Count > 1)
                 {
