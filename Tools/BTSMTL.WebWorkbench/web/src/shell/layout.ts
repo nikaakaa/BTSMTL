@@ -20,7 +20,7 @@ interface Saved {
   graphSelectionVersion?: 1;
 }
 
-const readRevisionGraphKey = tuple(nullable(text), text, text, text);
+const readRevisionGraphKey = tuple(text, text, text, text);
 const readGraphSelections = object({ graph: optional(nullable(text)), pin: optional(nullable(object({ graph: text }))) });
 
 function migrateGraphSelections(layout: SerializedDockview) {
