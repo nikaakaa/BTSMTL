@@ -3,42 +3,10 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline
 {
-    public readonly struct TimelineAuthoringReferenceValue
-    {
-        public TimelineAuthoringReferenceValue(UnityEngine.Object asset, string errorCode = "", string errorMessage = "")
-        {
-            Asset = asset;
-            ErrorCode = errorCode;
-            ErrorMessage = errorMessage;
-        }
-        public UnityEngine.Object Asset { get; }
-        public string ErrorCode { get; }
-        public string ErrorMessage { get; }
-        public bool IsMissing => !Asset && !string.IsNullOrEmpty(ErrorCode);
-    }
-
     public static class TimelineAuthoringPropertyContract
     {
         public static UnityEngine.Object ReferenceAsset(Clip clip) =>
             TimelineAuthoringClipBinding.SourceAsset(clip);
-
-        public static TimelineAuthoringReferenceValue Reference(Clip clip)
-        {
-            if (clip is ITimelineAuthoringResourceClip resource)
-            {
-                TimelineAuthoringReferenceValue resolution = resource.ResourceResolution;
-                if (resolution.Asset || resolution.IsMissing)
-                    return resolution;
-            }
-            UnityEngine.Object asset = ReferenceAsset(clip);
-            if (asset)
-                return new TimelineAuthoringReferenceValue(asset);
-            if (clip is ITimelineAuthoringClipSource source)
-                return new TimelineAuthoringReferenceValue(null, source.SourceMissingErrorCode, source.SourceMissingError);
-            if (clip is ITimelineTreeClipAuthoringSource)
-                return new TimelineAuthoringReferenceValue(null, "timeline_tree_source_unsupported", "TreeClip不是正式资产节点图引用。");
-            return new TimelineAuthoringReferenceValue(null);
-        }
 
         public static bool NeedsSegmentOverride(Clip clip, UnityEngine.Object referenceObject)
         {

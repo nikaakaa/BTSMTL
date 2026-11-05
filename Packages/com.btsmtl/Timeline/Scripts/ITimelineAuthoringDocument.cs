@@ -5,6 +5,20 @@ using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Timeline
 {
+    public readonly struct TimelineAuthoringReferenceValue
+    {
+        public TimelineAuthoringReferenceValue(UnityEngine.Object asset, string errorCode = "", string errorMessage = "")
+        {
+            Asset = asset;
+            ErrorCode = errorCode;
+            ErrorMessage = errorMessage;
+        }
+        public UnityEngine.Object Asset { get; }
+        public string ErrorCode { get; }
+        public string ErrorMessage { get; }
+        public bool IsMissing => !Asset && !string.IsNullOrEmpty(ErrorCode);
+    }
+
     public interface ITimelineAuthoringDocument
     {
         string SourcePath { get; }

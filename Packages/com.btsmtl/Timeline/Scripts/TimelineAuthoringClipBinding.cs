@@ -39,6 +39,24 @@ namespace BTSMTL.Timeline
         public static bool Supports(this TimelineAuthoringProperty property, Clip clip, UnityEngine.Object source) =>
             !property.SourceMappingOnly || source is ITimelineAuthoringSourceAsset;
 
+        public static TimelineAuthoringReferenceValue Reference(Clip clip)
+        {
+            if (clip is ITimelineAuthoringResourceClip resource)
+            {
+                TimelineAuthoringReferenceValue resolution = resource.ResourceResolution;
+                if (resolution.Asset || resolution.IsMissing)
+                    return resolution;
+            }
+            UnityEngine.Object asset = SourceAsset(clip);
+            if (asset)
+                return new TimelineAuthoringReferenceValue(asset);
+            if (clip is ITimelineAuthoringClipSource source)
+                return new TimelineAuthoringReferenceValue(null, source.SourceMissingErrorCode, source.SourceMissingError);
+            if (clip is ITimelineTreeClipAuthoringSource)
+                return new TimelineAuthoringReferenceValue(null, "timeline_tree_source_unsupported", "TreeClip不是正式资产节点图引用。");
+            return new TimelineAuthoringReferenceValue(null);
+        }
+
         public static UnityEngine.Object SourceAsset(Clip clip)
         {
             if (clip is ITimelineAuthoringClipSource source)

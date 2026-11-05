@@ -148,7 +148,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
                     if (clip is ITimelineAuthoringResourceClip)
                     {
-                        TimelineAuthoringReferenceValue reference = TimelineAuthoringPropertyContract.Reference(clip);
+                        TimelineAuthoringReferenceValue reference = TimelineAuthoringClipBinding.Reference(clip);
                         if (reference.IsMissing)
                         {
                             errors.Add($"{reference.ErrorCode}:{clip.AuthoringId}:{reference.ErrorMessage}");
