@@ -18,6 +18,7 @@ namespace BTSMTL.Timeline.Editor
             internal Dictionary<string, ScriptableObject> ById;
             internal TimelineAssetAuthoringDocument Document;
             internal IGraphNodeInterfaceResolver AuthoringContext;
+            internal TimelineAsset[] Timelines = Array.Empty<TimelineAsset>();
         }
 
         static readonly Dictionary<string, AssetGraphs> s_LocalGraphs = new(StringComparer.Ordinal);
@@ -26,7 +27,7 @@ namespace BTSMTL.Timeline.Editor
         static readonly SynchronizationContext s_EditorContext = SynchronizationContext.Current;
 
         readonly AssetGraphs m_Graphs;
-        readonly Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> m_CreateAuthoringContext;
+        readonly Func<TimelineAssetAuthoringDocument, ScriptableObject, IGraphNodeInterfaceResolver> m_CreateAuthoringContext;
         ITimelineAuthoringResourceDocument m_Resources;
 
         static TimelineAssetAuthoringDocument()
@@ -45,7 +46,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         TimelineAssetAuthoringDocument(string sourcePath, AssetGraphs graphs,
-            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext)
+            Func<TimelineAssetAuthoringDocument, ScriptableObject, IGraphNodeInterfaceResolver> createAuthoringContext)
         {
             SourcePath = sourcePath;
             m_Graphs = graphs;
@@ -53,7 +54,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public static TimelineAssetAuthoringDocument Open(UnityEngine.Object source,
-            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext,
+            Func<TimelineAssetAuthoringDocument, ScriptableObject, IGraphNodeInterfaceResolver> createAuthoringContext,
             Func<TimelineAssetAuthoringDocument, ITimelineAuthoringResourceDocument> createResources)
         {
             string path = AssetDatabase.GetAssetPath(source);
@@ -67,6 +68,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public string SourcePath { get; private set; }
+        public IReadOnlyList<TimelineAsset> Timelines => m_Graphs.Timelines;
         public IReadOnlyList<GraphAuthoringResourceReference> ResourceScopes() => m_Resources.ResourceScopes();
         public GraphAuthoringResourceReference ResourceScope(TimelineData timeline) => m_Resources.ResourceScope(timeline);
         public void SelectResourceScope(TimelineData timeline, GraphAuthoringResourceReference scope) =>
@@ -88,8 +90,7 @@ namespace BTSMTL.Timeline.Editor
             UnityEngine.Object[] assets = ReadLocalGraphs(SourcePath);
             foreach (TimelineAsset timeline in assets.OfType<TimelineAsset>())
                 timeline.Data.BindAuthoringDocument(this);
-            m_Graphs.AuthoringContext = m_CreateAuthoringContext(this,
-                assets.OfType<Graph>().Cast<ScriptableObject>().Append(graph).Distinct().ToArray());
+            m_Graphs.AuthoringContext = m_CreateAuthoringContext(this, graph);
             return m_Graphs.AuthoringContext;
         }
 
@@ -129,6 +130,7 @@ namespace BTSMTL.Timeline.Editor
         static UnityEngine.Object[] ReadLocalGraphs(string path, HashSet<int> destroyed = null)
         {
             UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath(path);
+            s_LocalGraphs[path].Timelines = assets.OfType<TimelineAsset>().ToArray();
             var graphs = new Dictionary<string, ScriptableObject>(StringComparer.Ordinal);
             foreach (UnityEngine.Object asset in assets)
                 if (asset is ScriptableObject scriptable && asset is ITimelineTreeGraphAsset graph &&
