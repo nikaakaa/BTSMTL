@@ -18,7 +18,9 @@ import {
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
-import { acceptsReferenceDrag, readReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
+import { acceptsReferenceDrag, readReferenceDrag, resolveReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
+import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
+import { useResourceScope } from '../../state/resourceScope';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
@@ -568,6 +570,9 @@ interface GraphCanvasProps {
 }
 
 function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+  const scopeValue = useAuthoring(state => authoringDocument(state).execution.previewScope);
+  const resourceScope = useResourceScope(scopeValue);
+  const resourceCatalog = useAdapterCatalog();
   const plan = useQuickPlan();
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   const planned = useMemo(() => new Set(plan?.segments.flatMap(segment => segment.stateSource !== null &&
@@ -836,6 +841,17 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     event.preventDefault();
     const reference = readReferenceDrag(event.dataTransfer);
     if (reference.kind === 'rejected') { consoleActions.error('作者', new Error(reference.reason)); return; }
+    if (reference.resource !== null) {
+      if (resourceScope.kind !== 'ready' && (scopeValue !== null || reference.resource.context !== '')) {
+        consoleActions.error('作者', new Error(resourceScope.kind === 'loading' ? '正在读取实际执行 Scope，尚未创建节点' : resourceScope.reason)); return;
+      }
+      if (resourceCatalog.kind !== 'ready') {
+        consoleActions.error('作者', new Error(resourceCatalog.kind === 'failed' ? resourceCatalog.failure.text : '正在读取正式资源目录，尚未创建节点')); return;
+      }
+      const result = resolveReferenceDrag(reference, resourceCatalogChoices(resourceCatalog.snapshot, reference.resource.domain,
+        resourceScope.kind === 'ready' ? resourceScope.scope.context : ''));
+      if (result.kind === 'rejected') { consoleActions.error('作者', new Error(result.reason)); return; }
+    }
     const offered = templates.filter(template => template.referenceKind === reference.referenceKind);
     if (offered.length === 0) { consoleActions.error('作者', new Error('拖放标记与引用类型不一致，未创建节点')); return; }
     const bounds = event.currentTarget.getBoundingClientRect();

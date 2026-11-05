@@ -81,7 +81,7 @@ export function readReferenceReplacement(value: unknown, action: 'prepare' | 'co
   throw new Error(`${path}：${action} 的保存状态与作者引用阶段不一致`);
 }
 
-function readQueryAvailability(value: unknown, path: string): QueryAvailability {
+function readQueryAvailability(value: unknown, path = 'Query.availability'): QueryAvailability {
   const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
   if (available && reason === null) return { available, reason };
   if (!available && reason !== null) return { available, reason };
@@ -311,34 +311,6 @@ export type ReferrersResult = {
   unresolved: ReferenceQueryIssue[];
 } & ({ identity: string; target: null } | { identity: null; target: ReferenceChoiceTarget });
 
-export interface CarrierResource { key: string; name: string; identity: string }
-
-export interface AuthoringCarrier {
-  scope: string;
-  nativeKind: string;
-  nativeDefinitionId: string;
-  definitionToken: string;
-  profileUnavailableReason: string | null;
-  animationLibrary: { identity: string; source: string; clips: CarrierResource[] } | null;
-  identity: string;
-  name: string;
-  source: string;
-  preview: boolean;
-  vfx: { identity: string; source: string; resources: CarrierResource[]; anchors: { key: string; bone: string }[];
-    stateModifiers: { id: string; resourceIds: string[] }[] } | null;
-  camera: { identity: string; source: string; sequences: CarrierResource[]; effects: { kind: string; resource: CarrierResource }[];
-    targets: { key: string; space: string; anchorKey: string; aimPointKey: string; preferredBoneKey: string }[] } | null;
-  audio: { identity: string; source: string; events: CarrierResource[]; rules: CarrierResource[]; parameters: CarrierResource[];
-    actionSoundSlotCount: number } | null;
-  input: { identity: string; source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
-}
-
-export interface AuthoringCarriers {
-  availability: QueryAvailability;
-  authoringRevision: string;
-  items: AuthoringCarrier[];
-}
-
 const readAuthoringProducts = object({ items: array(object({ value: text, name: text, source: text, revision: text })) });
 export type AuthoringProduct = ReturnType<typeof readAuthoringProducts>['items'][number];
 
@@ -534,7 +506,19 @@ const readInputSaveResult = object({
 });
 export type InputSaveResult = ReturnType<typeof readInputSaveResult>;
 
-export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
+const readSaveAbsence = (value: unknown, path = 'SkillSave'): null => {
+  if (value !== null) throw new Error(`${path}：未请求编译与应用的保存需要空回执`);
+  return null;
+};
+const readPendingSaveResult = object({
+  saved: readSaved, compilationState: choice('not-requested'), runtimeState: choice('pending'),
+  content: readSkillSnapshot, compilation: readSaveAbsence, preview: readSaveAbsence,
+});
+const readUnavailableSaveResult = object({
+  saved: readSaved, compilationState: choice('not-started'), runtimeState: choice('pending'), content: readSkillSnapshot,
+  availability: readQueryAvailability,
+});
+export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult | ReturnType<typeof readPendingSaveResult> | ReturnType<typeof readUnavailableSaveResult>;
 
 export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sceneRevision' | 'source' | 'channels'> & {
   requestId: string;
@@ -767,11 +751,8 @@ export const authoringApi = {
   export: async (skill: string, kind: SkillExportKind, editingView: SkillEditingView) =>
     readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
-  carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal)
-    .then(result => ({ ...result, availability: readQueryAvailability(result.availability, 'Carriers.availability'),
-      items: result.items.map(item => ({ ...item, ...object({ scope: text, nativeKind: text, nativeDefinitionId: text,
-        definitionToken: text, profileUnavailableReason: nullable(text), animationLibrary: nullable(object({ identity: text,
-          source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })) })),
+  carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
+    .then(value => object({ availability: readQueryAvailability, authoringRevision: text })(value, 'Carriers')),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
@@ -787,12 +768,15 @@ export const authoringApi = {
   document: (skill: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
     postJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, { editingView, graphId }, signal),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
-    const result = await putJson<SkillSaveResult>(targetPath(target), request);
-    return result.compilationState === 'not-required' ? readInputSaveResult(result, 'InputSave')
-      : { ...result, content: readSkillSnapshot(result.content, 'SkillSave.content'),
-      compilation: readSkillCompilation(result.compilation, 'SkillSave.compilation'),
-      jobError: nullable(text)(result.jobError, 'SkillSave.jobError'),
-      preview: result.preview === null ? null : readSkillRefreshReceipt(result.preview) };
+    const result = await putJson<unknown>(targetPath(target), request);
+    const { compilationState } = object({ compilationState: choice('not-required', 'not-requested', 'not-started', 'succeeded') })(result, 'SkillSave');
+    switch (compilationState) {
+      case 'not-required': return readInputSaveResult(result, 'InputSave');
+      case 'not-requested': return readPendingSaveResult(result, 'SkillSave');
+      case 'not-started': return readUnavailableSaveResult(result, 'SkillSave');
+      case 'succeeded': return { ...object({ saved: readSaved, content: readSkillSnapshot, compilation: readSkillCompilation,
+        jobError: nullable(text), preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
+    }
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),
   types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>

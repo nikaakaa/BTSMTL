@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AdapterCatalogDomain, AdapterCatalogItem } from '../../api/authoring';
-import { matchesReferenceChoice, referenceValueKey, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
+import { matchesReferenceChoice, referenceValueKey, resourceReferenceChoice, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { VirtualList } from '../../ui/VirtualList';
@@ -90,13 +90,9 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
                 <small>{row.fieldName} · 原值已保留</small></button>;
               const item = row.item;
               const conflict = conflicts.has(resolutionKey(item));
-              const choices = inCurrentScope(item) && activeField?.domain === item.domain && activeField.catalog.kind === 'ready'
-                ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(item.value) && choice.conflict === null) : [];
               return <button className={styles.row} aria-selected={selectedItem !== null && catalogItemKey(selectedItem) === catalogItemKey(item)}
-                draggable={!conflict && choices.length === 1} onDragStart={event => {
-                  if (activeField?.catalog.kind === 'ready' && choices.length === 1)
-                    writeReferenceDrag(event.dataTransfer, activeField.catalog.referenceKind, choices[0]);
-                }} onClick={() => onSelect({ kind: 'catalog', item })}>
+                draggable={!conflict} onDragStart={event => writeReferenceDrag(event.dataTransfer, item.domain, resourceReferenceChoice(item, null))}
+                onClick={() => onSelect({ kind: 'catalog', item })}>
                 <span>{item.display}{conflict && <small className={styles.issue}>目录条目冲突</small>}</span>
                 <small>{item.adapter}{all ? ` · ${item.context || '公共'}` : ''}</small>
               </button>;

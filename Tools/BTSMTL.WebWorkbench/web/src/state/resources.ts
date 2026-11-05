@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBlob } from '../api/http';
 import { resourceApi } from '../api/resources';
 import type { AnimationClip, AnimationLibrary } from '../api/types';
-import type { ReferenceChoice } from '../api/authoring';
-import { readReferenceDrag, type ReferenceCatalog } from './referenceSelection';
+import { readReferenceDrop, type ReferenceCatalog } from './referenceSelection';
 
 // 动画资源数据缓存（D12）：资源清单与同版 glb 只下载一次；面板卸载后再次打开直接取用。
 
@@ -34,34 +33,15 @@ export type AnimationLibraryState =
 const loadingLibrary = { kind: 'loading' } satisfies AnimationLibraryState;
 export const animationReferenceKind = 'animation-clip';
 
-export const animationChoice = (clip: AnimationClip): ReferenceChoice => ({
-  value: clip.key!, name: clip.name,
-  detail: `${clip.category} · ${clip.duration.toFixed(3)} 秒 · ${clip.frameRate} fps`,
-  source: clip.unityAsset, conflict: null, targets: [], associated: [],
-});
-
-export function animationReferenceCatalog(state: AnimationLibraryState): ReferenceCatalog {
-  switch (state.kind) {
-    case 'loading': return { kind: 'unavailable', reason: '动画库清单尚未取得' };
-    case 'unavailable': return state;
-    case 'ready': return {
-      kind: 'ready', referenceKind: animationReferenceKind, items: state.library.clips.filter(clip => clip.key != null).map(animationChoice),
-      invalidReason: '动画引用已失效，当前动画库缺少该动画，请重新导出动画库；原身份已保留',
-    };
-  }
-}
-
-export function readAnimationDrop(transfer: DataTransfer, state: AnimationLibraryState):
+export function readAnimationDrop(transfer: DataTransfer, state: AnimationLibraryState, catalog: ReferenceCatalog):
   { kind: 'selected'; clip: AnimationClip } | { kind: 'rejected'; reason: string } {
+  const selection = readReferenceDrop(transfer, catalog);
+  if (selection.kind === 'rejected') return selection;
   if (state.kind === 'loading') return { kind: 'rejected', reason: '动画库清单尚未取得，原值已保留' };
   if (state.kind === 'unavailable') return { kind: 'rejected', reason: state.reason };
-  const drag = readReferenceDrag(transfer);
-  if (drag.kind === 'rejected') return drag;
-  if (drag.referenceKind !== animationReferenceKind)
-    return { kind: 'rejected', reason: '动画字段只接受动画库片段，原值已保留' };
-  const clip = state.library.clips.find(item => item.key != null && item.key === drag.value);
-  return clip ? { kind: 'selected', clip }
-    : { kind: 'rejected', reason: '当前动画库缺少该动画，请重新导出动画库；原值已保留' };
+  const clips = state.library.clips.filter(item => item.value === selection.choice.value);
+  return clips.length === 1 ? { kind: 'selected', clip: clips[0] }
+    : { kind: 'rejected', reason: `当前素材库对该资源提供 ${clips.length} 个片段，无法确定素材时长；原值已保留。` };
 }
 
 export function useAnimationLibrary(enabled: boolean): AnimationLibraryState {
@@ -76,9 +56,9 @@ export function useAnimationLibrary(enabled: boolean): AnimationLibraryState {
   return enabled ? value : loadingLibrary;
 }
 
-// 动画片段键到素材帧率；资源清单未读到时为 null。
+// 动画资源作者值到素材帧率；资源清单未读到时为 null。
 export function useAnimationFrameRates(enabled: boolean): ReadonlyMap<string, number> | null {
   const value = useAnimationLibrary(enabled);
   return useMemo(() => value.kind === 'ready'
-    ? new Map(value.library.clips.filter(clip => clip.key != null).map(clip => [clip.key!, clip.frameRate])) : null, [value]);
+    ? new Map(value.library.clips.map(clip => [clip.value, clip.frameRate])) : null, [value]);
 }

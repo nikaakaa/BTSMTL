@@ -5,11 +5,13 @@ import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatal
 import { authoringActions, authoringDocument, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
 import { useResourceScope } from '../../state/resourceScope';
 import { useReferenceSelection } from '../../state/referenceSelection';
+import { animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { consoleActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { AssetObjectPicker } from './AssetObjectPicker';
+import { AnimationDetails } from './AnimationDetails';
 import { ProfileEditor, ProfileSources } from './ProfileEditor';
 import { ResourceCatalogView, type ResourceCatalogSelection } from './ResourceCatalogView';
 import { ReferenceReplacementImpact, ResourceReferenceReplacement, type ReferenceReplacementRefresh } from './ResourceReferenceReplacement';
@@ -38,6 +40,9 @@ export function ResourceProject() {
     return [...groups].map(([value, entries]) => ({ value, label: entries.map(item => `${item.display} · ${item.adapter}`).join(' / ') }));
   }, [items]);
   const item = selected?.kind === 'catalog' ? selected.item : null;
+  const animation = useAnimationLibrary(item?.domain === animationReferenceKind);
+  const clips = animation.kind === 'ready' && item?.domain === animationReferenceKind
+    ? animation.library.clips.filter(clip => clip.value === item.value) : [];
   const target: ResourceTarget | null = selected === null ? null : { kind: 'Resource',
     domain: selected.kind === 'catalog' ? selected.item.domain : selected.domain,
     value: selected.kind === 'catalog' ? selected.item.value : selected.value,
@@ -67,6 +72,10 @@ export function ResourceProject() {
     {catalog.kind === 'failed' ? <ErrorLine {...catalog.failure} /> : catalog.kind !== 'ready' ? <Empty text="正在读取适配者资源目录" />
       : <ResourceCatalogView domains={catalog.snapshot.domains} revision={catalog.snapshot.revision} currentScope={currentScope}
         field={field} selected={selected} onSelect={setSelected} details={target === null || selected === null ? null : <>
+          {item?.domain === animationReferenceKind && (animation.kind === 'ready'
+            ? clips.length === 1 ? <AnimationDetails library={animation.library} clip={clips[0]} />
+              : <div className={styles.note}>当前素材库对该引用提供 {clips.length} 个片段，无法确定预览对象；作者引用值仍保留。</div>
+            : <div className={styles.note}>{animation.kind === 'loading' ? '正在读取动画素材库。' : animation.reason}</div>)}
           {item?.domain === 'execution-scope' && <PanelBar wrap>
             <Button disabled={authoring.target?.kind !== 'skill'} onClick={() => authoringActions.selectExecutionScope('previewScope', item.value)}>设为预览 Scope</Button>
             <Button disabled={authoring.target?.kind !== 'skill'} onClick={() => authoringActions.selectExecutionScope('runtimeScope', item.value)}>设为运行 Scope</Button>

@@ -38,6 +38,7 @@ import { archive } from '../../state/archive';
 import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationFrameRates, useAnimationLibrary } from '../../state/resources';
 import { acceptsReferenceDrag } from '../../state/referenceSelection';
+import { useTimelineResourceCatalog } from '../../state/resourceScope';
 import { curveWithKey, curveWithoutKey, evaluateCurve } from '../../state/curveSplit';
 import {
   breakKeys, isBroken, keyTime, keyValue, moveKeys, removeKeys, setTangent, setTangentKind, smoothKeys, tangentKind, tangentOf,
@@ -1691,6 +1692,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   const author = useAuthoring(state => state.author && state.target !== null);
   const menu = useTrackMenu(row, at, () => setNaming(true));
   const documentId = row.timeline.documentId;
+  const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const step = useContext(SnapContext) ?? 1 / 60;
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
@@ -1723,14 +1725,14 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
     }} onDrop={event => {
       if (!author || row.trackKind !== 'anim') return;
       event.preventDefault();
-      const result = readAnimationDrop(event.dataTransfer, animationLibrary);
+      const result = readAnimationDrop(event.dataTransfer, animationLibrary, animationCatalog);
       if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
       if (!elements) { consoleActions.log('warn', 'Timeline', '片段作者合同尚未取得'); return; }
       const template = clipTemplatesFor(elements, documentId, row.track.id)
         .find(item => item.sourceAsset?.choiceKind === animationReferenceKind);
       if (!template?.sourceAsset) { consoleActions.log('warn', 'Timeline', '当前轨道没有提供正式动画源片段合同'); return; }
       const value = cloneJson(template.value);
-      setIn(value, template.sourceAsset.serializedMemberPath, result.clip.resource.identity);
+      setIn(value, template.sourceAsset.serializedMemberPath, result.clip.value);
       const start = snapLocal(getValueFromScreenX(event.clientX));
       void authoringActions.addClipAt(documentId, row.track.id, { ...template, value }, start, start + result.clip.duration)
         .then(id => selectTimelineObject(clock, 'clip', clipSelectId(documentId, id)), error => consoleActions.error('Timeline', error));
@@ -1876,7 +1878,7 @@ function CurveParameters({ row, elements, mixes, author, height }: {
   const drag = useRef<{ y: number; height: number } | null>(null);
   if (!clip) return <div className={styles.curveParams}><span className={styles.curveNote}>未选中本轨片段</span></div>;
   const write = (channel: ClipCurveChannel, curve: JsonObject) =>
-    authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [channel.member], curve);
+    authoringActions.setClipValues(row.timeline.documentId, clip.clip.id, [{ keys: [channel.member], value: curve }]);
   let controls: ReactNode = null;
   if (inspected) {
     const { span, curve, channel } = inspected;
@@ -2055,7 +2057,7 @@ function ClipCurves({ row, elements, mixes, author, height }: {
     const px = event.clientX - box.left, py = event.clientY - box.top;
     return { px, py, t: span ? (getValueFromScreenX(event.clientX) - span.start) / length : 0, v: scale.max - (py - plotTop) / pxPerV };
   };
-  const write = (next: JsonObject) => authoringActions.setClipValue(row.timeline.documentId, clip.clip.id, [channel!.member], next);
+  const write = (next: JsonObject) => authoringActions.setClipValues(row.timeline.documentId, clip.clip.id, [{ keys: [channel!.member], value: next }]);
   const commit = (result: { curve: JsonObject; indices: number[] } | null) => {
     if (!result) return;
     write(result.curve);
@@ -2269,12 +2271,15 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
   const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
   const animation = source?.choiceKind === animationReferenceKind ? source : null;
   const library = useAnimationLibrary(animation !== null);
+  const catalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const resource = animation && library.kind === 'ready'
-    ? library.library.clips.find(item => item.resource.identity === animation.value) : undefined;
-  const referenceInvalid = animation !== null && library.kind === 'ready' && resource === undefined;
-  const referenceIssue = !animation ? null : library.kind === 'loading' ? '动画库清单尚未取得'
-    : library.kind === 'unavailable' ? library.reason : resource ? null : '动画引用已失效，请重新导出动画库；原身份已保留';
-  const label = resource?.name ?? (referenceInvalid ? `失效动画 · ${String(animation?.value)}` : clip.label);
+    ? library.library.clips.find(item => item.value === animation.value) : undefined;
+  const choices = animation && catalog.kind === 'ready' ? catalog.items.filter(item => item.value === animation.value) : [];
+  const referenceInvalid = animation !== null && catalog.kind === 'ready' && (choices.length !== 1 || choices[0].conflict !== null);
+  const referenceIssue = !animation ? null : catalog.kind === 'unavailable' ? catalog.reason : referenceInvalid ? catalog.invalidReason
+    : library.kind === 'loading' ? '动画素材库清单尚未取得' : library.kind === 'unavailable' ? library.reason
+      : resource ? null : '作者引用有效，当前素材库尚未提供该资源的预览片段。';
+  const label = resource?.name ?? (referenceInvalid ? `失效动画 · ${String(animation?.value)}` : choices[0]?.name ?? clip.label);
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, segmentId, trackId, clip]);
   // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
@@ -2288,9 +2293,9 @@ const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackI
       referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
       onAnimationDrop={author && kind === 'anim' ? transfer => {
         if (!animation) { consoleActions.log('warn', 'Timeline', '当前片段未提供正式动画源资产字段，原值已保留'); return; }
-        const result = readAnimationDrop(transfer, library);
+        const result = readAnimationDrop(transfer, library, catalog);
         if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
-        authoringActions.setClipValue(documentId, clip.clip.id, animation.serializedMemberPath, result.clip.resource.identity);
+        authoringActions.setClipValues(documentId, clip.clip.id, [{ keys: animation.serializedMemberPath, value: result.clip.value }]);
       } : undefined} />
   );
 });

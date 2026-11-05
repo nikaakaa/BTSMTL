@@ -143,6 +143,7 @@ interface SaveOutcomeMessage {
 export type SaveOutcome = SaveOutcomeMessage & (
   | (SavedCompilation & { preview: PlayerSkillRefreshReceipt | null })
   | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
+  | { saved: true; compilationState: 'not-requested'; runtimeState: 'pending'; preview: null }
   | { saved: boolean; compilationState: 'not-started'; preview: null }
   | { saved: true; compilationState: 'failed'; preview: null }
   | (SavedCompilation & { publicationState: 'failed'; preview: null })
@@ -943,7 +944,7 @@ export const authoringActions = {
     setDocument({ product, version: get().version + 1 });
   },
 
-  async save() {
+  async save(apply = false) {
     const owner = get().resourceTarget;
     if (owner?.kind === 'scope') return;
     if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
@@ -982,17 +983,31 @@ export const authoringActions = {
     try {
       const jobBlocked = session.canStart();
       const [selection, job] = await Promise.all([
-        selectedPreview(), jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
+        apply ? selectedPreview() : Promise.resolve<PreviewSelection>({ kind: 'unavailable', reason: '本次仅保存作者内容，运行未应用' }),
+        apply && jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]);
       const result = await authoringApi.save(target, {
         content, expectedRevision: revision, editingView,
         preview: selection.kind === 'selected' ? selection.target : null,
         job,
       });
+      if (result.compilationState === 'not-requested') {
+        const message = '作者内容已保存；未请求编译与发布，运行未应用。';
+        accept(result.content, { saved: true, compilationState: 'not-requested', runtimeState: result.runtimeState,
+          preview: null, ok: true, message, errors: [] });
+        consoleActions.log('info', '作者', `${target.name}：${message}`, JSON.stringify(result));
+        return;
+      }
+      if (result.compilationState === 'not-started') {
+        const message = `作者内容已保存；运行未应用：${result.availability.reason}`;
+        accept(result.content, { saved: true, compilationState: 'not-started', preview: null, ok: false, message, errors: [] });
+        consoleActions.log('warn', '作者', `${target.name}：${message}`, JSON.stringify(result));
+        return;
+      }
       if (result.compilationState === 'not-required') {
         const preview = result.preview;
         const stage = preview?.stage;
-        const detail = result.job === null ? result.jobError === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}` : null
+        const detail = !apply ? null : result.job === null ? result.jobError === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}` : null
           : '新输入封存作业已受理，等待完成；旧观察层已过期';
         const message = `${inputSaveMessage(result)}（${result.inputs.length} 项）${detail === null ? '' : `；${detail}`}`;
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
@@ -1095,11 +1110,11 @@ export const authoringActions = {
   },
 
   // 检查器字段：片段对象内按键路径写值。
-  setClipValue(documentId: string, clipId: string, keys: JsonKey[], value: JsonValue) {
+  setClipValues(documentId: string, clipId: string, changes: readonly JsonMutation[]) {
     authoringActions.edit(timelinePath(documentId), document => {
       const clip = findTimelineClip(document as JsonObject, clipId);
       if (!clip) throw new Error(`Timeline ${documentId} 中没有片段 ${clipId}`);
-      setIn(clip, keys, value);
+      for (const change of changes) setIn(clip, change.keys, change.value);
     });
   },
 

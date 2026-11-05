@@ -22,7 +22,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { ClipFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TrackFields, TransitionFields } from './FieldEditors';
+import { ClipFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import styles from './inspector.module.css';
 
@@ -94,6 +94,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : '输入方案'} />
     <Value label="所属技能" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
+    {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
     <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;

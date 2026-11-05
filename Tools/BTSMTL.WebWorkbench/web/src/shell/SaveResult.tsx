@@ -27,6 +27,7 @@ function submissionErrors(outcome: SaveOutcome): string[] {
 }
 
 function resultLabel(outcome: SaveOutcome): string {
+  if (outcome.compilationState === 'not-requested') return '已保存，运行未应用';
   if ('publicationState' in outcome && outcome.publicationState === 'failed') return '已编译，Unity 资产发布失败';
   const errors = submissionErrors(outcome);
   if (outcome.compilationState === 'not-required')

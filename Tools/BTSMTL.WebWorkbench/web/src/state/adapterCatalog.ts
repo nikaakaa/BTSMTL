@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { AdapterCatalogDomain, readAdapterCatalog } from '../api/authoring';
+import type { AdapterCatalogDomain, AdapterCatalogItem, readAdapterCatalog } from '../api/authoring';
+import { resourceReferenceChoice, type ReferenceCatalog } from './referenceSelection';
 import { consoleActions } from './store';
 
 export type AdapterCatalogSnapshot = { revision: string; domains: AdapterCatalogDomain[] };
@@ -9,6 +10,22 @@ type CatalogState = CatalogResult | { kind: 'unread' | 'loading' };
 type CatalogReader = (revision: string | null) => Promise<ReturnType<typeof readAdapterCatalog>>;
 
 export const useAdapterCatalog = create<CatalogState>(() => ({ kind: 'unread' }));
+
+export function resourceCatalogChoices(snapshot: AdapterCatalogSnapshot, domain: string, context: string): ReferenceCatalog {
+  const values = new Map<string, AdapterCatalogItem[]>();
+  for (const group of snapshot.domains.filter(group => group.domain === domain))
+    for (const item of group.items.filter(item => item.context === context || item.context === ''))
+      values.set(item.value, [...values.get(item.value) ?? [], { ...item, adapter: group.adapter, domain: group.domain }]);
+  const items = [...values.values()].flatMap(entries => {
+    const exact = entries.filter(item => item.context === context);
+    const selected = exact.length !== 0 ? exact : entries;
+    const conflict = selected.length > 1 ? `领域 ${domain}、引用 ${selected[0].value}、上下文 ${context} 命中多条正式目录。` : null;
+    return selected.map(item => resourceReferenceChoice(item, conflict));
+  });
+  return { kind: 'ready', referenceKind: domain, items,
+    invalidReason: `当前引用不在领域 ${domain}、上下文 ${context} 的正式目录中，原字符串已保留。` };
+}
+
 let snapshot: AdapterCatalogSnapshot | null = null;
 let pending: Promise<CatalogResult> | null = null;
 

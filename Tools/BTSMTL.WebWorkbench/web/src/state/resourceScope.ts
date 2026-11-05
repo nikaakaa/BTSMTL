@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
-import { useAdapterCatalog } from './adapterCatalog';
+import { authoringApi } from '../api/authoring';
+import { adapterCatalogCache, resourceCatalogChoices, useAdapterCatalog } from './adapterCatalog';
+import { timelinePath, useCurrentDocument } from './authoring';
+import type { JsonObject } from './skillJson';
+import type { ReferenceCatalog } from './referenceSelection';
 import { consoleActions } from './store';
 
 export type ResourceScopeState = { kind: 'ready'; scope: AuthoringScope } | { kind: 'loading' } | { kind: 'unavailable'; reason: string };
@@ -24,6 +28,7 @@ function readResourceScope(revision: string, query: ScopeQuery): Promise<Resourc
 
 export function useResourceScope(value: string | null): ResourceScopeState {
   const catalog = useAdapterCatalog();
+  useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
   const items = catalog.kind === 'ready' ? catalog.snapshot.domains.filter(group => group.domain === 'execution-scope')
     .flatMap(group => group.items.filter(item => item.value === value).map(item => ({ adapter: group.adapter, scope: item.value }))) : [];
   const query = items.length === 1 ? items[0] : null;
@@ -43,4 +48,14 @@ export function useResourceScope(value: string | null): ResourceScopeState {
   if (items.length === 0) return { kind: 'unavailable', reason: `执行 Scope 不在正式目录中，原字符串已保留：${value}` };
   if (items.length > 1) return { kind: 'unavailable', reason: `执行 Scope 命中多个适配者目录条目：${value}` };
   return result?.key === key ? result.state : { kind: 'loading' };
+}
+
+export function useTimelineResourceCatalog(documentId: string, domain: string): ReferenceCatalog {
+  const { document } = useCurrentDocument(timelinePath(documentId));
+  const scope = useResourceScope((document as JsonObject | null)?.m_AuthoringScope as string | null ?? null);
+  const catalog = useAdapterCatalog();
+  if (scope.kind !== 'ready') return { kind: 'unavailable', reason: scope.kind === 'loading' ? '正在读取 Timeline 的执行 Scope。' : scope.reason };
+  if (catalog.kind === 'failed') return { kind: 'unavailable', reason: catalog.failure.text };
+  if (catalog.kind !== 'ready') return { kind: 'unavailable', reason: '正在读取正式适配者资源目录。' };
+  return resourceCatalogChoices(catalog.snapshot, domain, scope.scope.context);
 }

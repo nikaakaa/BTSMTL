@@ -114,6 +114,7 @@ function ProfileAuthoringStatus() {
 }
 
 function DocumentAuthoringStatus() {
+  const canApply = useWorkbench(state => state.host?.modes.find(mode => mode.id === state.previewMode)?.createsRun === true);
   const state = useAuthoring(useShallow(current => {
     const document = authoringDocument(current);
     return { open: current.author && current.target !== null, skill: current.target?.kind === 'skill', edited: document.edited, removed: document.removed,
@@ -148,9 +149,11 @@ function DocumentAuthoringStatus() {
             onClick={() => authoringActions.revert()}>还原</Button>
         </>
       )}
-      {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存并应用当前载体配置（Ctrl+S）" onClick={() => void authoringActions.save()}>
+      {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存作者内容，运行保持待应用（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>}
+      {canApply && (dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存后按当前选择编译、发布并请求 Player 应用"
+        onClick={() => void authoringActions.save(true)}>保存并应用</Button>}
       {lastSave && (dirty === 0 || !lastSave.ok) && <SaveResult outcome={lastSave} />}
     </div>
   );

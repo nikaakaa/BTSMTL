@@ -9,7 +9,7 @@ import {
   type EdgeStep, type JsonKey, type JsonMutation,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
-import { animationReferenceCatalog, animationReferenceKind, useAnimationLibrary } from '../../state/resources';
+import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
@@ -19,7 +19,7 @@ import { ReferencePicker } from './ReferencePicker';
 import { openPanel } from '../../shell/layout';
 import type { ReferenceCatalog } from '../../state/referenceSelection';
 import { resourceObjectValue } from '../../api/resourceRegistration';
-import { ResourceFieldPicker } from './ResourceFieldPicker';
+import { ResourceFieldPicker, ResourceScopeContext } from './ResourceFieldPicker';
 import styles from './inspector.module.css';
 
 // 检查器字段编辑（9.3）：节点字段按宿主类型描述（C# 作者字段合同）给出的值种类编辑，
@@ -894,6 +894,22 @@ const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_St
 // 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
+export function TimelineScopeFields({ documentId }: { documentId: string }) {
+  const { document } = useCurrentDocument(timelinePath(documentId));
+  const catalog = useAdapterCatalog();
+  useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
+  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined;
+  const values = new Map<string, string[]>();
+  if (catalog.kind === 'ready') for (const group of catalog.snapshot.domains.filter(group => group.domain === 'execution-scope'))
+    for (const item of group.items) values.set(item.value, [...values.get(item.value) ?? [], `${item.display} · ${group.adapter}`]);
+  return <Row label="Timeline 作者 Scope"><Select label="Timeline 作者 Scope" value={scope ?? null}
+    options={[...values].map(([value, names]) => ({ value, label: names.join(' / ') }))} placeholder="明确选择 Timeline 的执行范围"
+    onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />
+    {catalog.kind === 'failed' && <span className={styles.issue}>{catalog.failure.text}</span>}
+    {catalog.kind === 'ready' && scope != null && !values.has(scope) && <span className={styles.issue}>原 Scope 不在正式目录中，原字符串已保留：{scope}</span>}
+  </Row>;
+}
+
 // 片段一栏：起止与片段的序列化字段；children 为同栏的引用行（节点图）。
 export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   documentId: string; clipId: string; timeOnly?: boolean; children?: ReactNode;
@@ -904,29 +920,35 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
   const shape = useElementShape('clips', clip?.ContractKind);
   const elements = useSkillElements(skill !== null);
-  const source = elements?.clips.find(template => template.kind === clip?.ContractKind)?.sourceAsset;
-  const animation = source?.choiceKind === animationReferenceKind ? source : null;
-  const library = useAnimationLibrary(animation !== null);
+  const template = elements?.clips.find(template => template.kind === clip?.ContractKind);
+  const { description, issues } = useDescription(skill, null, template?.clrType, clip);
   if (!clip) return null;
-  const set: SetValue = (keys, value) => authoringActions.setClipValue(documentId, clipId, keys, value);
+  const setFields: SetFields = changes => authoringActions.setClipValues(documentId, clipId, changes);
+  const set: SetValue = (keys, value) => setFields([{ keys, value }]);
+  const resourceFields = description?.stored.filter(item => item.fields.some(field => field.resourceReference !== null || field.objectSelection !== null)) ?? [];
+  const resourceMembers = new Set(resourceFields.map(item => item.member));
+  const values = descriptionValues(description, clip);
+  const owner: ReferenceOwner = { kind: 'value', graphId: null, identity: JSON.stringify([skill, documentId, clipId]) };
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
   return (
+    <ResourceScopeContext.Provider value={(document as JsonObject).m_AuthoringScope as string | null ?? null}>
     <Fold title="片段" defaultOpen>
+      <TimelineScopeFields documentId={documentId} />
       {children}
-      {!timeOnly && animation && <Row label="动画">
-        <ReferencePicker id={`${documentId}/${clipId}/source`} label="动画" value={getIn(clip, animation.serializedMemberPath)} configuration={clip}
-          catalog={animationReferenceCatalog(library)} onChoose={choice => set(animation.serializedMemberPath, choice.value)} />
-      </Row>}
+      {!timeOnly && <DescriptionStatus description={description} issues={issues} />}
+      {!timeOnly && resourceFields.map(item => <StoredItem key={item.member} item={item} node={clip} values={values} owner={owner}
+        onSet={set} onSetFields={setFields} />)}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {!timeOnly && Object.keys(clip).filter(key => !clipFixed.has(key) && key !== animation?.serializedMemberPath[0]).map(key => key.endsWith('FPRawValue') ? (
+      {!timeOnly && description !== null && Object.keys(clip).filter(key => !clipFixed.has(key) && !resourceMembers.has(key)).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
       ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />)}
     </Fold>
+    </ResourceScopeContext.Provider>
   );
 }

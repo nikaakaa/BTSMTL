@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
+import type { AdapterCatalogItem, ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
 import type { ResourceObjectCapability, ResourceObjectCandidate } from '../api/resourceRegistration';
+import { nullable, object, text } from '../api/playerRecords';
 
 export type ReferenceCatalog =
   | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
@@ -24,6 +25,11 @@ export interface ReferenceFieldSelection {
 }
 
 export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));
+
+export function resourceReferenceChoice(item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'display' | 'context'>, conflict: string | null): ReferenceChoice {
+  return { value: item.value, name: item.display, detail: item.context || '公共', source: item.adapter, conflict,
+    targets: [{ kind: 'Resource', domain: item.domain, value: item.value, context: item.context }], associated: [] };
+}
 
 export const referenceValueKey = (value: JsonValue | undefined) =>
   value === undefined ? undefined : stringifySkillJson(value, '');
@@ -52,8 +58,10 @@ const referenceMime = 'application/x-btsmtl-authoring-reference';
 const kindMime = (kind: string) => `${referenceMime}.${encodeURIComponent(kind).toLowerCase()}`;
 
 export function writeReferenceDrag(transfer: DataTransfer, kind: string, choice: ReferenceDragChoice) {
+  const resources = choice.targets.filter(target => target.kind === 'Resource');
+  const resource = resources.length === 1 ? { domain: resources[0].domain, context: resources[0].context } : null;
   transfer.effectAllowed = 'copy';
-  transfer.setData(referenceMime, JSON.stringify({ kind, value: referenceValueKey(choice.value), source: choice.source, choiceKey: referenceChoiceKey(choice) }));
+  transfer.setData(referenceMime, JSON.stringify({ kind, value: referenceValueKey(choice.value), source: choice.source, choiceKey: referenceChoiceKey(choice), resource }));
   transfer.setData(kindMime(kind), '');
 }
 
@@ -65,25 +73,27 @@ export type ReferenceDrop =
   | { kind: 'rejected'; reason: string };
 
 export type ReferenceDrag =
-  | { kind: 'reference'; referenceKind: string; value: JsonValue; source: string; choiceKey: string }
+  | { kind: 'reference'; referenceKind: string; value: JsonValue; source: string; choiceKey: string; resource: { domain: string; context: string | null } | null }
   | { kind: 'rejected'; reason: string };
 
 export function readReferenceDrag(transfer: DataTransfer): ReferenceDrag {
-  let payload: unknown;
-  try { payload = JSON.parse(transfer.getData(referenceMime)); }
-  catch { return { kind: 'rejected', reason: '拖入内容不是作者引用，原值已保留' }; }
-  if (payload === null || typeof payload !== 'object' || !('kind' in payload) ||
-    !('value' in payload) || !('source' in payload) || !('choiceKey' in payload) || typeof payload.kind !== 'string' ||
-    typeof payload.value !== 'string' || typeof payload.source !== 'string' || typeof payload.choiceKey !== 'string')
-    return { kind: 'rejected', reason: '拖入引用缺少类型或身份，原值已保留' };
-  try { return { kind: 'reference', referenceKind: payload.kind, value: parseSkillJson(payload.value), source: payload.source, choiceKey: payload.choiceKey }; }
-  catch { return { kind: 'rejected', reason: '拖入引用的值不符合作者 JSON 格式，原值已保留' }; }
+  try {
+    const payload = object({ kind: text, value: text, source: text, choiceKey: text,
+      resource: nullable(object({ domain: text, context: nullable(text) })) })(JSON.parse(transfer.getData(referenceMime)), 'ReferenceDrag');
+    if (payload.resource !== null && payload.resource.domain !== payload.kind) throw new Error('资源域与拖放类型不一致');
+    return { kind: 'reference', referenceKind: payload.kind, value: parseSkillJson(payload.value), source: payload.source,
+      choiceKey: payload.choiceKey, resource: payload.resource };
+  } catch (error) { return { kind: 'rejected', reason: `拖入作者引用无法读取，原值已保留：${error instanceof Error ? error.message : String(error)}` }; }
 }
 
 export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCatalog): ReferenceDrop {
-  if (catalog.kind === 'unavailable') return { kind: 'rejected', reason: catalog.reason };
   const drag = readReferenceDrag(transfer);
   if (drag.kind === 'rejected') return drag;
+  return resolveReferenceDrag(drag, catalog);
+}
+
+export function resolveReferenceDrag(drag: Extract<ReferenceDrag, { kind: 'reference' }>, catalog: ReferenceCatalog): ReferenceDrop {
+  if (catalog.kind === 'unavailable') return { kind: 'rejected', reason: catalog.reason };
   if (drag.referenceKind !== catalog.referenceKind)
     return { kind: 'rejected', reason: '引用类型与当前字段不匹配，原值已保留' };
   const choices = catalog.items.filter(item => referenceChoiceKey(item) === drag.choiceKey);
