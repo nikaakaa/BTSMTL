@@ -145,6 +145,17 @@ namespace BTSMTL.Timeline
                     TimelineClipContract clipContract = catalog.RequireClip(clip.ContractKind);
                     if (!trackContract.AllowsClip(clipContract.Kind))
                         continue;
+#if UNITY_EDITOR
+                    if (clip is ITimelineAuthoringResourceClip)
+                    {
+                        TimelineAuthoringReferenceValue reference = TimelineAuthoringPropertyContract.Reference(clip);
+                        if (reference.IsMissing)
+                        {
+                            errors.Add($"{reference.ErrorCode}:{clip.AuthoringId}:{reference.ErrorMessage}");
+                            continue;
+                        }
+                    }
+#endif
                     TimelineClipExecutionPhase executionPhase = clipContract.DefaultExecutionPhase;
                     if (clip is ITimelineClipExecutionPhaseSource phaseSource)
                         executionPhase = phaseSource.TimelineExecutionPhase;

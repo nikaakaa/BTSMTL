@@ -381,17 +381,6 @@ namespace BTSMTL.Timeline
                         executionPhase = phaseSource.TimelineExecutionPhase;
                     if (!clipContract.SupportsExecutionPhase(executionPhase))
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' uses unsupported execution phase '{executionPhase}'.");
-#if UNITY_EDITOR
-                    if (clip is ITimelineAuthoringResourceClip)
-                    {
-                        TimelineAuthoringReferenceValue reference = TimelineAuthoringPropertyContract.Reference(clip);
-                        if (reference.IsMissing)
-                        {
-                            errors?.Add($"{reference.ErrorCode}:{clip.AuthoringId}:{reference.ErrorMessage}");
-                            continue;
-                        }
-                    }
-#endif
                     clipContract.Validator?.Invoke(clip, errors);
                     if (trackContract.OverlapPolicy == TimelineTrackOverlapPolicy.Reject)
                         ValidateRejectedOverlap(track, clipIndex, clip, errors);
