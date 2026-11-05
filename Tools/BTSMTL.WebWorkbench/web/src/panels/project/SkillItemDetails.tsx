@@ -7,7 +7,6 @@ import { consoleActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
-import { LocateAssetButton } from './LocateAssetButton';
 import styles from './project.module.css';
 
 export const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案' };
@@ -84,8 +83,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
           <strong>{reference.ownerName}</strong>
           <span>{reference.kind === 'carrier-grant' ? 'Definition 技能授予' : '作者内容引用'} · {reference.view === 'saved' ? '已保存' : '未保存编辑'}</span>
           <code>{reference.file} · {reference.path}</code>
-          {reference.kind === 'carrier-grant' ? <LocateAssetButton target={{ kind: 'asset', identity: reference.identity }} />
-            : source && <Button variant="ghost" disabled={busy}
+          {reference.kind !== 'carrier-grant' && source && <Button variant="ghost" disabled={busy}
               onClick={() => void perform(() => projectActions.open(source))}>打开引用者</Button>}
         </div>;
       })}

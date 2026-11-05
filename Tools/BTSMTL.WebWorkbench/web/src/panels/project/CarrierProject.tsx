@@ -11,7 +11,6 @@ import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
-import { LocateAssetButton, type AssetLocateTarget } from './LocateAssetButton';
 import { ProfileSources, type ProfileLocation } from './ProfileEditor';
 import { ScopeResourceSources } from './ScopeEditor';
 import type { BusinessKeyMetadata } from '../../api/authoring';
@@ -20,11 +19,7 @@ import styles from './project.module.css';
 interface ResourceRow {
   name: string; kind: string; source: string; key: string; identity: string | null; detail: string;
   domain: ProfileEntryTarget['domain']; entryKind: string;
-  location: AssetLocateTarget;
 }
-
-const resourceLocation = (resource: CarrierResource): AssetLocateTarget => resource.identity === ''
-  ? { kind: 'unavailable', reason: '该资源尚未绑定 Unity 资产' } : { kind: 'asset', identity: resource.identity };
 
 const matchesTarget = (row: ResourceRow, target: ProfileEntryTarget) => row.source === target.profileSource &&
   row.domain === target.domain && row.entryKind === target.entryKind && row.key === target.key && row.identity === target.resourceIdentity;
@@ -36,45 +31,40 @@ const resourceTarget = (carrier: AuthoringCarrier, row: ResourceRow): ProfileEnt
 
 function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
   const rows: ResourceRow[] = [];
-  const add = (kind: string, source: string, domain: ResourceRow['domain'], entryKind: string, resources: CarrierResource[],
-    location: (resource: CarrierResource) => AssetLocateTarget) => {
-    rows.push(...resources.map(resource => ({ ...resource, kind, source, domain, entryKind, detail: '', location: location(resource) })));
+  const add = (kind: string, source: string, domain: ResourceRow['domain'], entryKind: string, resources: CarrierResource[]) => {
+    rows.push(...resources.map(resource => ({ ...resource, kind, source, domain, entryKind, detail: '' })));
   };
   if (carrier.vfx !== null) {
     const profile = carrier.vfx;
-    const location: AssetLocateTarget = { kind: 'asset', identity: profile.identity };
-    add('特效资源', profile.source, 'Vfx', 'vfx-resource', profile.resources, resourceLocation);
+    add('特效资源', profile.source, 'Vfx', 'vfx-resource', profile.resources);
     rows.push(...profile.anchors.map((anchor): ResourceRow => ({ name: anchor.key, key: anchor.key, kind: '特效锚点', source: profile.source,
-      domain: 'Vfx', entryKind: 'vfx-anchor', identity: null, detail: anchor.bone, location })));
+      domain: 'Vfx', entryKind: 'vfx-anchor', identity: null, detail: anchor.bone })));
     rows.push(...profile.stateModifiers.map((modifier): ResourceRow => ({ name: modifier.id, key: modifier.id, kind: '特效状态修饰', source: profile.source,
-      domain: 'Vfx', entryKind: 'vfx-state-modifier', identity: null, detail: modifier.resourceIds.join(' + '), location })));
+      domain: 'Vfx', entryKind: 'vfx-state-modifier', identity: null, detail: modifier.resourceIds.join(' + ') })));
   }
   if (carrier.camera !== null) {
     const profile = carrier.camera;
-    const location: AssetLocateTarget = { kind: 'asset', identity: profile.identity };
-    add('相机序列', profile.source, 'Camera', 'camera-sequence', profile.sequences, resourceLocation);
+    add('相机序列', profile.source, 'Camera', 'camera-sequence', profile.sequences);
     rows.push(...profile.effects.map((effect): ResourceRow => ({ ...effect.resource, kind: '相机效果', source: profile.source,
-      domain: 'Camera', entryKind: `camera-effect-${effect.kind}`, detail: effect.kind, location: resourceLocation(effect.resource) })));
+      domain: 'Camera', entryKind: `camera-effect-${effect.kind}`, detail: effect.kind })));
     rows.push(...profile.targets.map((target): ResourceRow => ({ name: target.key, key: target.key, kind: '相机目标', source: profile.source,
       domain: 'Camera', entryKind: 'camera-target', identity: null,
-      detail: [target.space, target.anchorKey, target.aimPointKey, target.preferredBoneKey].filter(Boolean).join(' / '), location })));
+      detail: [target.space, target.anchorKey, target.aimPointKey, target.preferredBoneKey].filter(Boolean).join(' / ') })));
   }
   if (carrier.audio !== null) {
     const profile = carrier.audio;
-    const location: AssetLocateTarget = { kind: 'asset', identity: profile.identity };
-    add('音频事件', profile.source, 'Audio', 'audio-resource', profile.events, () => location);
-    add('音频规则', profile.source, 'Audio', 'audio-rule', profile.rules, () => location);
-    add('音频参数', profile.source, 'Audio', 'audio-parameter', profile.parameters, () => location);
+    add('音频事件', profile.source, 'Audio', 'audio-resource', profile.events);
+    add('音频规则', profile.source, 'Audio', 'audio-rule', profile.rules);
+    add('音频参数', profile.source, 'Audio', 'audio-parameter', profile.parameters);
     rows.push(...Array.from({ length: profile.actionSoundSlotCount }, (_, slot): ResourceRow => ({
       name: `声音通道 ${slot}`, key: String(slot), kind: '动作声音通道', source: profile.source,
-      domain: 'Audio', entryKind: 'audio-sound', identity: null, detail: '', location,
+      domain: 'Audio', entryKind: 'audio-sound', identity: null, detail: '',
     })));
   }
   if (carrier.input !== null) {
     const profile = carrier.input;
-    const location: AssetLocateTarget = { kind: 'asset', identity: profile.identity };
     rows.push(...profile.keys.map((key): ResourceRow => ({ name: key.name, key: key.name, kind: '输入键', source: profile.source,
-      domain: 'Input', entryKind: 'preview-input-key', identity: key.actionIdentity, detail: key.kind, location })));
+      domain: 'Input', entryKind: 'preview-input-key', identity: key.actionIdentity, detail: key.kind })));
   }
   return rows;
 }
@@ -105,7 +95,7 @@ export function CarrierDetails({ carrier, focusTarget, businessKeys }: {
         {runtime ? '已选为实际运行 Scope' : '设为当前技能实际运行 Scope'}</Button>
       {target?.kind === 'skill' && execution.previewScope !== null && <Button variant="ghost" onClick={() => authoringActions.selectExecutionScope('previewScope', null)}>清除预览 Scope</Button>}
       {target?.kind === 'skill' && execution.runtimeScope !== null && <Button variant="ghost" onClick={() => authoringActions.selectExecutionScope('runtimeScope', null)}>清除实际运行 Scope</Button>}
-      <LocateAssetButton key={carrier.definitionToken} target={{ kind: 'asset', identity: carrier.definitionToken }} /></PanelBar>
+    </PanelBar>
     <div className={styles.facts}><strong>{carrier.name}</strong><code>{carrier.source}</code><small>{carrier.identity}</small>
       <small>{carrier.nativeKind} · 定义 {carrier.nativeDefinitionId} · 上下文 {carrier.scope.context || '公共'}</small>
       {carrier.profileUnavailableReason !== null ? <span className={styles.note}>{carrier.profileUnavailableReason}</span> : <>
@@ -210,8 +200,6 @@ function CarrierResources({ carrier, target }: {
     {selected && <div className={styles.facts}><strong>{selected.name} · {selected.kind}</strong>
       <code>{selected.source}</code><small>{selected.key}{selected.identity ? ` · ${selected.identity}` : ''}</small>
       {selected.detail && <span>{selected.detail}</span>}
-      <LocateAssetButton key={selected.location.kind === 'asset' ? selected.location.identity : JSON.stringify(resourceTarget(carrier, selected))}
-        target={selected.location} />
       {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
         onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}

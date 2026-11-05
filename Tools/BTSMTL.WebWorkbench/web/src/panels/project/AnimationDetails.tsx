@@ -10,7 +10,6 @@ import { BarSeparator, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { ResourceScene } from '../resources/resourceScene';
-import { LocateAssetButton } from './LocateAssetButton';
 import styles from '../resources/resources.module.css';
 import projectStyles from './project.module.css';
 
@@ -66,7 +65,6 @@ export function AnimationDetails({ library, clips }: { library: AnimationLibrary
         onChange={value => { if (value !== null) { resourceActions.setPlaying(false); resourceActions.setTime(value); } }} />
       <BarSeparator />
       <Button variant="ghost" onClick={() => fitCurrent?.()}>适配角色</Button>
-      {clip && <LocateAssetButton key={clip.resource.identity} target={{ kind: 'asset', identity: clip.resource.identity }} />}
       {clip && <Button variant="ghost" onClick={() => selectionActions.select({ kind: 'resource', id: clip.resource.identity })}>检查器</Button>}
       {clip && animationField && <Button disabled={clip.key == null} tip={clip.key == null ? '该片段没有登记 animation-clip 键，请先登记键并重新导出动画库' : undefined}
         onClick={() => animationField.choose(animationChoice(clip))}>填入 {animationField.name}</Button>}

@@ -361,15 +361,6 @@ export interface AuthoringCarrier {
   input: { identity: string; source: string; keys: { name: string; kind: string; actionIdentity: string }[] } | null;
 }
 
-// 定位目标：作者包键（经所属适配者绑定），或适配者投影直接给出的资产身份（载体、Profile、动画库）。
-export type AssetLocateRequest = (BusinessKeyAddress & { context?: string }) | { asset: string };
-
-export interface AssetLocateResult {
-  projectPath: string;
-  identity: string;
-  assetPath: string;
-}
-
 export interface AuthoringCarriers {
   availability: QueryAvailability;
   authoringRevision: string;
@@ -804,7 +795,6 @@ export const authoringApi = {
         definitionToken: text, profileUnavailableReason: nullable(text), animationLibrary: nullable(object({ identity: text,
           source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })),
       businessKeys: readBusinessKeys(result.businessKeys, 'Carriers.businessKeys') })),
-  locateAsset: (request: AssetLocateRequest) => postJson<AssetLocateResult>('/api/authoring/locate', request),
   renameBusinessKey,
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
