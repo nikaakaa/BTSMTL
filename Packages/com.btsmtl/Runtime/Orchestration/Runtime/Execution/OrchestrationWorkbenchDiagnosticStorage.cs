@@ -531,6 +531,7 @@ namespace BTSMTL.Orchestration
             int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
                 ResolveTraceInvocation(ref cursor, invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
             ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
+            context = default;
             context.ExecutionObject = cursor.Input.ExecutionObject;
             context.CharacterRuntimeId = cursor.Input.CharacterRuntimeId;
             context.OperationIndex = operationIndex;
