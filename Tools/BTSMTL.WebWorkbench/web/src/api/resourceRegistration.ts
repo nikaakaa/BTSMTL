@@ -33,6 +33,14 @@ const readRegistration = object({ ...resultFields,
   reference: readResourceReference,
   reused: boolean, instanceCapacity: nullable(number), transaction: readTransaction });
 const readReplay = object(resultFields);
+const readProfile = object({ package: text, adapter: text, assetToken: text, domain: text, context: text,
+  revision: text, configurationJson: text, operations: array(object({ command: text, inputType: text, resultType: text })) });
+export type AuthoringProfile = ReturnType<typeof readProfile>;
+export type ProfileQuery = Pick<AuthoringProfile, 'package' | 'adapter' | 'assetToken'>;
+export const profileQueryKey = (query: ProfileQuery) => JSON.stringify([query.package, query.adapter, query.assetToken]);
+const readProfileResult = object({ reference: nullable(readResourceReference), reused: boolean, instanceCapacity: nullable(number),
+  transaction: readTransaction, profile: readProfile, runtimeState: choice('pending') });
+export type ProfileOperationResult = ReturnType<typeof readProfileResult>;
 export type ResourceRegistrationResult = ReturnType<typeof readRegistration>;
 export type ResourceRegistrationInput =
   | { kind: 'asset'; key: string; token: string }
@@ -45,6 +53,23 @@ export type ResourceRegistrationRequest = {
 };
 const root = (skill: string) => `/api/authoring/skills/${encodeURIComponent(skill)}`;
 export const resourceRegistrationApi = {
+  readProfile: (query: ProfileQuery, signal?: AbortSignal) =>
+    postJson<unknown>('/api/authoring/profiles/read', query, signal).then(value => readProfile(value)),
+  registerProfile: (profile: AuthoringProfile, keyKind: string, value: ResourceRegistrationInput) => {
+    const { kind, ...input } = value;
+    return postJson<unknown>('/api/authoring/profiles/resources/register', { package: profile.package, adapter: profile.adapter,
+      context: profile.context, keyKind, input: { kind, ...input }, profile: { assetToken: profile.assetToken, expectedRevision: profile.revision } })
+      .then(value => readProfileResult(value));
+  },
+  profileCapacity: (profile: AuthoringProfile, keyKind: string, key: string, instanceCapacity: number) =>
+    postJson<unknown>('/api/authoring/profiles/resources/capacity', { package: profile.package, adapter: profile.adapter,
+      context: profile.context, keyKind, key, instanceCapacity, profile: { assetToken: profile.assetToken, expectedRevision: profile.revision } })
+      .then(value => readProfileResult(value)),
+  configureProfile: (profile: AuthoringProfile, configurationJson: string) =>
+    postJson<unknown>('/api/authoring/profiles/configure', { package: profile.package, adapter: profile.adapter,
+      profile: { assetToken: profile.assetToken, expectedRevision: profile.revision }, configurationJson }).then(value => readProfileResult(value)),
+  replayProfile: (query: ProfileQuery, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
+    postJson<unknown>(`/api/authoring/profiles/data/${direction}`, { ...query, transaction }).then(value => readProfileResult(value)),
   objects: (query: ResourceObjectQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/resources/objects', query, signal).then(readResourceObjects),
   register: (skill: string, request: ResourceRegistrationRequest) => {
