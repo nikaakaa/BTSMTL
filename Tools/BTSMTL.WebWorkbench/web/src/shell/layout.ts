@@ -31,8 +31,9 @@ function migrateGraphSelections(layout: SerializedDockview) {
   for (const panel of Object.values(layout.panels)) {
     if (panel.contentComponent !== 'graph') continue;
     const { graph, pin } = readGraphSelections(panel.params ?? {}, '保存的节点图面板');
-    panel.params = { ...panel.params, graph: graph == null ? graph : migrate(graph),
-      pin: pin == null ? pin : { ...panel.params?.pin, graph: migrate(pin.graph) } };
+    panel.params = { ...panel.params,
+      ...(graph === undefined ? {} : { graph: graph === null ? null : migrate(graph) }),
+      ...(pin === undefined ? {} : { pin: pin === null ? null : { ...panel.params?.pin, graph: migrate(pin.graph) } }) };
   }
 }
 
