@@ -333,7 +333,7 @@ export const archive = {
     const page = Math.floor(frameIndex / pageFrames);
     const request = ++frameRequest;
     imageController?.abort();
-    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, archiveImage: null });
+    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, archiveImage: null, failure: null });
     const allowed = new Set([page - 1, page, page + 1]);
     for (const [id, request] of pages) if (!allowed.has(request.page)) {
       request.controller.abort();
@@ -341,7 +341,11 @@ export const archive = {
       pending.delete(id);
     }
     const failed = (error: unknown) => {
-      if (request === frameRequest && isCurrent(generation)) consoleActions.error(source, error);
+      if (request !== frameRequest || !isCurrent(generation)) return;
+      const entryId = consoleActions.error(source, error);
+      if (entryId !== null) runActions.setData(generation, {
+        failure: { reason: error instanceof Error ? error.message : String(error), entryId },
+      });
     };
     const show = () => {
       const archiveFrame = readCachedFrame(runId, frameIndex);

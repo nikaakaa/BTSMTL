@@ -8,7 +8,7 @@ import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveImage } from '../../state/store';
+import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -173,7 +173,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const livePicture = useSyncExternalStore(playerService.subscribeVideo, playerService.latestVideo);
   const view = useWorkbench(useShallow(state => ({
     liveId: state.liveId, runId: state.runId, archiveImage: state.archiveImage, frameKey: state.frameKey,
-    viewerOpen: state.viewerOpen, player: state.live?.player ?? null,
+    viewerOpen: state.viewerOpen, player: state.live?.player ?? null, failure: state.failure,
   })));
   const [captured, setCaptured] = useState(false);
   const [decodeFailure, setDecodeFailure] = useState<{ image: Blob; reason: string; entryId: number | null } | null>(null);
@@ -409,7 +409,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   }, [panelWindow]), ready);
 
   const currentFailure = decodeFailure !== null && currentPicture()?.image === decodeFailure.image ? decodeFailure : null;
-  const emptyReason = currentFailure?.reason ?? (view.runId
+  const readingFailure = view.runId !== null && view.archiveImage === null ? view.failure : null;
+  const emptyReason = currentFailure?.reason ?? readingFailure?.reason ?? (view.runId
     ? view.archiveImage === null ? '正在读取档案画面' : view.archiveImage.kind === 'unavailable' ? view.archiveImage.reason : null
     : !view.liveId ? '启动或选择一个播放器' : !view.viewerOpen ? '播放器画面连接尚未建立'
     : livePicture !== null ? null : view.player?.error ?? (view.player?.state === 'loading' ? '正在载入所选内容'
@@ -418,7 +419,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   return (
     <div ref={stageRef} className={styles.stage} data-captured={captured || undefined}>
       {currentFailure !== null ? <ErrorLine text={currentFailure.reason} entryId={currentFailure.entryId} />
-        : emptyReason !== null && <Empty text={emptyReason} />}
+        : readingFailure !== null ? <ErrorLine text={readingFailure.reason} entryId={readingFailure.entryId} />
+          : emptyReason !== null && <Empty text={emptyReason} />}
       <canvas ref={video} className={styles.video} hidden={emptyReason !== null} />
       <canvas ref={layer} className={styles.video} hidden={emptyReason !== null} />
       {(view.runId || view.liveId) && <Corner stats={stats} video={livePicture} />}
@@ -509,6 +511,7 @@ function inputMessage(view: Window, state: { keys: Set<string>; dx: number; dy: 
 function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) {
   const view = useWorkbench(useShallow(state => ({
     player: state.live?.player ?? null, process: state.live?.state ?? null, runId: state.runId, archiveImage: state.archiveImage,
+    archiveFrame: state.archiveFrame, failure: state.failure,
     hostFrame: state.hostFrame,
     targetPosition: state.targetPosition,
     frameDisplayName: state.summary?.frameDisplayName,
@@ -562,27 +565,35 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
             <div><span>画面来源帧</span><span>{view.archiveImage.metadata.sourceHostFrame}</span></div>
             <div><span>表现序号</span><span>{view.archiveImage.metadata.presentationSequence}</span></div>
           </>}
-          {view.runId !== null && <CameraHistory image={view.archiveImage} />}
+          {view.runId !== null && <CameraHistory frame={view.archiveFrame} image={view.archiveImage} failure={view.failure} />}
         </div>
       )}
     </>
   );
 }
 
-function CameraHistory({ image }: { image: ArchiveImage | null }) {
-  if (image === null) return <div><span>历史相机输出</span><span>正在读取画面关联记录</span></div>;
-  if (image.kind === 'unavailable') return <div><span>历史相机输出</span><span>{image.reason}</span></div>;
-  if (image.cameras.length === 0) return <div><span>历史相机输出</span><span>{image.overlayReason}</span></div>;
+function CameraHistory({ frame, image, failure }: { frame: ArchiveFrame | null; image: ArchiveImage | null; failure: ReturnType<typeof getState>['failure'] }) {
+  if (frame === null) return <div><span>历史相机输出</span><span>{failure?.reason ?? '正在读取当前帧的相机记录'}</span></div>;
+  if (frame.cameras.length === 0) {
+    const reason = frame.availability.find(item => item.channel === 'camera' && (!item.available || !item.complete))?.reason
+      ?? frame.unavailable.find(item => item.channel === 'camera')?.reason ?? '当前逻辑帧未记录相机提交';
+    return <div><span>历史相机输出</span><span title={reason}>{reason}</span></div>;
+  }
+  const picture = image?.kind === 'frame' ? image : null;
   return <>
-    <b>历史相机输出 · {image.cameras.length} 条记录</b>
-    {image.cameras.map((camera, index) => <CameraHistoryRecord key={`${camera.actorRosterIndex}/${camera.actorInstanceId}/${camera.rigInstanceId}/${index}`} camera={camera} />)}
+    <b>历史相机输出 · {frame.cameras.length} 条记录</b>
+    {frame.cameras.map((camera, index) => <CameraHistoryRecord key={`${camera.presentationSequence}/${camera.actorRosterIndex}/${camera.actorInstanceId}/${camera.rigInstanceId}/${index}`} camera={camera} picture={picture} />)}
   </>;
 }
 
-function CameraHistoryRecord({ camera }: { camera: Extract<ArchiveImage, { kind: 'frame' }>['cameras'][number] }) {
+function CameraHistoryRecord({ camera, picture }: { camera: ArchiveFrame['cameras'][number]; picture: Extract<ArchiveImage, { kind: 'frame' }> | null }) {
   const source = camera.source;
   const hasOwner = camera.actorRosterIndex !== -1;
+  const linked = picture !== null && camera.presentationSequence === picture.metadata.presentationSequence &&
+    camera.cameraInstanceId === picture.metadata.cameraInstanceId && samePreviewLoad(source, picture.metadata.source) &&
+    source.clock.position.hostFrame === picture.metadata.source.clock.position.hostFrame;
   const fields = [
+    { label: '画面关联', value: picture === null ? '当前无档案帧画面' : linked ? '与当前画面同次提交' : '未与当前画面确认关联' },
     { label: '相机实例编号', value: camera.cameraInstanceId },
     { label: '历史绑定采用', value: camera.bindingAdopted ? '已采用' : '未采用' },
     { label: '角色目录序号', value: camera.actorRosterIndex },
