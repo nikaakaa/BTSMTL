@@ -105,7 +105,7 @@ namespace BTSMTL.Authoring.Workspace
                 changes.Add(new AuthoringFileChange(document.Path, after, readRevision));
                 files.Add(new JObject
                 {
-                    ["path"] = document.Path, ["members"] = new JArray(references.Select(reference => reference.Pointer)),
+                    ["path"] = document.Path, ["members"] = new JArray(references.Select(reference => reference.Pointer).Distinct(StringComparer.Ordinal)),
                     ["readRevision"] = readRevision, ["writeRevision"] = AuthoringCommits.Revision(after)
                 });
                 affected.Add(document.Owner);
