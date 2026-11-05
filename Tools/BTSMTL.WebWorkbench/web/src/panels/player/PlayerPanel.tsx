@@ -13,6 +13,7 @@ import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './player.module.css';
+import { WallContactPanel } from './WallContactPanel';
 
 const playerStates: Record<PlayerState, string> = {
   idle: '空闲', loading: '载入中', paused: '已暂停', playing: '播放中', stepping: '单步中', seeking: '跳帧中', failed: '失败',
@@ -24,6 +25,7 @@ const liveLabel = (live: LivePlayer) => `${processStates[live.state] ?? live.sta
 interface Params {
   overlay: boolean;
   stats: boolean;
+  wallContact: boolean;
 }
 
 export function PlayerPanel() {
@@ -33,7 +35,7 @@ export function PlayerPanel() {
 }
 
 function PlayerView() {
-  const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false });
+  const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false, wallContact: false });
   const authoringSkill = useAuthoring(state => state.target?.kind === 'skill');
   const documentNotice = useDocumentObservationNotice();
   const state = useWorkbench(useShallow(current => ({
@@ -148,9 +150,11 @@ function PlayerView() {
           onClick={() => setCaptureBinding(captureEnabled ? null : binding)}>接管输入</Button>}
         {ready && <Button variant="ghost" onClick={() => void playerService.capture()}>截图</Button>}
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
+        <Button variant="ghost" pressed={params.wallContact} onClick={() => setParams({ wallContact: !params.wallContact })}>扶墙</Button>
         {state.runId && <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
           tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>}
       </PanelBar>
+      {params.wallContact && <WallContactPanel />}
       <Stage key={binding} stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay && overlayReason === null} stats={params.stats}
         captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />
     </div>

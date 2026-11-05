@@ -395,14 +395,15 @@ export interface InputCommand {
 }
 
 type WallContactNode = import('./playerRecords').WallContactTarget;
-export type WallContactCommand = { type: 'wall-contact'; commandId: string; focusActorId: string } & (
+export type WallContactRequest =
   | ({ operation: 'read' } & (WallContactNode | {
       graphId?: never; nodeId?: never; instanceId?: never; graphRevision?: never }))
   | ({ operation: 'observe'; loadCommandId: string } & WallContactNode)
   | ({ operation: 'apply'; loadCommandId: string; expectedParameterVersion: string;
       values: { id: string; value: string }[] } & WallContactNode)
   | ({ operation: 'wall'; loadCommandId: string; wall: import('./playerRecords').WallContactSurface } & WallContactNode)
-);
+;
+export type WallContactCommand = { type: 'wall-contact'; commandId: string; focusActorId: string } & WallContactRequest;
 
 export type LiveCommand =
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
