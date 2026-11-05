@@ -123,7 +123,7 @@ function ProfileResourceRegistration({ query, businessKeys }: { query: ProfileQu
         value={asset?.token} configuration={{}} catalog={{ kind: 'ready', referenceKind: declaration.referenceKind, items: choices,
           businessKeysAvailability: null, invalidReason: '所选素材来自真实对象候选，登记时由正式领域合同确认。' }}
         onChoose={choice => { setAsset({ token: String(choice.value), source: `${choice.name} · ${choice.detail}`, adapter: source.adapter }); setKey(''); }}
-        resourceRegistration={{ keyKind: declaration.keyKind, objects: { kind: 'available', scope: { package: source.package, keyKind: declaration.keyKind, domain: declaration.domain, objectType: null } },
+        resourceRegistration={{ keyKind: declaration.keyKind, objects: { kind: 'unavailable', reason: '该 Profile 的正式资源类别尚未提供对象类型与可用状态，无法查询素材对象；已有资源仍可复用。' },
           choose: asset => { setAsset(asset); setKey(''); } }} />}
       {asset !== null && <div className={styles.facts}><span>{asset.source}</span>
         {matching.length > 1 ? <Select label="明确选择实际资源键" value={existing?.reference.key ?? null} placeholder="存在多个键，请明确选择"
