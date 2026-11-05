@@ -28,6 +28,7 @@ public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string Gra
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(SkillAuthoringProfileEntryTarget), "ProfileEntry")]
 [JsonDerivedType(typeof(SkillAuthoringNodeTarget), "Node")]
+[JsonDerivedType(typeof(SkillAuthoringBusinessKeyTarget), "BusinessKey")]
 public abstract record SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringProfileEntryTarget([property: JsonRequired] string CarrierIdentity,
     [property: JsonRequired] string ProfileSource, [property: JsonRequired] string Domain,
@@ -35,6 +36,8 @@ public sealed record SkillAuthoringProfileEntryTarget([property: JsonRequired] s
     string? ResourceIdentity = null) : SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringNodeTarget([property: JsonRequired] string GraphId,
     [property: JsonRequired] string NodeId) : SkillAuthoringReferenceTarget;
+public sealed record SkillAuthoringBusinessKeyTarget([property: JsonRequired] string Package,
+    [property: JsonRequired] string KeyKind, [property: JsonRequired] string Key) : SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringReferenceQuery(string? Identity = null,
     int Offset = 0, int Limit = 128, SkillAuthoringEditingView? EditingView = null,
     SkillAuthoringReferenceTarget? Target = null);
