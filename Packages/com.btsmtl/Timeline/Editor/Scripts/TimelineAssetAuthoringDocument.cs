@@ -69,21 +69,20 @@ namespace BTSMTL.Timeline.Editor
 
         public string SourcePath { get; private set; }
         public IReadOnlyList<TimelineAsset> Timelines => m_Graphs.Timelines;
-        public IReadOnlyList<GraphAuthoringResourceReference> ResourceScopes() => m_Resources.ResourceScopes();
-        public GraphAuthoringResourceReference ResourceScope(TimelineData timeline) => m_Resources.ResourceScope(timeline);
-        public void SelectResourceScope(TimelineData timeline, GraphAuthoringResourceReference scope) =>
+        public IReadOnlyList<GraphAuthoringResourceChoice> ResourceScopes() => m_Resources.ResourceScopes();
+        public string ResourceScope(TimelineData timeline) => m_Resources.ResourceScope(timeline);
+        public string ResourceContext(TimelineData timeline) => m_Resources.ResourceContext(timeline);
+        public void SelectResourceScope(TimelineData timeline, string scope) =>
             m_Resources.SelectResourceScope(timeline, scope);
         public GraphAuthoringResourceDeclaration ResourceDeclaration(TimelineData timeline, string keyKind) =>
             m_Resources.ResourceDeclaration(timeline, keyKind);
-        public IReadOnlyList<GraphAuthoringResourceReference> ResourceReferences(TimelineData timeline, string keyKind,
+        public IReadOnlyList<GraphAuthoringResourceChoice> ResourceReferences(TimelineData timeline, string keyKind,
             UnityEngine.Object source = null) => m_Resources.ResourceReferences(timeline, keyKind, source);
-        public TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference) =>
-            m_Resources.ResolveResource(timeline, reference);
+        public TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, string domain, string value) =>
+            m_Resources.ResolveResource(timeline, domain, value);
         public GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source) =>
             m_Resources.ResourceObjects(timeline, keyKind, source);
         public UnityEngine.Object ResolveResourceObject(string token) => m_Resources.ResolveResourceObject(token);
-        public void RegisterResource(Clip clip, GraphAuthoringResourceRegistrationInput input,
-            Action<GraphAuthoringResourceReference> apply) => m_Resources.RegisterResource(clip, input, apply);
         public bool HasUnsavedChanges => AssetDatabase.LoadAllAssetsAtPath(SourcePath).Any(EditorUtility.IsDirty);
         public IGraphNodeInterfaceResolver PrepareAuthoringContext(ScriptableObject graph)
         {

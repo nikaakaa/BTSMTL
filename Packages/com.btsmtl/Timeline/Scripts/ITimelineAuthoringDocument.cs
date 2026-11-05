@@ -31,22 +31,21 @@ namespace BTSMTL.Timeline
 
     public interface ITimelineAuthoringResourceDocument
     {
-        IReadOnlyList<GraphAuthoringResourceReference> ResourceScopes();
-        GraphAuthoringResourceReference ResourceScope(TimelineData timeline);
-        void SelectResourceScope(TimelineData timeline, GraphAuthoringResourceReference scope);
-        GraphAuthoringResourceDeclaration ResourceDeclaration(TimelineData timeline, string keyKind);
-        IReadOnlyList<GraphAuthoringResourceReference> ResourceReferences(TimelineData timeline, string keyKind,
+        IReadOnlyList<GraphAuthoringResourceChoice> ResourceScopes();
+        string ResourceScope(TimelineData timeline);
+        string ResourceContext(TimelineData timeline);
+        void SelectResourceScope(TimelineData timeline, string scope);
+        GraphAuthoringResourceDeclaration ResourceDeclaration(TimelineData timeline, string domain);
+        IReadOnlyList<GraphAuthoringResourceChoice> ResourceReferences(TimelineData timeline, string domain,
             UnityEngine.Object source = null);
-        GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string keyKind, UnityEngine.Object source);
-        UnityEngine.Object ResolveResourceObject(string token);
-        TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference);
-        void RegisterResource(Clip clip, GraphAuthoringResourceRegistrationInput input,
-            Action<GraphAuthoringResourceReference> apply);
+        GraphAuthoringResourceObjectResult ResourceObjects(TimelineData timeline, string domain, UnityEngine.Object source);
+        UnityEngine.Object ResolveResourceObject(string value);
+        TimelineAuthoringReferenceValue ResolveResource(TimelineData timeline, string domain, string value);
     }
 
     public interface ITimelineAuthoringResourceClip
     {
-        GraphAuthoringResourceReference ResourceReference { get; }
+        string ResourceReference { get; }
         TimelineAuthoringReferenceValue ResourceResolution { get; }
         void BindResourceResolution(TimelineAuthoringReferenceValue resolution);
         void BindSourceAsset(UnityEngine.Object source);

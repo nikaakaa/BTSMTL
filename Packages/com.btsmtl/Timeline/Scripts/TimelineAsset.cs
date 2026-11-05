@@ -11,13 +11,13 @@ namespace BTSMTL.Timeline
         TimelineData m_Data = new TimelineData();
 
         [SerializeField]
-        GraphAuthoringResourceReference m_AuthoringScope;
+        string m_AuthoringScope;
 
         public TimelineData Data => m_Data;
-        public GraphAuthoringResourceReference AuthoringScope => m_AuthoringScope;
+        public string AuthoringScope => m_AuthoringScope;
 
         [GraphAuthoringConfigure]
-        public void ConfigureAuthoringScope(GraphAuthoringResourceReference scope) => m_AuthoringScope = scope;
+        public void ConfigureAuthoringScope(string scope) => m_AuthoringScope = scope;
 
         public bool ValidateContent(TimelineContractCatalog catalog, List<string> errors)
         {

@@ -233,7 +233,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldDescriptor Field { get; }
         public string FieldId => Field == null ? m_FieldId : Field.FieldId.Value;
         public object Value { get; }
-        public bool IsMissing => Value is GraphAuthoringResourceReference reference ? reference.IsEmpty : Value == null || Value.Equals(null);
+        public bool IsMissing => Value == null || Value.Equals(null);
         public string CanonicalValue => Value switch
         {
             string text => text,
@@ -272,9 +272,9 @@ namespace BTSMTL.Authoring.Graph
         bool MatchesValueKind()
         {
             // 身份引用以字符串身份存放时，ObjectType 描述的是被引用对象，不约束身份值本身。
-            bool resourceReference = Value is GraphAuthoringResourceReference && Field.ValueKind is
+            bool resourceReference = Value is string && Field.ValueKind is
                 GraphAuthoringFieldValueKind.IdentityReference or GraphAuthoringFieldValueKind.AssetReference;
-            if (Field.ObjectType != null && !resourceReference && !(Field.ValueKind == GraphAuthoringFieldValueKind.IdentityReference && Value is string) &&
+            if (Field.ObjectType != null && !resourceReference &&
                 !Field.ObjectType.IsInstanceOfType(Value))
                 return false;
             if (Field.ValueKind == GraphAuthoringFieldValueKind.Polymorphic)

@@ -78,11 +78,15 @@ namespace BTSMTL.Timeline
             if (clip is ITimelineAuthoringResourceClip resource)
             {
                 resource.BindResourceResolution(default);
-                if (!resource.ResourceReference.IsEmpty)
+                if (!string.IsNullOrEmpty(resource.ResourceReference))
                     resource.BindResourceResolution(((ITimelineAuthoringResourceDocument)clip.Timeline.AuthoringDocument)
-                        .ResolveResource(clip.Timeline, resource.ResourceReference));
+                        .ResolveResource(clip.Timeline, ResourceDomain(clip), resource.ResourceReference));
             }
         }
+
+        public static string ResourceDomain(Clip clip) => GraphAuthoringMemberBindings.Contract(clip).Fields
+            .Single(field => field.Annotation<TimelineAuthoringPropertyAttribute>() is { IsSourceAsset: true })
+            .Annotation<GraphAuthoringResourceAttribute>().Domain;
 
         public static void PrepareResources(TimelineData timeline)
         {
