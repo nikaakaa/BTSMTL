@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <AssemblyName>ThirdPerson.Performance.Instrumentation.Contracts</AssemblyName>
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Packages/com.thirdperson.shared/Runtime/Instrumentation/**/*.cs" />
+  </ItemGroup>
+</Project>
