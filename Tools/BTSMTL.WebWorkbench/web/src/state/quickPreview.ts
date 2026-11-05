@@ -23,12 +23,14 @@ export interface QuickPreviewState {
   job: Job;
   accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
   seconds: number;
+  playback: { origin: number; startedAt: number } | null;
   outputDirectory: string;
 }
 
 let descriptionController: AbortController | null = null;
 let jobController: AbortController | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let playbackFrame: number | null = null;
 const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
@@ -174,6 +176,22 @@ export function quickBounds(plan: PreviewQuickPlan) {
     { first: plan.clock.origin, last: plan.clock.origin + plan.duration });
 }
 
+function playbackReason() {
+  return quickPlan() === null ? '先推导路线' : quickPlanStale() ? '路线已过期，请按当前内容与输入重新推导' : null;
+}
+
+function advancePlayback(now: number) {
+  playbackFrame = null;
+  const playback = current().playback;
+  const plan = quickPlan();
+  if (playback === null || plan === null) return;
+  const end = quickBounds(plan).last;
+  const seconds = Math.min(end, playback.origin + (now - playback.startedAt) / 1000);
+  set({ seconds });
+  if (seconds === end) quickPreview.pause();
+  else playbackFrame = requestAnimationFrame(advancePlayback);
+}
+
 function preparation() {
   const workbench = getState();
   const mode = workbench.host?.modes.find(item => item.id === 'quick');
@@ -200,6 +218,31 @@ function preparation() {
 
 export const quickPreview = {
   sourceUnavailableReason,
+  playbackReason,
+  pause() {
+    if (playbackFrame !== null) cancelAnimationFrame(playbackFrame);
+    playbackFrame = null;
+    set({ playback: null });
+  },
+  toggle() {
+    if (current().playback !== null) { quickPreview.pause(); return; }
+    if (playbackReason() !== null) return;
+    const plan = quickPlan()!;
+    const bounds = quickBounds(plan);
+    const origin = current().seconds >= bounds.last ? bounds.first : current().seconds;
+    set({ seconds: origin, playback: { origin, startedAt: performance.now() } });
+    playbackFrame = requestAnimationFrame(advancePlayback);
+  },
+  step(direction: -1 | 1) {
+    if (playbackReason() !== null) return;
+    quickPreview.pause();
+    const plan = quickPlan()!;
+    const bounds = quickBounds(plan);
+    const boundaries = [...new Set([bounds.first, bounds.last, ...plan.segments.flatMap(segment => [segment.start, segment.end])])].sort((a, b) => a - b);
+    const seconds = current().seconds;
+    const target = direction < 0 ? boundaries.filter(time => time < seconds).at(-1) : boundaries.find(time => time > seconds);
+    if (target !== undefined) quickPreview.seek(target);
+  },
   async readSource(machine?: number) {
     const reason = sourceUnavailableReason();
     const source = selectedSource();
@@ -300,7 +343,13 @@ export const quickPreview = {
     const job = current().job;
     if (job.kind === 'failed' && job.reply?.data) await readJob(job.request, false);
   },
-  seek(seconds: number) { set({ seconds }); },
+  seek(seconds: number) {
+    const plan = quickPlan();
+    if (plan === null) return;
+    const bounds = quickBounds(plan);
+    const value = Math.max(bounds.first, Math.min(bounds.last, seconds));
+    set({ seconds: value, playback: current().playback === null ? null : { origin: value, startedAt: performance.now() } });
+  },
   inputChanged() { invalidateJob(); },
   invalidate(reason: string) {
     descriptionController?.abort();
@@ -314,6 +363,7 @@ export const quickPreview = {
 };
 
 useWorkbench.subscribe((state, previous) => {
+  if (state.quickPreview.playback !== null && quickPlanStale()) quickPreview.pause();
   const contentChanged = selectionKey(state) !== selectionKey(previous);
   if (state.previewMode !== previous.previewMode || contentChanged) {
     if (state.quickPreview.target !== null) {

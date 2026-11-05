@@ -11,7 +11,7 @@ import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, Checkbox, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import styles from './quickPreview.module.css';
 
-export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' ? quickPlan() : null);
+export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
 
 async function locate(location: PreviewQuickLocation) {
   const graphs = Object.values(useAuthoring.getState().documents).flatMap(document => document.documentGraphs ?? []);

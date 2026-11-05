@@ -6,6 +6,7 @@ import { authoringActions, authoringDocument, useAuthoring } from '../state/auth
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
+import { quickBounds, quickPlan, quickPreview } from '../state/quickPreview';
 import { Button, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../ui/controls';
 import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
 import { panelMenu } from './GroupActions';
@@ -27,7 +28,7 @@ export function Toolbar() {
         {quick ? <Button variant="ghost" tip="在 Timeline 面板选择根与输入方案并推导路线" onClick={() => openPanel('timeline')}>路线</Button> : <RunMenu />}
       </div>
       <div className={styles.center}>
-        {quick ? <QuickCursor /> : <><Transport /><FrameField /></>}
+        <Transport />{quick ? <QuickCursor /> : <FrameField />}
       </div>
       <div className={styles.right}>
         <Button variant="ghost" onClick={() => openPanel('export')}>导出</Button>
@@ -178,6 +179,15 @@ function RunMenu() {
 // 播放控制可用性：不可用时给出原因。
 function useTransportState() {
   return useWorkbench(useShallow(state => {
+    if (state.previewMode === 'quick') {
+      const plan = quickPlan();
+      const bounds = plan === null ? null : quickBounds(plan);
+      const playing = state.quickPreview.playback !== null;
+      const blocked = quickPreview.playbackReason();
+      return { playing, blocked,
+        previous: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds <= bounds.first ? '已是路线起点' : null),
+        next: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds >= bounds.last ? '已是路线终点' : null) };
+    }
     const source = transport.source();
     const count = state.summary?.frameCount ?? 0;
     const playing = source ? transport.isPlaying() : false;
@@ -203,18 +213,20 @@ function useTransportState() {
 
 function Transport() {
   const { playing, blocked, previous, next } = useTransportState();
+  const quick = useWorkbench(state => state.previewMode === 'quick');
+  const controls = quick ? quickPreview : transport;
   return (
     <div className={styles.play} role="group" aria-label="运行播放">
       <Button aria-label="上一帧" className={styles.playButton} tip={previous ?? '上一帧（←）'} disabled={!!previous}
-        onClick={() => transport.step(-1)}>
+        onClick={() => controls.step(-1)}>
         <span className={styles.stepGlyph}><i /><i className={styles.triangleBack} /></span>
       </Button>
       <Button aria-label={playing ? '暂停' : '播放'} pressed={playing} className={styles.playButton} data-on={playing || undefined}
-        tip={blocked ?? (playing ? '暂停（空格）' : '播放（空格）')} disabled={!!blocked} onClick={() => transport.toggle()}>
+        tip={blocked ?? (playing ? '暂停（空格）' : '播放（空格）')} disabled={!!blocked} onClick={() => controls.toggle()}>
         {playing ? <span className={styles.bars}><i /><i /></span> : <i className={styles.triangle} />}
       </Button>
       <Button aria-label="下一帧" className={styles.playButton} tip={next ?? '下一帧（→）'} disabled={!!next}
-        onClick={() => transport.step(1)}>
+        onClick={() => controls.step(1)}>
         <span className={styles.stepGlyph}><i className={styles.triangle} /><i /></span>
       </Button>
     </div>

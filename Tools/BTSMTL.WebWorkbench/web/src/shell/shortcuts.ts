@@ -31,13 +31,16 @@ function onKeyDown(event: KeyboardEvent, view: Window) {
   }
   if (getState().capturing || editable(event.target)) return;
   if (getState().previewMode === 'quick') {
+    if (event.key === ' ') { quickPreview.toggle(); event.preventDefault(); return; }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      quickPreview.step(event.key === 'ArrowLeft' ? -1 : 1);
+      event.preventDefault();
+      return;
+    }
     const plan = quickPlan();
     if (plan === null) return;
     const bounds = quickBounds(plan);
-    const seconds = getState().quickPreview.seconds;
-    const boundaries = [...new Set([bounds.first, bounds.last, ...plan.segments.flatMap(segment => [segment.start, segment.end])])].sort((a, b) => a - b);
-    const value = event.key === 'Home' ? bounds.first : event.key === 'End' ? bounds.last
-      : event.key === 'ArrowLeft' ? boundaries.filter(time => time < seconds).at(-1) : event.key === 'ArrowRight' ? boundaries.find(time => time > seconds) : undefined;
+    const value = event.key === 'Home' ? bounds.first : event.key === 'End' ? bounds.last : undefined;
     if (value !== undefined) { quickPreview.seek(value); event.preventDefault(); }
     return;
   }
