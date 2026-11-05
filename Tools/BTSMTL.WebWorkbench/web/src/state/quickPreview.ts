@@ -27,6 +27,23 @@ export interface QuickPreviewState {
   outputDirectory: string;
 }
 
+export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.kind === 'running' ||
+  ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null && !job.reply.data.completed);
+
+export function quickJobProgress(job: Job): string | null {
+  switch (job.kind) {
+    case 'starting': return '正在提交推导';
+    case 'starting-cancelled': return '等待作业身份以取消';
+    case 'running': return `${job.reply.data.stage} · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
+    case 'cancelling': return `取消与清理中 · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
+    case 'idle':
+    case 'settled':
+    case 'failed':
+    case 'cancel-failed': return null;
+    default: { const unhandled: never = job; return unhandled; }
+  }
+}
+
 let descriptionController: AbortController | null = null;
 let jobController: AbortController | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;

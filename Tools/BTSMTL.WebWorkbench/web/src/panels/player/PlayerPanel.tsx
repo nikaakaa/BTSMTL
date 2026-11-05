@@ -8,7 +8,7 @@ import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { quickPlanStale, quickPreview } from '../../state/quickPreview';
+import { quickJobCancellable, quickJobProgress, quickPlanStale, quickPreview } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, Facts, PanelBar } from '../../ui/blocks';
@@ -42,7 +42,7 @@ function QuickPreviewPicture() {
   const state = useWorkbench(current => current.quickPreview);
   const stale = useWorkbench(quickPlanStale);
   const job = state.job;
-  const status = 'reply' in job ? job.reply?.data : null;
+  const progress = quickJobProgress(job);
   const reason = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
     : quickPreview.sourceUnavailableReason();
   const accepted = stale ? null : state.accepted;
@@ -50,16 +50,14 @@ function QuickPreviewPicture() {
     <PanelBar wrap><strong>快速预览 · 静态路线</strong>
       <Button onClick={() => openPanel('timeline')}>输入与结果</Button>
       {state.description.kind === 'loading' && <Button onClick={() => quickPreview.cancelSourceRead()}>取消读取来源</Button>}
-      {(job.kind === 'running' || job.kind === 'starting' || job.kind === 'cancel-failed') &&
+      {quickJobCancellable(job) &&
         <Button onClick={() => void quickPreview.cancel()}>取消推导</Button>}
     </PanelBar>
     {reason !== null && <Empty text={reason} />}
     {(job.kind === 'failed' || job.kind === 'cancel-failed') && <Empty text={job.reason} />}
     {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案，可取消后重读。" />}
-    {status !== null && status !== undefined && !status.completed && <div role="status">
-      {status.stage} · {status.samplesDone}/{status.samplesTotal}
-    </div>}
-    {accepted === null ? reason === null && state.description.kind !== 'loading' &&
+    {progress !== null && <div role="status">{progress}</div>}
+    {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null &&
       <Empty text="在 Timeline 中选择输入并推导路线；动画素材可在 Project 资源视图中预览。" /> : <Facts fields={[
       { displayName: '当前路线', value: accepted.plan.status },
       { displayName: '路线时长', value: `${accepted.plan.duration} ${accepted.plan.clock.unit}` },

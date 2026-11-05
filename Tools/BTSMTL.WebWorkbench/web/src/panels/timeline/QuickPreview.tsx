@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickConditionPoint, PreviewQuickDescription, PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
 import type { SkillDocumentGraph } from '../../api/authoring';
-import { quickBounds, quickPlan, quickPlanStale, quickPreview, quickTargetKey, type QuickPreviewState } from '../../state/quickPreview';
+import { quickBounds, quickJobCancellable, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey, type QuickPreviewState } from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -51,8 +51,9 @@ export function QuickPreview() {
   const job = state.job;
   const receipt = 'reply' in job ? job.reply : null;
   const status = receipt?.data;
-  const inProgress = job.kind === 'starting' || job.kind === 'starting-cancelled' || job.kind === 'running' || job.kind === 'cancelling';
-  const cancellable = job.kind === 'starting' || job.kind === 'running' || ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null && !job.reply.data.completed);
+  const progress = quickJobProgress(job);
+  const inProgress = progress !== null;
+  const cancellable = quickJobCancellable(job);
   const reason = quickPreview.unavailableReason();
   const sourceReason = quickPreview.sourceUnavailableReason();
   const message = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
@@ -75,8 +76,7 @@ export function QuickPreview() {
       {state.description.kind === 'loading' && <Button onClick={() => quickPreview.cancelSourceRead()}>取消读取来源</Button>}
       {cancellable && <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消'}</Button>}
       {job.kind === 'failed' && job.reply !== null && !job.reply.data.completed && <Button onClick={() => void quickPreview.readStatus()}>重读状态</Button>}
-      {inProgress && <span role="status">{job.kind === 'starting' ? '提交中' : job.kind === 'starting-cancelled' ? '等待作业身份以取消'
-        : job.kind === 'cancelling' ? '取消与清理中' : status?.stage}{status ? ` ${status.samplesDone}/${status.samplesTotal}` : ''}</span>}
+      {progress !== null && <span role="status">{progress}</span>}
     </PanelBar>
     {message && <p className={styles.notice} role="status">{message}</p>}
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
