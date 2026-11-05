@@ -44,9 +44,16 @@ export type QueryAvailability =
 const readAdapterCatalogDomain = object({ adapter: text, domain: text, items: array(object({
   value: text, display: text, context: text, revision: text, data: opaque,
 })) });
-export const readAdapterCatalog = object({ revision: text, changed: boolean, domains: nullable(array(readAdapterCatalogDomain)) });
+const readAdapterCatalogResponse = object({ revision: text, changed: boolean, domains: nullable(array(readAdapterCatalogDomain)) });
 export type AdapterCatalogDomain = ReturnType<typeof readAdapterCatalogDomain>;
 export type AdapterCatalogItem = Pick<AdapterCatalogDomain, 'adapter' | 'domain'> & AdapterCatalogDomain['items'][number];
+type AdapterCatalogResponse = { revision: string } & ({ changed: true; domains: AdapterCatalogDomain[] } | { changed: false; domains: null });
+export function readAdapterCatalog(value: unknown): AdapterCatalogResponse {
+  const response = readAdapterCatalogResponse(value, 'AdapterCatalog');
+  if (response.changed && response.domains !== null) return { ...response, changed: true, domains: response.domains };
+  if (!response.changed && response.domains === null) return { ...response, changed: false, domains: response.domains };
+  throw new Error('AdapterCatalog 的修订变化状态与目录正文不符合正式合同');
+}
 
 const readReferenceReplacementPlan = object({
   revision: text, domain: text, oldValue: text, newValue: text, context: nullable(text),
