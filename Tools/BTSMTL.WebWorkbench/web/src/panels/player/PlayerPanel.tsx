@@ -448,7 +448,7 @@ function currentPicture(): Picture | null {
   const camera = archiveOverlayReason(image) === null ? image.camera : null;
   return {
     hostFrame: image.metadata.sourceHostFrame, image: image.image, width: image.metadata.width, height: image.metadata.height,
-    mediaType: image.metadata.mediaType, flipY: image.kind === 'frame' && image.metadata.flipY,
+    mediaType: image.metadata.mediaType, flipY: image.metadata.flipY,
     worldToClip: camera ? new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).toArray() : null,
     actors: image.presentation?.actors.map(actor => ({ actorId: actor.actorId, position: actor.worldRoot.position })) ?? [],
   };
@@ -458,7 +458,7 @@ function archiveOverlayReason(image: ArchiveImage | null): string | null {
   if (image === null) return '正在读取画面';
   if (image.kind === 'unavailable') return image.reason;
   if (image.overlayReason !== null) return image.overlayReason;
-  if (image.kind !== 'frame' || image.metadata.source.content === null) return '画面未记录实际采用内容身份，不能确认叠加来源';
+  if (image.metadata.source.content === null) return '画面未记录实际采用内容身份，不能确认叠加来源';
   const source = image.metadata.source;
   if (source.execution.kind === null || source.execution.identity === null) return '画面未记录实际执行身份，不能确认叠加来源';
   const presentation = image.presentation?.source ?? null, camera = image.camera?.source ?? null;

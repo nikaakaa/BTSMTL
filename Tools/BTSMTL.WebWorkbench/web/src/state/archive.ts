@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
-import type { PlayerArchiveImage, PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
+import type { PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
 import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
@@ -189,7 +189,7 @@ function loadVisibleCurves(context: OpenArchive) {
   }
 }
 
-async function imageObservations(context: OpenArchive, metadata: PlayerArchiveImage | PlayerFrameImage, signal: AbortSignal) {
+async function imageObservations(context: OpenArchive, metadata: PlayerFrameImage, signal: AbortSignal) {
   const range = (offset: number) => ({ firstFrame: metadata.sourceHostFrame,
     lastFrame: metadata.sourceHostFrame, offset, limit: 128 });
   const [poses, cameras] = await Promise.all([
@@ -198,7 +198,7 @@ async function imageObservations(context: OpenArchive, metadata: PlayerArchiveIm
   ]);
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
   const camera = cameras.items.find(item => item.presentationSequence === metadata.presentationSequence &&
-    (!('cameraInstanceId' in metadata) || item.cameraInstanceId === metadata.cameraInstanceId)) ?? null;
+    item.cameraInstanceId === metadata.cameraInstanceId) ?? null;
   return { presentation, camera,
     overlayReason: !presentation ? '画面没有同一表现序号的姿态记录' : !camera ? '画面没有同一相机提交的记录' : null };
 }
@@ -223,15 +223,7 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
           ]);
           image = { kind: 'frame', metadata, image: blob, ...observations };
         } else image = { kind: 'unavailable', hostFrame, reason: `档案未记录${context.summary.frameDisplayName} ${hostFrame}的画面` };
-      } else {
-        const metadata = await playerApi.archiveImageMetadata(context.jobId, hostFrame, signal);
-        if (metadata.available) {
-          const [blob, observations] = await Promise.all([
-            playerApi.archiveImage(context.jobId, hostFrame, signal), imageObservations(context, metadata, signal),
-          ]);
-          image = { kind: 'capture', metadata, image: blob, ...observations };
-        } else image = { kind: 'unavailable', hostFrame, reason: metadata.reason };
-      }
+      } else image = { kind: 'unavailable', hostFrame, reason: imageChannel?.reason ?? '当前档案未声明帧画面通道' };
       images.set(id, image);
       while (images.size > imageCacheLimit)
         for (const oldest of images.keys()) { images.delete(oldest); break; }

@@ -8,7 +8,7 @@ import type {
 import type { SkillDocumentGraph } from '../api/authoring';
 import type { QuickPreviewState } from './quickPreview';
 import type {
-  PlayerArchive, PlayerArchiveImage, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
+  PlayerArchive, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
   PlayerDataCurve, PlayerCurveSample,
   PlayerJobReceipt, PlayerPreviewMode, PlayerSummary, PlayerUnavailablePage, PreviewPosition, PreviewSampleSource,
 } from '../api/playerRecords';
@@ -106,10 +106,8 @@ interface ArchiveImageObservation {
   overlayReason: string | null;
 }
 
-export type ArchiveImage = (
-  | { kind: 'capture'; metadata: PlayerArchiveImage; image: Blob }
-  | { kind: 'frame'; metadata: PlayerFrameImage; image: Blob }
-) & ArchiveImageObservation | { kind: 'unavailable'; hostFrame: string; reason: string };
+export type ArchiveImage = { kind: 'frame'; metadata: PlayerFrameImage; image: Blob } & ArchiveImageObservation
+  | { kind: 'unavailable'; hostFrame: string; reason: string };
 
 export interface RunSlice extends RunData {
   archiveJobs: PlayerJobReceipt[];

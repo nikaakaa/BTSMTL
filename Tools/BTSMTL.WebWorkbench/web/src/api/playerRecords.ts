@@ -387,12 +387,6 @@ export const readPlayerCurveSamples = object({
   page: page(object({ source, presentationSequence: nullable(text), presentationTick: nullable(number), value: number, rawValue: text })),
   availability: array(availability),
 });
-export const readPlayerArchiveImage = object({
-  jobId, archiveJobId: identity<'archive'>(), playerBuildId: nullable(buildId), contentRevision: text, sceneRevision: text,
-  inputSource: text, inputRevision: nullable(text), hostFrame: text, sourceHostFrame: text, presentationSequence: text,
-  width: number, height: number, available: boolean, presentationPrepared: boolean,
-  relativePath: nullable(text), mediaType: text, reason: text,
-});
 const frameImage = object({
   jobId, archiveJobId: identity<'archive'>(), imageIndex: number, source,
   sourceHostFrame: text, verifiedHostFrame: text, previousHostFrame: text,
@@ -445,7 +439,6 @@ export type PlayerInputPage = ReturnType<typeof readPlayerInput>;
 export type PlayerInputCatalog = ReturnType<typeof readPlayerInputCatalog>;
 export type PlayerDataCurve = ReturnType<typeof dataCurve>;
 export type PlayerCurveSample = ReturnType<typeof readPlayerCurveSamples>['page']['items'][number];
-export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
 export type PlayerFrameImage = ReturnType<typeof frameImage>;
 export type PlayerArchive = ReturnType<typeof readPlayerArchive>;
 export type PlayerArchiveRange = { firstFrame: string; lastFrame: string; offset: number; limit: number };
