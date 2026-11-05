@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AnimationClip, AnimationLibrary } from '../../api/types';
-import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type ProfileEntryTarget, type ProjectItem, type ReferenceChoiceTarget } from '../../api/authoring';
+import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type AuthoringProject, type BusinessKeyMetadata, type BusinessKeyTarget, type ProfileEntryTarget, type ProjectItem, type ReferenceChoiceTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { projectApi, type ProjectFileEntry, type ProjectFolderListing } from '../../api/project';
 import { usePanelApi } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
 import { animationChoice, animationReferenceKind, resourceCache } from '../../state/resources';
-import { matchesReferenceChoice, referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
+import { matchesReferenceChoice, referenceTargetKey, referenceValueKey, useReferenceSelection, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { authoringActions, authoringDocument, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions, getState, resourceActions, selectedScene, useWorkbench } from '../../state/store';
 import { Empty, Fold, PanelBar } from '../../ui/blocks';
-import { Button, MenuButton, TextInput } from '../../ui/controls';
+import { Button, MenuButton, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AnimationDetails } from './AnimationDetails';
@@ -20,6 +20,7 @@ import { CarrierDetails } from './CarrierProject';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
 import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
+import { BusinessKeyDetails, BusinessKeyList } from './BusinessKeys';
 import projectStyles from './project.module.css';
 
 // Project 窗口：直接按磁盘文件夹浏览 Unity 工程与技能、场景方案目录；选中文件按其实际内容显示详情。
@@ -30,18 +31,42 @@ export function ProjectPanel() {
   const field = useReferenceSelection(state => state.field);
   const [profileTarget, setProfileTarget] = useState<ProfileEntryTarget | null>(null);
   const [referenceTarget, setReferenceTarget] = useState<ReferenceChoiceTarget | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const projectCatalog = useLibraryItems(refresh);
+  const [carriers, setCarriers, carrierFailure] = useCarriers();
+  const [keySource, setKeySource] = useState<'project' | 'resources'>('project');
+  const [businessKey, setBusinessKey] = useState<{ source: 'field' | 'project' | 'resources'; target: BusinessKeyTarget } | null>(null);
+  const selectedKeys = businessKey?.source === 'field' ? field?.catalog.kind === 'ready' ? field.catalog.items.flatMap(choice => choice.businessKeys) : []
+    : businessKey?.source === 'resources' ? carriers?.businessKeys : projectCatalog.businessKeys;
+  const metadata = businessKey === null ? null : selectedKeys?.find(item => referenceTargetKey(item.target) === referenceTargetKey(businessKey.target)) ?? null;
+  const refreshProject = () => setRefresh(value => value + 1);
   return <div className={projectStyles.root}>
-    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget} />}
+    {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget}
+      onBusinessKey={item => setBusinessKey({ source: 'field', target: item.target })} />}
+    <div className={projectStyles.choices}><Fold title="业务键">
+      <Select label="业务键目录来源" value={keySource} onChange={setKeySource} options={[
+        { value: 'project', label: '作者目录' }, { value: 'resources', label: '资源目录' },
+      ]} />
+      <BusinessKeyList items={keySource === 'project' ? projectCatalog.businessKeys : carriers?.businessKeys ?? null}
+        failure={keySource === 'project' ? projectCatalog.failure : carrierFailure} selected={businessKey?.target ?? null}
+        onSelect={item => setBusinessKey({ source: keySource, target: item.target })} />
+    </Fold></div>
+    {businessKey !== null && <div className={projectStyles.referenceDetails}>
+      <PanelBar><span>业务键 · 绑定与投影</span><Button variant="ghost" onClick={() => setBusinessKey(null)}>关闭</Button></PanelBar>
+      <BusinessKeyDetails key={referenceTargetKey(businessKey.target)} target={businessKey.target} metadata={metadata}
+        onCatalog={catalog => { setCarriers(catalog); useAuthoring.setState({ carrierRevision: catalog.authoringRevision }); }} onChanged={refreshProject} />
+    </div>}
     {referenceTarget && <div className={projectStyles.referenceDetails}>
       <PanelBar><span>所选目标的引用者</span><Button variant="ghost" onClick={() => setReferenceTarget(null)}>关闭</Button></PanelBar>
       <TargetReferrers target={referenceTarget} />
     </div>}
-    <div className={projectStyles.body}><ProjectBrowser profileTarget={profileTarget} /></div>
+    <div className={projectStyles.body}><ProjectBrowser profileTarget={profileTarget} projectCatalog={projectCatalog} carriers={carriers} onRefresh={refreshProject} /></div>
   </div>;
 }
 
-function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
+function ProjectFieldChoices({ field, onProfileTarget, onReferrers, onBusinessKey }: {
   field: ReferenceFieldSelection; onProfileTarget(target: ProfileEntryTarget): void; onReferrers(target: ReferenceChoiceTarget): void;
+  onBusinessKey(item: BusinessKeyMetadata): void;
 }) {
   const [search, setSearch] = useState('');
   const query = search.toLocaleLowerCase();
@@ -49,6 +74,8 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
   const selected = items.findIndex(choice => matchesReferenceChoice(choice, field));
   return <div className={projectStyles.choices}><Fold title={`当前字段：${field.name}`} defaultOpen>
     {field.catalog.kind === 'unavailable' ? <div className={projectStyles.note}>{field.catalog.reason}</div> : <>
+      {field.catalog.businessKeysAvailability !== null && !field.catalog.businessKeysAvailability.available &&
+        <div role="status" className={projectStyles.issue}>{field.catalog.businessKeysAvailability.reason}</div>}
       <TextInput aria-label="筛选当前字段候选" placeholder="搜索名称、说明或来源" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
       <VirtualList className={projectStyles.candidateList} count={items.length} rowHeight={48} label={field.name}
@@ -61,11 +88,12 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
           <span>{choice.name} · {choice.detail}</span><small>{choice.source}</small>
           {choice.conflict && <span className={projectStyles.issue}>{choice.conflict}</span>}
           </button>
-          {choice.targets.length !== 0 && <MenuButton label={`打开${choice.name}的来源`} variant="ghost" entries={choice.targets.flatMap(target => {
+          {choice.targets.length !== 0 && <MenuButton label={`打开${choice.name}的来源`} variant="ghost" entries={[...choice.targets.flatMap(target => {
             if (target.kind === 'ProfileEntry') return [{
               label: `打开 ${target.domain} · ${target.key} · ${target.carrierIdentity}`,
               onSelect: () => onProfileTarget(target),
             }, { label: `查看 ${target.domain} · ${target.key} 的引用者`, onSelect: () => onReferrers(target) }];
+            if (target.kind === 'BusinessKey') return [{ label: `查看 ${target.package} · ${target.keyKind} · ${target.key} 的引用者`, onSelect: () => onReferrers(target) }];
             const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(value => value.id === target.graphId);
             return [{
               label: graph ? `${graph.displayName ?? graph.id} · ${target.nodeId}` : `所属图尚未加载 · ${target.graphId}`,
@@ -73,7 +101,8 @@ function ProjectFieldChoices({ field, onProfileTarget, onReferrers }: {
               onSelect: () => { if (graph) void projectActions.openGraph(graph, target.nodeId)
                 .catch(error => consoleActions.error('Project', error)); },
             }, { label: `查看节点 ${target.nodeId} 的引用者`, onSelect: () => onReferrers(target) }];
-          })}>来源</MenuButton>}
+          }), ...choice.businessKeys.map(item => ({ label: `业务键 ${item.target.package} · ${item.target.keyKind} · ${item.target.key}：绑定、投影与改名`,
+            onSelect: () => onBusinessKey(item) }))]}>来源</MenuButton>}
         </div>;
       }} />
     </>}
@@ -98,31 +127,34 @@ function useAnimationLibrary() {
 
 function useCarriers() {
   const [catalog, setCatalog] = useState<AuthoringCarriers | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const revision = useAuthoring(state => state.carrierRevision);
   useEffect(() => {
     if (catalog !== null && catalog.authoringRevision === revision) return;
     const controller = new AbortController();
+    setFailure(null);
     authoringApi.carriers(controller.signal).then(value => {
       setCatalog(value);
       useAuthoring.setState({ carrierRevision: value.authoringRevision });
-    }, error => { if (!isAbort(error)) consoleActions.error('Project', error); });
+    }, error => { if (!isAbort(error)) setFailure({ text: '资源目录读取失败', entryId: consoleActions.error('Project', error) }); });
     return () => controller.abort();
   }, [revision]);
-  return [catalog, setCatalog] as const;
+  return [catalog, setCatalog, failure] as const;
 }
 
 // 技能作者文件的名称、类型与所有权来自宿主作者目录（一次覆盖全部技能）；目录较慢，按编辑修订共享一份，
 // 文件夹先按磁盘显示，到达后补上作者名称。
-let libraryItems: { key: string; items: Promise<ProjectItem[]> } | null = null;
+let libraryItems: { key: string; items: Promise<AuthoringProject> } | null = null;
 
 function useLibraryItems(refresh: number) {
   const { skill, stamp } = useAuthoring(useShallow(state => ({
     skill: state.available === false ? null : state.skills?.[0] ?? null,
-    stamp: JSON.stringify(Object.entries(state.documents).map(([key, document]) => [key, document.revision, document.version])),
+    stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) => [key, document.revision, document.version])]),
   })));
   const scene = useWorkbench(state => selectedScene(state)?.path ?? null);
   const key = JSON.stringify([stamp, scene, refresh]);
-  const [items, setItems] = useState<{ key: string; items: ProjectItem[] } | null>(null);
+  const [result, setResult] = useState<({ key: string; kind: 'ready'; value: AuthoringProject }
+    | ({ key: string; kind: 'failed' } & Failure)) | null>(null);
   useEffect(() => {
     if (skill === null) return;
     let alive = true;
@@ -132,15 +164,20 @@ function useLibraryItems(refresh: number) {
         libraryItems = { key, items: request };
         request.catch(() => { if (libraryItems?.items === request) libraryItems = null; });
       }
-      libraryItems.items.then(value => { if (alive) setItems({ key, items: value }); },
-        error => { if (alive && !isAbort(error)) consoleActions.error('Project', error); });
+      libraryItems.items.then(value => { if (alive) setResult({ key, kind: 'ready', value }); },
+        error => { if (alive && !isAbort(error)) setResult({ key, kind: 'failed', text: '作者目录读取失败', entryId: consoleActions.error('Project', error) }); });
     }, 150);
     return () => { alive = false; clearTimeout(timer); };
   }, [skill, key]);
-  return { items: items?.key === key ? items.items : null, stamp: JSON.stringify([stamp, scene]) };
+  const current = result?.key === key ? result : null;
+  return { items: current?.kind === 'ready' ? current.value.items : null,
+    businessKeys: current?.kind === 'ready' ? current.value.businessKeys : null,
+    failure: current?.kind === 'failed' ? current : null, stamp: JSON.stringify([stamp, scene]) };
 }
 
-function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget | null }) {
+function ProjectBrowser({ profileTarget, projectCatalog, carriers, onRefresh }: {
+  profileTarget: ProfileEntryTarget | null; projectCatalog: ReturnType<typeof useLibraryItems>; carriers: AuthoringCarriers | null; onRefresh(): void;
+}) {
   const [listings, setListings] = useState<Record<string, ProjectFolderListing>>({});
   const [failure, setFailure] = useState<Failure | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(ancestorsOf('Skills')));
@@ -148,10 +185,8 @@ function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget |
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState<SkillContentKind | null>(null);
   const [search, setSearch] = useState('');
-  const [refresh, setRefresh] = useState(0);
   const requested = useRef(new Set<string>());
   const library = useAnimationLibrary();
-  const [carriers, setCarriers] = useCarriers();
   const field = useReferenceSelection(state => state.field);
   const { editable, target } = useAuthoring(useShallow(state => ({
     editable: state.author && state.target?.kind === 'skill' && !authoringDocument(state).loading,
@@ -159,7 +194,7 @@ function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget |
   })));
   const available = useAuthoring(state => state.available);
   const elements = useSkillElements(editable && available !== false);
-  const { items: skillItems, stamp } = useLibraryItems(refresh);
+  const { items: skillItems, stamp } = projectCatalog;
 
   const load = useCallback((path: string, force = false) => {
     if (!force && requested.current.has(path)) return;
@@ -312,17 +347,17 @@ function ProjectBrowser({ profileTarget }: { profileTarget: ProfileEntryTarget |
       clips={selectedFile ? clipsByAsset.get(selectedFile.path) ?? null : null}
       carrier={selectedFile ? carrierBySource.get(selectedFile.path) ?? null : null}
       item={selectedFile ? itemOf(selectedFile.path) : null} items={skillItems ?? []} stamp={stamp}
-      profileTarget={profileTarget} onCatalog={setCarriers}
-      onCreated={() => { setCreating(null); setRefresh(value => value + 1); load(folder, true); }}
-      onChanged={() => { setRefresh(value => value + 1); load(folder, true); }} />
+      profileTarget={profileTarget}
+      onCreated={() => { setCreating(null); onRefresh(); load(folder, true); }}
+      onChanged={() => { onRefresh(); load(folder, true); }} />
   </div>;
 }
 
-function ProjectDetails({ file, creating, target, elements, library, clips, carrier, item, items, stamp, profileTarget, onCatalog, onCreated, onChanged }: {
+function ProjectDetails({ file, creating, target, elements, library, clips, carrier, item, items, stamp, profileTarget, onCreated, onChanged }: {
   file: ProjectFileEntry | null; creating: SkillContentKind | null; target: string | null; elements: ReturnType<typeof useSkillElements>;
   library: AnimationLibrary | null; clips: AnimationClip[] | null; carrier: AuthoringCarrier | null;
   item: ProjectItem | null; items: ProjectItem[]; stamp: string; profileTarget: ProfileEntryTarget | null;
-  onCatalog(catalog: AuthoringCarriers): void; onCreated(): void; onChanged(): void;
+  onCreated(): void; onChanged(): void;
 }) {
   if (creating !== null) return <div className={projectStyles.details}>
     <SkillContentCreation key={creating} kind={creating} skill={target} elements={elements} onDone={onCreated} />
@@ -331,7 +366,7 @@ function ProjectDetails({ file, creating, target, elements, library, clips, carr
   if (item) return <SkillItemDetails key={file.path} item={item} items={items} stamp={stamp} onChanged={onChanged} />;
   if (clips && library) return <AnimationDetails key={file.path} library={library} clips={clips} />;
   if (carrier) return <CarrierDetails key={file.path} carrier={carrier}
-    focusTarget={profileTarget?.carrierIdentity === carrier.identity ? profileTarget : null} onCatalog={onCatalog} />;
+    focusTarget={profileTarget?.carrierIdentity === carrier.identity ? profileTarget : null} />;
   return <div className={projectStyles.details}><div className={projectStyles.facts}>
     <strong>{file.name}</strong>
     <code>{file.path}</code>

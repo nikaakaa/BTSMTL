@@ -39,6 +39,13 @@ export type QueryAvailability =
   | { available: true; reason: null }
   | { available: false; reason: string };
 
+function readQueryAvailability(value: unknown, path: string): QueryAvailability {
+  const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
+  if (available && reason === null) return { available, reason };
+  if (!available && reason !== null) return { available, reason };
+  throw new Error(`${path} 的可用状态与原因不符合正式查询合同`);
+}
+
 // 可创建的节点类型（原 Types）：按实际 C# 类型与原生节点声明发现。
 export interface NodeTypeInfo {
   type: string;
@@ -101,14 +108,22 @@ export interface ProfileEntryTarget {
 }
 
 // 作者包内某类别的一个业务键。
-export interface BusinessKeyTarget {
+export interface BusinessKeyAddress {
   package: string;
   kind: string;
   key: string;
 }
 
+const readBusinessKeyTarget = object({ kind: choice('BusinessKey'), package: text, keyKind: text, key: text });
+export type BusinessKeyTarget = ReturnType<typeof readBusinessKeyTarget>;
+const readBusinessKeys = array(object({ target: readBusinessKeyTarget, declared: boolean, referenceKind: text,
+  bindings: array(object({ adapter: text, context: text, token: nullable(text), state: choice('bound', 'unbound'),
+    projectionKind: nullable(text), projectionState: choice('available', 'missing', 'not-required') })),
+}));
+export type BusinessKeyMetadata = ReturnType<typeof readBusinessKeys>[number];
+
 // 改键计划：键声明、各适配者绑定与技能 JSON 中受影响的文件（仓库相对路径）与成员。
-export type BusinessKeyRenameResult = BusinessKeyTarget & {
+export type BusinessKeyRenameResult = BusinessKeyAddress & {
   success: true;
   prepared: true;
   revision: string;
@@ -116,11 +131,11 @@ export type BusinessKeyRenameResult = BusinessKeyTarget & {
   files: { path: string; members: string[] }[];
 } & ({ saved: false } | { saved: true });
 
-export type BusinessKeyRenameRequest = BusinessKeyTarget & { newKey: string } & (
+export type BusinessKeyRenameRequest = BusinessKeyAddress & { newKey: string } & (
   { action: 'prepare' } | { action: 'commit'; expectedRevision: string }
 );
 
-export type ReferenceChoiceTarget = ProfileEntryTarget | { kind: 'Node'; graphId: string; nodeId: string };
+export type ReferenceChoiceTarget = ProfileEntryTarget | BusinessKeyTarget | { kind: 'Node'; graphId: string; nodeId: string };
 
 export interface ReferenceChoice {
   value: JsonValue;
@@ -129,6 +144,7 @@ export interface ReferenceChoice {
   source: string;
   conflict: string | null;
   targets: ReferenceChoiceTarget[];
+  businessKeys: BusinessKeyMetadata[];
   associated: { fieldId: string; serializedMemberPath: string[]; value: JsonValue }[];
 }
 
@@ -148,6 +164,7 @@ export interface AuthoringSubtype {
 }
 
 export type FieldMetadata = FieldChoices & {
+  businessKeysAvailability: QueryAvailability;
   fieldId: string;
   displayName: string | null;
   type: string;
@@ -224,6 +241,11 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
 
+export interface AuthoringProject extends Page<ProjectItem> {
+  catalogRevision: string;
+  businessKeys: BusinessKeyMetadata[];
+}
+
 interface ReferenceLocation {
   owner: string;
   ownerName: string;
@@ -285,7 +307,7 @@ export interface AuthoringCarrier {
 }
 
 // 定位目标：作者包键（经所属适配者绑定），或适配者投影直接给出的资产身份（载体、Profile、动画库）。
-export type AssetLocateRequest = (BusinessKeyTarget & { context?: string }) | { asset: string };
+export type AssetLocateRequest = (BusinessKeyAddress & { context?: string }) | { asset: string };
 
 export interface AssetLocateResult {
   projectPath: string;
@@ -297,6 +319,7 @@ export interface AuthoringCarriers {
   availability: QueryAvailability;
   authoringRevision: string;
   items: AuthoringCarrier[];
+  businessKeys: BusinessKeyMetadata[];
 }
 
 const readAuthoringProducts = object({ items: array(object({ guid: text, name: text, source: text, revision: text })) });
@@ -720,7 +743,9 @@ export const authoringApi = {
   export: async (skill: string, kind: SkillExportKind, editingView: SkillEditingView) =>
     readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
-  carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal),
+  carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal)
+    .then(result => ({ ...result, availability: readQueryAvailability(result.availability, 'Carriers.availability'),
+      businessKeys: readBusinessKeys(result.businessKeys, 'Carriers.businessKeys') })),
   locateAsset: (request: AssetLocateRequest) => postJson<AssetLocateResult>('/api/authoring/locate', request),
   renameBusinessKey: (request: BusinessKeyRenameRequest, signal?: AbortSignal) =>
     postJson<BusinessKeyRenameResult>('/api/authoring/business-keys/rename', request, signal),
@@ -757,11 +782,12 @@ export const authoringApi = {
     readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal),
+    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal).then(page => page.items),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal),
+    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal).then(page => page.items),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectItem>(`${targetPath(target)}/queries/project`, { editingView }, signal),
+    allPages<ProjectItem, AuthoringProject>(`${targetPath(target)}/queries/project`, { editingView }, signal)
+      .then(result => ({ ...result, businessKeys: readBusinessKeys(result.businessKeys, 'Project.businessKeys') })),
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
@@ -797,8 +823,10 @@ function readTypeDescription(text: string): TypeDescription {
   const valueOf = (value: JsonValue, clrType: string) =>
     typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
   for (const field of fields) {
+    field.businessKeysAvailability = readQueryAvailability(field.businessKeysAvailability, `${field.fieldId}.businessKeysAvailability`);
     if (field.choices === null) continue;
     field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),
+      businessKeys: readBusinessKeys(choice.businessKeys, `${field.fieldId}.choice.businessKeys`),
       associated: choice.associated.map(associated => ({ ...associated,
         value: valueOf(associated.value, fields.find(target => target.fieldId === associated.fieldId)!.clrType),
       })),
@@ -807,11 +835,11 @@ function readTypeDescription(text: string): TypeDescription {
   return description;
 }
 
-async function allPages<T>(path: string, input: { editingView: SkillEditingView }, signal?: AbortSignal): Promise<T[]> {
+async function allPages<T, Result extends Page<T> = Page<T>>(path: string, input: { editingView: SkillEditingView }, signal?: AbortSignal): Promise<Result> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
-    const page = await postJson<Page<T>>(path, { ...input, offset, limit: 128 }, signal);
+    const page = await postJson<Result>(path, { ...input, offset, limit: 128 }, signal);
     items.push(...page.items);
-    if (!page.hasMore) return items;
+    if (!page.hasMore) return { ...page, items };
   }
 }

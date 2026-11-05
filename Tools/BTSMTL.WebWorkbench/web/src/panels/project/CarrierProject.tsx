@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type AuthoringCarrier, type AuthoringCarriers, type AuthoringProduct, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
+import { authoringApi, type AuthoringCarrier, type AuthoringProduct, type CarrierResource, type ProfileEntryTarget } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { referenceTargetKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
@@ -11,7 +11,6 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { TargetReferrers } from './TargetReferrers';
 import { LocateAssetButton, type AssetLocateTarget } from './LocateAssetButton';
-import { BusinessKeyRename, BusinessKeyRenameReceipt, type BusinessKeyRenameCompletion } from './BusinessKeyRename';
 import styles from './project.module.css';
 
 interface ResourceRow {
@@ -77,18 +76,10 @@ function resourcesOf(carrier: AuthoringCarrier): ResourceRow[] {
 }
 
 // Project 文件夹中选中载体资产时的详情：预览载体选择、产品范围与表现资源。
-export function CarrierDetails({ carrier, focusTarget, onCatalog }: {
-  carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null; onCatalog(catalog: AuthoringCarriers): void;
+export function CarrierDetails({ carrier, focusTarget }: {
+  carrier: AuthoringCarrier; focusTarget: ProfileEntryTarget | null;
 }) {
-  const [migration, setMigration] = useState<BusinessKeyRenameCompletion | null>(null);
   const { target, preview } = useAuthoring(useShallow(state => ({ target: state.target, preview: authoringDocument(state).previewDefinitionGuid })));
-  const onMigrationRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'] = (result, value) => {
-    setMigration({ result, refresh: value });
-    if (value.catalog !== null) {
-      onCatalog(value.catalog);
-      useAuthoring.setState({ carrierRevision: value.catalog.authoringRevision });
-    }
-  };
   return <div className={styles.details}>
     {target?.kind === 'skill' && <ProductScope />}
     <PanelBar wrap><Button disabled={target?.kind !== 'skill' || preview === carrier.identity}
@@ -103,12 +94,7 @@ export function CarrierDetails({ carrier, focusTarget, onCatalog }: {
       {carrier.audio === null && <span className={styles.issue}>未配置音频 Profile</span>}
       {carrier.input === null && <span className={styles.issue}>未配置输入 Profile</span>}
     </div>
-    {migration?.result.profile.carrierIdentity === carrier.identity && <BusinessKeyRenameReceipt completion={migration}
-      onRefreshed={onMigrationRefreshed} />}
-    <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null}
-      migration={migration?.result.profile.carrierIdentity === carrier.identity ? migration : null}
-      onSaved={result => setMigration({ result, refresh: null })}
-      onRefreshed={onMigrationRefreshed} />
+    <CarrierResources key={carrier.identity} carrier={carrier} target={focusTarget?.carrierIdentity === carrier.identity ? focusTarget : null} />
   </div>;
 }
 
@@ -138,11 +124,8 @@ function ProductScope() {
   </div>;
 }
 
-function CarrierResources({ carrier, target, migration, onSaved, onRefreshed }: {
+function CarrierResources({ carrier, target }: {
   carrier: AuthoringCarrier; target: ProfileEntryTarget | null;
-  migration: BusinessKeyRenameCompletion | null;
-  onSaved: ComponentProps<typeof BusinessKeyRename>['onSaved'];
-  onRefreshed: ComponentProps<typeof BusinessKeyRename>['onRefreshed'];
 }) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<string | null>(null);
@@ -162,14 +145,6 @@ function CarrierResources({ carrier, target, migration, onSaved, onRefreshed }: 
       setSelection(target);
     }
   }, [target]);
-  useEffect(() => {
-    if (migration === null || migration.refresh === null || migration.refresh.catalog === null) return;
-    const { result } = migration;
-    const renamed = rows.find(row => row.source === result.profile.profileSource && row.domain === result.profile.domain &&
-      row.entryKind === result.profile.entryKind && row.key === result.newKey);
-    if (renamed !== undefined) setSelection(current => current !== null && referenceTargetKey(current) === referenceTargetKey(result.profile)
-      ? resourceTarget(carrier, renamed) : current);
-  }, [migration, rows, carrier]);
   const kinds = useMemo(() => [...new Set(rows.map(row => row.kind))], [rows]);
   const shown = useMemo(() => {
     const query = search.toLocaleLowerCase();
@@ -199,8 +174,6 @@ function CarrierResources({ carrier, target, migration, onSaved, onRefreshed }: 
       {selected.detail && <span>{selected.detail}</span>}
       <LocateAssetButton key={selected.location.kind === 'asset' ? selected.location.identity : JSON.stringify(resourceTarget(carrier, selected))}
         target={selected.location} />
-      {selected.entryKind !== 'audio-sound' && <BusinessKeyRename key={referenceTargetKey(resourceTarget(carrier, selected))}
-        target={resourceTarget(carrier, selected)} onSaved={onSaved} onRefreshed={onRefreshed} />}
       {field?.catalog.kind === 'ready' && choicesFor(selected).map((choice, index) => <Button key={index} variant="ghost"
         onClick={() => field.choose(choice)}>绑定到 {field.name}：{choice.name}{choice.conflict ? ` · ${choice.conflict}` : ''}</Button>)}
     </div>}

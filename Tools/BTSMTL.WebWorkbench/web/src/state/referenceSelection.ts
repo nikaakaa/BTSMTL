@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import type { ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
+import type { QueryAvailability, ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
 
 export type ReferenceCatalog =
-  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
+  | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string; businessKeysAvailability: QueryAvailability | null }
   | { kind: 'unavailable'; reason: string };
 
 export interface ReferenceFieldSelection {
@@ -24,9 +24,14 @@ export const matchesReferenceChoice = (choice: ReferenceChoice, selection: Pick<
   referenceValueKey(choice.value) === referenceValueKey(selection.value) && choice.associated.every(field =>
     referenceValueKey(field.value) === referenceValueKey(getIn(selection.configuration, field.serializedMemberPath)));
 
-export const referenceTargetKey = (target: ReferenceChoiceTarget) => target.kind === 'Node'
-  ? JSON.stringify([target.kind, target.graphId, target.nodeId])
-  : JSON.stringify([target.kind, target.carrierIdentity, target.profileSource, target.domain, target.entryKind, target.key, target.resourceIdentity]);
+export function referenceTargetKey(target: ReferenceChoiceTarget): string {
+  switch (target.kind) {
+    case 'Node': return JSON.stringify([target.kind, target.graphId, target.nodeId]);
+    case 'ProfileEntry': return JSON.stringify([target.kind, target.carrierIdentity, target.profileSource, target.domain, target.entryKind, target.key, target.resourceIdentity]);
+    case 'BusinessKey': return JSON.stringify([target.kind, target.package, target.keyKind, target.key]);
+    default: { const unhandled: never = target; return unhandled; }
+  }
+}
 
 type ReferenceDragChoice = Pick<ReferenceChoice, 'value' | 'source' | 'targets' | 'associated'>;
 

@@ -485,7 +485,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
     .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
       ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
-        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
+        choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], businessKeys: [], associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
   const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);
   const set: SetValue = (path, value) => setFields([{ keys: path, value }]);
@@ -704,6 +704,7 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
       ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
       : field.choicesAvailability.available
         ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
+          businessKeysAvailability: field.businessKeysAvailability,
           invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
         : { kind: 'unavailable', reason: field.choicesAvailability.reason }} onChoose={onChoose} />;
 }
