@@ -289,11 +289,13 @@ export const contentActions = {
   selectPreviewMode(previewMode: PlayerPreviewMode) {
     set({ previewMode });
   },
+  // 宿主按生成时间倒序给出场景包；尚未选择内容时默认最新场景包。
   setSources(sources: Sources) {
     const state = getState();
+    const contentSelection = state.contentSelection ?? (sources.scenes.length ? { kind: 'scene', path: sources.scenes[0].path } as const : null);
     const before = selectedScene(state)?.revision;
-    const after = selectedScene({ sources, contentSelection: state.contentSelection })?.revision;
-    set({ sources, ...(before === after ? {} : { inputCatalog: null, inputCatalogFailure: null, inputChoices: [] }) });
+    const after = selectedScene({ sources, contentSelection })?.revision;
+    set({ sources, contentSelection, ...(before === after ? {} : { inputCatalog: null, inputCatalogFailure: null, inputChoices: [] }) });
   },
   selectContent(contentSelection: ContentSelection | null) {
     if (contentSelectionKey(getState().contentSelection) === contentSelectionKey(contentSelection)) return;

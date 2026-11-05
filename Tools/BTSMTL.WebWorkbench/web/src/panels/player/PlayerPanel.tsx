@@ -44,6 +44,7 @@ function PlayerView() {
   const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
   const selectedLiveId = state.liveId;
   const codeBusy = codeUpdate !== null && codeUpdate.kind !== 'ready';
+  const [buildHistory, setBuildHistory] = useState(false);
   const updateCode = async (buildId: string) => {
     setCodeUpdate({ kind: 'compiling', buildId });
     const result = await playerService.updateCode(buildId);
@@ -82,6 +83,8 @@ function PlayerView() {
   const overlayReason = authoringNotice ?? archiveOverlayReason(state.archiveImage);
 
   // 照 Game 视图的 Display 下拉：在用的播放器、启动与停止合成一个菜单。
+  // 宿主按构建时间倒序给出构建；默认只列最新构建，历史构建按需展开。
+  const builds = (state.builds ?? []).slice(0, buildHistory ? undefined : 1);
   const playerMenu: MenuEntry[] = [
     { kind: 'label', label: '播放器' },
     ...(state.lives.length ? state.lives.map((live): MenuEntry => ({
@@ -89,19 +92,19 @@ function PlayerView() {
     })) : [{ label: '尚未启动播放器', disabled: true, onSelect: () => {} }]),
     { kind: 'separator' },
     { kind: 'label', label: '启动常驻播放器' },
-    ...(state.builds?.length ? state.builds.map((build): MenuEntry => ({
-      label: build.displayName, tip: build.fields.map(field => `${field.displayName} ${field.value}`).join('\n'),
+    ...(builds.length ? builds.map((build, index): MenuEntry => ({
+      label: index === 0 ? `最新 · ${build.displayName}` : build.displayName,
+      tip: build.fields.map(field => `${field.displayName} ${field.value}`).join('\n'),
       onSelect: () => void playerService.start(build.buildId, stage.current!.clientWidth),
     })) : [{ label: state.builds ? '画面来源尚未提供可用构建' : '正在读取构建', disabled: true, onSelect: () => {} }]),
   ];
-  if (state.builds?.length) playerMenu.push(
-    { kind: 'separator' }, { kind: 'label', label: '更新构建代码' },
-    ...state.builds.map((build): MenuEntry => ({
-      label: build.displayName, disabled: codeBusy,
-      tip: '使用此构建的 Player 代码生成新版本，失败时保留当前版本。',
-      onSelect: () => void updateCode(build.buildId),
-    })),
+  if (builds.length) playerMenu.push(
+    { label: '更新最新构建的代码', disabled: codeBusy,
+      tip: '使用最新构建的 Player 代码生成新版本，失败时保留当前版本。',
+      onSelect: () => void updateCode(builds[0].buildId) },
   );
+  if ((state.builds?.length ?? 0) > 1) playerMenu.push({ kind: 'check',
+    label: `显示历史构建（${state.builds!.length - 1}）`, checked: buildHistory, onChange: setBuildHistory });
   if (state.liveId) playerMenu.push({ kind: 'separator' }, { label: '停止播放器', onSelect: () => void playerService.stop() });
   const orbitMenu: MenuEntry[] = [
     { label: '重置视角', disabled: !orbit, tip: orbit ? undefined : '环绕相机下可用',

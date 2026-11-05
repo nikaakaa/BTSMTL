@@ -39,14 +39,29 @@ export function Toolbar() {
   );
 }
 
+// 场景包按生成时间倒序：菜单直接列最新场景包与 Timeline，旧场景包收在“显示历史场景包”后。
 function ContentChoice() {
   const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
+  const [history, setHistory] = useState(false);
   if (!sources) return null;
   const options = previewContentChoices(sources);
+  const key = contentSelectionKey(selection);
+  const current = options.find(option => option.value === key);
+  const scenes = options.filter(option => option.selection.kind === 'scene');
+  const radio = (option: typeof options[number], label = option.label): MenuEntry => ({
+    kind: 'radio', label, checked: option.value === key, onSelect: () => contentActions.selectContent(option.selection),
+  });
+  const entries: MenuEntry[] = [
+    ...(scenes.length ? [radio(scenes[0], `最新 · ${scenes[0].label}`)] : []),
+    ...options.filter(option => option.selection.kind === 'timeline').map(option => radio(option)),
+  ];
+  if (scenes.length > 1) entries.push({ kind: 'separator' },
+    { kind: 'check', label: `显示历史场景包（${scenes.length - 1}）`, checked: history, onChange: setHistory },
+    ...(history ? scenes.slice(1).map(option => radio(option)) : []));
   return (
-    <Select variant="ghost" label="内容" placeholder="选择内容" value={contentSelectionKey(selection)} disabled={!options.length}
-      tip={options.length ? '选择要载入的场景或 Timeline' : '宿主尚未提供正式内容'} options={options}
-      onChange={value => contentActions.selectContent(options.find(option => option.value === value)!.selection)} />
+    <MenuButton label="内容" variant="ghost" caret entries={entries}>
+      {current ? current.value === scenes[0]?.value ? `最新 · ${current.label}` : current.label : options.length ? '选择内容' : '宿主尚未提供正式内容'}
+    </MenuButton>
   );
 }
 
