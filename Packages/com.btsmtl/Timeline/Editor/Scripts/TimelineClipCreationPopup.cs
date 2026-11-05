@@ -180,6 +180,7 @@ namespace BTSMTL.Timeline.Editor
     sealed class TimelineResourceSelection
     {
         readonly TimelineData m_Timeline;
+        readonly Type[] m_ObjectTypes;
         readonly string m_Domain;
         readonly Action<TimelineResourceSelection> m_Changed;
         readonly Action m_Repaint;
@@ -200,6 +201,9 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Timeline = clip.Timeline;
             m_Domain = TimelineAuthoringClipBinding.ResourceDomain(clip);
+            m_ObjectTypes = GraphAuthoringMemberBindings.Contract(clip).Fields
+                .Single(field => field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true)
+                .Annotation<GraphAuthoringResourceAttribute>().ObjectTypes;
             m_Changed = changed;
             m_Repaint = repaint;
             m_Reference = initialSource ? null : ((ITimelineAuthoringResourceClip)clip).ResourceReference;
@@ -315,13 +319,15 @@ namespace BTSMTL.Timeline.Editor
             if (!source) return;
             if (m_Declaration.Selection != "asset")
                 throw new InvalidOperationException("此领域按载体映射，请从目录中选择已配置的名字。");
+            if (m_ObjectTypes.Any(type => type.IsInstanceOfType(source)))
+            {
+                m_Reference = m_Document.ResourceReferences(m_Timeline, m_Domain, source).Single().Value;
+                m_Resolution = new TimelineAuthoringReferenceValue(source);
+                return;
+            }
             GraphAuthoringResourceObjectResult result = m_Document.ResourceObjects(m_Timeline, m_Domain, source);
             if (!result.Available) throw new InvalidOperationException(result.Reason);
             m_Objects = result.Items;
-            GraphAuthoringResourceObjectCandidate exact = m_Objects.SingleOrDefault(candidate =>
-                candidate.Name == source.name && candidate.Type == source.GetType().FullName);
-            if (exact != null) SelectObject(exact);
-            else if (m_Objects.Length == 0) throw new InvalidOperationException("所选文件没有满足当前正式资源能力声明的对象。");
         }
 
         void SelectObject(GraphAuthoringResourceObjectCandidate candidate)
