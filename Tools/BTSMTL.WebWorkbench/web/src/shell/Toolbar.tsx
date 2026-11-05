@@ -2,7 +2,7 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
-import { authoringActions, authoringDocument, profileDirty, profileDocument, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, profileConfigurationStatus, profileDirty, profileDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
@@ -93,14 +93,15 @@ function AuthoringStatus() {
 function ProfileAuthoringStatus() {
   const document = useAuthoring(state => profileDocument(state));
   if (document === undefined) return <div className={styles.authoring}>实际 Profile 来源尚未就绪。</div>;
-  const dirty = profileDirty(document);
+  const configuration = profileConfigurationStatus(document);
   return <div className={styles.authoring}>
     <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={document.writing || !document.undo.length}
       tip="撤销当前 Profile（Ctrl+Z）" onClick={() => authoringActions.undo()}><UndoIcon /></Button>
     <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={document.writing || !document.redo.length}
       tip="重做当前 Profile（Ctrl+Y）" onClick={() => authoringActions.redo()}><RedoIcon /></Button>
-    <span>Profile · {document.source.domain}{dirty ? ' · 未保存' : ''}</span>
-    <Button disabled={document.writing || !dirty} onClick={() => void authoringActions.save()}>{document.writing ? '正在提交' : '保存配置'}</Button>
+    <span>Profile · {document.source.domain} · {configuration.label}{profileDirty(document) ? ' · 未保存' : ''}</span>
+    <Button disabled={document.writing || !configuration.available || !configuration.dirty}
+      onClick={() => void authoringActions.save()}>{document.writing ? '正在提交' : '保存当前配置'}</Button>
   </div>;
 }
 

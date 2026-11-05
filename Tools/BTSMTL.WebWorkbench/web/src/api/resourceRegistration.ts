@@ -25,7 +25,8 @@ export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelect
 export const readResourceDeclaration = object({ keyKind: text, referenceKind: text, domain: nullable(text),
   registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')), inputType: nullable(text) });
 export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
-const readProfileResource = object({ reference: readResourceReference, token: nullable(text), instanceCapacity: nullable(number) });
+const readProfileResource = object({ reference: readResourceReference, token: nullable(text), instanceCapacity: nullable(number),
+  configurationJson: nullable(text) });
 export type ResourceObjectQuery = { package: string; adapter: string; assetGuid: string; keyKind: string;
   domain: string | null; objectType: string | null };
 export type ResourceObjectCapability =
@@ -82,6 +83,10 @@ export const resourceRegistrationApi = {
       .then(value => readProfileResult(value)),
   configureProfile: (profile: AuthoringProfile, configurationJson: string) =>
     postJson<unknown>('/api/authoring/profiles/configure', { package: profile.package, adapter: profile.adapter,
+      profile: { assetToken: profile.assetToken, expectedRevision: profile.revision }, configurationJson }).then(value => readProfileResult(value)),
+  configureProfileResource: (profile: AuthoringProfile, reference: ResourceReference, configurationJson: string) =>
+    postJson<unknown>('/api/authoring/profiles/resources/configure', { package: profile.package, adapter: profile.adapter,
+      context: reference.context, keyKind: reference.keyKind, key: reference.key,
       profile: { assetToken: profile.assetToken, expectedRevision: profile.revision }, configurationJson }).then(value => readProfileResult(value)),
   replayProfile: (query: ProfileQuery, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
     postJson<unknown>(`/api/authoring/profiles/data/${direction}`, { ...query, transaction }).then(value => readProfileResult(value)),

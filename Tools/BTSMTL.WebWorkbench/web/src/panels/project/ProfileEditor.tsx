@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BusinessKeyMetadata, ReferenceChoice } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { profileQueryKey, resourceReferenceKey, type ProfileQuery, type ResourceRegistrationInput } from '../../api/resourceRegistration';
-import { authoringActions, profileDirty, profileDocument, useAuthoring } from '../../state/authoring';
+import { authoringActions, profileConfigurationDirty, profileDocument, profileResourceDirty, useAuthoring } from '../../state/authoring';
 import type { ResourceAssetSelection } from '../../state/referenceSelection';
 import { consoleActions } from '../../state/store';
 import { Fold, PanelBar } from '../../ui/blocks';
@@ -49,7 +49,7 @@ export function ProfileEditor({ query, location, businessKeys }: { query: Profil
   if (document === undefined) return failure === null ? <div className={styles.note}>正在读取实际 Profile。</div> : <ErrorLine {...failure} />;
   const source = document.source;
   const supports = (command: string) => source.operations.some(operation => operation.command === command);
-  const dirty = profileDirty(document);
+  const dirty = profileConfigurationDirty(document);
   return <div onFocusCapture={() => authoringActions.activateProfile(query)} onPointerDownCapture={() => authoringActions.activateProfile(query)}>
     <div className={styles.facts}><strong>{location?.name ?? 'Profile'} · {source.domain}</strong>{location && <code>{location.source}</code>}
       <small>{source.package} · {source.adapter} · 上下文 {source.context || '公共'}</small></div>
@@ -63,17 +63,57 @@ export function ProfileEditor({ query, location, businessKeys }: { query: Profil
       <Button disabled={document.writing || !document.redo.length || !supports('redo-profile-data')} onClick={() => authoringActions.redo()}>重做</Button>
     </PanelBar>
     <Fold title="正式配置" defaultOpen>
-      <fieldset disabled={document.writing || !supports('configure-profile')} className={styles.profileFields}>
-        <ConfigurationFields value={document.configuration} onSet={configuration => authoringActions.editProfile(query, configuration)} />
-      </fieldset>
-      <PanelBar wrap><Button disabled={document.writing || !dirty || !supports('configure-profile')} onClick={() => void authoringActions.saveProfile(query)}>保存 Profile 配置</Button>
-        <Button disabled={document.writing || !dirty} onClick={() => authoringActions.resetProfile(query)}>载入已保存配置</Button></PanelBar>
+      <div onFocusCapture={() => authoringActions.selectProfileConfiguration(query, { kind: 'profile' })}>
+        <fieldset disabled={document.writing || !supports('configure-profile')} className={styles.profileFields}>
+          <ConfigurationFields value={document.configuration} onSet={configuration => authoringActions.editProfile(query, configuration)} />
+        </fieldset>
+        <PanelBar wrap><Button disabled={document.writing || !dirty || !supports('configure-profile')} onClick={() => void authoringActions.saveProfileConfiguration(query)}>保存 Profile 配置</Button>
+          <Button disabled={document.writing || !dirty} onClick={() => authoringActions.resetProfile(query)}>载入已保存配置</Button></PanelBar>
+      </div>
     </Fold>
+    <ProfileResourceConfiguration query={query} />
     {supports('register-profile-resource') && <ProfileResourceRegistration query={query} businessKeys={businessKeys} />}
     {supports('set-resource-capacity') && <ProfileResourceCapacity query={query} />}
     {document.message && <div role="status" className={styles.note}>{document.message}</div>}
     <Fold title="Profile 身份"><div className={styles.facts}><small>资产令牌：{source.assetToken}</small><small>作者修订：{source.revision}</small></div></Fold>
   </div>;
+}
+
+function ProfileResourceConfiguration({ query }: { query: ProfileQuery }) {
+  const document = useAuthoring(state => profileDocument(state, query))!;
+  const [selected, setSelected] = useState<string | null>(() => document.configurationTarget.kind === 'resource'
+    ? resourceReferenceKey(document.configurationTarget.reference) : null);
+  const resources = document.source.resources.filter(item => item.configurationJson !== null);
+  const resource = resources.find(item => resourceReferenceKey(item.reference) === selected);
+  const missing = Object.keys(document.resourceConfigurations).filter(identity =>
+    !resources.some(item => resourceReferenceKey(item.reference) === identity));
+  const missingNotice = missing.length > 0 && <div className={styles.issue}>
+    {missing.length} 项未保存条目配置已不在当前正式来源中，编辑仍保留，请核对来源变化。
+  </div>;
+  if (!document.source.operations.some(operation => operation.command === 'configure-profile-resource')) return missingNotice;
+  const dirty = resource !== undefined && profileResourceDirty(document, resourceReferenceKey(resource.reference));
+  return <Fold title="条目配置" defaultOpen><div onFocusCapture={() => {
+    if (resource !== undefined) authoringActions.selectProfileConfiguration(query, { kind: 'resource', reference: resource.reference });
+  }}>
+    {missingNotice}
+    <fieldset disabled={document.writing} className={styles.profileFields}>
+      <Select label="实际可配置条目" value={resource === undefined ? null : resourceReferenceKey(resource.reference)} placeholder="选择有正式配置的条目"
+        options={resources.map(item => ({ value: resourceReferenceKey(item.reference),
+          label: `${item.reference.keyKind} · ${item.reference.key} · ${item.reference.context || '公共'}` }))}
+        onChange={identity => {
+          setSelected(identity);
+          authoringActions.selectProfileConfiguration(query, { kind: 'resource',
+            reference: resources.find(item => resourceReferenceKey(item.reference) === identity)!.reference });
+        }} />
+      {resource !== undefined && <ConfigurationFields key={resourceReferenceKey(resource.reference)}
+        value={document.resourceConfigurations[resourceReferenceKey(resource.reference)]}
+        onSet={configuration => authoringActions.editProfileResource(query, resource.reference, configuration)} />}
+    </fieldset>
+    {resource !== undefined && <PanelBar wrap>
+      <Button disabled={document.writing || !dirty} onClick={() => void authoringActions.saveProfileResource(query, resource.reference)}>保存条目配置</Button>
+      <Button disabled={document.writing || !dirty} onClick={() => authoringActions.resetProfileResource(query, resource.reference)}>载入条目已保存配置</Button>
+    </PanelBar>}
+  </div></Fold>;
 }
 
 function ProfileResourceRegistration({ query, businessKeys }: { query: ProfileQuery; businessKeys: BusinessKeyMetadata[] }) {
