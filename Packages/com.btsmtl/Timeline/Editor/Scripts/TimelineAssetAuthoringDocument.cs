@@ -10,7 +10,8 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
 {
-    public sealed class TimelineAssetAuthoringDocument : ITimelineAuthoringDocument, ITimelinePreviewInputSchemeStorage
+    public sealed class TimelineAssetAuthoringDocument : ITimelineAuthoringDocument, ITimelinePreviewInputSchemeStorage,
+        ITimelineAuthoringResourceDocument
     {
         sealed class AssetGraphs
         {
@@ -26,6 +27,7 @@ namespace BTSMTL.Timeline.Editor
 
         readonly AssetGraphs m_Graphs;
         readonly Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> m_CreateAuthoringContext;
+        ITimelineAuthoringResourceDocument m_Resources;
 
         static TimelineAssetAuthoringDocument()
         {
@@ -51,18 +53,32 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public static TimelineAssetAuthoringDocument Open(UnityEngine.Object source,
-            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext)
+            Func<TimelineAssetAuthoringDocument, IReadOnlyList<ScriptableObject>, IGraphNodeInterfaceResolver> createAuthoringContext,
+            Func<TimelineAssetAuthoringDocument, ITimelineAuthoringResourceDocument> createResources)
         {
             string path = AssetDatabase.GetAssetPath(source);
             if (s_LocalGraphs.TryGetValue(path, out AssetGraphs graphs))
                 return graphs.Document;
             graphs = new AssetGraphs { ById = new Dictionary<string, ScriptableObject>(StringComparer.Ordinal) };
             graphs.Document = new TimelineAssetAuthoringDocument(path, graphs, createAuthoringContext);
+            graphs.Document.m_Resources = createResources(graphs.Document);
             s_LocalGraphs.Add(path, graphs);
             return graphs.Document;
         }
 
         public string SourcePath { get; private set; }
+        public IReadOnlyList<GraphAuthoringResourceReference> ResourceScopes() => m_Resources.ResourceScopes();
+        public GraphAuthoringResourceReference ResourceScope(TimelineData timeline) => m_Resources.ResourceScope(timeline);
+        public void SelectResourceScope(TimelineData timeline, GraphAuthoringResourceReference scope) =>
+            m_Resources.SelectResourceScope(timeline, scope);
+        public GraphAuthoringResourceDeclaration ResourceDeclaration(TimelineData timeline, string keyKind) =>
+            m_Resources.ResourceDeclaration(timeline, keyKind);
+        public IReadOnlyList<GraphAuthoringResourceReference> ResourceReferences(TimelineData timeline, string keyKind,
+            UnityEngine.Object source = null) => m_Resources.ResourceReferences(timeline, keyKind, source);
+        public UnityEngine.Object ResolveResource(TimelineData timeline, GraphAuthoringResourceReference reference) =>
+            m_Resources.ResolveResource(timeline, reference);
+        public void RegisterResource(Clip clip, GraphAuthoringResourceRegistrationInput input,
+            Action<GraphAuthoringResourceReference> apply) => m_Resources.RegisterResource(clip, input, apply);
         public bool HasUnsavedChanges => AssetDatabase.LoadAllAssetsAtPath(SourcePath).Any(EditorUtility.IsDirty);
         public IGraphNodeInterfaceResolver PrepareAuthoringContext(ScriptableObject graph)
         {
@@ -236,6 +252,8 @@ namespace BTSMTL.Timeline.Editor
         {
             foreach (string path in deleted)
             {
+                if (s_LocalGraphs.TryGetValue(path, out AssetGraphs removed) && removed.Document.m_Resources is IDisposable resources)
+                    resources.Dispose();
                 s_LocalGraphs.Remove(path);
                 RemoveSharedGraph(path);
             }
