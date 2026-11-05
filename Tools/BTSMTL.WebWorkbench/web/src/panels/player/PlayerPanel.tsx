@@ -575,17 +575,20 @@ function CameraHistory({ image }: { image: ArchiveImage | null }) {
   const camera = image.camera;
   if (camera === null) return <div><span>历史相机输出</span><span>画面没有同一表现序号与相机实例的记录</span></div>;
   const source = camera.source;
+  const fields = [
+    { label: '相机实例编号', value: camera.cameraInstanceId },
+    { label: '表现序号', value: camera.presentationSequence },
+    { label: '来源帧', value: `${source.clock.positionDisplayName} ${source.clock.position.hostFrame}` },
+    { label: '来源时间', value: `${source.clock.seconds} s` },
+    { label: '实际采用内容', value: source.content === null ? '未记录' : `${source.content.kind} · ${source.content.revision}` },
+    { label: '执行类型', value: source.execution.kind ?? '未记录' },
+    { label: '执行身份', value: source.execution.identity ?? '未记录' },
+    { label: '画面尺寸', value: `${camera.width} × ${camera.height}` },
+    { label: '表现 Tick', value: camera.presentationTick },
+    { label: '插值比例', value: camera.interpolationFactor },
+  ];
   return <>
     <b>历史相机输出</b>
-    <div><span>相机实例编号</span><span>{camera.cameraInstanceId}</span></div>
-    <div><span>表现序号</span><span>{camera.presentationSequence}</span></div>
-    <div><span>来源帧</span><span>{source.clock.positionDisplayName} {source.clock.position.hostFrame}</span></div>
-    <div><span>来源时间</span><span>{source.clock.seconds} s</span></div>
-    <div><span>实际采用内容</span><span>{source.content === null ? '未记录' : `${source.content.kind} · ${source.content.revision}`}</span></div>
-    <div><span>执行类型</span><span>{source.execution.kind ?? '未记录'}</span></div>
-    <div><span>执行身份</span><span>{source.execution.identity ?? '未记录'}</span></div>
-    <div><span>画面尺寸</span><span>{camera.width} × {camera.height}</span></div>
-    <div><span>表现 Tick</span><span>{camera.presentationTick}</span></div>
-    <div><span>插值比例</span><span>{camera.interpolationFactor}</span></div>
+    {fields.map(field => <div key={field.label}><span>{field.label}</span><span title={String(field.value)}>{field.value}</span></div>)}
   </>;
 }

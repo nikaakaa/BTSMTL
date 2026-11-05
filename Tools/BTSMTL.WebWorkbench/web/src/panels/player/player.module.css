@@ -69,6 +69,9 @@
   right: 6px;
   top: 6px;
   width: 196px;
+  max-width: calc(100% - 12px);
+  max-height: calc(100% - 12px);
+  overflow-y: auto;
   background: var(--overlay-bg);
   border: 1px solid var(--viewport-bg);
   color: var(--text);
