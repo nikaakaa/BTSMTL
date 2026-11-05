@@ -370,7 +370,7 @@ function ProjectBrowser({ profileTarget, carriers, catalogFailure, onRefresh }: 
           const item = itemOf(file.path);
           const clips = clipsByAsset.get(file.path);
           const { name, detail } = describe(file);
-          const choices = item && field?.catalog.kind === 'ready'
+          const choices = item && field?.domain === null && field.catalog.kind === 'ready'
             ? field.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(item.identity)) : [];
           return <button className={projectStyles.row} aria-selected={file.path === selected}
             draggable={choices.length === 1 || item?.kind === 'graph' || clips?.length === 1}

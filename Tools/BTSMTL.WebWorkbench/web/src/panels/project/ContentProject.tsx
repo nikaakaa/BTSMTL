@@ -67,8 +67,9 @@ export function ContentProject() {
         count={rows.length} rowHeight={38} label="作者内容所有权树" render={index => {
           const { node, depth, open } = rows[index];
           const item = node.target?.kind === 'item' ? node.target.item : null;
-          const choice = item !== null && field?.catalog.kind === 'ready'
-            ? field.catalog.items.find(choice => referenceValueKey(choice.value) === referenceValueKey(item.identity)) : undefined;
+          const choices = item !== null && field?.domain === null && field.catalog.kind === 'ready'
+            ? field.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(item.identity)) : [];
+          const choice = choices.length === 1 ? choices[0] : undefined;
           return <div className={styles.contentRow} style={{ paddingLeft: depth * 14 }} aria-selected={selected === node.key}>
             <button className={styles.arrow} aria-label={`${open ? '收起' : '展开'} ${node.label}`} disabled={node.children.length === 0}
               onClick={() => setExpanded({ ...expanded, [node.key]: !open })}>{node.children.length === 0 ? '·' : open ? '▾' : '▸'}</button>
