@@ -42,8 +42,7 @@ export function BusinessKeyDetails({ target, metadata, onCatalog, onChanged }: {
   target: BusinessKeyTarget; metadata: BusinessKeyMetadata | null; onCatalog(catalog: AuthoringCarriers): void; onChanged(): void;
 }) {
   const [completion, setCompletion] = useState<BusinessKeyRenameCompletion | null>(null);
-  const refreshed = completion?.refresh?.catalog?.businessKeys.find(item => item.target.package === completion.result.package &&
-    item.target.keyKind === completion.result.kind && item.target.key === completion.result.newKey);
+  const refreshed = completion?.refresh?.catalog?.businessKeys.find(item => referenceTargetKey(item.target) === referenceTargetKey(completion.result.renamedTarget));
   const current = completion === null ? metadata : refreshed ?? null;
   const onRefreshed = (result: BusinessKeyRenameCompletion['result'], refresh: NonNullable<BusinessKeyRenameCompletion['refresh']>) => {
     setCompletion({ result, refresh });

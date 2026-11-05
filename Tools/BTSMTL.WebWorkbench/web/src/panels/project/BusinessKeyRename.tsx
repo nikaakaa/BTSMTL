@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { authoringApi, type BusinessKeyRenameResult, type BusinessKeyTarget } from '../../api/authoring';
+import { authoringApi, businessKeySkillTarget, type BusinessKeyRenamePrepared, type BusinessKeyRenameRejection, type BusinessKeyRenameResult, type BusinessKeyTarget } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import { authoringActions, businessKeyMigrationConflicts, useAuthoring } from '../../state/authoring';
 import { consoleActions } from '../../state/store';
@@ -13,7 +13,9 @@ type RefreshResult = Awaited<ReturnType<typeof authoringActions.refreshBusinessK
 export type BusinessKeyRenameCompletion = { result: SavedRename; refresh: RefreshResult | null };
 type Failure = { text: string; entryId: number | null; raw: string | null };
 type Stage = { kind: 'closed' | 'editing' | 'preparing' | 'committing' | 'refreshing' }
-  | { kind: 'prepared'; plan: BusinessKeyRenameResult } | ({ kind: 'failed' } & Failure);
+  | { kind: 'prepared'; plan: BusinessKeyRenamePrepared }
+  | { kind: 'rejected'; receipt: BusinessKeyRenameRejection; entryId: number | null }
+  | ({ kind: 'failed' } & Failure);
 
 const failureOf = (error: unknown): Failure => ({
   text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error),
@@ -31,6 +33,8 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
   const authoring = useAuthoring();
   const conflicts = useMemo(() => stage.kind === 'prepared' ? businessKeyMigrationConflicts(stage.plan, authoring) : [], [stage, authoring]);
   useEffect(() => () => prepareController.current?.abort(), []);
+  const reject = (receipt: BusinessKeyRenameRejection) => setStage({ kind: 'rejected', receipt,
+    entryId: consoleActions.log('error', 'Project', receipt.message, JSON.stringify(receipt)) });
   const prepare = async () => {
     prepareController.current?.abort();
     const controller = prepareController.current = new AbortController();
@@ -39,19 +43,16 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
       const plan = await authoringApi.renameBusinessKey({ action: 'prepare', package: target.package,
         kind: target.keyKind, key: target.key, newKey }, controller.signal);
       controller.signal.throwIfAborted();
-      setStage({ kind: 'prepared', plan });
+      if (plan.success) setStage({ kind: 'prepared', plan });
+      else reject(plan);
     } catch (error) { if (!isAbort(error)) setStage({ kind: 'failed', ...failureOf(error) }); }
   };
-  const commit = async (plan: BusinessKeyRenameResult) => {
+  const commit = async (plan: BusinessKeyRenamePrepared) => {
     setStage({ kind: 'committing' });
-    let result: BusinessKeyRenameResult;
+    let result: SavedRename | BusinessKeyRenameRejection;
     try { result = await authoringActions.commitBusinessKeyRename(plan); }
     catch (error) { setStage({ kind: 'failed', ...failureOf(error) }); return; }
-    if (!result.saved) {
-      setStage({ kind: 'failed', text: '宿主未确认保存，请重新准备计划。', raw: JSON.stringify(result, null, 2),
-        entryId: consoleActions.log('error', 'Project', '业务键改名未保存', JSON.stringify(result)) });
-      return;
-    }
+    if (!result.success) { reject(result); return; }
     setStage({ kind: 'refreshing' });
     onSaved(result);
     const refresh = await authoringActions.refreshBusinessKeyRename(result);
@@ -87,18 +88,55 @@ export function BusinessKeyRename({ target, onSaved, onRefreshed }: {
       <ErrorLine text={stage.text} entryId={stage.entryId} />
       {stage.raw !== null && <details><summary>宿主回执</summary><pre>{stage.raw}</pre></details>}
     </>}
+    {stage.kind === 'rejected' && <>
+      <ErrorLine text={stage.receipt.message} entryId={stage.entryId} />
+      <span>请求结果：{stage.receipt.code}</span>
+      {stage.receipt.code === 'business-key-rename-io' ? <>
+        <span className={styles.issue}>{stage.receipt.authorRenameState === 'recovery-required'
+          ? '作者事务需要恢复，请沿原作者事务恢复流程处理。' : '作者改名未完成。'}</span>
+        <span>运行内容未应用。</span>
+      </> : <span>未取得作者整体提交完成回执，请处理原因后重新准备计划。</span>}
+      <details><summary>宿主回执</summary><pre>{JSON.stringify(stage.receipt, null, 2)}</pre></details>
+    </>}
   </div>;
 }
 
 const RenameImpact = memo(function RenameImpact({ plan }: { plan: BusinessKeyRenameResult }) {
   return <div className={styles.facts}>
-    <strong>{plan.key} → {plan.newKey}</strong>
-    <span>{plan.files.length} 个作者文件</span>
+    <strong>{plan.target.package} · {plan.target.keyKind} · {plan.target.key} → {plan.renamedTarget.key}</strong>
+    <span>{plan.authorRenameState === 'prepared' ? '作者改名计划已准备，尚未提交。' : '作者改名已完成。'}</span>
+    <span>{plan.runtimeState === 'pending'
+      ? plan.saved ? '运行内容待应用：需完成下列技能发布与绑定范围生成，再由正式运行入口采用。'
+        : '提交后，运行内容仍需完成下列技能发布与绑定范围生成。'
+      : '本次无需应用运行内容。'}</span>
+    <details><summary>计划修订</summary><code>{plan.revision}</code></details>
     <details open><summary>会修改的文件（{plan.files.length}）</summary>
       {plan.files.map(file => <div key={file.path} className={styles.facts}>
-        <code>{file.path}</code><span>{file.members.join('、')}</span>
+        <code>{file.path}</code><span>字段位置：{file.members.join('、')}</span>
+        <small>读取修订：<code>{file.readRevision}</code></small>
+        <small>写入修订：<code>{file.writeRevision}</code></small>
       </div>)}
     </details>
+    <details><summary>计划读取的文件（{plan.readFiles.length}）</summary>
+      {plan.readFiles.map(file => <div key={file.path} className={styles.facts}>
+        <code>{file.path}</code><small>读取修订：<code>{file.revision}</code></small>
+      </div>)}
+    </details>
+    <details open><summary>需发布的技能（{plan.affectedSkills.length}）</summary>
+      {plan.affectedSkills.map(skill => <div key={`${skill.package}/${skill.identity}`} className={styles.facts}>
+        <span>{skill.identity} · {skill.package}</span><code>{skill.directory}</code>
+        <Button variant="ghost" onClick={() => void authoringActions.open(businessKeySkillTarget(skill))
+          .catch(error => consoleActions.error('Project', error))}>打开技能</Button>
+      </div>)}
+    </details>
+    <details open><summary>需生成的绑定范围（{plan.affectedProfiles.length}）</summary>
+      {plan.affectedProfiles.map(profile => <div key={`${profile.adapter}/${profile.package}/${profile.domain}`} className={styles.facts}>
+        <span>{profile.adapter} · {profile.package} · {profile.domain}</span>
+        <span>上下文：{profile.contexts.map(context => context === '' ? '包内共用绑定' : context).join('、')}</span>
+        {profile.bindingFiles.map(file => <code key={file}>{file}</code>)}
+      </div>)}
+    </details>
+    {plan.affectedProfiles.length !== 0 && <span>生成范围由回执中的适配器、作者包、领域与上下文共同确定。</span>}
   </div>;
 });
 
@@ -109,8 +147,7 @@ export function BusinessKeyRenameReceipt({ completion, onRefreshed }: {
   const [reading, setReading] = useState(false);
   const { result, refresh } = completion;
   return <div className={styles.facts}>
-    <strong>已保存：{result.key} → {result.newKey}</strong>
-    <span>尚未取得运行内容的发布、生成或采用回执。</span>
+    <RenameImpact plan={result} />
     {refresh === null ? <span>正在重新读取载体目录与受影响文档</span> : <>
       {refresh.conflicts.map(item => <div key={`${item.owner}/${item.path}`} className={styles.issue}>
         {item.owner}/{item.path}：{item.reason}。网页修改已保留，文档已标记外部变化，请先处理这些修改。

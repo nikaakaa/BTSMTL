@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringTargetKey, businessKeySkillTarget, readSkillSaveRejection, type AuthoringTarget, type BusinessKeyRenamePrepared, type BusinessKeyRenameResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -680,17 +680,16 @@ export const authoringActions = {
     }
   },
 
-  async commitBusinessKeyRename(plan: BusinessKeyRenameResult) {
+  async commitBusinessKeyRename(plan: BusinessKeyRenamePrepared) {
     const conflicts = businessKeyMigrationConflicts(plan);
     if (conflicts.length !== 0)
       throw new Error(`先处理本次迁移涉及的网页文档：${conflicts.map(item => `${item.owner}/${item.path}（${item.reason}）`).join('；')}`);
-    return authoringApi.renameBusinessKey({ action: 'commit', package: plan.package, kind: plan.kind, key: plan.key,
-      newKey: plan.newKey, expectedRevision: plan.revision });
+    return authoringApi.renameBusinessKey({ action: 'commit', package: plan.target.package, kind: plan.target.keyKind, key: plan.target.key,
+      newKey: plan.renamedTarget.key, expectedRevision: plan.revision });
   },
 
   async refreshBusinessKeyRename(result: Extract<BusinessKeyRenameResult, { saved: true }>) {
-    const files = businessKeyMigrationFiles(result);
-    const owners = [...files.values()].filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
+    const owners = businessKeyMigrationOwners(result).filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
     const [catalogResults, snapshots] = await Promise.all([
       Promise.allSettled([authoringApi.carriers()]),
       Promise.allSettled(owners.map(owner => authoringApi.read(owner.target))),
@@ -1300,24 +1299,17 @@ export const hasChanges = (target = get().target) => {
   return Object.keys(document.edited).length + document.removed.length > 0;
 };
 
-function businessKeyMigrationFiles(plan: BusinessKeyRenameResult) {
-  const owners = new Map<string, { target: Extract<AuthoringTarget, { kind: 'skill' }>; paths: Set<string> }>();
-  // 计划中的文件为仓库相对路径；技能文件位于 Authoring/Skills/<技能>/ 下。
-  for (const file of plan.files) {
-    const parts = file.path.split('/');
-    if (parts[0] !== 'Authoring' || parts[1] !== 'Skills' || parts.length < 4) continue;
-    const name = parts[2];
-    const target: Extract<AuthoringTarget, { kind: 'skill' }> = { kind: 'skill', name };
-    const owner = owners.get(name) ?? { target, paths: new Set<string>() };
-    owner.paths.add(parts.slice(3).join('/'));
-    owners.set(name, owner);
-  }
-  return owners;
+function businessKeyMigrationOwners(plan: BusinessKeyRenameResult) {
+  return plan.affectedSkills.map(skill => {
+    const prefix = `${skill.directory}/`;
+    return { target: businessKeySkillTarget(skill),
+      paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length))) };
+  });
 }
 
 export function businessKeyMigrationConflicts(plan: BusinessKeyRenameResult, state = useAuthoring.getState(), phase: 'commit' | 'refresh' = 'commit') {
   const conflicts: { owner: string; path: string; reason: string }[] = [];
-  for (const { target, paths } of businessKeyMigrationFiles(plan).values()) {
+  for (const { target, paths } of businessKeyMigrationOwners(plan)) {
     const document = state.documents[authoringTargetKey(target)];
     if (document === undefined) continue;
     for (const path of paths) {
