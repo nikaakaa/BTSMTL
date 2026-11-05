@@ -194,7 +194,7 @@ namespace BTSMTL.Timeline.Editor
         GraphAuthoringResourceObjectCandidate[] m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
         int m_SelectedObject = -1;
         UnityEngine.Object m_File;
-        UnityEngine.Object m_Source;
+        TimelineAuthoringReferenceValue m_Resolution;
         GraphAuthoringResourceRegistrationInput m_Registration;
         string m_Error;
 
@@ -210,11 +210,11 @@ namespace BTSMTL.Timeline.Editor
             Queue(Prepare);
         }
 
-        internal UnityEngine.Object Source => m_Source;
+        internal UnityEngine.Object Source => m_Resolution.Asset;
         internal GraphAuthoringResourceRegistrationInput Registration => m_Registration;
         internal GraphAuthoringResourceReference Reference => m_Registration == null ? m_Reference :
             new GraphAuthoringResourceReference(m_Scope.Package, m_Property.SourceAssetKind, m_Registration.Key, m_Scope.Context);
-        internal bool Ready => m_Source && (m_Registration != null || !m_Reference.IsEmpty);
+        internal bool Ready => Source && (m_Registration != null || !m_Reference.IsEmpty);
 
         internal void Queue(Action action, Action completed = null)
         {
@@ -239,13 +239,13 @@ namespace BTSMTL.Timeline.Editor
             m_Scopes = m_Document.ResourceScopes().ToArray();
             m_Scope = m_Document.ResourceScope(m_Timeline);
             m_Declaration = null;
-            m_Source = null;
+            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Reference);
             m_Registration = null;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             if (m_Scope.IsEmpty) return;
             m_Declaration = m_Document.ResourceDeclaration(m_Timeline, m_Property.SourceAssetKind);
             m_References = m_Document.ResourceReferences(m_Timeline, m_Property.SourceAssetKind).ToArray();
-            if (!m_Reference.IsEmpty) m_File = m_Source = m_Document.ResolveResource(m_Timeline, m_Reference);
+            if (!m_Reference.IsEmpty) m_File = Source;
             else if (m_File) SelectSource(m_File);
         }
 
@@ -303,6 +303,7 @@ namespace BTSMTL.Timeline.Editor
                         effect.EffectKind = EditorGUILayout.TextField("效果类型", effect.EffectKind);
                 }
             }
+            if (m_Resolution.IsMissing) EditorGUILayout.HelpBox(m_Resolution.ErrorMessage, MessageType.Error);
             if (m_Error != null) EditorGUILayout.HelpBox(m_Error, MessageType.Error);
         }
 
@@ -310,16 +311,18 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Reference = reference;
             m_Registration = null;
-            m_File = m_Source = null;
+            m_File = null;
+            m_Resolution = default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_SelectedObject = -1;
-            m_File = m_Source = m_Document.ResolveResource(m_Timeline, reference);
+            m_Resolution = m_Document.ResolveResource(m_Timeline, reference);
+            m_File = Source;
         }
 
         internal void SelectSource(UnityEngine.Object source)
         {
             m_File = source;
-            m_Source = null;
+            m_Resolution = default;
             m_Reference = default;
             m_Registration = null;
             m_References = Array.Empty<GraphAuthoringResourceReference>();
@@ -337,8 +340,8 @@ namespace BTSMTL.Timeline.Editor
         void SelectObject(GraphAuthoringResourceObjectCandidate candidate)
         {
             m_SelectedObject = Array.IndexOf(m_Objects, candidate);
-            m_Source = m_Document.ResolveResourceObject(candidate.Token);
-            m_References = m_Document.ResourceReferences(m_Timeline, m_Property.SourceAssetKind, m_Source).ToArray();
+            m_Resolution = new TimelineAuthoringReferenceValue(m_Document.ResolveResourceObject(candidate.Token));
+            m_References = m_Document.ResourceReferences(m_Timeline, m_Property.SourceAssetKind, Source).ToArray();
             m_Registration = null;
             m_Reference = default;
             if (m_References.Length == 1) m_Reference = m_References[0];
@@ -363,8 +366,8 @@ namespace BTSMTL.Timeline.Editor
 
         internal void Commit(Clip clip)
         {
-            if (m_Registration != null) m_Document.RegisterResource(clip, m_Registration, reference => ApplyReference(clip, reference, m_Source));
-            else m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference, m_Source), "选择 Timeline 资源");
+            if (m_Registration != null) m_Document.RegisterResource(clip, m_Registration, reference => ApplyReference(clip, reference, Source));
+            else m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference, Source), "选择 Timeline 资源");
         }
     }
 
