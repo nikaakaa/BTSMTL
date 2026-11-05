@@ -29,7 +29,7 @@ namespace ThirdPersonSimulation
         public PresentationVfxRequest(
             PresentationVfxCommand command,
             [BtsmtlBusinessKey("Vfx", BtsmtlBusinessKeyRole.Reference, KindParameter = "command")] string requestId,
-            [BtsmtlBusinessKey("Vfx", "vfx-resource", BtsmtlBusinessKeyRole.Reference)] string resourceId,
+            int resourceIndex,
             PresentationVfxTarget target,
             [BtsmtlBusinessKey("Vfx", "vfx-anchor", BtsmtlBusinessKeyRole.Reference)] string anchorKey,
             bool hasPoseOverride,
@@ -41,7 +41,7 @@ namespace ThirdPersonSimulation
         {
             Command = command;
             RequestId = requestId;
-            ResourceId = resourceId;
+            ResourceIndex = resourceIndex;
             Target = target;
             AnchorKey = anchorKey;
             HasPoseOverride = hasPoseOverride;
@@ -63,14 +63,14 @@ namespace ThirdPersonSimulation
 
         public PresentationVfxRequest WithPose(float positionX, float positionY, float positionZ,
             float eulerX, float eulerY, float eulerZ, float scaleX, float scaleY, float scaleZ) =>
-            new PresentationVfxRequest(Command, RequestId, ResourceId, Target, AnchorKey,
+            new PresentationVfxRequest(Command, RequestId, ResourceIndex, Target, AnchorKey,
                 HasPoseOverride, CoordinatesOption, positionX, positionY, positionZ,
                 eulerX, eulerY, eulerZ, scaleX, scaleY, scaleZ,
                 UseRotationY, UseRotationXZ, NeedRaycastGround, UseAttachPointRotation);
 
         public PresentationVfxCommand Command { get; }
         public string RequestId { get; }
-        public string ResourceId { get; }
+        public int ResourceIndex { get; }
         public PresentationVfxTarget Target { get; }
         public string AnchorKey { get; }
         public bool HasPoseOverride { get; }
