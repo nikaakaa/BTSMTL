@@ -63,8 +63,8 @@ namespace ThirdPersonSimulation
             }
             m_ReadBuffer = new byte[pageCapacity];
             m_EncodedPage = new byte[checked(pageCapacity + 8 * ((pageCapacity + BlockSize - 1) / BlockSize) + 12)];
-            m_WriteState = MemoryPackWriterOptionalStatePool.Rent();
-            m_ReadState = MemoryPackReaderOptionalStatePool.Rent();
+            m_WriteState = MemoryPackWriterOptionalStatePool.Rent(null);
+            m_ReadState = MemoryPackReaderOptionalStatePool.Rent(null);
             m_Writer = new FileStream(m_Path, FileMode.CreateNew, FileAccess.Write,
                 FileShare.ReadWrite, 1, FileOptions.SequentialScan);
             m_Reader = new FileStream(m_Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
@@ -312,8 +312,8 @@ namespace ThirdPersonSimulation
             m_Writer.Dispose();
             m_IndexReader.Dispose();
             m_Index.Dispose();
-            m_WriteState.Dispose();
-            m_ReadState.Dispose();
+            ((IDisposable)m_WriteState).Dispose();
+            ((IDisposable)m_ReadState).Dispose();
             m_Failure?.Throw();
             if (!m_KeepFiles)
             {
@@ -347,7 +347,7 @@ namespace ThirdPersonSimulation
                 m_Offsets[i] = index.ReadInt64();
             m_Buffer = new byte[PageCapacity];
             m_Frames = File.OpenRead(Path.Combine(directory, "frames.memorypack"));
-            m_ReadState = MemoryPackReaderOptionalStatePool.Rent();
+            m_ReadState = MemoryPackReaderOptionalStatePool.Rent(null);
         }
 
         public int PageCapacity { get; }
@@ -373,7 +373,7 @@ namespace ThirdPersonSimulation
         public void Dispose()
         {
             m_Frames.Dispose();
-            m_ReadState.Dispose();
+            ((IDisposable)m_ReadState).Dispose();
         }
     }
 }
