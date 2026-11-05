@@ -149,6 +149,8 @@ namespace BTSMTL.Orchestration
         public int Cycle;
         public bool Marker;
         public ulong CallSequence;
+        public Guid CallExecutionBranchId;
+        public ulong CallRuntimeEpoch;
         public ulong ParentCallSequence;
         public int ParentProgramIndex;
         public Guid ParentExecutionBranchId;

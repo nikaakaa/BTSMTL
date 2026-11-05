@@ -87,6 +87,8 @@ namespace BTSMTL.Orchestration
             where THost : struct, IOrchestrationHost<TValue>
         {
             context.CallSequence = 0;
+            context.CallExecutionBranchId = Guid.Empty;
+            context.CallRuntimeEpoch = 0;
             context.ParentCallSequence = 0;
             context.ParentProgramIndex = -1;
             context.ParentExecutionBranchId = Guid.Empty;
@@ -98,7 +100,11 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationExecutionFrameState frame = ref cursor.ReadExecutionFrame(operationIndex)[0];
             ref readonly CallOrigin own = ref m_CallOrigins[checked(frameSlot * m_TraceInvocations.Length + invocationIndex)];
             if (own.Matches(in frame, context.GraphInvocationGeneration))
+            {
                 context.CallSequence = own.Sequence;
+                context.CallExecutionBranchId = own.ExecutionBranchId;
+                context.CallRuntimeEpoch = own.RuntimeEpoch;
+            }
             if (parentIndex >= 0)
             {
                 int parentOperation = m_TraceInvocations[parentIndex].OwnerOperationIndex;
