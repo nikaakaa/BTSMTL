@@ -95,9 +95,9 @@ namespace BTSMTL.Authoring.Graph
                 StringComparison.Ordinal);
     }
 
-    public sealed class GraphAuthoringResourceReference
+    public sealed class GraphAuthoringResourceBindingDescriptor
     {
-        public GraphAuthoringResourceReference(string domain, Type contextType, bool navigation,
+        public GraphAuthoringResourceBindingDescriptor(string domain, Type contextType, bool navigation,
             Func<object, object> readOwner, Action<object, object> writeOwner,
             Func<object, object, object> bindAsset)
         {
@@ -152,7 +152,7 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringFieldVisibilityCondition visibility = null,
             GraphAuthoringFieldTuningMetadata tuning = null,
             GraphAuthoringFieldCompilation compilation = default,
-            GraphAuthoringResourceReference resourceReference = null,
+            GraphAuthoringResourceBindingDescriptor resourceReference = null,
             GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field,
             IReadOnlyList<GraphAuthoringSubtypeDescriptor> subtypes = null,
             string formerName = null)
@@ -201,7 +201,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldVisibilityCondition Visibility { get; }
         public GraphAuthoringFieldTuningMetadata Tuning { get; }
         public GraphAuthoringFieldCompilation Compilation { get; }
-        public GraphAuthoringResourceReference ResourceReference { get; }
+        public GraphAuthoringResourceBindingDescriptor ResourceReference { get; }
         public GraphAuthoringFieldInteractionPolicy Interaction =>
             Tuning?.Interaction ?? GraphAuthoringFieldInteractionPolicy.Unclassified;
         public bool AuthoringVisible => (Access & GraphAuthoringFieldAccess.AuthoringRead) != 0;
