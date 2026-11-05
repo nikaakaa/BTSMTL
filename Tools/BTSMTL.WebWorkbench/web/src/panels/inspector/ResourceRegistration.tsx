@@ -19,6 +19,7 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
   onChoose(choice: ReferenceChoice): void; metadata: ResourceRegistrationMetadata; memberPath: string[];
 }) {
   const location = useContext(AuthoringResourceLocation);
+  const revision = useAuthoring(state => authoringDocument(state).revision);
   const [asset, setAsset] = useState<{ token: string; source: string } | null>(null);
   const [completed, setCompleted] = useState<ResourceRegistrationResult | null>(null);
   return <>
@@ -28,7 +29,7 @@ export function ResourceRegistrationField({ id, label, value, configuration, cat
     {asset !== null && location !== null && <ResourceRegistrationForm key={JSON.stringify([asset, location, memberPath])}
       asset={asset} metadata={metadata} file={location.file} memberPath={[...location.memberPath, ...memberPath]}
       onComplete={result => { setCompleted(result); setAsset(null); }} />}
-    {completed !== null && <div role="status" className={styles.note}>
+    {completed !== null && completed.revision === revision && <div role="status" className={styles.note}>
       {completed.reused ? '已复用' : '已登记'}资源键 {completed.reference.key}
       {completed.instanceCapacity === null ? '' : `，实际实例容量 ${completed.instanceCapacity}`}；作者数据已保存，运行内容待发布和采用。
     </div>}
