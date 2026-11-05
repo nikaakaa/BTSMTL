@@ -306,13 +306,11 @@ namespace BTSMTL.Timeline
             {
                 TimelineAuthoringGraphBindings.Prepare(this);
                 string domain = TimelineAuthoringClipBinding.ResourceDomain(clip);
-                GraphAuthoringResourceObjectResult resources =
-                    ((ITimelineAuthoringResourceDocument)AuthoringDocument).ResourceObjects(this, domain, referenceObject);
-                if (!resources.Available)
-                    throw new InvalidOperationException(resources.Reason);
-                if (resources.Items.Length != 1)
-                    throw new InvalidOperationException($"素材在领域 '{domain}' 中对应 {resources.Items.Length} 个对象，请明确选择一个。");
-                clip.ConfigureAuthoringReference(resources.Items[0].Value);
+                IReadOnlyList<GraphAuthoringResourceChoice> references =
+                    ((ITimelineAuthoringResourceDocument)AuthoringDocument).ResourceReferences(this, domain, referenceObject);
+                if (references.Count != 1)
+                    throw new InvalidOperationException($"所选对象在领域 '{domain}' 中对应 {references.Count} 个作者引用，请明确选择一个。");
+                clip.ConfigureAuthoringReference(references[0].Value);
                 TimelineAuthoringClipBinding.PrepareResource(clip);
             }
             else
