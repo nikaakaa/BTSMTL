@@ -1,8 +1,8 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
-import { readExecutionScopeSelection, readResourceDeclaration, readResourceReference, readResourceReferenceMetadata,
-  type ExecutionScopeSelection, type ResourceDeclaration, type ResourceReference, type ResourceReferenceMetadata } from './resourceRegistration';
+import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
+  type ExecutionScopeSelection, type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -149,15 +149,6 @@ export interface ProfileEntryTarget {
   resourceIdentity: string | null;
 }
 
-const readBusinessKeyTarget = object({ kind: choice('BusinessKey'), package: text, keyKind: text, key: text });
-export type BusinessKeyTarget = ReturnType<typeof readBusinessKeyTarget>;
-const readBusinessKeys = array(object({ target: readBusinessKeyTarget, declared: boolean, referenceKind: text,
-  domain: nullable(text), registrationInput: nullable(choice('asset', 'instance-resource', 'camera-effect')),
-  bindings: array(object({ adapter: text, context: text, token: nullable(text), state: choice('bound', 'unbound'),
-    projectionKind: nullable(text), projectionState: choice('available', 'missing', 'not-required'), instanceCapacity: nullable(number) })),
-}));
-export type BusinessKeyMetadata = ReturnType<typeof readBusinessKeys>[number];
-
 const readRequiredTrue = (value: unknown, path = 'Authoring'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
@@ -193,6 +184,7 @@ export interface AuthoringSubtype {
 
 export type FieldMetadata = FieldChoices & {
   resourceReference: ResourceReferenceMetadata | null;
+  objectSelection: ResourceObjectCapability | null;
   fieldId: string;
   displayName: string | null;
   type: string;
@@ -234,6 +226,7 @@ export type FieldItem = StoredField | ComputedField;
 
 // 未保存节点的类型描述（原 DescribeType）：默认配置，本次配置下的字段与实际端口。
 export interface TypeDescription {
+  inputKind: string | null;
   availability: QueryAvailability;
   sourceRevision: string;
   authoringRevision: string | null;
@@ -271,8 +264,7 @@ export type ProjectItem = ProjectItemBase & (
 
 export interface AuthoringProject extends Page<ProjectItem> {
   catalogRevision: string;
-  keyDeclarations: ResourceDeclaration[];
-  businessKeys: BusinessKeyMetadata[];
+  resourceCatalogRevision: string;
 }
 
 interface ReferenceLocation {
@@ -322,7 +314,7 @@ export type ReferrersResult = {
 export interface CarrierResource { key: string; name: string; identity: string }
 
 export interface AuthoringCarrier {
-  scope: ResourceReference;
+  scope: string;
   nativeKind: string;
   nativeDefinitionId: string;
   definitionToken: string;
@@ -345,7 +337,6 @@ export interface AuthoringCarriers {
   availability: QueryAvailability;
   authoringRevision: string;
   items: AuthoringCarrier[];
-  businessKeys: BusinessKeyMetadata[];
 }
 
 const readAuthoringProducts = object({ items: array(object({ value: text, name: text, source: text, revision: text })) });
@@ -778,10 +769,9 @@ export const authoringApi = {
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<AuthoringCarriers>('/api/authoring/carriers', signal)
     .then(result => ({ ...result, availability: readQueryAvailability(result.availability, 'Carriers.availability'),
-      items: result.items.map(item => ({ ...item, ...object({ scope: readResourceReference, nativeKind: text, nativeDefinitionId: text,
+      items: result.items.map(item => ({ ...item, ...object({ scope: text, nativeKind: text, nativeDefinitionId: text,
         definitionToken: text, profileUnavailableReason: nullable(text), animationLibrary: nullable(object({ identity: text,
-          source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })),
-      businessKeys: readBusinessKeys(result.businessKeys, 'Carriers.businessKeys') })),
+          source: text, clips: array(object({ key: text, name: text, identity: text })) })) })(item, 'Carriers.items') })) })),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
@@ -814,14 +804,17 @@ export const authoringApi = {
   describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
+  describeAuthoringConfiguration: async (input: { type: string; configuration: JsonObject | null; domain: string | null;
+    owner: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null }, signal?: AbortSignal) =>
+    readTypeDescription(await postText('/api/authoring/types/describe', stringifySkillJson({ type: input.type, configuration: input.configuration,
+      domain: input.domain, ...(input.owner?.kind === 'profile' ? { profile: input.owner.query } : input.owner?.kind === 'scope' ? { scope: input.owner.query } : {}),
+      offset: 0, limit: 128 }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal).then(page => page.items),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal).then(page => page.items),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectItem, AuthoringProject>(`${targetPath(target)}/queries/project`, { editingView }, signal)
-      .then(result => ({ ...result, keyDeclarations: array(readResourceDeclaration)(result.keyDeclarations, 'Project.keyDeclarations'),
-        businessKeys: readBusinessKeys(result.businessKeys, 'Project.businessKeys') })),
+    allPages<ProjectItem, AuthoringProject>(`${targetPath(target)}/queries/project`, { editingView }, signal),
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
@@ -858,6 +851,7 @@ function readTypeDescription(text: string): TypeDescription {
     typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
   for (const field of fields) {
     field.resourceReference = nullable(readResourceReferenceMetadata)(field.resourceReference, `${field.fieldId}.resourceReference`);
+    field.objectSelection = nullable(readObjectSelectionMetadata)(field.objectSelection, `${field.fieldId}.objectSelection`);
     if (field.choices === null) continue;
     field.choices = field.choices.map(choice => ({ ...choice, value: valueOf(choice.value, field.clrType),
       associated: choice.associated.map(associated => ({ ...associated,

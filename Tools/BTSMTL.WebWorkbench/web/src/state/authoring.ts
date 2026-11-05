@@ -11,7 +11,7 @@ import { ApiError, isAbort } from '../api/http';
 import { playerApi } from '../api/player';
 import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
   type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
-  type ResourceReference, type ResourceRegistrationInput, type ScopeQuery } from '../api/resourceRegistration';
+  type ResourceReference, type ResourceMappingInput, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -86,7 +86,7 @@ export function profileConfigurationStatus(document: ProfileDocument) {
   if (target.kind === 'profile') return { label: '全局配置', available: true, dirty: profileConfigurationDirty(document) };
   const identity = resourceReferenceKey(target.reference);
   const source = document.source.resources.find(item => resourceReferenceKey(item.reference) === identity);
-  return { label: `${target.reference.keyKind} · ${target.reference.key}`, available: source?.configurationJson != null,
+  return { label: `${target.reference.domain} · ${target.reference.value}`, available: source?.configurationJson != null,
     dirty: document.resourceConfigurations[identity] !== undefined && profileResourceDirty(document, identity) };
 }
 const profileDraft = (document: ProfileDraft): ProfileDraft => cloneJson({ configuration: document.configuration,
@@ -886,10 +886,10 @@ export const authoringActions = {
       .find(item => resourceReferenceKey(item.reference) === resourceReferenceKey(reference))!;
     authoringActions.editProfileResource(query, reference, profileConfiguration(resource.configurationJson!));
   },
-  registerProfileResource: (query: ProfileQuery, keyKind: string, input: ResourceRegistrationInput) =>
-    applyProfile(query, source => resourceRegistrationApi.registerProfile(source, keyKind, input), null),
-  setProfileCapacity: (query: ProfileQuery, keyKind: string, key: string, capacity: number) =>
-    applyProfile(query, source => resourceRegistrationApi.profileCapacity(source, keyKind, key, capacity), null),
+  mapProfileResource: (query: ProfileQuery, domain: string, input: ResourceMappingInput) =>
+    applyProfile(query, source => resourceRegistrationApi.mapProfile(source, domain, input), null),
+  setProfileCapacity: (query: ProfileQuery, domain: string, value: string, capacity: number) =>
+    applyProfile(query, source => resourceRegistrationApi.profileCapacity(source, domain, value, capacity), null),
   saveProfileConfiguration: (query: ProfileQuery) => applyProfile(query, source => resourceRegistrationApi.configureProfile(source,
     stringifySkillJson(profileDocument(useAuthoring.getState(), query)!.configuration, '\n')), { kind: 'profile' }),
   saveProfileResource: (query: ProfileQuery, reference: ResourceReference) => applyProfile(query,
@@ -933,7 +933,7 @@ export const authoringActions = {
     };
   },
 
-  selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: ResourceReference | null) {
+  selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: string | null) {
     set({ resourceTarget: null });
     setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
   },
@@ -1542,6 +1542,7 @@ function updateScope(query: ScopeQuery, document: ScopeDocument) {
 
 function invalidateResourceConsumers() {
   set({ carrierRevision: null });
+  void adapterCatalogCache.refresh(authoringApi.catalog);
   const state = get();
   if (state.target?.kind === 'skill') setDocument({ sourceRevision: null, version: state.version + 1 });
 }
@@ -1559,8 +1560,8 @@ async function applyProfile(query: ProfileQuery, operation: (source: AuthoringPr
       undo: result.transaction.changes.length ? [...document.undo, { ...profileDraft(document), transaction: result.transaction }].slice(-historyLimit) : document.undo,
       redo: [], writing: false, failure: null,
       message: savedConfiguration?.kind === 'resource'
-        ? `Profile 条目 ${savedConfiguration.reference.key} 配置已保存；运行内容待生成和采用。`
-        : `Profile 作者数据已保存${result.reference === null ? '' : `，资源键 ${result.reference.key}${result.reused ? '已复用' : '已登记'}`}${
+        ? `Profile 条目 ${savedConfiguration.reference.value} 配置已保存；运行内容待生成和采用。`
+        : `Profile 作者数据已保存${result.value === null ? '' : `，映射 ${result.value}${result.reused ? '已复用' : '已创建'}`}${
         result.instanceCapacity === null ? '' : `，实际容量 ${result.instanceCapacity}`}；运行内容待生成和采用。`,
     });
     invalidateResourceConsumers();

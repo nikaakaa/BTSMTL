@@ -1,25 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { BusinessKeyMetadata } from '../../api/authoring';
 import { isAbort } from '../../api/http';
-import { scopeQueryKey, type ResourceReference, type ScopeQuery } from '../../api/resourceRegistration';
+import { scopeQueryKey, type ScopeQuery } from '../../api/resourceRegistration';
 import { authoringActions, scopeDocument, useAuthoring } from '../../state/authoring';
 import { consoleActions } from '../../state/store';
 import { Fold, PanelBar } from '../../ui/blocks';
-import { Button, Select } from '../../ui/controls';
+import { Button } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
-
-export function ScopeResourceSources({ scope, businessKeys }: { scope: ResourceReference; businessKeys: BusinessKeyMetadata[] }) {
-  const [adapter, setAdapter] = useState<string | null>(null);
-  const adapters = [...new Set(businessKeys.filter(item => item.target.package === scope.package)
-    .flatMap(item => item.bindings.map(binding => binding.adapter)))];
-  return <Fold title="独立 Scope 资源" defaultOpen><PanelBar wrap>
-    <Select label="Scope 绑定适配者" value={adapter} placeholder="选择正式适配者"
-      options={adapters.map(value => ({ value, label: value }))} onChange={setAdapter} />
-    <Button disabled={adapter === null} onClick={() => authoringActions.activateScope({ scope, adapter: adapter! })}>查看 Scope 声明</Button>
-    {adapters.length === 0 && <span className={styles.note}>该作者包尚未提供正式绑定适配者。</span>}
-  </PanelBar></Fold>;
-}
 
 export function ScopeEditor({ query }: { query: ScopeQuery }) {
   const document = useAuthoring(state => scopeDocument(state, query));
@@ -35,8 +22,8 @@ export function ScopeEditor({ query }: { query: ScopeQuery }) {
   if (document === undefined) return failure === null ? <div className={styles.note}>正在读取实际 Scope 的资源声明与来源修订。</div> : <ErrorLine {...failure} />;
   const source = document.source;
   return <div onFocusCapture={() => authoringActions.activateScope(query)} onPointerDownCapture={() => authoringActions.activateScope(query)}>
-    <div className={styles.facts}><strong>执行 Scope · {source.scope.key}</strong>
-      <small>{source.scope.package} · {source.adapter} · 上下文 {source.scope.context || '公共'}</small></div>
+    <div className={styles.facts}><strong>执行 Scope · {source.scope}</strong>
+      <small>{source.adapter} · 上下文 {source.context || '公共'}</small></div>
     {failure && <ErrorLine {...failure} />}
     <PanelBar wrap>
       <Button onClick={async () => {

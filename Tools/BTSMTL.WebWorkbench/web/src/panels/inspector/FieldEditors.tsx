@@ -18,6 +18,8 @@ import { CurveEditor, isCurve } from './CurveEditor';
 import { ReferencePicker } from './ReferencePicker';
 import { openPanel } from '../../shell/layout';
 import type { ReferenceCatalog } from '../../state/referenceSelection';
+import { resourceObjectValue } from '../../api/resourceRegistration';
+import { ResourceFieldPicker } from './ResourceFieldPicker';
 import styles from './inspector.module.css';
 
 // 检查器字段编辑（9.3）：节点字段按宿主类型描述（C# 作者字段合同）给出的值种类编辑，
@@ -435,8 +437,8 @@ export function SkillFields({ editable }: { editable: boolean }) {
   if (target?.kind !== 'skill' || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
     <Fold title="执行 Scope" defaultOpen><Facts fields={[
-      { displayName: '预览 Scope', value: execution.previewScope === null ? '未显式选择' : `${execution.previewScope.package} / ${execution.previewScope.keyKind} / ${execution.previewScope.key} · ${execution.previewScope.context || '公共'}` },
-      { displayName: '实际运行 Scope', value: execution.runtimeScope === null ? '未显式选择' : `${execution.runtimeScope.package} / ${execution.runtimeScope.keyKind} / ${execution.runtimeScope.key} · ${execution.runtimeScope.context || '公共'}` },
+      { displayName: '预览 Scope', value: execution.previewScope ?? '未显式选择' },
+      { displayName: '实际运行 Scope', value: execution.runtimeScope ?? '未显式选择' },
     ]} /><Button onClick={() => openPanel('resources')}>从正式资源目录选择 Scope</Button>
       <div className={styles.note}>保存与导出按所选 Scope 和实际授予关系准备内容；无法唯一确定时会说明缺项。</div>
     </Fold>
@@ -733,13 +735,24 @@ const rootFields = (fields: FieldMetadata[]) => fields.filter(field =>
 function FieldReferencePicker({ id, label, field, value, configuration, onChoose }: {
   id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
 }) {
+  if (field.resourceReference !== null) return <ResourceFieldPicker id={id} label={label} metadata={field.resourceReference}
+    value={value} configuration={configuration} onChoose={onChoose} />;
+  if (field.objectSelection !== null) {
+    const metadata = field.objectSelection;
+    return <ReferencePicker id={id} label={label} value={value} configuration={configuration}
+      catalog={{ kind: 'unavailable', reason: metadata.kind === 'available' ? '选择文件后读取实际对象候选。' : metadata.reason }}
+      onChoose={onChoose} resourceObjects={metadata.kind === 'unavailable' ? metadata : { ...metadata, choose: candidate => {
+        onChoose({ value: resourceObjectValue(candidate, metadata.valueMember), name: candidate.name, detail: candidate.type,
+          source: candidate.value, conflict: null, targets: [], associated: [] });
+      } }} />;
+  }
   const catalog: ReferenceCatalog = field.choiceKind === null
       ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
       : field.choicesAvailability.available
         ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
           invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
         : { kind: 'unavailable', reason: field.choicesAvailability.reason };
-  return <ReferencePicker id={id} label={label} domain={field.resourceReference?.domain ?? null} selection={field.resourceReference?.selection ?? null} value={value}
+  return <ReferencePicker id={id} label={label} value={value}
     configuration={configuration} catalog={catalog} onChoose={onChoose} />;
 }
 
@@ -838,7 +851,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
     return <Row label={label}>{value == null || value === ''
       ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
       : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
-  if (field.resourceReference !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
+  if (field.resourceReference !== null || field.objectSelection !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
     return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
       onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
   switch (field.valueKind) {

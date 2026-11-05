@@ -105,7 +105,7 @@ export function ResourceReferenceReplacement({ source, candidates, currentContex
   </div>;
 }
 
-function ReferenceReplacementImpact({ plan, onOpenSkill }: { plan: ReferenceReplacementResult; onOpenSkill(skill: string): void }) {
+export function ReferenceReplacementImpact({ plan, onOpenSkill }: { plan: ReferenceReplacementResult; onOpenSkill(skill: string): void }) {
   return <div className={styles.facts}>
     <strong>{plan.oldValue} → {plan.newValue}</strong>
     <span>{plan.saved ? '作者引用已替换。' : '引用替换计划已准备，尚未写入作者文件。'}</span>

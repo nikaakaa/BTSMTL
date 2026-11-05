@@ -94,7 +94,7 @@ function ScopeAuthoringStatus() {
   const document = useAuthoring(state => scopeDocument(state));
   if (document === undefined) return <div className={styles.authoring}>实际 Scope 来源尚未就绪。</div>;
   return <div className={styles.authoring}>
-    <span>Scope · {document.source.scope.key} · 声明只读</span>
+    <span>Scope · {document.source.scope} · 声明只读</span>
   </div>;
 }
 

@@ -1,25 +1,26 @@
 import { create } from 'zustand';
 import type { ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
-import type { ResourceObjectCapability } from '../api/resourceRegistration';
+import type { ResourceObjectCapability, ResourceObjectCandidate } from '../api/resourceRegistration';
 
 export type ReferenceCatalog =
   | { kind: 'ready'; referenceKind: string; items: readonly ReferenceChoice[]; invalidReason: string }
   | { kind: 'unavailable'; reason: string };
 
-export type ResourceAssetSelection = { token: string; source: string; adapter: string };
-export type ResourceRegistrationSelection = { keyKind: string; adapter?: string; objects: ResourceObjectCapability; choose(asset: ResourceAssetSelection): void };
+export type ResourceObjectFieldSelection = Extract<ResourceObjectCapability, { kind: 'unavailable' }>
+  | (Extract<ResourceObjectCapability, { kind: 'available' }> & { choose(asset: ResourceObjectCandidate): void });
 
 export interface ReferenceFieldSelection {
   id: string;
   name: string;
   domain: string | null;
   selection: 'asset' | 'mapped' | null;
+  resourceContext: { adapter: string; context: string } | null;
   catalog: ReferenceCatalog;
   value: JsonValue | undefined;
   configuration: JsonObject;
   choose(choice: ReferenceChoice): void;
-  resourceRegistration?: ResourceRegistrationSelection;
+  resourceObjects?: ResourceObjectFieldSelection;
 }
 
 export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));
@@ -87,6 +88,7 @@ export function readReferenceDrop(transfer: DataTransfer, catalog: ReferenceCata
     return { kind: 'rejected', reason: '引用类型与当前字段不匹配，原值已保留' };
   const choices = catalog.items.filter(item => referenceChoiceKey(item) === drag.choiceKey);
   if (choices.length > 1) return { kind: 'rejected', reason: '引用仍有多个不同绑定，请从字段候选列表选择；原值已保留' };
+  if (choices.length === 1 && choices[0].conflict !== null) return { kind: 'rejected', reason: choices[0].conflict };
   return choices.length === 1 ? { kind: 'selected', choice: choices[0] }
     : { kind: 'rejected', reason: catalog.invalidReason };
 }

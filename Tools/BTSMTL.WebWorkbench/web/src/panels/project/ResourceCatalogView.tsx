@@ -47,7 +47,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
     !catalogItems.some(item => item.domain === activeField.domain && item.value === currentValue && inCurrentScope(item))
     ? { kind: 'missing' as const, domain: activeField.domain, value: currentValue, fieldName: activeField.name } : null;
   const query = search.toLocaleLowerCase();
-  const shown = catalogItems.filter(item => (domain === null || item.domain === domain) && (all || currentScope !== null && inCurrentScope(item)) &&
+  const shown = catalogItems.filter(item => (domain === null || item.domain === domain) && (all || inCurrentScope(item)) &&
     (!issuesOnly || conflicts.has(resolutionKey(item))) &&
     `${item.display} ${item.value} ${item.adapter} ${item.context}`.toLocaleLowerCase().includes(query));
   const shownMissing = missing !== null && (domain === null || domain === missing.domain) &&
@@ -78,7 +78,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
       {activeField !== null && <div className={styles.note}>当前字段：{activeField.name} · {activeField.domain}
         {activeField.selection === 'mapped' ? ' · 选择当前载体的已有映射' : activeField.selection === 'asset' ? ' · 选择实际文件或子对象' : ''}</div>}
       {missing !== null && <div className={styles.issue}>当前字段引用不在所选载体的正式目录中，原值仍保留：{missing.value}</div>}
-      {!all && currentScope === null ? <Empty text="当前文档尚未选择载体上下文；选择载体或切换到全部资源。" />
+      {!all && currentScope === null && activeField?.selection === 'mapped' ? <Empty text="当前字段尚未选择载体上下文；选择载体或切换到全部资源。" />
         : rows.length === 0 ? <Empty text={issuesOnly && missing === null ? '当前筛选范围没有目录冲突' : '当前筛选范围没有资源'} />
           : <VirtualList className={styles.contentList} count={rows.length} rowHeight={40} label="适配者领域资源目录"
             revealKey={JSON.stringify([field?.id, currentValue, domain])} revealIndex={current < 0 ? undefined : current} render={index => {
