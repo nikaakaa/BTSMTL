@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
@@ -104,6 +105,16 @@ namespace BTSMTL.Timeline.Editor
                 if (GUILayout.Button("创建独立资源并重绑"))
                     m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, replacement =>
                     {
+                        if (selected is ITimelineAuthoringResourceClip)
+                        {
+                            PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineResourceReplacementPopup(selected, replacement, selection =>
+                            {
+                                if (!IsSourceCurrent()) throw new InvalidOperationException("Timeline 已被外部修改，请重新选择资源。");
+                                selection.Commit(selected);
+                                Rebuild();
+                            }));
+                            return string.Empty;
+                        }
                         if (!ApplyImmediate(() =>
                         {
                             TimelineAuthoringClipConfiguration configuration = TimelineAuthoringClipBinding.Read(selected);
@@ -1074,6 +1085,12 @@ namespace BTSMTL.Timeline.Editor
                 menu.AddItem(new GUIContent(creation.CreateSourceLabel), false, () =>
                     m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, creation.SourceAssetType, null, resource =>
                     {
+                        Clip prototype = (Clip)Activator.CreateInstance(track.Source.ClipType);
+                        if (prototype is ITimelineAuthoringResourceClip)
+                        {
+                            ShowClipCreationPopup(trackAuthoringId, prototype.ContractKind, time, resource);
+                            return string.Empty;
+                        }
                         if (!ApplyImmediate(() => Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), resource,
                             m_Session.SnapTime(OrchestrationTime.FromSeconds(time), null)), "创建源片段"))
                             return "源片段提交失败。";
@@ -1090,7 +1107,7 @@ namespace BTSMTL.Timeline.Editor
             menu.ShowAsContext();
         }
 
-        void ShowClipCreationPopup(string trackAuthoringId, string kind, double time)
+        void ShowClipCreationPopup(string trackAuthoringId, string kind, double time, UnityEngine.Object initialSource = null)
         {
             if (!m_Tracks.TryGetValue(trackAuthoringId ?? string.Empty, out BtsmtlTimelineTrackBinding track))
             {
@@ -1115,6 +1132,7 @@ namespace BTSMTL.Timeline.Editor
                 EndTime = defaultEndTime,
                 DefaultEndTime = defaultEndTime,
                 TimelineEndTime = Timeline.DurationTime,
+                Resource = initialSource,
                 Prototype = (Clip)Activator.CreateInstance(track.Source.ClipType),
             };
             request.Prototype.Track = track.Source;
@@ -1177,12 +1195,22 @@ namespace BTSMTL.Timeline.Editor
                         if (treeGraph == null)
                             treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.SerializedOwner, request.NewTreeGraphName, false);
                     }
-                    added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(),
-                        isTreeClip ? treeGraph : request.Resource, request.StartTime,
-                        terminalLogicTreeClip ? terminalTime : presentationLayoutEnd);
+                    if (request.Prototype is ITimelineAuthoringResourceClip)
+                    {
+                        added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), request.ResourceReference,
+                            request.StartTime, presentationLayoutEnd);
+                        ((ITimelineAuthoringResourceClip)added).BindSourceAsset(request.Resource);
+                    }
+                    else
+                        added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(),
+                            isTreeClip ? treeGraph : request.Resource, request.StartTime,
+                            terminalLogicTreeClip ? terminalTime : presentationLayoutEnd);
                     if (added is TreeClip treeClip && track.Source.ExecutionDomain == TimelineExecutionDomain.Presentation)
                         treeClip.SetExitSource(request.TreeExitSource);
                     TimelineAuthoringClipBinding.Configure(Timeline, added, request.Configuration);
+                    if (request.ResourceRegistration != null)
+                        ((ITimelineAuthoringResourceDocument)Timeline.AuthoringDocument).RegisterResource(added, request.ResourceRegistration,
+                            reference => TimelineResourceSelection.ApplyReference(added, reference, request.Resource));
                     added.Track.UpdateMix();
                 }, "Add Timeline Clip"))
                     return "正式 Timeline Clip 提交失败。";

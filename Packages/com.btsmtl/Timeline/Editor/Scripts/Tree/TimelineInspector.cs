@@ -1,4 +1,5 @@
 using System;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using BTSMTL.Timeline;
@@ -19,6 +20,7 @@ namespace BTSMTL.Timeline.Editor
         TimelineAuthoringClipConfiguration m_ClipConfiguration;
         PropertyBinding[] m_ClipProperties = Array.Empty<PropertyBinding>();
         ulong m_ClipRevision;
+        TimelineResourceSelection m_Resources;
 
         sealed class PropertyBinding
         {
@@ -64,6 +66,7 @@ namespace BTSMTL.Timeline.Editor
             m_Root.Clear();
             m_ClipConfiguration = null;
             m_ClipProperties = Array.Empty<PropertyBinding>();
+            m_Resources = null;
             TimelineAsset asset = (TimelineAsset)target;
             m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
             m_Root.Add(new Button(() => TimelineEditorWindow.Open(asset))
@@ -115,6 +118,13 @@ namespace BTSMTL.Timeline.Editor
         void DrawClipInspector(TimelineAsset asset, Clip clip)
         {
             BtsmtlSlateTimelineProjection.DrawSourceResourceInspector(asset.Data, clip);
+            if (m_Resources != null)
+            {
+                m_Resources.Draw();
+                using (new EditorGUI.DisabledScope(!m_Resources.Ready))
+                    if (GUILayout.Button(m_Resources.Registration == null ? "应用资源引用" : "登记并应用资源"))
+                        m_Resources.Queue(() => ApplyResource(asset, clip));
+            }
             if (!string.IsNullOrEmpty(m_ConfigurationError))
                 EditorGUILayout.HelpBox(m_ConfigurationError, MessageType.Error);
             EditorGUILayout.LabelField("Name", clip.Name);
@@ -195,6 +205,7 @@ namespace BTSMTL.Timeline.Editor
             var bindings = new List<PropertyBinding>();
             foreach (TimelineAuthoringProperty attribute in TimelineAuthoringClipBinding.Properties(clip))
             {
+                if (clip is ITimelineAuthoringResourceClip && attribute.IsSourceAsset) continue;
                 if (!attribute.Supports(clip))
                     continue;
                 bindings.Add(new PropertyBinding
@@ -205,6 +216,16 @@ namespace BTSMTL.Timeline.Editor
                 });
             }
             m_ClipProperties = bindings.ToArray();
+            if (clip is ITimelineAuthoringResourceClip)
+                m_Resources = new TimelineResourceSelection(clip, _ => Repaint(), Repaint);
+            SynchronizeClipProperties(clip);
+        }
+
+        void ApplyResource(TimelineAsset asset, Clip clip)
+        {
+            if (!TryBeginMutation(asset)) return;
+            m_Resources.Commit(clip);
+            m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
             SynchronizeClipProperties(clip);
         }
 
