@@ -521,6 +521,7 @@ let documentTimer: ReturnType<typeof setTimeout> | null = null;
 let documentController: AbortController | null = null;
 function scheduleDocumentReload(target: AuthoringTarget | null) {
   if (target?.kind !== 'skill') return;
+  setDocument({ sourceRevision: null }, target);
   if (documentTimer !== null) clearTimeout(documentTimer);
   documentController?.abort();
   const controller = documentController = new AbortController();
@@ -535,7 +536,8 @@ useAuthoring.subscribe((state, previous) => {
     return;
   }
   const target = state.target;
-  if (target?.kind !== 'skill' || authoringDocument(state).version === authoringDocument(previous).version) return;
+  if (target?.kind !== 'skill' || !Object.entries(previous.documents).some(([key, document]) =>
+    key.startsWith('skill/') && document.version !== state.documents[key]?.version)) return;
   scheduleDocumentReload(target);
 });
 
