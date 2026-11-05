@@ -25,11 +25,21 @@ import { SkillItemDetails, kindNames } from './SkillItemDetails';
 import { TargetReferrers } from './TargetReferrers';
 import { BusinessKeyDetails, BusinessKeyList } from './BusinessKeys';
 import { ResourceObjectPicker } from './ResourceObjectPicker';
+import { ContentProject } from './ContentProject';
 import projectStyles from './project.module.css';
 
 // Project 窗口：直接按磁盘文件夹浏览 Unity 工程与技能、场景方案目录；选中文件按其实际内容显示详情。
 
 export function ProjectPanel() {
+  const [view, setView] = useState<'content' | 'resources'>('content');
+  return <div className={projectStyles.root}>
+    <PanelBar><Button variant="ghost" pressed={view === 'content'} onClick={() => setView('content')}>内容</Button>
+      <Button variant="ghost" pressed={view === 'resources'} onClick={() => setView('resources')}>资源</Button></PanelBar>
+    <div className={projectStyles.body}>{view === 'content' ? <ContentProject /> : <ResourceProject />}</div>
+  </div>;
+}
+
+function ResourceProject() {
   const panel = usePanelApi();
   useEffect(() => panel.setTitle(panelInfo.resources.title), [panel]);
   const field = useReferenceSelection(state => state.field);

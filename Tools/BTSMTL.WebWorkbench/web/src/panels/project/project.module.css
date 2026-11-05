@@ -5,6 +5,76 @@
   min-height: 0;
 }
 
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(220px, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.contentTree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 2px solid var(--bg-0);
+}
+
+.contentList {
+  flex: 1;
+  min-height: 0;
+}
+
+.contentRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 38px;
+}
+
+.contentRow[aria-selected='true'] {
+  background: var(--select);
+}
+
+.contentName {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.contentName > span, .contentName > small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contentName > small {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.contentDetails {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--gap-2);
+}
+
+@container (max-width: 560px) {
+  .contentGrid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 3fr) minmax(100px, 2fr);
+  }
+
+  .contentTree {
+    border-right: none;
+    border-bottom: 2px solid var(--bg-0);
+  }
+}
+
 .body {
   flex: 1;
   min-height: 0;

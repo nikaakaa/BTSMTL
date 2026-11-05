@@ -11,6 +11,7 @@ import {
   applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { projectActions } from '../../state/project';
+import { projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
 import { consoleActions, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
@@ -79,7 +80,23 @@ function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
     case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
     case 'resource': return null;
+    case 'content': return <ContentInspector id={shown.id} missing={missing} />;
   }
+}
+
+function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
+  const documents = useAuthoring(state => state.documents);
+  const target = useAuthoring(state => state.target);
+  const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
+  if (item === undefined || target?.kind !== 'skill' || item.owner !== target.name) return missing;
+  if (item.kind === 'skill') return <SkillSummary />;
+  return <>
+    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : '输入方案'} />
+    <Value label="所属技能" value={item.ownerName} mono={false} />
+    <Value label="引用者" value={item.referenceCount} mono={false} />
+    <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>
+    <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
+  </>;
 }
 
 // ── 通用部件 ──

@@ -463,7 +463,7 @@ export function useInputContext(documentId: string | null) {
   return { kind: 'ready', scheme, scene, actor, tickRate: catalog.tickRate } as const;
 }
 
-function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
+export function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
   return {
     documentId, contentIdentity: null, contentRevision: null, displayName: document.m_Name as string,
     tracks: (document.m_Tracks as JsonObject[]).map(track => ({

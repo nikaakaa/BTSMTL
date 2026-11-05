@@ -5,6 +5,8 @@ import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
 import { selectionActions, type GraphNavigationOrigin, type SelectionSlice } from './store';
 import { openPanel } from '../shell/layout';
+import { clipSelectId, trackSelectId } from './timelineModel';
+import { projectContents, type ContentTarget } from './projectContents';
 
 const ownerOf = (item: Pick<ProjectItem, 'owner'>) => ({ kind: 'skill', name: item.owner } as const);
 
@@ -32,6 +34,29 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 
 export const projectActions = {
   openGraph,
+  async inspect(target: ContentTarget): Promise<void> {
+    const owner = target.kind === 'item' ? target.item : target;
+    const document = await openOwner(owner);
+    if (target.kind === 'item') selectionActions.select({ kind: 'content', id: JSON.stringify([target.item.owner, target.item.file]) });
+    else if (target.kind === 'node') {
+      const graph = document.documentGraphs?.find(graph => graph.id === target.graphId);
+      if (graph === undefined) throw new Error(document.documentError ?? '所选节点的正式作者图尚未读取完成。');
+      const node = graph.nodes.find(node => node.id === target.nodeId);
+      if (node === undefined) throw new Error('所选节点已不在当前作者图中。');
+      selectionActions.select({ kind: 'node', id: nodeSelectId(graph, node) });
+    } else selectionActions.select({ kind: target.kind, id: target.kind === 'clip'
+      ? clipSelectId(target.timelineId, target.id) : trackSelectId(target.timelineId, target.id) });
+    openPanel('inspector');
+  },
+  async openContent(target: ContentTarget): Promise<void> {
+    if (target.kind === 'item') return projectActions.open(target.item);
+    if (target.kind === 'node') return openGraph({ owner: target.owner, ownerName: target.ownerName, id: target.graphId }, target.nodeId);
+    const item = projectContents(useAuthoring.getState().documents).items.find(item => item.kind === 'timeline' &&
+      item.owner === target.owner && item.identity === target.timelineId)!;
+    await projectActions.open(item);
+    selectionActions.select({ kind: target.kind, id: target.kind === 'clip'
+      ? clipSelectId(target.timelineId, target.id) : trackSelectId(target.timelineId, target.id) });
+  },
   async openReference(target: NodeNavigationTarget, origin: GraphNavigationOrigin, panelId: string | null = null): Promise<void> {
     switch (target.kind) {
       case 'graph':
@@ -69,13 +94,12 @@ export const projectActions = {
     openPanel('timeline');
   },
 
-  async rename(item: ProjectItem, name: string, schemeIndex: number | null) {
+  async rename(item: Exclude<ProjectItem, { kind: 'graph' }>, name: string, schemeIndex: number | null) {
     await openOwner(item);
     authoringActions.edit(item.file, value => {
       const document = value as JsonObject;
       switch (item.kind) {
         case 'skill': document.m_DisplayName = name; break;
-        case 'graph': document.name = name; break;
         case 'timeline': document.m_Name = name; break;
         case 'input-plan': (document.Schemes as JsonObject[])[schemeIndex!].Name = name; break;
       }

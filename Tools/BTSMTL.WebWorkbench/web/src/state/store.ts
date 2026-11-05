@@ -159,7 +159,7 @@ export interface ResourceSlice {
 
 // ── selection ──
 // resource：动画资源，身份为 guid:localFileId。
-export type SelectionKind = 'node' | 'edge' | 'clip' | 'track' | 'actor' | 'resource';
+export type SelectionKind = 'node' | 'edge' | 'clip' | 'track' | 'actor' | 'resource' | 'content';
 export interface Selection {
   kind: SelectionKind;
   // 稳定身份，地址 select 参数原样使用。

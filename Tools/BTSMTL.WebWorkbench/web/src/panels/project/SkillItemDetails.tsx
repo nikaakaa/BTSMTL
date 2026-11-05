@@ -43,7 +43,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   return <div className={styles.details}>
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
-      <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>
+      {item.kind !== 'graph' && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
       {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
         tip={pendingDocument ? '等待此技能的读取或保存完成' : '删除整个技能目录；宿主会检查磁盘修订、外部引用、Definition 授予和共享内容'}
         onClick={() => void perform(async () => {
@@ -68,7 +68,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
       <code>{item.file}</code>
       <small>{item.identity}</small>
     </div>
-    {renaming && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
+    {renaming && item.kind !== 'graph' && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
       await projectActions.rename(item, name, scheme); setRenaming(false);
     })} />}
     {item.kind === 'input-plan' && <div className={styles.facts}>
@@ -117,7 +117,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   </div>;
 }
 
-function RenameItem({ item, busy, onRename }: { item: ProjectItem; busy: boolean; onRename(name: string, scheme: number | null): void }) {
+function RenameItem({ item, busy, onRename }: { item: Exclude<ProjectItem, { kind: 'graph' }>; busy: boolean; onRename(name: string, scheme: number | null): void }) {
   const [scheme, setScheme] = useState<number | null>(item.kind === 'input-plan' && item.schemes.length === 1 ? item.schemes[0].index : null);
   const [name, setName] = useState(item.kind === 'input-plan' ? item.schemes.find(value => value.index === scheme)?.name ?? '' : item.name);
   return <div className={styles.facts}>
