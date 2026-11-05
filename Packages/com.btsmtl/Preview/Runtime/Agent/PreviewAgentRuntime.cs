@@ -25,7 +25,7 @@ namespace BTSMTL.Preview
         void Fail(string stage, Exception failure, string commandId);
         Camera ActiveCamera();
         // 实时画面开始采集时冻结来源，读回完成后由 SendStreamFrame 连同画面一起发出。
-        void FreezeStreamSource();
+        void FreezeStreamSource(int captureSlot);
         void SendStreamFrame(in PreviewEncodedFrame frame);
         void OnShutdown(string reason);
     }
@@ -41,6 +41,8 @@ namespace BTSMTL.Preview
         readonly CancellationTokenSource m_Cancel = new CancellationTokenSource();
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
         PreviewFrameCapture m_StreamCapture;
+        Coroutine m_StreamLoop;
+        bool m_CaptureRequested;
         Task m_Close;
         float m_NextStatus;
         float m_NextVideo;
@@ -117,13 +119,13 @@ namespace BTSMTL.Preview
         public void LateUpdate()
         {
             PreviewPlaybackState state = m_Project.Playback.State;
-            if (IsStreaming && m_StreamCapture != null && !m_StreamCapture.IsBusy &&
+            if (IsStreaming && m_StreamLoop != null && m_StreamCapture.CanCapture &&
                 state is PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
                     PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking &&
                 Time.unscaledTime >= m_NextVideo)
             {
                 m_NextVideo = Time.unscaledTime + 1f / Mathf.Max(1f, m_MaxFps);
-                m_Owner.StartCoroutine(CaptureStreamFrame());
+                m_CaptureRequested = true;
             }
         }
 
@@ -208,38 +210,58 @@ namespace BTSMTL.Preview
         {
             m_StreamQuality = quality;
             if (m_Project.Playback.CanStream)
+            {
                 m_StreamCapture = new PreviewFrameCapture(Screen.width, Screen.height, width, height,
-                    PreviewImageEncoding.Jpeg, m_StreamQuality);
+                    PreviewImageEncoding.Jpeg, m_StreamQuality, StreamCapacity);
+                m_StreamLoop = m_Owner.StartCoroutine(CaptureStreamFrames());
+            }
         }
 
         public IEnumerator ReleaseStreamCapture()
         {
+            if (m_StreamLoop != null)
+                m_Owner.StopCoroutine(m_StreamLoop);
+            m_StreamLoop = null;
+            m_CaptureRequested = false;
             while (m_StreamCapture != null && m_StreamCapture.IsBusy)
+            {
+                SendCompletedStreamFrames();
                 yield return null;
+            }
             m_StreamCapture?.Dispose();
             m_StreamCapture = null;
         }
 
-        IEnumerator CaptureStreamFrame()
+        IEnumerator CaptureStreamFrames()
         {
-            yield return m_EndOfFrame;
-            Camera camera = m_Project.ActiveCamera();
-            if (!camera)
-                throw new InvalidOperationException("实时画面没有实际输出相机。");
-            m_Project.FreezeStreamSource();
-            m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera);
-            PreviewEncodedFrame encoded;
-            while (!m_StreamCapture.TryTakeCompleted(out encoded))
+            while (true)
             {
+                yield return m_EndOfFrame;
+                SendCompletedStreamFrames();
                 if (m_StreamCapture.Failure != null)
                 {
+                    m_StreamLoop = null;
                     m_Project.Fail("stream", m_StreamCapture.Failure, null);
                     yield break;
                 }
-                yield return null;
+                if (!m_CaptureRequested)
+                    continue;
+                m_CaptureRequested = false;
+                Camera camera = m_Project.ActiveCamera();
+                if (!camera)
+                    throw new InvalidOperationException("实时画面没有实际输出相机。");
+                if (m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera, out int captureSlot))
+                    m_Project.FreezeStreamSource(captureSlot);
             }
-            try { m_Project.SendStreamFrame(in encoded); }
-            finally { encoded.Dispose(); }
+        }
+
+        void SendCompletedStreamFrames()
+        {
+            while (m_StreamCapture.TryTakeCompleted(out PreviewEncodedFrame encoded))
+            {
+                try { m_Project.SendStreamFrame(in encoded); }
+                finally { encoded.Dispose(); }
+            }
         }
 
         IEnumerator CaptureStill(TCommand command)
@@ -247,7 +269,7 @@ namespace BTSMTL.Preview
             yield return m_EndOfFrame;
             using var capture = new PreviewFrameCapture(Screen.width, Screen.height, Screen.width, Screen.height,
                 PreviewImageEncoding.Png, 100);
-            capture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, m_Project.ActiveCamera());
+            capture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, m_Project.ActiveCamera(), out _);
             PreviewEncodedFrame png;
             while (!capture.TryTakeCompleted(out png))
             {

@@ -14,7 +14,8 @@ namespace BTSMTL.Preview
     public readonly struct PreviewEncodedFrame : IDisposable
     {
         public PreviewEncodedFrame(int frame, int width, int height, bool flipY,
-            Matrix4x4 viewProjection, PreviewImageEncoding encoding, NativeArray<byte> bytes)
+            Matrix4x4 viewProjection, PreviewImageEncoding encoding, NativeArray<byte> bytes,
+            int captureSlot, Action release)
         {
             Frame = frame;
             Width = width;
@@ -23,6 +24,8 @@ namespace BTSMTL.Preview
             ViewProjection = viewProjection;
             Encoding = encoding;
             Bytes = bytes;
+            CaptureSlot = captureSlot;
+            m_Release = release;
         }
 
         public int Frame { get; }
@@ -32,106 +35,142 @@ namespace BTSMTL.Preview
         public Matrix4x4 ViewProjection { get; }
         public PreviewImageEncoding Encoding { get; }
         public NativeArray<byte> Bytes { get; }
+        public int CaptureSlot { get; }
+        readonly Action m_Release;
 
-        public void Dispose() => Bytes.Dispose();
+        public void Dispose()
+        {
+            Bytes.Dispose();
+            m_Release();
+        }
     }
 
     public sealed class PreviewFrameCapture : IDisposable
     {
         readonly RenderTexture m_Screen;
         readonly RenderTexture m_Target;
-        NativeArray<byte> m_Pixels;
+        readonly CaptureSlot[] m_Slots;
         readonly int m_Width;
         readonly int m_Height;
         readonly PreviewImageEncoding m_Encoding;
         readonly bool m_FlipY;
-        readonly Action<AsyncGPUReadbackRequest> m_OnReadback;
-        AsyncGPUReadbackRequest? m_Request;
-        Matrix4x4 m_ViewProjection;
-        int m_Frame;
-        int m_Busy;
-        int m_Ready;
+        long m_CaptureOrder;
 
         public PreviewFrameCapture(int screenWidth, int screenHeight, int width, int height,
-            PreviewImageEncoding encoding, int quality)
+            PreviewImageEncoding encoding, int quality, int capacity = 1)
         {
             if (screenWidth <= 0 || screenHeight <= 0 || width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "预览画面与面板尺寸必须大于零。");
             m_Screen = new RenderTexture(screenWidth, screenHeight, 0, RenderTextureFormat.ARGB32);
             m_Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
-            m_Pixels = new NativeArray<byte>(checked(width * height * 4),
-                Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            m_Slots = new CaptureSlot[capacity];
+            for (int index = 0; index < capacity; index++)
+                m_Slots[index] = new CaptureSlot(this, index, checked(width * height * 4));
             Quality = quality;
             m_Width = width;
             m_Height = height;
             m_Encoding = encoding;
             m_FlipY = SystemInfo.graphicsUVStartsAtTop;
-            m_OnReadback = CompleteReadback;
         }
 
         public Exception Failure { get; private set; }
         public int Quality { get; set; }
-        public bool IsBusy => Volatile.Read(ref m_Busy) != 0;
-
-        public bool TryCaptureAtFrameEnd(int frame, Camera camera)
+        public bool IsBusy
         {
-            if (IsBusy)
+            get
+            {
+                for (int index = 0; index < m_Slots.Length; index++)
+                    if (Volatile.Read(ref m_Slots[index].State) != SlotState.Free)
+                        return true;
                 return false;
-            Volatile.Write(ref m_Busy, 1);
-            m_Frame = frame;
-            m_ViewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
-            ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
-            Graphics.Blit(m_Screen, m_Target);
-            m_Request = AsyncGPUReadback.RequestIntoNativeArray(
-                ref m_Pixels, m_Target, 0, TextureFormat.RGBA32, m_OnReadback);
-            return true;
+            }
+        }
+
+        public bool CanCapture
+        {
+            get
+            {
+                for (int index = 0; index < m_Slots.Length; index++)
+                    if (Volatile.Read(ref m_Slots[index].State) == SlotState.Free)
+                        return true;
+                return false;
+            }
+        }
+
+        public bool TryCaptureAtFrameEnd(int frame, Camera camera, out int captureSlot)
+        {
+            for (int index = 0; index < m_Slots.Length; index++)
+            {
+                CaptureSlot slot = m_Slots[index];
+                if (Volatile.Read(ref slot.State) != SlotState.Free)
+                    continue;
+                slot.Frame = frame;
+                slot.Order = ++m_CaptureOrder;
+                slot.Quality = Quality;
+                slot.ViewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
+                Volatile.Write(ref slot.State, SlotState.Readback);
+                ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
+                Graphics.Blit(m_Screen, m_Target);
+                slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
+                    ref slot.Pixels, m_Target, 0, TextureFormat.RGBA32, slot.OnReadback);
+                captureSlot = index;
+                return true;
+            }
+            captureSlot = -1;
+            return false;
         }
 
         public bool TryTakeCompleted(out PreviewEncodedFrame frame)
         {
-            if (Volatile.Read(ref m_Ready) == 0)
+            CaptureSlot selected = null;
+            for (int index = 0; index < m_Slots.Length; index++)
+            {
+                CaptureSlot slot = m_Slots[index];
+                int state = Volatile.Read(ref slot.State);
+                if ((state == SlotState.Readback || state == SlotState.Ready) &&
+                    (selected == null || slot.Order < selected.Order))
+                    selected = slot;
+            }
+            if (selected == null || Volatile.Read(ref selected.State) != SlotState.Ready)
             {
                 frame = default;
                 return false;
             }
-            Volatile.Write(ref m_Ready, 0);
             try
             {
                 NativeArray<byte> bytes;
                 bool flipY;
                 if (m_Encoding == PreviewImageEncoding.Jpeg)
                 {
-                    bytes = ImageConversion.EncodeNativeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Width, (uint)m_Height, 0, Quality);
+                    bytes = ImageConversion.EncodeNativeArrayToJPG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                        (uint)m_Width, (uint)m_Height, 0, selected.Quality);
                     flipY = m_FlipY;
                 }
                 else
                 {
                     if (m_FlipY)
-                        FlipPixelRows();
-                    bytes = ImageConversion.EncodeNativeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
+                        FlipPixelRows(selected.Pixels);
+                    bytes = ImageConversion.EncodeNativeArrayToPNG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height);
                     flipY = false;
                 }
-                frame = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,
-                    flipY, m_ViewProjection, m_Encoding, bytes);
+                Volatile.Write(ref selected.State, SlotState.Encoded);
+                frame = new PreviewEncodedFrame(selected.Frame, m_Width, m_Height,
+                    flipY, selected.ViewProjection, m_Encoding, bytes, selected.Index, selected.Release);
                 return true;
             }
             catch (Exception failure)
             {
                 Failure = failure;
+                selected.Release();
                 frame = default;
                 return false;
             }
-            finally
-            {
-                Volatile.Write(ref m_Busy, 0);
-            }
         }
 
-        void FlipPixelRows()
+        void FlipPixelRows(NativeArray<byte> pixels)
         {
-            var rgbaView = m_Pixels.Reinterpret<uint>(sizeof(byte));
+            var rgbaView = pixels.Reinterpret<uint>(sizeof(byte));
             for (int row = 0; row < m_Height / 2; row++)
             {
                 int topRowStart = row * m_Width;
@@ -145,26 +184,64 @@ namespace BTSMTL.Preview
             }
         }
 
-        void CompleteReadback(AsyncGPUReadbackRequest request)
-        {
-            if (request.hasError)
-            {
-                Failure = new InvalidOperationException("预览画面 GPU 读回失败，帧 " + m_Frame);
-                Volatile.Write(ref m_Busy, 0);
-                return;
-            }
-            Volatile.Write(ref m_Ready, 1);
-        }
-
         public void Dispose()
         {
-            if (m_Request.HasValue)
-                m_Request.Value.WaitForCompletion();
-            m_Pixels.Dispose();
+            for (int index = 0; index < m_Slots.Length; index++)
+            {
+                CaptureSlot slot = m_Slots[index];
+                if (slot.Request.HasValue)
+                    slot.Request.Value.WaitForCompletion();
+                slot.Pixels.Dispose();
+            }
             m_Screen.Release();
             m_Target.Release();
             UnityEngine.Object.Destroy(m_Screen);
             UnityEngine.Object.Destroy(m_Target);
+        }
+
+        static class SlotState
+        {
+            internal const int Free = 0;
+            internal const int Readback = 1;
+            internal const int Ready = 2;
+            internal const int Encoded = 3;
+        }
+
+        sealed class CaptureSlot
+        {
+            readonly PreviewFrameCapture m_Owner;
+            internal readonly int Index;
+            internal readonly Action<AsyncGPUReadbackRequest> OnReadback;
+            internal readonly Action Release;
+            internal NativeArray<byte> Pixels;
+            internal AsyncGPUReadbackRequest? Request;
+            internal Matrix4x4 ViewProjection;
+            internal long Order;
+            internal int Frame;
+            internal int Quality;
+            internal int State;
+
+            internal CaptureSlot(PreviewFrameCapture owner, int index, int bytes)
+            {
+                m_Owner = owner;
+                Index = index;
+                Pixels = new NativeArray<byte>(bytes, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                OnReadback = CompleteReadback;
+                Release = ReleaseFrame;
+            }
+
+            void CompleteReadback(AsyncGPUReadbackRequest request)
+            {
+                if (request.hasError)
+                {
+                    m_Owner.Failure = new InvalidOperationException("预览画面 GPU 读回失败，帧 " + Frame);
+                    ReleaseFrame();
+                    return;
+                }
+                Volatile.Write(ref State, SlotState.Ready);
+            }
+
+            void ReleaseFrame() => Volatile.Write(ref State, SlotState.Free);
         }
     }
 
