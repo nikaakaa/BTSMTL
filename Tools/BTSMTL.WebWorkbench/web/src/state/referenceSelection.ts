@@ -14,6 +14,7 @@ export interface ReferenceFieldSelection {
   id: string;
   name: string;
   domain: string | null;
+  selection: 'asset' | 'mapped' | null;
   catalog: ReferenceCatalog;
   value: JsonValue | undefined;
   configuration: JsonObject;

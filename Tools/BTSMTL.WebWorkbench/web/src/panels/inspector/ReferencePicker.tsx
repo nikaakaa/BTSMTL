@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReferenceChoice } from '../../api/authoring';
 import {
-  acceptsReferenceDrag, matchesReferenceChoice, readReferenceDrop, referenceValueKey, useReferenceSelection,
+  acceptsReferenceDrag, matchesReferenceChoice, readReferenceDrop, referenceValueKey, useReferenceSelection, writeReferenceDrag,
   type ReferenceCatalog, type ResourceRegistrationSelection,
 } from '../../state/referenceSelection';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
@@ -9,29 +9,30 @@ import { Button, TextInput } from '../../ui/controls';
 import { openPanel } from '../../shell/layout';
 import styles from './referencePicker.module.css';
 
-export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, resourceRegistration, domain = null }: {
+export function ReferencePicker({ id, label, value, configuration, catalog, onChoose, resourceRegistration, domain = null, selection = null }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; catalog: ReferenceCatalog;
   onChoose(choice: ReferenceChoice): void;
   resourceRegistration?: ResourceRegistrationSelection;
   domain?: string | null;
+  selection?: 'asset' | 'mapped' | null;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [rejection, setRejection] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
-  const selection = { value, configuration };
+  const current = { value, configuration };
   const selected = catalog.kind === 'ready'
-    ? catalog.items.filter(item => matchesReferenceChoice(item, selection)) : [];
+    ? catalog.items.filter(item => matchesReferenceChoice(item, current)) : [];
   const invalid = catalog.kind === 'ready' && selected.length === 0 && value !== undefined;
   const query = search.toLocaleLowerCase();
   const items = catalog.kind === 'ready' ? catalog.items.filter(item =>
     [item.name, item.detail, item.source, referenceValueKey(item.value)].some(text => text?.toLocaleLowerCase().includes(query))) : [];
   const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : referenceValueKey(value) ?? '未设置';
-  const focus = () => useReferenceSelection.setState({ field: { id, name: label, domain, catalog, value, configuration, choose: onChoose, resourceRegistration } });
+  const focus = () => useReferenceSelection.setState({ field: { id, name: label, domain, selection, catalog, value, configuration, choose: onChoose, resourceRegistration } });
   useEffect(() => {
     const current = useReferenceSelection.getState().field;
-    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, domain, catalog, value, configuration, choose: onChoose, resourceRegistration } });
-  }, [id, label, domain, catalog, value, configuration, onChoose, resourceRegistration]);
+    if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, domain, selection, catalog, value, configuration, choose: onChoose, resourceRegistration } });
+  }, [id, label, domain, selection, catalog, value, configuration, onChoose, resourceRegistration]);
   useEffect(() => () => {
     if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null });
   }, [id]);
@@ -50,15 +51,21 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
     }}
     onDrop={event => {
       event.preventDefault();
+      if (selection === 'mapped' && event.dataTransfer.files.length !== 0) {
+        setRejection('该字段按当前载体选择已有映射；请从正式目录选择映射名称，原值已保留。');
+        return;
+      }
       const result = readReferenceDrop(event.dataTransfer, catalog);
       if (result.kind === 'selected') choose(result.choice);
       else setRejection(result.reason);
     }}>
     <Button className={invalid ? styles.invalid : styles.trigger} aria-label={label} aria-expanded={open}
-      disabled={catalog.kind === 'unavailable' || catalog.items.length === 0}
       onClick={() => { focus(); setOpen(!open); }}>
       {title}
     </Button>
+    {domain !== null && <Button variant="ghost" onClick={() => { focus(); openPanel('resources'); }}>在资源视图中选择</Button>}
+    {selection === 'asset' && <div className={styles.note}>选择适配者提供的实际文件或子对象；保存所选候选的原字符串。</div>}
+    {selection === 'mapped' && <div className={styles.note}>按当前载体选择已有映射；新增映射使用该适配者的 Profile 编辑入口。</div>}
     {resourceRegistration && <Button onClick={() => { focus(); openPanel('resources'); }}>从项目素材登记</Button>}
     {catalog.kind === 'unavailable' ? <div className={styles.note}>上下文尚未取得：{catalog.reason}</div>
       : <>{catalog.items.length === 0 && <div className={styles.note}>没有候选</div>}
@@ -70,8 +77,10 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
         onChange={event => setSearch(event.currentTarget.value)} />
       <div className={styles.list} role="listbox" aria-label={label}>
         {items.map((item, index) => <button type="button" key={`${index}:${referenceValueKey(item.value)}`}
-          className={styles.item} role="option" aria-selected={matchesReferenceChoice(item, selection)}
-          onClick={() => choose(item)}>
+          className={styles.item} role="option" aria-selected={matchesReferenceChoice(item, current)}
+          draggable={item.conflict === null} onDragStart={event => {
+            if (catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, catalog.referenceKind, item);
+          }} onClick={() => choose(item)}>
           <strong>{item.name}</strong>
           <span>{item.detail}</span>
           <small>{item.source}</small>

@@ -62,7 +62,8 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
       </PanelBar>
       <TextInput aria-label="搜索领域资源" placeholder="搜索名称、引用值或上下文" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
-      {activeField !== null && <div className={styles.note}>当前字段：{activeField.name} · {activeField.domain}</div>}
+      {activeField !== null && <div className={styles.note}>当前字段：{activeField.name} · {activeField.domain}
+        {activeField.selection === 'mapped' ? ' · 选择当前载体的已有映射' : activeField.selection === 'asset' ? ' · 选择实际文件或子对象' : ''}</div>}
       {missing && <div className={styles.issue}>当前字段引用不在所选载体的正式目录中，原值仍保留：{currentValue}</div>}
       {!all && currentScope === null ? <Empty text="当前文档尚未选择载体上下文；选择载体或切换到全部资源。" />
         : rows.length === 0 ? <Empty text={issuesOnly && !missing ? '当前筛选范围没有目录冲突' : '当前筛选范围没有资源'} />
