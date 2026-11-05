@@ -108,6 +108,8 @@ namespace BTSMTL.Orchestration
             if (parentIndex >= 0)
             {
                 int parentOperation = m_TraceInvocations[parentIndex].OwnerOperationIndex;
+                if (cursor.IsBorrowedOperation(parentOperation))
+                    return;
                 int parentFrame = cursor.ExecutionFrameOf(parentOperation);
                 ref readonly OrchestrationExecutionFrameState header = ref cursor.ReadExecutionFrame(parentOperation)[0];
                 ref readonly CallOrigin parent = ref m_CallOrigins[checked(parentFrame * m_TraceInvocations.Length + parentIndex)];
