@@ -186,7 +186,7 @@ export const transport = {
     const command = getState().lastCommand;
     if (command?.commandId === ack.commandId)
       record(command.type, { commandId: ack.commandId, stage: ack.ok ? 'applied' : 'rejected',
-        adoptedMode: ack.adoptedMode, content: ack.content, clock: ack.clock, ack });
+        adoptedMode: ack.adoptedMode, content: ack.content, clock: ack.clock, ack, milliseconds: null });
   },
 
   action(name: string) {

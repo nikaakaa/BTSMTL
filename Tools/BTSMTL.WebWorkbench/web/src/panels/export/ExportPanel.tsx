@@ -54,6 +54,7 @@ function ProductScope({ product }: { product: SkillEditingView['product'] }) {
 }
 
 function ExportResult({ operation }: { operation: ExportOperation }) {
+  const compilation = operation.kind === 'ready' && operation.result.kind === 'runtime' ? operation.result.compilation : null;
   return <Fold title={`${operation.skill} · ${purposeNames[operation.purpose]} · ${new Date(operation.startedAt).toLocaleTimeString()}`} defaultOpen>
     {operation.kind === 'preparing' ? <><div role="status" className={styles.note}>准备中，等待宿主返回本次导出结果。</div>
       <ProductScope product={operation.product} /></>
@@ -80,10 +81,9 @@ function ExportResult({ operation }: { operation: ExportOperation }) {
             { displayName: 'Effect Profile', value: operation.result.effectProfileGuid },
             ...(operation.result.kind === 'runtime' ? [{ displayName: '编译身份', value: operation.result.compilation.compilationKey }] : []),
           ]} />
-          {operation.result.kind === 'runtime' && <Button variant="ghost" onClick={() => {
-            if (operation.result.kind !== 'runtime') return;
+          {compilation !== null && <Button variant="ghost" onClick={() => {
             const entryId = consoleActions.log('info', '导出', `${operation.skill} 运行数据编译结果`,
-              `${compilationDetails(operation.result.compilation).join('\n')}\n\n${JSON.stringify(operation.result.compilation, null, 2)}`);
+              `${compilationDetails(compilation).join('\n')}\n\n${JSON.stringify(compilation, null, 2)}`);
             consoleActions.focus(entryId);
             openPanel('console');
           }}>查看编译与发布结果</Button>}
