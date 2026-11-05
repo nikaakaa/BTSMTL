@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.Authoring.Workspace
@@ -153,7 +154,8 @@ namespace BTSMTL.Authoring.Workspace
         static Cached Parse(string file, string adapterPath, string text, string revision)
         {
             string adapter = Path.GetFileName(adapterPath), domain = Path.GetFileNameWithoutExtension(file);
-            AuthoringCatalogEntry[] entries = JArray.Parse(text).Cast<JObject>()
+            using var reader = new JsonTextReader(new StringReader(text)) { DateParseHandling = DateParseHandling.None };
+            AuthoringCatalogEntry[] entries = JArray.Load(reader).Cast<JObject>()
                 .Select(item => new AuthoringCatalogEntry(adapter, domain, file, item)).ToArray();
             return new Cached { Text = text, Revision = revision, Entries = entries };
         }
