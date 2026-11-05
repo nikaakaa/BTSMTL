@@ -1,7 +1,7 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
-import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
+import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage, WallContactCommand } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
 import { transport } from './transport';
 
@@ -19,6 +19,7 @@ let deviceInput: InputCommand | null = null;
 const pendingPicks = new Map<string, PreviewSampleSource>();
 const videoListeners = new Set<() => void>();
 const pickListeners = new Set<(pick: PlayerPick) => void>();
+const ackListeners = new Set<(ack: PlayerAck) => void>();
 
 function setVideo(frame: VideoFrame | null) {
   latest = frame;
@@ -59,6 +60,7 @@ function onMessage(message: ViewerMessage) {
     }
     case 'ack':
       transport.acceptAck(message);
+      ackListeners.forEach(listener => listener(message));
       if (!message.ok) consoleActions.log('error', source, `命令被拒绝：${message.error ?? ''}`, message.rawJson);
       else {
         if (message.path) consoleActions.log('info', source, `截图已保存：${message.path}`, message.rawJson);
@@ -130,6 +132,11 @@ function releaseDeviceInput() {
 }
 
 export const playerService = {
+  wallContact: (message: WallContactCommand) => command('wall-contact', liveId => playerApi.command(liveId, message)),
+  subscribeAck(listener: (ack: PlayerAck) => void) {
+    ackListeners.add(listener);
+    return () => { ackListeners.delete(listener); };
+  },
   latestVideo: () => latest,
   subscribeVideo(listener: () => void) {
     videoListeners.add(listener);

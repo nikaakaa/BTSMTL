@@ -394,6 +394,16 @@ export interface InputCommand {
   padButtons: number;
 }
 
+type WallContactNode = import('./playerRecords').WallContactTarget;
+export type WallContactCommand = { type: 'wall-contact'; commandId: string; focusActorId: string } & (
+  | ({ operation: 'read' } & (WallContactNode | {
+      graphId?: never; nodeId?: never; instanceId?: never; graphRevision?: never }))
+  | ({ operation: 'observe'; loadCommandId: string } & WallContactNode)
+  | ({ operation: 'apply'; loadCommandId: string; expectedParameterVersion: string;
+      values: { id: string; value: string }[] } & WallContactNode)
+  | ({ operation: 'wall'; loadCommandId: string; wall: import('./playerRecords').WallContactSurface } & WallContactNode)
+);
+
 export type LiveCommand =
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
   | { type: 'step'; commandId: string; count: number }
@@ -401,6 +411,7 @@ export type LiveCommand =
   | { type: 'pick'; commandId: string; x: number; y: number }
   | ({ type: 'camera' } & CameraCommand)
   | ({ type: 'input' } & InputCommand)
+  | WallContactCommand
   | { type: 'stream'; enabled: boolean; quality?: number; maxFps?: number };
 
 export type PlayerState = 'idle' | 'loading' | 'paused' | 'playing' | 'stepping' | 'seeking' | 'failed';

@@ -156,6 +156,31 @@ export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
   width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
+const wallVector = object({ x: number, y: number, z: number });
+export const readWallContactSurface = object({ enabled: boolean, visible: boolean,
+  position: wallVector, rotation: wallVector, size: wallVector });
+export const readWallContactTarget = object({ graphId: text, nodeId: text, instanceId: text, graphRevision: text });
+export const readWallContactField = object({ id: text, displayName: text, group: text,
+  kind: choice('float', 'integer', 'boolean') });
+const wallHand = object({ phase: text, result: text, hasSolution: boolean,
+  armWeight: number, wristWeight: number, fingerWeight: number,
+  positionResidual: number, palmAngle: number, minimumClearance: number, fingerUp: number,
+  elbowAngle: number, forearmTwist: number, animatedElbowAngle: number,
+  jointLimitExcess: number, jointRotationResidual: number,
+  shoulderAngles: wallVector, wristAngles: wallVector, animatedWristAngles: wallVector,
+  handPosition: wallVector, elbowPosition: wallVector, targetPosition: wallVector });
+export const readWallContact = object({ loadCommandId: text, actorId: text, sourceAssetId: text,
+  targets: array(readWallContactTarget), selected: number,
+  fields: array((value: unknown, path?: string) => ({ ...readWallContactField(value, path),
+    ...object({ value: nullable(text) })(value, path) })),
+  requestedVersion: text, appliedVersion: text, completionIdentity: text,
+  left: nullable(wallHand), right: nullable(wallHand), wallAvailable: boolean,
+  wall: nullable(readWallContactSurface), observationUnavailableReason: nullable(text) });
+const wallPlayerExtension = object({ actors: optional(array(text)),
+  wallContactAvailable: optional(boolean), wallContact: optional(nullable(readWallContact)) });
+export type WallContact = ReturnType<typeof readWallContact>;
+export type WallContactTarget = ReturnType<typeof readWallContactTarget>;
+export type WallContactSurface = ReturnType<typeof readWallContactSurface>;
 const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
     error: nullable(text), source: nullable(readPreviewSampleSource), adoptedMode: nullable(text),
     transport: nullable(array(object({ action: text, available: boolean, reason: text, target: nullable(position) }))),
@@ -163,7 +188,9 @@ const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', '
     hostFrame: nullable(text), lastFrame: nullable(text), inputMode: nullable(text), cameraMode: nullable(text),
     fields: array(field), rawJson: text });
 function viewerPlayer(value: unknown, path = 'Player.status') {
-  const player = viewerPlayerFields(value, path);
+  const fields = viewerPlayerFields(value, path);
+  const raw: unknown = JSON.parse(fields.rawJson);
+  const player = { ...fields, ...wallPlayerExtension(raw, `${path}.rawJson`) };
   if (player.transport !== null) return { ...player, transport: player.transport };
   if (player.transportUnavailableReason === null) throw new Error(`${path}.transport 缺少不可用原因`);
   return { ...player, transport: null, transportUnavailableReason: player.transportUnavailableReason };
@@ -213,6 +240,7 @@ export const readPlayerAck = object({
   playerBuildId: optional(nullable(text)), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
   source: nullable(source), hostFrame: nullable(text), adoptedMode: nullable(text),
   error: optional(nullable(text)), path: optional(nullable(text)), rawJson: text,
+  frame: optional(number), wallContact: optional(nullable(readWallContact)),
 });
 export function readPlayerCommandResult(value: unknown, path = 'Player.command') {
   const receipt = readPlayerCommandReceipt(value, path);
