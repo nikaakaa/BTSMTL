@@ -44,7 +44,7 @@ export function ProjectPanel() {
     {field && <ProjectFieldChoices key={field.id} field={field} onReferrers={setReferenceTarget} onProfileTarget={setProfileTarget}
       onBusinessKey={item => setBusinessKey({ source: 'field', target: item.target })} />}
     <div className={projectStyles.choices}><Fold title="业务键">
-      <Select label="业务键目录来源" value={keySource} onChange={setKeySource} options={[
+      <Select<'project' | 'resources'> label="业务键目录来源" value={keySource} onChange={setKeySource} options={[
         { value: 'project', label: '作者目录' }, { value: 'resources', label: '资源目录' },
       ]} />
       <BusinessKeyList items={keySource === 'project' ? projectCatalog.businessKeys : carriers?.businessKeys ?? null}
