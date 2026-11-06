@@ -60,44 +60,53 @@ function QuickPreviewPicture() {
     {progress !== null && <div role="status">{progress}</div>}
     {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null &&
       <Empty text="在 Timeline 中选择输入并推导路线，随后拖动时间游标查看对应技能画面。" />
-      : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} picture={state.picture} />}
+      : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
   </div>;
 }
 
-function QuickPreviewStage({ result, seconds, picture }: {
-  result: NonNullable<QuickPreviewState['accepted']>; seconds: number; picture: QuickPreviewState['picture'];
+function QuickPreviewStage({ result, seconds, playback, picture }: {
+  result: NonNullable<QuickPreviewState['accepted']>; seconds: number; playback: QuickPreviewState['playback']; picture: QuickPreviewState['picture'];
 }) {
   const video = useRef<HTMLCanvasElement>(null);
   const panelWindow = usePanelWindow();
   const visible = usePanelVisible();
   const [drawn, setDrawn] = useState<PreviewQuickFrame | null>(null);
   const [failure, setFailure] = useState<{ reason: string; entryId: number | null } | null>(null);
-  const frame = picture.frame;
+  const snapshot = picture.frame;
+  const ownsTarget = snapshot !== null && (seconds === snapshot.value.requestedSeconds ||
+    snapshot.playback !== null && playback === snapshot.playback);
   useEffect(() => {
     const canvas = video.current!;
-    if (!visible || frame === null) {
+    if (!visible || snapshot === null) {
       canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
       setDrawn(null);
       setFailure(null);
       return;
     }
+    if (!ownsTarget) return;
     let active = true;
+    const frame = snapshot.value;
+    const ownsFrame = () => {
+      const state = getState().quickPreview;
+      return active && state.picture.frame === snapshot && !quickPlanStale() &&
+        (state.seconds === frame.requestedSeconds || snapshot.playback !== null && state.playback === snapshot.playback);
+    };
     const image = panelWindow.document.createElement('img');
     image.src = `data:${frame.mediaType};base64,${frame.imageBase64}`;
     void image.decode().then(() => {
-      if (!active || getState().quickPreview.picture.frame !== frame || quickPlanStale()) return;
+      if (!ownsFrame()) return;
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
       canvas.getContext('2d')!.drawImage(image, 0, 0);
       setDrawn(frame);
       setFailure(null);
     }).catch((error: unknown) => {
-      if (!active || getState().quickPreview.picture.frame !== frame || quickPlanStale()) return;
+      if (!ownsFrame()) return;
       setFailure({ reason: `技能预览画面解码失败：${error instanceof Error ? error.message : String(error)}`,
         entryId: consoleActions.error('快预览画面', error) });
     });
     return () => { active = false; };
-  }, [frame, visible, panelWindow]);
+  }, [snapshot, ownsTarget, visible, panelWindow]);
   const request = picture.request;
   return <div className={styles.stage} data-quick-job-id={result.jobId} data-quick-target-seconds={seconds}
     data-quick-frame-request-id={drawn?.requestId} data-quick-sampled-seconds={drawn?.sampledSeconds}

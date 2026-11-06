@@ -18,6 +18,7 @@ type Job = { kind: 'idle' }
   | { kind: 'running' | 'cancelling'; request: PreviewQuickRequest; reply: ActiveReply }
   | { kind: 'settled'; request: PreviewQuickRequest; reply: PreviewQuickStatusReply }
   | { kind: 'failed' | 'cancel-failed'; request: PreviewQuickRequest; reply: ActiveReply | null; reason: string };
+type QuickPlayback = { origin: number; startedAt: number };
 
 export interface QuickPreviewState {
   target: PreviewQuickTarget | null;
@@ -26,8 +27,8 @@ export interface QuickPreviewState {
   job: Job;
   accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
   seconds: number;
-  playback: { origin: number; startedAt: number } | null;
-  picture: { frame: PreviewQuickFrame | null; request: { kind: 'idle' } | { kind: 'pending'; target: PreviewQuickSeekRequest }
+  playback: QuickPlayback | null;
+  picture: { frame: { value: PreviewQuickFrame; playback: QuickPlayback | null } | null; request: { kind: 'idle' } | { kind: 'pending'; target: PreviewQuickSeekRequest }
     | { kind: 'failed'; reason: string } };
   outputDirectory: string;
 }
@@ -171,7 +172,7 @@ function requestPicture(force = false) {
   const state = current();
   const accepted = state.accepted;
   if (accepted === null || quickPlanStale()) { clearPicture(); return; }
-  if (pictureRequest !== null || !force && state.picture.frame?.requestedSeconds === state.seconds) return;
+  if (pictureRequest !== null || !force && state.picture.frame?.value.requestedSeconds === state.seconds) return;
   const target: PreviewQuickSeekRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.request.sourceRevision,
     inputRevision: accepted.plan.inputRevision, seconds: state.seconds };
   const request: PictureRequest = { accepted, target, playback: state.playback, controller: new AbortController(), timer: null };
@@ -194,7 +195,7 @@ async function readPicture(request: PictureRequest, submit: boolean) {
       return;
     }
     const frame = receiveFrame(reply.data === null ? null : reply.data.frame, request.accepted, request.target.requestId, request.target.seconds);
-    set({ picture: { frame, request: { kind: 'idle' } } });
+    set({ picture: { frame: { value: frame, playback: request.playback }, request: { kind: 'idle' } } });
     pictureRequest = null;
     requestPicture();
   } catch (error) {
@@ -233,7 +234,7 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
       try {
         const frame = receiveFrame(status.frame, accepted, status.jobId, 0);
         set({ job: { kind: 'settled', request, reply }, accepted, seconds: frame.requestedSeconds,
-          picture: { frame, request: { kind: 'idle' } } });
+          picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason } });
