@@ -21,7 +21,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Color(126, 220, 146)]
 #endif
     public sealed partial class MotionCurveClip : SampledClip, ITimelineClipTimeRangeValidator, ITimelineAuthoringBoundClipSource
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         , ITimelineAuthoringReferenceCurveSource,
         ITimelineAuthoringClipSplitSource, ITimelineAuthoringSourceTimeEditing
 #endif
@@ -60,7 +60,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
 
         public TimelineCurve SourceYaw => SourceContent.LocalYaw;
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public bool CanSplit => true;
 
         public IReadOnlyList<TimelineReferenceCurveDescriptor> ReferenceCurves => new[]
@@ -113,7 +113,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
             Math.Max(SourceStartTime, SourceStartTime +
                 OrchestrationTime.Max(OrchestrationTime.Zero, timelineTime - StartTime).AsSingle));
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         static TimelineCurve SourceDisplayCurve(TimelineCurve source,
             float sourceStartTime, float sourceEndTime, float timelineDuration)
         {
