@@ -8,30 +8,25 @@ namespace BTSMTL.Timeline.Editor
     {
         public TimelineEditorBindingState(
             TimelineData timeline,
-            UnityEngine.Object serializedOwner,
-            string serializedPropertyPath,
+            TimelineAsset owner,
             string ownershipLabel,
             string sourceNodeGuid,
             string sourceGraphAuthoringId)
         {
             Timeline = timeline;
-            SerializedOwner = serializedOwner;
-            SerializedPropertyPath = serializedPropertyPath ?? string.Empty;
+            Document = owner;
             OwnershipLabel = ownershipLabel ?? string.Empty;
             SourceNodeGuid = sourceNodeGuid ?? string.Empty;
             SourceGraphAuthoringId = sourceGraphAuthoringId ?? string.Empty;
         }
 
         public TimelineData Timeline { get; }
-        public UnityEngine.Object SerializedOwner { get; }
-        public string SerializedPropertyPath { get; }
         public string OwnershipLabel { get; }
         public string SourceNodeGuid { get; }
         public string SourceGraphAuthoringId { get; }
-        public bool IsBound => Timeline != null && SerializedOwner != null &&
-            !string.IsNullOrEmpty(SerializedPropertyPath);
+        public bool IsBound => Timeline != null && Document != null;
 
-        public TimelineAsset Document => SerializedOwner as TimelineAsset;
+        public TimelineAsset Document { get; }
 
         public string CreateSourceSummary()
         {

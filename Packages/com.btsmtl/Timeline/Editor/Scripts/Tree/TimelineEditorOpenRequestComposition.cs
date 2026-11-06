@@ -6,8 +6,7 @@ namespace BTSMTL.Timeline.Editor
     {
         public static TimelineEditorOpenRequest Create(
             TimelineData timeline,
-            UnityEngine.Object serializedOwner,
-            string serializedPropertyPath,
+            TimelineAsset owner,
             string ownershipLabel,
             TimelineContractCatalog contracts,
             ITimelineEditorRuntimeDebugBinding runtimeDebugBinding = null,
@@ -15,8 +14,7 @@ namespace BTSMTL.Timeline.Editor
         {
             return new TimelineEditorOpenRequest(
                 timeline,
-                serializedOwner,
-                serializedPropertyPath,
+                owner,
                 ownershipLabel,
                 runtimeDebugBinding,
                 contracts, TimelineWorkspaceModeBridge.Authoring,

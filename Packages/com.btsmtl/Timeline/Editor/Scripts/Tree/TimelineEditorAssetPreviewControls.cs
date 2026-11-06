@@ -199,7 +199,7 @@ namespace BTSMTL.Timeline.Editor
                 foreach (OrchestrationStaticTimeline timeline in preview.Query.Query.Timelines)
                     if (preview.Query.ResolveTimeline(timeline.Identity) is { } resolved && resolved)
                         timelines.Add(resolved);
-            foreach (ITimelineAuthoringDocument document in timelines.Select(TimelineAuthoringGraphBindings.Document)
+            foreach (ITimelineAuthoringDocument document in timelines.Select(timeline => timeline.Data.AuthoringDocument)
                          .GroupBy(value => value.SourcePath).Select(group => group.First()))
                 if (document.HasUnsavedChanges)
                     m_UnsavedDocuments.Add(document);
@@ -217,11 +217,11 @@ namespace BTSMTL.Timeline.Editor
             m_SaveButton.tooltip = "未保存：\n" + string.Join("\n", m_UnsavedDocuments.Select(document => document.SourcePath));
         }
 
-        void SaveRouteDocuments()
+        async void SaveRouteDocuments()
         {
             CollectUnsavedDocuments(TimelineAssetPreviewHost.Shared);
-            foreach (ITimelineAuthoringDocument document in m_UnsavedDocuments)
-                document.Save();
+            foreach (ITimelineAuthoringDocument document in m_UnsavedDocuments.ToArray())
+                await document.Save();
             RefreshSaveButton();
         }
 
@@ -588,9 +588,10 @@ namespace BTSMTL.Timeline.Editor
             return string.Join(" · ", parts);
         }
 
-        void OpenInputTimeline()
+        async void OpenInputTimeline()
         {
             TimelineAsset inputs = TimelineAssetPreviewHost.Shared.InputSchemes.EnsureInputTimeline();
+            await TimelineAssetPreviewHost.Shared.InputSchemes.Save();
             EditorApplication.delayCall += () => NavigateTimeline(inputs, string.Empty);
         }
 
@@ -824,20 +825,20 @@ namespace BTSMTL.Timeline.Editor
                 });
             }
             menu.AddSeparator(string.Empty);
-            menu.AddItem(new GUIContent("另存为…"), false, () => AskSchemeName(preview.Preferences.Name + " 副本", name =>
+            menu.AddItem(new GUIContent("另存为…"), false, () => AskSchemeName(preview.Preferences.Name + " 副本", async name =>
             {
-                store.SaveAs(name);
+                await store.SaveAs(name);
                 preview.PreferencesChanged();
             }));
-            menu.AddItem(new GUIContent("重命名…"), false, () => AskSchemeName(preview.Preferences.Name, name =>
+            menu.AddItem(new GUIContent("重命名…"), false, () => AskSchemeName(preview.Preferences.Name, async name =>
             {
-                store.Rename(name);
+                await store.Rename(name);
                 preview.PreferencesChanged();
             }));
             if (list.Count > 1)
-                menu.AddItem(new GUIContent("删除当前方案"), false, () =>
+                menu.AddItem(new GUIContent("删除当前方案"), false, async () =>
                 {
-                    if (store.DeleteCurrent())
+                    if (await store.DeleteCurrent())
                         preview.PreferencesChanged();
                 });
             else

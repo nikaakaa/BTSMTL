@@ -104,7 +104,7 @@ namespace BTSMTL.Timeline.Editor
                 }
                 if ((selected is not ITimelineAuthoringResourceClip || IsFileResource(selected.GetType())) &&
                     GUILayout.Button("创建独立资源并重绑"))
-                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, replacement =>
+                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, async replacement =>
                     {
                         if (selected is ITimelineAuthoringResourceClip)
                         {
@@ -120,7 +120,7 @@ namespace BTSMTL.Timeline.Editor
                             TimelineAuthoringClipBinding.Configure(selected.Track.Timeline, selected, configuration);
                         }, "重绑独立源资源"))
                             return "源引用提交失败。";
-                        Timeline.AuthoringDocument.Save();
+                        await Timeline.AuthoringDocument.Save();
                         return string.Empty;
                     });
                 if (editing)
@@ -342,7 +342,7 @@ namespace BTSMTL.Timeline.Editor
                     element = m_Clips[nextClip.AuthoringId];
             }
             m_Selected = element;
-            Selection.activeObject = m_Request.SerializedOwner;
+            Selection.activeObject = m_Request.Owner;
             object source = element is BtsmtlTimelineMarkerBinding markerSource
                 ? markerSource.Source
                 : element is BtsmtlTimelineClipBinding clipSource
@@ -350,10 +350,10 @@ namespace BTSMTL.Timeline.Editor
                     : element is BtsmtlTimelineTrackBinding trackSource
                     ? trackSource.Source
                     : null;
-            if (source != null && Timeline.TryGetSerializedPropertyPath(source, out string propertyPath))
-                TimelineInspectorSelection.Set(m_Request.SerializedOwner, propertyPath, source);
+            if (source != null)
+                TimelineInspectorSelection.Set(m_Request.Owner, source);
             else
-                TimelineInspectorSelection.Clear(m_Request.SerializedOwner);
+                TimelineInspectorSelection.Clear(m_Request.Owner);
             m_Session.SetSelection(
                 element is BtsmtlTimelineMarkerBinding selectedMarker
                     ? selectedMarker.Source
@@ -674,7 +674,7 @@ namespace BTSMTL.Timeline.Editor
             if (ApplyImmediate(() =>
             {
                 ScriptableObject graph = m_Request.AuthoringHost.CreateGraph(
-                    m_Request.SerializedOwner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", true);
+                    m_Request.Owner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", true);
                 added = formalTrack.Source.EnsureMarker(AuthoringIdentity.Create(), m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time))), graph);
             }, "Add Timeline Marker") && m_Markers.TryGetValue(added.AuthoringId, out BtsmtlTimelineMarkerBinding binding))
                 Select(binding);
@@ -1130,7 +1130,7 @@ namespace BTSMTL.Timeline.Editor
             if (track.Source is ITimelineAuthoringSourceCreationTrack creation &&
                 (!typeof(ITimelineAuthoringResourceClip).IsAssignableFrom(track.Source.ClipType) || IsFileResource(track.Source.ClipType)))
                 menu.AddItem(new GUIContent(creation.CreateSourceLabel), false, () =>
-                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, creation.SourceAssetType, null, resource =>
+                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, creation.SourceAssetType, null, async resource =>
                     {
                         Clip prototype = (Clip)Activator.CreateInstance(track.Source.ClipType);
                         if (prototype is ITimelineAuthoringResourceClip)
@@ -1141,7 +1141,7 @@ namespace BTSMTL.Timeline.Editor
                         if (!ApplyImmediate(() => Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), resource,
                             m_Session.SnapTime(OrchestrationTime.FromSeconds(time), null)), "创建源片段"))
                             return "源片段提交失败。";
-                        Timeline.AuthoringDocument.Save();
+                        await Timeline.AuthoringDocument.Save();
                         return string.Empty;
                     }));
             for (int index = 0; index < contract.AllowedClipKinds.Count; index++)
@@ -1240,7 +1240,7 @@ namespace BTSMTL.Timeline.Editor
                     {
                         treeGraph = request.TreeGraph;
                         if (treeGraph == null)
-                            treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.SerializedOwner, request.NewTreeGraphName, false);
+                            treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.Owner, request.NewTreeGraphName, false);
                     }
                     if (request.Prototype is ITimelineAuthoringResourceClip)
                     {

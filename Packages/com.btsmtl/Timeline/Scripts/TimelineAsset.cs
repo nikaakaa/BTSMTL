@@ -4,10 +4,9 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline
 {
-    [CreateAssetMenu(fileName = "Timeline", menuName = "BTSMTL/Timeline/Shared Timeline")]
     public sealed class TimelineAsset : ScriptableObject
     {
-        [SerializeField]
+        [System.NonSerialized]
         TimelineData m_Data = new TimelineData();
 
         [SerializeField]
@@ -33,26 +32,24 @@ namespace BTSMTL.Timeline
 
         public void SetData(TimelineData data)
         {
-            m_Data = data ?? TimelineData.CreateDefault(name);
-            BindData();
+            m_Data = data;
         }
 
-        void OnEnable()
+#if UNITY_EDITOR
+        [SerializeField] string m_UndoSnapshot;
+        [System.NonSerialized] System.Func<string, TimelineData> m_ReadUndoSnapshot;
+        [System.NonSerialized] System.Func<TimelineData, string> m_WriteUndoSnapshot;
+
+        public void BindUndoSnapshot(System.Func<string, TimelineData> read,
+            System.Func<TimelineData, string> write)
         {
-            BindData();
+            m_ReadUndoSnapshot = read;
+            m_WriteUndoSnapshot = write;
+            CaptureUndoSnapshot();
         }
 
-        void OnValidate()
-        {
-            BindData();
-        }
-
-        void BindData()
-        {
-            if (m_Data == null)
-                m_Data = TimelineData.CreateDefault(name);
-            m_Data.BindSerializedOwner(this, "m_Data");
-            m_Data.Init();
-        }
+        public void CaptureUndoSnapshot() => m_UndoSnapshot = m_WriteUndoSnapshot(m_Data);
+        public void RestoreUndoSnapshot() => m_Data = m_ReadUndoSnapshot(m_UndoSnapshot);
+#endif
     }
 }

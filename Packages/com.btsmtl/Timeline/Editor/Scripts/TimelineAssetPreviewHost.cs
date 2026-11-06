@@ -164,12 +164,12 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<TimelinePreviewConditionSuggestion> ConditionSuggestions => m_Suggestions;
 
         // 在输入 Timeline 上生成条件 Clip，经宿主的正式写法与 Undo；改动随后照常重新读取与推导。
-        public void AddConditionClip(OrchestrationStaticRead read, bool satisfied, OrchestrationTime start, OrchestrationTime end)
+        public async void AddConditionClip(OrchestrationStaticRead read, bool satisfied, OrchestrationTime start, OrchestrationTime end)
         {
             TimelineAsset inputs = InputSchemes.EnsureInputTimeline();
             m_Provider.AddConditionClip(inputs, read.Key, read.Label, satisfied, start.AsSingle,
                 Math.Min(end.AsSingle, Preferences.RangeEnd));
-            InputSchemes.Save();
+            await InputSchemes.Save();
         }
         public IReadOnlyList<TimelinePreviewInputRequest> InputRequests => m_Provider.DescribeInputRequests();
         public bool TryDescribeInputGraph(ScriptableObject graph, out string name, out IReadOnlyList<string> inputIds) =>
@@ -526,7 +526,7 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
-        public void ImportInputs(string path)
+        public async void ImportInputs(string path)
         {
             try
             {
@@ -539,7 +539,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             PreferencesChanged();
-            InputSchemes.Save();
+            await InputSchemes.Save();
         }
 
         // 编辑入口拒绝了无记录或越界的时间操作。
@@ -561,7 +561,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
         }
 
-        public void Close(bool saveInputSchemes = true)
+        public async void Close(bool saveInputSchemes = true)
         {
             bool closeSession = IsOpeningSession || m_Real != null;
             if (m_Real != null)
@@ -580,8 +580,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
             m_PendingRoot = null;
             IsPlaying = false;
-            if (saveInputSchemes)
-                InputSchemes.Save();
+            System.Threading.Tasks.Task save = saveInputSchemes ? InputSchemes.Save() : System.Threading.Tasks.Task.CompletedTask;
             m_Active = false;
             RestoreObserverViews();
             ReleaseScene();
@@ -603,6 +602,7 @@ namespace BTSMTL.Timeline.Editor
                 Error = reason;
                 Changed?.Invoke();
             }
+            await save;
         }
 
         // 释放 Scene 部分：领域、实例与 Stage；路线与推导留给仍打开的预览。

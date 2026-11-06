@@ -167,7 +167,7 @@ namespace BTSMTL.Timeline.Editor
             m_Binding.AuthoringIssue += OnBindingIssue;
             m_Binding.RepaintRequested += OnBindingRepaint;
             m_Binding.ResourceChanged += QueueRebuildBinding;
-            UnityEditor.Selection.activeObject = request.SerializedOwner;
+            UnityEditor.Selection.activeObject = request.Owner;
             m_EmbeddedEditor = ScriptableObject.CreateInstance<CutsceneEditorSurface>();
             m_EmbeddedEditor.InitializeEmbedded(m_Binding, EmbeddedRepaint);
             m_EmbeddedEditor.ConfigureEmbeddedRuntimeTime(() => m_RuntimeVisualTime);
@@ -638,7 +638,7 @@ namespace BTSMTL.Timeline.Editor
             Undo.undoRedoEvent -= OnUndoRedoEvent;
             m_EmbeddedEditor.ClearEmbedded();
             UnityEngine.Object.DestroyImmediate(m_EmbeddedEditor);
-            TimelineInspectorSelection.Clear(m_Request.SerializedOwner);
+            TimelineInspectorSelection.Clear(m_Request.Owner);
             m_Session.Dispose();
             SelectionChanged = null;
             AuthoringIssue = null;

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Graphs;
 using UnityEditor;
@@ -60,7 +61,7 @@ namespace BTSMTL.Timeline.Editor
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;
-            m_Storage = (ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(root.Entry);
+            m_Storage = (ITimelinePreviewInputSchemeStorage)root.Entry.Data.AuthoringDocument;
             m_Asset = m_Storage.Find(root.Identity);
             if (selection is { } index && (index < 0 || index >= All.Count))
                 throw new System.ArgumentOutOfRangeException(nameof(selection), "所选预览输入方案不存在。");
@@ -90,10 +91,10 @@ namespace BTSMTL.Timeline.Editor
             EditorUtility.SetDirty(m_Asset);
         }
 
-        public void Save()
+        public async Task Save()
         {
             if (SavesChanges && m_Asset != null)
-                ((ITimelineAuthoringDocument)m_Storage).Save();
+                await ((ITimelineAuthoringDocument)m_Storage).Save();
         }
 
         public bool Select(int index)
@@ -106,7 +107,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         // 复制方案连同输入 Timeline；Timeline 引用的预览输入图共用，不复制。
-        public void SaveAs(string name)
+        public async Task SaveAs(string name)
         {
             TimelineAssetPreviewPreferences copy =
                 JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Current));
@@ -114,7 +115,9 @@ namespace BTSMTL.Timeline.Editor
             MarkChanged();
             if (Current.InputTimeline)
             {
-                copy.InputTimeline = UnityEngine.Object.Instantiate(Current.InputTimeline);
+                copy.InputTimeline = ScriptableObject.CreateInstance<TimelineAsset>();
+                copy.InputTimeline.SetData(Current.InputTimeline.Data.Clone());
+                copy.InputTimeline.ConfigureAuthoringScope(Current.InputTimeline.AuthoringScope);
                 copy.InputTimeline.Data.RegenerateAuthoringIdentities();
                 copy.InputTimeline.name = name + " 输入";
                 m_Storage.AddInputTimeline(m_Asset, copy.InputTimeline);
@@ -123,7 +126,7 @@ namespace BTSMTL.Timeline.Editor
             m_Asset.Schemes.Add(copy);
             m_Asset.Selected = m_Asset.Schemes.Count - 1;
             m_InputsFingerprint = null;
-            Save();
+            await Save();
         }
 
         // 当前方案的输入 Timeline；尚无时加入所属正式文档。
@@ -144,14 +147,12 @@ namespace BTSMTL.Timeline.Editor
             TimelineAuthoringGraphBindings.Prepare(timeline.Data);
             current.InputTimeline = timeline;
             EditorUtility.SetDirty(m_Asset);
-            Save();
             m_InputsFingerprint = null;
             return timeline;
         }
 
         public static bool OwnsInputTimeline(TimelineData timeline) =>
-            timeline?.SerializedOwner is TimelineAsset asset &&
-            ((ITimelinePreviewInputSchemeStorage)TimelineAuthoringGraphBindings.Document(asset)).OwnsInputTimeline(timeline);
+            timeline?.AuthoringDocument is ITimelinePreviewInputSchemeStorage storage && storage.OwnsInputTimeline(timeline);
 
         // 输入 Timeline 或其引用的图改动后经宿主重新读出；返回读出结果是否变化。
         public bool RefreshInputs(ITimelineAssetPreviewProvider provider, IReadOnlyList<GraphHostInputDescriptor> declared)
@@ -188,14 +189,14 @@ namespace BTSMTL.Timeline.Editor
             return builder.ToString();
         }
 
-        public void Rename(string name)
+        public async Task Rename(string name)
         {
             Current.Name = name;
             MarkChanged();
-            Save();
+            await Save();
         }
 
-        public bool DeleteCurrent()
+        public async Task<bool> DeleteCurrent()
         {
             if (m_Asset == null || m_Asset.Schemes.Count <= 1)
                 return false;
@@ -207,7 +208,7 @@ namespace BTSMTL.Timeline.Editor
             m_Asset.Selected = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
             m_Storage.ReleaseUnreferencedGraphs(m_Asset);
             EditorUtility.SetDirty(m_Asset);
-            Save();
+            await Save();
             return true;
         }
 

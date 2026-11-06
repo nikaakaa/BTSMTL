@@ -59,7 +59,6 @@ namespace BTSMTL.Timeline.Editor
         public static void Register(ITimelineWorkspaceModeController controller)
         {
             s_Controller = controller;
-            TimelineAuthoringGraphBindings.Document = controller.Authoring.GetAuthoringDocument;
         }
 
         public static bool TryResolvePreviewActor(out UnityEngine.Object actor, out string error)
@@ -103,12 +102,11 @@ namespace BTSMTL.Timeline.Editor
         public static event Action<TimelineEditorWindow> WindowClosed;
         public static event Action<TimelineEditorWindow> AuthoringRevisionChanged;
 
-        [SerializeField]
-        UnityEngine.Object m_SerializedOwner;
+        TimelineAsset m_Owner;
         ITimelineTimeRangePreview m_TimeRangePreview;
 
         [SerializeField]
-        string m_SerializedPropertyPath;
+        string m_TimelineAuthoringId;
 
         [SerializeField]
         string m_OwnershipLabel;
@@ -138,7 +136,7 @@ namespace BTSMTL.Timeline.Editor
         public Clip SelectedClip => m_SlateProjection?.Selection.Clip;
         public string SourceGraphAuthoringId => m_SourceGraphAuthoringId ?? string.Empty;
         public string SourceNodeAuthoringId => m_SourceNodeGuid ?? string.Empty;
-        public TimelineAsset SourceAsset => m_SerializedOwner as TimelineAsset;
+        public TimelineAsset SourceAsset => m_Owner;
         public ITimelineTimeRangePreview TimeRangePreview => m_TimeRangePreview;
 
         public void SetTimeRangePreview(ITimelineTimeRangePreview preview)
@@ -156,7 +154,7 @@ namespace BTSMTL.Timeline.Editor
             TimelineAsset source = SourceAsset;
             preview?.SynchronizeUndo();
             m_TimeRangePreview = preview;
-            Bind(source.Data, source, "m_Data",
+            Bind(source.Data, source,
                 preview == null ? "正式作者资产" : "作者资产 · 预览候选不自动保存或发布", m_SourceNodeGuid, m_SourceGraphAuthoringId);
             m_SlateProjection.RestoreViewState(view);
         }
@@ -374,7 +372,7 @@ namespace BTSMTL.Timeline.Editor
             if (!asset)
                 return null;
             for (int index = 0; index < s_Windows.Count; index++)
-                if (ReferenceEquals(s_Windows[index].m_SerializedOwner, asset))
+                if (ReferenceEquals(s_Windows[index].m_Owner, asset))
                     return s_Windows[index];
             return null;
         }
@@ -442,8 +440,7 @@ namespace BTSMTL.Timeline.Editor
             Bind(
                 asset.Data,
                 asset,
-                "m_Data",
-                AssetDatabase.IsSubAsset(asset) ? "Private Asset" : "Shared Asset",
+                asset.Data.AuthoringDocument.SourcePath,
                 sourceNodeGuid ?? string.Empty,
                 sourceGraphAuthoringId ?? string.Empty);
         }
@@ -475,25 +472,21 @@ namespace BTSMTL.Timeline.Editor
 
         void Bind(
             TimelineData timeline,
-            UnityEngine.Object serializedOwner,
-            string serializedPropertyPath,
+            TimelineAsset owner,
             string ownershipLabel,
             string sourceNodeGuid,
             string sourceGraphAuthoringId = null)
         {
             using var profile = s_Bind.Auto();
-            if (timeline == null || !serializedOwner || string.IsNullOrEmpty(serializedPropertyPath))
-                throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
-
             // 编辑当前方案的输入 Timeline 时预览保持打开，改输入即在 Scene 中看到结果。
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
-                !TimelineAssetPreviewHost.Shared.Covers(serializedOwner as TimelineAsset) &&
-                !TimelineAssetPreviewHost.Shared.IsInputTimeline(serializedOwner as TimelineAsset))
+                !TimelineAssetPreviewHost.Shared.Covers(owner) &&
+                !TimelineAssetPreviewHost.Shared.IsInputTimeline(owner))
                 TimelineAssetPreviewHost.Shared.Close();
 
             DisposeView();
-            m_SerializedOwner = serializedOwner;
-            m_SerializedPropertyPath = serializedPropertyPath;
+            m_Owner = owner;
+            m_TimelineAuthoringId = timeline.AuthoringId;
             m_OwnershipLabel = ownershipLabel;
             if (string.IsNullOrEmpty(sourceNodeGuid))
                 m_SourceGraphAuthoringId = string.Empty;
@@ -503,15 +496,13 @@ namespace BTSMTL.Timeline.Editor
             ClearRuntimeObservationSelection();
             titleContent = new GUIContent("Timeline Editor");
             TimelineWorkspaceModeBridge.ApplyToWindow(this);
-            timeline.BindSerializedOwner(serializedOwner, serializedPropertyPath);
             TimelineAuthoringGraphBindings.Prepare(timeline);
             timeline.OnValueChanged += OnTimelineValueChanged;
             m_Timeline = timeline;
 
             TimelineEditorOpenRequest openRequest = TimelineEditorOpenRequestComposition.Create(
                 timeline,
-                serializedOwner,
-                serializedPropertyPath,
+                owner,
                 m_OwnershipLabel, TimelineWorkspaceModeBridge.Authoring.Contracts,
                 timeRangePreview: m_TimeRangePreview);
             if (!BtsmtlSlateTimelineProjection.TryOpen(
@@ -562,44 +553,23 @@ namespace BTSMTL.Timeline.Editor
             SetStatus("选择一个 Timeline 资产或从 Skill Graph 打开 Timeline。");
         }
 
-        void TryRestoreBinding()
+        async void TryRestoreBinding()
         {
-            if (m_SlateProjection != null || !m_SerializedOwner || string.IsNullOrEmpty(m_SerializedPropertyPath))
+            if (m_SlateProjection != null || string.IsNullOrEmpty(m_TimelineAuthoringId))
                 return;
-
-            TimelineData timeline = ResolveTimelineData();
-            if (timeline == null)
-                return;
+            TimelineAsset owner = await TimelineWorkspaceModeBridge.Authoring.OpenTimeline(m_TimelineAuthoringId);
 
             // 域重载后窗口按序列化的主体、档位、Scene 开关与游标恢复同一预览。
             m_RestorePreviewTime = true;
             Bind(
-                timeline,
-                m_SerializedOwner,
-                m_SerializedPropertyPath,
+                owner.Data,
+                owner,
                 m_OwnershipLabel,
                 m_SourceNodeGuid,
                 m_SourceGraphAuthoringId);
         }
 
-        TimelineData ResolveTimelineData()
-        {
-            return ResolveTimelineData(m_SerializedOwner, m_SerializedPropertyPath);
-        }
-
-        static TimelineData ResolveTimelineData(UnityEngine.Object owner, string propertyPath)
-        {
-            if (owner is TimelineAsset asset)
-                return asset.Data;
-            if (!owner || string.IsNullOrWhiteSpace(propertyPath))
-                return null;
-
-            SerializedObject serializedObject = new SerializedObject(owner);
-            SerializedProperty property = serializedObject.FindProperty(propertyPath);
-            return property?.propertyType == SerializedPropertyType.ManagedReference
-                ? property.managedReferenceValue as TimelineData
-                : null;
-        }
+        TimelineData ResolveTimelineData() => m_Owner.Data;
 
         void OpenClip(Clip clip)
         {
@@ -662,7 +632,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Timeline.OnValueChanged -= OnTimelineValueChanged;
             if (m_SlateProjection != null)
             {
-                if (m_SerializedOwner)
+                if (m_Owner)
                     SessionState.SetString(TimelineViewStateKey(), JsonUtility.ToJson(m_SlateProjection.CaptureViewState()));
                 m_SlateProjection.AuthoringIssue -= OnAuthoringIssue;
             }
@@ -709,8 +679,7 @@ namespace BTSMTL.Timeline.Editor
 
         TimelineEditorBindingState BindingState => new TimelineEditorBindingState(
             m_Timeline,
-            m_SerializedOwner,
-            m_SerializedPropertyPath,
+            m_Owner,
             m_OwnershipLabel,
             m_SourceNodeGuid,
             m_SourceGraphAuthoringId);

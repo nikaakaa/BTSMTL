@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
@@ -10,11 +11,12 @@ namespace BTSMTL.Timeline.Editor
         Type TimeGridSourceType { get; }
         int GetTimeGridTickRate(ScriptableObject source);
         ITimelineAuthoringDocument GetAuthoringDocument(UnityEngine.Object source);
+        Task<TimelineAsset> OpenTimeline(string identity);
         ScriptableObject CreateGraph(UnityEngine.Object container, string graphName, bool isTrigger);
         void OpenGraph(ScriptableObject source);
         void MutateOwnedContent(TimelineData timeline, Action mutation);
         void ShowSourceCreation(ScriptableObject pipeline, Type sourceType, UnityEngine.Object source,
-            Func<UnityEngine.Object, string> attach);
+            Func<UnityEngine.Object, Task<string>> attach);
         void DrawSourceInspector(ScriptableObject pipeline, UnityEngine.Object source, float sourceTime);
         void ReleaseSourceEditing();
     }

@@ -10,18 +10,15 @@ namespace BTSMTL.Timeline.Editor
     public static class TimelineInspectorSelection
     {
         static UnityEngine.Object s_Owner;
-        static string s_PropertyPath = string.Empty;
         static object s_Element;
 
         public static event Action Changed;
 
-        public static void Set(UnityEngine.Object owner, string propertyPath, object element = null)
+        public static void Set(UnityEngine.Object owner, object element)
         {
-            if (ReferenceEquals(s_Owner, owner) && string.Equals(s_PropertyPath, propertyPath, StringComparison.Ordinal) &&
-                ReferenceEquals(s_Element, element))
+            if (ReferenceEquals(s_Owner, owner) && ReferenceEquals(s_Element, element))
                 return;
             s_Owner = owner;
-            s_PropertyPath = propertyPath ?? string.Empty;
             s_Element = element;
             Changed?.Invoke();
         }
@@ -31,20 +28,8 @@ namespace BTSMTL.Timeline.Editor
             if (!ReferenceEquals(s_Owner, owner))
                 return;
             s_Owner = null;
-            s_PropertyPath = string.Empty;
             s_Element = null;
             Changed?.Invoke();
-        }
-
-        public static bool TryGet(UnityEngine.Object owner, out string propertyPath)
-        {
-            if (ReferenceEquals(s_Owner, owner) && !string.IsNullOrEmpty(s_PropertyPath))
-            {
-                propertyPath = s_PropertyPath;
-                return true;
-            }
-            propertyPath = string.Empty;
-            return false;
         }
 
         public static bool TryGetElement(UnityEngine.Object owner, out object element)
@@ -149,8 +134,7 @@ namespace BTSMTL.Timeline.Editor
         readonly TimelineData m_Timeline;
         public TimelineEditorOpenRequest(
             TimelineData timeline,
-            UnityEngine.Object serializedOwner,
-            string serializedPropertyPath,
+            TimelineAsset owner,
             string ownershipLabel,
             ITimelineEditorRuntimeDebugBinding runtimeDebugBinding,
             TimelineContractCatalog contractCatalog,
@@ -159,10 +143,7 @@ namespace BTSMTL.Timeline.Editor
             ITimelineTimeRangePreview timeRangePreview = null)
         {
             m_Timeline = timeline ?? throw new ArgumentNullException(nameof(timeline));
-            SerializedOwner = serializedOwner ? serializedOwner : throw new ArgumentNullException(nameof(serializedOwner));
-            if (string.IsNullOrWhiteSpace(serializedPropertyPath))
-                throw new ArgumentException("Timeline serialized property path is invalid.", nameof(serializedPropertyPath));
-            SerializedPropertyPath = serializedPropertyPath;
+            Owner = owner;
             OwnershipLabel = ownershipLabel ?? string.Empty;
             RuntimeDebugBinding = runtimeDebugBinding;
             ContractCatalog = contractCatalog ?? throw new ArgumentNullException(nameof(contractCatalog));
@@ -174,8 +155,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public TimelineData Timeline => m_Timeline;
-        public UnityEngine.Object SerializedOwner { get; }
-        public string SerializedPropertyPath { get; }
+        public TimelineAsset Owner { get; }
         public string OwnershipLabel { get; }
         public ITimelineEditorRuntimeDebugBinding RuntimeDebugBinding { get; }
         public TimelineContractCatalog ContractCatalog { get; }
@@ -204,8 +184,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public TimelineData Timeline => m_Request.Timeline;
-        public UnityEngine.Object SerializedOwner => m_Request.SerializedOwner;
-        public string SerializedPropertyPath => m_Request.SerializedPropertyPath;
+        public TimelineAsset Owner => m_Request.Owner;
         public string OwnershipLabel => m_Request.OwnershipLabel;
         public ITimelineEditorRuntimeDebugBinding RuntimeDebugBinding => m_Request.RuntimeDebugBinding;
         public TimelineEditorSelection Selection => m_Selection;
