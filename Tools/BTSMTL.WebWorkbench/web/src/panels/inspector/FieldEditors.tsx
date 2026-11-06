@@ -914,10 +914,34 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   const shape = shapeAt(item, path);
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(path, next); };
   const descendants = item.fields.filter(child => belowPath(child.serializedMemberPath, path));
-  const childFields = (prefix: string[]) => rootFields(descendants.filter(child => belowPath(child.serializedMemberPath, prefix)))
+  const renderFields = (fields: FieldMetadata[]) => rootFields(fields)
     .filter(child => visible(child, values))
     .map(child => <FieldEditor key={child.serializedMemberPath.join('/')} id={`${id}/${child.serializedMemberPath.join('/')}`}
       field={child} item={item} node={node} owner={owner} values={values} outputs={outputs} onSet={onSet} onSetFields={onSetFields} />);
+  const childFields = (prefix: string[]) => renderFields(descendants.filter(child => belowPath(child.serializedMemberPath, prefix)));
+  if (field.valueKind === 'Polymorphic' && Array.isArray(value))
+    return <fieldset className={styles.authorFields} disabled={field.readOnly}>
+      <div className={styles.group}>
+        <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
+        {value.map((_, index) => {
+          const elementPath = [...path, String(index)];
+          return <div key={index} className={styles.listItem}>
+            <div className={styles.group}>
+              <div className={styles.groupHead}>[{index}]</div>
+              {renderFields(descendants.filter(child => elementPath.every((member, position) => child.serializedMemberPath[position] === member)))}
+            </div>
+            <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
+              onClick={() => set(value.filter((_, item) => item !== index).map(element => cloneJson(element)))}><CloseIcon /></Button>
+          </div>;
+        })}
+        <Row label="添加一项"><Select label={`添加 ${label} 类型`} value={null} placeholder="选择类型后添加"
+          options={field.subtypes.map(subtype => ({ value: subtype.identity, label: subtype.identity }))}
+          onChange={identity => {
+            const index = field.subtypes.findIndex(subtype => subtype.identity === identity);
+            set([...value.map(element => cloneJson(element)), cloneJson(field.subtypes[index].defaultValue)]);
+          }} /></Row>
+      </div>
+    </fieldset>;
   if (field.valueKind === 'Polymorphic')
     return <PolymorphicValue label={label} field={field} value={value} onSet={set}>{childFields(path)}</PolymorphicValue>;
   if (field.readOnly || field.clrType === 'BTSMTL.Orchestration.ObjectHandle')
