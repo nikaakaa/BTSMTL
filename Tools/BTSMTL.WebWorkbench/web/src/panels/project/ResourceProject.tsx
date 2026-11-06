@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { authoringApi, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
+import { authoringApi, authoringTarget, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
 import { profileQueryKey, scopeQueryKey } from '../../api/resourceRegistration';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { authoringActions, authoringDocument, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
@@ -48,7 +48,7 @@ export function ResourceProject() {
     value: selected.kind === 'catalog' ? selected.item.value : selected.value,
     context: item !== null && item.context !== '' ? item.context : currentScope?.context ?? null };
   const sourceKey = target === null ? null : JSON.stringify(target);
-  const openSkill = (name: string) => { void authoringActions.open({ kind: 'skill', name }).catch(error => consoleActions.error('Project', error)); };
+  const openSkill = (name: string) => { void authoringActions.open(authoringTarget('skill', name)).catch(error => consoleActions.error('Project', error)); };
   return <div className={styles.root}>
     <PanelBar wrap><Select label="当前技能预览载体" value={document.execution.previewScope} placeholder="明确选择当前编辑载体"
       disabled={authoring.target?.kind !== 'skill'} options={scopeChoices} onChange={value => authoringActions.selectExecutionScope('previewScope', value)} />

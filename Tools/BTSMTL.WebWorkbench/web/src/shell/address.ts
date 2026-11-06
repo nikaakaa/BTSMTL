@@ -1,4 +1,5 @@
 import { authoringActions, useAuthoring } from '../state/authoring';
+import { authoringDirectory, authoringTarget } from '../api/authoring';
 import { session } from '../state/session';
 import { getState, resourceActions, selectionActions, useWorkbench, type Selection, type SelectionKind } from '../state/store';
 import { activePanelType, openPanel } from './layout';
@@ -39,7 +40,7 @@ export function applyStateAddress() {
     selectionActions.select(parseSelection(initial.get('select')));
   }
   if (scenario || skill) {
-    void authoringActions.open(scenario ? { kind: 'scenario', name: scenario } : { kind: 'skill', name: skill! });
+    void authoringActions.open(scenario ? authoringTarget('scenario', scenario) : authoringTarget('skill', skill!));
     selectionActions.select(parseSelection(initial.get('select')));
   }
   const resource = initial.get('resource');
@@ -63,7 +64,7 @@ function write() {
     params.set('run', state.runId);
     params.set('frame', String(state.frameIndex));
   }
-  if (target) params.set(target.kind, target.name);
+  if (target) params.set(target.kind, authoringDirectory(target));
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);

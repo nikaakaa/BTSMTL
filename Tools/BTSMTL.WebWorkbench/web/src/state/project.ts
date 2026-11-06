@@ -1,4 +1,4 @@
-import { authoringApi, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
+import { authoringApi, authoringTarget, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
@@ -8,7 +8,7 @@ import { openPanel } from '../shell/layout';
 import { clipSelectId, trackSelectId } from './timelineModel';
 import { projectContents, type ContentTarget } from './projectContents';
 
-const ownerOf = (item: Pick<ProjectItem, 'owner'>) => ({ kind: 'skill', name: item.owner } as const);
+const ownerOf = (item: Pick<ProjectItem, 'owner'>) => authoringTarget('skill', item.owner);
 
 async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
   const target = ownerOf(item);
@@ -127,7 +127,7 @@ export const projectActions = {
     const document = useAuthoring.getState().documents[authoringTargetKey(target)];
     const expectedRevision = document === undefined ? (await authoringApi.read(target)).revision : document.revision;
     if (expectedRevision === null) throw new Error('此技能尚未保存，请使用丢弃修改移除草稿。');
-    const result = await authoringApi.deleteSkill(item.owner, { expectedRevision, editingView: authoringActions.editingView() });
+    const result = await authoringApi.deleteSkill(target.documentPath, { expectedRevision, editingView: authoringActions.editingView() });
     if (result.deleted) authoringActions.acceptSkillDeletion(result);
     return result;
   },

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
+import { authoringDirectory } from '../../api/authoring';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
@@ -50,7 +51,7 @@ export function InspectorPanel() {
   // 动画资源不属于技能，没有打开技能时同样可检查。
   const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
     : !target ? <Empty text="选择要编辑的内容" />
-      : shown ? <Content key={`${target.kind}/${target.name}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
+      : shown ? <Content key={`${target.documentPath}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
         : <SkillSummary />;
   return (
     <div className={styles.root}>
@@ -88,7 +89,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const documents = useAuthoring(state => state.documents);
   const target = useAuthoring(state => state.target);
   const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
-  if (item === undefined || target?.kind !== 'skill' || item.owner !== target.name) return missing;
+  if (item === undefined || target?.kind !== 'skill' || item.owner !== authoringDirectory(target)) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
     <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : '输入方案'} />
@@ -208,7 +209,7 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 function SkillSummary() {
   const { skill, plans, editable, noProgram, documentError } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
-    return { skill: state.target?.name ?? null, editable: state.author, documentError: document.documentError,
+    return { skill: state.target?.documentPath ?? null, editable: state.author, documentError: document.documentError,
       noProgram: state.target?.kind === 'skill' && document.documentGraphs !== null && document.programId === null && document.documentError === null,
       plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
         .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };

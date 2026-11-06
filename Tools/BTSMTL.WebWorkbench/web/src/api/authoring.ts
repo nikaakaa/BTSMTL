@@ -23,9 +23,11 @@ const readSkillSnapshot = object({ skill: text, revision: text,
   files: array(readSkillFile), sourceFiles: array(readSkillFile) });
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
-export type AuthoringTarget = { kind: 'skill'; name: string } | { kind: 'scenario'; name: string };
+export type AuthoringTarget = { kind: 'skill' | 'scenario'; documentPath: string };
 const authoringDirectories = { skill: 'Skills', scenario: 'Scenarios' };
-export const authoringTargetKey = (target: AuthoringTarget) => `${authoringDirectories[target.kind]}/${target.name}`;
+export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
+export const authoringTargetKey = (target: AuthoringTarget) => target.documentPath;
+export const authoringDirectory = (target: AuthoringTarget) => target.documentPath.slice(authoringDirectories[target.kind].length + 1);
 
 export interface SkillChanges {
   skill: string;
@@ -682,7 +684,7 @@ export interface SkillDocument {
 }
 
 const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
-const targetPath = (target: AuthoringTarget) => `${folderPath(target.kind)}/${encodeURIComponent(target.name)}`;
+const targetPath = (target: AuthoringTarget) => `${folderPath(target.kind)}/${encodeURIComponent(authoringDirectory(target))}`;
 
 export interface InputFragmentRequest {
   scene: string;
@@ -747,24 +749,24 @@ export const authoringApi = {
   commitReferenceReplacement: async (plan: ReferenceReplacementPrepared) =>
     readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
-  export: async (skill: string, kind: SkillExportKind, editingView: SkillEditingView) =>
-    readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
+  export: async (documentPath: string, kind: SkillExportKind, editingView: SkillEditingView) =>
+    readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', documentPath })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
-    postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
+    postJson<{ files: SkillFile[] }>(`${targetPath(authoringTarget('scenario', name))}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   read: async (target: AuthoringTarget, signal?: AbortSignal) => readSkillSnapshot(await getJson<unknown>(targetPath(target), signal)),
-  deleteSkill: (skill: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
-    deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', name: skill }), request, [409]),
+  deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
+    deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', documentPath }), request, [409]),
   changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
-  document: (skill: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
-    postJson<SkillDocument>(`${targetPath({ kind: 'skill', name: skill })}/document`, { editingView, graphId }, signal),
+  document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
+    postJson<SkillDocument>(`${targetPath({ kind: 'skill', documentPath })}/document`, { editingView, graphId }, signal),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<unknown>(targetPath(target), request);
     const { compilationState } = object({ compilationState: choice('not-required', 'not-requested', 'not-started', 'succeeded') })(result, 'SkillSave');

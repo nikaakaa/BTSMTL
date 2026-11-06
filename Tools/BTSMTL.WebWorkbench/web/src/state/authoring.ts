@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringDirectory, authoringTarget, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -182,7 +182,7 @@ export const authoringDocument = (state: AuthoringState, target = state.target):
 
 export const ownsAuthoringGraph = (state: AuthoringState, id: string): boolean => {
   const target = state.target;
-  return target?.kind === 'skill' && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === target.name) === true;
+  return target?.kind === 'skill' && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === authoringDirectory(target)) === true;
 };
 
 const get = () => {
@@ -204,7 +204,7 @@ export function useDocumentObservationBinding(): DocumentObservationBinding {
   const { graphs, dirty } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
     const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
-    if (state.target?.kind === 'skill') owners.add(state.target.name);
+    if (state.target?.kind === 'skill') owners.add(authoringDirectory(state.target));
     return { graphs: document.documentError === null && document.sourceRevision !== null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
       key.startsWith('Skills/') && owners.has(key.slice('Skills/'.length)) &&
       (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
@@ -535,12 +535,12 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     return;
   }
   try {
-    const document = await authoringApi.document(target.name, editingView, signal);
+    const document = await authoringApi.document(target.documentPath, editingView, signal);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     const documents = { ...useAuthoring.getState().documents };
     for (const source of document.sources) {
-      const key = authoringTargetKey({ kind: 'skill', name: source.skill });
+      const key = authoringTargetKey(authoringTarget('skill', source.skill));
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), kind: 'skill', revision: source.revision, product: editingView.product, execution: editingView.execution,
@@ -556,7 +556,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     }
     const key = authoringTargetKey(target);
     documents[key] = { ...documents[key], documentGraphs: document.graphs, documentRelations: document.relations,
-      documentSources: document.sources.map(source => authoringTargetKey({ kind: 'skill', name: source.skill })),
+      documentSources: document.sources.map(source => authoringTargetKey(authoringTarget('skill', source.skill))),
       sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId };
     set({ documents });
@@ -624,11 +624,11 @@ useWorkbench.subscribe((state, previous) => {
 
 export const authoringActions = {
   async createSkill(request: SkillCreationRequest) {
-    const target = { kind: 'skill', name: request.parameters.name } as const;
+    const target = authoringTarget('skill', request.parameters.name);
     const key = authoringTargetKey(target);
     const state = useAuthoring.getState();
     if (state.directory?.some(document => document.documentPath === key) || state.documents[key] !== undefined)
-      throw new Error(`技能目录 ${target.name} 已存在或已经打开，请使用其他名称`);
+      throw new Error(`技能目录 ${target.documentPath} 已存在或已经打开，请使用其他名称`);
     const identityOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
       (document.edited['skill.json'] as JsonObject | undefined)?.m_AbilityId === request.parameters.abilityId);
     if (identityOwner !== undefined)
@@ -643,7 +643,7 @@ export const authoringActions = {
   },
 
   async createScenario(name: string, request: ScenarioDraftRequest) {
-    const target = { kind: 'scenario', name } as const;
+    const target = authoringTarget('scenario', name);
     const draft = await authoringApi.scenarioDraft(name, request);
     await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, expectedRevision: null,
       editingView: authoringActions.editingView(), preview: null });
@@ -720,7 +720,7 @@ export const authoringActions = {
     const document = state.removed.includes(path) ? null
       : state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
     if (document === null) {
-      consoleActions.log('error', '作者', `${state.target?.name ?? '—'} 中没有文件 ${path}`);
+      consoleActions.log('error', '作者', `${state.target?.documentPath ?? '—'} 中没有文件 ${path}`);
       return;
     }
     record();
@@ -754,7 +754,7 @@ export const authoringActions = {
 
   acceptSkillDeletion(receipt: Extract<SkillDeleteResult, { deleted: true }>) {
     const state = get();
-    const target = { kind: 'skill', name: receipt.skill } as const;
+    const target = authoringTarget('skill', receipt.skill);
     const documents = { ...state.documents };
     delete documents[authoringTargetKey(target)];
     const closing = isActiveTarget(target);
@@ -797,14 +797,14 @@ export const authoringActions = {
       if (document === undefined) return;
       if (snapshot.status === 'rejected') {
         documents[key] = { ...document, externalChange: true };
-        failures.push({ text: `作者引用已替换，${target.name} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
+        failures.push({ text: `作者引用已替换，${target.documentPath} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
       } else {
         const savedFiles = Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content]));
         const changedBaselines = [...new Set([...Object.keys(document.edited), ...document.removed])]
           .filter(path => !paths.has(path) && savedFiles[path] !== document.files[path]);
         for (const path of changedBaselines)
-          conflicts.push({ owner: target.name, path, reason: '该未保存文件的磁盘内容也已变化' });
-        if (blocked.has(target.name) || changedBaselines.length !== 0) {
+          conflicts.push({ owner: target.documentPath, path, reason: '该未保存文件的磁盘内容也已变化' });
+        if (blocked.has(target.documentPath) || changedBaselines.length !== 0) {
           documents[key] = { ...document, externalChange: true };
           return;
         }
@@ -1015,13 +1015,13 @@ export const authoringActions = {
         const message = '作者内容已保存；未请求编译与发布，运行未应用。';
         accept(result.content, { saved: true, compilationState: 'not-requested', runtimeState: result.runtimeState,
           preview: null, ok: true, message, errors: [] });
-        consoleActions.log('info', '作者', `${target.name}：${message}`, JSON.stringify(result));
+        consoleActions.log('info', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
       }
       if (result.compilationState === 'not-started') {
         const message = `作者内容已保存；运行未应用：${result.availability.reason}`;
         accept(result.content, { saved: true, compilationState: 'not-started', preview: null, ok: false, message, errors: [] });
-        consoleActions.log('warn', '作者', `${target.name}：${message}`, JSON.stringify(result));
+        consoleActions.log('warn', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
       }
       if (result.compilationState === 'not-required') {
@@ -1045,7 +1045,7 @@ export const authoringActions = {
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
       const currentSkill = accept(result.content, outcome);
-      consoleActions.log(outcome.ok ? 'info' : 'error', '作者', `${target.name}：${outcome.message}`, JSON.stringify(result, null, 2));
+      consoleActions.log(outcome.ok ? 'info' : 'error', '作者', `${target.documentPath}：${outcome.message}`, JSON.stringify(result, null, 2));
       if (currentSkill && result.preview !== null && !controller.signal.aborted) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
         void trackPreview({ save: result, receipt: result.preview, controller, viewport });
@@ -1490,7 +1490,7 @@ function referenceReplacementOwners(plan: ReferenceReplacementResult) {
   return plan.affectedSkills.map(name => {
     const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').endsWith(`/Skills/${name}/skill.json`))!;
     const prefix = root.path.slice(0, -'skill.json'.length);
-    return { target: { kind: 'skill' as const, name },
+    return { target: authoringTarget('skill', name),
       paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length).replaceAll('\\', '/'))) };
   });
 }
@@ -1503,12 +1503,12 @@ export function referenceReplacementConflicts(plan: ReferenceReplacementResult, 
     const documentReason = document.saving ? '正在保存' : document.loading ? '正在读取'
       : phase === 'commit' && document.externalChange ? '磁盘来源已变化' : null;
     if (documentReason !== null) {
-      conflicts.push({ owner: target.name, path: null, reason: documentReason });
+      conflicts.push({ owner: target.documentPath, path: null, reason: documentReason });
       continue;
     }
     for (const path of paths) {
       if (Object.hasOwn(document.edited, path) || document.removed.includes(path))
-        conflicts.push({ owner: target.name, path, reason: '有未保存修改' });
+        conflicts.push({ owner: target.documentPath, path, reason: '有未保存修改' });
     }
   }
   return conflicts;

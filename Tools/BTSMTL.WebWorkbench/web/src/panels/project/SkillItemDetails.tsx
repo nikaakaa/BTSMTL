@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { authoringApi, authoringTargetKey, type ProjectItem, type ReferrersResult, type SkillDeleteResult } from '../../api/authoring';
+import { authoringApi, authoringTarget, authoringTargetKey, type ProjectItem, type ReferrersResult, type SkillDeleteResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { authoringActions, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
@@ -20,7 +20,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   const [renaming, setRenaming] = useState(false);
   const [deletion, setDeletion] = useState<Extract<SkillDeleteResult, { code: 'skill-referenced' }> | null>(null);
   const pendingDocument = useAuthoring(state => {
-    const document = state.documents[authoringTargetKey({ kind: 'skill', name: item.owner })];
+    const document = state.documents[authoringTargetKey(authoringTarget('skill', item.owner))];
     return document?.loading === true || document?.saving === true;
   });
   useEffect(() => {
@@ -28,7 +28,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
     setReferrers(null);
     setDeletion(null);
     setFailure(null);
-    authoringApi.referrers({ kind: 'skill', name: item.owner }, { identity: item.identity }, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
+    authoringApi.referrers(authoringTarget('skill', item.owner), { identity: item.identity }, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
       if (!isAbort(error)) setFailure({ text: '引用者读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();

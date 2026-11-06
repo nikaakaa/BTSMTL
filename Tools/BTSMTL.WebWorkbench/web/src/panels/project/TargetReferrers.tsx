@@ -18,7 +18,7 @@ type Result = { key: string } & (
 
 export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
   const { skill, stamp } = useAuthoring(useShallow(state => ({
-    skill: state.target?.kind === 'skill' ? state.target.name : null,
+    skill: state.target?.kind === 'skill' ? state.target.documentPath : null,
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) =>
       [key, document.revision, document.version, document.execution])]),
   })));
@@ -30,7 +30,7 @@ export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
     const controller = new AbortController();
     setResult({ key, kind: 'loading' });
     const timer = setTimeout(() => {
-      authoringApi.referrers({ kind: 'skill', name: skill }, { target }, authoringActions.editingView(), controller.signal)
+      authoringApi.referrers({ kind: 'skill', documentPath: skill }, { target }, authoringActions.editingView(), controller.signal)
         .then(value => {
           controller.signal.throwIfAborted();
           setResult({ key, kind: 'ready', value });

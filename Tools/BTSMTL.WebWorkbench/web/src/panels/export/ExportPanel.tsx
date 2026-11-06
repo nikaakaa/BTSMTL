@@ -20,7 +20,7 @@ export function ExportPanel() {
     documentRevision: authoringDocument(state).documentRevision, sourceRevision: authoringDocument(state).sourceRevision,
   })));
   const operations = useExports(state => state.operations);
-  const skill = target?.kind === 'skill' ? target.name : null;
+  const skill = target?.kind === 'skill' ? target.documentPath : null;
   const pending = operations.some(operation => operation.kind === 'preparing' && operation.skill === skill && operation.purpose === purpose);
   return <div className={styles.root}>
     <PanelBar wrap>

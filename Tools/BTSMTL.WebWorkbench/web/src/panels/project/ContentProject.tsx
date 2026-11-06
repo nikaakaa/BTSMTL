@@ -88,7 +88,7 @@ export function ContentProject() {
         }} />}
     </div>
     <div className={styles.contentDetails}>
-      {creating !== null ? <SkillContentCreation key={`${creating}/${target?.name}`} kind={creating} skill={target?.kind === 'skill' ? target.name : null}
+      {creating !== null ? <SkillContentCreation key={`${creating}/${target?.documentPath}`} kind={creating} skill={target?.kind === 'skill' ? target.documentPath : null}
         elements={elements} onDone={() => setCreating(null)} /> : node === undefined ? <Empty text="单击查看检查器，双击打开图或 Timeline；拖动内容设置作者引用" /> : <>
         {node.target?.kind === 'item' ? <SkillItemDetails item={node.target.item} items={contents.items}
           stamp={JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version]))} onChanged={() => setSelected(null)} />

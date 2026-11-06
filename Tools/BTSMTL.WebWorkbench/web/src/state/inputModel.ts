@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { authoringDirectory } from '../api/authoring';
 import { authoringDocument, currentDocument, timelinePath, useAuthoring, useInputSchemes } from './authoring';
 import type { JsonObject } from './skillJson';
 import { useWorkbench } from './store';
@@ -36,7 +37,7 @@ export function useInputObservation(documentId: string | null) {
   const actor = state.catalog?.players.find(item => item.actorId === actorId);
   if (!actor) return { kind: 'unavailable', reason: '当前场景输入声明没有该角色' } as const;
   const target = author.target;
-  const plan = actor.localPlans.find(item => item.id === scheme.planId && item.name === target.name &&
+  const plan = actor.localPlans.find(item => item.id === scheme.planId && item.name === authoringDirectory(target) &&
     (target.kind === 'scenario' ? item.kind === 'scene' : item.kind !== 'scene'));
   if (author.revision.kind === 'rejected') return { kind: 'stale', reason: author.revision.reason } as const;
   const revision = author.revision.kind === 'catalog' ? plan : author.revision.items.find(item => item.planId === scheme.planId);

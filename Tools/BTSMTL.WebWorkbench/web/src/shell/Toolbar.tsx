@@ -77,10 +77,10 @@ function SkillChoice() {
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
-      {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.name}</span> : (
-        <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.name ?? null} disabled={!skills?.length}
-          options={(skills ?? []).map(item => ({ value: item.documentPath.slice('Skills/'.length), label: item.documentPath.slice('Skills/'.length) }))}
-          onChange={value => void authoringActions.open({ kind: 'skill', name: value })} />
+      {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.documentPath}</span> : (
+        <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.documentPath ?? null} disabled={!skills?.length}
+          options={(skills ?? []).map(item => ({ value: item.documentPath, label: item.documentPath.slice('Skills/'.length) }))}
+          onChange={documentPath => void authoringActions.open({ kind: 'skill', documentPath })} />
       )}
     </>
   );

@@ -93,14 +93,14 @@ function ScenarioFolders() {
     <Button onClick={() => setCreating(!creating)}>新建场景方案</Button>
     {creating && <NewScenario key={scenePath} onCreated={() => setCreating(false)} />}
     {editable && <Button onClick={() => setCreatingInput(!creatingInput)}>新建输入方案</Button>}
-    {creatingInput && editable && <InputPlanCreationForm key={target!.name} onCancel={() => setCreatingInput(false)}
+    {creatingInput && editable && <InputPlanCreationForm key={target!.documentPath} onCancel={() => setCreatingInput(false)}
       onCreated={() => { setCreatingInput(false); openPanel('timeline'); }} />}
     <div className={styles.list} role="listbox" aria-label="场景方案">
     {scenarios.map(document => {
       const name = document.documentPath.slice('Scenarios/'.length);
       return <button key={document.documentPath} className={styles.row} role="option"
-      aria-selected={target?.kind === 'scenario' && target.name === name}
-      onClick={() => void authoringActions.open({ kind: 'scenario', name })}>
+      aria-selected={target?.kind === 'scenario' && target.documentPath === document.documentPath}
+      onClick={() => void authoringActions.open({ kind: 'scenario', documentPath: document.documentPath })}>
       <span className={styles.rowText}>{name}</span>
     </button>; })}
     </div>
