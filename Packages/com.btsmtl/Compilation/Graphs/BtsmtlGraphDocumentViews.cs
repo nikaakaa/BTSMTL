@@ -16,7 +16,7 @@ namespace BTSMTL.Compilation
         readonly Func<BtsmtlGraphDocument, BtsmtlGraphDocumentNode, object> m_Definition;
         readonly Func<BtsmtlGraphDocumentNode, object, GraphNodeFields> m_Fields;
         readonly Func<GraphNodeFields, GraphNodeCompileDescription> m_Describe;
-        readonly Dictionary<string, CompileGraph> m_Graphs = new(StringComparer.Ordinal);
+        readonly Dictionary<(string Root, string Graph), CompileGraph> m_Graphs = new();
         readonly HashSet<string> m_Active = new(StringComparer.Ordinal);
 
         public BtsmtlGraphDocumentViews(Func<string, BtsmtlGraphDocument> document,
@@ -32,13 +32,13 @@ namespace BTSMTL.Compilation
 
         public BtsmtlGraphDocument Document(string id) => m_Document(id);
 
-        public CompileGraph Read(BtsmtlGraphDocument document) => Read(document, document.Domains);
+        public CompileGraph Read(BtsmtlGraphDocument document) => Read(document, document.AuthoringId, document.Domains);
 
-        CompileGraph Read(BtsmtlGraphDocument document, IReadOnlyList<string> rootDomains)
+        CompileGraph Read(BtsmtlGraphDocument document, string rootId, IReadOnlyList<string> rootDomains)
         {
             if (m_Active.Contains(document.AuthoringId))
                 throw new InvalidDataException($"子图 '{document.AuthoringId}' 递归调用自身。");
-            if (m_Graphs.TryGetValue(document.AuthoringId, out CompileGraph existing))
+            if (m_Graphs.TryGetValue((rootId, document.AuthoringId), out CompileGraph existing))
                 return existing;
             m_Active.Add(document.AuthoringId);
             try
@@ -49,7 +49,7 @@ namespace BTSMTL.Compilation
                     document.Inputs.Select(Parameter).ToArray(), document.Outputs.Select(Parameter).ToArray());
                 var connected = new HashSet<(string, string)>(document.Nodes.SelectMany(node => node.OutConnections)
                     .Select(edge => ((string)edge["targetNode"], (string)edge["targetPortID"])));
-                var nodes = document.Nodes.Select(node => Node(document, node, connected, rootDomains)).ToArray();
+                var nodes = document.Nodes.Select(node => Node(document, node, connected, rootId, rootDomains)).ToArray();
                 view.Complete(nodes, node => document.Node(node.Id).OutConnections.Select(edge =>
                     new CompileEdge((string)edge["UID"], "BTSMTL.Graphs.Connection", node,
                         (string)edge["sourcePortID"], (string)edge["targetNode"], (string)edge["targetPortID"],
@@ -61,7 +61,7 @@ namespace BTSMTL.Compilation
                                     .SameType(edge.Target.Input(edge.TargetPortId).Type)
                                 : !node.FlowOutputs.Contains(edge.SourcePortId) || !edge.Target.FlowInputs.Contains(edge.TargetPortId))
                             throw new InvalidDataException($"连接 '{edge.Id}' 的端口或值类型不匹配。");
-                m_Graphs.Add(document.AuthoringId, view);
+                m_Graphs.Add((rootId, document.AuthoringId), view);
                 return view;
             }
             finally
@@ -71,7 +71,7 @@ namespace BTSMTL.Compilation
         }
 
         CompileNode Node(BtsmtlGraphDocument document, BtsmtlGraphDocumentNode source,
-            HashSet<(string, string)> connected, IReadOnlyList<string> rootDomains)
+            HashSet<(string, string)> connected, string rootId, IReadOnlyList<string> rootDomains)
         {
             BtsmtlNativeValueNodeCatalog.TryGet(source.TypeName, out BtsmtlNativeValueNodeDefinition native);
             CompileNodeRole role = source.TypeName switch
@@ -121,7 +121,7 @@ namespace BTSMTL.Compilation
             {
                 if (!callee.IsMacro || callee.Domains.Except(rootDomains, StringComparer.Ordinal).Any())
                     throw new InvalidDataException($"调用 '{source.Id}' 的子图类型或领域不属于调用方。");
-                node.WithCallee(Read(callee, rootDomains));
+                node.WithCallee(Read(callee, rootId, rootDomains));
             }
             if (definition is IBtsmtlVariableFlowNode reference)
                 node.WithVariable(reference.OwnerId, reference.VariableId, reference.Writes);

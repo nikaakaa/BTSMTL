@@ -15,6 +15,7 @@ namespace BTSMTL.Compilation
     {
         readonly BtsmtlGraphDocument m_Root;
         readonly BtsmtlGraphDocumentViews m_Graphs;
+        readonly CompileGraph m_RootGraph;
         readonly Func<string, BtsmtlGraphVariableDeclarations> m_Variables;
         readonly string m_Hash;
         readonly string m_Route;
@@ -36,9 +37,10 @@ namespace BTSMTL.Compilation
             m_Domain = domain;
             m_Builder = new BtsmtlGraphSemanticBuilder(report, domain.StateSchema);
             m_Canvas = new BtsmtlGraphCompilation(m_Builder);
-            RequireEntries(root, graphs.Read(root));
+            m_RootGraph = graphs.Read(root);
+            RequireEntries(root, m_RootGraph);
             var sources = new Dictionary<string, BtsmtlBlackboardDeclarationSource>(StringComparer.Ordinal);
-            CollectDeclarations(root, m_Route, sources, new Dictionary<string, string>(StringComparer.Ordinal));
+            CollectDeclarations(root, m_RootGraph, m_Route, sources, new Dictionary<string, string>(StringComparer.Ordinal));
             m_Blackboard = new BtsmtlBlackboardCompilation(sources, m_Builder, scopes,
                 (declaration, source, fields) => fields.Add(m_Builder.ConstantField(source, "Public",
                     ((BtsmtlGraphVariableDeclaration)declaration.AuthoringDeclaration).IsPublic)));
@@ -60,7 +62,7 @@ namespace BTSMTL.Compilation
                 throw new InvalidOperationException("图编译身份没有记录当前唯一变量来源及其修订。");
             using var invocation = m_Builder.PushGraphInvocation(m_Route, string.Empty);
             m_Blackboard.CompileDeclarations();
-            BtsmtlGraphOperationBindings operations = EmitGraph(m_Root, m_Graphs.Read(m_Root), m_Route, out _);
+            BtsmtlGraphOperationBindings operations = EmitGraph(m_Root, m_RootGraph, m_Route, out _);
             var entries = new Dictionary<string, OrchestrationExecutionContract>(StringComparer.Ordinal);
             foreach (BtsmtlGraphEntryDeclaration entry in m_Root.Entries)
             {
@@ -153,7 +155,7 @@ namespace BTSMTL.Compilation
             }
         }
 
-        void CollectDeclarations(BtsmtlGraphDocument document, string route,
+        void CollectDeclarations(BtsmtlGraphDocument document, CompileGraph graph, string route,
             Dictionary<string, BtsmtlBlackboardDeclarationSource> sources, Dictionary<string, string> owners)
         {
             BtsmtlGraphVariableDeclarations variables = m_Variables(document.VariableOwnerId);
@@ -164,7 +166,7 @@ namespace BTSMTL.Compilation
             }
             else
             {
-                foreach (CompileNode node in m_Graphs.Read(document).Nodes.Where(node => node.Role == CompileNodeRole.Variable))
+                foreach (CompileNode node in graph.Nodes.Where(node => node.Role == CompileNodeRole.Variable))
                     if (node.VariableOwnerId != variables.OwnerId ||
                         !node.ValueOutputs.Single(port => port.Id == "Value").Type
                             .SameType(variables.RequireVariable(node.VariableId).ValueType))
@@ -178,8 +180,8 @@ namespace BTSMTL.Compilation
                     sources.Add(BtsmtlGraphVariableReference.CompileIdentity(variables.OwnerId,
                         declaration.Declaration.DeclarationId), declaration);
             }
-            foreach (CompileNode call in m_Graphs.Read(document).Nodes.Where(node => node.Role == CompileNodeRole.MacroCall))
-                CollectDeclarations(m_Graphs.Document(call.Callee.Id), $"{route}/call:{call.Id}", sources, owners);
+            foreach (CompileNode call in graph.Nodes.Where(node => node.Role == CompileNodeRole.MacroCall))
+                CollectDeclarations(m_Graphs.Document(call.Callee.Id), call.Callee, $"{route}/call:{call.Id}", sources, owners);
         }
 
         SimulationSourceLocation GraphSource(BtsmtlGraphDocument document, string route) =>
