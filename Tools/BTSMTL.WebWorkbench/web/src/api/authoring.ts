@@ -1,6 +1,7 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
+import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ExecutionScopeSelection, type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -37,9 +38,7 @@ export interface SkillChanges {
 }
 
 // 按需查询的统一外壳：availability 表示作者来源是否可读，items 为原分页结果。
-export type QueryAvailability =
-  | { available: true; reason: null }
-  | { available: false; reason: string };
+export type QueryAvailability = AuthoringAvailability;
 
 const readAdapterCatalogDomain = object({ adapter: text, domain: text, items: array(object({
   value: text, display: text, context: text, revision: text, data: opaque,
@@ -81,13 +80,6 @@ export function readReferenceReplacement(value: unknown, action: 'prepare' | 'co
   throw new Error(`${path}：${action} 的保存状态与作者引用阶段不一致`);
 }
 
-function readQueryAvailability(value: unknown, path = 'Query.availability'): QueryAvailability {
-  const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
-  if (available && reason === null) return { available, reason };
-  if (!available && reason !== null) return { available, reason };
-  throw new Error(`${path} 的可用状态与原因不符合正式查询合同`);
-}
-
 // 可创建的节点类型（原 Types）：按实际 C# 类型与原生节点声明发现。
 export interface NodeTypeInfo {
   type: string;
@@ -110,8 +102,8 @@ export interface DescribedPort {
 }
 
 export type DescribedPorts =
-  | { availability: { available: true; reason: null }; hasMore: boolean; items: DescribedPort[]; errors?: never }
-  | { availability: { available: false; reason: string }; errors: SkillFormatError[]; hasMore?: never; items?: never };
+  | { availability: Extract<QueryAvailability, { available: true }>; hasMore: boolean; items: DescribedPort[]; errors?: never }
+  | { availability: Extract<QueryAvailability, { available: false }>; errors: SkillFormatError[]; hasMore?: never; items?: never };
 
 export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract<DescribedPorts, { items: DescribedPort[] }> =>
   ports.availability.available;
@@ -514,10 +506,13 @@ const readPendingSaveResult = object({
   saved: readSaved, compilationState: choice('not-requested'), runtimeState: choice('pending'),
   content: readSkillSnapshot, compilation: readNull, preview: readNull,
 });
-const readUnavailableSaveResult = object({
-  saved: readSaved, compilationState: choice('not-started'), runtimeState: choice('pending'), content: readSkillSnapshot,
-  availability: readQueryAvailability,
-});
+function readUnavailableSaveResult(value: unknown, path = 'SkillSave') {
+  const result = object({ saved: readSaved, compilationState: choice('not-started'), runtimeState: choice('pending'),
+    content: readSkillSnapshot, availability: readAuthoringAvailability })(value, path);
+  const availability = result.availability;
+  if (availability.available) throw new Error(`${path}：not-started 回执需要明确的不可用原因`);
+  return { ...result, availability };
+}
 export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult | ReturnType<typeof readPendingSaveResult> | ReturnType<typeof readUnavailableSaveResult>;
 
 export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sceneRevision' | 'source' | 'channels'> & {
@@ -759,7 +754,7 @@ export const authoringApi = {
     readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', name: skill })}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
-    .then(value => object({ availability: readQueryAvailability, authoringRevision: text })(value, 'Carriers')),
+    .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>

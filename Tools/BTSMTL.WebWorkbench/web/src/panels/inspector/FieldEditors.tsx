@@ -520,7 +520,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
     .filter(field => field.serializedMemberPath.join('/') === contract.keyPath.join('/') ||
       (kind !== undefined && field.fieldId === contract.valueFields[kind]))
     .map((field): FieldMetadata => field.serializedMemberPath.join('/') === contract.keyPath.join('/')
-      ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true, reason: null },
+      ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true },
         choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
   const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);

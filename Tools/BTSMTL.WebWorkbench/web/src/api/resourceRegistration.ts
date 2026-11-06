@@ -1,16 +1,11 @@
 import { ApiError, getJson, postJson } from './http';
 import { array, boolean, choice, nullable, number, object, opaque, optional, text } from './playerRecords';
 import type { JsonObject } from '../state/skillJson';
+import { readAuthoringAvailability } from './authoringAvailability';
 
-function readCapabilityAvailability(value: unknown, path = 'ResourceCapability') {
-  const { available, reason } = object({ available: boolean, reason: nullable(text) })(value, path);
-  if (available && reason === null) return { available: true as const, reason };
-  if (!available && reason !== null) return { available: false as const, reason };
-  throw new Error(`${path} 的可用状态与原因不符合正式资源能力合同`);
-}
 export const readResourceReferenceMetadata = object({ domain: text, selection: nullable(choice('asset', 'mapped')),
   objectType: nullable(text), profile: nullable(text), mappingInputType: nullable(text), referenceType: text,
-  catalog: object({ owner: choice('Authoring'), command: choice('catalog'), domain: text }), availability: readCapabilityAvailability });
+  catalog: object({ owner: choice('Authoring'), command: choice('catalog'), domain: text }), availability: readAuthoringAvailability });
 export type ResourceReferenceMetadata = ReturnType<typeof readResourceReferenceMetadata>;
 export const readResourceReference = object({ domain: text, value: text, context: text });
 export type ResourceReference = ReturnType<typeof readResourceReference>;
@@ -18,7 +13,7 @@ export const resourceReferenceKey = (value: ResourceReference) => JSON.stringify
 export const readExecutionScopeSelection = object({ previewScope: nullable(text), runtimeScope: nullable(text) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
 export const readResourceDeclaration = object({ domain: text, selection: nullable(choice('asset', 'mapped')), profile: nullable(text),
-  mappingInputType: nullable(text), objectType: nullable(text), availability: readCapabilityAvailability });
+  mappingInputType: nullable(text), objectType: nullable(text), availability: readAuthoringAvailability });
 export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
 const readProfileResourceValue = object({ domain: text, value: text, context: text, token: nullable(text), instanceCapacity: nullable(number),
   configurationJson: nullable(text) });
@@ -31,7 +26,7 @@ export type ResourceObjectCapability =
   | { kind: 'available'; scope: Omit<ResourceObjectQuery, 'asset'>; valueMember: string }
   | { kind: 'unavailable'; reason: string };
 export function readObjectSelectionMetadata(value: unknown): ResourceObjectCapability {
-  const { availability } = object({ availability: readCapabilityAvailability })(value, 'ObjectSelection');
+  const { availability } = object({ availability: readAuthoringAvailability })(value, 'ObjectSelection');
   if (!availability.available) return { kind: 'unavailable', reason: availability.reason };
   const { command, valueMember, ...scope } = object({ command: choice('resources/objects'), valueMember: text,
     adapter: text, domain: text, context: text, objectType: text })(value, 'ObjectSelection');
@@ -44,12 +39,9 @@ export function resourceObjectValue(candidate: ResourceObjectCandidate, member: 
   for (const name of member.split('.')) value = object({ [name]: opaque })(value, `ResourceObject.${member}`)[name];
   return text(value, `ResourceObject.${member}`);
 }
-const readObjectResult = object({ available: boolean, reason: nullable(text), revision: nullable(text), items: array(readObjectCandidate) });
 function readResourceObjects(value: unknown) {
-  const result = readObjectResult(value, 'ResourceObjects');
-  if (result.available) return { ...result, available: true as const };
-  if (result.reason === null) throw new Error('ResourceObjects 缺少不可用原因');
-  return { ...result, available: false as const, reason: result.reason };
+  const availability = readAuthoringAvailability(value, 'ResourceObjects');
+  return { ...object({ revision: nullable(text), items: array(readObjectCandidate) })(value, 'ResourceObjects'), ...availability };
 }
 export type ResourceObjects = ReturnType<typeof readResourceObjects>;
 const readTransaction = object({ changes: array(object({ path: text, before: nullable(text), after: nullable(text) })) });
@@ -72,7 +64,7 @@ const readProfileLocation = object({
   adapter: text, group: text, assetToken: text, domain: text, context: text, display: text, source: text,
 });
 function readProfiles(value: unknown) {
-  const { availability } = object({ availability: readCapabilityAvailability })(value, 'Profiles');
+  const { availability } = object({ availability: readAuthoringAvailability })(value, 'Profiles');
   if (!availability.available) return { kind: 'unavailable' as const, reason: availability.reason };
   return { kind: 'ready' as const, ...object({ revision: text, items: array(readProfileLocation) })(value, 'Profiles') };
 }
