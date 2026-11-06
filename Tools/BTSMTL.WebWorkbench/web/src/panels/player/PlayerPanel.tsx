@@ -71,7 +71,7 @@ function QuickPreviewStage({ result, seconds, picture }: {
   const panelWindow = usePanelWindow();
   const visible = usePanelVisible();
   const [drawn, setDrawn] = useState<PreviewQuickFrame | null>(null);
-  const [failure, setFailure] = useState<{ reason: string; entryId: number } | null>(null);
+  const [failure, setFailure] = useState<{ reason: string; entryId: number | null } | null>(null);
   const frame = picture.frame;
   useEffect(() => {
     const canvas = video.current!;
