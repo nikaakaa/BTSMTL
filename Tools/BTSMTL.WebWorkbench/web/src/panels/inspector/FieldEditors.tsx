@@ -5,7 +5,7 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
-import type { VariableConfiguration, VariableEntry, VariableType, VariablesQuery } from '../../api/variables';
+import type { VariableDeclarationChanges, VariableEntry, VariableType, VariablesQuery } from '../../api/variables';
 import {
   authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, useVariables,
   type EdgeStep, type JsonKey, type JsonMutation,
@@ -666,9 +666,7 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
   const id = declaration.m_VariableId;
   const type = choices.types.find(type => type.typeId === variable.m_TypeId)!;
   const scope = choices.scopes.find(scope => scope.value === declaration.m_Scope)!;
-  const inputBinding = declaration.m_InputBinding === null ? null : {
-    inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection };
-  const configure = (patch: Partial<VariableConfiguration>) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, patch));
+  const configure = (changes: VariableDeclarationChanges) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, changes));
   return <div className={styles.group}>
     <div className={styles.groupHead}>{variable.m_Name}<span className={styles.count}>{type.typeId}</span>
       {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
@@ -683,19 +681,21 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
       <Row label="作用域"><Select label="作用域" value={String(declaration.m_Scope)}
         options={choices.scopes.map(scope => ({ value: String(scope.value), label: scope.name }))}
         onChange={next => { const selected = choices.scopes.find(scope => scope.value === Number(next))!;
-          configure({ scope: selected.value, lifetime: selected.defaultLifetime }); }} /></Row>
+          configure({ m_Scope: selected.value, m_Lifetime: selected.defaultLifetime }); }} /></Row>
       <Row label="生命周期"><Select label="生命周期" value={String(declaration.m_Lifetime)}
         options={choices.lifetimes.filter(lifetime => scope.lifetimes.includes(lifetime.value)).map(lifetime => ({ value: String(lifetime.value), label: lifetime.name }))}
-        onChange={next => configure({ lifetime: Number(next) })} /></Row>
-      <Row label="分类"><TextValue label="分类" value={declaration.m_Category}
-        onSet={next => configure({ category: next })} /></Row>
-      <VariableInputBinding binding={inputBinding} projections={choices.inputProjections} onSet={inputBinding => configure({ inputBinding })} />
+        onChange={next => configure({ m_Lifetime: Number(next) })} /></Row>
+      <Row label="分类"><Checkbox label="空值 null" checked={declaration.m_Category === null}
+        onChange={next => configure({ m_Category: next ? null : '' })} />
+        <TextValue label="分类" value={declaration.m_Category} onSet={next => configure({ m_Category: next })} /></Row>
+      <VariableInputBinding binding={declaration.m_InputBinding} projections={choices.inputProjections}
+        onSet={m_InputBinding => configure({ m_InputBinding })} />
     </> : <>
       <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.m_DefaultValue, ' ')}</span></Row>
       <Row label="公开"><span className={styles.readOnly}>{variable.m_IsPublic ? '是' : '否'}</span></Row>
       <Row label="作用域"><span className={styles.readOnly}>{scope.name}</span></Row>
       <Row label="生命周期"><span className={styles.readOnly}>{choices.lifetimes.find(lifetime => lifetime.value === declaration.m_Lifetime)!.name}</span></Row>
-      <Row label="分类"><span className={styles.readOnly}>{declaration.m_Category}</span></Row>
+      <Row label="分类"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_Category, ' ')}</span></Row>
       <Row label="输入绑定"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_InputBinding, ' ')}</span></Row>
     </>}
   </div>;
@@ -715,18 +715,20 @@ function VariableDefaultValue({ type, value, onSet }: { type: VariableType; valu
 }
 
 function VariableInputBinding({ binding, projections, onSet }: {
-  binding: VariableConfiguration['inputBinding']; projections: VariablesQuery['choices']['inputProjections'];
-  onSet(value: VariableConfiguration['inputBinding']): void;
+  binding: VariableEntry['m_Declaration']['m_InputBinding']; projections: VariablesQuery['choices']['inputProjections'];
+  onSet(value: VariableEntry['m_Declaration']['m_InputBinding']): void;
 }) {
-  const [input, setInput] = useState(binding?.inputValueId ?? '');
-  const [projection, setProjection] = useState<number | null>(binding?.projection ?? null);
-  useEffect(() => { setInput(binding?.inputValueId ?? ''); setProjection(binding?.projection ?? null); }, [binding?.inputValueId, binding?.projection]);
+  const [input, setInput] = useState<string | null>(binding === null ? null : binding.m_InputValueId);
+  const [projection, setProjection] = useState<number | null>(binding?.m_Projection ?? null);
+  useEffect(() => { setInput(binding === null ? null : binding.m_InputValueId); setProjection(binding?.m_Projection ?? null); }, [binding?.m_InputValueId, binding?.m_Projection]);
   return <>
-    <Row label="输入值身份"><TextInput aria-label="输入值身份" value={input} onChange={event => setInput(event.currentTarget.value)} /></Row>
+    <Row label="输入值身份"><Checkbox label="空值 null" checked={input === null} onChange={next => setInput(next ? null : '')} />
+      <TextInput aria-label="输入值身份" value={input ?? ''} placeholder={input === null ? '空值 null' : undefined}
+        onChange={event => setInput(event.currentTarget.value)} /></Row>
     <Row label="输入投影"><Select label="输入投影" value={projection === null ? null : String(projection)} placeholder="选择投影"
       options={projections.map(item => ({ value: String(item.value), label: item.name }))} onChange={next => setProjection(Number(next))} /></Row>
-    <Row label="输入绑定"><Button variant="ghost" disabled={!input.trim() || projection === null}
-      onClick={() => onSet({ inputValueId: input, projection: projection! })}>设置绑定</Button>
+    <Row label="输入绑定"><Button variant="ghost" disabled={projection === null}
+      onClick={() => onSet({ m_InputValueId: input, m_Projection: projection! })}>设置绑定</Button>
       <Button variant="ghost" disabled={binding === null} onClick={() => onSet(null)}>移除绑定</Button></Row>
   </>;
 }

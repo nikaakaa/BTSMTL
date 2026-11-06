@@ -11,7 +11,7 @@ const parsedJson: Decoder<JsonValue> = (value, path) => {
 const enumMember = object({ name: text, value: number });
 const inputBinding = object({ m_InputValueId: nullable(text), m_Projection: number });
 const declaration = object({ m_VariableId: text, m_Scope: number, m_Lifetime: number,
-  m_Category: text, m_InputBinding: nullable(inputBinding) });
+  m_Category: nullable(text), m_InputBinding: nullable(inputBinding) });
 const variable = object({ m_Declaration: declaration, m_Name: text, m_TypeId: text,
   m_DefaultValue: parsedJson, m_IsPublic: boolean, m_DeclarationOrder: number });
 export const readVariablesValue = object({ m_ContentDomain: text, m_OwnerId: text, m_Revision: text, m_Variables: array(variable) });
@@ -29,16 +29,13 @@ export type VariablesQuery = ReturnType<typeof readQuery>;
 export type VariablesEdit = ReturnType<typeof readEdit>;
 export type VariableEntry = VariablesQuery['value']['m_Variables'][number];
 export type VariableType = VariablesQuery['choices']['types'][number];
-export type VariableConfiguration = {
-  scope: number; lifetime: number; category: string;
-  inputBinding: null | { inputValueId: string | null; projection: number };
-};
+export type VariableDeclarationChanges = Partial<Omit<VariableEntry['m_Declaration'], 'm_VariableId'>>;
 export type VariableOperation =
   | { kind: 'create'; typeId: string; name?: string }
   | { kind: 'rename'; variableId: string; name: string }
   | { kind: 'set-default'; variableId: string; value: JsonValue }
   | { kind: 'configure-public'; variableId: string; isPublic: boolean }
-  | ({ kind: 'configure-blackboard'; variableId: string } & VariableConfiguration)
+  | { kind: 'configure-blackboard'; variableId: string; changes: VariableDeclarationChanges }
   | { kind: 'delete'; variableId: string };
 
 export const variablesApi = {

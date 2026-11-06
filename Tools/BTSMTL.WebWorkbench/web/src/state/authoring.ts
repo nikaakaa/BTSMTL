@@ -9,7 +9,7 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
-import { variablesApi, type VariableConfiguration, type VariableOperation, type VariablesQuery } from '../api/variables';
+import { variablesApi, type VariableDeclarationChanges, type VariableOperation, type VariablesQuery } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
@@ -2124,12 +2124,8 @@ export const graphAuthoring = {
     return { kind: 'set-default', variableId, value };
   }),
   setVariablePublic: (ownerId: string, variableId: string, isPublic: boolean) => editVariable(ownerId, { kind: 'configure-public', variableId, isPublic }),
-  setDeclarationValue: (ownerId: string, variableId: string, patch: Partial<VariableConfiguration>) => editVariable(ownerId, source => {
-    const declaration = source.m_Variables.find(variable => variable.m_Declaration.m_VariableId === variableId)!.m_Declaration;
-    return { kind: 'configure-blackboard', variableId, scope: declaration.m_Scope, lifetime: declaration.m_Lifetime,
-      category: declaration.m_Category, inputBinding: declaration.m_InputBinding === null ? null : {
-        inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection }, ...patch };
-  }),
+  setDeclarationValue: (ownerId: string, variableId: string, changes: VariableDeclarationChanges) =>
+    editVariable(ownerId, { kind: 'configure-blackboard', variableId, changes }),
   removeVariable: (ownerId: string, variableId: string) => editVariable(ownerId, { kind: 'delete', variableId }),
 
   move(graphId: string, positions: Record<string, { x: number; y: number }>) {
