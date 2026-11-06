@@ -12,22 +12,21 @@ namespace ThirdPersonGameplay.Movement.Timeline
         ForwardDistanceYaw = 2
     }
 
-    [ValueStorage(UseConstructor = true)]
-    public sealed partial class RootMotionCurveContent
+    public sealed class RootMotionCurveContent
     {
-        [ValueStorageIgnore] readonly GameplayAbilityCurveKey<Float32Scalar>[] m_Keys;
-        [ValueStorageIgnore] readonly TimelineRuntimeCurve<Float32Scalar> m_PositionX;
-        [ValueStorageIgnore] readonly TimelineRuntimeCurve<Float32Scalar> m_PositionY;
-        [ValueStorageIgnore] readonly TimelineRuntimeCurve<Float32Scalar> m_PositionZ;
-        [ValueStorageIgnore] readonly TimelineRuntimeCurve<Float32Scalar> m_ForwardDistance;
-        [ValueStorageIgnore] readonly TimelineRuntimeCurve<Float32Scalar> m_Yaw;
+        readonly GameplayAbilityCurveKey<Float32Scalar>[] m_Keys;
+        readonly TimelineRuntimeCurve<Float32Scalar> m_PositionX;
+        readonly TimelineRuntimeCurve<Float32Scalar> m_PositionY;
+        readonly TimelineRuntimeCurve<Float32Scalar> m_PositionZ;
+        readonly TimelineRuntimeCurve<Float32Scalar> m_ForwardDistance;
+        readonly TimelineRuntimeCurve<Float32Scalar> m_Yaw;
 
         public RootMotionCurveContent(string authoringId, string contentRevision, string displayName,
             string sourceAnimationIdentity, string sourceAnimationRevision, bool sourceLooping,
             float duration, float sampleRate, RootMotionCurveEvaluationMode evaluationMode,
-            TimelineContentCurve localPositionX, TimelineContentCurve localPositionY,
-            TimelineContentCurve localPositionZ, TimelineContentCurve forwardDistance,
-            TimelineContentCurve localYaw, Float32Vector3 totalLocalPosition,
+            TimelineCurve localPositionX, TimelineCurve localPositionY,
+            TimelineCurve localPositionZ, TimelineCurve forwardDistance,
+            TimelineCurve localYaw, Float32Vector3 totalLocalPosition,
             float totalForwardDistance, float totalYaw, string authoredSource)
         {
             AuthoringId = authoringId;
@@ -49,12 +48,14 @@ namespace ThirdPersonGameplay.Movement.Timeline
             TotalYaw = totalYaw;
             AuthoredSource = authoredSource;
             var builder = new TimelineRuntimeCurveBuilder<Float32Scalar, Float32ScalarContentLowering>();
-            m_PositionX = builder.PrepareOptional(localPositionX, Float32Scalar.Zero);
-            m_PositionY = builder.PrepareOptional(localPositionY, Float32Scalar.Zero);
-            m_PositionZ = builder.PrepareOptional(localPositionZ, Float32Scalar.Zero);
-            m_ForwardDistance = builder.PrepareOptional(forwardDistance, Float32Scalar.Zero);
-            m_Yaw = builder.PrepareOptional(localYaw, Float32Scalar.Zero);
+            m_PositionX = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-x", localPositionX), Float32Scalar.Zero);
+            m_PositionY = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-y", localPositionY), Float32Scalar.Zero);
+            m_PositionZ = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-z", localPositionZ), Float32Scalar.Zero);
+            m_ForwardDistance = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-forward", forwardDistance), Float32Scalar.Zero);
+            m_Yaw = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", localYaw), Float32Scalar.Zero);
             m_Keys = builder.ToKeyArray();
+            if (!TryValidate(out string error))
+                throw new InvalidOperationException(error);
         }
 
         public string AuthoringId { get; }
@@ -66,11 +67,11 @@ namespace ThirdPersonGameplay.Movement.Timeline
         public float Duration { get; }
         public float SampleRate { get; }
         public RootMotionCurveEvaluationMode EvaluationMode { get; }
-        public TimelineContentCurve LocalPositionX { get; }
-        public TimelineContentCurve LocalPositionY { get; }
-        public TimelineContentCurve LocalPositionZ { get; }
-        public TimelineContentCurve ForwardDistance { get; }
-        public TimelineContentCurve LocalYaw { get; }
+        public TimelineCurve LocalPositionX { get; }
+        public TimelineCurve LocalPositionY { get; }
+        public TimelineCurve LocalPositionZ { get; }
+        public TimelineCurve ForwardDistance { get; }
+        public TimelineCurve LocalYaw { get; }
         public Float32Vector3 TotalLocalPosition { get; }
         public float TotalForwardDistance { get; }
         public float TotalYaw { get; }
