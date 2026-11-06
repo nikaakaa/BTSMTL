@@ -87,6 +87,23 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringReferenceSource Source { get; set; }
     }
 
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class GraphAuthoringResourceRuleAttribute : Attribute
+    {
+        public GraphAuthoringResourceRuleAttribute(string memberName, string contextMember)
+        { MemberName = memberName; ContextMember = contextMember; }
+
+        public GraphAuthoringResourceRuleAttribute(string contextFieldId, Type contextType,
+            Func<object, object, GraphAuthoringResourceAttribute> resolve)
+        { ContextFieldId = contextFieldId; ContextType = contextType; Resolve = resolve; }
+
+        public string MemberName { get; }
+        public string ContextMember { get; }
+        public string ContextFieldId { get; }
+        public Type ContextType { get; }
+        public Func<object, object, GraphAuthoringResourceAttribute> Resolve { get; }
+    }
+
     public sealed class GraphAuthoringScopeQuery
     {
         public string Scope { get; set; }

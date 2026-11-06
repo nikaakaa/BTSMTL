@@ -97,6 +97,17 @@ namespace BTSMTL.Authoring.Graph
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class GraphAuthoringAnnotationAttribute : Attribute { }
 
+    [GraphAuthoringAnnotation]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+    public sealed class GraphAuthoringElementAttribute : Attribute
+    {
+        public GraphAuthoringElementAttribute(string domain, string identityFieldId)
+        { Domain = domain; IdentityFieldId = identityFieldId; }
+
+        public string Domain { get; }
+        public string IdentityFieldId { get; }
+    }
+
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Method, AllowMultiple = true)]
     public sealed class GraphAuthoringChoicesAttribute : Attribute
     {

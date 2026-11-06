@@ -84,14 +84,31 @@ namespace BTSMTL.Authoring.Workspace
 
     public sealed class AuthoringDocumentElement
     {
-        internal AuthoringDocumentElement(AuthoringDocumentSnapshot owner, string kind, string identity, string path, JObject value)
-        { Owner = owner; Kind = kind; Identity = identity; RelativePath = path; Value = value; }
+        public AuthoringDocumentElement(AuthoringDocumentSnapshot owner, string domain, string identity, string path,
+            JObject value, object authoringValue)
+            : this(owner, domain, identity, path, value, domain, identity, authoringValue)
+        {
+            if (string.IsNullOrEmpty(identity))
+                throw new InvalidDataException($"作者文档 '{owner.DocumentPath}/{path}' 的元素 '{domain}' 在 '{JsonPath}' 缺少正式身份。");
+        }
+
+        internal AuthoringDocumentElement(AuthoringDocumentSnapshot owner, string kind, string identity, string path,
+            JObject value, string contentDomain, string sourceIdentity, object authoringValue = null)
+        {
+            Owner = owner; Kind = kind; Identity = identity; RelativePath = path; Value = value;
+            ContentDomain = contentDomain; SourceIdentity = sourceIdentity;
+            AuthoringValue = authoringValue;
+        }
         public AuthoringDocumentSnapshot Owner { get; }
         public string Kind { get; }
         public string Identity { get; }
         public string RelativePath { get; }
         public string SourcePath => Path.Combine(Owner.DirectoryPath, RelativePath);
         public JObject Value { get; }
+        public string ContentDomain { get; }
+        public string SourceIdentity { get; }
+        public string JsonPath => AuthoringJsonPointer.Of(Value);
+        public object AuthoringValue { get; }
     }
 
     public sealed class AuthoringDocumentWrite
@@ -116,11 +133,14 @@ namespace BTSMTL.Authoring.Workspace
     public sealed class AuthoringDocumentRepository
     {
         readonly AuthoringCommits m_Commits;
+        readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
 
-        public AuthoringDocumentRepository(string workspace)
+        public AuthoringDocumentRepository(string workspace,
+            Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> declaredElements = null)
         {
             Workspace = Path.GetFullPath(workspace);
             m_Commits = AuthoringCommits.For(Workspace);
+            m_DeclaredElements = declaredElements;
         }
 
         public string Workspace { get; }
@@ -149,22 +169,31 @@ namespace BTSMTL.Authoring.Workspace
             return documents.Values.OrderBy(document => document.DirectoryPath, StringComparer.Ordinal).ToArray();
         }
 
-        public IReadOnlyList<AuthoringDocumentElement> Elements(IReadOnlyList<AuthoringDocumentSnapshot> documents)
+        public IReadOnlyList<AuthoringDocumentElement> Elements(IReadOnlyList<AuthoringDocumentSnapshot> documents) =>
+            Elements(documents, false);
+
+        IReadOnlyList<AuthoringDocumentElement> Elements(IReadOnlyList<AuthoringDocumentSnapshot> documents, bool contentOnly)
         {
             var elements = new List<AuthoringDocumentElement>();
             foreach (AuthoringDocumentSnapshot owner in documents)
-                foreach (var file in owner.Files.OrderBy(file => file.Key, StringComparer.Ordinal))
+            {
+                foreach (var file in owner.Files.Where(file => !contentOnly || file.Key == owner.Kind.RootFile)
+                             .OrderBy(file => file.Key, StringComparer.Ordinal))
                 {
                     string folder = Path.GetDirectoryName(file.Key)?.Replace('\\', '/');
                     bool root = file.Key == owner.Kind.RootFile;
                     string kind = root ? owner.Kind.RootElementKind : folder == "timelines" ? "timeline" :
                         folder == "graphs" ? "graph" : folder == "inputs" ? "input" : null;
                     if (kind == null) continue;
-                    JObject value = owner.Read(file.Key);
+                    JObject value = root ? owner.Root : owner.Read(file.Key);
                     string identity = kind == "input" ? Path.GetFileNameWithoutExtension(file.Key) :
                         (string)value[root ? owner.Kind.IdentityMember : kind == "graph" ? "AuthoringId" : "m_AuthoringId"];
-                    elements.Add(new AuthoringDocumentElement(owner, kind, identity, file.Key, value));
+                    elements.Add(new AuthoringDocumentElement(owner, kind, identity, file.Key, value,
+                        root ? owner.ContentDomain : null, root ? owner.SourceIdentity : null));
                 }
+                if (m_DeclaredElements != null)
+                    elements.AddRange(m_DeclaredElements(owner));
+            }
             return elements;
         }
 
@@ -172,8 +201,11 @@ namespace BTSMTL.Authoring.Workspace
             Elements(documents).Single(element => element.Kind == kind && element.Identity == identity);
 
         public AuthoringDocumentSnapshot ResolveContent(IReadOnlyList<AuthoringDocumentSnapshot> documents,
-            string domain, string sourceIdentity) => documents.Single(document =>
-                document.ContentDomain == domain && document.SourceIdentity == sourceIdentity);
+            string domain, string sourceIdentity) => ResolveContentElement(documents, domain, sourceIdentity).Owner;
+
+        public AuthoringDocumentElement ResolveContentElement(IReadOnlyList<AuthoringDocumentSnapshot> documents,
+            string domain, string sourceIdentity) => Elements(documents, true).Single(element =>
+                element.ContentDomain == domain && element.SourceIdentity == sourceIdentity);
 
         public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Save(IReadOnlyList<AuthoringDocumentWrite> writes,
             IReadOnlyList<AuthoringDocumentRead> reads) => m_Commits.Write(() =>
@@ -193,11 +225,18 @@ namespace BTSMTL.Authoring.Workspace
                     throw new InvalidOperationException($"作者文档 '{read.Key}' 已在读取后变化，期望修订 {read.Value}、实际 {actual}。");
             }
             IReadOnlyList<AuthoringDocumentSnapshot> edited = Edit(captured, writes);
-            Elements(edited).Where(element => element.Kind != "input")
+            IReadOnlyList<AuthoringDocumentElement> elements = Elements(edited);
+            elements.Where(element => element.Kind != "input" && element.Value.Parent == null)
                 .GroupBy(element => (element.Kind, element.Identity)).ToList().ForEach(group =>
                 {
                     if (group.Count() != 1)
                         throw new InvalidDataException($"作者 {group.Key.Kind} 身份 '{group.Key.Identity}' 有多个正式来源。");
+                });
+            elements.Where(element => element.ContentDomain != null)
+                .GroupBy(element => (element.ContentDomain, element.SourceIdentity)).ToList().ForEach(group =>
+                {
+                    if (group.Count() != 1)
+                        throw new InvalidDataException($"作者内容 '{group.Key.ContentDomain}' 的身份 '{group.Key.SourceIdentity}' 有多个正式来源。");
                 });
             var changes = new List<AuthoringFileChange>();
             foreach (AuthoringDocumentWrite write in writes)

@@ -185,7 +185,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                         valid = false;
                     }
             string[] auxiliaryKinds = { "GraphAuthoringChoices", "GraphAuthoringDefault", "GraphAuthoringEvaluate",
-                "GraphAuthoringResourceOwner", "GraphAuthoringBindResource" };
+                "GraphAuthoringResourceOwner", "GraphAuthoringBindResource", "GraphAuthoringResourceRule" };
             foreach (string kind in auxiliaryKinds)
             {
                 var auxiliaryMembers = new Dictionary<string, ISymbol>(StringComparer.Ordinal);
@@ -255,6 +255,33 @@ namespace ThirdPerson.ValueGeneration.Generator
                 {
                     Error(binder, "资源绑定必须是公开实例方法，接收平台资源引用并返回正式字段的准确类型");
                     valid = false;
+                }
+                ISymbol resourceRule = AuthoringAuxiliary(type, "GraphAuthoringResourceRule", field);
+                if (resourceRule != null)
+                {
+                    if (!(resourceRule is IMethodSymbol rule) || !rule.IsStatic || rule.IsGenericMethod ||
+                        rule.DeclaredAccessibility != Accessibility.Public || rule.Parameters.Length != 2 ||
+                        rule.Parameters.Any(parameter => parameter.RefKind != RefKind.None) ||
+                        !SymbolEqualityComparer.Default.Equals(rule.Parameters[0].Type, type) ||
+                        Identity(rule.ReturnType) != AuthoringNamespace + "GraphAuthoringResourceAttribute")
+                    {
+                        Error(resourceRule, "资源规则必须是公开静态方法，按值接收当前作者类型和已解析声明，并返回 GraphAuthoringResourceAttribute");
+                        valid = false;
+                    }
+                    AttributeData annotation = AuthoringAttributes(resourceRule, "GraphAuthoringResourceRule").Single();
+                    string contextMember = (string)annotation.ConstructorArguments[1].Value;
+                    AuthoringField contextField = fields.SingleOrDefault(candidate => candidate.MemberPath == contextMember);
+                    if (contextField == null || contextField.Type.SpecialType != SpecialType.System_String ||
+                        !HasAttribute(contextField.Symbol, AuthoringNamespace + "GraphAuthoringResourceAttribute"))
+                    {
+                        Error(resourceRule, "资源规则上下文必须指向当前类型已声明静态资源领域的字符串字段成员：" + contextMember);
+                        valid = false;
+                    }
+                    if (HasAttribute(field.Symbol, AuthoringNamespace + "GraphAuthoringResourceAttribute"))
+                    {
+                        Error(field.Symbol, "同一资源字段不能同时声明静态资源领域和资源规则");
+                        valid = false;
+                    }
                 }
             }
             if (!valid) return;
@@ -359,6 +386,17 @@ namespace ThirdPerson.ValueGeneration.Generator
                 foreach (AttributeData annotation in field.Symbol.GetAttributes().Where(attribute =>
                     HasAttribute(attribute.AttributeClass, AuthoringNamespace + "GraphAuthoringAnnotationAttribute")))
                     code.Append(", ").Append(AuthoringAttributeExpression(annotation));
+                if (AuthoringAuxiliary(type, "GraphAuthoringResourceRule", field) is IMethodSymbol resourceRule)
+                {
+                    AttributeData annotation = AuthoringAttributes(resourceRule, "GraphAuthoringResourceRule").Single();
+                    AuthoringField contextField = fields.Single(candidate => candidate.MemberPath ==
+                        (string)annotation.ConstructorArguments[1].Value);
+                    code.Append(", new ").Append(AuthoringRuntime).Append("GraphAuthoringResourceRuleAttribute(")
+                        .Append(Quote(contextField.Id)).Append(", typeof(").Append(TypeName(resourceRule.Parameters[1].Type))
+                        .Append("), (owner, declaration) => ").Append(TypeName(type)).Append(".").Append(Escape(resourceRule.Name))
+                        .Append("((").Append(TypeName(type)).Append(")owner, (").Append(TypeName(resourceRule.Parameters[1].Type))
+                        .Append(")declaration))");
+                }
                 code.AppendLine("),");
             }
             code.Append("}, new ").Append(AuthoringRuntime).AppendLine("GraphAuthoringConfiguration[] {");
