@@ -1096,7 +1096,7 @@ export const authoringActions = {
       }
       if (apply && error instanceof ApiError && error.status === 409) {
         const conflict = readSkillSaveConflict(JSON.parse(error.raw));
-        const outcome = { ok: false, message: conflict.message, errors: [], preview: null } as const;
+        const outcome = { ok: false, message: conflict.message, errors: [], preview: null } satisfies SaveOutcomeMessage & { preview: null };
         if (conflict.saved) accept(conflict.documents, conflict.content,
           { ...outcome, saved: true, compilationState: 'not-started' });
         else setDocument({ saving: false, externalChange: true,
