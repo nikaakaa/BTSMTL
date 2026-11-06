@@ -108,6 +108,8 @@ export function QuickPreview() {
         { displayName: '来源修订', value: description.source.revision }, { displayName: '场景修订', value: description.source.sceneRevision },
         { displayName: '输入方案来源', value: selectedScheme?.source.kind === 'documentInput'
           ? `${selectedScheme.source.documentPath} / ${selectedScheme.source.inputId}` : selectedScheme === undefined ? '未选择' : '当前根默认输入' },
+        { displayName: '方案身份', value: selectedScheme?.source.kind === 'documentInput'
+          ? selectedScheme.source.schemeId : selectedScheme === undefined ? '未选择' : '当前根默认输入' },
         { displayName: '输入方案修订', value: selectedScheme?.revision ?? '未选择' },
         ...description.source.documents.map(document => ({ displayName: document.documentPath,
           value: `${document.revision} · ${document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision === '' ? '新文档' : document.savedRevision}` })),

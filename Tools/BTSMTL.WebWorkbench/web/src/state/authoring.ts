@@ -645,8 +645,8 @@ export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
     const target = authoringTarget('scenario', name);
     const draft = await authoringApi.scenarioDraft(name, request);
-    await authoringApi.save(target, { content: { files: draft.files, removedFiles: [] }, expectedRevision: null,
-      editingView: authoringActions.editingView(), preview: null });
+    await workspaceDocumentsApi.save([{ kind: 'scenario', documentPath: target.documentPath, expectedRevision: '',
+      files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) }], []);
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
@@ -925,7 +925,7 @@ export const authoringActions = {
       : authoringActions.saveProfileResource(query, document.configurationTarget.reference);
   },
 
-  // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
+  // 编辑过及新建的文件按原文格式写出；新文件取所属根文件的格式，与原文相同的不算修改。
   changedFiles(target = get().target): { path: string; content: string }[] {
     const state = authoringDocument(useAuthoring.getState(), target);
     return Object.entries(workingFiles(state.files, state, state.rootFile)).filter(([path, content]) => content !== state.files[path])
