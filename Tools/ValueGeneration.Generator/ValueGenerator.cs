@@ -83,7 +83,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
                 if (HasAttribute(type, ValueStoragePurposeAttribute) ||
-                    type.InstanceConstructors.Any(constructor => HasAttribute(constructor, RecordedStateAttribute)))
+                    type.InstanceConstructors.Any(constructor => HasAttribute(constructor, RecordedStateAttribute)) ||
+                    type.GetMembers().Any(member => HasAttribute(member, RecordedStateMemberAttribute)))
                     valueStorageRecords[Identity(type)] = type;
                 if (type.GetMembers().OfType<IMethodSymbol>().Any(method =>
                     HasAttribute(method, "ThirdPersonSimulation.ValueUpdateAttribute")))

@@ -97,6 +97,18 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Parameter)]
     public sealed class ValueRecordedStateConstructorAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class ValueRecordedStateMemberAttribute : Attribute
+    {
+        public ValueRecordedStateMemberAttribute(string group, int order)
+        {
+            Group = group;
+            Order = order;
+        }
+        public string Group { get; }
+        public int Order { get; }
+    }
+
     [AttributeUsage(AttributeTargets.Constructor)]
     public sealed class ValueRecordedStateAttribute : Attribute
     {

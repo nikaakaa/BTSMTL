@@ -1,13 +1,16 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace ThirdPerson.ValueGeneration.Generator
 {
     public sealed partial class ValueGenerator
     {
         const string RecordedStateConstructorAttribute = "ThirdPersonSimulation.ValueRecordedStateConstructorAttribute";
+        const string RecordedStateMemberAttribute = "ThirdPersonSimulation.ValueRecordedStateMemberAttribute";
         const string RecordedStateAttribute = "ThirdPersonSimulation.ValueRecordedStateAttribute";
         const string RecordedStateContextAttribute = "ThirdPersonSimulation.ValueRecordedStateContextAttribute";
 
@@ -41,6 +44,65 @@ namespace ThirdPerson.ValueGeneration.Generator
                     return false;
                 }
                 if (!EmitRecordedState(context, code, type, constructor, members, name, readInputs)) return false;
+            }
+            return EmitRecordedStateMemberGroups(context, code, type, names);
+        }
+
+        static bool EmitRecordedStateMemberGroups(GeneratorExecutionContext context, StringBuilder code,
+            INamedTypeSymbol type, HashSet<string> names)
+        {
+            var declarations = type.GetMembers().Where(member => HasAttribute(member, RecordedStateMemberAttribute))
+                .Select(member => new { Member = member, Purpose = member.GetAttributes()
+                    .Single(attribute => Identity(attribute.AttributeClass) == RecordedStateMemberAttribute) })
+                .Select(declaration => new { declaration.Member,
+                    Group = (string)declaration.Purpose.ConstructorArguments[0].Value,
+                    Order = (int)declaration.Purpose.ConstructorArguments[1].Value });
+            foreach (var group in declarations.GroupBy(declaration => declaration.Group, StringComparer.Ordinal)
+                .OrderBy(group => group.Key, StringComparer.Ordinal))
+            {
+                if (string.IsNullOrEmpty(group.Key) || !SyntaxFacts.IsValidIdentifier("Write" + group.Key + "RecordedState") ||
+                    !names.Add(group.Key))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, group.First().Member.Locations.FirstOrDefault(),
+                        Identity(type), "记录成员组须有唯一合法名称，且不能与原构造记录用途重名"));
+                    return false;
+                }
+                var ordered = group.OrderBy(declaration => declaration.Order).ToArray();
+                var orders = new HashSet<int>();
+                var inputs = new RecordedStateValue[ordered.Length];
+                for (int i = 0; i < ordered.Length; i++)
+                {
+                    ISymbol member = ordered[i].Member;
+                    string reason;
+                    if (ordered[i].Order < 0 || !orders.Add(ordered[i].Order))
+                        reason = "同组顺序须为唯一非负整数";
+                    else if (member.IsStatic || !(member is IFieldSymbol field && !field.IsReadOnly && !field.IsConst && !field.IsFixedSizeBuffer ||
+                        member is IPropertySymbol property && IsAutoProperty(property) && property.GetMethod != null &&
+                        property.SetMethod != null && !property.SetMethod.IsInitOnly))
+                        reason = "须为原实例的可写字段或可写自动属性";
+                    else
+                    {
+                        ITypeSymbol memberType = member is IFieldSymbol valueField ? valueField.Type : ((IPropertySymbol)member).Type;
+                        if (TryRecordedStateValue(memberType, out inputs[i], out reason) &&
+                            (inputs[i].Kind != RecordedStateKind.Record || memberType.IsValueType))
+                            continue;
+                        if (reason == null) reason = "同源 RecordedState 成员须为值记录，原实例恢复不构造引用对象";
+                    }
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, member.Locations.FirstOrDefault(),
+                        Identity(type), "RecordedState 成员组 '" + group.Key + "' 成员 '" + member.Name + "': " + reason));
+                    return false;
+                }
+                code.Append("public void Write").Append(group.Key).Append("RecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
+                    .Append(Runtime).AppendLine("IRecordedRuntimeStateWriter {");
+                for (int i = 0; i < ordered.Length; i++)
+                    EmitRecordedStateWrite(code, inputs[i], "this." + Escape(ordered[i].Member.Name));
+                code.AppendLine("}");
+                code.Append("public void Restore").Append(group.Key).Append("RecordedState(ref ")
+                    .Append(Runtime).AppendLine("RecordedRuntimeStateReader reader) {");
+                for (int i = 0; i < ordered.Length; i++)
+                    code.Append("this.").Append(Escape(ordered[i].Member.Name)).Append(" = ")
+                        .Append(RecordedStateRead(inputs[i])).AppendLine(";");
+                code.AppendLine("}");
             }
             return true;
         }
@@ -89,12 +151,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             out RecordedStateValue value, out string reason)
         {
             ITypeSymbol type = parameter.Type;
-            value = new RecordedStateValue { Type = type };
+            value = null;
             reason = null;
             if (HasAttribute(parameter, RecordedStateContextAttribute))
             {
-                value.Kind = RecordedStateKind.Context;
-                value.ContextName = parameter.Name;
+                value = new RecordedStateValue { Type = type, Kind = RecordedStateKind.Context, ContextName = parameter.Name };
                 return true;
             }
             if (HasAttribute(parameter, RecordedStateConstructorAttribute))
@@ -117,14 +178,20 @@ namespace ThirdPerson.ValueGeneration.Generator
                     reason = "原构造展开须唯一对应可访问的原构造与原成员";
                     return false;
                 }
-                value.Kind = RecordedStateKind.Constructor;
-                value.Members = constructors[0].Inputs;
+                value = new RecordedStateValue { Type = type, Kind = RecordedStateKind.Constructor, Members = constructors[0].Inputs };
                 value.Inputs = new RecordedStateValue[value.Members.Length];
                 for (int i = 0; i < value.Inputs.Length; i++)
                     if (!TryRecordedStateValue(context, owner, constructors[0].Constructor.Parameters[i], out value.Inputs[i], out reason))
                         return false;
                 return true;
             }
+            return TryRecordedStateValue(type, out value, out reason);
+        }
+
+        static bool TryRecordedStateValue(ITypeSymbol type, out RecordedStateValue value, out string reason)
+        {
+            value = new RecordedStateValue { Type = type };
+            reason = null;
             AttributeData storagePurpose = type.GetAttributes().SingleOrDefault(attribute =>
                 Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
             if (storagePurpose != null && storagePurpose.NamedArguments.Any(argument => argument.Key == "RecordedState" && (bool)argument.Value.Value))
