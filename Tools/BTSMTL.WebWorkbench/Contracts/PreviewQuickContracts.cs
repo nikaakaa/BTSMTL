@@ -6,7 +6,7 @@ namespace BTSMTL.WebWorkbench;
 
 public static class PreviewQuickProtocol
 {
-    public const string Identity = "btsmtl.native-timeline-preview/3";
+    public const string Identity = "btsmtl.native-timeline-preview/4";
 }
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
@@ -47,6 +47,9 @@ public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
     [property: JsonRequired] PreviewQuickTarget Target, [property: JsonRequired] string SourceRevision,
     [property: JsonRequired] PreviewQuickInput Input, [property: JsonRequired] string OutputDirectory,
     double? RangeEndSeconds = null, int TimeoutSeconds = 180);
+public sealed record PreviewQuickSeekRequest([property: JsonRequired] string RequestId,
+    [property: JsonRequired] string SourceRevision, [property: JsonRequired] string InputRevision,
+    [property: JsonRequired] double Seconds);
 
 public sealed record PreviewQuickReply<T>(bool Success, bool Pending, string? Code, string? Message, T? Data, string RawJson);
 public sealed record PreviewQuickDocument(string Kind, string DocumentPath, string Identity, string Revision,
@@ -86,4 +89,6 @@ public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQui
 public sealed record PreviewQuickStatus(string JobId, string Stage, bool Completed, bool CancellationRequested,
     string NativeMode, string? AdoptedMode, PreviewQuickSource? Source, int SamplesDone, int SamplesTotal,
     string? OutputDirectory, string? SummaryPath, PreviewQuickPlan? Plan, string? Error,
-    string[] CleanupErrors, string[] Notes, string[] LogErrors);
+    string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame);
+public sealed record PreviewQuickFrame(string JobId, string RequestId, string SourceRevision, string InputRevision,
+    double RequestedSeconds, double SampledSeconds, string SampledRevision, string MediaType, string ImageBase64);
