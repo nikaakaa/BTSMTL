@@ -9,7 +9,9 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation
 {
-    public sealed class BtsmtlGraphDocumentCompiler
+    public sealed class BtsmtlGraphDocumentCompiler<TValue, TScalar>
+        where TValue : unmanaged
+        where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
     {
         readonly BtsmtlGraphDocument m_Root;
         readonly BtsmtlGraphDocumentViews m_Graphs;
@@ -19,18 +21,20 @@ namespace BTSMTL.Compilation
         readonly BtsmtlGraphSemanticBuilder m_Builder;
         readonly BtsmtlGraphCompilation m_Canvas;
         readonly BtsmtlBlackboardCompilation m_Blackboard;
+        readonly BtsmtlOrchestrationCompilationDomain<TValue, TScalar> m_Domain;
 
         public BtsmtlGraphDocumentCompiler(BtsmtlGraphDocument root, BtsmtlGraphDocumentViews graphs,
             Func<string, BtsmtlGraphVariableDeclarations> variables,
             IReadOnlyList<PipelineBlackboardVariableScope> scopes, string sourceRevision,
-            SimulationCompileReport report)
+            SimulationCompileReport report, BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain)
         {
             m_Root = root;
             m_Graphs = graphs;
             m_Variables = variables;
             m_Hash = sourceRevision;
             m_Route = "graph:" + root.AuthoringId;
-            m_Builder = new BtsmtlGraphSemanticBuilder(report, ProgramStateSchema.Core);
+            m_Domain = domain;
+            m_Builder = new BtsmtlGraphSemanticBuilder(report, domain.StateSchema);
             m_Canvas = new BtsmtlGraphCompilation(m_Builder);
             RequireEntries(root, graphs.Read(root));
             var sources = new Dictionary<string, BtsmtlBlackboardDeclarationSource>(StringComparer.Ordinal);
@@ -41,13 +45,8 @@ namespace BTSMTL.Compilation
         }
 
         public OrchestrationGraphContent<TValue>
-            Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                GraphCompilationIdentity identity, TLowering lowering,
-                IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
-                IOrchestrationGraphContentEncoding<TValue> encoding,
-                Func<SemanticGraphParameters, StableHash> parameterIdentity)
-            where TValue : unmanaged
-            where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
+            Build<TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
+                GraphCompilationIdentity identity, TLowering lowering)
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
@@ -77,9 +76,7 @@ namespace BTSMTL.Compilation
             m_Builder.DeclareGraphInvocation(owner, owner, GraphSource(m_Root, m_Route),
                 ProgramInvocationCallerKind.None, string.Empty, string.Empty, -1);
             return m_Builder.BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                owner, identity, lowering,
-                new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(ProgramStateSchema.Core, contentEncoder,
-                    null, encoding, parameterIdentity), OrchestrationExecutionContract.Complete, entries);
+                owner, identity, lowering, m_Domain, OrchestrationExecutionContract.Complete, entries);
         }
 
         BtsmtlGraphOperationBindings EmitGraph(BtsmtlGraphDocument document, CompileGraph graph, string route,

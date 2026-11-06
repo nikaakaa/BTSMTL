@@ -13,9 +13,8 @@ namespace BTSMTL.Graphs.Editor
     {
         public static void Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
             BtsmtlGraphRoot root, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<TValue> encoding, TLowering lowering,
-            IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
-            IBtsmtlGraphNodeCompileSource nodes, Func<SemanticGraphParameters, StableHash> parameterIdentity,
+            BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain, TLowering lowering,
+            IBtsmtlGraphNodeCompileSource nodes,
             Action<OrchestrationGraphContent<TValue>, string> publish)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
@@ -29,13 +28,14 @@ namespace BTSMTL.Graphs.Editor
             BtsmtlGraphDocumentEditor editor = root.Authoring.Document;
             var fingerprint = new BtsmtlGraphFingerprint();
             GraphCompilationIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
-                encoding.EncodingContract, contract.NumericTarget);
+                domain.Encoding.EncodingContract, contract.NumericTarget);
             string inputIdentity = CompilationInputIdentity(contract,
                 StableHash.Compute(new[] { identity.GraphId, identity.SourceRevision, identity.EncodingContract,
                     identity.NodeContract, identity.NumericTarget }.Concat(identity.Dependencies.SelectMany(
                     dependency => new[] { dependency.Identity, dependency.Revision })).ToArray()).Value,
-                typeof(TLowering).FullName, typeof(TValues).FullName, contentEncoder?.ContractIdentity ?? string.Empty,
-                encoding.EncodingIdentity.Value);
+                typeof(TLowering).FullName, typeof(TValues).FullName, domain.ContentEncoder?.ContractIdentity ?? string.Empty,
+                domain.Encoding.EncodingIdentity.Value, domain.StateSchema.GetType().AssemblyQualifiedName,
+                domain.ActionInstanceBlackboard);
             if (root.CompilationInputIdentity == inputIdentity)
             {
                 Debug.Log($"Graph '{root.AuthoringId}' is up to date; validation, compilation and asset writes skipped.");
@@ -46,14 +46,13 @@ namespace BTSMTL.Graphs.Editor
                 (source, definition) => new GraphNodeFields(
                     new BtsmtlGraphJsonFields(source.Json(), definition.GetType(), editor.ReadValue), nodes),
                 nodes.Describe);
-            var compiler = new BtsmtlGraphDocumentCompiler(root.Source, views, owner =>
+            var compiler = new BtsmtlGraphDocumentCompiler<TValue, TScalar>(root.Source, views, owner =>
                 owner == root.Variables.OwnerId ? root.Variables : editor.Documents
                     .Where(document => document.IsMacro && document.VariableOwnerId == owner)
                     .Select(document => ((BtsmtlMacroGraph)editor.Graph(document.AuthoringId)).Variables).Single(),
-                contract.BlackboardScopes, identity.SourceRevision, new SimulationCompileReport());
+                contract.BlackboardScopes, identity.SourceRevision, new SimulationCompileReport(), domain);
             OrchestrationGraphContent<TValue> content =
-                compiler.Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
-                    identity, lowering, contentEncoder, encoding, parameterIdentity);
+                compiler.Build<TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(identity, lowering);
             foreach (ref readonly OrchestrationGraphHostInput input in content.Structure.HostInputs.Span)
             {
                 string id = content.Identities.Resolve(input.InputIdentityId);
@@ -65,13 +64,22 @@ namespace BTSMTL.Graphs.Editor
         }
 
         static string CompilationInputIdentity(GraphHostContract contract, string sourceIdentity,
-            string loweringType, string valueAccessType, string contentContract, string encodingIdentity)
+            string loweringType, string valueAccessType, string contentContract, string encodingIdentity,
+            string stateSchemaType, OrchestrationExtensionDefinition? actionInstanceBlackboard)
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/6", sourceIdentity, loweringType, valueAccessType, contentContract, encodingIdentity,
+                "btsmtl-graph-compiler/7", sourceIdentity, loweringType, valueAccessType, contentContract, encodingIdentity, stateSchemaType,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
+            parts.Add(actionInstanceBlackboard.HasValue.ToString());
+            if (actionInstanceBlackboard.HasValue)
+            {
+                OrchestrationExtensionDefinition blackboard = actionInstanceBlackboard.Value;
+                parts.Add(blackboard.Identity.DomainId);
+                parts.Add(blackboard.Identity.OperationId);
+                parts.Add(blackboard.SemanticVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             foreach (GraphHostInputDescriptor input in contract.Inputs)
             {
                 parts.Add(input.InputId);
