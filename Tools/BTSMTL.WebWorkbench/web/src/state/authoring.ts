@@ -1758,8 +1758,9 @@ export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGr
 }
 
 export function graphVariableOwner(graphId: string): string | null {
-  if (get().target?.kind !== 'graph') return graphId;
-  return get().documentGraphs!.find(graph => graph.id === graphId)!.variableOwnerId;
+  const graph = get().documentGraphs!.find(graph => graph.id === graphId)!;
+  if (graph.role === null) return graph.variableOwnerId;
+  return graph.role === 'StateMachine' ? null : graphId;
 }
 
 const variableRequests = new Map<string, Promise<string>>();
