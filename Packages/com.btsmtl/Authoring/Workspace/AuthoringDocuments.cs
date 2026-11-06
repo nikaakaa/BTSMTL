@@ -136,10 +136,12 @@ namespace BTSMTL.Authoring.Workspace
     public sealed class AuthoringDocumentRepository
     {
         readonly AuthoringCommits m_Commits;
-        readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
+        readonly Func<AuthoringDocumentSnapshot, IReadOnlyList<AuthoringDocumentSnapshot>,
+            IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
 
         public AuthoringDocumentRepository(string workspace,
-            Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> declaredElements = null)
+            Func<AuthoringDocumentSnapshot, IReadOnlyList<AuthoringDocumentSnapshot>,
+                IEnumerable<AuthoringDocumentElement>> declaredElements = null)
         {
             Workspace = Path.GetFullPath(workspace);
             m_Commits = AuthoringCommits.For(Workspace);
@@ -195,7 +197,7 @@ namespace BTSMTL.Authoring.Workspace
                         root ? owner.ContentDomain : null, root ? owner.SourceIdentity : null));
                 }
                 if (m_DeclaredElements != null)
-                    elements.AddRange(m_DeclaredElements(owner));
+                    elements.AddRange(m_DeclaredElements(owner, documents));
             }
             return elements;
         }
