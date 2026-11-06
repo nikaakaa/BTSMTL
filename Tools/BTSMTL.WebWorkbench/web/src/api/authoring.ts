@@ -19,8 +19,13 @@ export type SkillFile = {
 export type SkillEditingView = WorkspaceEditingView;
 
 const readSkillFile = object({ path: text, content: text });
-const readSkillSnapshot = object({ skill: text, revision: text,
+const readSkillSnapshotValue = object({ skill: text, revision: text,
   files: array(readSkillFile), sourceFiles: array(readSkillFile) });
+const readSkillSnapshot = (value: unknown, path?: string) => {
+  const snapshot = readSkillSnapshotValue(value, path);
+  return { ...snapshot, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
+    sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) };
+};
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = { kind: 'skill' | 'scenario'; documentPath: string };
@@ -28,13 +33,6 @@ const authoringDirectories = { skill: 'Skills', scenario: 'Scenarios' };
 export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
 export const authoringTargetKey = (target: AuthoringTarget) => target.documentPath;
 export const authoringDirectory = (target: AuthoringTarget) => target.documentPath.slice(authoringDirectories[target.kind].length + 1);
-
-export interface SkillChanges {
-  skill: string;
-  revision: string;
-  changed: boolean;
-  files: { path: string; revision: string }[];
-}
 
 // 按需查询的统一外壳：availability 表示作者来源是否可读，items 为原分页结果。
 export type QueryAvailability = AuthoringAvailability;
@@ -760,13 +758,11 @@ export const authoringApi = {
     postJson<{ files: SkillFile[] }>(`${targetPath(authoringTarget('scenario', name))}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
-  read: async (target: AuthoringTarget, signal?: AbortSignal) => readSkillSnapshot(await getJson<unknown>(targetPath(target), signal)),
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
     deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', documentPath }), request, [409]),
-  changes: (target: AuthoringTarget, revision: string, signal?: AbortSignal) =>
-    getJson<SkillChanges>(`${targetPath(target)}/changes?revision=${encodeURIComponent(revision)}`, signal),
   document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
-    postJson<SkillDocument>(`${targetPath({ kind: 'skill', documentPath })}/document`, { editingView, graphId }, signal),
+    postJson<Omit<SkillDocument, 'sources'> & { sources: unknown[] }>(`${targetPath({ kind: 'skill', documentPath })}/document`, { editingView, graphId }, signal)
+      .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)) })),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await putJson<unknown>(targetPath(target), request);
     const { compilationState } = object({ compilationState: choice('not-required', 'not-requested', 'not-started', 'succeeded') })(result, 'SkillSave');

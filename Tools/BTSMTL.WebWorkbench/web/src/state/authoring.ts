@@ -544,12 +544,11 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), kind: 'skill', revision: source.revision, product: editingView.product, execution: editingView.execution,
-          sourceFiles: Object.fromEntries(source.sourceFiles.map(file => [file.path, file.content])),
-          files: Object.fromEntries(source.files.map(file => [file.path, file.content])) };
+          sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
-        for (const file of source.files) {
-          if (Object.hasOwn(edited, file.path)) edited[file.path] = parseSkillJson(file.content);
+        for (const [path, content] of Object.entries(source.files)) {
+          if (Object.hasOwn(edited, path)) edited[path] = parseSkillJson(content);
         }
         documents[key] = { ...current, edited };
       }
@@ -686,10 +685,9 @@ export const authoringActions = {
     if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
     try {
       if (!opened || (opened.revision === null && !hasChanges(target))) {
-        const snapshot = await authoringApi.read(target, controller.signal);
+        const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
         controller.signal.throwIfAborted();
-        setDocument({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
-          sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) }, target);
+        setDocument({ revision: snapshot.revision, files: snapshot.files, sourceFiles: snapshot.files }, target);
       }
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
@@ -778,7 +776,7 @@ export const authoringActions = {
     const owners = referenceReplacementOwners(result).filter(owner => useAuthoring.getState().documents[authoringTargetKey(owner.target)] !== undefined);
     const [catalogResults, snapshots, resourceCatalog] = await Promise.all([
       Promise.allSettled([authoringApi.carriers()]),
-      Promise.allSettled(owners.map(owner => authoringApi.read(owner.target))),
+      Promise.allSettled(owners.map(owner => workspaceDocumentsApi.open(owner.target.documentPath))),
       adapterCatalogCache.refresh(authoringApi.catalog),
     ]);
     const failures: { text: string; entryId: number | null }[] = [];
@@ -799,7 +797,7 @@ export const authoringActions = {
         documents[key] = { ...document, externalChange: true };
         failures.push({ text: `作者引用已替换，${target.documentPath} 文档重新读取失败`, entryId: consoleActions.error('Project', snapshot.reason) });
       } else {
-        const savedFiles = Object.fromEntries(snapshot.value.files.map(file => [file.path, file.content]));
+        const savedFiles = snapshot.value.files;
         const changedBaselines = [...new Set([...Object.keys(document.edited), ...document.removed])]
           .filter(path => !paths.has(path) && savedFiles[path] !== document.files[path]);
         for (const path of changedBaselines)
@@ -817,7 +815,7 @@ export const authoringActions = {
           removed: item.removed.filter(path => !paths.has(path)),
         }));
         documents[key] = { ...document, revision: snapshot.value.revision,
-          sourceFiles: Object.fromEntries(snapshot.value.sourceFiles.map(file => [file.path, file.content])),
+          sourceFiles: snapshot.value.files,
           files: savedFiles,
           sourceRevision: null, externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
@@ -981,17 +979,17 @@ export const authoringActions = {
     const viewport = useWorkbench.getState().playerViewport;
     const scene = editingView.scene;
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
-    const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
+    const accept = (content: Pick<SkillSnapshot, 'revision' | 'files' | 'sourceFiles'>, lastSave: SaveOutcome) => {
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
       const current = authoringDocument(useAuthoring.getState(), target);
-      const files = Object.fromEntries(content.files.map(file => [file.path, file.content]));
+      const files = content.files;
       const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
         rebaseSavedEdits(current.files, submittedFiles, files, document);
       const history = (items: Snapshot[]) => items.filter(item => !earlierHistory.has(item))
         .map(item => ({ ...item, ...rebase(item) }));
       setDocument({
         revision: content.revision, sourceRevision: null, documentRevision: null, files,
-        sourceFiles: Object.fromEntries(content.sourceFiles.map(file => [file.path, file.content])),
+        sourceFiles: content.sourceFiles,
         ...rebase(current), externalChange: false,
         undo: history(current.undo), redo: history(current.redo), version: current.version + 1, saving: false,
         lastSave: currentScene ? lastSave : { ...lastSave,
@@ -1001,10 +999,21 @@ export const authoringActions = {
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
     try {
+      if (!apply) {
+        const writes = editingView.writes.filter(write => write.documentPath === target.documentPath);
+        const result = await workspaceDocumentsApi.save(writes, editingView.reads);
+        const saved = result.documents.find(document => document.documentPath === target.documentPath);
+        if (saved === undefined) throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
+        const message = '作者内容已保存；未请求编译与发布，运行未应用。';
+        accept({ revision: saved.revision, files: saved.files, sourceFiles: saved.files },
+          { saved: true, compilationState: 'not-requested', runtimeState: 'pending', preview: null, ok: true, message, errors: [] });
+        consoleActions.log('info', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
+        return;
+      }
       const jobBlocked = session.canStart();
       const [selection, job] = await Promise.all([
-        apply ? selectedPreview() : Promise.resolve<PreviewSelection>({ kind: 'unavailable', reason: '本次仅保存作者内容，运行未应用' }),
-        apply && jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
+        selectedPreview(),
+        jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]);
       const result = await authoringApi.save(target, {
         content, expectedRevision: revision, editingView,
@@ -1051,7 +1060,7 @@ export const authoringActions = {
         void trackPreview({ save: result, receipt: result.preview, controller, viewport });
       }
     } catch (error) {
-      if (error instanceof ApiError && error.status === 422) {
+      if (apply && error instanceof ApiError && error.status === 422) {
         const rejection = readSkillSaveRejection(JSON.parse(error.raw));
         const errors = rejection.stage === 'source-rejected' ? rejection.detail.errors : [];
         const detail = rejection.stage === 'source-rejected' ? rejection.detail.message : rejection.error;
@@ -1079,9 +1088,10 @@ export const authoringActions = {
         return;
       }
       const revisionConflict = error instanceof ApiError && error.status === 409;
+      const sourceRejected = !apply && error instanceof ApiError && [400, 409, 422].includes(error.status);
       setDocument({ saving: false, ...(revisionConflict ? { externalChange: true } : {}), lastSave: {
         ok: false, message: error instanceof Error ? error.message : String(error), errors: [],
-        saved: revisionConflict ? false : null, compilationState: null, preview: null,
+        saved: revisionConflict || sourceRejected ? false : null, compilationState: null, preview: null,
       } }, target);
       consoleActions.error('作者', error);
     }
@@ -1093,17 +1103,14 @@ export const authoringActions = {
     if (!target || !revision) return;
     const signal = loadController!.signal;
     try {
-      const changes = await authoringApi.changes(target, revision, signal);
+      const snapshot = await workspaceDocumentsApi.open(target.documentPath, signal);
       signal.throwIfAborted();
-      if (!changes.changed) return;
+      if (snapshot.revision === revision) return;
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
-        const snapshot = await authoringApi.read(target, signal);
-        signal.throwIfAborted();
         setDocument({ revision: snapshot.revision, sourceRevision: null,
           version: authoringDocument(useAuthoring.getState(), target).version + 1,
-          files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
-          sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) }, target);
+          files: snapshot.files, sourceFiles: snapshot.files }, target);
       }
     } catch (error) {
       consoleActions.error('作者', error);

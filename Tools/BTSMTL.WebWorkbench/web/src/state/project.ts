@@ -1,4 +1,5 @@
 import { authoringApi, authoringTarget, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
+import { workspaceDocumentsApi } from '../api/workspaceDocuments';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
@@ -125,7 +126,7 @@ export const projectActions = {
   async removeSkill(item: Extract<ProjectItem, { kind: 'skill' }>) {
     const target = ownerOf(item);
     const document = useAuthoring.getState().documents[authoringTargetKey(target)];
-    const expectedRevision = document === undefined ? (await authoringApi.read(target)).revision : document.revision;
+    const expectedRevision = document === undefined ? (await workspaceDocumentsApi.open(target.documentPath)).revision : document.revision;
     if (expectedRevision === null) throw new Error('此技能尚未保存，请使用丢弃修改移除草稿。');
     const result = await authoringApi.deleteSkill(target.documentPath, { expectedRevision, editingView: authoringActions.editingView() });
     if (result.deleted) authoringActions.acceptSkillDeletion(result);
