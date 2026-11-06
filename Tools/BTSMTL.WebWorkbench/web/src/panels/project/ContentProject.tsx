@@ -17,8 +17,8 @@ import styles from './project.module.css';
 export function ContentProject() {
   const { documents, target, author } = useAuthoring(useShallow(state => ({ documents: state.documents, target: state.target, author: state.author })));
   const contents = useMemo(() => projectContents(documents), [documents]);
-  const elements = useSkillElements(author && target !== null);
   const composition = target?.kind === 'skill' || target?.kind === 'timeline';
+  const elements = useSkillElements(author && composition);
   const field = useReferenceSelection(state => state.field);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);

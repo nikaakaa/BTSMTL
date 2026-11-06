@@ -29,8 +29,8 @@ const readSkillSnapshot = (value: unknown, path?: string) => {
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = Pick<WorkspaceDocumentInfo, 'kind' | 'documentPath'>;
-const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios' };
-export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null };
+const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios', variables: 'Variables' };
+export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null, variables: 'variables.json' };
 export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
 export function authoringOwner(documentPath: string): AuthoringTarget {
   const kind = workspaceDocumentKinds.find(kind => documentPath.startsWith(`${authoringDirectories[kind]}/`));
@@ -254,7 +254,7 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'skill'; asset: JsonObject }
   | { kind: 'graph'; role: string }
   | { kind: 'timeline' }
-  | { kind: 'curve' | 'profile'; asset: JsonObject }
+  | { kind: 'curve' | 'profile' | 'variables'; asset: JsonObject }
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
 

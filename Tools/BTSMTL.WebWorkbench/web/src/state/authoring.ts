@@ -104,6 +104,7 @@ function profileResourceConfigurations(source: AuthoringProfile, previous?: Prof
 export interface AuthoringDocument {
   kind: WorkspaceDocumentInfo['kind'];
   rootFile: WorkspaceDocumentInfo['rootFile'];
+  identity: WorkspaceDocumentInfo['identity'] | null;
   authoringType: string | null;
   documentSources: string[];
   programId: string | null;
@@ -165,7 +166,7 @@ export interface AddedPort {
 }
 
 const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, authoringType: null, documentSources: [],
+  rootFile: null, identity: null, authoringType: null, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -552,7 +553,9 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const key = owner.documentPath;
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind], revision: source.revision, product: editingView.product, execution: editingView.execution,
+        documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind],
+          identity: view.elements.find(element => element.documentPath === key && element.relativePath === authoringRootFiles[owner.kind] && element.jsonPath === '/')?.identity ?? null,
+          revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
@@ -705,7 +708,7 @@ export const authoringActions = {
     try {
       const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
       controller.signal.throwIfAborted();
-      setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, authoringType: snapshot.authoringType ?? null,
+      setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
         ...(!opened || (opened.revision === null && !hasChanges(target))
           ? { revision: snapshot.revision, files: snapshot.files, sourceFiles: snapshot.files } : {}),
       }, target);
@@ -834,7 +837,7 @@ export const authoringActions = {
           edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
           removed: item.removed.filter(path => !paths.has(path)),
         }));
-        documents[key] = { ...document, kind: snapshot.value.kind, rootFile: snapshot.value.rootFile, authoringType: snapshot.value.authoringType ?? null, revision: snapshot.value.revision,
+        documents[key] = { ...document, kind: snapshot.value.kind, rootFile: snapshot.value.rootFile, identity: snapshot.value.identity, authoringType: snapshot.value.authoringType ?? null, revision: snapshot.value.revision,
           sourceFiles: snapshot.value.files,
           files: savedFiles,
           sourceRevision: null, externalChange: false,
@@ -1009,7 +1012,7 @@ export const authoringActions = {
         const history = (items: Snapshot[]) => items.filter(item => !submitted.history.has(item))
           .map(item => ({ ...item, ...rebase(item) }));
         documents[receipt.documentPath] = {
-          ...current, kind: receipt.kind, rootFile: receipt.rootFile, authoringType: receipt.authoringType ?? null, revision: receipt.revision,
+          ...current, kind: receipt.kind, rootFile: receipt.rootFile, identity: receipt.identity, authoringType: receipt.authoringType ?? null, revision: receipt.revision,
           sourceRevision: null, documentRevision: null, files, sourceFiles: receipt.files,
           ...rebase(current), externalChange: false,
           undo: history(current.undo), redo: history(current.redo), version: current.version + 1,
@@ -1130,7 +1133,7 @@ export const authoringActions = {
       if (snapshot.revision === revision) return;
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
-        setDocument({ authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
+        setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
           version: authoringDocument(useAuthoring.getState(), target).version + 1,
           files: snapshot.files, sourceFiles: snapshot.files }, target);
       }

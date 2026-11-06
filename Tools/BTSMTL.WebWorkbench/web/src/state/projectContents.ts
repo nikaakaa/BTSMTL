@@ -41,8 +41,10 @@ export function projectContents(documents: AuthoringState['documents']) {
         ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private' };
       else if (file === 'timeline.json' || file.startsWith('timelines/')) item = { ...base, kind: 'timeline', identity: data.m_AuthoringId as string,
         name: data.m_Name as string, ownership: 'Private' };
-      else if (file === document.rootFile && (document.kind === 'curve' || document.kind === 'profile'))
-        item = { ...base, kind: document.kind, identity: data.m_AuthoringId as string, name: ownerName, ownership: 'Shared', asset: data };
+      else if (file === document.rootFile && (document.kind === 'curve' || document.kind === 'profile' || document.kind === 'variables')) {
+        if (document.identity === null) continue;
+        item = { ...base, kind: document.kind, identity: document.identity, name: ownerName, ownership: 'Shared', asset: data };
+      }
       else if (file.startsWith('inputs/')) {
         const schemes = (data.Schemes as JsonObject[]).map((scheme, index) => ({ index, name: scheme.Name as string }));
         item = { ...base, kind: 'input-plan', identity: file.slice('inputs/'.length, -'.json'.length),
@@ -111,7 +113,7 @@ export function projectContents(documents: AuthoringState['documents']) {
     const item = items.get(key)!;
     const references = uses.get(key) ?? [];
     const node: ContentNode = { key, label: item.name, description: item.kind === 'graph' ? graphLabels[item.role] ?? item.role :
-      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
+      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
     if (path.has(key)) return node;
     assigned.add(key);
     const next = new Set([...path, key]);

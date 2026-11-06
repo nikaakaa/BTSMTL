@@ -113,11 +113,11 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
-    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : '输入方案'} />
+    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} />
     <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
-    {item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
+    {item.kind === 'curve' || item.kind === 'profile' || item.kind === 'variables' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
       : <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>}
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;

@@ -9,7 +9,7 @@ import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
 
-export const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案', curve: '曲线文档', profile: 'Profile 文档' };
+export const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案', curve: '曲线文档', profile: 'Profile 文档', variables: '变量文档' };
 export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kind, item.identity]);
 
 // Project 文件夹中选中技能作者文件时的详情：打开、重命名、带引用检查的删除与引用者。
