@@ -15,20 +15,27 @@ public sealed record SkillAuthoringChanges(string Skill, string Revision, bool C
 public sealed record SkillAuthoringWrite([property: JsonRequired] SkillAuthoringFile[] Files,
     [property: JsonRequired] string[] RemovedFiles);
 public sealed record SkillAuthoringProductScope([property: JsonRequired] string Value, [property: JsonRequired] string Revision);
-public sealed record SkillAuthoringEditingView(
-    [property: JsonRequired] IReadOnlyDictionary<string, SkillAuthoringWrite> Skills,
-    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null, SkillAuthoringProductScope? Product = null);
+public sealed record AuthoringDocumentEdit([property: JsonRequired, JsonPropertyName("kind")] string Kind,
+    [property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
+    [property: JsonRequired, JsonPropertyName("expectedRevision")] string ExpectedRevision,
+    [property: JsonRequired, JsonPropertyName("files")] IReadOnlyDictionary<string, string> Files);
+public sealed record AuthoringDocumentReadRevision([property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
+    [property: JsonRequired, JsonPropertyName("revision")] string Revision);
+public sealed record AuthoringDocumentEditingView([property: JsonRequired, JsonPropertyName("writes")] AuthoringDocumentEdit[] Writes,
+    [property: JsonRequired, JsonPropertyName("reads")] AuthoringDocumentReadRevision[] Reads,
+    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null,
+    SkillAuthoringProductScope? Product = null);
 public sealed record SkillAuthoringTypeQuery([property: JsonRequired] string Type,
     JsonElement? Configuration = null, string? GraphId = null, int Offset = 0, int Limit = 128,
-    SkillAuthoringEditingView? EditingView = null);
+    AuthoringDocumentEditingView? EditingView = null);
 public sealed record SkillAuthoringConfigurationQuery([property: JsonRequired] string Type,
     JsonElement? Configuration = null, GraphAuthoringScopeQuery? Scope = null,
     GraphAuthoringProfileQuery? Profile = null, string? Domain = null, int Offset = 0, int Limit = 128);
 public sealed record SkillAuthoringPageQuery(int Offset = 0, int Limit = 128, string? GraphId = null,
-    SkillAuthoringEditingView? EditingView = null);
+    AuthoringDocumentEditingView? EditingView = null);
 public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string GraphId,
     [property: JsonRequired] string NodeId, int Offset = 0, int Limit = 128,
-    SkillAuthoringEditingView? EditingView = null);
+    AuthoringDocumentEditingView? EditingView = null);
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(SkillAuthoringProfileEntryTarget), "ProfileEntry")]
 [JsonDerivedType(typeof(SkillAuthoringNodeTarget), "Node")]
@@ -43,5 +50,5 @@ public sealed record SkillAuthoringNodeTarget([property: JsonRequired] string Gr
 public sealed record SkillAuthoringResourceTarget([property: JsonRequired] string Domain,
     [property: JsonRequired] string Value, string? Context = null) : SkillAuthoringReferenceTarget;
 public sealed record SkillAuthoringReferenceQuery(string? Identity = null,
-    int Offset = 0, int Limit = 128, SkillAuthoringEditingView? EditingView = null,
+    int Offset = 0, int Limit = 128, AuthoringDocumentEditingView? EditingView = null,
     SkillAuthoringReferenceTarget? Target = null);

@@ -9,17 +9,6 @@ public static class PreviewQuickProtocol
     public const string Identity = "btsmtl.native-timeline-preview/3";
 }
 
-public sealed record AuthoringDocumentEdit([property: JsonRequired, JsonPropertyName("kind")] string Kind,
-    [property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
-    [property: JsonRequired, JsonPropertyName("expectedRevision")] string ExpectedRevision,
-    [property: JsonRequired, JsonPropertyName("files")] IReadOnlyDictionary<string, string> Files);
-public sealed record AuthoringDocumentReadRevision([property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
-    [property: JsonRequired, JsonPropertyName("revision")] string Revision);
-public sealed record AuthoringDocumentEditingView([property: JsonRequired, JsonPropertyName("writes")] AuthoringDocumentEdit[] Writes,
-    [property: JsonRequired, JsonPropertyName("reads")] AuthoringDocumentReadRevision[] Reads,
-    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null,
-    SkillAuthoringProductScope? Product = null);
-
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(PreviewQuickGraphEntry), "graph")]
 [JsonDerivedType(typeof(PreviewQuickTimelineEntry), "timeline")]
