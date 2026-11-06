@@ -44,12 +44,13 @@ export function cloneJson<T extends JsonValue>(value: T): T {
 
 export const numberOf = (value: JsonValue | undefined) => value instanceof JsonFloat ? value.value : typeof value === 'number' ? value : NaN;
 
-const floatText = (value: number) => Number.isInteger(value) ? `${value}.0` : String(value);
+const floatText = (value: number) => Object.is(value, -0) ? '-0.0' : Number.isInteger(value) ? `${value}.0` : String(value);
 
 export function stringifySkillJson(value: JsonValue, newline: string): string {
   const write = (item: JsonValue, indent: string): string => {
     if (item instanceof JsonFloat) return floatText(item.value);
     if (typeof item === 'bigint') return item.toString();
+    if (typeof item === 'number' && Object.is(item, -0)) return '-0';
     if (item === null || typeof item !== 'object') return JSON.stringify(item);
     const inner = indent + '  ';
     if (Array.isArray(item))
