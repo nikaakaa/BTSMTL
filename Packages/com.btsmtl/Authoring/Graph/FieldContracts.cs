@@ -155,13 +155,15 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringResourceBindingDescriptor resourceReference = null,
             GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field,
             IReadOnlyList<GraphAuthoringSubtypeDescriptor> subtypes = null,
-            string formerName = null)
+            string formerName = null,
+            Type elementType = null)
         {
             FieldId = fieldId.IsValid ? fieldId : throw new ArgumentException("Field identity is missing.", nameof(fieldId));
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? throw new ArgumentException("Field display name is missing.", nameof(displayName)) : displayName;
             ValueKind = valueKind;
             Access = access;
             ValueType = valueType;
+            ElementType = elementType;
             Section = section;
             DefaultValue = defaultValue;
             Constraint = constraint ?? new GraphAuthoringFieldConstraint();
@@ -191,6 +193,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldAccess Access { get; }
         public Type ValueType { get; }
+        public Type ElementType { get; }
         public IReadOnlyList<GraphAuthoringSubtypeDescriptor> Subtypes { get; }
         public GraphAuthoringDetailsSection Section { get; }
         public object DefaultValue { get; }
@@ -279,11 +282,14 @@ namespace BTSMTL.Authoring.Graph
                 return false;
             if (Field.ValueKind == GraphAuthoringFieldValueKind.Polymorphic)
             {
-                Type valueType = Value.GetType();
-                for (int index = 0; index < Field.Subtypes.Count; index++)
-                    if (Field.Subtypes[index].Type == valueType)
-                        return true;
-                return false;
+                if (Field.ElementType == null)
+                    return MatchesSubtype(Value.GetType());
+                if (!Field.ValueType.IsInstanceOfType(Value))
+                    return false;
+                foreach (object element in (System.Collections.IEnumerable)Value)
+                    if (element == null || !MatchesSubtype(element.GetType()))
+                        return false;
+                return true;
             }
             return Field.ValueKind switch
             {
@@ -300,6 +306,14 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.Object => true,
                 _ => false
             };
+        }
+
+        bool MatchesSubtype(Type type)
+        {
+            for (int index = 0; index < Field.Subtypes.Count; index++)
+                if (Field.Subtypes[index].Type == type)
+                    return true;
+            return false;
         }
     }
 }

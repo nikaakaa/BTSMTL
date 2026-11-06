@@ -365,6 +365,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field);
                 code.Append("new ").Append(AuthoringRuntime).Append("GraphAuthoringMember(")
                     .Append(AuthoringFieldMetadata(field, fields)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
+                    .Append(AuthoringCollectionElement(field.Type) is ITypeSymbol element ? "typeof(" + TypeName(element) + "), " : "null, ")
                     .Append("new string[] { ").Append(string.Join(", ",
                         AuthoringSerializedMemberPath(context.Compilation, type, field).Select(Quote))).Append(" }, ")
                     .Append(AuthoringSubtypeDescriptors(field)).Append(", ")
@@ -535,6 +536,8 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static bool AuthoringIdentityField(AuthoringField field) => AuthoringFieldKind(field, "IdentityReference");
 
+        static ITypeSymbol AuthoringCollectionElement(ITypeSymbol type) => IsReadOnlyMemory(type) ? null : SequenceElement(type);
+
         static ITypeSymbol[] AuthoringSubtypes(AuthoringField field)
         {
             foreach (KeyValuePair<string, TypedConstant> argument in field.Metadata.NamedArguments)
@@ -554,9 +557,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 error(field.Symbol, "只有多态作者字段可以声明 Subtypes");
                 return false;
             }
-            if (field.Type.TypeKind != TypeKind.Class && field.Type.TypeKind != TypeKind.Interface || subtypes.Length == 0)
+            ITypeSymbol valueType = AuthoringCollectionElement(field.Type) ?? field.Type;
+            if (valueType.TypeKind != TypeKind.Class && valueType.TypeKind != TypeKind.Interface || subtypes.Length == 0)
             {
-                error(field.Symbol, "多态作者字段必须使用类或接口类型，并声明非空的 Subtypes 清单");
+                error(field.Symbol, "多态作者字段或有序集合元素必须使用类或接口类型，并声明非空的 Subtypes 清单");
                 return false;
             }
             bool valid = true;
@@ -572,10 +576,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                     valid = false;
                     continue;
                 }
-                Conversion conversion = ((CSharpCompilation)compilation).ClassifyConversion(type, field.Type);
+                Conversion conversion = ((CSharpCompilation)compilation).ClassifyConversion(type, valueType);
                 if (!conversion.IsIdentity && !(conversion.IsImplicit && conversion.IsReference))
                 {
-                    error(field.Symbol, "多态子类型必须继承或实现字段类型：" + Identity(type));
+                    error(field.Symbol, "多态子类型必须继承或实现字段或集合元素类型：" + Identity(type));
                     valid = false;
                 }
                 AttributeData declaration = Attribute(type, AuthoringNamespace + "GraphAuthoringSubtypeAttribute");
