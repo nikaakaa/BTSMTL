@@ -207,9 +207,10 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Timeline = clip.Timeline;
             m_Domain = TimelineAuthoringClipBinding.ResourceDomain(clip);
-            m_ObjectTypes = GraphAuthoringMemberBindings.Contract(clip).Fields
+            GraphAuthoringResourceAttribute resource = GraphAuthoringMemberBindings.Contract(clip).Fields
                 .Single(field => field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true)
-                .Annotation<GraphAuthoringResourceAttribute>().ObjectTypes;
+                .Annotation<GraphAuthoringResourceAttribute>();
+            m_ObjectTypes = UnityGraphAuthoringResourceTypes.Resolve(resource.ObjectType, resource.Source);
             m_Changed = changed;
             m_Repaint = repaint;
             m_Reference = initialSource ? null : TimelineAuthoringClipBinding.ResourceReference(clip);

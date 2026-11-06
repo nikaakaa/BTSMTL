@@ -17,6 +17,7 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringGeneratedContract.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringMemberBindings.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldAttribute.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/UnityGraphAuthoringResourceTypes.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringIdentities.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/CapabilityCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/PortContracts.cs" />

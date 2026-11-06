@@ -78,11 +78,16 @@ namespace BTSMTL.Authoring.Graph
     public sealed class GraphAuthoringResourceAttribute : Attribute
     {
         public GraphAuthoringResourceAttribute(string domain, params Type[] objectTypes)
-        { Domain = domain; ObjectTypes = objectTypes; }
+        {
+            Domain = domain;
+            ObjectType = objectTypes.Length == 0 ? null : string.Join("|", Array.ConvertAll(objectTypes, type => type.FullName));
+        }
+        public GraphAuthoringResourceAttribute(string domain, string objectType)
+        { Domain = domain; ObjectType = objectType; }
         public string Domain { get; }
         public string Selection { get; set; }
         public string Profile { get; set; }
-        public Type[] ObjectTypes { get; }
+        public string ObjectType { get; }
         public Type MappingInputType { get; set; }
         public GraphAuthoringReferenceSource Source { get; set; }
     }
