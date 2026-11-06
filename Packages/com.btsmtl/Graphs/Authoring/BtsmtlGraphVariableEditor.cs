@@ -98,7 +98,7 @@ namespace BTSMTL.Graphs
                 created = (Variable)Activator.CreateInstance(typeof(Variable<>).MakeGenericType(type), variable.Name, variable.VariableId);
                 created.value = BtsmtlGraphVariableUnity.DefaultValue(variable);
                 m_Blackboard.variables.Add(variable.Name, created);
-                m_Blackboard.TryInvokeOnVariableAdded(created);
+                ((IBlackboard)m_Blackboard).TryInvokeOnVariableAdded(created);
             });
             return created;
         }
