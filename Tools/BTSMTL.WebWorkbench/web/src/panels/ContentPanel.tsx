@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Sources } from '../api/types';
+import { authoringTarget } from '../api/authoring';
 import { ErrorLine } from '../ui/ErrorLine';
 import { session } from '../state/session';
 import { contentActions, contentSelectionKey, previewContentChoices, selectedScene, useWorkbench } from '../state/store';
@@ -164,7 +165,7 @@ function LocalInputChoices() {
         <Button disabled={!current || current.plan.kind === 'timeline'}
           onClick={() => {
             const { plan, choice } = current!;
-            void authoringActions.openInput({ kind: plan.kind === 'scene' ? 'scenario' : 'skill', name: plan.name },
+            void authoringActions.openInput(authoringTarget(plan.kind === 'scene' ? 'scenario' : 'skill', plan.name),
               `inputs/${plan.id}.json`, choice.schemeIndex, choice.actorId).then(() => openPanel('timeline'));
           }}>编辑所选方案</Button>
       </div>;

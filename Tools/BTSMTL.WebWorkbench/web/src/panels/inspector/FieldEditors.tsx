@@ -396,7 +396,7 @@ function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: 
 }) {
   const skill = useAuthoring(state => state.target);
   const { description, issues } = useDescription(skill, graphId, type, value);
-  const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.kind, skill?.name, identity]) };
+  const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.documentPath, identity]) };
   return <Fold title={label} defaultOpen>
     <DescriptionStatus description={description} issues={issues} />
     <ValueFields value={value} description={description} owner={owner} onSet={onSet} />
