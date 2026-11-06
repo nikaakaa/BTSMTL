@@ -201,9 +201,11 @@ namespace BTSMTL.Timeline.Editor
 
         bool m_PendingSaveInputSchemes;
         int? m_PendingInputScheme;
+        TimelinePreviewInputSchemes m_PendingInputDocument;
 
         public void Open(TimelinePreviewRoot root, TimelinePreviewMode mode, bool showScene,
-            bool saveInputSchemes = true, int? inputScheme = null, bool savePreviousInputScheme = true)
+            bool saveInputSchemes = true, int? inputScheme = null, bool savePreviousInputScheme = true,
+            TimelinePreviewInputSchemes inputDocument = null)
         {
             Close(savePreviousInputScheme);
             Error = string.Empty;
@@ -222,6 +224,7 @@ namespace BTSMTL.Timeline.Editor
             m_PendingScene = showScene;
             m_PendingSaveInputSchemes = saveInputSchemes;
             m_PendingInputScheme = inputScheme;
+            m_PendingInputDocument = inputDocument;
             ContinueOpen();
         }
 
@@ -229,7 +232,8 @@ namespace BTSMTL.Timeline.Editor
         public void Retry()
         {
             if (Root != null)
-                Open(Root, Mode, ShowsScene, InputSchemes.SavesChanges, InputSchemes.SelectedIndex);
+                Open(Root, Mode, ShowsScene, InputSchemes.SavesChanges, InputSchemes.SelectedIndex,
+                    inputDocument: InputSchemes.Document);
         }
 
         void ContinueOpen()
@@ -252,7 +256,8 @@ namespace BTSMTL.Timeline.Editor
             ShowsScene = Mode == TimelinePreviewMode.Real || m_PendingScene;
             m_PendingRoot = null;
             m_Active = true;
-            InputSchemes.Load(Root, m_PendingSaveInputSchemes, m_PendingInputScheme);
+            InputSchemes.Load(Root, m_PendingSaveInputSchemes, m_PendingInputScheme, m_PendingInputDocument);
+            m_PendingInputDocument = null;
             Error = string.Empty;
             RefreshInputs();
             if (Mode == TimelinePreviewMode.Real)

@@ -57,6 +57,7 @@ namespace BTSMTL.Timeline.Editor
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
 
         public string Path => m_Asset != null ? m_Storage.InputPath(m_Asset) : string.Empty;
+        public TimelinePreviewInputSchemes Document => m_Asset;
         public TimelinePreviewRootIdentity Root => m_Root;
 
         public void Load(TimelinePreviewRoot root, bool saveChanges = true, int? selection = null,
