@@ -1,4 +1,4 @@
-import { authoringApi, authoringTarget, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
+import { authoringApi, authoringOwner, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
 import { workspaceDocumentsApi } from '../api/workspaceDocuments';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
@@ -9,7 +9,7 @@ import { openPanel } from '../shell/layout';
 import { clipSelectId, trackSelectId } from './timelineModel';
 import { projectContents, type ContentTarget } from './projectContents';
 
-const ownerOf = (item: Pick<ProjectItem, 'owner'>) => authoringTarget('skill', item.owner);
+const ownerOf = (item: Pick<ProjectItem, 'owner'>) => authoringOwner(item.owner);
 
 async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
   const target = ownerOf(item);
@@ -41,6 +41,17 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 export const projectActions = {
   openGraph,
   openOwner,
+  async openDocument(documentPath: string): Promise<void> {
+    const document = await openOwner({ owner: documentPath, ownerName: documentPath });
+    if (document.rootFile === null) {
+      selectionActions.select(null);
+      openPanel('content');
+      return;
+    }
+    const item = projectContents(useAuthoring.getState().documents).items.find(item => item.owner === documentPath && item.file === document.rootFile);
+    if (item === undefined) throw new Error(`当前文档没有可打开的根文件：${documentPath}`);
+    await projectActions.open(item);
+  },
   async inspect(target: ContentTarget): Promise<void> {
     const owner = target.kind === 'item' ? target.item : target;
     const document = await openOwner(owner);
@@ -94,14 +105,18 @@ export const projectActions = {
       return;
     }
     if (item.kind === 'timeline') selectionActions.showTimeline(item.identity, null, null);
-    else {
+    else if (item.kind === 'input-plan') {
       const plan = currentDocument(item.file) as JsonObject;
       await authoringActions.openInput(ownerOf(item), item.file, schemeIndex ?? numberOf(plan.Selected), plan.Actor as string);
+    } else {
+      selectionActions.select({ kind: 'content', id: JSON.stringify([item.owner, item.file]) });
+      openPanel('inspector');
+      return;
     }
     openPanel('timeline');
   },
 
-  async rename(item: Exclude<ProjectItem, { kind: 'graph' }>, name: string, schemeIndex: number | null) {
+  async rename(item: Extract<ProjectItem, { kind: 'skill' | 'timeline' | 'input-plan' }>, name: string, schemeIndex: number | null) {
     await openOwner(item);
     authoringActions.edit(item.file, value => {
       const document = value as JsonObject;

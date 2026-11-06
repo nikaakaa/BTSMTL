@@ -17,20 +17,20 @@ type Result = { key: string } & (
 );
 
 export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
-  const { skill, stamp } = useAuthoring(useShallow(state => ({
-    skill: state.target?.kind === 'skill' ? state.target.documentPath : null,
+  const { document, stamp } = useAuthoring(useShallow(state => ({
+    document: state.target,
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) =>
       [key, document.revision, document.version, document.execution])]),
   })));
   const scene = useWorkbench(state => selectedScene(state));
-  const key = JSON.stringify([skill, target, stamp, scene]);
+  const key = JSON.stringify([document, target, stamp, scene]);
   const [result, setResult] = useState<Result | null>(null);
   useEffect(() => {
-    if (skill === null) return;
+    if (document === null) return;
     const controller = new AbortController();
     setResult({ key, kind: 'loading' });
     const timer = setTimeout(() => {
-      authoringApi.referrers({ kind: 'skill', documentPath: skill }, { target }, authoringActions.editingView(), controller.signal)
+      authoringApi.referrers(document, { target }, authoringActions.editingView(), controller.signal)
         .then(value => {
           controller.signal.throwIfAborted();
           setResult({ key, kind: 'ready', value });
@@ -39,8 +39,8 @@ export function TargetReferrers({ target }: { target: ReferenceChoiceTarget }) {
         });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, key]);
-  if (skill === null) return <Empty text="打开技能后查看此目标的引用者" />;
+  }, [document, key]);
+  if (document === null) return <Empty text="打开作者文档后查看此目标的引用者" />;
   if (result === null || result.key !== key || result.kind === 'loading') return <Empty text="正在读取引用者" />;
   if (result.kind === 'failed') return <ErrorLine text={result.text} entryId={result.entryId} />;
   const { items, complete, unresolved } = result.value;

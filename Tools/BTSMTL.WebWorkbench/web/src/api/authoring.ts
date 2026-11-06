@@ -1,8 +1,8 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
-import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
+import { deleteJson, getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
-import type { WorkspaceEditingView } from './workspaceDocuments';
+import { workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -28,9 +28,15 @@ const readSkillSnapshot = (value: unknown, path?: string) => {
 };
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
-export type AuthoringTarget = { kind: 'skill' | 'scenario'; documentPath: string };
-const authoringDirectories = { skill: 'Skills', scenario: 'Scenarios' };
+export type AuthoringTarget = Pick<WorkspaceDocumentInfo, 'kind' | 'documentPath'>;
+const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios' };
+export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null };
 export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
+export function authoringOwner(documentPath: string): AuthoringTarget {
+  const kind = workspaceDocumentKinds.find(kind => documentPath.startsWith(`${authoringDirectories[kind]}/`));
+  if (kind === undefined) throw new Error(`作者文档路径没有正式工作区类别：${documentPath}`);
+  return { kind, documentPath };
+}
 export const authoringTargetKey = (target: AuthoringTarget) => target.documentPath;
 export const authoringDirectory = (target: AuthoringTarget) => target.documentPath.slice(authoringDirectories[target.kind].length + 1);
 
@@ -248,6 +254,7 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'skill'; asset: JsonObject }
   | { kind: 'graph'; role: string }
   | { kind: 'timeline' }
+  | { kind: 'curve' | 'profile'; asset: JsonObject }
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
 
@@ -518,8 +525,6 @@ export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sc
 };
 
 export interface SkillSaveRequest {
-  content: { files: SkillFile[]; removedFiles: string[] };
-  expectedRevision: string | null;
   editingView: SkillEditingView;
   preview: PlayerSkillRefreshTarget | null;
   job?: StartPlayerJobRequest;
@@ -681,8 +686,9 @@ export interface SkillDocument {
   sources: SkillSnapshot[];
 }
 
-const folderPath = (kind: AuthoringTarget['kind']) => `/api/authoring/${kind === 'skill' ? 'skills' : 'scenarios'}`;
-const targetPath = (target: AuthoringTarget) => `${folderPath(target.kind)}/${encodeURIComponent(authoringDirectory(target))}`;
+const skillPath = (documentPath: string) => `/api/authoring/skills/${encodeURIComponent(documentPath.slice('Skills/'.length))}`;
+const documentQueryPath = (documentPath: string, operation: string, parameters: Record<string, string | undefined> = {}) =>
+  `/api/authoring/documents/${operation}${query({ documentPath, ...parameters })}`;
 
 export interface InputFragmentRequest {
   scene: string;
@@ -748,23 +754,23 @@ export const authoringApi = {
     readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
   export: async (documentPath: string, kind: SkillExportKind, editingView: SkillEditingView) =>
-    readSkillExport(await postJson<unknown>(`${targetPath({ kind: 'skill', documentPath })}/exports/${kind}`, { editingView })),
+    readSkillExport(await postJson<unknown>(`${skillPath(documentPath)}/exports/${kind}`, { editingView })),
   products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
-    postJson<{ files: SkillFile[] }>(`${targetPath(authoringTarget('scenario', name))}/draft`, request),
+    postJson<{ files: SkillFile[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
-    deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', documentPath }), request, [409]),
+    deleteJson<SkillDeleteResult>(skillPath(documentPath), request, [409]),
   document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
-    postJson<Omit<SkillDocument, 'sources'> & { sources: unknown[] }>(`${targetPath({ kind: 'skill', documentPath })}/document`, { editingView, graphId }, signal)
+    postJson<Omit<SkillDocument, 'sources'> & { sources: unknown[] }>(documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
       .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)) })),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
-    const result = await putJson<unknown>(targetPath(target), request);
+    const result = await postJson<unknown>(documentQueryPath(target.documentPath, 'apply'), request);
     const { compilationState } = object({ compilationState: choice('not-required', 'not-requested', 'not-started', 'succeeded') })(result, 'SkillSave');
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
@@ -775,14 +781,14 @@ export const authoringApi = {
     }
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),
-  types: (target: AuthoringTarget, offset: number, signal?: AbortSignal) =>
-    getJson<TypePage>(`${targetPath(target)}/queries/types${query({ offset, limit: 128 })}`, signal),
+  types: (target: AuthoringTarget, offset: number, editingView: SkillEditingView, signal?: AbortSignal) =>
+    postJson<TypePage>(documentQueryPath(target.documentPath, 'queries/types'), { offset, limit: 128, editingView }, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
   describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
-    readTypeDescription(await postText(`${targetPath(target)}/queries/type`, { type, graphId, offset: 0, limit: 128, editingView }, signal)),
+    readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'), { type, graphId, offset: 0, limit: 128, editingView }, signal)),
   // 按当前未保存配置描述节点或普通作者值，保留技能 JSON 的数值格式。
   describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
-    readTypeDescription(await postText(`${targetPath(target)}/queries/type`,
+    readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'),
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
   describeAuthoringConfiguration: async (input: { type: string; configuration: JsonObject | null; domain: string | null;
     owner: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null }, signal?: AbortSignal) =>
@@ -790,17 +796,17 @@ export const authoringApi = {
       domain: input.domain, ...(input.owner?.kind === 'profile' ? { profile: input.owner.query } : input.owner?.kind === 'scope' ? { scope: input.owner.query } : {}),
       offset: 0, limit: 128 }, '\n'), signal)),
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<IdentityItem>(`${targetPath(target)}/queries/references`, { editingView }, signal).then(page => page.items),
+    allPages<IdentityItem>(documentQueryPath(target.documentPath, 'queries/references'), { editingView }, signal).then(page => page.items),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<BlackboardItem>(`${targetPath(target)}/queries/blackboards`, { editingView }, signal).then(page => page.items),
+    allPages<BlackboardItem>(documentQueryPath(target.documentPath, 'queries/blackboards'), { editingView }, signal).then(page => page.items),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectItem, AuthoringProject>(`${targetPath(target)}/queries/project`, { editingView }, signal),
+    allPages<ProjectItem, AuthoringProject>(documentQueryPath(target.documentPath, 'queries/project'), { editingView }, signal),
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
     let complete = true;
     for (let offset = 0; ; offset += 128) {
-      const page = await postJson<ReferrersResult & { hasMore: boolean }>(`${targetPath(target)}/queries/referrers`,
+      const page = await postJson<ReferrersResult & { hasMore: boolean }>(documentQueryPath(target.documentPath, 'queries/referrers'),
         { ...selector, editingView, offset, limit: 128 }, signal);
       items.push(...page.items);
       for (const issue of page.unresolved) unresolved.set(JSON.stringify(issue), issue);
@@ -809,12 +815,12 @@ export const authoringApi = {
     }
   },
   referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
-    postJson<ReferenceCurves>(`${targetPath(target)}/queries/reference-curves`, { identity, editingView }, signal),
+    postJson<ReferenceCurves>(documentQueryPath(target.documentPath, 'queries/reference-curves'), { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
-  elements: async (target: AuthoringTarget, signal?: AbortSignal, context?: InputPlanContext) => {
-    const parameters = context?.kind === 'timeline' ? { timeline: context.timeline }
-      : context?.kind === 'scene' ? { scene: context.scene, actor: context.actor } : {};
-    const elements = parseSkillJson(await getText(`${targetPath(target)}/queries/elements${query(parameters)}`, signal)) as unknown as SkillElements;
+  elements: async (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal, context?: InputPlanContext) => {
+    const parameters = context?.kind === 'timeline' ? { timelineId: context.timeline } : {};
+    const elements = parseSkillJson(await postText(documentQueryPath(target.documentPath, 'queries/elements', parameters),
+      { offset: 0, limit: 128, editingView }, signal)) as unknown as SkillElements;
     for (const clip of elements.clips)
       clip.curves = clip.curves.map(channel => ({
         ...channel, min: numberOf(channel.min), max: numberOf(channel.max),

@@ -2,9 +2,10 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
+import { projectActions } from '../state/project';
 import { authoringActions, authoringDocument, profileConfigurationStatus, profileDirty, profileDocument, scopeDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
-import { contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
+import { consoleActions, contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
 import { quickBounds, quickPlan, quickPreview } from '../state/quickPreview';
 import { Button, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../ui/controls';
@@ -72,16 +73,13 @@ function SkillChoice() {
     directory: state.directory, target: state.target, available: state.available,
   })));
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
-  const skills = directory?.filter(document => document.kind === 'skill');
   if (available === false) return null;
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
-      {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.documentPath}</span> : (
-        <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.documentPath ?? null} disabled={!skills?.length}
-          options={(skills ?? []).map(item => ({ value: item.documentPath, label: item.documentPath.slice('Skills/'.length) }))}
-          onChange={documentPath => void authoringActions.open({ kind: 'skill', documentPath })} />
-      )}
+      <Select variant="ghost" label="作者文档" placeholder="选择作者文档" value={target?.documentPath ?? null} disabled={!directory?.length}
+        options={(directory ?? []).map(item => ({ value: item.documentPath, label: item.documentPath }))}
+        onChange={documentPath => void projectActions.openDocument(documentPath).catch(error => consoleActions.error('作者文档', error))} />
     </>
   );
 }

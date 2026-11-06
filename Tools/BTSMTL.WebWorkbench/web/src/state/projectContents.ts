@@ -21,15 +21,15 @@ export function projectContents(documents: AuthoringState['documents']) {
   const children = new Map<string, string[]>();
   const roots: ProjectItem[] = [];
   for (const [key, document] of Object.entries(documents)) {
-    if (!key.startsWith('Skills/')) continue;
-    const owner = key.slice('Skills/'.length);
+    if (document.kind === 'scenario') continue;
+    const owner = key;
     const source = new Map([...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
-      .filter(path => !document.removed.includes(path) && (path === 'skill.json' ||
+      .filter(path => !document.removed.includes(path) && (path === document.rootFile ||
         path.startsWith('graphs/') || path.startsWith('timelines/') || path.startsWith('inputs/'))).map(path => [path,
         document.edited[path] ?? parseSkillJson(document.files[path])]));
-    const root = source.get('skill.json') as JsonObject | undefined;
+    const root = document.rootFile === null ? undefined : source.get(document.rootFile) as JsonObject | undefined;
     if (root === undefined) continue;
-    const ownerName = root.m_DisplayName as string;
+    const ownerName = document.kind === 'skill' ? root.m_DisplayName as string : document.kind === 'timeline' ? root.m_Name as string : owner;
     for (const [file, value] of source) {
       const data = value as JsonObject;
       const base = { owner, ownerName, file, referenceCount: 0 };
@@ -39,8 +39,10 @@ export function projectContents(documents: AuthoringState['documents']) {
       else if (file.startsWith('graphs/')) item = { ...base, kind: 'graph', identity: data.AuthoringId as string,
         name: graphLabels[data.Role as string] ?? data.Role as string, role: data.Role as string,
         ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private' };
-      else if (file.startsWith('timelines/')) item = { ...base, kind: 'timeline', identity: data.m_AuthoringId as string,
+      else if (file === 'timeline.json' || file.startsWith('timelines/')) item = { ...base, kind: 'timeline', identity: data.m_AuthoringId as string,
         name: data.m_Name as string, ownership: 'Private' };
+      else if (file === document.rootFile && (document.kind === 'curve' || document.kind === 'profile'))
+        item = { ...base, kind: document.kind, identity: data.m_AuthoringId as string, name: ownerName, ownership: 'Shared', asset: data };
       else if (file.startsWith('inputs/')) {
         const schemes = (data.Schemes as JsonObject[]).map((scheme, index) => ({ index, name: scheme.Name as string }));
         item = { ...base, kind: 'input-plan', identity: file.slice('inputs/'.length, -'.json'.length),
@@ -48,11 +50,11 @@ export function projectContents(documents: AuthoringState['documents']) {
       } else continue;
       items.set(itemKey(item), item);
       values.set(itemKey(item), data);
-      if (item.kind === 'skill') roots.push(item);
+      if (file === document.rootFile) roots.push(item);
     }
     for (const relation of document.documentRelations) relations.set(JSON.stringify(relation), relation);
   }
-  const byIdentity = new Map([...items].filter(([, item]) => item.kind !== 'skill').map(([key, item]) => [item.identity, key]));
+  const byIdentity = new Map([...items].filter(([, item]) => item.kind === 'graph' || item.kind === 'timeline' || item.kind === 'input-plan').map(([key, item]) => [item.identity, key]));
   const addUse = (identity: string, use: ContentUse, parent = use.key) => {
     const key = byIdentity.get(identity);
     if (key === undefined) return;
@@ -109,7 +111,7 @@ export function projectContents(documents: AuthoringState['documents']) {
     const item = items.get(key)!;
     const references = uses.get(key) ?? [];
     const node: ContentNode = { key, label: item.name, description: item.kind === 'graph' ? graphLabels[item.role] ?? item.role :
-      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
+      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
     if (path.has(key)) return node;
     assigned.add(key);
     const next = new Set([...path, key]);
@@ -146,7 +148,7 @@ export function projectContents(documents: AuthoringState['documents']) {
   const tree = roots.map(item => build(itemKey(item)));
   for (const root of tree) {
     const owner = root.target!.kind === 'item' ? root.target!.item.owner : '';
-    const owned = [...items].filter(([, item]) => item.owner === owner && item.kind !== 'skill');
+    const owned = [...items].filter(([key, item]) => item.owner === owner && key !== root.key);
     const shared = owned.filter(([, item]) => item.ownership === 'Shared').map(([key]) => build(key));
     const unreferenced: ContentNode[] = [];
     for (const [key] of owned) if (!assigned.has(key) && !uses.has(key)) unreferenced.push(build(key));

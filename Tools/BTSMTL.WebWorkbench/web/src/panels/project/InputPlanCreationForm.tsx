@@ -12,7 +12,7 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
   const timelines = useAuthorTimelines();
   const inputs = useInputSchemes();
   const { scene, catalog } = useWorkbench(useShallow(state => ({ scene: selectedScene(state), catalog: state.inputCatalog })));
-  const [kind, setKind] = useState<'skill' | 'timeline' | 'scene'>(target.kind === 'skill' ? 'skill' : 'scene');
+  const [kind, setKind] = useState<'skill' | 'timeline' | 'scene'>(target.kind === 'skill' ? 'skill' : target.kind === 'timeline' ? 'timeline' : 'scene');
   const [timeline, setTimeline] = useState<string | null>(null);
   const [actor, setActor] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -29,7 +29,7 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
       onChange={event => setName(event.currentTarget.value)} />
     {target.kind === 'skill' ? <Select label="输入方案归属" value={kind} disabled={busy}
       options={[{ value: 'skill', label: '当前技能' }, { value: 'timeline', label: '指定 Timeline' }]}
-      onChange={value => setKind(value as 'skill' | 'timeline')} /> : <span>归属当前场景与所选角色</span>}
+      onChange={value => setKind(value as 'skill' | 'timeline')} /> : target.kind === 'timeline' ? <span>归属指定 Timeline</span> : <span>归属当前场景与所选角色</span>}
     {kind === 'timeline' && <Select label="所属 Timeline" placeholder="选择 Timeline" value={timeline} disabled={busy}
       options={availableTimelines.map(item => ({ value: item.documentId, label: item.displayName ?? item.documentId }))}
       onChange={setTimeline} />}

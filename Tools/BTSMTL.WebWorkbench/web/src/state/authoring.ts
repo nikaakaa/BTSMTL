@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringDirectory, authoringTarget, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
@@ -183,7 +183,7 @@ export const authoringDocument = (state: AuthoringState, target = state.target):
 
 export const ownsAuthoringGraph = (state: AuthoringState, id: string): boolean => {
   const target = state.target;
-  return target?.kind === 'skill' && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === authoringDirectory(target)) === true;
+  return target !== null && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === target.documentPath) === true;
 };
 
 const get = () => {
@@ -205,9 +205,9 @@ export function useDocumentObservationBinding(): DocumentObservationBinding {
   const { graphs, dirty } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
     const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
-    if (state.target?.kind === 'skill') owners.add(authoringDirectory(state.target));
+    if (state.target !== null) owners.add(state.target.documentPath);
     return { graphs: document.documentError === null && document.sourceRevision !== null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
-      key.startsWith('Skills/') && owners.has(key.slice('Skills/'.length)) &&
+      owners.has(key) &&
       (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
   }));
   return useMemo(() => ({ programs: graphs === null ? null : new Map(graphs.map(graph => [graph.programId, graph.programRevision])), dirty }),
@@ -495,7 +495,7 @@ export function timelineOf(documentId: string, document: JsonObject): AuthorTime
 function publishDocument() {
   const { documentGraphs, files, target } = get();
   useWorkbench.setState({
-    graphs: target?.kind === 'skill' ? documentGraphs : null, graphAvailability: [],
+    graphs: target === null ? null : documentGraphs, graphAvailability: [],
     timelines: target ? documentTimelines(files) : [],
   });
   reconcileSelection();
@@ -522,29 +522,25 @@ useWorkbench.subscribe((state, previous) => {
 
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const capturedOwners = Object.entries(useAuthoring.getState().documents)
-    .filter(([key]) => key.startsWith('Skills/'))
     .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
   const isCurrentRequest = () => {
     const current = useAuthoring.getState().documents;
-    return Object.keys(current).filter(key => key.startsWith('Skills/')).length === capturedOwners.length &&
+    return Object.keys(current).length === capturedOwners.length &&
       capturedOwners.every(owner => current[owner.key].revision === owner.revision && current[owner.key].version === owner.version) &&
       JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
   };
-  if (target.kind === 'scenario') {
-    setDocument({ documentGraphs: [], documentRelations: [], sourceRevision: null, documentError: null, programId: null, tickRate: null }, target);
-    return;
-  }
   try {
     const document = await authoringApi.document(target.documentPath, editingView, signal);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     const documents = { ...useAuthoring.getState().documents };
     for (const source of document.sources) {
-      const key = authoringTargetKey(authoringTarget('skill', source.skill));
+      const owner = authoringOwner(source.skill);
+      const key = owner.documentPath;
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), kind: 'skill', rootFile: 'skill.json', revision: source.revision, product: editingView.product, execution: editingView.execution,
+        documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind], revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
@@ -556,7 +552,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     }
     const key = authoringTargetKey(target);
     documents[key] = { ...documents[key], documentGraphs: document.graphs, documentRelations: document.relations,
-      documentSources: document.sources.map(source => authoringTargetKey(authoringTarget('skill', source.skill))),
+      documentSources: document.sources.map(source => source.skill),
       sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId };
     set({ documents });
@@ -596,7 +592,7 @@ async function reloadDocument(target: AuthoringTarget, signal: AbortSignal) {
 let documentTimer: ReturnType<typeof setTimeout> | null = null;
 let documentController: AbortController | null = null;
 function scheduleDocumentReload(target: AuthoringTarget | null) {
-  if (target?.kind !== 'skill') return;
+  if (target === null) return;
   setDocument({ sourceRevision: null }, target);
   if (documentTimer !== null) clearTimeout(documentTimer);
   documentController?.abort();
@@ -612,8 +608,8 @@ useAuthoring.subscribe((state, previous) => {
     return;
   }
   const target = state.target;
-  if (target?.kind !== 'skill' || !Object.entries(previous.documents).some(([key, document]) =>
-    key.startsWith('Skills/') && document.version !== state.documents[key]?.version)) return;
+  if (target === null || !Object.entries(previous.documents).some(([key, document]) =>
+    document.version !== state.documents[key]?.version)) return;
   scheduleDocumentReload(target);
 });
 
@@ -1017,7 +1013,7 @@ export const authoringActions = {
         jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]);
       const result = await authoringApi.save(target, {
-        content, expectedRevision: revision, editingView,
+        editingView,
         preview: selection.kind === 'selected' ? selection.target : null,
         job,
       });
@@ -1587,7 +1583,7 @@ function invalidateResourceConsumers() {
   set({ carrierRevision: null });
   void adapterCatalogCache.refresh(authoringApi.catalog);
   const state = get();
-  if (state.target?.kind === 'skill') setDocument({ sourceRevision: null, version: state.version + 1 });
+  if (state.target !== null) setDocument({ sourceRevision: null, version: state.version + 1 });
 }
 
 async function applyProfile(query: ProfileQuery, operation: (source: AuthoringProfile) => Promise<ProfileOperationResult>, savedConfiguration: ProfileConfigurationTarget | null) {
@@ -1934,7 +1930,7 @@ export function skillElements(context?: InputPlanContext): Promise<SkillElements
   const target = get().target;
   if (!target) return Promise.reject(new Error('没有打开的作者目录'));
   const signal = loadController!.signal;
-  return authoringApi.elements(target, signal, context).then(elements => { signal.throwIfAborted(); return elements; });
+  return authoringApi.elements(target, authoringActions.editingView(), signal, context).then(elements => { signal.throwIfAborted(); return elements; });
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {

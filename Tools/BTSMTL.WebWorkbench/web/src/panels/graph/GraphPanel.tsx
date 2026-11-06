@@ -369,7 +369,7 @@ function loadTypes(skill: AuthoringTarget) {
     const items = (async () => {
       const result: NodeTypeInfo[] = [];
       for (let offset = 0; ; offset += 128) {
-        const page = await authoringApi.types(skill, offset);
+        const page = await authoringApi.types(skill, offset, authoringActions.editingView());
         if (!page.availability.available) throw new Error(page.availability.reason ?? '类型查询不可用');
         result.push(...page.items);
         if (!page.hasMore) return result;

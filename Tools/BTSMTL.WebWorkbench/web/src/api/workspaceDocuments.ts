@@ -4,8 +4,9 @@ import type { AuthoringProduct } from './authoring';
 import type { ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
 
+export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario'] as const;
 const documentFields = {
-  kind: choice('skill', 'timeline', 'curve', 'scenario'), identity: text, documentPath: text,
+  kind: choice(...workspaceDocumentKinds), identity: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
 };
 const readDocument = object(documentFields);
@@ -13,10 +14,10 @@ export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
 
 const readFiles = (value: unknown, path = 'WorkspaceDocument.files'): Record<string, string> =>
   Object.fromEntries(Object.entries(hosted({})(value, path)).map(([name, content]) => [name, text(content, `${path}.${name}`)]));
-const readSnapshot = object({ ...documentFields, files: readFiles });
-export type WorkspaceDocumentSnapshot = ReturnType<typeof readSnapshot>;
+export const readWorkspaceDocumentSnapshot = object({ ...documentFields, files: readFiles });
+export type WorkspaceDocumentSnapshot = ReturnType<typeof readWorkspaceDocumentSnapshot>;
 
-const readElement = object({ kind: choice('timeline', 'graph', 'input', 'curve'), identity: text,
+const readElement = object({ kind: choice('timeline', 'graph', 'input', 'curve', 'profile'), identity: text,
   documentPath: text, relativePath: text });
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
 export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
@@ -30,9 +31,9 @@ export type WorkspaceEditingView = {
 };
 
 const readList = object({ success: boolean, documents: array(readDocument) });
-const readOpen = object({ success: boolean, document: readSnapshot });
+const readOpen = object({ success: boolean, document: readWorkspaceDocumentSnapshot });
 const readElements = object({ success: boolean, elements: array(readElement) });
-const readView = object({ success: boolean, documents: array(readSnapshot), elements: array(readElement) });
+const readView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
 
 export const workspaceDocumentsApi = {
   list: (kind?: WorkspaceDocumentInfo['kind'], signal?: AbortSignal) =>

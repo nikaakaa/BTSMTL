@@ -1,7 +1,7 @@
 import { authoringActions, useAuthoring } from '../state/authoring';
-import { authoringDirectory, authoringTarget } from '../api/authoring';
+import { authoringOwner } from '../api/authoring';
 import { session } from '../state/session';
-import { getState, resourceActions, selectionActions, useWorkbench, type Selection, type SelectionKind } from '../state/store';
+import { consoleActions, getState, resourceActions, selectionActions, useWorkbench, type Selection, type SelectionKind } from '../state/store';
 import { activePanelType, openPanel } from './layout';
 import { isPanelType } from './panelTypes';
 import { setAddressPanel } from './readiness';
@@ -32,16 +32,17 @@ export function applyPanelAddress() {
 // 宿主连接后恢复运行、帧、选中对象与资源。
 export function applyStateAddress() {
   const run = initial.get('run');
-  const skill = initial.get('skill');
-  const scenario = initial.get('scenario');
+  const documentPath = initial.get('document');
   if (run) {
     const frame = Number(initial.get('frame') ?? '0');
     session.selectRun(run, Number.isSafeInteger(frame) && frame >= 0 ? frame : 0);
     selectionActions.select(parseSelection(initial.get('select')));
   }
-  if (scenario || skill) {
-    void authoringActions.open(scenario ? authoringTarget('scenario', scenario) : authoringTarget('skill', skill!));
-    selectionActions.select(parseSelection(initial.get('select')));
+  if (documentPath !== null) {
+    try {
+      void authoringActions.open(authoringOwner(documentPath));
+      selectionActions.select(parseSelection(initial.get('select')));
+    } catch (error) { consoleActions.error('作者文档', error); }
   }
   const resource = initial.get('resource');
   if (resource) {
@@ -64,7 +65,7 @@ function write() {
     params.set('run', state.runId);
     params.set('frame', String(state.frameIndex));
   }
-  if (target) params.set(target.kind, authoringDirectory(target));
+  if (target) params.set('document', target.documentPath);
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);

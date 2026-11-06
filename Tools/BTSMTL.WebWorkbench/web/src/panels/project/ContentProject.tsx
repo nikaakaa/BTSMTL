@@ -17,7 +17,8 @@ import styles from './project.module.css';
 export function ContentProject() {
   const { documents, target, author } = useAuthoring(useShallow(state => ({ documents: state.documents, target: state.target, author: state.author })));
   const contents = useMemo(() => projectContents(documents), [documents]);
-  const elements = useSkillElements(author && target?.kind === 'skill');
+  const elements = useSkillElements(author && target !== null);
+  const composition = target?.kind === 'skill' || target?.kind === 'timeline';
   const field = useReferenceSelection(state => state.field);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -52,9 +53,9 @@ export function ContentProject() {
         onChange={event => setSearch(event.currentTarget.value)} />
         <MenuButton label="新建作者内容" caret entries={[
           { label: '技能', onSelect: () => create('skill') },
-          { label: '在所属技能下新建 Timeline', disabled: target?.kind !== 'skill', onSelect: () => create('timeline') },
-          { label: '在所属技能下新建共享子图', disabled: target?.kind !== 'skill', onSelect: () => create('macro') },
-          { label: '在所属技能下新建输入方案', disabled: target?.kind !== 'skill', onSelect: () => create('input') },
+          { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
+          { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
+          { label: '在当前文档中新建输入方案', disabled: !composition, onSelect: () => create('input') },
           ...(node?.target?.kind === 'node' ? [{ label: '在所选节点的引用字段中创建拥有内容',
             onSelect: () => void perform(() => projectActions.inspect(node.target!)) }] : []),
           ...(node?.target?.kind === 'item' && node.target.item.kind === 'timeline' ? [{ label: '在所选 Timeline 中添加轨道或片段',
@@ -88,7 +89,7 @@ export function ContentProject() {
         }} />}
     </div>
     <div className={styles.contentDetails}>
-      {creating !== null ? <SkillContentCreation key={`${creating}/${target?.documentPath}`} kind={creating} skill={target?.kind === 'skill' ? target.documentPath : null}
+      {creating !== null ? <SkillContentCreation key={`${creating}/${target?.documentPath}`} kind={creating} skill={composition && target !== null ? target.documentPath : null}
         elements={elements} onDone={() => setCreating(null)} /> : node === undefined ? <Empty text="单击查看检查器，双击打开图或 Timeline；拖动内容设置作者引用" /> : <>
         {node.target?.kind === 'item' ? <SkillItemDetails item={node.target.item} items={contents.items}
           stamp={JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version]))} onChanged={() => setSelected(null)} />

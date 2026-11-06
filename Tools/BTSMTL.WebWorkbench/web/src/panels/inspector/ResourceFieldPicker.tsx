@@ -3,6 +3,9 @@ import type { AdapterCatalogItem, ReferenceChoice } from '../../api/authoring';
 import type { ResourceReferenceMetadata } from '../../api/resourceRegistration';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
 import { authoringDocument, useAuthoring } from '../../state/authoring';
+import { projectActions } from '../../state/project';
+import { consoleActions } from '../../state/store';
+import { Button } from '../../ui/controls';
 import { resourceReferenceChoice, type ReferenceCatalog, type ResourceObjectFieldSelection } from '../../state/referenceSelection';
 import { useResourceScope } from '../../state/resourceScope';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
@@ -32,7 +35,10 @@ function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoo
           conflict: documents.filter(other => other.sourceIdentity === document.sourceIdentity).length > 1
             ? `领域 ${metadata.domain} 的引用 ${document.sourceIdentity} 命中多个正式作者文档。` : null,
           targets: [], associated: [] })) };
-  return <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />;
+  const selected = documents.filter(document => document.sourceIdentity === value);
+  return <><ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />
+    {selected.length === 1 && <Button variant="ghost" onClick={() => void projectActions.openDocument(selected[0].documentPath)
+      .catch(error => consoleActions.error('作者文档', error))}>打开作者文档</Button>}</>;
 }
 
 function AdapterFieldPicker({ id, label, metadata, value, configuration, onChoose }: ResourceFieldPickerProps) {

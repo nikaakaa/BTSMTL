@@ -1,7 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
-import { authoringDirectory } from '../../api/authoring';
 import { usePanelParams } from '../../shell/panel';
 import {
   findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
@@ -52,7 +51,7 @@ export function InspectorPanel() {
   const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
     : !target ? <Empty text="选择要编辑的内容" />
       : shown ? <Content key={`${target.documentPath}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
-        : <SkillSummary />;
+        : <DocumentSummary />;
   return (
     <div className={styles.root}>
       <LockContext.Provider value={lock}>
@@ -85,15 +84,27 @@ function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean;
   }
 }
 
+function DocumentSummary() {
+  const { target, documents } = useAuthoring(useShallow(state => ({ target: state.target, documents: state.documents })));
+  if (target === null) return <Empty text="选择要编辑的文档" />;
+  if (target.kind === 'skill') return <SkillSummary />;
+  const document = documents[target.documentPath];
+  if (document.loading) return <Empty text="正在读取文档" />;
+  if (target.kind === 'scenario') return <><Head name={target.documentPath} sub="场景输入文档" /><p>从内容面板选择要编辑的输入方案。</p></>;
+  const root = projectContents(documents).items.find(item => item.owner === target.documentPath && item.file === document.rootFile);
+  return root === undefined ? <Empty text={document.documentError ?? '文档根文件尚未读取'} />
+    : <ContentInspector id={JSON.stringify([root.owner, root.file])} missing={<Empty text="文档根文件尚未读取" />} />;
+}
+
 function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const documents = useAuthoring(state => state.documents);
   const target = useAuthoring(state => state.target);
   const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
-  if (item === undefined || target?.kind !== 'skill' || item.owner !== authoringDirectory(target)) return missing;
+  if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
-    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : '输入方案'} />
-    <Value label="所属技能" value={item.ownerName} mono={false} />
+    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : '输入方案'} />
+    <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
     <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>
@@ -237,7 +248,7 @@ function SkillSummary() {
 // 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
 function useAuthorGraphs() {
   return useAuthoring(useShallow(state => ({
-    on: state.author && state.target?.kind === 'skill',
+    on: state.author && state.target !== null,
     edited: authoringDocument(state).edited, ports: authoringDocument(state).addedPorts,
   })));
 }
