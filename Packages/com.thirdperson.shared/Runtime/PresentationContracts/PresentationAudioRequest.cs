@@ -76,9 +76,10 @@ namespace ThirdPersonSimulation
                 PresentationAudioLifetime.Action, soundSlot, parameterSlot, value);
     }
 
+    [ValueStorage(UseConstructor = true, RecordedState = true)]
     public readonly partial struct AudioPlaybackOwner : IEquatable<AudioPlaybackOwner>
     {
-        public AudioPlaybackOwner(ActorId actorId, ulong actionInstanceId,
+        public AudioPlaybackOwner([ValueRecordedStateConstructor] ActorId actorId, ulong actionInstanceId,
             ulong timelineRuntimeHandle, ulong playbackGeneration)
         {
             ActorId = actorId;
