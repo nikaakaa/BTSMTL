@@ -22,7 +22,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import styles from './inspector.module.css';
 
@@ -105,7 +105,8 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (element !== undefined && target !== null && element.documentPath === target.documentPath) return <>
     <Head name={element.identity} sub="作者元素" />
     <Value label="所属文档" value={element.documentPath} mono={false} />
-    <DocumentFields editable={editable} location={{ kind: 'element', element }} />
+    {target.kind === 'variables' && element.jsonPath === '/' ? <BlackboardFields ownerId={element.identity} editable={editable} />
+      : <DocumentFields editable={editable} location={{ kind: 'element', element }} />}
     <IdentityFold fields={[{ displayName: '作者文件', value: element.relativePath }, { displayName: 'JSON 路径', value: element.jsonPath },
       ...(element.sourceIdentity === null ? [] : [{ displayName: '资源引用身份', value: element.sourceIdentity }]),
       { displayName: '所属文档修订', value: element.revision }]} />
@@ -117,7 +118,8 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
-    {item.kind === 'curve' || item.kind === 'profile' || item.kind === 'variables' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
+    {item.kind === 'variables' ? <BlackboardFields ownerId={item.identity} editable={editable} />
+      : item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
       : <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>}
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;

@@ -5,8 +5,9 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
+import type { VariableConfiguration, VariableEntry, VariableType, VariablesQuery } from '../../api/variables';
 import {
-  authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
+  authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, useVariables,
   type EdgeStep, type JsonKey, type JsonMutation,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -58,14 +59,16 @@ export function ConfigurationFields({ value, onSet }: { value: JsonObject; onSet
 }
 
 // 文本：失焦或回车提交；空文本按存储类型写空字符串或 null。
-function TextValue({ value, label, nullable, onSet }: {
-  value: string | null; label: string; nullable?: boolean; onSet(value: JsonValue): void;
-}) {
+function TextValue({ value, label, nullable, onSet }: { value: string | null; label: string } & (
+  | { nullable?: false; onSet(value: string): void }
+  | { nullable: true; onSet(value: string | null): void }
+)) {
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
   const commit = () => {
     if (draft === (value ?? '')) return;
-    onSet(draft === '' && nullable ? null : draft);
+    if (nullable) onSet(draft === '' ? null : draft);
+    else onSet(draft);
   };
   return (
     <TextInput aria-label={label} value={draft} placeholder={value === null ? '空' : undefined}
@@ -93,7 +96,7 @@ function IntegerValue({ value, label, onSet }: { value: JsonValue | undefined; l
       setIssue('请输入十进制整数');
       return;
     }
-    onSet(parseSkillJson(draft));
+    onSet(typeof value === 'string' ? draft : parseSkillJson(draft));
     setIssue(null);
   };
   return <>
@@ -156,7 +159,7 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
     return <Row label={label}><Checkbox label={label} checked={value === true} onChange={next => set(next)} /></Row>;
   if (typeof value === 'bigint' || preciseIntegerTypes.has(shape?.clrType ?? ''))
     return <Row label={label}><IntegerValue label={label} value={value} onSet={set} /></Row>;
-  if (value instanceof JsonFloat || (typeof value === 'number' && !Number.isInteger(value)) || (value == null && floatTypes.has(shape?.clrType ?? '')))
+  if (value instanceof JsonFloat || (typeof value === 'number' && !Number.isInteger(value)) || floatTypes.has(shape?.clrType ?? ''))
     return <Row label={label}><NumberValue label={label} value={value} integer={false} onSet={set} /></Row>;
   if (typeof value === 'number' || (value == null && integerTypes.has(shape?.clrType ?? '')))
     return <Row label={label}><NumberValue label={label} value={value} integer onSet={set} /></Row>;
@@ -582,74 +585,120 @@ export function TransitionFields({ graphId, connectionId, shape, children }: {
   );
 }
 
-// ── 黑板：每个变量一组，原生变量（名称、类型、默认值）与 BTSMTL 声明（作用域、生命周期、分类、输入投影）一起编辑 ──
-
-export function BlackboardFields({ graphId, shape, editable }: { graphId: string; shape: StorageShape | null; editable: boolean }) {
-  const skill = useAuthoring(state => state.target);
-  const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
-  const [draft, setDraft] = useState({ name: '', varType: 'Single' });
-  const graph = document as JsonObject | null;
-  if (!graph || !Array.isArray(graph.BlackboardDeclarations)) return <div className={styles.note}>这张图没有黑板</div>;
-  const variables = Object.values(((graph.localBlackboard as JsonObject | undefined)?.variables ?? {}) as JsonObject) as JsonObject[];
-  const declarations = graph.BlackboardDeclarations as JsonObject[];
-  const members = shape?.members ?? [];
-  const add = () => {
-    const name = draft.name.trim();
-    if (!name) return;
-    // 新变量默认动作实例作用域与生命周期（合法配对），在声明里改。
-    graphAuthoring.addVariable(graphId, name, draft.varType, { m_Scope: 'ActionInstance', m_Lifetime: 'ActionInstance', m_Category: '' });
-    setDraft({ ...draft, name: '' });
+export function BlackboardFields({ ownerId, editable }: { ownerId: string | null; editable: boolean }) {
+  const source = useVariables(ownerId);
+  const [draft, setDraft] = useState<{ name: string; typeId: string | null }>({ name: '', typeId: null });
+  const [failure, setFailure] = useState<string | null>(null);
+  useEffect(() => { setDraft({ name: '', typeId: null }); setFailure(null); }, [ownerId]);
+  if (ownerId === null) return <div className={styles.note}>这张图没有变量所有者</div>;
+  if (source.value === null) return <div className={source.failure ? styles.issue : styles.note}>{source.failure ?? '正在读取变量文档'}</div>;
+  const query = source.value;
+  if (!query.availability.available) return <div className={styles.issue}>{query.availability.reason}</div>;
+  const perform = (action: () => Promise<unknown>) => {
+    setFailure(null);
+    void action().catch((error: unknown) => {
+      setFailure(error instanceof Error ? error.message : String(error));
+      consoleActions.error('变量', error);
+    });
   };
-  return (
-    <>
-      {variables.map(variable => {
-        const id = variable.ID as string;
-        const declaration = declarations.find(item => item.m_VariableId === id);
-        const setDeclaration: SetValue = (keys, value) => graphAuthoring.setDeclarationValue(graphId, id, keys, value);
-        return (
-          <div key={id} className={styles.group}>
-            <div className={styles.groupHead}>
-              {variable.name as string}<span className={styles.count}>{variable.varType as string}</span>
-              {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
-                onClick={() => graphAuthoring.removeVariable(graphId, id)}><CloseIcon /></Button>}
-            </div>
-            {editable ? (
-              <>
-                <Row label="名称"><TextValue label="名称" value={variable.name as string} onSet={next => {
-                  if (typeof next === 'string' && next.trim()) graphAuthoring.renameVariable(graphId, id, next.trim());
-                }} /></Row>
-                <ValueEditor label="默认值" value={variable.serializedValue}
-                  shape={portShape(variable.varType as string)} keys={[]}
-                  onSet={(keys, value) => graphAuthoring.setVariableValue(graphId, id, keys, value)} />
-                {declaration ? members.filter(item => item.member !== 'm_VariableId').map(item => (
-                  <ValueEditor key={item.member} label={memberLabel(item.member)} value={declaration[item.member]} shape={item}
-                    keys={[item.member]} onSet={setDeclaration} />
-                )) : <div className={styles.issue}>缺少 BTSMTL 声明</div>}
-              </>
-            ) : (
-              <>
-                <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.serializedValue ?? null, ' ')}</span></Row>
-                {declaration && ['m_Scope', 'm_Lifetime', 'm_Category'].map(key => (
-                  <Row key={key} label={memberLabel(key)}><span className={styles.readOnly}>{String(declaration[key] ?? '')}</span></Row>
-                ))}
-              </>
-            )}
-          </div>
-        );
-      })}
-      {!variables.length && <div className={styles.note}>没有变量</div>}
-      {editable && (
-        <div className={styles.group}>
-          <div className={styles.groupHead}>添加变量</div>
-          <Row label="名称"><TextInput aria-label="变量名称" value={draft.name} onChange={event => setDraft({ ...draft, name: event.currentTarget.value })}
-            onKeyDown={event => { if (event.key === 'Enter') add(); }} /></Row>
-          <Row label="类型"><Select label="类型" value={draft.varType} options={variableTypes.map(type => ({ value: type, label: type }))}
-            onChange={varType => setDraft({ ...draft, varType })} /></Row>
-          <Row label=""><Button variant="ghost" disabled={!draft.name.trim()} onClick={add}>添加</Button></Row>
-        </div>
-      )}
-    </>
-  );
+  const add = () => {
+    const typeId = draft.typeId;
+    if (typeId === null) return;
+    perform(() => graphAuthoring.addVariable(ownerId, typeId, draft.name.trim() || undefined)
+      .then(() => setDraft(current => ({ ...current, name: '' }))));
+  };
+  return <>
+    {(failure ?? source.failure) && <div role="alert" className={styles.issue}>{failure ?? source.failure}</div>}
+    <fieldset disabled={source.writing} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+      {query.value.m_Variables.map(variable => <BlackboardVariable key={variable.m_Declaration.m_VariableId}
+        ownerId={ownerId} variable={variable} choices={query.choices} editable={editable} perform={perform} />)}
+      {!query.value.m_Variables.length && <div className={styles.note}>没有变量</div>}
+      {editable && <div className={styles.group}>
+        <div className={styles.groupHead}>添加变量</div>
+        <Row label="名称"><TextInput aria-label="变量名称" placeholder="留空使用正式默认名称" value={draft.name}
+          onChange={event => setDraft({ ...draft, name: event.currentTarget.value })}
+          onKeyDown={event => { if (event.key === 'Enter') add(); }} /></Row>
+        <Row label="类型"><Select label="类型" value={draft.typeId} placeholder="选择变量类型"
+          options={query.choices.types.map(type => ({ value: type.typeId, label: type.typeId }))}
+          onChange={typeId => setDraft({ ...draft, typeId })} /></Row>
+        <Row label=""><Button variant="ghost" disabled={draft.typeId === null} onClick={add}>添加</Button></Row>
+      </div>}
+    </fieldset>
+  </>;
+}
+
+function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
+  ownerId: string; variable: VariableEntry; choices: VariablesQuery['choices']; editable: boolean;
+  perform(action: () => Promise<unknown>): void;
+}) {
+  const declaration = variable.m_Declaration;
+  const id = declaration.m_VariableId;
+  const type = choices.types.find(type => type.typeId === variable.m_TypeId)!;
+  const scope = choices.scopes.find(scope => scope.value === declaration.m_Scope)!;
+  const configuration: VariableConfiguration = { scope: declaration.m_Scope, lifetime: declaration.m_Lifetime,
+    category: declaration.m_Category, inputBinding: declaration.m_InputBinding === null ? null : {
+      inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection } };
+  const configure = (patch: Partial<VariableConfiguration>) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, { ...configuration, ...patch }));
+  return <div className={styles.group}>
+    <div className={styles.groupHead}>{variable.m_Name}<span className={styles.count}>{type.typeId}</span>
+      {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
+        onClick={() => perform(() => graphAuthoring.removeVariable(ownerId, id))}><CloseIcon /></Button>}
+    </div>
+    {editable ? <>
+      <Row label="名称"><TextValue label="名称" value={variable.m_Name} onSet={next =>
+        perform(() => graphAuthoring.renameVariable(ownerId, id, next))} /></Row>
+      <VariableDefaultValue type={type} value={variable.m_DefaultValue} onSet={value => perform(() => graphAuthoring.setVariableValue(ownerId, id, value))} />
+      <Row label="公开"><Checkbox label="公开变量" checked={variable.m_IsPublic}
+        onChange={isPublic => perform(() => graphAuthoring.setVariablePublic(ownerId, id, isPublic))} /></Row>
+      <Row label="作用域"><Select label="作用域" value={String(declaration.m_Scope)}
+        options={choices.scopes.map(scope => ({ value: String(scope.value), label: scope.name }))}
+        onChange={next => { const selected = choices.scopes.find(scope => scope.value === Number(next))!;
+          configure({ scope: selected.value, lifetime: selected.defaultLifetime }); }} /></Row>
+      <Row label="生命周期"><Select label="生命周期" value={String(declaration.m_Lifetime)}
+        options={choices.lifetimes.filter(lifetime => scope.lifetimes.includes(lifetime.value)).map(lifetime => ({ value: String(lifetime.value), label: lifetime.name }))}
+        onChange={next => configure({ lifetime: Number(next) })} /></Row>
+      <Row label="分类"><TextValue label="分类" value={declaration.m_Category}
+        onSet={next => configure({ category: next })} /></Row>
+      <VariableInputBinding binding={configuration.inputBinding} projections={choices.inputProjections} onSet={inputBinding => configure({ inputBinding })} />
+    </> : <>
+      <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.m_DefaultValue, ' ')}</span></Row>
+      <Row label="公开"><span className={styles.readOnly}>{variable.m_IsPublic ? '是' : '否'}</span></Row>
+      <Row label="作用域"><span className={styles.readOnly}>{scope.name}</span></Row>
+      <Row label="生命周期"><span className={styles.readOnly}>{choices.lifetimes.find(lifetime => lifetime.value === declaration.m_Lifetime)!.name}</span></Row>
+      <Row label="分类"><span className={styles.readOnly}>{declaration.m_Category}</span></Row>
+      <Row label="输入绑定"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_InputBinding, ' ')}</span></Row>
+    </>}
+  </div>;
+}
+
+function VariableDefaultValue({ type, value, onSet }: { type: VariableType; value: JsonValue; onSet(value: JsonValue): void }) {
+  if (type.enumMembers !== null) return <Row label="默认值"><Select label="默认值" value={String(numberOf(value))}
+    options={type.enumMembers.map(member => ({ value: String(member.value), label: member.name }))} onChange={next => onSet(Number(next))} /></Row>;
+  if (type.valueKind === 'ObjectHandle' || (type.valueKind === 'UInt64' && typeof type.defaultValue === 'string'))
+    return <Row label="默认值"><IntegerValue label="默认值" value={value} onSet={onSet} /></Row>;
+  if (type.clrType === 'System.String') return <Row label="默认值">
+    <Checkbox label="空值 null" checked={value === null} onChange={next => onSet(next ? null : cloneJson(type.defaultValue))} />
+    <TextValue label="默认值" value={value as string | null} onSet={onSet} />
+  </Row>;
+  return <ValueEditor label="默认值" value={value} shape={{ clrType: type.clrType, hasAuthoringFields: false, enumValues: null, elementType: null }} keys={[]}
+    onSet={(keys, next) => { if (!keys.length) onSet(next); else { const updated = cloneJson(value); setIn(updated, keys, next); onSet(updated); } }} />;
+}
+
+function VariableInputBinding({ binding, projections, onSet }: {
+  binding: VariableConfiguration['inputBinding']; projections: VariablesQuery['choices']['inputProjections'];
+  onSet(value: VariableConfiguration['inputBinding']): void;
+}) {
+  const [input, setInput] = useState(binding?.inputValueId ?? '');
+  const [projection, setProjection] = useState<number | null>(binding?.projection ?? null);
+  useEffect(() => { setInput(binding?.inputValueId ?? ''); setProjection(binding?.projection ?? null); }, [binding?.inputValueId, binding?.projection]);
+  return <>
+    <Row label="输入值身份"><TextInput aria-label="输入值身份" value={input} onChange={event => setInput(event.currentTarget.value)} /></Row>
+    <Row label="输入投影"><Select label="输入投影" value={projection === null ? null : String(projection)} placeholder="选择投影"
+      options={projections.map(item => ({ value: String(item.value), label: item.name }))} onChange={next => setProjection(Number(next))} /></Row>
+    <Row label="输入绑定"><Button variant="ghost" disabled={!input.trim() || projection === null}
+      onClick={() => onSet({ inputValueId: input, projection: projection! })}>设置绑定</Button>
+      <Button variant="ghost" disabled={binding === null} onClick={() => onSet(null)}>移除绑定</Button></Row>
+  </>;
 }
 
 // ── 预览输入方案：方案列表（所选方案、新增、删除）与所选方案的字段 ──
@@ -899,8 +948,8 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   }
   if ((value == null || typeof value === 'string') && !(value == null && shape?.members?.length) && !isCurve(value, shape?.clrType ?? field.objectType ?? undefined))
     return <Row label={label} tip={field.references.map(reference => reference.errorMessage).join('\n') || undefined}>
-      <TextValue label={label} value={value ?? null}
-        nullable={shape?.clrType !== 'System.String'} onSet={set} />
+      {shape?.clrType === 'System.String' ? <TextValue label={label} value={value ?? null} onSet={set} />
+        : <TextValue label={label} value={value ?? null} nullable onSet={set} />}
     </Row>;
   return <>
     <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, hasAuthoringFields: false, enumValues: null, elementType: null } : null)}

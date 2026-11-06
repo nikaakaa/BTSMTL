@@ -116,7 +116,11 @@ function DocumentAuthoringStatus() {
   const canApply = useWorkbench(state => state.host?.modes.find(mode => mode.id === state.previewMode)?.createsRun === true);
   const state = useAuthoring(useShallow(current => {
     const document = authoringDocument(current);
-    return { open: current.author && current.target !== null, edited: document.edited, removed: document.removed,
+    const documents = Object.values(current.documents);
+    return { open: current.author && current.target !== null,
+      dirty: documents.reduce((count, owner) => count + Object.keys(owner.edited).length + owner.removed.length, 0),
+      removed: documents.reduce((count, owner) => count + owner.removed.length, 0),
+      variablesWriting: documents.some(owner => owner.variablesWriting),
       externalChange: document.externalChange, saving: document.saving, lastSave: document.lastSave,
       undoDepth: document.undo.length, redoDepth: document.redo.length };
   }));
@@ -126,7 +130,7 @@ function DocumentAuthoringStatus() {
     return () => clearInterval(timer);
   }, [state.open]);
   if (!state.open) return null;
-  const dirty = Object.keys(state.edited).length + state.removed.length;
+  const dirty = state.dirty;
   const lastSave = state.lastSave;
   return (
     <div className={styles.authoring}>
@@ -141,14 +145,14 @@ function DocumentAuthoringStatus() {
       )}
       {dirty > 0 && (
         <>
-          <Tip content={`${dirty} 个文件未保存${state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}`}>
+          <Tip content={`${dirty} 个文件未保存${state.removed ? `（含 ${state.removed} 个待删除）` : ''}`}>
             <span className={styles.dirty} tabIndex={0}>未保存</span>
           </Tip>
-          <Button variant="ghost" disabled={state.saving} tip={state.saving ? '正在保存，收到回执后可还原' : '丢弃网页中的全部未保存修改'}
+          <Button variant="ghost" disabled={state.saving || state.variablesWriting} tip={state.saving ? '正在保存，收到回执后可还原' : '丢弃网页中的全部未保存修改'}
             onClick={() => authoringActions.revert()}>还原</Button>
         </>
       )}
-      <Button disabled={state.saving} tip="保存当前文档的作者内容（Ctrl+S）" onClick={() => void authoringActions.save()}>
+      <Button disabled={state.saving} tip="保存当前作者修改（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>
       <Button disabled={state.saving} tip="保存编辑文档并执行离线编译" onClick={() => void authoringActions.save('compile')}>保存并编译</Button>

@@ -14,7 +14,7 @@ import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphLayoutPath, graphPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphLayoutPath, graphPath, graphVariableOwner, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -494,12 +494,11 @@ function NodeTypePicker({ graph, at, referenceDrop, onCreated, onClose }: {
   );
 }
 
-// 黑板浮层：读打开技能里这张图的文件；作者模式可增删、改名、改默认值与声明。
 function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose(): void }) {
   const author = useAuthoring(useShallow(state => ({
     own: ownsAuthoringGraph(state, graph.id), editable: state.author,
   })));
-  const elements = useSkillElements(author.own && author.editable);
+  const { document } = useCurrentDocument(author.own ? graphPath(graph.id) : null);
   return (
     <div className={styles.blackboard}>
       <div className={styles.pickerHead}>
@@ -507,8 +506,8 @@ function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose()
         <button className={styles.pickerClose} onClick={onClose} aria-label="关闭"><CloseIcon /></button>
       </div>
       <div className={styles.blackboardBody}>
-        {author.own ? <BlackboardFields graphId={graph.id} shape={elements?.blackboard ?? null} editable={author.editable && !!elements} />
-          : <div className={styles.pickerNote}>这张图不属于打开的技能</div>}
+        {author.own ? <BlackboardFields ownerId={document === null ? null : graphVariableOwner(graph.id)} editable={author.editable} />
+          : <div className={styles.pickerNote}>这张图不属于打开的文档</div>}
       </div>
     </div>
   );

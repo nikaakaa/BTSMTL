@@ -9,6 +9,7 @@ import {
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
+import { variablesApi, type VariableConfiguration, type VariableOperation, type VariablesQuery } from '../api/variables';
 import { playerApi } from '../api/player';
 import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
   type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
@@ -107,6 +108,8 @@ export interface AuthoringDocument {
   identity: WorkspaceDocumentInfo['identity'] | null;
   authoringType: string | null;
   projectRoot: Extract<ProjectItem, { kind: 'graph' }> | null;
+  variables: VariablesQuery | null;
+  variablesWriting: boolean;
   documentSources: string[];
   programId: string | null;
   inputActorId: string | null;
@@ -167,7 +170,7 @@ export interface AddedPort {
 }
 
 const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, identity: null, authoringType: null, projectRoot: null, documentSources: [],
+  rootFile: null, identity: null, authoringType: null, projectRoot: null, variables: null, variablesWriting: false, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -838,7 +841,7 @@ export const authoringActions = {
           loadController?.abort();
           loadController = new AbortController();
         }
-        const history = (items: Snapshot[]) => items.map(item => ({ ...item,
+        const history = (items: Snapshot[]) => items.map(item => item.owner.documentPath !== key ? item : ({ ...item,
           edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
           removed: item.removed.filter(path => !paths.has(path)),
         }));
@@ -866,8 +869,10 @@ export const authoringActions = {
       publishDocument();
       return;
     }
-    clearHistory();
-    setDocument({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
+    set({ documents: Object.fromEntries(Object.entries(state.documents).map(([key, document]) => [key, {
+      ...document, edited: {}, removed: [], version: document.version + 1, externalChange: false,
+      addedPorts: {}, undo: [], redo: [], variables: null,
+    }])) });
     reconcileSelection();
   },
 
@@ -962,11 +967,10 @@ export const authoringActions = {
       for (const path of document.removed) delete files[path];
       return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files };
     });
-    const dependencies = new Set(state.target === null ? [] : [authoringTargetKey(state.target), ...state.documentSources]);
     return {
       writes,
       reads: Object.entries(state.documents).flatMap(([documentPath, document]) =>
-        dependencies.has(documentPath) && document.revision !== null ? [{ documentPath, revision: document.revision }] : []),
+        document.revision !== null ? [{ documentPath, revision: document.revision }] : []),
       execution: state.execution,
       product: state.product,
       ...(scene === undefined ? {} : { scene }),
@@ -984,6 +988,15 @@ export const authoringActions = {
   },
 
   async save(operation: 'save' | 'compile' | 'apply' = 'save') {
+    const variableResults = await Promise.allSettled(variableRequests);
+    const variableFailure = variableResults.find(result => result.status === 'rejected');
+    if (variableFailure?.status === 'rejected') {
+      const error: unknown = variableFailure.reason;
+      setDocument({ lastSave: { ok: false, saved: false, compilationState: null, preview: null, errors: [],
+        message: `变量修改未完成，作者内容尚未保存：${error instanceof Error ? error.message : String(error)}` } });
+      consoleActions.error('变量保存', error);
+      return;
+    }
     const owner = get().resourceTarget;
     if (owner?.kind === 'scope') return;
     if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
@@ -1006,7 +1019,10 @@ export const authoringActions = {
       if (!receipts.some(document => document.documentPath === target.documentPath))
         throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
-      const documents = { ...useAuthoring.getState().documents };
+      const previousDocuments = useAuthoring.getState().documents;
+      const documents = { ...previousDocuments };
+      const savedFiles = new Map(receipts.map(receipt => [receipt.documentPath,
+        receipt.documentPath === target.documentPath && content !== null ? content.files : receipt.files]));
       for (const receipt of receipts) {
         const submitted = submittedDocuments.get(receipt.documentPath)!;
         const current = documents[receipt.documentPath];
@@ -1014,11 +1030,15 @@ export const authoringActions = {
         const files = selected && content !== null ? content.files : receipt.files;
         const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
           rebaseSavedEdits(current.files, submitted.files, files, document, current.rootFile);
-        const history = (items: Snapshot[]) => items.filter(item => !submitted.history.has(item))
-          .map(item => ({ ...item, ...rebase(item) }));
+        const history = (items: Snapshot[]) => items.filter(item => !submitted.history.has(item)).map(item => {
+          const owner = item.owner.documentPath;
+          const files = savedFiles.get(owner);
+          return files === undefined ? item : { ...item, ...rebaseSavedEdits(previousDocuments[owner].files,
+            submittedDocuments.get(owner)!.files, files, item, previousDocuments[owner].rootFile) };
+        });
         documents[receipt.documentPath] = {
           ...current, kind: receipt.kind, rootFile: receipt.rootFile, identity: receipt.identity, authoringType: receipt.authoringType ?? null, revision: receipt.revision,
-          sourceRevision: null, documentRevision: null, files, sourceFiles: receipt.files,
+          sourceRevision: null, documentRevision: null, files, sourceFiles: receipt.files, variables: null,
           ...rebase(current), externalChange: false,
           undo: history(current.undo), redo: history(current.redo), version: current.version + 1,
           ...(selected ? { saving: false, lastSave: currentScene ? lastSave : { ...lastSave,
@@ -1032,8 +1052,7 @@ export const authoringActions = {
     };
     try {
       if (operation === 'save') {
-        const writes = editingView.writes.filter(write => write.documentPath === target.documentPath);
-        const result = await workspaceDocumentsApi.save(writes, editingView.reads);
+        const result = await workspaceDocumentsApi.save(editingView.writes, editingView.reads);
         const message = '作者内容已保存；未请求编译与发布，运行未应用。';
         accept(result.documents, null,
           { saved: true, compilationState: 'not-requested', runtimeState: 'pending', preview: null, ok: true, message, errors: [] });
@@ -1554,6 +1573,7 @@ export function referenceReplacementConflicts(plan: ReferenceReplacementResult, 
 // ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
 
 interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections' | 'timelineSelections'> {
+  owner: AuthoringTarget;
   edited: Record<string, JsonValue>;
   removed: string[];
   addedPorts: Record<string, AddedPort[]>;
@@ -1561,10 +1581,10 @@ interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections'
 
 const historyLimit = 100;
 
-const snapshot = (): Snapshot => {
-  const state = get();
+const snapshot = (owner = get().target!): Snapshot => {
+  const state = authoringDocument(useAuthoring.getState(), owner);
   const { selection, canvasSelections, timelineSelections } = useWorkbench.getState();
-  return { edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
+  return { owner, edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
     removed: [...state.removed], addedPorts: state.addedPorts,
     selection, canvasSelections, timelineSelections };
 };
@@ -1675,17 +1695,16 @@ async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const previous = state[from].at(-1);
   if (!previous || state.saving) return;
   const target = state.target!;
-  const next = snapshot();
-  const { selection, canvasSelections, timelineSelections, ...content } = previous;
-  setDocument({ ...content, [from]: state[from].slice(0, -1), [to]: [...state[to], next], version: state.version + 1 });
+  const { owner: source, selection, canvasSelections, timelineSelections, ...content } = previous;
+  const document = authoringDocument(useAuthoring.getState(), source);
+  if (document.variablesWriting) return;
+  const next = snapshot(source);
+  setDocument({ ...content, variables: null, version: document.version + 1 }, source);
+  setDocument({ [from]: state[from].slice(0, -1), [to]: [...state[to], next] }, target);
   if (isActiveTarget(target)) {
     useWorkbench.setState({ selection, canvasSelections, timelineSelections });
     reconcileSelection();
   }
-}
-
-function clearHistory(target = get().target!) {
-  setDocument({ undo: [], redo: [] }, target);
 }
 
 // ── 专属内容：图与 Timeline 文件以文件名为身份，被删除的元素引用、且别处不再引用的文件随之删除 ──
@@ -1859,27 +1878,94 @@ export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGr
   });
 }
 
-// 技能黑板支持的原生变量类型（与 Unity BtsmtlSkillBlackboardValueContract 一致）及其默认值。
-export const variableTypes = ['Boolean', 'Int32', 'UInt64', 'ObjectHandle', 'Single', 'String', 'Vector2', 'Vector3'];
-
-function variableDefault(varType: string): JsonValue {
-  switch (varType) {
-    case 'Boolean': return false;
-    case 'Int32': case 'UInt64': return 0;
-    case 'ObjectHandle': return '0';
-    case 'Single': return new JsonFloat(0);
-    case 'String': return '';
-    case 'Vector2': return { x: new JsonFloat(0), y: new JsonFloat(0) };
-    case 'Vector3': return { x: new JsonFloat(0), y: new JsonFloat(0), z: new JsonFloat(0) };
-  }
-  throw new Error(`技能黑板不支持 ${varType}`);
+export function graphVariableOwner(graphId: string): string | null {
+  if (get().target?.kind !== 'graph') return graphId;
+  return (currentDocument(graphPath(graphId)) as JsonObject).VariableOwnerId as string | null;
 }
 
-const variablesOf = (document: JsonValue) => (((document as JsonObject).localBlackboard as JsonObject).variables ?? {}) as JsonObject;
-const setVariables = (document: JsonValue, variables: JsonObject) => {
-  ((document as JsonObject).localBlackboard as JsonObject).variables = sortedObject(variables);
-};
-const declarationsOf = (document: JsonValue) => (document as JsonObject).BlackboardDeclarations as JsonObject[];
+const variableRequests = new Set<Promise<string>>();
+const variableDocument = (state: AuthoringState, ownerId: string) => Object.entries(state.documents)
+  .find(([, document]) => document.kind === 'variables' && document.identity === ownerId);
+
+async function loadVariables(ownerId: string, signal: AbortSignal): Promise<void> {
+  const captured = variableDocument(useAuthoring.getState(), ownerId)?.[1];
+  const result = await variablesApi.query(ownerId, authoringActions.editingView(), signal);
+  signal.throwIfAborted();
+  const key = result.document.documentPath;
+  const current = useAuthoring.getState().documents[key];
+  if (current?.version !== captured?.version || current?.revision !== captured?.revision) return;
+  if (current === undefined) {
+    const saved = await workspaceDocumentsApi.open(key, signal);
+    signal.throwIfAborted();
+    if (useAuthoring.getState().documents[key] !== undefined) return;
+    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: saved.kind,
+      rootFile: saved.rootFile, identity: saved.identity, authoringType: saved.authoringType ?? null,
+      revision: saved.revision, sourceFiles: saved.files, files: saved.files } } });
+    return loadVariables(ownerId, signal);
+  }
+  setDocument({ variables: result }, authoringOwner(key));
+}
+
+export function useVariables(ownerId: string | null) {
+  const source = useAuthoring(useShallow(state => {
+    const document = ownerId === null ? undefined : variableDocument(state, ownerId)?.[1];
+    return { value: document?.variables ?? null, version: document?.version ?? null,
+      revision: document?.revision ?? null, writing: document?.variablesWriting === true };
+  }));
+  const [failure, setFailure] = useState<{ ownerId: string; text: string } | null>(null);
+  useEffect(() => {
+    if (ownerId === null) return;
+    const controller = new AbortController();
+    setFailure(null);
+    loadVariables(ownerId, controller.signal).catch((error: unknown) => {
+      if (!isAbort(error)) {
+        setFailure({ ownerId, text: error instanceof Error ? error.message : String(error) });
+        consoleActions.error('变量', error);
+      }
+    });
+    return () => controller.abort();
+  }, [ownerId, source.version, source.revision]);
+  return { value: source.value, writing: source.writing, failure: failure?.ownerId === ownerId ? failure.text : null };
+}
+
+async function applyVariableEdit(ownerId: string, operation: VariableOperation): Promise<string> {
+  if (get().resourceTarget !== null) set({ resourceTarget: null });
+  const [key, current] = variableDocument(useAuthoring.getState(), ownerId)!;
+  const target = authoringOwner(key);
+  const historyTarget = get().target!;
+  const before = snapshot(target);
+  const { editingView, isCurrentRequest } = captureEditingView();
+  setDocument({ variablesWriting: true }, target);
+  try {
+    const result = await variablesApi.edit(ownerId, editingView, operation);
+    const currentCatalog = isCurrentRequest();
+    const document = authoringDocument(useAuthoring.getState(), target);
+    const changed = result.value.m_Revision !== current.variables!.value.m_Revision;
+    if (changed) {
+      const write = result.editingView.writes.find(write => write.documentPath === key)!;
+      const edited = { ...document.edited };
+      for (const [path, content] of Object.entries(write.files)) {
+        if (content === document.files[path]) delete edited[path];
+        else edited[path] = parseSkillJson(content);
+      }
+      const history = authoringDocument(useAuthoring.getState(), historyTarget);
+      setDocument({ undo: [...history.undo, before].slice(-historyLimit), redo: [] }, historyTarget);
+      setDocument({ edited, version: document.version + 1 }, target);
+    }
+    setDocument({ variables: { ...current.variables!, document: result.document, value: result.value, availability: result.availability } }, target);
+    if (currentCatalog) set({ elementCatalog: { kind: 'ready', items: result.elements } });
+    else void authoringActions.listDocuments();
+    return result.variableId;
+  } finally {
+    setDocument({ variablesWriting: false }, target);
+  }
+}
+
+function editVariable(ownerId: string, operation: VariableOperation): Promise<string> {
+  const request = applyVariableEdit(ownerId, operation).finally(() => variableRequests.delete(request));
+  variableRequests.add(request);
+  return request;
+}
 
 // ── 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline ──
 
@@ -2202,56 +2288,14 @@ export const graphAuthoring = {
     });
   },
 
-  // ── 黑板（照 Unity 技能黑板声明）：原生变量在 localBlackboard.variables（按名称索引），
-  // BTSMTL 作用域声明在 BlackboardDeclarations，两者以变量身份一一对应 ──
-
-  addVariable(graphId: string, name: string, varType: string, declaration: { m_Scope: string; m_Lifetime: string; m_Category: string }): string {
-    const id = crypto.randomUUID();
-    authoringActions.edit(graphPath(graphId), document => {
-      const variables = variablesOf(document);
-      if (variables[name]) throw new Error(`黑板已有变量 ${name}`);
-      setVariables(document, { ...variables, [name]: { ID: id, name, serializedValue: variableDefault(varType), varType } });
-      declarationsOf(document).push(sortedObject({
-        ...declaration, m_InputBinding: { m_InputValueId: null, m_Projection: 'Direct' }, m_VariableId: id,
-      }));
-    });
-    return id;
-  },
-
-  renameVariable(graphId: string, variableId: string, name: string) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const variables = variablesOf(document);
-      const [key, variable] = Object.entries(variables).find(([, item]) => (item as JsonObject).ID === variableId) ?? [];
-      if (!variable) throw new Error(`黑板没有变量 ${variableId}`);
-      if (name !== key && variables[name]) throw new Error(`黑板已有变量 ${name}`);
-      const next = { ...variables };
-      delete next[key!];
-      setVariables(document, { ...next, [name]: { ...(variable as JsonObject), name } });
-    });
-  },
-
-  setVariableValue(graphId: string, variableId: string, keys: JsonKey[], value: JsonValue) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const variable = Object.values(variablesOf(document)).find(item => (item as JsonObject).ID === variableId);
-      if (!variable) throw new Error(`黑板没有变量 ${variableId}`);
-      setIn(variable, ['serializedValue', ...keys], value);
-    });
-  },
-
-  setDeclarationValue(graphId: string, variableId: string, keys: JsonKey[], value: JsonValue) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const declaration = declarationsOf(document).find(item => item.m_VariableId === variableId);
-      if (!declaration) throw new Error(`黑板没有变量 ${variableId} 的声明`);
-      setIn(declaration, keys, value);
-    });
-  },
-
-  removeVariable(graphId: string, variableId: string) {
-    authoringActions.edit(graphPath(graphId), document => {
-      setVariables(document, Object.fromEntries(Object.entries(variablesOf(document)).filter(([, item]) => (item as JsonObject).ID !== variableId)));
-      (document as JsonObject).BlackboardDeclarations = declarationsOf(document).filter(item => item.m_VariableId !== variableId);
-    });
-  },
+  addVariable: (ownerId: string, typeId: string, name?: string) =>
+    editVariable(ownerId, { kind: 'create', typeId, ...(name === undefined ? {} : { name }) }),
+  renameVariable: (ownerId: string, variableId: string, name: string) => editVariable(ownerId, { kind: 'rename', variableId, name }),
+  setVariableValue: (ownerId: string, variableId: string, value: JsonValue) => editVariable(ownerId, { kind: 'set-default', variableId, value }),
+  setVariablePublic: (ownerId: string, variableId: string, isPublic: boolean) => editVariable(ownerId, { kind: 'configure-public', variableId, isPublic }),
+  setDeclarationValue: (ownerId: string, variableId: string, configuration: VariableConfiguration) =>
+    editVariable(ownerId, { kind: 'configure-blackboard', variableId, ...configuration }),
+  removeVariable: (ownerId: string, variableId: string) => editVariable(ownerId, { kind: 'delete', variableId }),
 
   move(graphId: string, positions: Record<string, { x: number; y: number }>) {
     authoringActions.edit(graphLayoutPath(graphId), document => {
