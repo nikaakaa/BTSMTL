@@ -148,12 +148,12 @@ namespace BTSMTL.Graphs
                 {
                     string name = "New " + type.Name;
                     int suffix = 2;
-                    while (graph.Variables.Blackboard.variables.ContainsKey(name))
+                    while (graph.VariableEditor.Blackboard.variables.ContainsKey(name))
                         name = "New " + type.Name + " " + suffix++;
                     object value = type == typeof(string) ? string.Empty :
                         type == typeof(Quaternion) ? Quaternion.identity : Activator.CreateInstance(type);
-                    typeof(BtsmtlGraphVariableDeclarations).GetMethod(nameof(BtsmtlGraphVariableDeclarations.Declare))
-                        .MakeGenericMethod(type).Invoke(graph.Variables,
+                    typeof(BtsmtlGraphVariableEditor).GetMethod(nameof(BtsmtlGraphVariableEditor.Declare))
+                        .MakeGenericMethod(type).Invoke(graph.VariableEditor,
                             new[] { (object)Guid.NewGuid().ToString("N"), name, value });
                 });
             return menu;
@@ -167,20 +167,20 @@ namespace BTSMTL.Graphs
             if (!graph.PublishesVariables)
                 return menu;
             menu.AddItem(new GUIContent("发布到宿主"), variable.isExposedPublic,
-                () => graph.Variables.ConfigureVariable(variable.ID, !variable.isExposedPublic));
+                () => graph.VariableEditor.ConfigureVariable(variable.ID, !variable.isExposedPublic));
             BtsmtlBlackboardDeclaration current = graph.Variables.RequireDeclaration(variable.ID);
             foreach (PipelineBlackboardVariableScope scope in Enum.GetValues(typeof(PipelineBlackboardVariableScope)))
             {
                 PipelineBlackboardVariableLifetime lifetime = PipelineBlackboardVariablePolicy.DefaultLifetime(scope);
                 menu.AddItem(new GUIContent("黑板作用域/" + scope), current.Scope == scope, () =>
-                    graph.Variables.ConfigureBlackboard(variable.ID, scope, lifetime, current.Category));
+                    graph.VariableEditor.ConfigureBlackboard(variable.ID, scope, lifetime, current.Category));
             }
             foreach (PipelineBlackboardVariableLifetime lifetime in Enum.GetValues(typeof(PipelineBlackboardVariableLifetime)))
             {
                 if (!PipelineBlackboardVariablePolicy.IsValid(current.Scope, lifetime))
                     continue;
                 menu.AddItem(new GUIContent("黑板生命周期/" + lifetime), current.Lifetime == lifetime, () =>
-                    graph.Variables.ConfigureBlackboard(variable.ID, current.Scope, lifetime, current.Category, current.InputBinding));
+                    graph.VariableEditor.ConfigureBlackboard(variable.ID, current.Scope, lifetime, current.Category, current.InputBinding));
             }
             return menu;
 

@@ -17,6 +17,7 @@ namespace BTSMTL.Graphs
         FlowGraph Graph { get; }
         BtsmtlFlowGraphAuthoring Authoring { get; }
         BtsmtlGraphVariableDeclarations Variables { get; }
+        BtsmtlGraphVariableEditor VariableEditor { get; }
         // 子图变量只属于调用位置的局部状态，不发布到宿主，也不改变黑板作用域。
         bool PublishesVariables { get; }
     }
@@ -57,9 +58,15 @@ namespace BTSMTL.Graphs
         static int s_ConnectionValidationDepth;
         readonly FlowGraph m_Graph;
         int m_EditDepth;
+        Func<string, BtsmtlMacroGraph> m_CreatePrivateMacro;
 
         public BtsmtlFlowGraphAuthoring(FlowGraph graph) =>
             m_Graph = graph ? graph : throw new ArgumentNullException(nameof(graph));
+
+        public void BindPrivateMacroCreation(Func<string, BtsmtlMacroGraph> create) => m_CreatePrivateMacro = create;
+
+        public BtsmtlMacroGraph CreatePrivateMacro(string name) =>
+            (m_CreatePrivateMacro ?? throw new InvalidOperationException("所属作者文档尚未绑定私有子图创建入口。"))(name);
 
         public UnityEngine.Object UndoTarget => m_EditDepth == 0 ? m_Graph : null;
 

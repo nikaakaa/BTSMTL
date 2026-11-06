@@ -15,7 +15,7 @@ namespace BTSMTL.Graphs
             if (string.IsNullOrWhiteSpace(graph.AuthoringId) || string.IsNullOrWhiteSpace(graph.ContentRevision))
                 throw new InvalidOperationException("图必须声明稳定身份和内容修订。");
             IBtsmtlGraphVariableOwner owner = graph.VariableOwner;
-            if (owner == null || !owner.OwnerAsset)
+            if (owner == null)
                 throw new InvalidOperationException("图变量缺少正式声明 owner。");
             GraphVariableContract variables = owner.VariableDeclarations.CreateContract();
             var entryIds = new HashSet<string>(StringComparer.Ordinal);
@@ -96,7 +96,6 @@ namespace BTSMTL.Graphs
                     throw new InvalidOperationException($"{path}: 子图 '{macro.name}' 的领域 '{domain}' 不属于调用方图。");
             BtsmtlMacroInterface.ValidateCall(call, macro, path);
             BtsmtlGraphVariableDeclarations declarations = macro.Variables;
-            declarations.Validate();
             foreach (BtsmtlBlackboardDeclaration declaration in declarations.BlackboardDeclarations)
                 if (declaration.Scope != PipelineBlackboardVariableScope.Graph ||
                     declaration.Lifetime != PipelineBlackboardVariableLifetime.GraphInstance)

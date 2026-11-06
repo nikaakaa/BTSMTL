@@ -30,7 +30,7 @@ namespace BTSMTL.Graphs.Editor
                     });
 
                 EditorGUI.BeginChangeCheck();
-                UnityEngine.Object owner = EditorGUILayout.ObjectField("变量声明资产",
+                UnityEngine.Object owner = EditorGUILayout.ObjectField("变量作者的原生编辑投影",
                     graph.VariableOwner?.OwnerAsset, typeof(ScriptableObject), false);
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -48,7 +48,7 @@ namespace BTSMTL.Graphs.Editor
             if (GUILayout.Button("编辑图"))
                 GraphEditor.OpenWindow(graph);
             if (graph.VariableOwner == null)
-                EditorGUILayout.HelpBox("先选择变量声明资产，再编辑该资产持有的实例变量。", MessageType.Info);
+                EditorGUILayout.HelpBox("先选择已绑定正式变量文档的原生投影，再编辑该 owner 的实例变量。", MessageType.Info);
             else
                 BlackboardEditor.ShowVariables(graph.editorBlackboard, graph);
         }

@@ -32,22 +32,19 @@ namespace BTSMTL.Graphs
         [SerializeField, HideInInspector] string m_AuthoringId = Guid.NewGuid().ToString("N");
         [SerializeField, HideInInspector] string m_ContentRevision = "1";
         [SerializeReference] BtsmtlMacroHost m_Host;
-        [SerializeField] BtsmtlGraphVariableDeclarations m_Variables = new();
+        [NonSerialized] BtsmtlGraphVariableEditor m_Variables;
 
         public string AuthoringId => m_AuthoringId;
         public string ContentRevision => m_ContentRevision;
         public BtsmtlMacroHost Host => m_Host;
-        public BtsmtlGraphVariableDeclarations Variables
-        {
-            get
-            {
-                m_Variables.BindOwner(this);
-                return m_Variables;
-            }
-        }
+        public BtsmtlGraphVariableDeclarations Variables => m_Variables.Source;
+        public BtsmtlGraphVariableEditor VariableEditor => m_Variables;
         public UnityEngine.Object OwnerAsset => this;
         public BtsmtlGraphVariableDeclarations VariableDeclarations => Variables;
-        public IBlackboard SourceVariables => Variables.Blackboard;
+        public IBlackboard SourceVariables => VariableEditor.Blackboard;
+
+        public void BindVariables(BtsmtlGraphVariableDeclarations source, Action<string, Action> mutate) =>
+            m_Variables = new BtsmtlGraphVariableEditor(source, this, mutate);
         public BtsmtlMacroInputNode InputAnchor => allNodes.OfType<BtsmtlMacroInputNode>().SingleOrDefault();
         public BtsmtlMacroOutputNode OutputAnchor => allNodes.OfType<BtsmtlMacroOutputNode>().SingleOrDefault();
 
@@ -134,17 +131,20 @@ namespace BTSMTL.Graphs
         public override UnityEngine.Object EditorUndoTarget => m_Authoring == null ? this : m_Authoring.UndoTarget;
 
         // 新子图：唯一执行入口、出入口锚点与宿主准入一次配置完成；私有子图由所属图写入为子资产。
-        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host) => Create(name, host, macro =>
+        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host,
+            BtsmtlGraphVariableDeclarations variables, Action<string, Action> mutate) => Create(name, host, variables, mutate, macro =>
         {
             foreach (var input in CreateDefaultInputInterface())
                 macro.inputDefinitions.Add(new DynamicParameterDefinition(input.Id, input.DisplayName, typeof(Flow)));
         });
 
-        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host, Action<BtsmtlMacroGraph> configure)
+        public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host,
+            BtsmtlGraphVariableDeclarations variables, Action<string, Action> mutate, Action<BtsmtlMacroGraph> configure)
         {
             var macro = CreateInstance<BtsmtlMacroGraph>();
             macro.name = name;
             macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
+            macro.BindVariables(variables, mutate);
             macro.Authoring.Initialize(() =>
             {
                 configure(macro);
@@ -306,7 +306,7 @@ namespace BTSMTL.Graphs
         // 生成的整根重建即明确清空页面：保留出入口锚点，清除其它节点、连接与分组后按声明重建。
         public void ClearAuthoringContent() => ClearGraph();
 
-        public override IBlackboard editorBlackboard => Variables.Blackboard;
+        public override IBlackboard editorBlackboard => VariableEditor.Blackboard;
         public bool IsReadOnly => isEditorReadOnly;
         public bool AllowVariablePick => !IsReadOnly;
         public void DrawBlackboardExtensions(IBlackboard blackboard, UnityEngine.Object contextObject) =>
@@ -315,15 +315,11 @@ namespace BTSMTL.Graphs
             BtsmtlGraphAuthoringGUI.VariableCreationMenu(this);
         public GenericMenu GetVariableMenu(IBlackboard blackboard, UnityEngine.Object contextObject,
             Variable variable, int index) => BtsmtlGraphAuthoringGUI.VariableNodeMenu(this, variable, Vector2.zero);
-        public void ExecuteMutation(string title, Action mutation) => Variables.Edit(title, mutation);
-        public void ApplyVariableList(IBlackboard blackboard, IReadOnlyList<Variable> variables) => Variables.Replace(variables);
+        public void ExecuteMutation(string title, Action mutation) => VariableEditor.Edit(title, mutation);
+        public void ApplyVariableList(IBlackboard blackboard, IReadOnlyList<Variable> variables) => VariableEditor.Replace(variables);
         protected override void OnVariableDropInGraph(IBlackboard blackboard, Variable variable,
             Vector2 mousePos) => BtsmtlGraphAuthoringGUI.VariableNodeMenu(this, variable, mousePos).ShowAsContext();
 
-        [MenuItem("Assets/Create/BTSMTL/Graph Macro", false, 82)]
-        static void CreateSharedAsset() =>
-            ProjectWindowUtil.CreateAsset(Create("Graph Macro", new BtsmtlGraphMacroHost(Array.Empty<string>())),
-                "BtsmtlGraphMacro.asset");
 #endif
     }
 

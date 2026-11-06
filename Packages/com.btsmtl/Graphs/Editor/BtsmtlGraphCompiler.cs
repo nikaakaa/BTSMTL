@@ -160,7 +160,7 @@ namespace BTSMTL.Graphs.Editor
             {
                 var operations = new BtsmtlGraphOperationBindings();
                 m_Blackboard.BeginGraph(variables.OwnerId, route,
-                    variables.Blackboard.variables.Values.Select(value => value.ID).OrderBy(id => id, StringComparer.Ordinal),
+                    variables.Variables.Select(value => value.VariableId).OrderBy(id => id, StringComparer.Ordinal),
                     OperationHandle.Invalid);
                 try
                 {
@@ -256,7 +256,7 @@ namespace BTSMTL.Graphs.Editor
                 CollectMacros(m_Root, m_Route, sources, owners);
                 return new BtsmtlBlackboardCompilation(sources, m_Builder, contract.BlackboardScopes,
                     (declaration, source, fields) => fields.Add(m_Builder.ConstantField(source, "Public",
-                        ((Variable)declaration.AuthoringDeclaration).isExposedPublic)));
+                        ((BtsmtlGraphVariableDeclaration)declaration.AuthoringDeclaration).IsPublic)));
             }
 
             static void CollectMacros(FlowGraph graph, string route,
@@ -285,20 +285,9 @@ namespace BTSMTL.Graphs.Editor
             static void AddDeclarations(Dictionary<string, BtsmtlBlackboardDeclarationSource> sources,
                 BtsmtlGraphVariableDeclarations declarations, string route)
             {
-                declarations.Validate();
-                string contentHash = StableHash.Compute(declarations.OwnerId, declarations.Revision).Value;
-                foreach (Variable variable in declarations.Blackboard.variables.Values.OrderBy(value => value.ID, StringComparer.Ordinal))
-                {
-                    BtsmtlBlackboardDeclaration declaration = declarations.RequireDeclaration(variable.ID);
-                    sources.Add(BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId, variable.ID),
-                        new BtsmtlBlackboardDeclarationSource(declarations.OwnerId, variable.GetType().FullName, contentHash, variable,
-                            new BtsmtlBlackboardDeclarationSnapshot(variable.ID, variable.name,
-                                BtsmtlFlowCompileGraphs.ValueType(variable.varType),
-                                declaration.Scope, declaration.Lifetime, declaration.Category,
-                                ((ISerializedVariableValue)variable).serializedValue, declaration.InputBinding?.InputValueId,
-                                declaration.InputBinding?.Projection ?? default),
-                            route));
-                }
+                foreach (BtsmtlBlackboardDeclarationSource declaration in BtsmtlGraphVariableCompilation.Declarations(declarations, route))
+                    sources.Add(BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId,
+                        declaration.Declaration.DeclarationId), declaration);
             }
 
             SimulationSourceLocation GraphSource(FlowGraph graph, string graphId, string route) =>

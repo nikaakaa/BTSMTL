@@ -42,7 +42,7 @@ namespace BTSMTL.Graphs
     {
         [SerializeField] string m_AuthoringId = Guid.NewGuid().ToString("N");
         [SerializeField] string m_ContentRevision = "1";
-        [SerializeField] UnityEngine.Object m_VariableOwner;
+        [NonSerialized] IBtsmtlGraphVariableOwner m_VariableOwner;
         [SerializeField] BtsmtlGraphEntryDeclaration[] m_Entries = Array.Empty<BtsmtlGraphEntryDeclaration>();
         [SerializeField] string[] m_Domains = Array.Empty<string>();
 
@@ -50,9 +50,10 @@ namespace BTSMTL.Graphs
         // 本图使用的领域；只有这些领域的扩展与输出节点可以放入，宿主合同必须提供全部领域。
         public IReadOnlyList<string> Domains => m_Domains;
         public string ContentRevision => m_ContentRevision;
-        public IBtsmtlGraphVariableOwner VariableOwner => (IBtsmtlGraphVariableOwner)m_VariableOwner;
+        public IBtsmtlGraphVariableOwner VariableOwner => m_VariableOwner;
         public BtsmtlGraphVariableDeclarations Variables => VariableOwner.VariableDeclarations;
-        public override IBlackboard SourceVariables => Variables.Blackboard;
+        public BtsmtlGraphVariableEditor VariableEditor => VariableOwner.VariableEditor;
+        public override IBlackboard SourceVariables => VariableEditor.Blackboard;
         public IReadOnlyList<BtsmtlGraphEntryDeclaration> Entries => m_Entries;
 
         public void ConfigureIdentity(string id, string revision)
@@ -65,9 +66,7 @@ namespace BTSMTL.Graphs
         {
             if (owner && owner is not IBtsmtlGraphVariableOwner)
                 throw new ArgumentException("变量来源必须是正式变量声明资产。", nameof(owner));
-            m_VariableOwner = owner;
-            if (owner)
-                VariableOwner.VariableDeclarations.BindOwner(VariableOwner.OwnerAsset);
+            m_VariableOwner = (IBtsmtlGraphVariableOwner)owner;
         }
 
         public void ConfigureEntries(BtsmtlGraphEntryDeclaration[] entries) => m_Entries = entries;
@@ -117,8 +116,8 @@ namespace BTSMTL.Graphs
             {
                 Identity = AuthoringId,
                 Revision = ContentRevision,
-                VariableOwnerId = m_VariableOwner ? Variables.OwnerId : string.Empty,
-                VariableRevision = m_VariableOwner ? Variables.Revision : string.Empty,
+                VariableOwnerId = m_VariableOwner != null ? Variables.OwnerId : string.Empty,
+                VariableRevision = m_VariableOwner != null ? Variables.Revision : string.Empty,
                 Entries = m_Entries,
                 Domains = m_Domains
             };
@@ -147,7 +146,7 @@ namespace BTSMTL.Graphs
 
         // 生成的整根重建即明确清空页面：节点、连接与分组一起清除，再按声明重建。
         public void ClearAuthoringContent() => ClearGraph();
-        public override IBlackboard editorBlackboard => m_VariableOwner ? Variables.Blackboard : null;
+        public override IBlackboard editorBlackboard => m_VariableOwner != null ? VariableEditor.Blackboard : null;
         public bool IsReadOnly => isEditorReadOnly;
         public bool AllowVariablePick => !IsReadOnly;
         public void DrawBlackboardExtensions(IBlackboard blackboard, UnityEngine.Object contextObject) =>
@@ -156,8 +155,8 @@ namespace BTSMTL.Graphs
             BtsmtlGraphAuthoringGUI.VariableCreationMenu(this);
         public GenericMenu GetVariableMenu(IBlackboard blackboard, UnityEngine.Object contextObject,
             Variable variable, int index) => BtsmtlGraphAuthoringGUI.VariableNodeMenu(this, variable, Vector2.zero);
-        public void ExecuteMutation(string title, Action mutation) => Variables.Edit(title, mutation);
-        public void ApplyVariableList(IBlackboard blackboard, IReadOnlyList<Variable> variables) => Variables.Replace(variables);
+        public void ExecuteMutation(string title, Action mutation) => VariableEditor.Edit(title, mutation);
+        public void ApplyVariableList(IBlackboard blackboard, IReadOnlyList<Variable> variables) => VariableEditor.Replace(variables);
         protected override void OnVariableDropInGraph(IBlackboard blackboard, Variable variable,
             Vector2 mousePos) => BtsmtlGraphAuthoringGUI.VariableNodeMenu(this, variable, mousePos).ShowAsContext();
 #endif

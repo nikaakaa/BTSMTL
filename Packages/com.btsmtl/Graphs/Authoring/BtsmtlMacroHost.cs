@@ -49,15 +49,7 @@ namespace BTSMTL.Graphs
         public virtual bool HandleEditorCommand(BtsmtlMacroGraph macro, string command, Vector2 position) => false;
 
         public virtual BtsmtlMacroGraph CreatePrivateMacro(FlowGraph owner, string name)
-        {
-            string path = AssetDatabase.GetAssetPath(owner);
-            if (string.IsNullOrEmpty(path))
-                throw new InvalidOperationException("所属图保存为资产后才能创建私有子图。");
-            BtsmtlMacroGraph macro = BtsmtlMacroGraph.Create(name, this);
-            AssetDatabase.AddObjectToAsset(macro, path);
-            Undo.RegisterCreatedObjectUndo(macro, "创建私有子图");
-            return macro;
-        }
+            => ((IBtsmtlAuthoringGraph)owner).Authoring.CreatePrivateMacro(name);
 
         public virtual IEnumerable<BtsmtlMacroGraph> SharedMacros(FlowGraph caller)
         {
