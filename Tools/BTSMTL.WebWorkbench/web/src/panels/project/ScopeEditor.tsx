@@ -32,7 +32,7 @@ export function ScopeEditor({ query }: { query: ScopeQuery }) {
       }}>重读 Scope 来源</Button>
     </PanelBar>
     <Fold title="资源领域声明" defaultOpen>{source.resourceDeclarations.map(item => <div key={item.domain} className={styles.facts}>
-      <strong>{item.domain}</strong><small>实际对象类型：{item.objectType}</small>
+      <strong>{item.domain}</strong><small>{item.source === 'AuthoringDocument' ? '工作区作者文档' : `实际对象类型：${item.objectType}`}</small>
       {!item.availability.available && <span className={styles.issue}>{item.availability.reason}</span>}
     </div>)}</Fold>
     <div className={styles.note}>执行范围提供当前载体的资源上下文；映射与容量通过实际 Profile 编辑并保存。</div>

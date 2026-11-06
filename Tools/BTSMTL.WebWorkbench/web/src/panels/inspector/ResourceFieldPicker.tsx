@@ -10,10 +10,32 @@ import { ReferencePicker } from './ReferencePicker';
 
 export const ResourceScopeContext = createContext<string | null | undefined>(undefined);
 
-export function ResourceFieldPicker({ id, label, metadata, value, configuration, onChoose }: {
+interface ResourceFieldPickerProps {
   id: string; label: string; metadata: ResourceReferenceMetadata; value: JsonValue | undefined;
   configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
-}) {
+}
+
+export function ResourceFieldPicker(props: ResourceFieldPickerProps) {
+  return props.metadata.source === 'AuthoringDocument' ? <DocumentFieldPicker {...props} /> : <AdapterFieldPicker {...props} />;
+}
+
+function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoose }: ResourceFieldPickerProps) {
+  const directory = useAuthoring(state => state.directory);
+  const reason = useAuthoring(state => state.unavailableReason);
+  const documents = directory?.filter(document => document.contentDomain === metadata.domain) ?? [];
+  const choices: ReferenceCatalog = !metadata.availability.available
+    ? { kind: 'unavailable', reason: metadata.availability.reason }
+    : directory === null || reason !== null ? { kind: 'unavailable', reason: reason ?? '正在读取工作区作者文档。' }
+      : { kind: 'ready', referenceKind: metadata.domain, invalidReason: `当前引用不在领域 ${metadata.domain} 的工作区作者文档中，原字符串已保留。`,
+        items: documents.map(document => ({ value: document.sourceIdentity, name: document.identity,
+          detail: document.documentPath, source: document.rootFile === null ? document.documentPath : `${document.documentPath}/${document.rootFile}`,
+          conflict: documents.filter(other => other.sourceIdentity === document.sourceIdentity).length > 1
+            ? `领域 ${metadata.domain} 的引用 ${document.sourceIdentity} 命中多个正式作者文档。` : null,
+          targets: [], associated: [] })) };
+  return <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />;
+}
+
+function AdapterFieldPicker({ id, label, metadata, value, configuration, onChoose }: ResourceFieldPickerProps) {
   const inherited = useContext(ResourceScopeContext);
   const preview = useAuthoring(state => authoringDocument(state).execution.previewScope);
   const scopeValue = inherited === undefined ? preview : inherited;
