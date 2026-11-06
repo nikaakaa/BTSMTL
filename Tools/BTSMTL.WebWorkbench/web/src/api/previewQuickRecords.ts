@@ -1,32 +1,47 @@
-import { array, boolean, identity, nullable, number, object, opaque, text, type Decoder } from './playerRecords';
-import type { SkillEditingView } from './authoring';
+import { array, boolean, choice, identity, nullable, number, object, opaque, text, type Decoder } from './playerRecords';
+import type { WorkspaceEditingView } from './workspaceDocuments';
 
 export const readQuickScenes = array(object({ publication: object({ path: text, revision: text }), scenePath: text, sceneGuid: text, sceneRevision: text }));
 export const readPublishedTimelineScene = object({ path: text, guid: text, dependencyHash: text });
-const document = object({ path: text, revision: text, savedRevision: nullable(text), hasUnsavedChanges: nullable(boolean) });
-const source = object({ kind: text, identity: text, path: text, revision: text, sceneRevision: text, documents: array(document) });
+const entry = (value: unknown, path = 'PreviewQuick.entry') => {
+  const { kind } = object({ kind: choice('graph', 'timeline') })(value, path);
+  switch (kind) {
+    case 'graph': return { kind, ...object({ graphId: text, machine: number })(value, path) };
+    case 'timeline': return { kind, ...object({ timelineId: text })(value, path) };
+  }
+};
+const authoring = object({ documentPath: text, savedRevision: text, entry });
+const document = object({ kind: text, documentPath: text, identity: text, revision: text, savedRevision: text, hasUnsavedChanges: boolean });
+const source = object({ kind: text, authoring, revision: text, sceneRevision: text, documents: array(document) });
+const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
+  const { kind } = object({ kind: choice('documentInput', 'rootDefaults') })(value, path);
+  switch (kind) {
+    case 'documentInput': return { kind, ...object({ documentPath: text, savedRevision: text, inputId: text })(value, path) };
+    case 'rootDefaults': return { kind };
+  }
+};
 const inputDeclaration = object({ inputId: text, kind: text, type: nullable(text) });
 const inputPoint = object({ inputId: text, time: number, value: opaque });
 const conditionPoint = object({ key: text, time: number, satisfied: boolean, restoreDefault: boolean });
-const location = object({ graphId: text, nodeId: text, edgeId: text, displayPath: text });
-const scheme = object({ index: number, name: text, revision: text, timelineId: nullable(text) });
+const location = object({ documentPath: text, graphId: text, nodeId: text, edgeId: text, displayPath: text });
+const scheme = object({ source: inputSource, name: text, revision: text, timelineId: nullable(text) });
 const description = object({
   scenePath: text, carrierPath: text, carrierIdentity: text, tickRate: number,
-  skills: array(object({ directory: text, displayName: text, identity: text })),
-  timelines: array(object({ path: text, elementId: text, name: text, identity: text })),
+  documents: array(object({ kind: text, documentPath: text, identity: text, displayName: text, savedRevision: text,
+    entries: array(object({ entry, displayName: text })) })),
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
-    owner: text, label: text, machines: array(object({ index: number, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
-    inputSchemes: array(scheme), currentInputScheme: number, inputSchemeSource: text,
+    authoring, label: text, machines: array(object({ authoring, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
+    inputSchemes: array(scheme), currentInputScheme: inputSource,
   })),
   source: nullable(source), note: text,
 });
 const plan = object({
   root: text, sourceType: text, clock: object({ unit: text, origin: number, owner: text, tickRate: number }),
-  inputScheme: number, inputSchemeRevision: text, inputRevision: text, conditionsUsed: array(conditionPoint),
+  input: inputSource, inputSchemeRevision: text, inputRevision: text, conditionsUsed: array(conditionPoint),
   assumptions: array(text), duration: number, stopReason: nullable(text), stopDetail: nullable(text), status: text,
   segments: array(object({
-    timeline: nullable(text), timelineId: nullable(text), assetPath: nullable(text), state: text, stateSource: nullable(location),
+    timeline: nullable(text), timelineId: nullable(text), documentPath: nullable(text), state: text, stateSource: nullable(location),
     start: number, end: number, localStart: number, localEnd: number, playback: number, cycle: number,
     occurrence: number, playbackCompleted: boolean, callerPlayback: number, callerClipId: text,
   })),
@@ -57,14 +72,17 @@ export type PreviewQuickStatusReply = ReturnType<typeof readQuickStatusReply>;
 export type PreviewQuickDescriptionReply = ReturnType<typeof readQuickDescriptionReply>;
 export type PreviewQuickInputPoint = ReturnType<typeof inputPoint>;
 export type PreviewQuickConditionPoint = ReturnType<typeof conditionPoint>;
-export type PreviewQuickRoot = { kind: 'nativeDocument'; path: string; machine: number }
-  | { kind: 'webEditingView'; skill: string; editingView: SkillEditingView; machine: number }
-  | { kind: 'timelineAsset'; path: string; elementId: string };
-export interface PreviewQuickTarget { scenePath: string; root?: PreviewQuickRoot }
+export type PreviewQuickEntry = ReturnType<typeof entry>;
+export type PreviewQuickAuthoringTarget = ReturnType<typeof authoring>;
+export type PreviewQuickInputSource = ReturnType<typeof inputSource>;
+export type PreviewQuickRoot = { kind: 'nativeDocument'; authoring: PreviewQuickAuthoringTarget }
+  | { kind: 'webEditingView'; authoring: PreviewQuickAuthoringTarget; editingView: WorkspaceEditingView }
+  | { kind: 'authoringDocument'; authoring: PreviewQuickAuthoringTarget };
+export interface PreviewQuickTarget { scenePath: string; root: PreviewQuickRoot | null }
 export type PreviewQuickInputOverlay = { points: PreviewQuickInputPoint[]; conditions: PreviewQuickConditionPoint[] }
   | { points?: never; conditions?: never };
 export type PreviewQuickInput = PreviewQuickInputOverlay & {
-  scheme: number;
+  source: PreviewQuickInputSource;
   revision: string;
 };
 export interface PreviewQuickRequest {

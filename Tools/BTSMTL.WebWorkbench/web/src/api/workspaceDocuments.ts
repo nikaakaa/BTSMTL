@@ -1,5 +1,8 @@
 import { getJson, postJson, putJson, query } from './http';
 import { array, boolean, choice, hosted, nullable, object, text } from './playerRecords';
+import type { AuthoringProduct } from './authoring';
+import type { ExecutionScopeSelection } from './resourceRegistration';
+import type { SourceFile } from './types';
 
 const documentFields = {
   kind: choice('skill', 'timeline', 'curve', 'scenario'), identity: text, documentPath: text,
@@ -18,6 +21,13 @@ const readElement = object({ kind: choice('timeline', 'graph', 'input', 'curve')
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
 export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
 export type WorkspaceDocumentRead = Pick<WorkspaceDocumentInfo, 'documentPath' | 'revision'>;
+export interface WorkspaceEditingView {
+  writes: WorkspaceDocumentWrite[];
+  reads: WorkspaceDocumentRead[];
+  execution: ExecutionScopeSelection;
+  product: Pick<AuthoringProduct, 'value' | 'revision'> | null;
+  scene?: Pick<SourceFile, 'path' | 'revision'>;
+}
 
 const readList = object({ success: boolean, documents: array(readDocument) });
 const readOpen = object({ success: boolean, document: readSnapshot });

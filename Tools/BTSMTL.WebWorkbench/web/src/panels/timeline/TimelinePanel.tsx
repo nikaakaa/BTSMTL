@@ -31,7 +31,7 @@ import {
 import { callKey, callLabel, documentObservationNotice, graphCallsAtFrame, graphKey, graphName, matchesDocumentCall, parentCallNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { projectActions } from '../../state/project';
-import { quickBounds, quickPreview } from '../../state/quickPreview';
+import { quickBounds, quickInputSourceKey, quickPreview } from '../../state/quickPreview';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
@@ -717,7 +717,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const quickSegment = quickSegments.find(item => item.index === (selectedQuick ?? activeQuick))?.segment
     ?? (selectedQuick === null && quickSegments.length === 1 ? quickSegments[0].segment : null);
   const quickInputTimeline = useWorkbench(state => state.quickPreview.description.kind === 'ready'
-    ? state.quickPreview.description.reply.data.root?.inputSchemes.find(scheme => scheme.index === quickPlan?.inputScheme)?.timelineId ?? null : null);
+    ? state.quickPreview.description.reply.data.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(quickPlan?.input ?? null))?.timelineId ?? null : null);
   const quickInput = focused !== null && focused.documentId === quickInputTimeline;
   const quickPlayback: QuickPlaybackChoice | null = quickPlan === null || focused === null || quickSegments.length === 0 ? null : {
     value: selectedQuick === null ? 'follow' : String(selectedQuick),

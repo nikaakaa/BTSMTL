@@ -1,9 +1,10 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
-import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget, SourceFile } from './types';
+import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
 import { deleteJson, getJson, getText, postJson, postText, putJson, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
+import type { WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
-  type ExecutionScopeSelection, type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
+  type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -15,12 +16,7 @@ export type SkillFile = {
   content: string;
 };
 
-export type SkillEditingView = {
-  skills: Record<string, SkillSaveRequest['content']>;
-  execution: ExecutionScopeSelection;
-  product: Pick<AuthoringProduct, 'value' | 'revision'> | null;
-  scene?: Pick<SourceFile, 'path' | 'revision'>;
-};
+export type SkillEditingView = WorkspaceEditingView;
 
 const readSkillFile = object({ path: text, content: text });
 const readSkillSnapshot = object({ skill: text, revision: text,

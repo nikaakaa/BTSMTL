@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickConditionPoint, PreviewQuickDescription, PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
 import type { SkillDocumentGraph } from '../../api/authoring';
-import { quickBounds, quickJobCancellable, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey, type QuickPreviewState } from '../../state/quickPreview';
+import { quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey, type QuickPreviewState } from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -14,11 +14,9 @@ import styles from './quickPreview.module.css';
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
 
 async function locate(location: PreviewQuickLocation) {
-  const graphs = Object.values(useAuthoring.getState().documents).flatMap(document => document.documentGraphs ?? []);
-  const graph = graphs.find(item => item.id === location.graphId);
-  if (!graph) throw new Error(`当前打开的作者文档中不存在来源图 ${location.graphId}，请先打开该来源所属技能`);
-  await projectActions.openGraph(graph, location.nodeId || undefined);
+  await projectActions.openGraph({ id: location.graphId, owner: location.documentPath, ownerName: location.documentPath }, location.nodeId || undefined);
   if (location.edgeId) {
+    const graph = useAuthoring.getState().documents[location.documentPath].documentGraphs!.find(item => item.id === location.graphId)!;
     const edge = graph.edges.find(item => item.id === location.edgeId);
     if (!edge) throw new Error(`来源图 ${location.graphId} 中不存在转移 ${location.edgeId}`);
     selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge) });
@@ -58,18 +56,35 @@ export function QuickPreview() {
   const sourceReason = quickPreview.sourceUnavailableReason();
   const message = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
     : sourceReason ?? reason;
-  const selectedScheme = description?.root?.inputSchemes.find(item => item.index === state.scheme);
+  const selectedScheme = description?.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
+  const roots = description?.documents.flatMap(document => document.entries.map(choice => ({
+    authoring: { documentPath: document.documentPath, savedRevision: document.savedRevision, entry: choice.entry },
+    name: `${document.displayName} / ${choice.displayName}`,
+  }))) ?? [];
   return <section className={styles.preview} aria-label="快预览路线">
     <PanelBar wrap>
       <strong>快预览 · 路线</strong>
+      {description && <Select label="推导根" placeholder="选择作者文档入口"
+        value={state.target?.root == null ? null : quickAuthoringKey(state.target.root.authoring)} disabled={inProgress}
+        options={roots.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
+        onChange={value => {
+          const root = roots.find(root => quickAuthoringKey(root.authoring) === value);
+          if (root !== undefined) void quickPreview.readSource(root.authoring);
+        }} />}
       {description?.root && <span>{description.root.label}</span>}
-      {description?.root && (state.target?.root?.kind === 'nativeDocument' || state.target?.root?.kind === 'webEditingView') && description.root.machines.length > 1 &&
-        <Select label="根状态机" value={String(state.target.root.machine)} disabled={state.description.kind === 'loading'}
-          options={description.root.machines.map(machine => ({ value: String(machine.index), label: machine.entryTimeline ?? `状态机 ${machine.index}` }))}
-          onChange={value => void quickPreview.readSource(Number(value))} />}
-      {description?.root && <Select label="输入方案" value={state.scheme === null ? null : String(state.scheme)} placeholder="选择输入方案"
-        options={description.root.inputSchemes.map(scheme => ({ value: String(scheme.index), label: scheme.name }))}
-        onChange={value => quickPreview.selectScheme(Number(value))} />}
+      {description?.root && state.target?.root != null && description.root.machines.length > 1 &&
+        <Select label="根状态机" value={quickAuthoringKey(state.target.root.authoring)} disabled={state.description.kind === 'loading'}
+          options={description.root.machines.map(machine => ({ value: quickAuthoringKey(machine.authoring), label: machine.entryTimeline ?? `操作 ${machine.operation}` }))}
+          onChange={value => {
+            const machine = description.root?.machines.find(machine => quickAuthoringKey(machine.authoring) === value);
+            if (machine !== undefined) void quickPreview.readSource(machine.authoring);
+          }} />}
+      {description?.root && <Select label="输入方案" value={state.scheme === null ? null : quickInputSourceKey(state.scheme)} placeholder="选择输入方案"
+        options={description.root.inputSchemes.map(scheme => ({ value: quickInputSourceKey(scheme.source), label: scheme.name }))}
+        onChange={value => {
+          const scheme = description.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === value);
+          if (scheme !== undefined) quickPreview.selectScheme(scheme.source);
+        }} />}
       <Button variant="ghost" disabled={sourceReason !== null || state.description.kind === 'loading' || inProgress}
         tip={sourceReason ?? '读取当前场景、作者内容与输入方案'}
         onClick={() => void quickPreview.readSource()}>读取来源</Button>
@@ -82,19 +97,20 @@ export function QuickPreview() {
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
       { displayName: '推导来源', value: description.source === null ? '尚未选根' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
         : description.source.documents.some(document => document.hasUnsavedChanges === true) ? '包含未保存修改'
-        : description.source.documents.some(document => document.hasUnsavedChanges === null) ? '保存状态未提供' : '已保存作者内容' }]} />}
+        : '已保存作者内容' }]} />}
     <QuickInputForm key={JSON.stringify([state.target === null ? null : quickTargetKey(state.target),
-      selectedScheme?.index ?? null, selectedScheme?.revision ?? null])} description={description} plan={plan} reason={reason} />
+      quickInputSourceKey(state.scheme), selectedScheme?.revision ?? null])} description={description} plan={plan} reason={reason} />
     <Fold title="来源与输出">
       <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
         onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>
       {description?.source && <Facts fields={[
-        { displayName: '来源类型', value: description.source.kind }, { displayName: '来源路径', value: description.source.path },
+        { displayName: '来源类型', value: description.source.kind }, { displayName: '来源路径', value: description.source.authoring.documentPath },
         { displayName: '来源修订', value: description.source.revision }, { displayName: '场景修订', value: description.source.sceneRevision },
-        { displayName: '输入方案来源', value: description.root?.inputSchemeSource ?? '未提供' },
+        { displayName: '输入方案来源', value: selectedScheme?.source.kind === 'documentInput'
+          ? `${selectedScheme.source.documentPath} / ${selectedScheme.source.inputId}` : selectedScheme === undefined ? '未选择' : '当前根默认输入' },
         { displayName: '输入方案修订', value: selectedScheme?.revision ?? '未选择' },
-        ...description.source.documents.map(document => ({ displayName: document.path,
-          value: `${document.revision} · ${document.hasUnsavedChanges === null ? '保存状态未提供' : document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision ?? '未提供磁盘修订'}` })),
+        ...description.source.documents.map(document => ({ displayName: document.documentPath,
+          value: `${document.revision} · ${document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision === '' ? '新文档' : document.savedRevision}` })),
       ]} />}
       {status && <Facts fields={[{ displayName: '作业', value: status.jobId }, { displayName: '阶段', value: status.stage },
         { displayName: '执行模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? '未记录' },
@@ -113,7 +129,7 @@ export function QuickPreview() {
 function QuickInputForm({ description, plan, reason }: { description: PreviewQuickDescription | null; plan: PreviewQuickPlan | null; reason: string | null }) {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   const selected = useWorkbench(state => state.quickPreview.scheme);
-  const scheme = description?.root?.inputSchemes.find(item => item.index === selected);
+  const scheme = description?.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(selected));
   const [points, setPoints] = useState<{ inputId: string; time: number | null; value: string }[]>([]);
   const [conditions, setConditions] = useState<PreviewQuickConditionPoint[]>([]);
   const [inputId, setInputId] = useState<string | null>(null);
@@ -227,7 +243,7 @@ export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   const stale = useWorkbench(quickPlanStale);
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   if (plan === null) return null;
-  const segments = plan.segments.filter(segment => segment.stateSource?.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
+  const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
   return <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
     <Button key={index} variant="ghost" tip={`路线区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) void locate(segment.stateSource).catch(error => consoleActions.error('快预览', error)); }}>

@@ -2,7 +2,9 @@ import { previewApi } from '../api/preview';
 import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInputOverlay, PreviewQuickRequest,
   PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
+  PreviewQuickAuthoringTarget, PreviewQuickInputSource,
 } from '../api/previewQuickRecords';
+import { authoringTargetKey } from '../api/authoring';
 import { authoringActions, useAuthoring } from './authoring';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
@@ -19,7 +21,7 @@ type Job = { kind: 'idle' }
 export interface QuickPreviewState {
   target: PreviewQuickTarget | null;
   description: Description;
-  scheme: number | null;
+  scheme: PreviewQuickInputSource | null;
   job: Job;
   accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
   seconds: number;
@@ -52,12 +54,15 @@ const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
   const root = target?.root;
-  switch (root?.kind) {
-    case 'webEditingView': return JSON.stringify([target?.scenePath, root.kind, root.skill, root.machine]);
-    case 'nativeDocument': return JSON.stringify([target?.scenePath, root.kind, root.path, root.machine]);
-    case 'timelineAsset': return JSON.stringify([target?.scenePath, root.kind, root.path, root.elementId]);
-    default: return JSON.stringify([target?.scenePath]);
-  }
+  return JSON.stringify([target?.scenePath, root?.kind, root == null ? null : quickAuthoringKey(root.authoring)]);
+}
+
+export const quickAuthoringKey = (target: PreviewQuickAuthoringTarget) => JSON.stringify([target.documentPath, target.entry]);
+
+export function quickInputSourceKey(source: PreviewQuickInputSource | null): string {
+  return source?.kind === 'documentInput'
+    ? JSON.stringify([source.kind, source.documentPath, source.inputId])
+    : JSON.stringify(source?.kind ?? null);
 }
 
 function selectedSource(workbench = getState()) {
@@ -73,15 +78,13 @@ function selectedSource(workbench = getState()) {
   if (publication === undefined) return { kind: 'unavailable', reason: '所选场景发布记录已不在来源目录中' } as const;
   const scene = sources.quickScenes.find(item => item.publication.path === publication.path && item.publication.revision === publication.revision);
   if (scene === undefined) return { kind: 'unavailable', reason: '所选场景发布记录没有对应修订的 Unity 场景资产身份，请重新读取来源目录' } as const;
-  const target = useAuthoring.getState().target;
-  if (target?.kind !== 'skill') return { kind: 'unavailable', reason: '先在顶部选择本次推导的技能' } as const;
-  return { kind: 'skill', scene, skill: target.name } as const;
+  return { kind: 'scene', scene } as const;
 }
 
 function selectionKey(workbench = getState()) {
   const source = selectedSource(workbench);
   return JSON.stringify(source.kind === 'timeline' ? [source.kind, source.timeline.content, source.timeline.scene]
-    : source.kind === 'skill' ? [source.kind, source.scene, source.skill] : source);
+    : source.kind === 'scene' ? [source.kind, source.scene] : source);
 }
 const matchesEditingView = (target: PreviewQuickTarget) => target.root?.kind !== 'webEditingView' ||
   JSON.stringify(target.root.editingView) === JSON.stringify(authoringActions.editingView());
@@ -102,9 +105,10 @@ function selectedRequest(request: PreviewQuickRequest): boolean {
   const description = state.description.reply.data;
   const source = description.source;
   if (source === null) return false;
-  const scheme = description.root?.inputSchemes.find(item => item.index === state.scheme);
+  const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   return JSON.stringify(state.target) === JSON.stringify(request.target) && matchesEditingView(request.target) && source.revision === request.sourceRevision &&
-    scheme?.index === request.input.scheme && scheme.revision === request.input.revision &&
+    JSON.stringify(source.authoring) === JSON.stringify(request.target.root.authoring) &&
+    scheme !== undefined && quickInputSourceKey(scheme.source) === quickInputSourceKey(request.input.source) && scheme.revision === request.input.revision &&
     description.scenePath === request.target.scenePath;
 }
 
@@ -128,7 +132,7 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
   if (!ownsRequest(request)) return;
   const status = reply.data;
   if (status?.plan && (status.source?.revision !== request.sourceRevision ||
-    status.plan.inputScheme !== request.input.scheme || status.plan.inputSchemeRevision !== request.input.revision)) {
+    JSON.stringify(status.plan.input) !== JSON.stringify(request.input.source) || status.plan.inputSchemeRevision !== request.input.revision)) {
     const reason = '宿主计划的来源或输入方案修订与本次请求不一致，未采用该路线';
     set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: { ...reply, data: status }, reason } });
     consoleActions.log('error', '快预览', reason, reply.rawJson);
@@ -218,11 +222,11 @@ function preparation() {
   if (state.description.kind !== 'ready') return { kind: 'unavailable', reason: state.description.kind === 'failed' || state.description.kind === 'stale'
     ? state.description.reason : state.description.kind === 'loading' ? '正在读取来源与输入方案' : '先读取快预览来源' } as const;
   const target = state.target;
-  if (target === null || target.root === undefined) return { kind: 'unavailable', reason: '选择本次推导的技能根或独立 Timeline' } as const;
+  if (target === null || target.root === null) return { kind: 'unavailable', reason: '选择本次推导的作者文档和图或 Timeline 入口' } as const;
   const data = state.description.reply.data;
   if (data.source === null || data.root === null) return { kind: 'unavailable', reason: '宿主没有返回当前根的来源与输入方案' } as const;
   if (!matchesEditingView(target)) return { kind: 'unavailable', reason: '网页编辑内容已变化，请重新读取来源' } as const;
-  const scheme = data.root.inputSchemes.find(item => item.index === state.scheme);
+  const scheme = data.root.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   if (scheme === undefined) return { kind: 'unavailable', reason: '选择宿主提供的输入方案' } as const;
   if (state.job.kind === 'starting' || state.job.kind === 'starting-cancelled' || state.job.kind === 'running' ||
     state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && state.job.reply !== null && !state.job.reply.data.completed))
@@ -260,7 +264,7 @@ export const quickPreview = {
     const target = direction < 0 ? boundaries.filter(time => time < seconds).at(-1) : boundaries.find(time => time > seconds);
     if (target !== undefined) quickPreview.seek(target);
   },
-  async readSource(machine?: number) {
+  async readSource(authoring?: PreviewQuickAuthoringTarget) {
     const reason = sourceUnavailableReason();
     const source = selectedSource();
     if (reason !== null || source.kind === 'unavailable') return;
@@ -268,58 +272,60 @@ export const quickPreview = {
     const controller = descriptionController = new AbortController();
     const scope = selectionKey();
     const previousRoot = current().target?.root;
-    let target: PreviewQuickTarget = source.kind === 'skill' ? {
-      scenePath: source.scene.scenePath,
-      root: { kind: 'webEditingView', skill: source.skill, editingView: authoringActions.editingView(),
-        machine: machine ?? (previousRoot?.kind === 'webEditingView' && previousRoot.skill === source.skill ? previousRoot.machine : 0) },
-    } : { scenePath: source.timeline.scene.path,
-      ...(previousRoot?.kind === 'timelineAsset' && previousRoot.elementId === source.timeline.content.timeline ? { root: previousRoot } : {}),
-    };
-    if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
-    set({ target, description: { kind: 'loading' } });
+    let chosen = authoring ?? previousRoot?.authoring ?? null;
+    let target: PreviewQuickTarget = { scenePath: source.kind === 'scene' ? source.scene.scenePath : source.timeline.scene.path, root: null };
+    set({ description: { kind: 'loading' } });
     invalidateJob();
     try {
-      if (source.kind === 'timeline') {
-        const catalog = await previewApi.describeQuick({ scenePath: target.scenePath }, controller.signal);
+      if (chosen === null) {
+        const catalog = await previewApi.describeQuick(target, controller.signal);
         if (controller.signal.aborted || scope !== selectionKey()) return;
         if (!catalog.success || catalog.data === null) {
-          set({ description: { kind: 'failed', reply: catalog, reason: catalog.message ?? catalog.code ?? '读取场景 Timeline 目录失败' }, scheme: null });
-          consoleActions.log('error', '快预览', catalog.message ?? catalog.code ?? '读取场景 Timeline 目录失败', catalog.rawJson);
+          set({ description: { kind: 'failed', reply: catalog, reason: catalog.message ?? catalog.code ?? '读取场景作者文档目录失败' } });
+          consoleActions.log('error', '快预览', catalog.message ?? catalog.code ?? '读取场景作者文档目录失败', catalog.rawJson);
           return;
         }
-        const matches = catalog.data.timelines.filter(item => item.elementId === source.timeline.content.timeline);
+        const active = useAuthoring.getState().target;
+        const choices = catalog.data.documents.flatMap(document => document.entries.map(choice => ({ document, choice })));
+        const matches = source.kind === 'timeline'
+          ? choices.filter(item => item.choice.entry.kind === 'timeline' && item.choice.entry.timelineId === source.timeline.content.timeline)
+          : choices.filter(item => active !== null && item.document.documentPath === authoringTargetKey(active));
         if (matches.length !== 1) {
-          set({ description: { kind: 'failed', reply: catalog, reason: `场景授权的独立 Timeline 中无法唯一定位根 ${source.timeline.content.timeline}` }, scheme: null });
+          set({ target, description: { kind: 'ready', reply: { ...catalog, data: catalog.data } }, scheme: null });
           return;
         }
-        target = { scenePath: target.scenePath, root: { kind: 'timelineAsset', path: matches[0].path, elementId: matches[0].elementId } };
-        if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
-        set({ target });
+        chosen = { documentPath: matches[0].document.documentPath, savedRevision: matches[0].document.savedRevision, entry: matches[0].choice.entry };
       }
+      const document = useAuthoring.getState().documents[chosen.documentPath];
+      target = { scenePath: target.scenePath, root: document === undefined
+        ? { kind: 'authoringDocument', authoring: chosen }
+        : { kind: 'webEditingView', authoring: { ...chosen, savedRevision: document.revision ?? '' }, editingView: authoringActions.editingView() } };
+      if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
+      set({ target });
       const reply = await previewApi.describeQuick(target, controller.signal);
       if (controller.signal.aborted) return;
       if (scope !== selectionKey() || !matchesEditingView(target)) { quickPreview.invalidate('来源或网页编辑内容已变化，请重新读取'); return; }
       if (!reply.success || reply.data === null) {
-        set({ description: { kind: 'failed', reply, reason: reply.message ?? reply.code ?? '读取快预览来源失败' }, scheme: null });
+        set({ description: { kind: 'failed', reply, reason: reply.message ?? reply.code ?? '读取快预览来源失败' } });
         consoleActions.log('error', '快预览', reply.message ?? reply.code ?? '读取快预览来源失败', reply.rawJson);
         invalidateJob();
         return;
       }
       const data = reply.data;
       const previous = current().scheme;
-      const scheme = data.root?.inputSchemes.find(item => item.index === previous)
-        ?? data.root?.inputSchemes.find(item => item.index === data.root?.currentInputScheme);
-      set({ description: { kind: 'ready', reply: { ...reply, data } }, scheme: scheme?.index ?? null });
+      const selected = previous ?? data.root?.currentInputScheme ?? null;
+      const offered = data.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(selected));
+      set({ description: { kind: 'ready', reply: { ...reply, data } }, scheme: offered?.source ?? selected });
       const job = current().job;
       if (job.kind !== 'idle' && !selectedRequest(job.request)) invalidateJob();
     } catch (error) {
       if (controller.signal.aborted) return;
       consoleActions.error('快预览', error);
-      set({ description: { kind: 'failed', reply: null, reason: error instanceof Error ? error.message : String(error) }, scheme: null });
+      set({ description: { kind: 'failed', reply: null, reason: error instanceof Error ? error.message : String(error) } });
       invalidateJob();
     }
   },
-  selectScheme(scheme: number) {
+  selectScheme(scheme: PreviewQuickInputSource) {
     set({ scheme, accepted: null, seconds: 0 });
     invalidateJob();
   },
@@ -338,7 +344,7 @@ export const quickPreview = {
     if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
     const request: PreviewQuickRequest = {
       mode: 'quick', target: prepared.target, sourceRevision: prepared.source.revision,
-      input: { scheme: prepared.scheme.index, revision: prepared.scheme.revision, ...input },
+      input: { source: prepared.scheme.source, revision: prepared.scheme.revision, ...input },
       outputDirectory: `${prepared.directory.replace(/[\\/]$/, '')}/quick-preview/${crypto.randomUUID()}`,
       ...(rangeEndSeconds === undefined ? {} : { rangeEndSeconds }),
     };
@@ -398,12 +404,12 @@ useWorkbench.subscribe((state, previous) => {
 useAuthoring.subscribe((authoring, previous) => {
   if ((authoring.target?.kind !== previous.target?.kind || authoring.target?.name !== previous.target?.name) &&
     getState().previewMode === 'quick' && getState().contentSelection?.kind === 'scene') {
-    quickPreview.clearTarget('作者根已变化，请读取当前技能的快预览来源');
+    quickPreview.clearTarget('作者文档已变化，请重新读取快预览来源');
     return;
   }
   const state = current();
   if (state.target?.root?.kind !== 'webEditingView' || (state.description.kind !== 'ready' && state.description.kind !== 'loading')) return;
-  const documentsChanged = Object.keys(authoring.documents).filter(key => key.startsWith('Skills/')).some(key => {
+  const documentsChanged = Object.keys(authoring.documents).some(key => {
     const before = previous.documents[key];
     const after = authoring.documents[key];
     return before === undefined || before.files !== after.files || before.revision !== after.revision || before.sourceRevision !== after.sourceRevision;

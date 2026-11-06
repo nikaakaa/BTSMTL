@@ -100,6 +100,8 @@ function profileResourceConfigurations(source: AuthoringProfile, previous?: Prof
 }
 
 export interface AuthoringDocument {
+  kind: WorkspaceDocumentInfo['kind'];
+  documentSources: string[];
   programId: string | null;
   inputActorId: string | null;
   inputRevision: { kind: 'catalog' } | { kind: 'saved'; items: InputRevision[] } | { kind: 'rejected'; reason: string };
@@ -158,7 +160,8 @@ export interface AddedPort {
   valueType: string;
 }
 
-const newDocument = (): AuthoringDocument => ({
+const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
+  documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -174,7 +177,7 @@ export const useAuthoring = create<AuthoringState>()(() => ({
   resourceTarget: null, profiles: {}, scopes: {},
 }));
 
-export const authoringDocument = (state: AuthoringState, target = state.target): AuthoringDocument =>
+export const authoringDocument = (state: AuthoringState, target = state.target): Omit<AuthoringDocument, 'kind'> =>
   target === null ? closedDocument : state.documents[authoringTargetKey(target)];
 
 export const ownsAuthoringGraph = (state: AuthoringState, id: string): boolean => {
@@ -540,7 +543,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const key = authoringTargetKey({ kind: 'skill', name: source.skill });
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), product: editingView.product, execution: editingView.execution,
+        documents[key] = { ...newDocument(), kind: 'skill', revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: Object.fromEntries(source.sourceFiles.map(file => [file.path, file.content])),
           files: Object.fromEntries(source.files.map(file => [file.path, file.content])) };
       } else {
@@ -553,6 +556,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     }
     const key = authoringTargetKey(target);
     documents[key] = { ...documents[key], documentGraphs: document.graphs, documentRelations: document.relations,
+      documentSources: document.sources.map(source => authoringTargetKey({ kind: 'skill', name: source.skill })),
       sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId };
     set({ documents });
@@ -631,7 +635,7 @@ export const authoringActions = {
       throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
-    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), edited, version: 1,
+    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: target.kind, edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
@@ -677,7 +681,7 @@ export const authoringActions = {
     const key = authoringTargetKey(target);
     const opened = state.documents[key];
     set({ target, author: true, resourceTarget: null, documents: opened ? state.documents
-      : { ...state.documents, [key]: { ...newDocument(), loading: true } } });
+      : { ...state.documents, [key]: { ...newDocument(), kind: target.kind, loading: true } } });
     publishDocument();
     if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
     try {
@@ -932,16 +936,18 @@ export const authoringActions = {
   editingView(): SkillEditingView {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
+    const writes = Object.entries(state.documents).map(([documentPath, document]) => {
+      const files = { ...document.sourceFiles };
+      for (const [path, content] of Object.entries(workingFiles(document.files, document)))
+        if (content !== document.files[path]) files[path] = content;
+      for (const path of document.removed) delete files[path];
+      return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files };
+    });
+    const dependencies = new Set(state.target === null ? [] : [authoringTargetKey(state.target), ...state.documentSources]);
     return {
-      skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('Skills/')).map(key => {
-        const name = key.slice('Skills/'.length);
-        const document = state.documents[key];
-        const files = { ...document.sourceFiles };
-        for (const [path, content] of Object.entries(workingFiles(document.files, document)))
-          if (content !== document.files[path]) files[path] = content;
-        for (const path of document.removed) delete files[path];
-        return [name, { files: Object.entries(files).map(([path, content]) => ({ path, content })), removedFiles: document.removed }];
-      })),
+      writes,
+      reads: Object.entries(state.documents).flatMap(([documentPath, document]) =>
+        dependencies.has(documentPath) && document.revision !== null ? [{ documentPath, revision: document.revision }] : []),
       execution: state.execution,
       product: state.product,
       ...(scene === undefined ? {} : { scene }),
