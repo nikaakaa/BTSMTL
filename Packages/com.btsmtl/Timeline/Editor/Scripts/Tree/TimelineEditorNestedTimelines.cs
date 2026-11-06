@@ -315,7 +315,7 @@ namespace BTSMTL.Timeline.Editor
             m_TimelineNavigation.RemoveRange(index, m_TimelineNavigation.Count - index);
             m_NestedExpanded = new List<string>(frame.Expanded);
             m_StateContextIndex = frame.ContextIndex;
-            Bind(frame.Source.Data, frame.Source, "m_Data", frame.Ownership, frame.Node, frame.Graph);
+            Bind(frame.Source.Data, frame.Source, frame.Ownership, frame.Node, frame.Graph);
             EditorApplication.delayCall -= RefreshStateQueries;
             RefreshStateQueries();
             m_SlateProjection.RestoreViewState(frame.View);
