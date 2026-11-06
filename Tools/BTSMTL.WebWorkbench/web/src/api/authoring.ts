@@ -29,8 +29,8 @@ const readSkillSnapshot = (value: unknown, path?: string) => {
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = Pick<WorkspaceDocumentInfo, 'kind' | 'documentPath'>;
-const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios', variables: 'Variables' };
-export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null, variables: 'variables.json' };
+const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios', variables: 'Variables', graph: 'Graphs' };
+export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null, variables: 'variables.json', graph: 'graph.json' };
 export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
 export function authoringOwner(documentPath: string): AuthoringTarget {
   const kind = workspaceDocumentKinds.find(kind => documentPath.startsWith(`${authoringDirectories[kind]}/`));

@@ -14,7 +14,7 @@ import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphPath, layoutPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphLayoutPath, graphPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -548,7 +548,7 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
   const editable = author.on;
   const shown = useMemo(() => editable ? applyGraphEdits(graph, author.edited, author.ports) : graph,
     [editable, graph, author.edited, author.ports]);
-  const { document: layout } = useCurrentDocument(author.own ? layoutPath : null);
+  const { document: layout } = useCurrentDocument(author.own ? graphLayoutPath(graph.id) : null);
   const groupsText = JSON.stringify(graphGroups(layout, graph.id));
   const groups = useMemo(() => JSON.parse(groupsText) as CanvasGroup[], [groupsText]);
   // 新建状态、转移与图的锚点和默认值。

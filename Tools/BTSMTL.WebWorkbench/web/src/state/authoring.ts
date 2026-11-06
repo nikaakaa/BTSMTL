@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ProjectItem,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
@@ -106,6 +106,7 @@ export interface AuthoringDocument {
   rootFile: WorkspaceDocumentInfo['rootFile'];
   identity: WorkspaceDocumentInfo['identity'] | null;
   authoringType: string | null;
+  projectRoot: Extract<ProjectItem, { kind: 'graph' }> | null;
   documentSources: string[];
   programId: string | null;
   inputActorId: string | null;
@@ -166,7 +167,7 @@ export interface AddedPort {
 }
 
 const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, identity: null, authoringType: null, documentSources: [],
+  rootFile: null, identity: null, authoringType: null, projectRoot: null, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -541,9 +542,10 @@ function captureEditingView() {
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const { editingView, isCurrentRequest } = captureEditingView();
   try {
-    const [document, view] = await Promise.all([
+    const [document, view, project] = await Promise.all([
       authoringApi.document(target.documentPath, editingView, signal),
       workspaceDocumentsApi.editingView(editingView.writes, signal),
+      authoringApi.project(target, editingView, signal),
     ]);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
@@ -551,9 +553,12 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
     for (const source of document.sources) {
       const owner = authoringOwner(source.skill);
       const key = owner.documentPath;
+      const projectRoot = project.items.filter(item => item.owner === key && item.file === authoringRootFiles[owner.kind])
+        .find(item => item.kind === 'graph') ?? null;
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind],
+          projectRoot,
           identity: view.elements.find(element => element.documentPath === key && element.relativePath === authoringRootFiles[owner.kind] && element.jsonPath === '/')?.identity ?? null,
           revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
@@ -562,7 +567,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
         for (const [path, content] of Object.entries(source.files)) {
           if (Object.hasOwn(edited, path)) edited[path] = parseSkillJson(content);
         }
-        documents[key] = { ...current, edited };
+        documents[key] = { ...current, edited, projectRoot };
       }
     }
     const key = authoringTargetKey(target);
@@ -1778,10 +1783,14 @@ export function useCurrentDocument(path: string | null): { document: JsonValue |
     [edited, text, removed, version]);
 }
 
-// ── 节点图（流图）：节点在 graphs/<图>.json 的 allNodes，连线在源节点的 outConnections，位置在 layout.json ──
-
-export const graphPath = (graphId: string) => `graphs/${graphId}.json`;
+const isDocumentGraph = (graphId: string) => {
+  const { target, identity } = get();
+  return target?.kind === 'graph' && identity === graphId;
+};
+export const graphPath = (graphId: string) => isDocumentGraph(graphId) ? authoringRootFiles.graph : `graphs/${graphId}.json`;
 export const layoutPath = 'layout.json';
+export const graphLayoutPath = (graphId: string) => isDocumentGraph(graphId) ? authoringRootFiles.graph : layoutPath;
+const graphLayoutKey = (graphId: string) => isDocumentGraph(graphId) ? 'layout' : graphId;
 
 // 节点身份为 32 位十六进制，连线身份为带连字符的 UUID，与现有文件一致。
 const nodeUid = () => crypto.randomUUID().replaceAll('-', '');
@@ -1811,14 +1820,17 @@ export function edgeStep(document: JsonValue | null, connectionId: string): Edge
   return null;
 }
 
-function layoutNodes(document: JsonValue, graphId: string): JsonObject {
+function graphLayout(document: JsonValue, graphId: string): JsonObject {
   const layout = document as JsonObject;
-  const graph = (layout[graphId] ??= { allNodes: {}, canvasGroups: [], translation: { x: new JsonFloat(0), y: new JsonFloat(0) }, zoomFactor: new JsonFloat(1) }) as JsonObject;
-  return graph.allNodes as JsonObject;
+  if (isDocumentGraph(graphId)) return layout.layout as JsonObject;
+  return (layout[graphId] ??= { allNodes: {}, canvasGroups: [], translation: { x: new JsonFloat(0), y: new JsonFloat(0) }, zoomFactor: new JsonFloat(1) }) as JsonObject;
 }
 
-const positionValue = (position: { x: number; y: number }) =>
-  ({ comments: null, position: { x: new JsonFloat(Math.round(position.x)), y: new JsonFloat(Math.round(position.y)) } });
+const layoutNodes = (document: JsonValue, graphId: string) => graphLayout(document, graphId).allNodes as JsonObject;
+
+const positionValue = (graphId: string, position: { x: number; y: number }): JsonObject =>
+  ({ comments: null, ...(isDocumentGraph(graphId) ? { isBreakpoint: false } : {}),
+    position: { x: new JsonFloat(Math.round(position.x)), y: new JsonFloat(Math.round(position.y)) } });
 
 export interface GroupRect { x: number; y: number; width: number; height: number }
 
@@ -1828,16 +1840,14 @@ const rectValue = (rect: GroupRect): JsonObject => ({
 });
 
 function groupsOf(document: JsonValue, graphId: string): JsonObject[] {
-  layoutNodes(document, graphId);
-  const graph = (document as JsonObject)[graphId] as JsonObject;
-  return (graph.canvasGroups ??= []) as JsonObject[];
+  return (graphLayout(document, graphId).canvasGroups ??= []) as JsonObject[];
 }
 
 export interface CanvasGroup { index: number; name: string; rect: GroupRect; color: string | null }
 
 // 布局中的分组；颜色全透明为 NodeCanvas 默认色。
 export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGroup[] {
-  const groups = ((layout as JsonObject | null)?.[graphId] as JsonObject | undefined)?.canvasGroups as JsonObject[] | undefined;
+  const groups = ((layout as JsonObject | null)?.[graphLayoutKey(graphId)] as JsonObject | undefined)?.canvasGroups as JsonObject[] | undefined;
   return (groups ?? []).map((group, index) => {
     const rect = group.rect as JsonObject, color = group.color as JsonObject | null;
     const alpha = color ? numberOf(color.a) : 0;
@@ -2014,7 +2024,7 @@ export const graphAuthoring = {
     authoringActions.edit(graphPath(graphId), document => {
       nodesOf(document).push(sortedObject({ ...cloneJson(configuration), UID: uid, outConnections: [], type }));
     });
-    authoringActions.edit(layoutPath, document => { layoutNodes(document, graphId)[uid] = positionValue(position); });
+    authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
     setDocument({ addedPorts: { ...get().addedPorts, [uid]: ports } });
     return uid;
   },
@@ -2030,7 +2040,7 @@ export const graphAuthoring = {
       graph.allNodes = nodesOf(graph).filter(node => !removed.has(node.UID as string));
       for (const node of nodesOf(graph)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.targetNode as string));
     });
-    authoringActions.edit(layoutPath, document => {
+    authoringActions.edit(graphLayoutPath(graphId), document => {
       const nodes = layoutNodes(document, graphId);
       for (const id of nodeIds) delete nodes[id];
     });
@@ -2048,7 +2058,7 @@ export const graphAuthoring = {
         ...cloneJson(configuration), UID: uid, _name: '新状态', m_Body: body, outConnections: [], type: 'BtsmtlSkillNativeState',
       }));
     });
-    authoringActions.edit(layoutPath, document => { layoutNodes(document, graphId)[uid] = positionValue(position); });
+    authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
     return uid;
   },
 
@@ -2167,7 +2177,7 @@ export const graphAuthoring = {
   // ── 分组（NodeCanvas CanvasGroup，存于布局）：名称、矩形、颜色、自动分组与备注 ──
 
   addGroup(graphId: string, rect: GroupRect, name: string) {
-    authoringActions.edit(layoutPath, document => {
+    authoringActions.edit(graphLayoutPath(graphId), document => {
       groupsOf(document, graphId).push({
         autoGroup: false, color: { a: new JsonFloat(0), b: new JsonFloat(0), g: new JsonFloat(0), r: new JsonFloat(0) },
         name, notes: null, rect: rectValue(rect),
@@ -2176,7 +2186,7 @@ export const graphAuthoring = {
   },
 
   updateGroup(graphId: string, index: number, patch: { name?: string; rect?: GroupRect }) {
-    authoringActions.edit(layoutPath, document => {
+    authoringActions.edit(graphLayoutPath(graphId), document => {
       const group = groupsOf(document, graphId)[index];
       if (!group) throw new Error(`图 ${graphId} 中没有第 ${index} 个分组`);
       if (patch.name !== undefined) group.name = patch.name;
@@ -2186,8 +2196,8 @@ export const graphAuthoring = {
 
   deleteGroups(graphId: string, indices: number[]) {
     const removed = new Set(indices);
-    authoringActions.edit(layoutPath, document => {
-      const graph = (document as JsonObject)[graphId] as JsonObject;
+    authoringActions.edit(graphLayoutPath(graphId), document => {
+      const graph = graphLayout(document, graphId);
       graph.canvasGroups = groupsOf(document, graphId).filter((_, index) => !removed.has(index));
     });
   },
@@ -2244,9 +2254,12 @@ export const graphAuthoring = {
   },
 
   move(graphId: string, positions: Record<string, { x: number; y: number }>) {
-    authoringActions.edit(layoutPath, document => {
+    authoringActions.edit(graphLayoutPath(graphId), document => {
       const nodes = layoutNodes(document, graphId);
-      for (const [id, position] of Object.entries(positions)) nodes[id] = { ...(nodes[id] as JsonObject | undefined), ...positionValue(position) };
+      for (const [id, position] of Object.entries(positions)) {
+        const next = positionValue(graphId, position);
+        nodes[id] = { ...next, ...(nodes[id] as JsonObject | undefined), position: next.position };
+      }
     });
   },
 
@@ -2271,11 +2284,11 @@ export const graphAuthoring = {
     }));
     const source = clipboard;
     authoringActions.edit(graphPath(graphId), document => { nodesOf(document).push(...nodes); });
-    authoringActions.edit(layoutPath, document => {
+    authoringActions.edit(graphLayoutPath(graphId), document => {
       const layout = layoutNodes(document, graphId);
       for (const [from, to] of ids) {
         const position = source.positions[from] ?? { x: 0, y: 0 };
-        layout[to] = positionValue({ x: position.x + offset.x, y: position.y + offset.y });
+        layout[to] = positionValue(graphId, { x: position.x + offset.x, y: position.y + offset.y });
       }
     });
     const ports = { ...get().addedPorts };
@@ -2289,7 +2302,7 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
   addedPorts: Record<string, AddedPort[]>): SkillDocumentGraph {
   const path = graph.authoringPath;
   const document = edited[graphPath(graph.id)] as JsonObject | undefined;
-  const layout = (edited[layoutPath] as JsonObject | undefined)?.[graph.id] as JsonObject | undefined;
+  const layout = (edited[graphLayoutPath(graph.id)] as JsonObject | undefined)?.[graphLayoutKey(graph.id)] as JsonObject | undefined;
   if (!document && !layout) return graph;
   const positions = (layout?.allNodes ?? {}) as Record<string, JsonObject>;
   const positionOf = (id: string, fallback: GraphNode['position']) => {

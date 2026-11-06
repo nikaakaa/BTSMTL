@@ -4,7 +4,7 @@ import type { AuthoringProduct } from './authoring';
 import type { ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
 
-export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables'] as const;
+export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables', 'graph'] as const;
 const documentFields = {
   kind: choice(...workspaceDocumentKinds), identity: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),

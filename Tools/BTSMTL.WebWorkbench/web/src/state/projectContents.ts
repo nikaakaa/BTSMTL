@@ -36,6 +36,10 @@ export function projectContents(documents: AuthoringState['documents']) {
       let item: ProjectItem;
       if (file === 'skill.json') item = { ...base, kind: 'skill', identity: data.m_AbilityId as string,
         name: ownerName, ownership: 'Private', asset: data };
+      else if (file === document.rootFile && document.kind === 'graph') {
+        if (document.projectRoot === null) continue;
+        item = { ...document.projectRoot };
+      }
       else if (file.startsWith('graphs/')) item = { ...base, kind: 'graph', identity: data.AuthoringId as string,
         name: graphLabels[data.Role as string] ?? data.Role as string, role: data.Role as string,
         ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private' };
@@ -100,9 +104,10 @@ export function projectContents(documents: AuthoringState['documents']) {
     }
   }
   for (const [key, item] of items) {
-    item.referenceCount = uses.get(key)?.length ?? 0;
-    if (item.referenceCount > 1) item.ownership = 'Shared';
-    if (item.kind === 'graph') {
+    const independentGraph = documents[item.owner].kind === 'graph';
+    if (!independentGraph) item.referenceCount = uses.get(key)?.length ?? 0;
+    if (!independentGraph && item.referenceCount > 1) item.ownership = 'Shared';
+    if (item.kind === 'graph' && !independentGraph) {
       const references = uses.get(key) ?? [];
       const names = [...new Set(references.map(reference => reference.label.split(' / ').slice(1, -1).join(' / ')).filter(Boolean))];
       if (names.length > 0) item.name = `${names.join('、')} · ${graphLabels[item.role] ?? item.role}`;
