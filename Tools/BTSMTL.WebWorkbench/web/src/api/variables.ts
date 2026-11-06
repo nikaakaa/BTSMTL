@@ -15,6 +15,7 @@ const declaration = object({ m_VariableId: text, m_Scope: number, m_Lifetime: nu
 const variable = object({ m_Declaration: declaration, m_Name: text, m_TypeId: text,
   m_DefaultValue: parsedJson, m_IsPublic: boolean, m_DeclarationOrder: number });
 export const readVariablesValue = object({ m_ContentDomain: text, m_OwnerId: text, m_Revision: text, m_Variables: array(variable) });
+export type VariablesValue = ReturnType<typeof readVariablesValue>;
 const choices = object({
   types: array(object({ typeId: text, clrType: text, valueKind: text, defaultValue: parsedJson, enumMembers: nullable(array(enumMember)) })),
   scopes: array(object({ name: text, value: number, defaultLifetime: number, lifetimes: array(number) })),

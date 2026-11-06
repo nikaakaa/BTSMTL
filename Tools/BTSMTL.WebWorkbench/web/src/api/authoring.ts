@@ -2,6 +2,7 @@ import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type Jso
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
 import { deleteJson, getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
+import { readVariablesValue, type VariablesValue } from './variables';
 import { readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
@@ -19,6 +20,7 @@ export type SkillFile = {
 export type SkillEditingView = WorkspaceEditingView;
 
 const readSkillFile = object({ path: text, content: text });
+const readCreatedVariables = nullable(readVariablesValue);
 const readSkillSnapshotValue = object({ skill: text, revision: text,
   files: array(readSkillFile), sourceFiles: array(readSkillFile) });
 const readSkillSnapshot = (value: unknown, path?: string) => {
@@ -395,6 +397,7 @@ export interface GraphTemplate {
   role: string;
   ownership: 'Private' | 'Shared' | null;
   value: JsonObject;
+  variables: VariablesValue | null;
   layout: JsonObject;
   requiredContext: ('OwnerGraphId' | 'OwnerNodeId')[];
 }
@@ -706,6 +709,7 @@ export interface InputFragment {
   track: JsonObject;
   clip: JsonObject;
   graph: JsonObject;
+  variables: VariablesValue;
   tickRate: number;
   sceneRevision: string;
 }
@@ -744,6 +748,7 @@ export interface SkillCreationRequest {
 interface SkillCreationDraft {
   stage: 'draft';
   files: SkillFile[];
+  variables: VariablesValue | null;
   availability: QueryAvailability;
 }
 
@@ -761,11 +766,15 @@ export const authoringApi = {
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
-  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request),
+  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request)
+    .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'SkillCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
-    postJson<{ files: SkillFile[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request),
-  inputFragment: async (request: InputFragmentRequest) =>
-    parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
+    postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request)
+      .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),
+  inputFragment: async (request: InputFragmentRequest) => {
+    const fragment = parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment;
+    return { ...fragment, variables: readVariablesValue(fragment.variables, 'InputFragment.variables') };
+  },
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
     deleteJson<SkillDeleteResult>(skillPath(documentPath), request, [409]),
   document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
@@ -830,6 +839,8 @@ export const authoringApi = {
     const parameters = context?.kind === 'timeline' ? { timelineId: context.timeline } : {};
     const elements = parseSkillJson(await postText(documentQueryPath(target.documentPath, 'queries/elements', parameters),
       { offset: 0, limit: 128, editingView }, signal)) as unknown as SkillElements;
+    elements.graphs = elements.graphs.map((graph, index) => ({ ...graph,
+      variables: readCreatedVariables(graph.variables, `Elements.graphs[${index}].variables`) }));
     for (const clip of elements.clips)
       clip.curves = clip.curves.map(channel => ({
         ...channel, min: numberOf(channel.min), max: numberOf(channel.max),
