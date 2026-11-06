@@ -1,34 +1,40 @@
 using System;
-using BTSMTL;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
-using BTSMTL.Diagnostics;
 using BTSMTL.Timeline;
-using ThirdPersonGameplay.Orchestration;
+using BTSMTL.Timeline.Runtime;
 using ThirdPersonSimulation;
-using UnityEngine;
+#if UNITY_5_3_OR_NEWER
+using BTSMTL;
+#endif
 
 namespace ThirdPersonGameplay.Movement.Timeline
 {
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Ordered(1.5f), Color(126, 220, 146)]
+#endif
     public sealed partial class MotionCurveTrack : SampledTrack
     {
     }
 
+#if UNITY_5_3_OR_NEWER
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Color(126, 220, 146)]
+#endif
     public sealed partial class MotionCurveClip : SampledClip, ITimelineClipTimeRangeValidator
-#if UNITY_EDITOR
-        , ITimelineAuthoringClipSource, ITimelineAuthoringReferenceCurveSource,
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        , ITimelineAuthoringReferenceCurveSource,
         ITimelineAuthoringClipSplitSource, ITimelineAuthoringSourceTimeEditing
 #endif
     {
-        public float SourceDuration => Mathf.Max(0f, SourceEndTime - SourceStartTime);
+        static readonly TimelineCurve s_ZeroCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 0f);
+
+        public float SourceDuration => Math.Max(0f, SourceEndTime - SourceStartTime);
 
         public bool TryValidateTimeRange(in TimelineClipTimeRange range, out string error)
         {
             if (!float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) ||
                 range.SourceStart < 0f || range.SourceEnd <= range.SourceStart ||
-                range.SourceEnd > SourceCurve.Duration ||
+                range.SourceEnd > SourceContent.Duration ||
                 OrchestrationTime.FromSeconds(range.SourceEnd - range.SourceStart) > range.End - range.Start)
             {
                 error = $"Motion Clip '{Name}' 的源区间必须位于素材内，并且不能长于时间条。";
@@ -39,38 +45,21 @@ namespace ThirdPersonGameplay.Movement.Timeline
         }
 
         public OrchestrationTime CurveEndTime => StartTime + OrchestrationTime.FromSeconds(SourceDuration);
-        public AnimationCurve ProgramPositionX => ProgramCurve(SourcePositionX);
-        public AnimationCurve ProgramPositionY => ProgramCurve(SourcePositionY);
-        public AnimationCurve ProgramPositionZ => ProgramCurve(SourcePositionZ);
-        public AnimationCurve ProgramYaw => ProgramCurve(RequireSource().LocalYaw);
+        public TimelineCurve SourcePositionX => SourceContent.EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
+            ? s_ZeroCurve
+            : SourceContent.LocalPositionX;
 
-        public AnimationCurve SourcePositionX => RequireSource().EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
-            ? ZeroCurve()
-            : RequireSource().LocalPositionX;
+        public TimelineCurve SourcePositionY => SourceContent.EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
+            ? s_ZeroCurve
+            : SourceContent.LocalPositionY;
 
-        public AnimationCurve SourcePositionY => RequireSource().EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
-            ? ZeroCurve()
-            : RequireSource().LocalPositionY;
+        public TimelineCurve SourcePositionZ => SourceContent.EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
+            ? SourceContent.ForwardDistance
+            : SourceContent.LocalPositionZ;
 
-        public AnimationCurve SourcePositionZ => RequireSource().EvaluationMode == RootMotionCurveEvaluationMode.ForwardDistanceYaw
-            ? RequireSource().ForwardDistance
-            : RequireSource().LocalPositionZ;
+        public TimelineCurve SourceYaw => SourceContent.LocalYaw;
 
-        public AnimationCurve SourceYaw => RequireSource().LocalYaw;
-
-        RootMotionCurveAsset RequireSource()
-        {
-            if (!m_SourceCurve)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' requires a RootMotionCurveAsset source.");
-            return m_SourceCurve;
-        }
-
-#if UNITY_EDITOR
-        public UnityEngine.Object SourceAsset => SourceCurve;
-        public Type SourceAssetType => typeof(RootMotionCurveAsset);
-        public string SourceMissingErrorCode => "timeline_motion_curve_missing";
-        public string SourceMissingError => "MotionCurveClip缺少RootMotionCurveAsset正式源引用。";
-        public float GetSourceDuration(UnityEngine.Object source) => ((RootMotionCurveAsset)source).Duration;
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public bool CanSplit => true;
 
         public IReadOnlyList<TimelineReferenceCurveDescriptor> ReferenceCurves => new[]
@@ -81,10 +70,10 @@ namespace ThirdPersonGameplay.Movement.Timeline
             ReferenceCurve("source.yaw", "Yaw", SourceYaw)
         };
 
-        TimelineReferenceCurveDescriptor ReferenceCurve(string channelId, string displayName, AnimationCurve source) =>
-            new TimelineReferenceCurveDescriptor(channelId, displayName, SourceCurve.name,
+        TimelineReferenceCurveDescriptor ReferenceCurve(string channelId, string displayName, TimelineCurve source) =>
+            new TimelineReferenceCurveDescriptor(channelId, displayName, SourceContent.DisplayName,
                 (target, sourceStart, sourceEnd, duration) =>
-                    UpdateSourceDisplayCurve(target, source, sourceStart, sourceEnd, duration));
+                    SourceDisplayCurve(source, sourceStart, sourceEnd, duration));
 
         public void SplitSource(Clip copy, OrchestrationTime splitTime)
         {
@@ -104,147 +93,99 @@ namespace ThirdPersonGameplay.Movement.Timeline
             if (trimStart)
                 sourceStart = (float)Math.Max(0d,
                     Math.Min(original.SourceEnd, original.SourceStart + currentStart - originalStart));
-            sourceEnd = (float)Math.Min(SourceCurve.Duration, sourceStart + duration);
+            sourceEnd = (float)Math.Min(SourceContent.Duration, sourceStart + duration);
         }
 
 #endif
 
-        public Vector3 EvaluatePositionAtTimelineTime(OrchestrationTime timelineTime)
+        public Float32Vector3 EvaluatePositionAtTimelineTime(OrchestrationTime timelineTime)
         {
-            float sourceTime = Mathf.Clamp(
-                SourceStartTime + OrchestrationTime.Max(OrchestrationTime.Zero, timelineTime - StartTime).AsSingle,
-                SourceStartTime,
-                SourceEndTime);
-            return RequireSource().EvaluatePosition(sourceTime);
+            return SourceContent.EvaluatePosition(SourceTime(timelineTime));
         }
 
         public float EvaluateYawAtTimelineTime(OrchestrationTime timelineTime)
         {
-            float sourceTime = Mathf.Clamp(
-                SourceStartTime + OrchestrationTime.Max(OrchestrationTime.Zero, timelineTime - StartTime).AsSingle,
-                SourceStartTime,
-                SourceEndTime);
-            return RequireSource().EvaluateYaw(sourceTime);
+            return SourceContent.EvaluateYaw(SourceTime(timelineTime));
         }
 
-        public AnimationCurve CreateSourceDisplayCurve(AnimationCurve source, float timelineDuration)
-        {
-            return CreateSourceDisplayCurve(source, SourceStartTime, SourceEndTime, timelineDuration);
-        }
+        float SourceTime(OrchestrationTime timelineTime) => Math.Min(SourceEndTime,
+            Math.Max(SourceStartTime, SourceStartTime +
+                OrchestrationTime.Max(OrchestrationTime.Zero, timelineTime - StartTime).AsSingle));
 
-        public AnimationCurve CreateSourceDisplayCurve(
-            AnimationCurve source,
-            float sourceStartTime,
-            float sourceEndTime,
-            float timelineDuration)
-        {
-            var result = new AnimationCurve();
-            UpdateSourceDisplayCurve(result, source, sourceStartTime, sourceEndTime, timelineDuration);
-            return result;
-        }
-
-        public void UpdateSourceDisplayCurve(AnimationCurve result, AnimationCurve source,
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        static TimelineCurve SourceDisplayCurve(TimelineCurve source,
             float sourceStartTime, float sourceEndTime, float timelineDuration)
         {
-            for (int i = result.length - 1; i >= 0; i--)
-                result.RemoveKey(i);
-            if (source == null)
-                return;
-            if (!float.IsFinite(sourceStartTime) || !float.IsFinite(sourceEndTime) ||
-                sourceStartTime < 0f || sourceEndTime <= sourceStartTime ||
-                sourceEndTime > RequireSource().Duration)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' has an invalid source display range.");
+            var result = new List<TimelineCurveKey>();
+            var builder = new TimelineRuntimeCurveBuilder<Float32Scalar, Float32ScalarContentLowering>();
+            TimelineRuntimeCurve<Float32Scalar> compiled = builder.PrepareOptional(
+                TimelineCurveContent.CaptureSourceCurve("motion.reference", source), Float32Scalar.Zero);
+            GameplayAbilityCurveKey<Float32Scalar>[] compiledKeys = builder.ToKeyArray();
+            var evaluator = new TimelineRuntimeCurveEvaluator<Float32Scalar, Float32SimulationMath>();
+            float Evaluate(float time) => evaluator.Evaluate(in compiled, compiledKeys, Float32Scalar.FromSingle(time)).ToSingle();
             float sourceDuration = sourceEndTime - sourceStartTime;
-            if (sourceDuration <= 0f)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' has an invalid source duration.");
-
             bool hasStartKey = false;
             bool hasEndKey = false;
             int firstKeyAfterStart = -1;
             int lastKeyBeforeEnd = -1;
-            for (int index = 0; index < source.length; index++)
+            for (int index = 0; index < source.Keys.Count; index++)
             {
-                Keyframe key = source[index];
-                if (Mathf.Approximately(key.time, sourceStartTime))
+                TimelineCurveKey key = source.Keys[index];
+                if (Approximately(key.Time, sourceStartTime))
                 {
-                    key.time = 0f;
-                    result.AddKey(key);
+                    result.Add(AtTime(key, 0f));
                     hasStartKey = true;
                     continue;
                 }
-                if (Mathf.Approximately(key.time, sourceEndTime))
+                if (Approximately(key.Time, sourceEndTime))
                 {
-                    key.time = sourceDuration;
-                    result.AddKey(key);
+                    result.Add(AtTime(key, sourceDuration));
                     hasEndKey = true;
                     continue;
                 }
-                if (key.time > sourceStartTime && firstKeyAfterStart < 0)
+                if (key.Time > sourceStartTime && firstKeyAfterStart < 0)
                     firstKeyAfterStart = index;
-                if (key.time < sourceEndTime)
+                if (key.Time < sourceEndTime)
                     lastKeyBeforeEnd = index;
-                if (key.time <= sourceStartTime || key.time >= sourceEndTime)
+                if (key.Time <= sourceStartTime || key.Time >= sourceEndTime)
                     continue;
-                key.time -= sourceStartTime;
-                result.AddKey(key);
+                result.Add(AtTime(key, key.Time - sourceStartTime));
             }
             if (!hasStartKey)
             {
-                float tangent = firstKeyAfterStart >= 0 ? source[firstKeyAfterStart].inTangent : 0f;
-                result.AddKey(new Keyframe(0f, source.Evaluate(sourceStartTime), tangent, tangent));
+                float tangent = firstKeyAfterStart >= 0 ? source.Keys[firstKeyAfterStart].InTangent : 0f;
+                result.Add(new TimelineCurveKey(0f, Evaluate(sourceStartTime), tangent, tangent, 0f, 0f, 0, 0));
             }
             if (!hasEndKey)
             {
-                float tangent = lastKeyBeforeEnd >= 0 ? source[lastKeyBeforeEnd].outTangent : 0f;
-                result.AddKey(new Keyframe(sourceDuration, source.Evaluate(sourceEndTime), tangent, tangent));
+                float tangent = lastKeyBeforeEnd >= 0 ? source.Keys[lastKeyBeforeEnd].OutTangent : 0f;
+                result.Add(new TimelineCurveKey(sourceDuration, Evaluate(sourceEndTime), tangent, tangent, 0f, 0f, 0, 0));
             }
             if (timelineDuration > sourceDuration)
-                result.AddKey(new Keyframe(timelineDuration, source.Evaluate(sourceEndTime), 0f, 0f));
-            result.preWrapMode = WrapMode.ClampForever;
-            result.postWrapMode = WrapMode.ClampForever;
+                result.Add(new TimelineCurveKey(timelineDuration, Evaluate(sourceEndTime), 0f, 0f, 0f, 0f, 0, 0));
+            result.Sort((left, right) => left.Time.CompareTo(right.Time));
+            return new TimelineCurve(8, 8, result);
         }
 
-        static AnimationCurve ZeroCurve() => AnimationCurve.Linear(0f, 0f, 1f, 0f);
+        static TimelineCurveKey AtTime(TimelineCurveKey key, float time) => new TimelineCurveKey(time, key.Value,
+            key.InTangent, key.OutTangent, key.InWeight, key.OutWeight, key.WeightedMode, key.TangentMode);
+
+        static bool Approximately(float left, float right) => Math.Abs(left - right) <
+            Math.Max(0.000001f * Math.Max(Math.Abs(left), Math.Abs(right)), float.Epsilon * 8f);
+#endif
 
         public override void Init(Track track)
         {
             base.Init(track);
-            RootMotionCurveAsset source = RequireSource();
-            if (!source.TryValidate(out string error))
+            TimelineClipTimeRange range = CaptureTimeRange();
+            if (!TryValidateTimeRange(in range, out string error))
                 throw new InvalidOperationException(error);
-            if (!float.IsFinite(SourceStartTime) || !float.IsFinite(SourceEndTime) ||
-                SourceStartTime < 0f || SourceEndTime <= SourceStartTime ||
-                SourceEndTime > source.Duration)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' has an invalid source range.");
-            if (CurveEndTime <= StartTime || CurveEndTime > EndTime)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' requires StartTime < CurveEndTime <= EndTime.");
         }
 
-        AnimationCurve ProgramCurve(AnimationCurve source)
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        public override void ConfigureAuthoringReference(string reference)
         {
-            AnimationCurve result = TimelineCurveAuthoring.CopyCurve(source);
-            float duration = SourceDuration;
-            if (duration <= 0f)
-                throw new InvalidOperationException($"MotionCurveClip '{CurveId}' has an invalid source duration.");
-            Keyframe[] keys = result.keys;
-            for (int i = 0; i < keys.Length; i++)
-            {
-                Keyframe key = keys[i];
-                key.time = (key.time - SourceStartTime) / duration;
-                key.inTangent *= duration;
-                key.outTangent *= duration;
-                keys[i] = key;
-            }
-            result.keys = keys;
-            return result;
-        }
-
-#if UNITY_EDITOR
-        public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
-        {
-            if (referenceObject is not RootMotionCurveAsset source)
-                throw new ArgumentException("MotionCurveClip requires a RootMotionCurveAsset source.", nameof(referenceObject));
-            ConfigureSource(source, 0f, source.Duration);
+            m_SourceCurve = reference;
         }
 #endif
     }

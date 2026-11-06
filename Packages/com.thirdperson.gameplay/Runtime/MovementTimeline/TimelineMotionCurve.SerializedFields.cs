@@ -5,9 +5,6 @@ using ThirdPersonGameplay.Orchestration;
 using ThirdPersonSimulation;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
-using SourceCurveAsset = ThirdPersonGameplay.Movement.Timeline.RootMotionCurveAsset;
-#else
-using SourceCurveAsset = System.String;
 #endif
 
 namespace ThirdPersonGameplay.Movement.Timeline
@@ -62,18 +59,10 @@ namespace ThirdPersonGameplay.Movement.Timeline
 
         public override TimelineContentParameters CaptureContentParameters()
         {
-#if UNITY_5_3_OR_NEWER
-            TimelineContentCurve x = TimelineContentDiscovery.CaptureSourceCurve("motion.source-x", SourcePositionX);
-            TimelineContentCurve y = TimelineContentDiscovery.CaptureSourceCurve("motion.source-y", SourcePositionY);
-            TimelineContentCurve z = TimelineContentDiscovery.CaptureSourceCurve("motion.source-z", SourcePositionZ);
-            TimelineContentCurve yaw = TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", SourceYaw);
-#else
-            var source = (TimelineContentMotion)ContentResourceParameters;
-            TimelineContentCurve x = source.X;
-            TimelineContentCurve y = source.Y;
-            TimelineContentCurve z = source.Z;
-            TimelineContentCurve yaw = source.Yaw;
-#endif
+            TimelineContentCurve x = TimelineCurveContent.CaptureSourceCurve("motion.source-x", SourcePositionX);
+            TimelineContentCurve y = TimelineCurveContent.CaptureSourceCurve("motion.source-y", SourcePositionY);
+            TimelineContentCurve z = TimelineCurveContent.CaptureSourceCurve("motion.source-z", SourcePositionZ);
+            TimelineContentCurve yaw = TimelineCurveContent.CaptureSourceCurve("motion.source-yaw", SourceYaw);
             return new TimelineContentMotion(
                 $"timeline:{Track.Timeline.AuthoringId}/track:{Track.AuthoringId}/clip:{AuthoringId}",
                 CurveId, Space, Channel, BlendMode, Priority, ConsumeLowerChannels, x, y, z, yaw);
@@ -81,26 +70,21 @@ namespace ThirdPersonGameplay.Movement.Timeline
 
         public void CollectContentClosure(TimelineContentClosureBuilder builder)
         {
-#if UNITY_5_3_OR_NEWER
-            if (builder == null)
-                throw new ArgumentNullException(nameof(builder));
-            if (!m_SourceCurve)
-            {
-                builder.AddError("timeline_motion_curve_missing", AuthoringId, "MotionCurveClip缺少RootMotionCurveAsset正式源引用。");
-                return;
-            }
-            string contentHash = SourceContentHasher.Hash(JsonUtility.ToJson(m_SourceCurve));
-            builder.AddDependency($"motion-curve:{contentHash}", GameplayMotionExtensionContracts.RootMotionDependencyKind,
-                m_SourceCurve.name, contentHash);
-#else
-            builder.AddDependency(ContentResourceDependency.Identity, ContentResourceDependency.Kind,
-                ContentResourceDependency.SourcePath, ContentResourceDependency.ContentHash);
-#endif
+            builder.AddDependency($"motion-curve:{SourceContent.ContentRevision}",
+                GameplayMotionExtensionContracts.RootMotionDependencyKind, m_SourcePath, SourceContent.ContentRevision);
+        }
+
+        public RootMotionCurveContent SourceContent => m_SourceContent;
+
+        public void BindSourceContent(RootMotionCurveContent source, string sourcePath)
+        {
+            m_SourceContent = source;
+            m_SourcePath = sourcePath;
         }
 
 #if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
-        public void Configure(string curveId, SourceCurveAsset sourceCurve, float sourceStartTime,
+        public void Configure(string curveId, string sourceCurve, float sourceStartTime,
             float sourceEndTime, SimulationMotionContributionSpace space, SimulationMotionChannel channel,
             SimulationMotionBlendMode blendMode, int priority, bool consumeLowerChannels)
         {
@@ -113,33 +97,18 @@ namespace ThirdPersonGameplay.Movement.Timeline
             ConsumeLowerChannels = consumeLowerChannels;
         }
 
-        public void ConfigureSource(SourceCurveAsset source, float sourceStartTime, float sourceEndTime)
+        public void ConfigureSource(string source, float sourceStartTime, float sourceEndTime)
         {
-#if UNITY_EDITOR
-            if (!source)
-                throw new ArgumentNullException(nameof(source));
-            if (!source.TryValidate(out string error))
-                throw new InvalidOperationException(error);
-#endif
-            if (!float.IsFinite(sourceStartTime) || !float.IsFinite(sourceEndTime) ||
-                sourceStartTime < 0f || sourceEndTime <= sourceStartTime
-#if UNITY_EDITOR
-                || sourceEndTime > source.Duration
-#endif
-                )
-                throw new ArgumentException("Motion curve source range is invalid.");
             m_SourceCurve = source;
             ConfigureSourceRange(sourceStartTime, sourceEndTime);
-#if UNITY_EDITOR
-            if (Track?.Timeline != null)
-                RebindTimeline();
-#endif
         }
 
-        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
+        [BTSMTL.Authoring.Graph.GraphAuthoringResource("motion-curve", typeof(RootMotionCurveContent),
+            Selection = "asset", Profile = "Motion", Source = BTSMTL.Authoring.Graph.GraphAuthoringReferenceSource.AuthoringDocument)]
         [TimelineAuthoringProperty(IsSourceAsset = true, SourceAssetKind = "motion-curve")]
 #endif
-        public SourceCurveAsset SourceCurve => m_SourceCurve;
+        public string SourceCurve => m_SourceCurve;
 #if UNITY_5_3_OR_NEWER
         [ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
@@ -196,6 +165,8 @@ namespace ThirdPersonGameplay.Movement.Timeline
 #if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-        SourceCurveAsset m_SourceCurve;
+        string m_SourceCurve;
+        [NonSerialized] RootMotionCurveContent m_SourceContent;
+        [NonSerialized] string m_SourcePath;
     }
 }
