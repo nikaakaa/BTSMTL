@@ -253,6 +253,7 @@ interface ProjectItemBase {
 export type ProjectItem = ProjectItemBase & (
   | { kind: 'skill'; asset: JsonObject }
   | { kind: 'graph'; role: string }
+  | { kind: 'graph'; contentDomain: string; domains: string[]; variableOwnerId: string | null }
   | { kind: 'timeline' }
   | { kind: 'curve' | 'profile' | 'variables'; asset: JsonObject }
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
@@ -658,7 +659,10 @@ export interface SkillDocumentGraph extends GraphDefinition {
   owner: string;
   ownerName: string;
   file: string;
-  role: string;
+  role: string | null;
+  contentDomain: string | null;
+  domains: string[] | null;
+  variableOwnerId: string | null;
   declaredOwner: { graphId: string; nodeId: string } | null;
 }
 
@@ -670,7 +674,7 @@ export interface SkillDocumentRelation {
   target: {
     id: string; displayName: string | null;
     owner: string; ownerName: string; file: string; ownership: 'Private' | 'Shared' | null;
-  } & ({ kind: 'graph'; role: string } | { kind: 'timeline'; role: null });
+  } & ({ kind: 'graph'; role: string | null } | { kind: 'timeline'; role: null });
 }
 
 export interface SkillDocument {

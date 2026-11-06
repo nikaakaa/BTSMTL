@@ -11,7 +11,7 @@ import {
   applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { documentElementKey, projectActions } from '../../state/project';
-import { projectContents } from '../../state/projectContents';
+import { graphItemDescription, projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
 import { consoleActions, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
@@ -114,7 +114,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
-    <Head name={item.name} sub={item.kind === 'graph' ? item.role : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} />
+    <Head name={item.name} sub={item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} />
     <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}

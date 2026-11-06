@@ -12,6 +12,8 @@ export interface ContentNode {
 const itemKey = (item: Pick<ProjectItem, 'owner' | 'file'>) => JSON.stringify([item.owner, item.file]);
 const graphLabels: Record<string, string> = { Ability: '技能图', StateMachine: '状态机', StateBody: '状态内容',
   Condition: '条件图', Subgraph: '子图', TimelineEvent: '事件图' };
+export const graphItemDescription = (item: Extract<ProjectItem, { kind: 'graph' }>) =>
+  'role' in item ? graphLabels[item.role] ?? item.role : item.contentDomain;
 
 export function projectContents(documents: AuthoringState['documents']) {
   const items = new Map<string, ProjectItem>();
@@ -107,7 +109,7 @@ export function projectContents(documents: AuthoringState['documents']) {
     const independentGraph = documents[item.owner].kind === 'graph';
     if (!independentGraph) item.referenceCount = uses.get(key)?.length ?? 0;
     if (!independentGraph && item.referenceCount > 1) item.ownership = 'Shared';
-    if (item.kind === 'graph' && !independentGraph) {
+    if (item.kind === 'graph' && 'role' in item) {
       const references = uses.get(key) ?? [];
       const names = [...new Set(references.map(reference => reference.label.split(' / ').slice(1, -1).join(' / ')).filter(Boolean))];
       if (names.length > 0) item.name = `${names.join('、')} · ${graphLabels[item.role] ?? item.role}`;
@@ -117,7 +119,7 @@ export function projectContents(documents: AuthoringState['documents']) {
   const build = (key: string, path: ReadonlySet<string> = new Set()): ContentNode => {
     const item = items.get(key)!;
     const references = uses.get(key) ?? [];
-    const node: ContentNode = { key, label: item.name, description: item.kind === 'graph' ? graphLabels[item.role] ?? item.role :
+    const node: ContentNode = { key, label: item.name, description: item.kind === 'graph' ? graphItemDescription(item) :
       item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
     if (path.has(key)) return node;
     assigned.add(key);
@@ -130,7 +132,7 @@ export function projectContents(documents: AuthoringState['documents']) {
         const id = raw.UID as string;
         const key = JSON.stringify([item.owner, item.identity, id]);
         const label = raw._name as string ?? raw.type as string;
-        node.children.push({ key, label, description: item.role === 'StateMachine' ? '状态' : '节点',
+        node.children.push({ key, label, description: 'role' in item && item.role === 'StateMachine' ? '状态' : '节点',
           target: { kind: 'node', owner: item.owner, ownerName: item.ownerName, graphId: item.identity, nodeId: id },
           children: childItems(key), referrers: [] });
       }

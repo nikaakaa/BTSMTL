@@ -1880,7 +1880,7 @@ export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGr
 
 export function graphVariableOwner(graphId: string): string | null {
   if (get().target?.kind !== 'graph') return graphId;
-  return (currentDocument(graphPath(graphId)) as JsonObject).VariableOwnerId as string | null;
+  return get().documentGraphs!.find(graph => graph.id === graphId)!.variableOwnerId;
 }
 
 const variableRequests = new Set<Promise<string>>();
