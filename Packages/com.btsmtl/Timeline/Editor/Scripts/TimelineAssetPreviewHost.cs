@@ -23,16 +23,16 @@ namespace BTSMTL.Timeline.Editor
     {
         internal const string MissingProviderReason = "当前项目尚未注册 Timeline 预览宿主。";
         public static TimelineAssetPreviewHost Shared { get; } = new();
-        static readonly Unity.Profiling.ProfilerMarker s_BuildChainMarker = new("TimelinePreview.BuildChain");
-        static readonly Unity.Profiling.ProfilerMarker s_PrepareContentMarker = new("TimelinePreview.PrepareContent");
-        static readonly Unity.Profiling.ProfilerMarker s_DiscoverContentMarker = new("TimelinePreview.Content.Discover");
-        static readonly Unity.Profiling.ProfilerMarker s_CreateDomainsMarker = new("TimelinePreview.Content.CreateDomains");
-        static readonly Unity.Profiling.ProfilerMarker s_PrepareBindingsMarker = new("TimelinePreview.Content.PrepareBindings");
-        static readonly Unity.Profiling.ProfilerMarker s_PrepareDomainsMarker = new("TimelinePreview.Content.PrepareDomains");
-        static readonly Unity.Profiling.ProfilerMarker s_ReleaseDomainsMarker = new("TimelinePreview.Content.ReleaseDomains");
-        static readonly Unity.Profiling.ProfilerMarker s_OpenSceneMarker = new("TimelinePreview.OpenScene");
-        static readonly Unity.Profiling.ProfilerMarker s_EnterStageMarker = new("TimelinePreview.EnterStage");
-        static readonly Unity.Profiling.ProfilerMarker s_CreateInstanceMarker = new("TimelinePreview.CreateInstance");
+        static readonly global::Unity.Profiling.ProfilerMarker s_BuildChainMarker = new("TimelinePreview.BuildChain");
+        static readonly global::Unity.Profiling.ProfilerMarker s_PrepareContentMarker = new("TimelinePreview.PrepareContent");
+        static readonly global::Unity.Profiling.ProfilerMarker s_DiscoverContentMarker = new("TimelinePreview.Content.Discover");
+        static readonly global::Unity.Profiling.ProfilerMarker s_CreateDomainsMarker = new("TimelinePreview.Content.CreateDomains");
+        static readonly global::Unity.Profiling.ProfilerMarker s_PrepareBindingsMarker = new("TimelinePreview.PrepareBindings");
+        static readonly global::Unity.Profiling.ProfilerMarker s_PrepareDomainsMarker = new("TimelinePreview.PrepareDomains");
+        static readonly global::Unity.Profiling.ProfilerMarker s_ReleaseDomainsMarker = new("TimelinePreview.Content.ReleaseDomains");
+        static readonly global::Unity.Profiling.ProfilerMarker s_OpenSceneMarker = new("TimelinePreview.OpenScene");
+        static readonly global::Unity.Profiling.ProfilerMarker s_EnterStageMarker = new("TimelinePreview.EnterStage");
+        static readonly global::Unity.Profiling.ProfilerMarker s_CreateInstanceMarker = new("TimelinePreview.CreateInstance");
 
         ITimelineAssetPreviewProvider m_Provider;
         ITimelineAssetPreviewInstance m_Instance;
@@ -954,7 +954,7 @@ namespace BTSMTL.Timeline.Editor
                 using (s_PrepareDomainsMarker.Auto())
                     foreach (ITimelineDomainPreview domain in domains.Domains)
                     {
-                        using var domainMeasure = new Unity.Profiling.ProfilerMarker(
+                        using var domainMeasure = new global::Unity.Profiling.ProfilerMarker(
                             "TimelinePreview.Domain.Prepare." + domain.GetType().Name).Auto();
                         domain.Prepare(prepared);
                     }

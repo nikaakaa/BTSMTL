@@ -1,15 +1,11 @@
-#if UNITY_EDITOR
 using System.Reflection;
-using UnityEditor;
 using UnityEngine;
 
-namespace BTSMTL.Timeline.Editor
+namespace BTSMTL.Timeline.Unity
 {
     public static class TimelineCurveUnity
     {
         static readonly PropertyInfo s_TangentMode = typeof(Keyframe).GetProperty("tangentMode");
-
-        public static TimelineCurve Capture(SerializedProperty property) => Capture(property.animationCurveValue);
 
         public static TimelineCurve Capture(AnimationCurve curve)
         {
@@ -49,4 +45,3 @@ namespace BTSMTL.Timeline.Editor
         }
     }
 }
-#endif

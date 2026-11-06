@@ -6,6 +6,7 @@ using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Timeline;
+using BTSMTL.Timeline.Unity;
 using Slate;
 using UnityEditor;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace BTSMTL.Timeline.Editor
 {
     sealed class BtsmtlSlateTimelineBinding : IEmbeddedTimelineBinding
     {
-        static readonly Unity.Profiling.ProfilerMarker s_TimeEditInput = new("Workbench.TimeEdit.Input");
+        static readonly global::Unity.Profiling.ProfilerMarker s_TimeEditInput = new("Workbench.TimeEdit.Input");
         readonly TimelineEditorOpenRequest m_Request;
         readonly TimelineEditorSessionContext m_Session;
         readonly Action<Clip> m_OpenSourceClip;

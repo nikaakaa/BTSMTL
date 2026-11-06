@@ -3,6 +3,7 @@ using BTSMTL.Authoring.Graph;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using BTSMTL.Timeline;
+using BTSMTL.Timeline.Unity;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
