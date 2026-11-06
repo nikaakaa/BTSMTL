@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using ThirdPerson.ValueGeneration;
 using static ThirdPerson.ValueGeneration.ValueModel;
 
 namespace ThirdPerson.MemoryPackAdapters
@@ -67,7 +68,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 string access = "value";
                 foreach (string part in path.Split('.'))
                 {
-                    ISymbol[] matches = current.GetMembers().Where(member => !member.IsStatic &&
+                    ISymbol[] matches = ValueTypeMembers.InHierarchy(current).Where(member => !member.IsStatic &&
                         string.Equals(MemberKey(member.Name), MemberKey(part), StringComparison.OrdinalIgnoreCase) &&
                         compilation.IsSymbolAccessibleWithin(member, compilation.Assembly) &&
                         (member is IFieldSymbol || member is IPropertySymbol property && !property.IsIndexer &&

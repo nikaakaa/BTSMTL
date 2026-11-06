@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using ThirdPerson.ValueGeneration;
 
 namespace ThirdPerson.ValueGeneration.Generator
 {
@@ -13,7 +14,7 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static string ValueUnionKindName(INamedTypeSymbol type)
         {
-            ISymbol member = type.GetMembers("Kind").SingleOrDefault(value => !value.IsStatic &&
+            ISymbol member = ValueTypeMembers.InHierarchy(type).SingleOrDefault(value => value.Name == "Kind" && !value.IsStatic &&
                 (value is IFieldSymbol || value is IPropertySymbol));
             return (member is IPropertySymbol property ? property.Type : (member as IFieldSymbol)?.Type)?.Name ?? type.Name + "Kind";
         }
@@ -58,7 +59,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 Definition = definition,
                 KindOwner = kindOwner,
-                KindMember = type.GetMembers("Kind").SingleOrDefault(member => !member.IsStatic &&
+                KindMember = ValueTypeMembers.InHierarchy(type).SingleOrDefault(member => member.Name == "Kind" && !member.IsStatic &&
                     (member is IFieldSymbol || member is IPropertySymbol)),
                 Members = members,
                 Cases = cases,

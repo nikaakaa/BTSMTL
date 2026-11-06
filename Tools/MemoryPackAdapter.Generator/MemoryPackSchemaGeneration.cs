@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using ThirdPerson.ValueGeneration;
 using static ThirdPerson.ValueGeneration.ValueModel;
 
 namespace ThirdPerson.MemoryPackAdapters
@@ -151,7 +152,7 @@ namespace ThirdPerson.MemoryPackAdapters
                         code.Append("member ").Append(member.Name).Append('\n');
                         AppendType(code, member.Type, visited, purpose);
                     }
-                    foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
+                    foreach (ISymbol presence in ValueTypeMembers.InHierarchy(record).Where(member => HasAttribute(member, PresenceAttribute)))
                         code.Append("presence ").Append(presence.Name).Append('\n');
                     return;
                 }
@@ -185,7 +186,7 @@ namespace ThirdPerson.MemoryPackAdapters
                         .Append(HasAttribute(member.Symbol, PayloadAttribute)).Append(':').Append(DeclaredText(member.Symbol)).Append('\n');
                     AppendType(code, member.Type, visited, purpose);
                 }
-                foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
+                foreach (ISymbol presence in ValueTypeMembers.InHierarchy(record).Where(member => HasAttribute(member, PresenceAttribute)))
                     code.Append("presence ").Append(presence.Name).Append('\n');
             }
 

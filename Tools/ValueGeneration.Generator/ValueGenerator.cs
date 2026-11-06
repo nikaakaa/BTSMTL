@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using ThirdPerson.ValueGeneration;
 
 namespace ThirdPerson.ValueGeneration.Generator
 {
@@ -410,7 +411,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 Member[] matches = storage.Where(member => UpdateNameMatches(parameter.Name, member.Symbol.Name) &&
                     ValueStorageCanPass(compilation, member.Type, parameter.Type)).ToArray();
                 if (matches.Length == 0)
-                    matches = type.GetMembers().OfType<IPropertySymbol>().Where(property => !property.IsStatic &&
+                    matches = ValueTypeMembers.InHierarchy(type).OfType<IPropertySymbol>().Where(property => !property.IsStatic &&
                         !property.IsIndexer && property.GetMethod != null &&
                         UpdateNameMatches(parameter.Name, property.Name) &&
                         ValueStorageCanPass(compilation, property.Type, parameter.Type))
@@ -695,7 +696,7 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static Member[] StorageMembers(INamedTypeSymbol type)
         {
-            ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared).ToArray();
+            ISymbol[] members = ValueTypeMembers.InHierarchy(type).Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared).ToArray();
             return members.Where(symbol => symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
                 symbol is IPropertySymbol property && IsAutoProperty(property))
                 .OrderBy(Identity, StringComparer.Ordinal)

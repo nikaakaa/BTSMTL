@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using ThirdPerson.ValueGeneration;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using static ThirdPerson.ValueGeneration.ValueModel;
@@ -296,7 +297,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (named.TypeKind != TypeKind.Class && named.TypeKind != TypeKind.Struct)
                     reason = "原类型不是可构造的值或记录；需要原字段用途合同";
                 else if (StorageReadMembers(named, IsImplicitReference) == null && members.Any(member => !context.Compilation.IsSymbolAccessibleWithin(
-                    named.GetMembers(member.Name).FirstOrDefault() ?? member.Symbol, context.Compilation.Assembly)))
+                    ValueTypeMembers.InHierarchy(named).FirstOrDefault(symbol => symbol.Name == member.Name) ?? member.Symbol,
+                    context.Compilation.Assembly)))
                     reason = "原成员不可从消费者访问，须由原字段工具生成中立访问，不能手写镜像";
                 else if (members.Length > 249)
                     reason = "原记录成员超过 MemoryPack 对象头上限";
@@ -535,7 +537,7 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             string name = TypeName(type);
             if (projection != null) storage = null;
-            ISymbol presence = type.GetMembers().SingleOrDefault(member => HasAttribute(member, PresenceAttribute));
+            ISymbol presence = ValueTypeMembers.InHierarchy(type).SingleOrDefault(member => HasAttribute(member, PresenceAttribute));
             bool partitioned = hasPayload(type);
             EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash,
                 prepared == null ? null : TypeName(prepared.Storage));

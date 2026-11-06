@@ -157,7 +157,7 @@ namespace ThirdPerson.ValueGeneration
                     UnionMembers((INamedTypeSymbol)union.ConstructorArguments[0].Value);
                 return storage.Parameters.Select(parameter => new Member
                 {
-                    Symbol = type.GetMembers(parameter.Name).SingleOrDefault() ?? (ISymbol)parameter,
+                    Symbol = ValueTypeMembers.InHierarchy(type).SingleOrDefault(member => member.Name == parameter.Name) ?? (ISymbol)parameter,
                     Type = parameter.Type,
                     IsCase = cases.Any(member => member.IsCase && member.Name == parameter.Name)
                 }).ToArray();
@@ -167,7 +167,7 @@ namespace ThirdPerson.ValueGeneration
             Member[] stored = DeclaredStorageMembers(type);
             if (!purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value))
                 return stored;
-            Member[] readable = type.GetMembers().OfType<IPropertySymbol>().Where(property =>
+            Member[] readable = ValueTypeMembers.InHierarchy(type).OfType<IPropertySymbol>().Where(property =>
                 !property.IsStatic && !property.IsIndexer && property.GetMethod != null)
                 .Select(property => new Member { Symbol = property, Type = property.Type }).ToArray();
             IMethodSymbol[] constructors = type.InstanceConstructors.Where(constructor =>
@@ -189,7 +189,7 @@ namespace ThirdPerson.ValueGeneration
 
         static Member[] DeclaredStorageMembers(INamedTypeSymbol type)
         {
-            ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared &&
+            ISymbol[] members = ValueTypeMembers.InHierarchy(type).Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared &&
                 !HasAttribute(symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
             bool explicitStorage = HasAttribute(type, StorageAttribute) && members.Any(member =>
                 HasAttribute(member, "ThirdPersonSimulation.ValueStorageMemberAttribute"));
@@ -204,7 +204,7 @@ namespace ThirdPerson.ValueGeneration
         }
 
         static Member[] PublicReadableMembers(INamedTypeSymbol type) =>
-            type.GetMembers().Where(symbol => !symbol.IsStatic &&
+            ValueTypeMembers.InHierarchy(type).Where(symbol => !symbol.IsStatic &&
                 symbol.DeclaredAccessibility == Accessibility.Public &&
                 (symbol is IFieldSymbol field && !field.IsImplicitlyDeclared ||
                  symbol is IPropertySymbol property && !property.IsIndexer &&
@@ -226,7 +226,7 @@ namespace ThirdPerson.ValueGeneration
 
         internal static Member UnionKindMember(INamedTypeSymbol type)
         {
-            ISymbol member = type.GetMembers("Kind").Single();
+            ISymbol member = ValueTypeMembers.InHierarchy(type).Single(symbol => symbol.Name == "Kind");
             return new Member { Symbol = member, Type = member is IFieldSymbol field ? field.Type : ((IPropertySymbol)member).Type };
         }
 
