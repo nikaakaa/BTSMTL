@@ -29,7 +29,7 @@ namespace ThirdPersonSimulation.Serialization
         public static GraphHostContract CreatePublishedHostContract(OrchestrationGraphContent<Float32OrchestrationValue> content, string contractId,
             string revision, string updateEventId, IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
             IReadOnlyList<string> domains, string numericTarget) =>
-            GraphHostContract.FromPublishedGraph<Float32OrchestrationValue, Float32GraphNumerics>(
+            GraphHostPublication.FromPublishedGraph<Float32OrchestrationValue, Float32GraphNumerics>(
                 content, contractId, revision, updateEventId, blackboardScopes,
                 domains, numericTarget);
     }

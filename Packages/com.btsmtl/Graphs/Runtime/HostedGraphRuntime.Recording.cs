@@ -262,7 +262,7 @@ namespace BTSMTL.Graphs
             {
                 string node = identities.Resolve(map.NodeIdentityId);
                 string port = identities.Resolve(map.PortIdentityId);
-                Type type = map.IsTrigger ? typeof(Flow) : BtsmtlGraphVariableUnity.Type(
+                Type type = map.IsTrigger ? typeof(Flow) : CompileValueTypes.ClrType(
                     CompileValueTypes.FromId(identities.Resolve(map.ValueTypeIdentityId)));
                 int enumIdentity = type.IsEnum ? identities.Bind(type.AssemblyQualifiedName) : 0;
                 m_Ports.Add((node, port, map.IsInput),

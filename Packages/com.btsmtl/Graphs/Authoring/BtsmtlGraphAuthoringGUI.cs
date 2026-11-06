@@ -151,7 +151,7 @@ namespace BTSMTL.Graphs
                 .Where(type => type.IsEnum);
             foreach (CompileValueType declaration in CompileValueTypes.WithEnums(enums))
             {
-                Type type = BtsmtlGraphVariableUnity.Type(declaration);
+                Type type = CompileValueTypes.ClrType(declaration);
                 if (GraphHostValueKinds.TryGet(type, out _))
                     menu.AddItem(new GUIContent(type.Name), false,
                         () => graph.VariableEditor.Create(CompileValueTypes.Id(declaration)));

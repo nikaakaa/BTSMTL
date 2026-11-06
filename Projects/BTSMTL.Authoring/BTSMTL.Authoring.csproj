@@ -60,6 +60,7 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlGraphVariableDeclarationsJson.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueType.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueTypes.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/GraphHostContracts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/SemanticNumericValues.cs" />
   </ItemGroup>
 </Project>

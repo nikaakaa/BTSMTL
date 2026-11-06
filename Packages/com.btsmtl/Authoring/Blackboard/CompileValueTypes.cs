@@ -3,6 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
+using Quaternion = UnityEngine.Quaternion;
+#else
+using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
+using Quaternion = System.Numerics.Quaternion;
+#endif
 
 namespace BTSMTL.Compilation
 {
@@ -54,6 +63,17 @@ namespace BTSMTL.Compilation
 
         public static string Id(CompileValueType type) => type.IsEnum ? "Enum:" + type.EnumIdentity :
             s_Types.Single(item => item.Value.SameType(type)).Key;
+
+        public static Type ClrType(CompileValueType type) => type.Kind switch
+        {
+            SemanticValueKind.Boolean => typeof(bool), SemanticValueKind.Int32 => typeof(int),
+            SemanticValueKind.Number => type.FullName == "System.Single" ? typeof(float) : typeof(double),
+            SemanticValueKind.UInt64 => type.FullName == "System.UInt32" ? typeof(uint) : typeof(ulong),
+            SemanticValueKind.Identity => typeof(string), SemanticValueKind.ObjectHandle => typeof(ObjectHandle),
+            SemanticValueKind.Vector2 => typeof(Vector2), SemanticValueKind.Vector3 => typeof(Vector3),
+            SemanticValueKind.Quaternion => typeof(Quaternion), SemanticValueKind.Enum => Type.GetType(type.EnumIdentity, true),
+            _ => throw new InvalidOperationException($"作者值类型 '{type.FullName}' 没有 CLR 类型映射。")
+        };
 
         public static CompileValueType FromPlatformName(string fullName) =>
             s_Types.Values.Single(type => type.FullName == fullName);

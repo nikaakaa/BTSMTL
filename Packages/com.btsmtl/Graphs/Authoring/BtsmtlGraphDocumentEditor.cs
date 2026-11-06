@@ -185,7 +185,7 @@ namespace BTSMTL.Graphs
             }));
 
         static DynamicParameterDefinition Parameter(GraphNodePort port) => new(port.Id, port.DisplayName,
-            port.IsFlow ? typeof(Flow) : BtsmtlGraphVariableUnity.Type(CompileValueTypes.FromId(port.ValueTypeId)));
+            port.IsFlow ? typeof(Flow) : CompileValueTypes.ClrType(CompileValueTypes.FromId(port.ValueTypeId)));
 
         public static JObject WriteDeclaredNode(FlowNode node, Func<Type, string> typeName,
             Func<object, Type, JToken> writeValue)
