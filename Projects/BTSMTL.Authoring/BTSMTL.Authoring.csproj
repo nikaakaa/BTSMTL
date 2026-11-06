@@ -10,6 +10,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <ProjectReference Include="../BTSMTL.Orchestration.Contracts/BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="../ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/BtsmtlRuntimeEditableAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Timeline/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/FieldContracts.cs" />

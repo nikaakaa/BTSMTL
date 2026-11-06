@@ -34,7 +34,7 @@ namespace BTSMTL.Graphs
         [GraphAuthoringField("type", GraphAuthoringFieldValueKind.String, ReadOnly = true)]
         public string TypeId => m_TypeId;
         [GraphAuthoringField("default", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
-        public JToken DefaultValue => m_DefaultValue;
+        public JToken DefaultValue => m_DefaultValue.DeepClone();
         [GraphAuthoringField("public", GraphAuthoringFieldValueKind.Boolean, ReadOnly = true)]
         public bool IsPublic => m_IsPublic;
         [GraphAuthoringField("declarationOrder", GraphAuthoringFieldValueKind.Integer, ReadOnly = true)]
@@ -87,19 +87,84 @@ namespace BTSMTL.Graphs
                 m_Variables.Zip(variables, BtsmtlGraphVariableDeclarationsJson.SameVariable).All(same => same))
                 return;
             RequireVariables(variables);
+            Commit(variables);
+        }
+
+        void Commit(IReadOnlyList<BtsmtlGraphVariableDeclaration> variables)
+        {
             m_Variables = Array.AsReadOnly(variables.ToArray());
             m_Revision = Guid.NewGuid().ToString("N");
         }
+
+        public BtsmtlGraphVariableDeclaration Create(string typeId)
+        {
+            CompileValueType type = CompileValueTypes.FromId(typeId);
+            string label = "New " + type.FullName.Substring(type.FullName.LastIndexOf('.') + 1);
+            string name = label;
+            int suffix = 2;
+            while (m_Variables.Any(variable => variable.Name == name))
+                name = label + " " + suffix++;
+            return Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(type));
+        }
+
+        public BtsmtlGraphVariableDeclaration Create(string typeId, string name) =>
+            Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(CompileValueTypes.FromId(typeId)));
+
+        public BtsmtlGraphVariableDeclaration Create(string typeId, string name, JToken defaultValue)
+        {
+            RequireName(name, null);
+            BtsmtlGraphVariableDeclarationsJson.RequireDefault(CompileValueTypes.FromId(typeId), defaultValue);
+            string id = Guid.NewGuid().ToString("N");
+            int order = m_Variables.Count == 0 ? 0 : m_Variables.Max(variable => variable.DeclarationOrder) + 1;
+            var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
+                PipelineBlackboardVariableLifetime.GraphInstance);
+            var variable = new BtsmtlGraphVariableDeclaration(declaration, name, typeId, defaultValue, false, order);
+            Commit(m_Variables.Append(variable).ToArray());
+            return variable;
+        }
+
+        public void Rename(string id, string name)
+        {
+            BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
+            if (variable.Name == name)
+                return;
+            RequireName(name, id);
+            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, name, variable.TypeId,
+                variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder));
+        }
+
+        public void SetDefaultValue(string id, JToken defaultValue)
+        {
+            BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
+            BtsmtlGraphVariableDeclarationsJson.RequireDefault(variable.ValueType, defaultValue);
+            if (BtsmtlGraphVariableDeclarationsJson.SameDefault(variable.ValueType, variable.DefaultValue, defaultValue))
+                return;
+            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name,
+                variable.TypeId, defaultValue, variable.IsPublic, variable.DeclarationOrder));
+        }
+
+        public void Delete(string id)
+        {
+            BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
+            Commit(m_Variables.Where(current => current != variable).ToArray());
+        }
+
+        void RequireName(string name, string exceptId)
+        {
+            if (string.IsNullOrWhiteSpace(name) || m_Variables.Any(variable => variable.Name == name && variable.VariableId != exceptId))
+                throw new InvalidDataException("变量名称必须非空，且在所属来源中唯一。");
+        }
+
+        void ReplaceVariable(BtsmtlGraphVariableDeclaration previous, BtsmtlGraphVariableDeclaration next) =>
+            Commit(m_Variables.Select(variable => variable == previous ? next : variable).ToArray());
 
         public void ConfigureVariable(string id, bool isPublic)
         {
             BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
             if (variable.IsPublic == isPublic)
                 return;
-            m_Variables = Array.AsReadOnly(m_Variables.Select(current => current.VariableId == id
-                ? new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name, variable.TypeId,
-                    variable.DefaultValue, isPublic, variable.DeclarationOrder) : current).ToArray());
-            m_Revision = Guid.NewGuid().ToString("N");
+            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name,
+                variable.TypeId, variable.DefaultValue, isPublic, variable.DeclarationOrder));
         }
 
         public void ConfigureBlackboard(string id, PipelineBlackboardVariableScope scope,
@@ -111,16 +176,16 @@ namespace BTSMTL.Graphs
                 BtsmtlGraphVariableDeclarationsJson.TypeCode(variable.ValueType), scope, lifetime, inputBinding);
             if (BtsmtlGraphVariableDeclarationsJson.SameDeclaration(variable.Declaration, declaration))
                 return;
-            m_Variables = Array.AsReadOnly(m_Variables.Select(current => current.VariableId == id
-                ? new BtsmtlGraphVariableDeclaration(declaration, variable.Name, variable.TypeId,
-                    variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder) : current).ToArray());
-            m_Revision = Guid.NewGuid().ToString("N");
+            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(declaration, variable.Name,
+                variable.TypeId, variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder));
         }
 
         public void Prune(IEnumerable<string> ids)
         {
             var keep = new HashSet<string>(ids, StringComparer.Ordinal);
-            Replace(m_Variables.Where(variable => keep.Contains(variable.VariableId)).ToArray());
+            BtsmtlGraphVariableDeclaration[] retained = m_Variables.Where(variable => keep.Contains(variable.VariableId)).ToArray();
+            if (retained.Length != m_Variables.Count)
+                Commit(retained);
         }
 
         static void RequireVariables(IReadOnlyList<BtsmtlGraphVariableDeclaration> variables)

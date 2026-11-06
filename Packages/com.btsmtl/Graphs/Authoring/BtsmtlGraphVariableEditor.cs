@@ -85,18 +85,19 @@ namespace BTSMTL.Graphs
             }).ToArray());
         }
 
-        public Variable<T> Declare<T>(string id, string name, T defaultValue)
+        public Variable Create(string typeId) => Create(() => m_Source.Create(typeId));
+        public Variable Create(string typeId, string name) => Create(() => m_Source.Create(typeId, name));
+
+        Variable Create(Func<BtsmtlGraphVariableDeclaration> create)
         {
-            Variable<T> created = null;
+            Variable created = null;
             Edit("声明图变量", () =>
             {
-                var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
-                    PipelineBlackboardVariableLifetime.GraphInstance);
-                int order = m_Source.Variables.Count == 0 ? 0 : m_Source.Variables.Max(variable => variable.DeclarationOrder) + 1;
-                m_Source.Replace(m_Source.Variables.Append(new BtsmtlGraphVariableDeclaration(declaration, name,
-                    BtsmtlGraphVariableUnity.TypeId(typeof(T)), BtsmtlGraphVariableUnity.DefaultJson(typeof(T), defaultValue), false, order)).ToArray());
-                created = new Variable<T>(name, id) { value = defaultValue };
-                m_Blackboard.variables.Add(name, created);
+                BtsmtlGraphVariableDeclaration variable = create();
+                Type type = BtsmtlGraphVariableUnity.Type(variable.ValueType);
+                created = (Variable)Activator.CreateInstance(typeof(Variable<>).MakeGenericType(type), variable.Name, variable.VariableId);
+                created.value = BtsmtlGraphVariableUnity.DefaultValue(variable);
+                m_Blackboard.variables.Add(variable.Name, created);
                 m_Blackboard.TryInvokeOnVariableAdded(created);
             });
             return created;
@@ -131,12 +132,13 @@ namespace BTSMTL.Graphs
 
         public static JToken DefaultJson(Type type, object value)
         {
-            if (type.IsEnum) return new JValue(Convert.ToInt32(value, CultureInfo.InvariantCulture));
-            if (value is Vector2 vector2) return new JObject { ["x"] = vector2.x, ["y"] = vector2.y };
-            if (value is Vector3 vector3) return new JObject { ["x"] = vector3.x, ["y"] = vector3.y, ["z"] = vector3.z };
-            if (value is Quaternion rotation) return new JObject { ["x"] = rotation.x, ["y"] = rotation.y, ["z"] = rotation.z, ["w"] = rotation.w };
-            if (value is ObjectHandle handle) return new JValue(handle.Value.ToString(CultureInfo.InvariantCulture));
-            return value == null ? JValue.CreateNull() : new JValue(value);
+            return BtsmtlGraphVariableDeclarationsJson.WriteDefault(CompileValueTypes.FromId(TypeId(type)), value switch
+            {
+                Vector2 vector => new System.Numerics.Vector2(vector.x, vector.y),
+                Vector3 vector => new System.Numerics.Vector3(vector.x, vector.y, vector.z),
+                Quaternion rotation => new System.Numerics.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+                _ => value
+            });
         }
 
         public static object DefaultValue(BtsmtlGraphVariableDeclaration variable)

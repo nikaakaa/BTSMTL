@@ -80,6 +80,42 @@ namespace BTSMTL.Graphs
             };
         }
 
+        public static JToken CreateDefault(CompileValueType type) => WriteDefault(type, type.DefaultValue switch
+        {
+            SemanticVector2Value value => new System.Numerics.Vector2((float)value.X, (float)value.Y),
+            SemanticVector3Value value => new System.Numerics.Vector3((float)value.X, (float)value.Y, (float)value.Z),
+            SemanticQuaternionValue value => new System.Numerics.Quaternion((float)value.X, (float)value.Y, (float)value.Z, (float)value.W),
+            _ => type.DefaultValue
+        });
+
+        public static JToken WriteDefault(CompileValueType type, object value)
+        {
+            if (value is JToken token)
+                return token.DeepClone();
+            if (value == null)
+                return JValue.CreateNull();
+            if (type.IsEnum)
+                return new JValue(Convert.ToInt32(value, CultureInfo.InvariantCulture));
+            if (type.Kind == SemanticValueKind.Vector2)
+            {
+                var vector = (System.Numerics.Vector2)value;
+                return new JObject { ["x"] = vector.X, ["y"] = vector.Y };
+            }
+            if (type.Kind == SemanticValueKind.Vector3)
+            {
+                var vector = (System.Numerics.Vector3)value;
+                return new JObject { ["x"] = vector.X, ["y"] = vector.Y, ["z"] = vector.Z };
+            }
+            if (type.Kind == SemanticValueKind.Quaternion)
+            {
+                var rotation = (System.Numerics.Quaternion)value;
+                return new JObject { ["x"] = rotation.X, ["y"] = rotation.Y, ["z"] = rotation.Z, ["w"] = rotation.W };
+            }
+            if (type.Kind == SemanticValueKind.ObjectHandle)
+                return new JValue(((ObjectHandle)value).Value.ToString(CultureInfo.InvariantCulture));
+            return new JValue(value);
+        }
+
         internal static void RequireDefault(CompileValueType type, JToken value)
         {
             bool numeric = value.Type == JTokenType.Integer || value.Type == JTokenType.Float;
@@ -97,6 +133,8 @@ namespace BTSMTL.Graphs
             };
             if (!valid)
                 throw new InvalidDataException($"图变量 '{CompileValueTypes.Id(type)}' 必须提供对应类型的完整 JSON 默认值。");
+            if (type.Kind == SemanticValueKind.Number)
+                ValueValidation.RequireFinite(type.FullName == "System.Single" ? (double)(float)value : (double)value, nameof(value));
             ReadDefault(type, value);
         }
 
@@ -128,15 +166,18 @@ namespace BTSMTL.Graphs
             left.DeclarationOrder == right.DeclarationOrder && SameDeclaration(left.Declaration, right.Declaration) &&
             SameDefault(left.ValueType, left.DefaultValue, right.DefaultValue);
 
-        static bool SameDefault(CompileValueType type, JToken left, JToken right)
+        public static bool SameDefault(CompileValueType type, JToken left, JToken right)
         {
             if (type.Kind == SemanticValueKind.Number)
-                return type.FullName == "System.Single"
+                return (left.Type == JTokenType.Integer || left.Type == JTokenType.Float) &&
+                    (right.Type == JTokenType.Integer || right.Type == JTokenType.Float) && (type.FullName == "System.Single"
                     ? BitConverter.SingleToInt32Bits((float)left) == BitConverter.SingleToInt32Bits((float)right)
-                    : BitConverter.DoubleToInt64Bits((double)left) == BitConverter.DoubleToInt64Bits((double)right);
+                    : BitConverter.DoubleToInt64Bits((double)left) == BitConverter.DoubleToInt64Bits((double)right));
             if (type.Kind == SemanticValueKind.Vector2 || type.Kind == SemanticValueKind.Vector3 || type.Kind == SemanticValueKind.Quaternion)
-                return ((JObject)left).Properties().All(property =>
-                    BitConverter.SingleToInt32Bits((float)property.Value) == BitConverter.SingleToInt32Bits((float)right[property.Name]));
+                return left is JObject a && right is JObject b && a.Count == b.Count && a.Properties().All(property =>
+                    b.TryGetValue(property.Name, out JToken value) &&
+                    (value.Type == JTokenType.Float || value.Type == JTokenType.Integer) &&
+                    BitConverter.SingleToInt32Bits((float)property.Value) == BitConverter.SingleToInt32Bits((float)value));
             return JToken.DeepEquals(left, right);
         }
     }

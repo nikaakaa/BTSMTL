@@ -31,6 +31,12 @@ namespace BTSMTL.Compilation
             ["string"] = String, ["vector2"] = Vector2, ["vector3"] = Vector3, ["quaternion"] = Quaternion
         };
 
+        public static IReadOnlyList<CompileValueType> All { get; } = Array.AsReadOnly(s_Types.Values.ToArray());
+
+        public static IReadOnlyList<CompileValueType> WithEnums(IEnumerable<Type> declaredEnums) =>
+            All.Concat(declaredEnums.Distinct().Select(type => type.IsEnum ? Enum(type.AssemblyQualifiedName) :
+                throw new ArgumentException($"'{type.FullName}' 不是正式枚举声明。", nameof(declaredEnums)))).ToArray();
+
         public static bool TryFromId(string valueTypeId, out CompileValueType type)
         {
             if (valueTypeId != null && valueTypeId.StartsWith("Enum:", StringComparison.Ordinal))

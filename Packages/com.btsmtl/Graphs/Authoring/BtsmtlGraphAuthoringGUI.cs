@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Compilation;
 using FlowCanvas;
 using NodeCanvas.Framework;
 using ParadoxNotion.Design;
@@ -142,20 +143,18 @@ namespace BTSMTL.Graphs
         internal static GenericMenu VariableCreationMenu(IBtsmtlAuthoringGraph graph)
         {
             var menu = new GenericMenu();
-            foreach (Type type in new[] { typeof(bool), typeof(int), typeof(float), typeof(string),
-                         typeof(Vector2), typeof(Vector3), typeof(Quaternion) })
-                menu.AddItem(new GUIContent(type.Name), false, () =>
-                {
-                    string name = "New " + type.Name;
-                    int suffix = 2;
-                    while (graph.VariableEditor.Blackboard.variables.ContainsKey(name))
-                        name = "New " + type.Name + " " + suffix++;
-                    object value = type == typeof(string) ? string.Empty :
-                        type == typeof(Quaternion) ? Quaternion.identity : Activator.CreateInstance(type);
-                    typeof(BtsmtlGraphVariableEditor).GetMethod(nameof(BtsmtlGraphVariableEditor.Declare))
-                        .MakeGenericMethod(type).Invoke(graph.VariableEditor,
-                            new[] { (object)Guid.NewGuid().ToString("N"), name, value });
-                });
+            IEnumerable<Type> enums = graph.Graph.allNodes.OfType<FlowNode>()
+                .SelectMany(node => node.GetInputValuePorts().Select(port => port.type)
+                    .Concat(node.GetOutputValuePorts().Select(port => port.type)))
+                .Concat(graph.VariableEditor.Blackboard.variables.Values.Select(variable => variable.varType))
+                .Where(type => type.IsEnum);
+            foreach (CompileValueType declaration in CompileValueTypes.WithEnums(enums))
+            {
+                Type type = BtsmtlGraphVariableUnity.Type(declaration);
+                if (GraphHostValueKinds.TryGet(type, out _))
+                    menu.AddItem(new GUIContent(type.Name), false,
+                        () => graph.VariableEditor.Create(CompileValueTypes.Id(declaration)));
+            }
             return menu;
         }
 
