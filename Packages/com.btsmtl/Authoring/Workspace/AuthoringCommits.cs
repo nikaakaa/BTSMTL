@@ -92,6 +92,8 @@ public sealed class AuthoringCommits
                 throw new InvalidOperationException(
                     $"作者文件 '{Path.GetRelativePath(Root, target)}' 已在读取后变化，期望修订 {revision}、实际 {actual ?? "不存在"}，请重新读取后再提交。");
         }
+        if (targets.Length == 0)
+            return;
         var entries = new List<JournalEntry>();
         foreach (var (change, target) in targets)
         {

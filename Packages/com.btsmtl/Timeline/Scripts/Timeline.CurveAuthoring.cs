@@ -158,8 +158,8 @@ namespace BTSMTL.Timeline
             float tangent = (endValue - startValue) / (endTime - startTime);
             return new TimelineCurve(8, 8, new[]
             {
-                new TimelineCurveKey(startTime, startValue, tangent, tangent, 1f / 3f, 1f / 3f, 0, 0),
-                new TimelineCurveKey(endTime, endValue, tangent, tangent, 1f / 3f, 1f / 3f, 0, 0)
+                new TimelineCurveKey(startTime, startValue, tangent, tangent, 0f, 0f, 0, 0),
+                new TimelineCurveKey(endTime, endValue, tangent, tangent, 0f, 0f, 0, 0)
             });
         }
 
