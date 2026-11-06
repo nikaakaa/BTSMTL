@@ -90,11 +90,11 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
                 <small>{row.fieldName} · 原值已保留</small></button>;
               const item = row.item;
               const conflict = conflicts.has(resolutionKey(item));
-              return <button className={styles.row} aria-selected={selectedItem !== null && catalogItemKey(selectedItem) === catalogItemKey(item)}
+              return <button className={styles.row} title={item.value} aria-selected={selectedItem !== null && catalogItemKey(selectedItem) === catalogItemKey(item)}
                 draggable={!conflict} onDragStart={event => writeReferenceDrag(event.dataTransfer, item.domain, resourceReferenceChoice(item, null))}
                 onClick={() => onSelect({ kind: 'catalog', item })}>
                 <span>{item.display}{conflict && <small className={styles.issue}>目录条目冲突</small>}</span>
-                <small>{item.adapter}{all ? ` · ${item.context || '公共'}` : ''}</small>
+                <small>{item.value} · {item.adapter}{all ? ` · ${item.context || '公共'}` : ''}</small>
               </button>;
             }} />}
       <div className={styles.note}>{shown.length + (shownMissing === null ? 0 : 1)} 项 · 目录修订 {revision}</div>

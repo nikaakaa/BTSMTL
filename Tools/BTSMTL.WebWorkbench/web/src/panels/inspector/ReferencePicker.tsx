@@ -84,6 +84,7 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
           }} onClick={() => choose(item)}>
           <strong>{item.name}</strong>
           <span>{item.detail}</span>
+          <small>{referenceValueKey(item.value)}</small>
           <small>{item.source}</small>
           {item.conflict && <span className={styles.issue}>{item.conflict}</span>}
         </button>)}

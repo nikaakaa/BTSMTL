@@ -37,7 +37,7 @@ export function ResourceProject() {
   const scopeChoices = useMemo(() => {
     const groups = new Map<string, AdapterCatalogItem[]>();
     for (const item of items.filter(item => item.domain === 'execution-scope')) groups.set(item.value, [...groups.get(item.value) ?? [], item]);
-    return [...groups].map(([value, entries]) => ({ value, label: entries.map(item => `${item.display} · ${item.adapter}`).join(' / ') }));
+    return [...groups].map(([value, entries]) => ({ value, label: `${entries.map(item => `${item.display} · ${item.adapter}`).join(' / ')} · ${value}` }));
   }, [items]);
   const item = selected?.kind === 'catalog' ? selected.item : null;
   const animation = useAnimationLibrary(item?.domain === animationReferenceKind);

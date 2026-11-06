@@ -1032,7 +1032,7 @@ export function TimelineScopeFields({ documentId }: { documentId: string }) {
   if (catalog.kind === 'ready') for (const group of catalog.snapshot.domains.filter(group => group.domain === 'execution-scope'))
     for (const item of group.items) values.set(item.value, [...values.get(item.value) ?? [], `${item.display} · ${group.adapter}`]);
   return <Row label="Timeline 作者 Scope"><Select label="Timeline 作者 Scope" value={scope ?? null}
-    options={[...values].map(([value, names]) => ({ value, label: names.join(' / ') }))} placeholder="明确选择 Timeline 的执行范围"
+    options={[...values].map(([value, names]) => ({ value, label: `${names.join(' / ')} · ${value}` }))} placeholder="明确选择 Timeline 的执行范围"
     onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />
     {catalog.kind === 'failed' && <span className={styles.issue}>{catalog.failure.text}</span>}
     {catalog.kind === 'ready' && scope != null && !values.has(scope) && <span className={styles.issue}>原 Scope 不在正式目录中，原字符串已保留：{scope}</span>}
