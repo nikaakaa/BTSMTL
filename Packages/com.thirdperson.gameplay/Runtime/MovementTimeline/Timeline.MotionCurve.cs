@@ -183,7 +183,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
                 throw new InvalidOperationException(error);
         }
 
-#if UNITY_EDITOR || BTSMTL_AUTHORING
+#if UNITY_EDITOR
         public override void ConfigureAuthoringReference(string reference)
         {
             m_SourceCurve = reference;
