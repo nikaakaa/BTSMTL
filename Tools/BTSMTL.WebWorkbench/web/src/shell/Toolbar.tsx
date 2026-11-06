@@ -116,7 +116,7 @@ function DocumentAuthoringStatus() {
   const canApply = useWorkbench(state => state.host?.modes.find(mode => mode.id === state.previewMode)?.createsRun === true);
   const state = useAuthoring(useShallow(current => {
     const document = authoringDocument(current);
-    return { open: current.author && current.target !== null, skill: current.target?.kind === 'skill', edited: document.edited, removed: document.removed,
+    return { open: current.author && current.target !== null, edited: document.edited, removed: document.removed,
       externalChange: document.externalChange, saving: document.saving, lastSave: document.lastSave,
       undoDepth: document.undo.length, redoDepth: document.redo.length };
   }));
@@ -148,11 +148,12 @@ function DocumentAuthoringStatus() {
             onClick={() => authoringActions.revert()}>还原</Button>
         </>
       )}
-      {(dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存作者内容，运行保持待应用（Ctrl+S）" onClick={() => void authoringActions.save()}>
+      <Button disabled={state.saving} tip="保存当前文档的作者内容（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
-      </Button>}
-      {canApply && (dirty > 0 || state.skill) && <Button disabled={state.saving} tip="保存后按当前选择编译、发布并请求 Player 应用"
-        onClick={() => void authoringActions.save(true)}>保存并应用</Button>}
+      </Button>
+      <Button disabled={state.saving} tip="保存编辑文档并执行离线编译" onClick={() => void authoringActions.save('compile')}>保存并编译</Button>
+      {canApply && <Button disabled={state.saving} tip="保存后按当前选择编译、发布并请求 Player 应用"
+        onClick={() => void authoringActions.save('apply')}>保存并应用</Button>}
       {lastSave && (dirty === 0 || !lastSave.ok) && <SaveResult outcome={lastSave} />}
     </div>
   );

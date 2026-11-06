@@ -507,18 +507,7 @@ const readNull = (value: unknown, path = 'Authoring'): null => {
   if (value !== null) throw new Error(`${path} 需要 null`);
   return null;
 };
-const readPendingSaveResult = object({
-  ...savedContentFields, compilationState: choice('not-requested'), runtimeState: choice('pending'),
-  compilation: readNull, preview: readNull,
-});
-function readUnavailableSaveResult(value: unknown, path = 'SkillSave') {
-  const result = object({ ...savedContentFields, compilationState: choice('not-started'), runtimeState: choice('pending'),
-    availability: readAuthoringAvailability })(value, path);
-  const availability = result.availability;
-  if (availability.available) throw new Error(`${path}：not-started 回执需要明确的不可用原因`);
-  return { ...result, availability };
-}
-export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult | ReturnType<typeof readPendingSaveResult> | ReturnType<typeof readUnavailableSaveResult>;
+export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
 export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sceneRevision' | 'source' | 'channels'> & {
   requestId: string;
@@ -780,11 +769,9 @@ export const authoringApi = {
       .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)) })),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await postJson<unknown>(documentQueryPath(target.documentPath, 'apply'), request);
-    const { compilationState } = object({ compilationState: choice('not-required', 'not-requested', 'not-started', 'succeeded') })(result, 'SkillSave');
+    const { compilationState } = object({ compilationState: choice('not-required', 'succeeded') })(result, 'SkillSave');
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
-      case 'not-requested': return readPendingSaveResult(result, 'SkillSave');
-      case 'not-started': return readUnavailableSaveResult(result, 'SkillSave');
       case 'succeeded': return { ...object({ ...savedContentFields, compilation: readSkillCompilation,
         jobError: nullable(text), preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
     }
