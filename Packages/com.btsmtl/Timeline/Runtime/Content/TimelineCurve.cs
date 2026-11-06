@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline
 {
     [Serializable]
-    public readonly struct TimelineCurveKey
+    [ValueStorage(UseConstructor = true)]
+    public readonly partial struct TimelineCurveKey
     {
         public TimelineCurveKey(float time, float value, float inTangent, float outTangent,
             float inWeight, float outWeight, int weightedMode, int tangentMode)
@@ -31,7 +33,8 @@ namespace BTSMTL.Timeline
     }
 
     [Serializable]
-    public sealed class TimelineCurve
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class TimelineCurve
     {
         public TimelineCurve(int preWrapMode, int postWrapMode, IEnumerable<TimelineCurveKey> keys)
         {

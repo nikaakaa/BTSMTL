@@ -9,34 +9,13 @@ namespace BTSMTL.Timeline
 {
     public static class TimelineContentDiscovery
     {
-        public static TimelineContentCurve CaptureSourceCurve(string channelId, TimelineCurve curve)
-        {
-            var keys = new TimelineContentCurveKey[curve.Keys.Count];
-            for (int i = 0; i < keys.Length; i++)
-            {
-                TimelineCurveKey key = curve.Keys[i];
-                keys[i] = new TimelineContentCurveKey(key.Time, key.Value, key.InTangent, key.OutTangent,
-                    key.InWeight, key.OutWeight, key.WeightedMode);
-            }
-            return new TimelineContentCurve(channelId, channelId, TimelineCurveTimeDomain.SourceSeconds,
-                TimelineCurveValueDomain.Unbounded(0f, string.Empty),
-                curve.PreWrapMode, curve.PostWrapMode, keys);
-        }
-
         static TimelineContentCurve CaptureCurve(TimelineCurveChannelDescriptor descriptor, TimelineCurve sourceCurve)
         {
-            IReadOnlyList<TimelineCurveKey> keys = sourceCurve?.Keys ?? Array.Empty<TimelineCurveKey>();
-            var curveKeys = new TimelineContentCurveKey[keys.Count];
-            for (int keyIndex = 0; keyIndex < keys.Count; keyIndex++)
-            {
-                TimelineCurveKey key = keys[keyIndex];
-                curveKeys[keyIndex] = new TimelineContentCurveKey((float)key.Time, (float)key.Value,
-                    (float)key.InTangent, (float)key.OutTangent, (float)key.InWeight, (float)key.OutWeight, key.WeightedMode);
-            }
-            int preWrapMode = sourceCurve?.PreWrapMode ?? 8;
-            int postWrapMode = sourceCurve?.PostWrapMode ?? 8;
-            return new TimelineContentCurve(descriptor.ChannelId.Value, descriptor.DisplayName,
-                descriptor.TimeDomain, descriptor.ValueDomain, preWrapMode, postWrapMode, curveKeys);
+            return sourceCurve == null
+                ? new TimelineContentCurve(descriptor.ChannelId.Value, descriptor.DisplayName,
+                    descriptor.TimeDomain, descriptor.ValueDomain, 8, 8, Array.Empty<TimelineContentCurveKey>())
+                : TimelineCurveContent.Capture(descriptor.ChannelId.Value, descriptor.DisplayName,
+                    descriptor.TimeDomain, descriptor.ValueDomain, sourceCurve);
         }
 #if UNITY_EDITOR
         public static TimelineContentDiscoveryResult Discover(TimelineAsset asset, TimelineContractCatalog catalog)

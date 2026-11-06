@@ -253,7 +253,7 @@ namespace BTSMTL.Timeline
             IReadOnlyList<TimelineCurveKey> keys = curve.Keys;
             var builder = new TimelineRuntimeCurveBuilder<Float32Scalar, Float32ScalarContentLowering>();
             TimelineRuntimeCurve<Float32Scalar> compiled = builder.PrepareOptional(
-                TimelineContentDiscovery.CaptureSourceCurve(source, curve), Float32Scalar.Zero);
+                TimelineCurveContent.CaptureSourceCurve(source, curve), Float32Scalar.Zero);
             GameplayAbilityCurveKey<Float32Scalar>[] compiledKeys = builder.ToKeyArray();
             var evaluator = new TimelineRuntimeCurveEvaluator<Float32Scalar, Float32SimulationMath>();
             float Evaluate(float time) => evaluator.Evaluate(in compiled, compiledKeys, Float32Scalar.FromSingle(time)).Value;
