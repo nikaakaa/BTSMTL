@@ -246,11 +246,9 @@ namespace BTSMTL.Timeline.Editor
             m_Scopes = m_Document.ResourceScopes().ToArray();
             m_Scope = m_Document.ResourceScope(m_Timeline);
             m_Declaration = m_Document.ResourceDeclaration(m_Timeline, m_Domain);
-            m_Resolution = m_Declaration.Source == GraphAuthoringReferenceSource.AdapterResource
-                ? m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference) : default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_References = m_Document.ResourceReferences(m_Timeline, m_Domain).ToArray();
-            if (!string.IsNullOrEmpty(m_Reference)) m_File = Source;
+            if (!string.IsNullOrEmpty(m_Reference)) SelectReference(m_Reference);
             else if (m_File) SelectSource(m_File);
         }
 
@@ -314,8 +312,9 @@ namespace BTSMTL.Timeline.Editor
             m_Resolution = default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_SelectedObject = -1;
-            if (m_Declaration.Source == GraphAuthoringReferenceSource.AdapterResource)
-                m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, reference);
+            m_Resolution = m_Declaration.Source == GraphAuthoringReferenceSource.AuthoringDocument
+                ? new TimelineAuthoringReferenceValue(m_Document.ResolveResourceObject(m_Timeline, m_Domain, reference))
+                : m_Document.ResolveResource(m_Timeline, m_Domain, reference);
             m_File = Source;
         }
 
@@ -329,10 +328,10 @@ namespace BTSMTL.Timeline.Editor
             if (!source) return;
             if (m_Declaration.Selection != "asset")
                 throw new InvalidOperationException("此领域按载体映射，请从目录中选择已配置的名字。");
-            if (m_ObjectTypes.Any(type => type.IsInstanceOfType(source)))
+            if (m_Declaration.Source == GraphAuthoringReferenceSource.AuthoringDocument ||
+                m_ObjectTypes.Any(type => type.IsInstanceOfType(source)))
             {
-                m_Reference = m_Document.ResourceReferences(m_Timeline, m_Domain, source).Single().Value;
-                m_Resolution = new TimelineAuthoringReferenceValue(source);
+                SelectReference(m_Document.ResourceReferences(m_Timeline, m_Domain, source).Single().Value);
                 return;
             }
             GraphAuthoringResourceObjectResult result = m_Document.ResourceObjects(m_Timeline, m_Domain, source);

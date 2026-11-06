@@ -102,9 +102,9 @@ namespace BTSMTL.Timeline.Editor
                     ResourceChanged?.Invoke();
                     Repaint();
                 }
-                if ((selected is not ITimelineAuthoringResourceClip || IsFileResource(selected.GetType())) &&
+                if ((selected is not ITimelineAuthoringResourceClip || HasDirectSourceSelection(selected.GetType())) &&
                     GUILayout.Button("创建独立资源并重绑"))
-                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, async replacement =>
+                    m_Request.AuthoringHost.ShowSourceCreation(selected.Timeline, Session.GridPipeline, source.SourceAssetType, asset, async replacement =>
                     {
                         if (selected is ITimelineAuthoringResourceClip)
                         {
@@ -588,15 +588,15 @@ namespace BTSMTL.Timeline.Editor
 
         public bool CanDropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip) =>
             !IsReadOnly && !ClipAdjustRangeOnly && !ResourceEditing &&
-            track is BtsmtlTimelineTrackBinding formalTrack && !formalTrack.IsLocked && IsFileResource(formalTrack.Source.ClipType) &&
+            track is BtsmtlTimelineTrackBinding formalTrack && !formalTrack.IsLocked && HasDirectSourceSelection(formalTrack.Source.ClipType) &&
             (clip == null
                 ? typeof(ITimelineAuthoringResourceClip).IsAssignableFrom(formalTrack.Source.ClipType)
                 : clip is BtsmtlTimelineClipBinding formalClip && !formalClip.IsLocked &&
                   formalClip.Source is ITimelineAuthoringResourceClip);
 
-        static bool IsFileResource(Type clipType) => GraphAuthoringMemberBindings.Contract(clipType).Fields.Any(member =>
+        static bool HasDirectSourceSelection(Type clipType) => GraphAuthoringMemberBindings.Contract(clipType).Fields.Any(member =>
             member.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true &&
-            member.Annotation<GraphAuthoringResourceAttribute>() is { Selection: "asset", Source: GraphAuthoringReferenceSource.AdapterResource });
+            member.Annotation<GraphAuthoringResourceAttribute>() is { Selection: "asset" });
 
         public void DropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip,
             UnityEngine.Object source, double time, Vector2 screenPosition)
@@ -1128,9 +1128,9 @@ namespace BTSMTL.Timeline.Editor
             }
             var menu = new GenericMenu();
             if (track.Source is ITimelineAuthoringSourceCreationTrack creation &&
-                (!typeof(ITimelineAuthoringResourceClip).IsAssignableFrom(track.Source.ClipType) || IsFileResource(track.Source.ClipType)))
+                (!typeof(ITimelineAuthoringResourceClip).IsAssignableFrom(track.Source.ClipType) || HasDirectSourceSelection(track.Source.ClipType)))
                 menu.AddItem(new GUIContent(creation.CreateSourceLabel), false, () =>
-                    m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, creation.SourceAssetType, null, async resource =>
+                    m_Request.AuthoringHost.ShowSourceCreation(Timeline, Session.GridPipeline, creation.SourceAssetType, null, async resource =>
                     {
                         Clip prototype = (Clip)Activator.CreateInstance(track.Source.ClipType);
                         if (prototype is ITimelineAuthoringResourceClip)

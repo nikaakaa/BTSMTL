@@ -15,7 +15,7 @@ namespace BTSMTL.Timeline.Editor
         ScriptableObject CreateGraph(UnityEngine.Object container, string graphName, bool isTrigger);
         void OpenGraph(ScriptableObject source);
         void MutateOwnedContent(TimelineData timeline, Action mutation);
-        void ShowSourceCreation(ScriptableObject pipeline, Type sourceType, UnityEngine.Object source,
+        void ShowSourceCreation(TimelineData timeline, ScriptableObject pipeline, Type sourceType, UnityEngine.Object source,
             Func<UnityEngine.Object, Task<string>> attach);
         void DrawSourceInspector(ScriptableObject pipeline, UnityEngine.Object source, float sourceTime);
         void ReleaseSourceEditing();
