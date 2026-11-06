@@ -107,7 +107,8 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Value label="所属文档" value={element.documentPath} mono={false} />
     <DocumentFields editable={editable} location={{ kind: 'element', element }} />
     <IdentityFold fields={[{ displayName: '作者文件', value: element.relativePath }, { displayName: 'JSON 路径', value: element.jsonPath },
-      { displayName: '资源引用身份', value: element.sourceIdentity }, { displayName: '所属文档修订', value: element.revision }]} />
+      ...(element.sourceIdentity === null ? [] : [{ displayName: '资源引用身份', value: element.sourceIdentity }]),
+      { displayName: '所属文档修订', value: element.revision }]} />
   </>;
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
