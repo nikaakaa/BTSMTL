@@ -1,10 +1,19 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 
 namespace ThirdPerson.ValueGeneration
 {
     internal static class ValueTypeMembers
     {
+        internal static T[] StorageConstructors<T>(IEnumerable<T> candidates, Func<T, IMethodSymbol> constructor)
+        {
+            T[] matches = candidates.ToArray();
+            return matches.Any(candidate => constructor(candidate).Parameters.Length != 0)
+                ? matches.Where(candidate => constructor(candidate).Parameters.Length != 0).ToArray() : matches;
+        }
+
         internal static IEnumerable<ISymbol> InHierarchy(ITypeSymbol type)
         {
             var overridden = new HashSet<ISymbol>(SymbolEqualityComparer.Default);

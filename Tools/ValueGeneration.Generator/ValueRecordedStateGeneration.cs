@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using ThirdPerson.ValueGeneration;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace ThirdPerson.ValueGeneration.Generator
@@ -167,10 +168,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 Member[] storage = StorageMembers(record).Where(member =>
                     !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
-                var constructors = record.InstanceConstructors.Where(candidate => !candidate.IsImplicitlyDeclared)
+                var constructors = ValueTypeMembers.StorageConstructors(record.InstanceConstructors.Where(candidate => !candidate.IsImplicitlyDeclared)
                     .Select(candidate => new { Constructor = candidate,
                         Inputs = ValueStorageConstructorInputs(context.Compilation, record, candidate, storage) })
-                    .Where(candidate => candidate.Inputs != null).ToArray();
+                    .Where(candidate => candidate.Inputs != null), candidate => candidate.Constructor);
                 if (constructors.Length != 1 || !context.Compilation.IsSymbolAccessibleWithin(constructors[0].Constructor, owner) ||
                     constructors[0].Inputs.Any(member => !context.Compilation.IsSymbolAccessibleWithin(
                         member.Symbol is IPropertySymbol property ? property.GetMethod : member.Symbol, owner)))

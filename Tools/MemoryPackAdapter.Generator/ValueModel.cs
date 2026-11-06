@@ -170,8 +170,9 @@ namespace ThirdPerson.ValueGeneration
             Member[] readable = ValueTypeMembers.InHierarchy(type).OfType<IPropertySymbol>().Where(property =>
                 !property.IsStatic && !property.IsIndexer && property.GetMethod != null)
                 .Select(property => new Member { Symbol = property, Type = property.Type }).ToArray();
-            IMethodSymbol[] constructors = type.InstanceConstructors.Where(constructor =>
-                !constructor.IsImplicitlyDeclared && constructor.Parameters.All(parameter => Match(parameter) != null)).ToArray();
+            IMethodSymbol[] constructors = ValueTypeMembers.StorageConstructors(type.InstanceConstructors.Where(constructor =>
+                !constructor.IsImplicitlyDeclared && constructor.Parameters.All(parameter => Match(parameter) != null)),
+                constructor => constructor);
             return constructors.Length == 1 ? constructors[0].Parameters.Select(parameter =>
             {
                 Member member = Match(parameter);

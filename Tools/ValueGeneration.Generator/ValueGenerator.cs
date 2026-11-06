@@ -358,10 +358,10 @@ namespace ThirdPerson.ValueGeneration.Generator
         {
             Member[] members = StorageMembers(type).Where(member =>
                 !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
-            var constructors = type.InstanceConstructors.Where(candidate => !candidate.IsImplicitlyDeclared)
+            var constructors = ValueTypeMembers.StorageConstructors(type.InstanceConstructors.Where(candidate => !candidate.IsImplicitlyDeclared)
                 .Select(candidate => new { Constructor = candidate,
                     Inputs = ValueStorageConstructorInputs(context.Compilation, type, candidate, members) })
-                .Where(candidate => candidate.Inputs != null).ToArray();
+                .Where(candidate => candidate.Inputs != null), candidate => candidate.Constructor);
             if (construct || constructors.Length != 1)
             {
                 context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
