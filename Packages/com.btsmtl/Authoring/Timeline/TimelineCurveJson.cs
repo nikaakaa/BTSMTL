@@ -1,5 +1,4 @@
 #if UNITY_EDITOR || BTSMTL_AUTHORING
-using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
@@ -18,7 +17,7 @@ namespace BTSMTL.Timeline
             ["keys"] = new JArray(curve.Keys.Select(key => new JObject
             {
                 ["time"] = key.Time, ["value"] = key.Value,
-                ["inTangent"] = key.InTangent, ["outTangent"] = key.OutTangent,
+                ["inTangent"] = Tangent(key.InTangent), ["outTangent"] = Tangent(key.OutTangent),
                 ["inWeight"] = key.InWeight, ["outWeight"] = key.OutWeight,
                 ["weightedMode"] = key.WeightedMode, ["tangentMode"] = key.TangentMode
             })),
@@ -26,8 +25,9 @@ namespace BTSMTL.Timeline
             ["postWrapMode"] = curve.PostWrapMode
         };
 
-        static float Tangent(JToken value) => value.Type == JTokenType.String
-            ? float.Parse((string)value, NumberStyles.Float, CultureInfo.InvariantCulture) : (float)value;
+        static float Tangent(JToken value) => value.Type == JTokenType.Null ? float.PositiveInfinity : (float)value;
+
+        static JValue Tangent(float value) => float.IsInfinity(value) ? JValue.CreateNull() : new JValue(value);
     }
 }
 #endif
