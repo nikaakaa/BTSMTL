@@ -23,7 +23,7 @@ namespace ThirdPersonSimulation.Serialization
         {
             if (source.Identity.Source.NumericTarget != numericTarget)
                 throw new InvalidOperationException($"已发布图 '{source.Identity.Source.GraphId}' 的数值目标与宿主 '{numericTarget}' 不匹配。");
-            return source.Load(MemoryPackGraphContentPublisher.Instance);
+            return source.Load<Float32OrchestrationValue>(MemoryPackGraphContentPublisher.Instance);
         }
 
         public static GraphHostContract CreatePublishedHostContract(OrchestrationGraphContent<Float32OrchestrationValue> content, string contractId,
