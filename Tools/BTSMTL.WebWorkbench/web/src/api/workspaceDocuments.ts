@@ -57,6 +57,6 @@ export const workspaceDocumentsApi = {
     getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),
   editingView: (editingView: WorkspaceEditingView, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/documents/editing-view', editingView, signal).then(value => readView(value)),
-  save: (writes: WorkspaceDocumentWrite[], reads: WorkspaceDocumentRead[]) =>
-    putJson<unknown>('/api/authoring/documents', { writes, reads }).then(value => readView(value)),
+  save: (editingView: Pick<WorkspaceEditingView, 'writes' | 'reads'> & Partial<Omit<WorkspaceEditingView, 'writes' | 'reads'>>) =>
+    putJson<unknown>('/api/authoring/documents', editingView).then(value => readView(value)),
 };

@@ -627,9 +627,9 @@ export const authoringActions = {
   async createScenario(name: string, request: ScenarioDraftRequest) {
     const target = authoringTarget('scenario', name);
     const draft = await authoringApi.scenarioDraft(name, request);
-    await workspaceDocumentsApi.save([{ kind: 'scenario', documentPath: target.documentPath, expectedRevision: '',
+    await workspaceDocumentsApi.save({ writes: [{ kind: 'scenario', documentPath: target.documentPath, expectedRevision: '',
       files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) },
-      ...Object.entries(variablesDrafts(draft.variables)).map(([path, document]) => documentWrite(path, document))], []);
+      ...Object.entries(variablesDrafts(draft.variables)).map(([path, document]) => documentWrite(path, document))], reads: [] });
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
@@ -960,7 +960,7 @@ export const authoringActions = {
     };
     try {
       if (operation === 'save') {
-        const result = await workspaceDocumentsApi.save(editingView.writes, editingView.reads);
+        const result = await workspaceDocumentsApi.save(editingView);
         const message = '作者内容已保存；未请求编译与发布，运行未应用。';
         accept(result.documents, null,
           { saved: true, compilationState: 'not-requested', runtimeState: 'pending', preview: null, ok: true, message, errors: [] });
