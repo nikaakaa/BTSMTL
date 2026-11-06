@@ -160,7 +160,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 {
                     code.AppendLine("unmanaged");
                     AppendLayout(code, record);
-                    foreach (IFieldSymbol field in record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic))
+                    foreach (IFieldSymbol field in UnmanagedSchemaFields(record))
                     {
                         code.Append(field.Name).Append('\n');
                         AppendLayout(code, field);
@@ -195,7 +195,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (!(type is INamedTypeSymbol record) || !type.IsUnmanagedType ||
                     Identity(type) != "UnityEngine.Vector4" && Identity(type) != "System.Numerics.Vector4")
                     return false;
-                IFieldSymbol[] fields = record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).ToArray();
+                IFieldSymbol[] fields = UnmanagedSchemaFields(record);
                 if (fields.Length != 4) return false;
                 for (int i = 0; i < fields.Length; i++)
                     if (fields[i].Type.SpecialType != SpecialType.System_Single ||
@@ -207,6 +207,17 @@ namespace ThirdPerson.MemoryPackAdapters
                     "System.Runtime.InteropServices.StructLayoutAttribute" &&
                     ((int)attribute.ConstructorArguments[0].Value != 0 || attribute.NamedArguments.Any(argument =>
                         argument.Key == "Size" && (int)argument.Value.Value != 0 && (int)argument.Value.Value != 16)));
+            }
+
+            static IFieldSymbol[] UnmanagedSchemaFields(INamedTypeSymbol record)
+            {
+                IFieldSymbol[] fields = record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).ToArray();
+                string name = Identity(record);
+                if (name == "System.Numerics.Quaternion" || name == "System.Numerics.Vector4" || name == "UnityEngine.Vector4")
+                    Array.Sort(fields, (left, right) =>
+                        "xyzw".IndexOf(left.Name, StringComparison.OrdinalIgnoreCase).CompareTo(
+                            "xyzw".IndexOf(right.Name, StringComparison.OrdinalIgnoreCase)));
+                return fields;
             }
 
             static void AppendLayout(StringBuilder code, ISymbol symbol)
