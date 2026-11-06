@@ -42,8 +42,10 @@ namespace BTSMTL.Authoring.Graph
             Require(root);
             if (Same(m_Root, root))
                 return;
+            string revision = Same(BtsmtlGraphDocumentJson.CompilationGraph(m_Root),
+                BtsmtlGraphDocumentJson.CompilationGraph(root)) ? ContentRevision : Guid.NewGuid().ToString("N");
             m_Root = (JObject)root.DeepClone();
-            m_Root["ContentRevision"] = Guid.NewGuid().ToString("N");
+            m_Root["ContentRevision"] = revision;
         }
 
         public void ConfigureIdentity(string id, string revision)
@@ -158,10 +160,17 @@ namespace BTSMTL.Authoring.Graph
         public static JObject Write(BtsmtlGraphDocument source) => source.Json();
         public static string CompilationInput(BtsmtlGraphDocument source, BtsmtlGraphVariableDeclarations variables)
         {
-            JObject graph = source.Json();
-            graph.Remove("layout");
-            return new JObject { ["graph"] = graph, ["variables"] = BtsmtlGraphVariableDeclarationsJson.Write(variables) }
+            return new JObject { ["graph"] = CompilationGraph(source.Json()),
+                ["variables"] = BtsmtlGraphVariableDeclarationsJson.Write(variables) }
                 .ToString(Newtonsoft.Json.Formatting.None);
+        }
+
+        internal static JObject CompilationGraph(JObject source)
+        {
+            var graph = (JObject)source.DeepClone();
+            graph.Remove("layout");
+            graph.Remove("ContentRevision");
+            return graph;
         }
     }
 }
