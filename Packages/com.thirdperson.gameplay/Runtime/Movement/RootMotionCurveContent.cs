@@ -48,11 +48,11 @@ namespace ThirdPersonGameplay.Movement.Timeline
             TotalYaw = totalYaw;
             AuthoredSource = authoredSource;
             var builder = new TimelineRuntimeCurveBuilder<Float32Scalar, Float32ScalarContentLowering>();
-            m_PositionX = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-x", localPositionX), Float32Scalar.Zero);
-            m_PositionY = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-y", localPositionY), Float32Scalar.Zero);
-            m_PositionZ = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-z", localPositionZ), Float32Scalar.Zero);
-            m_ForwardDistance = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-forward", forwardDistance), Float32Scalar.Zero);
-            m_Yaw = builder.PrepareOptional(TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", localYaw), Float32Scalar.Zero);
+            m_PositionX = builder.PrepareOptional(TimelineCurveContent.CaptureSourceCurve("motion.source-x", localPositionX), Float32Scalar.Zero);
+            m_PositionY = builder.PrepareOptional(TimelineCurveContent.CaptureSourceCurve("motion.source-y", localPositionY), Float32Scalar.Zero);
+            m_PositionZ = builder.PrepareOptional(TimelineCurveContent.CaptureSourceCurve("motion.source-z", localPositionZ), Float32Scalar.Zero);
+            m_ForwardDistance = builder.PrepareOptional(TimelineCurveContent.CaptureSourceCurve("motion.source-forward", forwardDistance), Float32Scalar.Zero);
+            m_Yaw = builder.PrepareOptional(TimelineCurveContent.CaptureSourceCurve("motion.source-yaw", localYaw), Float32Scalar.Zero);
             m_Keys = builder.ToKeyArray();
             if (!TryValidate(out string error))
                 throw new InvalidOperationException(error);
