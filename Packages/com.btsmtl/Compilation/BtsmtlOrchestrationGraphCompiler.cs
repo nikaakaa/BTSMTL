@@ -688,6 +688,9 @@ namespace BTSMTL.Compilation
             IEnumerable<string> StructureIdentityTexts()
             {
                 yield return m_Identity.GraphId;
+                foreach (GraphExecutionDependency dependency in m_Identity.Dependencies)
+                    if (dependency.Kind == GraphExecutionDependencyKind.GraphVariables)
+                        yield return dependency.Identity;
                 yield return OrchestrationCorePortNames.AnyState;
                 yield return OrchestrationCorePortNames.StateOnEnter;
                 yield return OrchestrationCorePortNames.StateRoot;
@@ -742,6 +745,7 @@ namespace BTSMTL.Compilation
                     yield return source.PortId;
                     yield return source.DeclarationId;
                     yield return source.CompiledPortId;
+                    yield return source.ValueTypeId;
                 }
                 foreach (ProgramCatalogEntry entry in m_Catalog)
                 {
@@ -1613,7 +1617,7 @@ namespace BTSMTL.Compilation
                     }
                     result.Add(new OrchestrationGraphPort(Bind(source.GraphId), Bind(source.NodeId), Bind(source.PortId),
                         !trigger && !input ? m_Ports[source.TargetIndex].Output(compiledPort).OperationIndex : source.TargetIndex,
-                        input, trigger, Bind(compiledPort), valueIndex));
+                        input, trigger, Bind(source.ValueTypeId), Bind(compiledPort), valueIndex));
                 }
                 return result.ToArray();
             }

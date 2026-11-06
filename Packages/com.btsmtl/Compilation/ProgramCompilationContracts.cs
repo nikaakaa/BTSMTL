@@ -579,7 +579,8 @@ namespace BTSMTL.Compilation
 			string invocationCallerId = "",
 			string invocationCallerClipId = "",
 			int invocationCallerOperationIndex = -1,
-			int invocationEntryOperationIndex = -1)
+			int invocationEntryOperationIndex = -1,
+			string valueTypeId = "")
 		{
 			TargetKind = targetKind;
 			TargetIndex = targetIndex;
@@ -602,6 +603,7 @@ namespace BTSMTL.Compilation
 			InvocationCallerClipId = invocationCallerClipId ?? string.Empty;
 			InvocationCallerOperationIndex = invocationCallerOperationIndex;
 			InvocationEntryOperationIndex = invocationEntryOperationIndex;
+			ValueTypeId = valueTypeId;
 			RequireRecord();
 		}
 
@@ -635,6 +637,7 @@ namespace BTSMTL.Compilation
 		public string InvocationCallerClipId { get; }
 		public int InvocationCallerOperationIndex { get; }
 		public int InvocationEntryOperationIndex { get; }
+		public string ValueTypeId { get; }
 	}
 
     public sealed class ProgramExecutionSourceLayout

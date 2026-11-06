@@ -5,6 +5,7 @@ using System.Linq;
 using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Compilation;
+using ThirdPersonSimulation;
 using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.Graphs
@@ -64,6 +65,7 @@ namespace BTSMTL.Graphs
         public string OwnerId => m_OwnerId;
         [GraphAuthoringField("revision", GraphAuthoringFieldValueKind.String, ReadOnly = true)]
         public string Revision => m_Revision;
+        public GraphExecutionDependency CompilationDependency => new(OwnerId, Revision, GraphExecutionDependencyKind.GraphVariables);
         [GraphAuthoringField("variables", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
         public IReadOnlyList<BtsmtlGraphVariableDeclaration> Variables => m_Variables;
         public IReadOnlyList<BtsmtlBlackboardDeclaration> BlackboardDeclarations => m_Variables

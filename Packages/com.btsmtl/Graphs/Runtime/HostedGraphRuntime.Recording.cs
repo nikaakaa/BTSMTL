@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using BTSMTL.Orchestration;
+using BTSMTL.Compilation;
 using FlowCanvas;
-using NodeCanvas.Framework;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
@@ -250,31 +250,25 @@ namespace BTSMTL.Graphs
         void PrepareRuntimePorts()
         {
             m_Ports = new Dictionary<(string Node, string Port, bool Input), GraphRuntimePort>();
-            var maps = new Dictionary<(string Node, string Port, bool Input), OrchestrationGraphPort>();
             OrchestrationIdentityTable identities = m_Bindings.Prepared.Identities.Table;
-            int graphIdentity = identities.Bind(Source.AuthoringId);
+            int graphIdentity = identities.Bind(Source.GraphId);
             foreach (ref readonly OrchestrationGraphPort map in m_Bindings.Prepared.Ports.Span)
                 if (map.GraphIdentityId == graphIdentity)
-                    maps.Add((identities.Resolve(map.NodeIdentityId), identities.Resolve(map.PortIdentityId), map.IsInput), map);
-            foreach (Node node in Source.allNodes)
-            {
-                var flow = (FlowNode)node;
-                foreach (Port port in flow.GetInputPorts())
-                    Add(port, true);
-                foreach (Port port in flow.GetOutputPorts())
-                    Add(port, false);
-            }
+                    Add(map);
             m_RuntimePorts = new GraphRuntimePort[m_Ports.Count];
             m_Ports.Values.CopyTo(m_RuntimePorts, 0);
 
-            void Add(Port port, bool input)
+            void Add(OrchestrationGraphPort map)
             {
-                OrchestrationGraphPort map = maps[(port.parent.UID, port.ID, input)];
-                int enumIdentity = port.type.IsEnum ? identities.Bind(port.type.AssemblyQualifiedName) : 0;
-                m_Ports.Add((port.parent.UID, port.ID, input),
-                    new GraphRuntimePort(Source.AuthoringId, port, input, map.OperationIndex, map.ValueIndex,
+                string node = identities.Resolve(map.NodeIdentityId);
+                string port = identities.Resolve(map.PortIdentityId);
+                Type type = map.IsTrigger ? typeof(Flow) : BtsmtlGraphVariableUnity.Type(
+                    CompileValueTypes.FromId(identities.Resolve(map.ValueTypeIdentityId)));
+                int enumIdentity = type.IsEnum ? identities.Bind(type.AssemblyQualifiedName) : 0;
+                m_Ports.Add((node, port, map.IsInput),
+                    new GraphRuntimePort(Source.GraphId, node, port, type, map.IsInput, map.IsTrigger, map.OperationIndex, map.ValueIndex,
                         map.CompiledPortIdentityId, enumIdentity, ReadPort, MutatePort, IsPortLocked,
-                        () => QueuePortTrigger(port.parent.UID, port.ID, input), HasPendingTrigger));
+                        () => QueuePortTrigger(node, port, map.IsInput), HasPendingTrigger));
             }
         }
 

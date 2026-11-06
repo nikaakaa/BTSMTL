@@ -19,7 +19,7 @@ namespace BTSMTL.Graphs
             Failed
         }
 
-        readonly BtsmtlGraphRoot m_Source;
+        readonly GraphCompilationIdentity m_Source;
         readonly GraphHostContract m_Contract;
         readonly HostedGraphBindings<TValue, TNumerics> m_Bindings;
         readonly OrchestrationPreparedStateLayout<TValue> m_Layout;
@@ -55,12 +55,12 @@ namespace BTSMTL.Graphs
         bool m_Faulted;
         bool m_Disposed;
 
-        public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
+        public HostedGraphRuntime(GraphHostContract contract,
             OrchestrationGraphContent<TValue> content, IReadOnlyList<IOrchestrationExtension> extensions)
         {
-            m_Source = source;
+            m_Source = content.Identity.Source;
             m_Contract = contract;
-            m_Bindings = new HostedGraphBindings<TValue, TNumerics>(source, contract, content);
+            m_Bindings = new HostedGraphBindings<TValue, TNumerics>(contract, content);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, new[] { new OrchestrationRootAdmission(
@@ -115,7 +115,7 @@ namespace BTSMTL.Graphs
         Span<TValue> CandidateValues =>
             m_Layout.Layout.BindCandidate(CandidateMemory).Get(m_PrivateValues);
 
-        public BtsmtlGraphRoot Source => m_Source;
+        public GraphCompilationIdentity Source => m_Source;
         public GraphHostContract Contract => m_Contract;
         public int SourceIdentityId => m_Bindings.SourceIdentityId;
         public GraphVariableContract VariableContract => m_Bindings.Variables;
@@ -144,7 +144,7 @@ namespace BTSMTL.Graphs
             }
             if (invocation.EventId != m_Contract.UpdateEventId)
             {
-                Reject($"Event graph event '{invocation.EventId}' is not declared by host contract '{m_Source.AuthoringId}'.");
+                Reject($"Event graph event '{invocation.EventId}' is not declared by host contract '{m_Source.GraphId}'.");
                 return;
             }
             if (invocation.Identity.SourceIdentityId != SourceIdentityId)
@@ -450,7 +450,7 @@ namespace BTSMTL.Graphs
         void Reject(string message, Exception exception = null)
         {
             string node = m_CurrentOperationIndex < 0 ? string.Empty : m_Bindings.OperationNodes[m_CurrentOperationIndex];
-            m_CandidateFailure = new GraphExecutionFailure(m_Source.AuthoringId, m_Invocation.EventId, node, message, exception);
+            m_CandidateFailure = new GraphExecutionFailure(m_Source.GraphId, m_Invocation.EventId, node, message, exception);
             m_Status = EvaluationStatus.Failed;
         }
 

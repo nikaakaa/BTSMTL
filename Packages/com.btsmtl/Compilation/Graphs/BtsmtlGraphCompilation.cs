@@ -104,21 +104,21 @@ namespace BTSMTL.Compilation
             {
                 foreach (string port in node.FlowInputs)
                     m_Builder.DeclareOperationPortSource(operations.FlowInput(node.Id, port),
-                        Source(graphId, route, hash, node, port), string.Empty, ProgramValuePortDirection.None, isInputPort: true);
+                        Source(graphId, route, hash, node, port), string.Empty, ProgramValuePortDirection.None, string.Empty, isInputPort: true);
                 foreach (string port in node.FlowOutputs)
                     m_Builder.DeclareOperationPortSource(operations.FlowOutput(node.Id, port),
-                        Source(graphId, route, hash, node, port), string.Empty, ProgramValuePortDirection.None, isInputPort: false);
+                        Source(graphId, route, hash, node, port), string.Empty, ProgramValuePortDirection.None, string.Empty, isInputPort: false);
                 foreach (CompileValuePort port in node.ValueInputs)
                 {
                     BtsmtlGraphValuePortBinding binding = operations.Input(node.Id, port.Id);
                     m_Builder.DeclareOperationPortSource(binding.Operation, Source(graphId, route, hash, node, port.Id),
-                        binding.PortId, ProgramValuePortDirection.Input);
+                        binding.PortId, ProgramValuePortDirection.Input, CompileValueTypes.Id(port.Type));
                 }
                 foreach (CompileValuePort port in node.ValueOutputs)
                 {
                     BtsmtlGraphValuePortBinding binding = operations.Output(node.Id, port.Id);
                     m_Builder.DeclareOperationPortSource(binding.Operation, Source(graphId, route, hash, node, port.Id),
-                        binding.PortId, ProgramValuePortDirection.Output);
+                        binding.PortId, ProgramValuePortDirection.Output, CompileValueTypes.Id(port.Type));
                 }
             }
         }

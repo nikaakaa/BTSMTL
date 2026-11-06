@@ -79,6 +79,7 @@ namespace BTSMTL.Graphs
 #if UNITY_EDITOR
         bool IBtsmtlGraphDocumentCompilationSource.UsesDocumentSource => true;
         string IBtsmtlGraphDocumentCompilationSource.DocumentCompilationInput => BtsmtlGraphDocumentJson.CompilationInput(Source, Variables);
+        ThirdPersonSimulation.GraphExecutionDependency IBtsmtlGraphDocumentCompilationSource.VariableCompilationDependency => Variables.CompilationDependency;
         IReadOnlyList<UnityEngine.Object> IBtsmtlGraphDocumentCompilationSource.DocumentCompilationReferences => Authoring.Document.References;
 
         public FlowNode AddAuthoringNode(Type type, string id, Vector2 position) =>

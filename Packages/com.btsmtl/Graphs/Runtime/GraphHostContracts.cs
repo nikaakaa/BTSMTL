@@ -690,11 +690,13 @@ namespace BTSMTL.Graphs
             RequireUniqueOutputs();
         }
 
-        public static GraphHostContract FromPublishedGraph<TValue>(BtsmtlGraphRoot graph,
+        public static GraphHostContract FromPublishedGraph<TValue, TNumerics>(
             OrchestrationGraphContent<TValue> content,
             string contractId, string revision, string updateEventId,
             IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
-            IReadOnlyList<string> domains, string numericTarget) where TValue : unmanaged
+            IReadOnlyList<string> domains, string numericTarget)
+            where TValue : unmanaged
+            where TNumerics : struct, IGraphNumerics<TValue>
         {
             var inputs = new List<GraphHostInputDescriptor>();
             var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -706,8 +708,16 @@ namespace BTSMTL.Graphs
                         GraphCompiledValues.ResolveTypeIdentity(content.Identities.Resolve(input.ValueTypeIdentityId))));
             }
             var outputs = new List<GraphHostOutputDescriptor>();
-            foreach (GraphVariableDescriptor variable in graph.Variables.CreateContract().PublishedDescriptors)
-                outputs.Add(new GraphHostOutputDescriptor(variable.Reference.VariableId, variable.ValueType));
+            GraphExecutionDependency variables = content.Identity.Source.Dependencies.Single(dependency =>
+                dependency.Kind == GraphExecutionDependencyKind.GraphVariables);
+            int variableOwner = content.Identities.Bind(variables.Identity);
+            foreach (ref readonly OrchestrationGraphVariable variable in content.Structure.Variables.Span)
+                if (variable.GraphIdentityId == variableOwner && variable.IsPublic)
+                {
+                    TValue value = content.Parameters.DefaultValues.Span[variable.ValueSlot];
+                    outputs.Add(new GraphHostOutputDescriptor(content.Identities.Resolve(variable.DeclarationIdentityId),
+                        default(TNumerics).ValueType(in value, content.Identities)));
+                }
             return new GraphHostContract(contractId, revision, updateEventId, inputs, outputs,
                 blackboardScopes, domains, numericTarget);
         }

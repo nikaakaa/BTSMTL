@@ -92,7 +92,7 @@ namespace BTSMTL.Orchestration
     public readonly partial struct OrchestrationGraphPort
     {
         public OrchestrationGraphPort(int graphIdentityId, int nodeIdentityId, int portIdentityId,
-            int operationIndex, bool isInput, bool isTrigger, int compiledPortIdentityId, int valueIndex)
+            int operationIndex, bool isInput, bool isTrigger, int valueTypeIdentityId, int compiledPortIdentityId, int valueIndex)
         {
             GraphIdentityId = graphIdentityId;
             NodeIdentityId = nodeIdentityId;
@@ -100,6 +100,7 @@ namespace BTSMTL.Orchestration
             OperationIndex = operationIndex;
             IsInput = isInput;
             IsTrigger = isTrigger;
+            ValueTypeIdentityId = valueTypeIdentityId;
             CompiledPortIdentityId = compiledPortIdentityId;
             ValueIndex = valueIndex;
         }
@@ -110,6 +111,7 @@ namespace BTSMTL.Orchestration
         public int OperationIndex { get; }
         public bool IsInput { get; }
         public bool IsTrigger { get; }
+        public int ValueTypeIdentityId { get; }
         public int CompiledPortIdentityId { get; }
         public int ValueIndex { get; }
     }

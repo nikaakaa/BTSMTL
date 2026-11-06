@@ -20,6 +20,7 @@ namespace BTSMTL
         bool UsesDocumentSource { get; }
         string AuthoringId { get; }
         string DocumentCompilationInput { get; }
+        ThirdPersonSimulation.GraphExecutionDependency VariableCompilationDependency { get; }
         IReadOnlyList<UnityEngine.Object> DocumentCompilationReferences { get; }
     }
 #endif

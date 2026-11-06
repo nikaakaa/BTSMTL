@@ -112,7 +112,8 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationGraphPort port = ref structure.Ports.Span[i];
                 graphPorts[i] = new OrchestrationGraphPort(Map(port.GraphIdentityId, mapping),
                     Map(port.NodeIdentityId, mapping), Map(port.PortIdentityId, mapping), port.OperationIndex,
-                    port.IsInput, port.IsTrigger, Map(port.CompiledPortIdentityId, mapping), port.ValueIndex);
+                    port.IsInput, port.IsTrigger, Map(port.ValueTypeIdentityId, mapping),
+                    Map(port.CompiledPortIdentityId, mapping), port.ValueIndex);
             }
             var sources = new OrchestrationGraphSource[structure.Sources.Length];
             for (int i = 0; i < sources.Length; i++)

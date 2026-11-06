@@ -7,13 +7,14 @@ namespace ThirdPersonSimulation
 {
     public static class GraphNodeSemanticContract
     {
-        public const string Identity = "btsmtl-operations/8";
+        public const string Identity = "btsmtl-operations/9";
     }
 
     public enum GraphExecutionDependencyKind : byte
     {
         GraphSource = 1,
-        RuntimeContent = 2
+        RuntimeContent = 2,
+        GraphVariables = 3
     }
 
     [ValueStorage(UseConstructor = true)]

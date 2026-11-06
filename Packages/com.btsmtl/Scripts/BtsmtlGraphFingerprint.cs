@@ -354,8 +354,13 @@ namespace BTSMTL
             string revision = Compute(graph);
             var dependencies = new Dictionary<string, GraphExecutionDependency>(StringComparer.Ordinal);
             Collect(graph);
+            if (graph is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } document)
+            {
+                GraphExecutionDependency variables = document.VariableCompilationDependency;
+                dependencies.Add(variables.Identity, variables);
+            }
             return new GraphCompilationIdentity(graphId, revision, encodingContract,
-                GraphNodeSemanticContract.Identity, numericTarget, "btsmtl-hosted-graph-compiler/8",
+                GraphNodeSemanticContract.Identity, numericTarget, "btsmtl-hosted-graph-compiler/9",
                 dependencies.Values.OrderBy(value => value.Identity, StringComparer.Ordinal).ToArray());
 
             void Collect(Graph current)

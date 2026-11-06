@@ -24,18 +24,17 @@ namespace BTSMTL.Graphs
         public string PortId { get; }
         public bool IsTrigger { get; }
 
-        internal GraphRuntimePort(string graph, Port port, bool input, int operation, int slot,
+        internal GraphRuntimePort(string graph, string node, string port, Type valueType, bool input, bool trigger, int operation, int slot,
             int compiledPortId, int enumTypeContentId, Func<GraphRuntimePort, bool, GraphHostValue> read,
             Action<GraphRuntimePort, GraphHostValue, GraphVariableMutation> mutate,
             Func<GraphRuntimePort, bool> isLocked, Action trigger,
             Func<GraphRuntimePort, bool> hasPendingTrigger)
         {
             GraphId = graph;
-            ValueType = port.type;
-            Port = port;
-            NodeId = port.parent.UID;
-            PortId = port.ID;
-            IsTrigger = port.type == typeof(Flow);
+            ValueType = valueType;
+            NodeId = node;
+            PortId = port;
+            IsTrigger = trigger;
             IsInput = input;
             Operation = operation;
             ValueSlot = slot;

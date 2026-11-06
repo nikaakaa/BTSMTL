@@ -55,6 +55,10 @@ namespace BTSMTL.Compilation
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
+            GraphExecutionDependency variables = identity.Dependencies.Single(dependency =>
+                dependency.Kind == GraphExecutionDependencyKind.GraphVariables);
+            if (variables.Identity != m_Root.VariableOwnerId || variables.Revision != m_Variables(m_Root.VariableOwnerId).Revision)
+                throw new InvalidOperationException("图编译身份没有记录当前唯一变量来源及其修订。");
             using var invocation = m_Builder.PushGraphInvocation(m_Route, string.Empty);
             m_Blackboard.CompileDeclarations();
             BtsmtlGraphOperationBindings operations = EmitGraph(m_Root, m_Graphs.Read(m_Root), m_Route, out _);

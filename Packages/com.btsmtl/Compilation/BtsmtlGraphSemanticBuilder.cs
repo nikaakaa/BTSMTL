@@ -194,7 +194,7 @@ namespace BTSMTL.Compilation
         }
 
         public void DeclareOperationPortSource(OperationHandle operation, SimulationSourceLocation source,
-            string compiledPortId, ProgramValuePortDirection direction, bool isInputPort = false)
+            string compiledPortId, ProgramValuePortDirection direction, string valueTypeId, bool isInputPort = false)
         {
             if (!operation.IsValid || operation.Value >= m_Operations.Count)
                 throw new ArgumentOutOfRangeException(nameof(operation));
@@ -202,7 +202,7 @@ namespace BTSMTL.Compilation
                 throw new ArgumentException("Operation port Source Map requires a port identity.", nameof(source));
             AddSourceMap(ProgramSourceTargetKind.OperationPort, operation.Value, source,
                 compiledPortId, direction,
-                isInputPort: isInputPort);
+                isInputPort: isInputPort, valueTypeId: valueTypeId);
         }
 
         public void DeclareOptimizedSource(SimulationSourceLocation source)
@@ -603,7 +603,7 @@ namespace BTSMTL.Compilation
             string compiledPortId = "", ProgramValuePortDirection direction = ProgramValuePortDirection.None,
             ProgramInvocationCallerKind callerKind = ProgramInvocationCallerKind.None,
             string callerId = "", string callerClipId = "", int callerOperationIndex = -1,
-            int invocationEntryOperationIndex = -1, bool isInputPort = false)
+            int invocationEntryOperationIndex = -1, bool isInputPort = false, string valueTypeId = "")
         {
             if (m_GraphSourceRevisions.TryGetValue(source.GraphId, out ProgramGraphSourceRevision revision))
             {
@@ -639,7 +639,7 @@ namespace BTSMTL.Compilation
                     direction,
                     sourceInvocationPath,
                     sourceParentInvocationPath, callerKind, callerId, callerClipId, callerOperationIndex,
-                    invocationEntryOperationIndex);
+                    invocationEntryOperationIndex, valueTypeId);
                 var textKey = (source.SourceType, source.DisplayPath);
                 if (!m_SourceTexts.TryGetValue(textKey, out ProgramSourceMapText text))
                 {

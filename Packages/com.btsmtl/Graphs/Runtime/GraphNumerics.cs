@@ -28,16 +28,14 @@ namespace BTSMTL.Graphs
     // Content 为所选数值方案的 OrchestrationGraphContent，由装配边界提供。
     public sealed class GraphRuntimeSetup
     {
-        public GraphRuntimeSetup(BtsmtlGraphRoot source, GraphHostContract contract, object content,
+        public GraphRuntimeSetup(GraphHostContract contract, object content,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
-            Source = source ?? throw new ArgumentNullException(nameof(source));
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             Content = content;
             Extensions = extensions ?? throw new ArgumentNullException(nameof(extensions));
         }
 
-        public BtsmtlGraphRoot Source { get; }
         public GraphHostContract Contract { get; }
         public object Content { get; }
         public IReadOnlyList<IOrchestrationExtension> Extensions { get; }
@@ -46,7 +44,7 @@ namespace BTSMTL.Graphs
     // 图级生命周期：不暴露编排值类型；需要直接读写编排值时使用 HostedGraphRuntime。
     public interface IGraphRuntimeCore<TContext> : IDisposable where TContext : struct
     {
-        BtsmtlGraphRoot Source { get; }
+        GraphCompilationIdentity Source { get; }
         GraphHostContract Contract { get; }
         int SourceIdentityId { get; }
         GraphVariableContract VariableContract { get; }
@@ -88,7 +86,7 @@ namespace BTSMTL.Graphs
         public GraphRuntime(GraphRuntimeSetup setup) =>
             m_Core = default(TNumerics).CreateGraphRuntime<TContext>(setup ?? throw new ArgumentNullException(nameof(setup)));
 
-        public BtsmtlGraphRoot Source => m_Core.Source;
+        public GraphCompilationIdentity Source => m_Core.Source;
         public GraphHostContract Contract => m_Core.Contract;
         public int SourceIdentityId => m_Core.SourceIdentityId;
         public GraphVariableContract VariableContract => m_Core.VariableContract;
