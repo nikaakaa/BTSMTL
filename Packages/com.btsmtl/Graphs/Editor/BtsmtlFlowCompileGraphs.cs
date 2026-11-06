@@ -84,7 +84,7 @@ namespace BTSMTL.Graphs.Editor
         CompileNode Node(FlowNode node)
         {
             BtsmtlFlowCompileNodeInfo info = m_Info(node);
-            BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native);
+            BtsmtlNativeValueNodes.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native);
             GraphOrchestrationNodeDeclaration declaration = GraphOrchestrationNodeDeclaration.Of(node.GetType());
             bool hostOutput = node is IBtsmtlHostInputFlowNode && declaration.HostInputs == null;
             var inputs = node.GetInputValuePorts().Select(port => new CompileValuePort(port.ID,

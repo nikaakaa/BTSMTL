@@ -72,7 +72,7 @@ namespace BTSMTL.Graphs
             Attribute.IsDefined(nodeType, typeof(BtsmtlGraphOperationAttribute), false) ||
             typeof(IBtsmtlVariableFlowNode).IsAssignableFrom(nodeType) ||
             typeof(IBtsmtlHostInputFlowNode).IsAssignableFrom(nodeType) ||
-            BtsmtlNativeValueNodeCatalog.TryGetNode(nodeType, out _) ||
+            BtsmtlNativeValueNodes.TryGetNode(nodeType, out _) ||
             typeof(BtsmtlFlowNode).IsAssignableFrom(nodeType) &&
             GraphNodeDomains.TryGet(nodeType, out string domain) && domains.Contains(domain, StringComparer.Ordinal);
 

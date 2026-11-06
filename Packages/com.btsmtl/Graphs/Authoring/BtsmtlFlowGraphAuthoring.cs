@@ -182,7 +182,7 @@ namespace BTSMTL.Graphs
             GenericMenu menu = m_Graph.AppendFlowNodesMenu(new GenericMenu(), string.Empty, position, context, instance);
             foreach (BtsmtlNativeValueNodeDefinition definition in BtsmtlNativeValueNodeCatalog.All)
             {
-                Type type = typeof(SimplexNodeWrapper<>).MakeGenericType(definition.NodeType);
+                Type type = typeof(SimplexNodeWrapper<>).MakeGenericType(BtsmtlNativeValueNodes.SourceType(definition));
                 if (m_Graph.CanAuthorNodeType(type))
                     AppendNodeCreationItem(menu, "数值/" + definition.Kind, type, position, context);
             }

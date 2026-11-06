@@ -4,10 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-#if UNITY_5_3_OR_NEWER
-using FlowCanvas.Nodes;
-using BTSMTL.Graphs;
-#endif
 using ThirdPersonSimulation;
 
 namespace BTSMTL
@@ -21,9 +17,6 @@ namespace BTSMTL
         }
 
         public string NodeTypeName { get; }
-#if UNITY_5_3_OR_NEWER
-        public Type NodeType => BtsmtlNativeValueNodeCatalog.SourceType(NodeTypeName);
-#endif
         public GraphNativeValueKind Contract { get; }
         public string Kind => Contract.Kind;
         public OrchestrationOperationCode Code => Contract.Code;
@@ -67,27 +60,6 @@ namespace BTSMTL
 
         public static bool TryGet(string nodeTypeName, out BtsmtlNativeValueNodeDefinition definition) =>
             s_Nodes.TryGetValue(nodeTypeName, out definition);
-
-#if UNITY_5_3_OR_NEWER
-        static readonly IReadOnlyDictionary<string, Type> s_SourceTypes =
-            new[] { typeof(SimplexNode).Assembly, typeof(BtsmtlNativeValueNodeCatalog).Assembly }.Distinct()
-                .SelectMany(assembly => assembly.GetTypes()).Where(type => s_Nodes.ContainsKey(type.Name))
-                .ToDictionary(type => type.Name, StringComparer.Ordinal);
-
-        internal static Type SourceType(string name) => s_SourceTypes[name];
-
-        public static bool TryGet(Type nodeType, out BtsmtlNativeValueNodeDefinition definition) =>
-            s_Nodes.TryGetValue(nodeType.Name, out definition) && definition.NodeType == nodeType;
-
-        public static bool TryGetNode(Type nodeType, out BtsmtlNativeValueNodeDefinition definition)
-        {
-            for (Type type = nodeType; type != null; type = type.BaseType)
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SimplexNodeWrapper<>))
-                    return TryGet(type.GetGenericArguments()[0], out definition);
-            definition = null;
-            return false;
-        }
-#endif
 
         static IReadOnlyDictionary<string, BtsmtlNativeValueNodeDefinition> Create()
         {

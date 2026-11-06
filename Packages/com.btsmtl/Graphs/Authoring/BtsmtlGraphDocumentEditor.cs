@@ -193,7 +193,7 @@ namespace BTSMTL.Graphs
             var result = new JObject();
             foreach (GraphAuthoringMember member in GraphAuthoringMemberBindings.Contract(node).Fields)
                 Store(result, member.SerializedMemberPath, writeValue(member.Read(node), member.ValueType));
-            result["type"] = BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native)
+            result["type"] = BtsmtlNativeValueNodes.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native)
                 ? native.NodeTypeName : typeName(node.GetType());
             return result;
         }
@@ -202,7 +202,7 @@ namespace BTSMTL.Graphs
             Func<string, Type> resolveType, Func<JToken, Type, object> readValue, Func<string, FlowGraph> resolveGraph)
         {
             Type type = BtsmtlNativeValueNodeCatalog.TryGet(source.TypeName, out BtsmtlNativeValueNodeDefinition native)
-                ? typeof(FlowCanvas.Nodes.SimplexNodeWrapper<>).MakeGenericType(native.NodeType) : resolveType(source.TypeName);
+                ? typeof(FlowCanvas.Nodes.SimplexNodeWrapper<>).MakeGenericType(BtsmtlNativeValueNodes.SourceType(native)) : resolveType(source.TypeName);
             return (FlowNode)Node.Create(graph, type, position, node =>
             {
                 if (node is MacroNodeWrapper call)

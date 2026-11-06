@@ -49,7 +49,7 @@
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.AuthoringExtensions.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/Timeline.Tree.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Editor/Scripts/*SerializedFields.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlNativeValueNodeCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />
