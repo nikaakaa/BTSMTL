@@ -403,7 +403,7 @@ useAuthoring.subscribe((authoring, previous) => {
   }
   const state = current();
   if (state.target?.root?.kind !== 'webEditingView' || (state.description.kind !== 'ready' && state.description.kind !== 'loading')) return;
-  const documentsChanged = Object.keys(authoring.documents).filter(key => key.startsWith('skill/')).some(key => {
+  const documentsChanged = Object.keys(authoring.documents).filter(key => key.startsWith('Skills/')).some(key => {
     const before = previous.documents[key];
     const after = authoring.documents[key];
     return before === undefined || before.files !== after.files || before.revision !== after.revision || before.sourceRevision !== after.sourceRevision;

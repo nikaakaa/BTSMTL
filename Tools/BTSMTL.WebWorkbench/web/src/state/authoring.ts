@@ -203,7 +203,7 @@ export function useDocumentObservationBinding(): DocumentObservationBinding {
     const owners = new Set(document.documentGraphs?.map(graph => graph.owner));
     if (state.target?.kind === 'skill') owners.add(state.target.name);
     return { graphs: document.documentError === null && document.sourceRevision !== null ? document.documentGraphs : null, dirty: Object.entries(state.documents).some(([key, owner]) =>
-      key.startsWith('skill/') && owners.has(key.slice('skill/'.length)) &&
+      key.startsWith('Skills/') && owners.has(key.slice('Skills/'.length)) &&
       (Object.keys(owner.edited).length > 0 || owner.removed.length > 0)) };
   }));
   return useMemo(() => ({ programs: graphs === null ? null : new Map(graphs.map(graph => [graph.programId, graph.programRevision])), dirty }),
@@ -518,12 +518,12 @@ useWorkbench.subscribe((state, previous) => {
 
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const capturedOwners = Object.entries(useAuthoring.getState().documents)
-    .filter(([key]) => key.startsWith('skill/'))
+    .filter(([key]) => key.startsWith('Skills/'))
     .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
   const isCurrentRequest = () => {
     const current = useAuthoring.getState().documents;
-    return Object.keys(current).filter(key => key.startsWith('skill/')).length === capturedOwners.length &&
+    return Object.keys(current).filter(key => key.startsWith('Skills/')).length === capturedOwners.length &&
       capturedOwners.every(owner => current[owner.key].revision === owner.revision && current[owner.key].version === owner.version) &&
       JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
   };
@@ -609,7 +609,7 @@ useAuthoring.subscribe((state, previous) => {
   }
   const target = state.target;
   if (target?.kind !== 'skill' || !Object.entries(previous.documents).some(([key, document]) =>
-    key.startsWith('skill/') && document.version !== state.documents[key]?.version)) return;
+    key.startsWith('Skills/') && document.version !== state.documents[key]?.version)) return;
   scheduleDocumentReload(target);
 });
 
@@ -933,8 +933,8 @@ export const authoringActions = {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
     return {
-      skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('skill/')).map(key => {
-        const name = key.slice('skill/'.length);
+      skills: Object.fromEntries(Object.keys(state.documents).filter(key => key.startsWith('Skills/')).map(key => {
+        const name = key.slice('Skills/'.length);
         const document = state.documents[key];
         const files = { ...document.sourceFiles };
         for (const [path, content] of Object.entries(workingFiles(document.files, document)))

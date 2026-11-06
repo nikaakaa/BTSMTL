@@ -28,7 +28,8 @@ const readSkillSnapshot = object({ skill: text, revision: text,
 export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = { kind: 'skill'; name: string } | { kind: 'scenario'; name: string };
-export const authoringTargetKey = (target: AuthoringTarget) => `${target.kind}/${target.name}`;
+const authoringDirectories = { skill: 'Skills', scenario: 'Scenarios' };
+export const authoringTargetKey = (target: AuthoringTarget) => `${authoringDirectories[target.kind]}/${target.name}`;
 
 export interface SkillChanges {
   skill: string;

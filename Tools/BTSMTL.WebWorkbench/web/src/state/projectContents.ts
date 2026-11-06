@@ -21,8 +21,8 @@ export function projectContents(documents: AuthoringState['documents']) {
   const children = new Map<string, string[]>();
   const roots: ProjectItem[] = [];
   for (const [key, document] of Object.entries(documents)) {
-    if (!key.startsWith('skill/')) continue;
-    const owner = key.slice('skill/'.length);
+    if (!key.startsWith('Skills/')) continue;
+    const owner = key.slice('Skills/'.length);
     const source = new Map([...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
       .filter(path => !document.removed.includes(path) && (path === 'skill.json' ||
         path.startsWith('graphs/') || path.startsWith('timelines/') || path.startsWith('inputs/'))).map(path => [path,
