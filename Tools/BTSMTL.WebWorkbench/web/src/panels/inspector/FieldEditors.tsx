@@ -430,6 +430,18 @@ function ValueFields({ value, description, owner, onSet }: {
   </>;
 }
 
+export function DocumentFields({ editable }: { editable: boolean }) {
+  const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
+  const authoringType = useAuthoring(state => authoringDocument(state).authoringType);
+  const { document } = useCurrentDocument(rootFile);
+  if (rootFile === null || document === null) return null;
+  if (authoringType === null) return <div className={styles.issue}>当前文档未提供作者字段声明</div>;
+  return <fieldset className={styles.authorFields} disabled={!editable}>
+    <AuthoringValueFields label="文档配置" type={authoringType} value={document as JsonObject}
+      graphId={null} identity={rootFile} onSet={next => authoringActions.edit(rootFile, value => { Object.assign(value as JsonObject, next); })} />
+  </fieldset>;
+}
+
 export function SkillFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
   const execution = useAuthoring(state => authoringDocument(state).execution);

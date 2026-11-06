@@ -22,7 +22,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { ClipFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import styles from './inspector.module.css';
 
@@ -66,7 +66,7 @@ export function InspectorPanel() {
 function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean; unlock(): void }) {
   const missing = (
     <div className={styles.missing}>
-      {shown.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前技能' : '所选对象不属于当前技能'}
+      {shown.kind === 'actor' ? '档案中没有所选角色' : locked ? '锁定对象不属于当前文档' : '所选对象不属于当前文档'}
       {locked && <Button variant="ghost" onClick={unlock}>解除锁定</Button>}
     </div>
   );
@@ -99,6 +99,7 @@ function DocumentSummary() {
 function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const documents = useAuthoring(state => state.documents);
   const target = useAuthoring(state => state.target);
+  const editable = useAuthoring(state => state.author);
   const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
@@ -107,7 +108,8 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
-    <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>
+    {item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} />
+      : <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>}
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;
 }
@@ -468,7 +470,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
   const graphRow = input || !clip.graphId ? null : graph
     ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开"
       onOpen={() => openGraph(graph, route === null || observedCall === null || runId === null ? null : { runId, call: observedCall })} />
-    : <Value label="节点图" mono={false} value="当前技能没有这张图" />;
+    : <Value label="节点图" mono={false} value="当前文档没有这张图" />;
   return (
     <>
       <Head icon={<TrackIcon kind={input ? 'in' : clipKind(clip)} />} sub={`${timeline.displayName} · ${track.displayName}`}
@@ -703,7 +705,7 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
       <Fold title={clip ? '按住段' : '输入标记'} defaultOpen>
         {graph
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-          : <Value label="节点图" mono={false} value="当前技能没有这张图" />}
+          : <Value label="节点图" mono={false} value="当前文档没有这张图" />}
         {clip ? (
           <>
             <Value label="起点（秒）" value={clip.startSeconds.toFixed(3)} />

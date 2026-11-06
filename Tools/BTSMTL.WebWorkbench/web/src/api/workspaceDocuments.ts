@@ -1,5 +1,5 @@
 import { getJson, postJson, putJson, query } from './http';
-import { array, boolean, choice, hosted, nullable, object, text } from './playerRecords';
+import { array, boolean, choice, hosted, nullable, object, optional, text } from './playerRecords';
 import type { AuthoringProduct } from './authoring';
 import type { ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
@@ -8,6 +8,7 @@ export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 
 const documentFields = {
   kind: choice(...workspaceDocumentKinds), identity: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
+  authoringType: optional(text),
 };
 const readDocument = object(documentFields);
 export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
