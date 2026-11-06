@@ -161,12 +161,13 @@ public sealed class AuthoringCommits
     }
 }
 
-// 异步读写锁：多个读取并行，写入独占且优先；写入期间同一调用链内的读取与写入直接进入。读取内不得再请求写入。
+// 异步读写锁：写入优先；同一调用链已持有的读取可重入，写入内的读取与写入可重入。读取内不得请求写入。
 sealed class AuthoringReaderWriterLock
 {
     readonly SemaphoreSlim m_Writer = new(1);
     readonly object m_Sync = new();
     readonly AsyncLocal<bool> m_Writing = new();
+    readonly AsyncLocal<bool> m_Reading = new();
     int m_Readers;
     TaskCompletionSource<object> m_Drained;
     TaskCompletionSource<object> m_WriterDone;
@@ -175,7 +176,7 @@ sealed class AuthoringReaderWriterLock
 
     public async Task<T> Read<T>(Func<Task<T>> action)
     {
-        if (m_Writing.Value)
+        if (m_Writing.Value || m_Reading.Value)
             return await action();
         while (true)
         {
@@ -191,9 +192,14 @@ sealed class AuthoringReaderWriterLock
             }
             await wait;
         }
-        try { return await action(); }
+        try
+        {
+            m_Reading.Value = true;
+            return await action();
+        }
         finally
         {
+            m_Reading.Value = false;
             lock (m_Sync)
                 if (--m_Readers == 0)
                     m_Drained?.TrySetResult(null);
