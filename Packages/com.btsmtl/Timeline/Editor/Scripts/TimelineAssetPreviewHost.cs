@@ -151,6 +151,7 @@ namespace BTSMTL.Timeline.Editor
         // 当前本地时刻的换算说明：停顿吸附、缺少游标记录等；为空表示按正式映射直接得到。
         public string LocalNote { get; private set; } = string.Empty;
         public TimelineAsset SampledSource { get; private set; }
+        public float SampledTime { get; private set; }
         public ulong SampledRevision { get; private set; }
         public TimelineStaticChain Chain { get; private set; }
         public TimelineOrchestrationQuery Query => m_Query;
@@ -621,6 +622,7 @@ namespace BTSMTL.Timeline.Editor
                     domain.Dispose();
                 }
             m_Contents.Clear();
+            SampledTime = 0f;
             SampledRevision = 0;
             m_SampleRequested = false;
             m_TargetStep = TargetStage.None;
@@ -823,6 +825,7 @@ namespace BTSMTL.Timeline.Editor
             TimelineAssetPreviewTraversal current = target.Traversals[^1];
             LocalTime = current.LocalEnd.AsSingle;
             SampledSource = current.Source;
+            SampledTime = target.PreviewTime.AsSingle;
             SampledRevision = target.Revision;
             m_Prefetching = true;
             Error = string.Empty;
