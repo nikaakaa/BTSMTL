@@ -11,6 +11,9 @@ namespace BTSMTL.Timeline
         string SourcePath { get; }
         bool HasUnsavedChanges { get; }
         void Prepare(TimelineData timeline, object graph = null);
+#if UNITY_EDITOR
+        void Prepare(TimelineData timeline, Clip clip, TimelineAuthoringClipConfiguration configuration);
+#endif
         IGraphNodeInterfaceResolver PrepareAuthoringContext(object graph);
         object ResolveGraph(string authoringId);
         void Apply(Action action, string name);

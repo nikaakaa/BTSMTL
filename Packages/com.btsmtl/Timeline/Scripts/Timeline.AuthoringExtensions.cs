@@ -4,6 +4,11 @@ using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline
 {
+    public interface ITimelineAuthoringBoundClipSource
+    {
+        float TotalSourceDuration { get; }
+    }
+
     public interface ITimelineAuthoringSourceAsset
     {
         float SourceDuration { get; }

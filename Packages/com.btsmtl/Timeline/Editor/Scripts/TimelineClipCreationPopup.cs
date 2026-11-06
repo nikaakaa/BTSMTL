@@ -46,7 +46,7 @@ namespace BTSMTL.Timeline.Editor
             m_Bindings = bindings;
             m_Create = create;
             m_Properties = TimelineAuthoringClipBinding.Properties(request.Prototype);
-            if (request.Prototype is ITimelineAuthoringResourceClip)
+            if (TimelineAuthoringClipBinding.HasResourceReference(request.Prototype.GetType()))
             {
                 m_Resources = new TimelineResourceSelection(request.Prototype, UpdateResource, () => editorWindow.Repaint(), request.Resource);
                 m_Request.Resource = null;
@@ -56,17 +56,24 @@ namespace BTSMTL.Timeline.Editor
         void UpdateResource(TimelineResourceSelection selection)
         {
             UnityEngine.Object previous = m_Request.Resource;
+            string previousReference = m_Request.ResourceReference;
             m_Request.Resource = selection.Source;
             m_Request.ResourceReference = selection.Reference;
             foreach (TimelineAuthoringProperty property in m_Properties)
                 if (property.IsSourceAsset) m_Request.Configuration.Set(property.PropertyId, selection.Reference);
-            if (m_Request.Resource && previous != m_Request.Resource)
-                UpdateDuration((ITimelineAuthoringClipSource)m_Request.Prototype);
+            if (!string.IsNullOrEmpty(selection.Reference))
+            {
+                TimelineAuthoringClipBinding.PrepareSource(m_Request.Prototype.Timeline, m_Request.Prototype, m_Request.Configuration);
+                if ((previous != m_Request.Resource || previousReference != selection.Reference) &&
+                    (m_Request.Prototype is ITimelineAuthoringBoundClipSource ||
+                     m_Request.Prototype is ITimelineAuthoringClipSource && m_Request.Resource))
+                    UpdateDuration();
+            }
         }
 
-        void UpdateDuration(ITimelineAuthoringClipSource source)
+        void UpdateDuration()
         {
-            float duration = source.GetSourceDuration(m_Request.Resource);
+            float duration = TimelineAuthoringClipBinding.SourceDuration(m_Request.Prototype, m_Request.Resource);
             OrchestrationTime end = m_Request.StartTime + OrchestrationTime.FromSeconds(duration);
             if (m_Request.EndTime == m_Request.DefaultEndTime) m_Request.EndTime = end;
             m_Request.DefaultEndTime = end;
@@ -143,7 +150,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (GUILayout.Button("Create"))
                 {
-                    if (m_Resources != null) UpdateResource(m_Resources);
                     EditorApplication.delayCall += () =>
                     {
                         string error = m_Create(m_Request);
@@ -206,7 +212,7 @@ namespace BTSMTL.Timeline.Editor
                 .Annotation<GraphAuthoringResourceAttribute>().ObjectTypes;
             m_Changed = changed;
             m_Repaint = repaint;
-            m_Reference = initialSource ? null : ((ITimelineAuthoringResourceClip)clip).ResourceReference;
+            m_Reference = initialSource ? null : TimelineAuthoringClipBinding.ResourceReference(clip);
             m_File = initialSource;
             Queue(Prepare);
         }
@@ -214,7 +220,8 @@ namespace BTSMTL.Timeline.Editor
         internal UnityEngine.Object Source => m_Resolution.Asset;
         internal string Reference => m_Reference;
         internal bool Ready => m_Declaration != null && m_Declaration.Availability.Available && m_Error == null && !string.IsNullOrEmpty(m_Reference) &&
-            !m_Resolution.IsMissing && (m_Declaration.Selection != "asset" || Source);
+            !m_Resolution.IsMissing && (m_Declaration.Source == GraphAuthoringReferenceSource.AuthoringDocument ||
+                m_Declaration.Selection != "asset" || Source);
 
         internal void Queue(Action action, Action completed = null)
         {
@@ -239,7 +246,8 @@ namespace BTSMTL.Timeline.Editor
             m_Scopes = m_Document.ResourceScopes().ToArray();
             m_Scope = m_Document.ResourceScope(m_Timeline);
             m_Declaration = m_Document.ResourceDeclaration(m_Timeline, m_Domain);
-            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference);
+            m_Resolution = m_Declaration.Source == GraphAuthoringReferenceSource.AdapterResource
+                ? m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference) : default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_References = m_Document.ResourceReferences(m_Timeline, m_Domain).ToArray();
             if (!string.IsNullOrEmpty(m_Reference)) m_File = Source;
@@ -275,7 +283,8 @@ namespace BTSMTL.Timeline.Editor
                     string reference = m_References[selected].Value;
                     Queue(() => SelectReference(reference));
                 }
-                if (m_Declaration.Selection == "asset" && m_Declaration.Availability.Available)
+                if (m_Declaration.Source == GraphAuthoringReferenceSource.AdapterResource &&
+                    m_Declaration.Selection == "asset" && m_Declaration.Availability.Available)
                 {
                     UnityEngine.Object source = EditorGUILayout.ObjectField("资源", m_File, typeof(UnityEngine.Object), false);
                     if (source != m_File) Queue(() => SelectSource(source));
@@ -305,7 +314,8 @@ namespace BTSMTL.Timeline.Editor
             m_Resolution = default;
             m_Objects = Array.Empty<GraphAuthoringResourceObjectCandidate>();
             m_SelectedObject = -1;
-            m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, reference);
+            if (m_Declaration.Source == GraphAuthoringReferenceSource.AdapterResource)
+                m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, reference);
             m_File = Source;
         }
 
@@ -343,7 +353,8 @@ namespace BTSMTL.Timeline.Editor
             foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(clip))
                 if (property.IsSourceAsset) configuration.Set(property.PropertyId, reference);
             TimelineAuthoringClipBinding.Configure(clip.Timeline, clip, configuration);
-            ((ITimelineAuthoringResourceClip)clip).BindSourceAsset(source);
+            if (clip is ITimelineAuthoringResourceClip resource)
+                resource.BindSourceAsset(source);
         }
 
         internal void Commit(Clip clip)

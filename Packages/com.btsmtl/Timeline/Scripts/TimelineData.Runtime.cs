@@ -323,8 +323,7 @@ namespace BTSMTL.Timeline
             Clip clip = PrepareClip(catalog, track, identity);
             TimelineAuthoringGraphBindings.Prepare(this);
             clip.ConfigureAuthoringReference(reference);
-            if (!endTime.HasValue)
-                TimelineAuthoringClipBinding.PrepareResource(clip);
+            TimelineAuthoringClipBinding.PrepareResource(clip);
             return CompleteClip(catalog, track, clip, startTime, endTime, easeIn, easeOut, clipIn,
                 TimelineAuthoringClipBinding.SourceAsset(clip));
         }

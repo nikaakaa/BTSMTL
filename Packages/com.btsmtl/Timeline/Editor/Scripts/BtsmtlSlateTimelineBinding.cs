@@ -596,7 +596,7 @@ namespace BTSMTL.Timeline.Editor
 
         static bool IsFileResource(Type clipType) => GraphAuthoringMemberBindings.Contract(clipType).Fields.Any(member =>
             member.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true &&
-            member.Annotation<GraphAuthoringResourceAttribute>()?.Selection == "asset");
+            member.Annotation<GraphAuthoringResourceAttribute>() is { Selection: "asset", Source: GraphAuthoringReferenceSource.AdapterResource });
 
         public void DropResource(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineClipBinding clip,
             UnityEngine.Object source, double time, Vector2 screenPosition)

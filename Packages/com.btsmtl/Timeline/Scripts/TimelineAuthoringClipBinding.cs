@@ -41,6 +41,8 @@ namespace BTSMTL.Timeline
 
         public static TimelineAuthoringReferenceValue Reference(Clip clip)
         {
+            if (IsDocumentSource(clip))
+                return default;
             if (clip is ITimelineAuthoringResourceClip resource)
             {
                 TimelineAuthoringReferenceValue resolution = resource.ResourceResolution;
@@ -59,6 +61,8 @@ namespace BTSMTL.Timeline
 
         public static UnityEngine.Object SourceAsset(Clip clip)
         {
+            if (IsDocumentSource(clip))
+                return null;
             if (clip is ITimelineAuthoringClipSource source)
                 return source.SourceAsset;
             return GraphAuthoringMemberBindings.Contract(clip).Fields
@@ -69,12 +73,44 @@ namespace BTSMTL.Timeline
 
         public static OrchestrationTime DefaultEndTime(Clip clip, OrchestrationTime startTime,
             UnityEngine.Object referenceObject) =>
-            clip is ITimelineAuthoringClipSource source && referenceObject
-                ? startTime + OrchestrationTime.FromSeconds(source.GetSourceDuration(referenceObject))
+            clip is ITimelineAuthoringBoundClipSource || clip is ITimelineAuthoringClipSource && referenceObject
+                ? startTime + OrchestrationTime.FromSeconds(SourceDuration(clip, referenceObject))
                 : startTime + (clip is SignalClip ? TimelineTimeGrid.Position(1, TimelineUtility.FrameRate) : OrchestrationTime.FromSeconds(0.05d));
+
+        public static float SourceDuration(Clip clip, UnityEngine.Object referenceObject) =>
+            clip is ITimelineAuthoringBoundClipSource source ? source.TotalSourceDuration :
+                ((ITimelineAuthoringClipSource)clip).GetSourceDuration(referenceObject);
+
+        public static bool HasResourceReference(Type clipType) => GraphAuthoringMemberBindings.Contract(clipType).Fields.Any(field =>
+            field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true &&
+            field.Annotation<GraphAuthoringResourceAttribute>() != null);
+
+        static GraphAuthoringMember ResourceMember(Clip clip) => GraphAuthoringMemberBindings.Contract(clip).Fields.Single(field =>
+            field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true &&
+            field.Annotation<GraphAuthoringResourceAttribute>() != null);
+
+        static bool IsDocumentSource(Clip clip) => GraphAuthoringMemberBindings.Contract(clip).Fields.Any(field =>
+            field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true &&
+            field.Annotation<GraphAuthoringResourceAttribute>()?.Source == GraphAuthoringReferenceSource.AuthoringDocument);
+
+        public static string ResourceReference(Clip clip) => (string)ResourceMember(clip).Read(clip);
+
+        public static string ResourceReference(Clip clip, TimelineAuthoringClipConfiguration configuration) =>
+            configuration.Get<string>(ResourceMember(clip).Metadata.FieldId);
+
+        public static void PrepareSource(TimelineData timeline, Clip clip, TimelineAuthoringClipConfiguration configuration)
+        {
+            if (IsDocumentSource(clip))
+                timeline.AuthoringDocument.Prepare(timeline, clip, configuration);
+        }
 
         public static void PrepareResource(Clip clip)
         {
+            if (IsDocumentSource(clip))
+            {
+                clip.Timeline.AuthoringDocument.Prepare(clip.Timeline, clip, Read(clip));
+                return;
+            }
             if (clip is ITimelineAuthoringResourceClip resource)
             {
                 resource.BindResourceResolution(default);
@@ -111,6 +147,7 @@ namespace BTSMTL.Timeline
         public static void Configure(TimelineData timeline, Clip clip,
             TimelineAuthoringClipConfiguration configuration)
         {
+            PrepareSource(timeline, clip, configuration);
             configuration.Candidate.Apply(clip);
         }
     }

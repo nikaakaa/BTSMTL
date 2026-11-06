@@ -205,7 +205,7 @@ namespace BTSMTL.Timeline.Editor
             var bindings = new List<PropertyBinding>();
             foreach (TimelineAuthoringProperty attribute in TimelineAuthoringClipBinding.Properties(clip))
             {
-                if (clip is ITimelineAuthoringResourceClip && attribute.IsSourceAsset) continue;
+                if (TimelineAuthoringClipBinding.HasResourceReference(clip.GetType()) && attribute.IsSourceAsset) continue;
                 if (!attribute.Supports(clip))
                     continue;
                 bindings.Add(new PropertyBinding
@@ -216,7 +216,7 @@ namespace BTSMTL.Timeline.Editor
                 });
             }
             m_ClipProperties = bindings.ToArray();
-            if (clip is ITimelineAuthoringResourceClip)
+            if (TimelineAuthoringClipBinding.HasResourceReference(clip.GetType()))
                 m_Resources = new TimelineResourceSelection(clip, _ => Repaint(), Repaint);
             SynchronizeClipProperties(clip);
         }
