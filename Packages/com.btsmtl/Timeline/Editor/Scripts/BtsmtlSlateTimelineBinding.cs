@@ -1283,9 +1283,9 @@ namespace BTSMTL.Timeline.Editor
                 TimelineCurveChannelDescriptor descriptor = descriptors[index];
                 if (!descriptor.Supports(first) || !descriptor.Supports(second))
                     continue;
-                AnimationCurve source = descriptor.Read(first);
-                descriptor.Replace(first, SplitNormalizedCurve(source, 0f, normalizedSplit));
-                descriptor.Replace(second, SplitNormalizedCurve(source, normalizedSplit, 1f));
+                AnimationCurve source = TimelineCurveUnity.Create(descriptor.Read(first));
+                descriptor.Replace(first, TimelineCurveUnity.Capture(SplitNormalizedCurve(source, 0f, normalizedSplit)));
+                descriptor.Replace(second, TimelineCurveUnity.Capture(SplitNormalizedCurve(source, normalizedSplit, 1f)));
             }
         }
 
@@ -1797,8 +1797,8 @@ namespace BTSMTL.Timeline.Editor
                 m_Descriptor = descriptor;
                 m_ResourceOwner = resourceOwner;
                 m_DisplayDuration = clip.Source.DurationTime.AsSingle;
-                m_Curve = resourceOwner != null ? ConvertSourceTime(descriptor.Read(resourceOwner), false) : ConvertCurveTime(
-                    descriptor.Read(clip.Source),
+                m_Curve = resourceOwner != null ? ConvertSourceTime(TimelineCurveUnity.Create(descriptor.Read(resourceOwner)), false) : ConvertCurveTime(
+                    TimelineCurveUnity.Create(descriptor.Read(clip.Source)),
                     clip.Source.DurationTime.AsSingle,
                     false);
             }
@@ -1808,9 +1808,9 @@ namespace BTSMTL.Timeline.Editor
             public TimelineCurveValueDomain ValueDomain => m_Descriptor.ValueDomain;
             public AnimationCurve Curve => m_Curve;
             public float Duration => m_Clip.Length;
-            public AnimationCurve ReadSourceCurve()
+            public TimelineCurve ReadSourceCurve()
             {
-                AnimationCurve source = m_Descriptor.Read(m_ResourceOwner);
+                AnimationCurve source = TimelineCurveUnity.Create(m_Descriptor.Read(m_ResourceOwner));
                 AnimationCurve candidate = ConvertSourceTime(m_Curve, true);
                 var keys = new List<Keyframe>();
                 foreach (Keyframe key in source.keys)
@@ -1820,16 +1820,16 @@ namespace BTSMTL.Timeline.Editor
                     if (key.time >= m_Clip.SourceStart && key.time <= m_Clip.SourceEnd)
                         keys.Add(key);
                 keys.Sort((left, right) => left.time.CompareTo(right.time));
-                return new AnimationCurve(keys.ToArray())
+                return TimelineCurveUnity.Capture(new AnimationCurve(keys.ToArray())
                 {
                     preWrapMode = candidate.preWrapMode,
                     postWrapMode = candidate.postWrapMode
-                };
+                });
             }
 
             internal void RefreshResourceCurve()
             {
-                AnimationCurve source = ConvertSourceTime(m_Descriptor.Read(m_ResourceOwner), false);
+                AnimationCurve source = ConvertSourceTime(TimelineCurveUnity.Create(m_Descriptor.Read(m_ResourceOwner)), false);
                 m_Curve.keys = source.keys;
                 m_Curve.preWrapMode = source.preWrapMode;
                 m_Curve.postWrapMode = source.postWrapMode;
@@ -1854,7 +1854,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 float duration = Duration;
                 if (m_DisplayDuration == duration) return;
-                AnimationCurve source = m_Descriptor.Read(m_Clip.Source);
+                AnimationCurve source = TimelineCurveUnity.Create(m_Descriptor.Read(m_Clip.Source));
                 for (int step = 0; step < source.length; step++)
                 {
                     int index = duration > m_DisplayDuration ? source.length - step - 1 : step;
@@ -1877,16 +1877,16 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (!HasChanges())
                     return false;
-                m_Descriptor.Replace(m_Clip.Source, ConvertCurveTime(m_Curve, Duration, true));
+                m_Descriptor.Replace(m_Clip.Source, TimelineCurveUnity.Capture(ConvertCurveTime(m_Curve, Duration, true)));
                 return true;
             }
 
             public bool HasChanges()
             {
                 if (m_ResourceOwner != null)
-                    return !TimelineCurveAuthoring.AreEquivalent(m_Curve,
-                        ConvertSourceTime(m_Descriptor.Read(m_ResourceOwner), false));
-                AnimationCurve source = m_Descriptor.Read(m_Clip.Source);
+                    return !TimelineCurveAuthoring.AreEquivalent(TimelineCurveUnity.Capture(m_Curve),
+                        TimelineCurveUnity.Capture(ConvertSourceTime(TimelineCurveUnity.Create(m_Descriptor.Read(m_ResourceOwner)), false)));
+                AnimationCurve source = TimelineCurveUnity.Create(m_Descriptor.Read(m_Clip.Source));
                 if (source.preWrapMode != m_Curve.preWrapMode || source.postWrapMode != m_Curve.postWrapMode ||
                     source.length != m_Curve.length)
                     return true;
@@ -1898,7 +1898,7 @@ namespace BTSMTL.Timeline.Editor
                     key.time /= Duration;
                     key.inTangent *= Duration;
                     key.outTangent *= Duration;
-                    if (!TimelineCurveAuthoring.AreEquivalent(source[i], key))
+                    if (!TimelineCurveAuthoring.AreEquivalent(TimelineCurveUnity.Capture(source[i]), TimelineCurveUnity.Capture(key)))
                         return true;
                 }
                 return source.length == 0 || m_Curve[0].time != 0f || m_Curve[m_Curve.length - 1].time != Duration;
@@ -1915,7 +1915,7 @@ namespace BTSMTL.Timeline.Editor
 
             AnimationCurve SnapCurve(AnimationCurve source)
             {
-                AnimationCurve result = TimelineCurveAuthoring.CopyCurve(source);
+                AnimationCurve result = TimelineCurveUnity.Create(TimelineCurveUnity.Capture(source));
                 Keyframe[] keys = result.keys;
                 for (int index = 0; index < keys.Length; index++)
                 {
@@ -1937,7 +1937,7 @@ namespace BTSMTL.Timeline.Editor
 
             static AnimationCurve ConvertCurveTime(AnimationCurve source, float duration, bool toNormalized)
             {
-                AnimationCurve result = TimelineCurveAuthoring.CopyCurve(source);
+                AnimationCurve result = TimelineCurveUnity.Create(TimelineCurveUnity.Capture(source));
                 if (duration <= 0f)
                     throw new InvalidOperationException("曲线所属 Clip 必须具有正时长。");
                 float safeDuration = duration;

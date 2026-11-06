@@ -236,12 +236,8 @@ namespace BTSMTL.Timeline.Editor
             {
                 PropertyBinding binding = m_ClipProperties[i];
                 binding.Value = m_ClipConfiguration[binding.Attribute.PropertyId];
-                if (binding.ValueType == typeof(AnimationCurve))
-                    binding.Curve = binding.Value is AnimationCurve curve ? new AnimationCurve(curve.keys)
-                    {
-                        preWrapMode = curve.preWrapMode,
-                        postWrapMode = curve.postWrapMode
-                    } : new AnimationCurve();
+                if (binding.ValueType == typeof(TimelineCurve))
+                    binding.Curve = TimelineCurveUnity.Create((TimelineCurve)binding.Value);
             }
             m_ClipRevision = clip.Track.Timeline.AuthoringRevision;
         }
@@ -392,7 +388,7 @@ namespace BTSMTL.Timeline.Editor
 
         static bool ValuesDiffer(object left, object right)
         {
-            if (left is AnimationCurve leftCurve && right is AnimationCurve rightCurve)
+            if (left is TimelineCurve leftCurve && right is TimelineCurve rightCurve)
                 return !TimelineCurveAuthoring.AreEquivalent(leftCurve, rightCurve);
             return !Equals(left, right);
         }

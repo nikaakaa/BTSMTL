@@ -43,8 +43,8 @@ namespace BTSMTL.Timeline.Editor
                     break;
                 case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object:
                 case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference:
-                    changed = valueType == typeof(AnimationCurve)
-                        ? EditorGUILayout.CurveField(label, editableCurve ?? (AnimationCurve)value)
+                    changed = valueType == typeof(TimelineCurve)
+                        ? TimelineCurveUnity.Capture(EditorGUILayout.CurveField(label, editableCurve ?? TimelineCurveUnity.Create((TimelineCurve)value)))
                         : EditorGUILayout.ObjectField(label, value as UnityEngine.Object, valueType, false);
                     break;
                 default:
