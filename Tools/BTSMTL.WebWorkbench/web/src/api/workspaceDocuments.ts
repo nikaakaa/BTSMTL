@@ -1,7 +1,7 @@
 import { getJson, postJson, putJson, query } from './http';
 import { array, boolean, choice, hosted, nullable, object, optional, text } from './playerRecords';
 import type { AuthoringProduct } from './authoring';
-import type { ExecutionScopeSelection } from './resourceRegistration';
+import { readExecutionScopeSelection, type ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
 
 export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables', 'graph'] as const;
@@ -10,7 +10,8 @@ const documentFields = {
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
   authoringType: optional(text),
 };
-const readDocument = object(documentFields);
+export const readWorkspaceDocumentInfo = object(documentFields);
+const readDocument = readWorkspaceDocumentInfo;
 export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
 
 const readFiles = (value: unknown, path = 'WorkspaceDocument.files'): Record<string, string> =>
@@ -35,7 +36,17 @@ export type WorkspaceEditingView = {
 const readList = object({ success: boolean, documents: array(readDocument) });
 const readOpen = object({ success: boolean, document: readWorkspaceDocumentSnapshot });
 const readElements = object({ success: boolean, elements: array(readElement) });
-const readView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
+export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
+const readView = readWorkspaceDocumentView;
+const readEditingView = object({
+  writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles })),
+  reads: array(object({ documentPath: text, revision: text })), execution: readExecutionScopeSelection,
+  product: nullable(object({ value: text, revision: text })), scene: optional(object({ path: text, revision: text })),
+});
+export function readWorkspaceEditingView(value: unknown): WorkspaceEditingView {
+  const { scene, ...view } = readEditingView(value, 'EditingView');
+  return { ...view, ...(scene === undefined ? {} : { scene }) };
+}
 
 export const workspaceDocumentsApi = {
   list: (kind?: WorkspaceDocumentInfo['kind'], signal?: AbortSignal) =>
