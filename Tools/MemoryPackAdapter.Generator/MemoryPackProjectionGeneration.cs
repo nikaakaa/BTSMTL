@@ -68,8 +68,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 string access = "value";
                 foreach (string part in path.Split('.'))
                 {
-                    ISymbol[] matches = ValueTypeMembers.InHierarchy(current).Where(member => !member.IsStatic &&
-                        string.Equals(MemberKey(member.Name), MemberKey(part), StringComparison.OrdinalIgnoreCase) &&
+                    ISymbol[] matches = ValueTypeMembers.StoragePathMembers(current, part).Where(member => !member.IsStatic &&
                         compilation.IsSymbolAccessibleWithin(member, compilation.Assembly) &&
                         (member is IFieldSymbol || member is IPropertySymbol property && !property.IsIndexer &&
                             property.GetMethod != null && compilation.IsSymbolAccessibleWithin(property.GetMethod, compilation.Assembly) ||

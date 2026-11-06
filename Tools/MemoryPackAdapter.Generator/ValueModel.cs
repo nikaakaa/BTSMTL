@@ -222,8 +222,7 @@ namespace ThirdPerson.ValueGeneration
                  Identity(named.OriginalDefinition) == "System.Collections.Generic.IEnumerable<T>" &&
                  SymbolEqualityComparer.Default.Equals(named.TypeArguments[0], array.ElementType)));
 
-        internal static string MemberKey(string name) => name.StartsWith("m_", StringComparison.Ordinal) ? name.Substring(2) :
-            name.StartsWith("value_", StringComparison.Ordinal) ? name.Substring(6) : name;
+        internal static string MemberKey(string name) => ValueTypeMembers.StorageName(name);
 
         internal static Member UnionKindMember(INamedTypeSymbol type)
         {

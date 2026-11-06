@@ -44,6 +44,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                         "记录声明须有唯一合法名称，并对应原构造与原成员"));
                     return false;
                 }
+                if (!BindStorageReaders(context.Compilation, type, type, members, out string readReason))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, constructor.Locations.FirstOrDefault(), Identity(type), readReason));
+                    return false;
+                }
                 if (!EmitRecordedState(context, code, type, constructor, members, name, readInputs)) return false;
             }
             return EmitRecordedStateMemberGroups(context, code, type, names);
@@ -122,7 +127,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.Append("public void Write").Append(name).Append("RecordedState<TWriter>(ref TWriter writer) where TWriter : struct, ")
                 .Append(Runtime).AppendLine("IRecordedRuntimeStateWriter {");
             for (int i = 0; i < inputs.Length; i++)
-                EmitRecordedStateWrite(code, inputs[i], "this." + Escape(members[i].Symbol.Name));
+                EmitRecordedStateWrite(code, inputs[i], "this." + Escape(members[i].ReadSymbol.Name));
             code.AppendLine("}");
             if (readInputs)
             {
@@ -172,13 +177,13 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Select(candidate => new { Constructor = candidate,
                         Inputs = ValueStorageConstructorInputs(context.Compilation, record, candidate, storage) })
                     .Where(candidate => candidate.Inputs != null), candidate => candidate.Constructor);
-                if (constructors.Length != 1 || !context.Compilation.IsSymbolAccessibleWithin(constructors[0].Constructor, owner) ||
-                    constructors[0].Inputs.Any(member => !context.Compilation.IsSymbolAccessibleWithin(
-                        member.Symbol is IPropertySymbol property ? property.GetMethod : member.Symbol, owner)))
+                if (constructors.Length != 1 || !context.Compilation.IsSymbolAccessibleWithin(constructors[0].Constructor, owner))
                 {
                     reason = "原构造展开须唯一对应可访问的原构造与原成员";
                     return false;
                 }
+                if (!BindStorageReaders(context.Compilation, record, owner, constructors[0].Inputs, out reason))
+                    return false;
                 value = new RecordedStateValue { Type = type, Kind = RecordedStateKind.Constructor, Members = constructors[0].Inputs };
                 value.Inputs = new RecordedStateValue[value.Members.Length];
                 for (int i = 0; i < value.Inputs.Length; i++)
@@ -217,7 +222,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     break;
                 case RecordedStateKind.Constructor:
                     for (int i = 0; i < value.Inputs.Length; i++)
-                        EmitRecordedStateWrite(code, value.Inputs[i], access + "." + Escape(value.Members[i].Symbol.Name));
+                        EmitRecordedStateWrite(code, value.Inputs[i], access + "." + Escape(value.Members[i].ReadSymbol.Name));
                     break;
                 case RecordedStateKind.Record:
                     code.Append(access).AppendLine(".WriteRecordedState(ref writer);");

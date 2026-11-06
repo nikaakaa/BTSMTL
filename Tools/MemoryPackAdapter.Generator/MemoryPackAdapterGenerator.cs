@@ -296,9 +296,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 string reason = null;
                 if (named.TypeKind != TypeKind.Class && named.TypeKind != TypeKind.Struct)
                     reason = "原类型不是可构造的值或记录；需要原字段用途合同";
-                else if (StorageReadMembers(named, IsImplicitReference) == null && members.Any(member => !context.Compilation.IsSymbolAccessibleWithin(
-                    ValueTypeMembers.InHierarchy(named).FirstOrDefault(symbol => symbol.Name == member.Name) ?? member.Symbol,
-                    context.Compilation.Assembly)))
+                else if (StorageReadMembers(named, IsImplicitReference) == null && members.Any(member =>
+                    ValueTypeMembers.StorageReader(named, member.Symbol, IsAccessible) == null))
                     reason = "原成员不可从消费者访问，须由原字段工具生成中立访问，不能手写镜像";
                 else if (members.Length > 249)
                     reason = "原记录成员超过 MemoryPack 对象头上限";
@@ -518,7 +517,7 @@ namespace ThirdPerson.MemoryPackAdapters
         static bool MemoryPackMutableRecord(INamedTypeSymbol type, Member[] members, Func<ISymbol, bool> isAccessible) =>
             !type.IsReadOnly && (type.IsValueType || type.InstanceConstructors.Any(constructor =>
                 isAccessible(constructor) && constructor.Parameters.Length == 0)) &&
-            members.All(member => member.Symbol is IFieldSymbol field && !field.IsReadOnly ||
+            members.All(member => member.Symbol is IFieldSymbol field && !field.IsReadOnly && isAccessible(field) ||
                 member.Symbol is IPropertySymbol property && property.SetMethod != null && isAccessible(property.SetMethod));
 
         static void EmitMemoryPackFormatter(StringBuilder code, INamedTypeSymbol type, Member[] members, Member[] storage, int ordinal,
@@ -554,7 +553,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 EmitStorageRead(code, storage, "value", false, partitioned);
                 EmitObjectHeader(code, "writer.WriteObjectHeader", members, partitioned, hasPayload);
                 for (int index = 0; index < members.Length; index++)
-                    EmitMemberWrite(code, members[index], projection == null ? MemberValue(type, members[index]) : projection.Accesses[index],
+                    EmitMemberWrite(code, members[index], projection == null ? MemberValue(type, members[index], isAccessible) : projection.Accesses[index],
                         partitioned, hasPayload, stringCodec);
             }
             code.AppendLine("}");
@@ -699,9 +698,9 @@ namespace ThirdPerson.MemoryPackAdapters
                     .Append(member.Name).Append(" = value.").Append(Escape(member.Name)).AppendLine(";");
         }
 
-        static string MemberValue(INamedTypeSymbol type, Member member) =>
+        static string MemberValue(INamedTypeSymbol type, Member member, Func<ISymbol, bool> isAccessible) =>
             HasAttribute(type, StorageAttribute) || type.GetMembers("ReadValueStorage").OfType<IMethodSymbol>().Any() ?
-                "member_" + member.Name : "value." + Escape(member.Name);
+                "member_" + member.Name : "value." + Escape(member.TupleName ?? ValueTypeMembers.StorageReader(type, member.Symbol, isAccessible).Name);
 
         static string MemberCondition(Member member, bool partitioned, Func<ITypeSymbol, bool> hasPayload)
         {

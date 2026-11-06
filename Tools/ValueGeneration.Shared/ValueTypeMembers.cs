@@ -7,6 +7,23 @@ namespace ThirdPerson.ValueGeneration
 {
     internal static class ValueTypeMembers
     {
+        internal static string StorageName(string name) => name.StartsWith("m_", StringComparison.Ordinal) ? name.Substring(2) :
+            name.StartsWith("value_", StringComparison.Ordinal) ? name.Substring(6) : name;
+
+        internal static IEnumerable<ISymbol> StoragePathMembers(ITypeSymbol type, string name) => InHierarchy(type)
+            .Where(member => string.Equals(StorageName(member.Name), StorageName(name), StringComparison.OrdinalIgnoreCase));
+
+        internal static ISymbol StorageReader(INamedTypeSymbol type, ISymbol member, Func<ISymbol, bool> accessible)
+        {
+            if (member is IPropertySymbol property ? property.GetMethod != null && accessible(property.GetMethod) : accessible(member))
+                return member;
+            ITypeSymbol valueType = member is IFieldSymbol field ? field.Type : ((IPropertySymbol)member).Type;
+            IPropertySymbol[] getters = StoragePathMembers(type, member.Name).OfType<IPropertySymbol>()
+                .Where(candidate => !candidate.IsStatic && !candidate.IsIndexer && candidate.GetMethod != null &&
+                    accessible(candidate.GetMethod) && SymbolEqualityComparer.Default.Equals(candidate.Type, valueType)).ToArray();
+            return getters.Length == 1 ? getters[0] : null;
+        }
+
         internal static T[] StorageConstructors<T>(IEnumerable<T> candidates, Func<T, IMethodSymbol> constructor)
         {
             T[] matches = candidates.ToArray();

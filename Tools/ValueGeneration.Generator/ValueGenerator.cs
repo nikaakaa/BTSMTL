@@ -370,6 +370,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             IMethodSymbol constructor = constructors[0].Constructor;
             Member[] inputs = constructors[0].Inputs;
+            if (!BindStorageReaders(context.Compilation, type, type, inputs, out string readReason))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type), readReason));
+                return false;
+            }
             code.Append("public void ReadValueStorage(");
             for (int index = 0; index < inputs.Length; index++)
             {
@@ -383,7 +388,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             for (int index = 0; index < inputs.Length; index++)
             {
                 Member member = inputs[index];
-                string value = "this." + Escape(member.Symbol.Name);
+                string value = "this." + Escape(member.ReadSymbol.Name);
                 code.Append(Escape(member.Symbol.Name)).Append(" = ")
                     .Append(ValueStorageSequenceToArray(member.Type, constructor.Parameters[index].Type) ?
                         "global::System.Linq.Enumerable.ToArray(" + value + ")" : value).AppendLine(";");
@@ -429,6 +434,21 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return true;
             Conversion conversion = ((CSharpCompilation)compilation).ClassifyConversion(source, target);
             return conversion.IsImplicit && conversion.IsReference;
+        }
+
+        static bool BindStorageReaders(Compilation compilation, INamedTypeSymbol type, INamedTypeSymbol owner,
+            Member[] members, out string reason)
+        {
+            foreach (Member member in members)
+            {
+                member.ReadSymbol = ValueTypeMembers.StorageReader(type, member.Symbol,
+                    symbol => compilation.IsSymbolAccessibleWithin(symbol, owner));
+                if (member.ReadSymbol != null) continue;
+                reason = "存储成员 '" + Identity(member.Symbol) + "' 无法读取，须由原类型提供唯一同名、同类型的可访问 getter";
+                return false;
+            }
+            reason = null;
+            return true;
         }
 
         static bool ValueStorageSequenceToArray(ITypeSymbol source, ITypeSymbol target) =>
@@ -483,8 +503,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         static bool UpdateNameMatches(string parameter, string member) => string.Equals(StorageName(parameter),
             StorageName(member), StringComparison.OrdinalIgnoreCase);
 
-        static string StorageName(string name) => name.StartsWith("m_", StringComparison.Ordinal) ? name.Substring(2) :
-            name.StartsWith("value_", StringComparison.Ordinal) ? name.Substring(6) : name;
+        static string StorageName(string name) => ValueTypeMembers.StorageName(name);
 
         static void EmitValueUpdates(GeneratorExecutionContext context, INamedTypeSymbol type)
         {
@@ -688,6 +707,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         sealed class Member
         {
             public ISymbol Symbol;
+            public ISymbol ReadSymbol;
             public ITypeSymbol Type;
             public bool IsCase;
             public bool Payload;
