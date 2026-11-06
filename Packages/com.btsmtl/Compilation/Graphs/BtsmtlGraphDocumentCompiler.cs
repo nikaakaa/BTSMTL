@@ -176,7 +176,7 @@ namespace BTSMTL.Compilation
                         variable.Declaration.Lifetime != PipelineBlackboardVariableLifetime.GraphInstance))
                     throw new InvalidOperationException($"{route}: 子图变量必须为不发布的图作用域、图实例生命周期变量。");
                 owners.Add(variables.OwnerId, document.AuthoringId);
-                foreach (BtsmtlBlackboardDeclarationSource declaration in BtsmtlGraphVariableCompilation.Declarations(variables, route))
+                foreach (BtsmtlBlackboardDeclarationSource declaration in BtsmtlGraphVariableCompilation.Declarations(variables, route, m_Hash))
                     sources.Add(BtsmtlGraphVariableReference.CompileIdentity(variables.OwnerId,
                         declaration.Declaration.DeclarationId), declaration);
             }
