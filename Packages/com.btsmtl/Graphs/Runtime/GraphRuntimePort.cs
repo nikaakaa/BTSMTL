@@ -24,7 +24,7 @@ namespace BTSMTL.Graphs
         public string PortId { get; }
         public bool IsTrigger { get; }
 
-        internal GraphRuntimePort(string graph, string node, string port, Type valueType, bool input, bool trigger, int operation, int slot,
+        internal GraphRuntimePort(string graph, string node, string port, Type valueType, bool input, bool isTrigger, int operation, int slot,
             int compiledPortId, int enumTypeContentId, Func<GraphRuntimePort, bool, GraphHostValue> read,
             Action<GraphRuntimePort, GraphHostValue, GraphVariableMutation> mutate,
             Func<GraphRuntimePort, bool> isLocked, Action trigger,
@@ -34,7 +34,7 @@ namespace BTSMTL.Graphs
             ValueType = valueType;
             NodeId = node;
             PortId = port;
-            IsTrigger = trigger;
+            IsTrigger = isTrigger;
             IsInput = input;
             Operation = operation;
             ValueSlot = slot;
