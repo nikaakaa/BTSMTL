@@ -13,9 +13,9 @@ using UnityEngine;
 namespace BTSMTL.Graphs.Editor
 {
     // 宿主按节点能力取得编译描述，字段直接取自平台作者对象。
-    public interface IBtsmtlGraphNodeCompileSource
+    public interface IBtsmtlGraphNodeCompileSource : IGraphCompileReferences
     {
-        GraphNodeCompileDescription Describe(FlowNode node);
+        GraphNodeCompileDescription Describe(GraphNodeFields fields);
     }
 
     // 节点的平台补充信息由宿主按节点能力给出。

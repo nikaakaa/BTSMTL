@@ -165,11 +165,14 @@ namespace BTSMTL
         {
             if (!m_GraphSources.TryGetValue(graph, out var source))
             {
-                source = SerializeGraphSource(graph);
+                source = graph is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } document
+                    ? (document.DocumentCompilationInput, document.DocumentCompilationReferences.ToList())
+                    : SerializeGraphSource(graph);
                 m_GraphSources.Add(graph, source);
             }
             parts.Add(source.Json);
-            if (graph is IBtsmtlGraphCompilationInputs inputs)
+            if (graph is IBtsmtlGraphCompilationInputs inputs &&
+                graph is not IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true })
                 inputs.AppendCompilationInputs(parts);
             AppendLifecycle(parts, graph, true);
             AppendLifecycle(parts, graph, false);
@@ -186,7 +189,7 @@ namespace BTSMTL
             var snapshot = new GraphSource
             {
                 nodes = graph.allNodes.OrderBy(node => node.UID, StringComparer.Ordinal).ToList(),
-                localBlackboard = new BlackboardSource { variables = variables.variables
+                localBlackboard = variables == null ? null : new BlackboardSource { variables = variables.variables
                     .OrderBy(value => value.Value.ID, StringComparer.Ordinal)
                     .ToDictionary(value => value.Key, value => value.Value, StringComparer.Ordinal) }
             };
@@ -320,6 +323,11 @@ namespace BTSMTL
             parts.Add(reference != null ? "1" : "0");
             if (reference == null)
                 return;
+            if (reference is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } document)
+            {
+                parts.Add(document.AuthoringId);
+                return;
+            }
             if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long fileId))
                 throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。");
             parts.Add(guid);
@@ -357,7 +365,8 @@ namespace BTSMTL
                     if (reference == null)
                         continue;
                     AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long file);
-                    string id = guid + ":" + file.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    string id = reference is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } source
+                        ? source.AuthoringId : guid + ":" + file.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     if (dependencies.ContainsKey(id))
                         continue;
                     dependencies.Add(id, new GraphExecutionDependency(id, reference is Graph child

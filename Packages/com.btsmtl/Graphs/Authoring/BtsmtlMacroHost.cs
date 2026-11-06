@@ -17,6 +17,7 @@ namespace BTSMTL.Graphs
         public abstract string DisplayName { get; }
         // 准入声明的稳定内容，进入调用方编译身份。
         public abstract string Identity { get; }
+        public abstract bool SupportsVariables { get; }
         public abstract bool CanAuthorNodeType(Type nodeType);
         // 私有子图在所属图中创建时取所属图的准入；各子图持有独立副本。
         public abstract BtsmtlMacroHost Clone();
@@ -51,33 +52,14 @@ namespace BTSMTL.Graphs
         public virtual BtsmtlMacroGraph CreatePrivateMacro(FlowGraph owner, string name)
             => ((IBtsmtlAuthoringGraph)owner).Authoring.CreatePrivateMacro(name);
 
-        public virtual IEnumerable<BtsmtlMacroGraph> SharedMacros(FlowGraph caller)
-        {
-            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(BtsmtlMacroGraph)))
-                if (AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GUIDToAssetPath(guid)) is BtsmtlMacroGraph macro)
-                    yield return macro;
-        }
-
-        public virtual IEnumerable<FlowGraph> CallerGraphs(BtsmtlMacroGraph macro)
-        {
-            string macroPath = AssetDatabase.GetAssetPath(macro);
-            if (string.IsNullOrEmpty(macroPath))
-                yield break;
-            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(FlowGraph)))
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path == macroPath || Array.IndexOf(AssetDatabase.GetDependencies(path, false), macroPath) >= 0)
-                    foreach (FlowGraph graph in AssetDatabase.LoadAllAssetsAtPath(path).OfType<FlowGraph>())
-                        yield return graph;
-            }
-        }
-
-        public virtual string AuthoringPath(FlowGraph graph) => AssetDatabase.GetAssetPath(graph);
+        public abstract IEnumerable<BtsmtlMacroGraph> SharedMacros(FlowGraph caller);
+        public abstract IEnumerable<FlowGraph> CallerGraphs(BtsmtlMacroGraph macro);
+        public abstract string AuthoringPath(FlowGraph graph);
         public virtual string SharedMacroLabel(BtsmtlMacroGraph macro) => macro.name;
-        public virtual bool IsShared(BtsmtlMacroGraph macro) => AssetDatabase.IsMainAsset(macro);
+        public abstract bool IsShared(BtsmtlMacroGraph macro);
 
         public virtual void Edit(FlowGraph graph, string title, FlowGraph[] affectedGraphs, Action mutation) =>
-            BtsmtlFlowGraphAuthoring.EditAssets(graph, title, affectedGraphs, mutation);
+            throw new InvalidOperationException("子图宿主尚未绑定所属作者文档的编辑事务。");
 
         public virtual void DrawAuthoringToolbar(BtsmtlMacroGraph macro) =>
             GUILayout.Label((IsShared(macro) ? "共享子图 · " : "私有子图 · ") + DisplayName, EditorStyles.miniLabel);
@@ -108,10 +90,32 @@ namespace BTSMTL.Graphs
         }
 
         public IReadOnlyList<string> Domains => m_Domains;
+        public override bool SupportsVariables => true;
         public override string DisplayName => m_Domains.Length == 0
             ? "通用图" : "通用图（" + string.Join("、", m_Domains) + "）";
         public override string Identity => "graph:" + string.Join(",", m_Domains);
         public override bool CanAuthorNodeType(Type nodeType) => BtsmtlGraphRoot.AllowsNodeType(nodeType, m_Domains);
         public override BtsmtlMacroHost Clone() => new BtsmtlGraphMacroHost(m_Domains);
+
+#if UNITY_EDITOR
+        public override IEnumerable<BtsmtlMacroGraph> SharedMacros(FlowGraph caller)
+        {
+            BtsmtlGraphDocumentEditor editor = ((IBtsmtlAuthoringGraph)caller).Authoring.Document;
+            return editor.Documents.Where(document => document.IsMacro && document.Ownership == "Shared")
+                .Select(document => (BtsmtlMacroGraph)editor.Graph(document.AuthoringId));
+        }
+
+        public override IEnumerable<FlowGraph> CallerGraphs(BtsmtlMacroGraph macro)
+        {
+            BtsmtlGraphDocumentEditor editor = macro.Authoring.Document;
+            return editor.Documents.Where(document => document.Nodes.Any(node => node.CalleeId == macro.AuthoringId))
+                .Select(document => editor.Graph(document.AuthoringId));
+        }
+
+        public override string AuthoringPath(FlowGraph graph) => ((IBtsmtlAuthoringGraph)graph).Authoring.Document.SourcePath;
+        public override bool IsShared(BtsmtlMacroGraph macro) => macro.Source.Ownership == "Shared";
+        public override void Edit(FlowGraph graph, string title, FlowGraph[] affectedGraphs, Action mutation) =>
+            ((IBtsmtlAuthoringGraph)graph).Authoring.Document.Edit(title, affectedGraphs, mutation);
+#endif
     }
 }

@@ -59,16 +59,24 @@ namespace BTSMTL.Graphs
         readonly FlowGraph m_Graph;
         int m_EditDepth;
         Func<string, BtsmtlMacroGraph> m_CreatePrivateMacro;
+        BtsmtlGraphDocumentEditor m_Document;
 
         public BtsmtlFlowGraphAuthoring(FlowGraph graph) =>
             m_Graph = graph ? graph : throw new ArgumentNullException(nameof(graph));
 
         public void BindPrivateMacroCreation(Func<string, BtsmtlMacroGraph> create) => m_CreatePrivateMacro = create;
+        public void BindDocument(BtsmtlGraphDocumentEditor document) => m_Document = document;
+        public BtsmtlGraphDocumentEditor Document => m_Document ??
+            throw new InvalidOperationException("通用图尚未绑定正式作者文档。");
 
         public BtsmtlMacroGraph CreatePrivateMacro(string name) =>
             (m_CreatePrivateMacro ?? throw new InvalidOperationException("所属作者文档尚未绑定私有子图创建入口。"))(name);
 
-        public UnityEngine.Object UndoTarget => m_EditDepth == 0 ? m_Graph : null;
+        bool UsesGraphDocument => m_Graph is BtsmtlGraphRoot ||
+            m_Graph is BtsmtlMacroGraph { Host: BtsmtlGraphMacroHost };
+
+        public UnityEngine.Object UndoTarget => m_EditDepth != 0 ? null :
+            UsesGraphDocument ? Document.UndoTarget : m_Graph;
 
         BtsmtlMacroHost MacroHost => m_Graph is BtsmtlMacroGraph macro ? macro.Host :
             m_Graph is IBtsmtlMacroHostProvider provider ? provider.CreatePrivateMacroHost() : null;
@@ -88,11 +96,10 @@ namespace BTSMTL.Graphs
             m_EditDepth++;
             try
             {
-                BtsmtlMacroHost host = MacroHost;
-                if (host == null)
-                    EditAssets(m_Graph, title, affectedGraphs, mutation);
+                if (UsesGraphDocument)
+                    Document.Edit(title, affectedGraphs, mutation);
                 else
-                    host.Edit(m_Graph, title, affectedGraphs, mutation);
+                    MacroHost.Edit(m_Graph, title, affectedGraphs, mutation);
             }
             finally
             {
@@ -112,38 +119,6 @@ namespace BTSMTL.Graphs
             finally
             {
                 m_EditDepth--;
-            }
-        }
-
-        internal static void EditAssets(FlowGraph owner, string title, FlowGraph[] graphs, Action mutation)
-        {
-            if (graphs.Any(graph => graph.isEditorReadOnly))
-                throw new InvalidOperationException("运行观察期间不能编辑 BTSMTL 图。");
-            foreach (FlowGraph graph in graphs)
-                graph.SelfSerialize();
-            Undo.IncrementCurrentGroup();
-            int group = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName(title);
-            Undo.RegisterCompleteObjectUndo(graphs.Cast<UnityEngine.Object>().ToArray(), title);
-            try
-            {
-                mutation();
-                owner.UpdateNodeIDs(true);
-                foreach (FlowGraph graph in graphs)
-                    if (graph.SelfSerialize() || ReferenceEquals(graph, owner))
-                        EditorUtility.SetDirty(graph);
-                Undo.CollapseUndoOperations(group);
-            }
-            catch
-            {
-                Undo.FlushUndoRecordObjects();
-                Undo.RevertAllDownToGroup(group);
-                foreach (FlowGraph graph in graphs)
-                {
-                    graph.SelfDeserialize();
-                    graph.Validate();
-                }
-                throw;
             }
         }
 

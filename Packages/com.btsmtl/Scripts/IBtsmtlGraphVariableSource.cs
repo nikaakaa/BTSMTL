@@ -13,4 +13,14 @@ namespace BTSMTL
     {
         void AppendCompilationInputs(List<string> parts);
     }
+
+#if UNITY_EDITOR
+    public interface IBtsmtlGraphDocumentCompilationSource
+    {
+        bool UsesDocumentSource { get; }
+        string AuthoringId { get; }
+        string DocumentCompilationInput { get; }
+        IReadOnlyList<UnityEngine.Object> DocumentCompilationReferences { get; }
+    }
+#endif
 }

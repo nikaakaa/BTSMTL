@@ -15,32 +15,34 @@ using UnityEditor;
 
 namespace BTSMTL.Graphs
 {
-    [CreateAssetMenu(fileName = "BtsmtlGraph", menuName = "BTSMTL/Graph")]
     public sealed partial class BtsmtlGraphRoot : BtsmtlFlowGraph, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
-        , IBlackboardEditorAdapter
+        , IBlackboardEditorAdapter, IBtsmtlGraphDocumentCompilationSource
 #endif
     {
-        [SerializeField] string m_AuthoringId = Guid.NewGuid().ToString("N");
-        [SerializeField] string m_ContentRevision = "1";
+        [NonSerialized] BtsmtlGraphDocument m_Source;
         [NonSerialized] IBtsmtlGraphVariableOwner m_VariableOwner;
-        [SerializeField] BtsmtlGraphEntryDeclaration[] m_Entries = Array.Empty<BtsmtlGraphEntryDeclaration>();
-        [SerializeField] string[] m_Domains = Array.Empty<string>();
 
-        public override string AuthoringId => m_AuthoringId;
-        // 本图使用的领域；只有这些领域的扩展与输出节点可以放入，宿主合同必须提供全部领域。
-        public IReadOnlyList<string> Domains => m_Domains;
-        public string ContentRevision => m_ContentRevision;
+        public BtsmtlGraphDocument Source => m_Source;
+        public override string AuthoringId => Source.AuthoringId;
+        public IReadOnlyList<string> Domains => Source.Domains;
+        public string ContentRevision => Source.ContentRevision;
         public IBtsmtlGraphVariableOwner VariableOwner => m_VariableOwner;
         public BtsmtlGraphVariableDeclarations Variables => VariableOwner.VariableDeclarations;
         public BtsmtlGraphVariableEditor VariableEditor => VariableOwner.VariableEditor;
         public override IBlackboard SourceVariables => VariableEditor.Blackboard;
-        public IReadOnlyList<BtsmtlGraphEntryDeclaration> Entries => m_Entries;
+        public IReadOnlyList<BtsmtlGraphEntryDeclaration> Entries => Source.Entries;
+
+        public void BindSource(BtsmtlGraphDocument source, IBtsmtlGraphVariableOwner variableOwner)
+        {
+            m_Source = source;
+            m_VariableOwner = variableOwner;
+            hideFlags = HideFlags.HideAndDontSave;
+        }
 
         public void ConfigureIdentity(string id, string revision)
         {
-            m_AuthoringId = id;
-            m_ContentRevision = revision;
+            Source.ConfigureIdentity(id, revision);
         }
 
         public void ConfigureVariableOwner(UnityEngine.Object owner)
@@ -48,20 +50,21 @@ namespace BTSMTL.Graphs
             if (owner && owner is not IBtsmtlGraphVariableOwner)
                 throw new ArgumentException("变量来源必须是正式变量声明资产。", nameof(owner));
             m_VariableOwner = (IBtsmtlGraphVariableOwner)owner;
+            Source.ConfigureVariableOwner(m_VariableOwner.VariableDeclarations.OwnerId);
         }
 
-        public void ConfigureEntries(BtsmtlGraphEntryDeclaration[] entries) => m_Entries = entries;
+        public void ConfigureEntries(BtsmtlGraphEntryDeclaration[] entries) => Source.ConfigureEntries(entries);
 
         public void ConfigureDomains(string[] domains)
         {
             if (domains == null || domains.Any(string.IsNullOrWhiteSpace) ||
                 domains.Distinct(StringComparer.Ordinal).Count() != domains.Length)
                 throw new ArgumentException("图领域必须是不重复的稳定身份。", nameof(domains));
-            m_Domains = domains.OrderBy(value => value, StringComparer.Ordinal).ToArray();
+            Source.ConfigureDomains(domains.OrderBy(value => value, StringComparer.Ordinal));
         }
 
-        public override bool CanAuthorNodeType(Type nodeType) => AllowsNodeType(nodeType, m_Domains);
-        public BtsmtlMacroHost CreatePrivateMacroHost() => new BtsmtlGraphMacroHost(m_Domains);
+        public override bool CanAuthorNodeType(Type nodeType) => AllowsNodeType(nodeType, Domains);
+        public BtsmtlMacroHost CreatePrivateMacroHost() => new BtsmtlGraphMacroHost(Domains);
 
         // 通用图与声明通用图宿主的子图共用的节点准入；子图调用的目标内容由校验器按调用方复核。
         public static bool AllowsNodeType(Type nodeType, IReadOnlyList<string> domains) =>
@@ -73,36 +76,10 @@ namespace BTSMTL.Graphs
             typeof(BtsmtlFlowNode).IsAssignableFrom(nodeType) &&
             GraphNodeDomains.TryGet(nodeType, out string domain) && domains.Contains(domain, StringComparer.Ordinal);
 
-        [Serializable, Preserve]
-        sealed class IdentityData
-        {
-            [Preserve] public string Identity;
-            [Preserve] public string Revision;
-            [Preserve] public string VariableOwnerId;
-            [Preserve] public string VariableRevision;
-            [Preserve] public BtsmtlGraphEntryDeclaration[] Entries;
-            [Preserve] public string[] Domains;
-        }
-
 #if UNITY_EDITOR
-        public override object OnDerivedDataSerialization()
-        {
-            foreach (Node node in allNodes)
-            {
-                _ = node.UID;
-                foreach (Connection connection in node.outConnections)
-                    _ = connection.UID;
-            }
-            return new IdentityData
-            {
-                Identity = AuthoringId,
-                Revision = ContentRevision,
-                VariableOwnerId = m_VariableOwner != null ? Variables.OwnerId : string.Empty,
-                VariableRevision = m_VariableOwner != null ? Variables.Revision : string.Empty,
-                Entries = m_Entries,
-                Domains = m_Domains
-            };
-        }
+        bool IBtsmtlGraphDocumentCompilationSource.UsesDocumentSource => true;
+        string IBtsmtlGraphDocumentCompilationSource.DocumentCompilationInput => BtsmtlGraphDocumentJson.CompilationInput(Source, Variables);
+        IReadOnlyList<UnityEngine.Object> IBtsmtlGraphDocumentCompilationSource.DocumentCompilationReferences => Authoring.Document.References;
 
         public FlowNode AddAuthoringNode(Type type, string id, Vector2 position) =>
             Authoring.AddAuthoringNode(type, id, position);

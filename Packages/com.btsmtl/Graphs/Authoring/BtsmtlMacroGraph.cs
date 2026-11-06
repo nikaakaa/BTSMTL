@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Authoring.Graph;
 using FlowCanvas;
 using FlowCanvas.Macros;
 using NodeCanvas.Framework;
@@ -18,7 +19,7 @@ namespace BTSMTL.Graphs
     public sealed partial class BtsmtlMacroGraph : Macro, IBtsmtlGraphVariableOwner, IBtsmtlGraphVariableSource,
         IBtsmtlGraphCompilationInputs, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
-        , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter
+        , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter, IBtsmtlGraphDocumentCompilationSource
 #endif
     {
         [Serializable]
@@ -29,28 +30,37 @@ namespace BTSMTL.Graphs
             public string Revision;
         }
 
-        [SerializeField, HideInInspector] string m_AuthoringId = Guid.NewGuid().ToString("N");
-        [SerializeField, HideInInspector] string m_ContentRevision = "1";
-        [SerializeReference] BtsmtlMacroHost m_Host;
+        [NonSerialized] string m_AuthoringId = Guid.NewGuid().ToString("N");
+        [NonSerialized] string m_ContentRevision = "1";
+        [NonSerialized] BtsmtlMacroHost m_Host;
+        [NonSerialized] BtsmtlGraphDocument m_Source;
         [NonSerialized] BtsmtlGraphVariableEditor m_Variables;
 
-        public string AuthoringId => m_AuthoringId;
-        public string ContentRevision => m_ContentRevision;
+        public BtsmtlGraphDocument Source => m_Source;
+        public string AuthoringId => m_Host is BtsmtlGraphMacroHost ? Source.AuthoringId : m_AuthoringId;
+        public string ContentRevision => m_Host is BtsmtlGraphMacroHost ? Source.ContentRevision : m_ContentRevision;
         public BtsmtlMacroHost Host => m_Host;
-        public BtsmtlGraphVariableDeclarations Variables => m_Variables.Source;
-        public BtsmtlGraphVariableEditor VariableEditor => m_Variables;
+        public BtsmtlGraphVariableDeclarations Variables => VariableEditor.Source;
+        public BtsmtlGraphVariableEditor VariableEditor => m_Host.SupportsVariables ? m_Variables :
+            throw new InvalidOperationException("当前子图宿主不提供变量，数据通过参数传入传出。");
         public UnityEngine.Object OwnerAsset => this;
         public BtsmtlGraphVariableDeclarations VariableDeclarations => Variables;
-        public IBlackboard SourceVariables => VariableEditor.Blackboard;
+        public IBlackboard SourceVariables => m_Host.SupportsVariables ? VariableEditor.Blackboard : null;
 
         public void BindVariables(BtsmtlGraphVariableDeclarations source, Action<string, Action> mutate) =>
             m_Variables = new BtsmtlGraphVariableEditor(source, this, mutate);
+        public void BindSource(BtsmtlGraphDocument source)
+        {
+            m_Source = source;
+            m_Host = new BtsmtlGraphMacroHost(source.Domains);
+            hideFlags = HideFlags.HideAndDontSave;
+        }
         public BtsmtlMacroInputNode InputAnchor => allNodes.OfType<BtsmtlMacroInputNode>().SingleOrDefault();
         public BtsmtlMacroOutputNode OutputAnchor => allNodes.OfType<BtsmtlMacroOutputNode>().SingleOrDefault();
 
         public override bool usesExternalExecution => true;
         public override bool allowsPortIdentityAliases => false;
-        public override bool canAcceptVariableDrops => true;
+        public override bool canAcceptVariableDrops => m_Host.SupportsVariables;
         public override bool requiresAgent => false;
         public override bool requiresPrimeNode => false;
         public override bool isTree => false;
@@ -66,8 +76,8 @@ namespace BTSMTL.Graphs
         // 参数接口、身份、宿主准入与局部变量语义不在节点快照中，但决定每个调用位置的编译结果。
         public void AppendCompilationInputs(List<string> parts)
         {
-            parts.Add(m_AuthoringId);
-            parts.Add(m_ContentRevision);
+            parts.Add(AuthoringId);
+            parts.Add(ContentRevision);
             parts.Add(m_Host?.Identity ?? string.Empty);
             foreach (DynamicParameterDefinition parameter in inputDefinitions.Concat(outputDefinitions))
             {
@@ -76,6 +86,8 @@ namespace BTSMTL.Graphs
                 parts.Add(parameter.type?.AssemblyQualifiedName ?? string.Empty);
             }
             parts.Add(inputDefinitions.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (!m_Host.SupportsVariables)
+                return;
             BtsmtlGraphVariableDeclarations variables = Variables;
             parts.Add(variables.OwnerId);
             parts.Add(variables.Revision);
@@ -117,6 +129,10 @@ namespace BTSMTL.Graphs
         }
 
 #if UNITY_EDITOR
+        bool IBtsmtlGraphDocumentCompilationSource.UsesDocumentSource => m_Host is BtsmtlGraphMacroHost;
+        string IBtsmtlGraphDocumentCompilationSource.DocumentCompilationInput => BtsmtlGraphDocumentJson.CompilationInput(Source, Variables);
+        IReadOnlyList<UnityEngine.Object> IBtsmtlGraphDocumentCompilationSource.DocumentCompilationReferences => Authoring.Document.References;
+
         [NonSerialized] BtsmtlFlowGraphAuthoring m_Authoring;
         public BtsmtlFlowGraphAuthoring Authoring => m_Authoring ??= new BtsmtlFlowGraphAuthoring(this);
         FlowGraph IBtsmtlAuthoringGraph.Graph => this;
@@ -144,7 +160,10 @@ namespace BTSMTL.Graphs
             var macro = CreateInstance<BtsmtlMacroGraph>();
             macro.name = name;
             macro.m_Host = host ?? throw new ArgumentNullException(nameof(host));
-            macro.BindVariables(variables, mutate);
+            if (host.SupportsVariables)
+                macro.BindVariables(variables ?? throw new ArgumentNullException(nameof(variables)), mutate);
+            else if (variables != null)
+                throw new ArgumentException("该子图宿主不提供变量，创建时不能绑定变量来源。", nameof(variables));
             macro.Authoring.Initialize(() =>
             {
                 configure(macro);
@@ -162,8 +181,13 @@ namespace BTSMTL.Graphs
                 throw new ArgumentException("子图必须声明稳定身份和内容修订。");
             EditAuthoring("配置子图身份", () =>
             {
-                m_AuthoringId = id;
-                m_ContentRevision = revision;
+                if (m_Host is BtsmtlGraphMacroHost)
+                    Source.ConfigureIdentity(id, revision);
+                else
+                {
+                    m_AuthoringId = id;
+                    m_ContentRevision = revision;
+                }
             });
         }
 
@@ -306,9 +330,9 @@ namespace BTSMTL.Graphs
         // 生成的整根重建即明确清空页面：保留出入口锚点，清除其它节点、连接与分组后按声明重建。
         public void ClearAuthoringContent() => ClearGraph();
 
-        public override IBlackboard editorBlackboard => VariableEditor.Blackboard;
+        public override IBlackboard editorBlackboard => m_Host.SupportsVariables ? VariableEditor.Blackboard : null;
         public bool IsReadOnly => isEditorReadOnly;
-        public bool AllowVariablePick => !IsReadOnly;
+        public bool AllowVariablePick => m_Host.SupportsVariables && !IsReadOnly;
         public void DrawBlackboardExtensions(IBlackboard blackboard, UnityEngine.Object contextObject) =>
             EditorGUILayout.LabelField("子图局部变量（每个调用位置独立）", EditorStyles.miniLabel);
         public GenericMenu GetAddVariableMenu(IBlackboard blackboard, UnityEngine.Object contextObject) =>
