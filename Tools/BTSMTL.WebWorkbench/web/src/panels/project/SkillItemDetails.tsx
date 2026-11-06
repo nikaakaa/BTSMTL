@@ -37,7 +37,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
     setBusy(true);
     setFailure(null);
     try { await action(); if (refresh) onChanged(); }
-    catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
+    catch (error) { if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
     finally { setBusy(false); }
   };
   return <div className={styles.details}>

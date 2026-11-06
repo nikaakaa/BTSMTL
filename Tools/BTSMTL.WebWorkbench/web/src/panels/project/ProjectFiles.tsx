@@ -34,7 +34,9 @@ export function ProjectFiles() {
   const itemOf = (file: string) => items.find(item => file === `Skills/${item.owner}/${item.file}`);
   const open = (file: ProjectFileEntry) => {
     const item = itemOf(file.path);
-    if (item !== undefined) void projectActions.open(item).catch(error => setFailure({ text: String(error), entryId: consoleActions.error('文件排查', error) }));
+    if (item !== undefined) void projectActions.open(item).catch(error => {
+      if (!isAbort(error)) setFailure({ text: String(error), entryId: consoleActions.error('文件排查', error) });
+    });
   };
   return <div className={styles.contentGrid}><div className={styles.contentTree}>
     <PanelBar wrap><Button disabled={folder === ''} onClick={() => setFolder(folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '')}>上级</Button>

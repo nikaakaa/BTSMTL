@@ -12,8 +12,13 @@ const ownerOf = (item: Pick<ProjectItem, 'owner'>) => ({ kind: 'skill', name: it
 
 async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
   const target = ownerOf(item);
-  if (!await authoringActions.open(target)) throw new Error(`未打开 ${item.ownerName}，具体原因见作者读取记录`);
-  return authoringDocument(useAuthoring.getState(), target);
+  const result = await authoringActions.open(target);
+  switch (result) {
+    case 'opened': return authoringDocument(useAuthoring.getState(), target);
+    case 'cancelled': throw new DOMException('作者文档打开已取消', 'AbortError');
+    case 'failed': throw new Error(`未打开 ${item.ownerName}，具体原因见作者读取记录`);
+    default: { const unhandled: never = result; return unhandled; }
+  }
 }
 
 type GraphNavigation = Pick<NonNullable<SelectionSlice['graphRequest']>, 'origin' | 'observation' | 'caller'> & { panelId: string | null };

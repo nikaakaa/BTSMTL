@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
 import { authoringActions, graphAuthoring, type useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
@@ -40,7 +41,7 @@ export function SkillContentCreation({ kind, skill, elements, onDone }: {
             await projectActions.openGraph({ owner: skill!, ownerName: skill!, id });
           }
           onDone();
-        } catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error),
+        } catch (error) { if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error),
           entryId: consoleActions.error('Project', error) }); }
         finally { setBusy(false); }
       })();

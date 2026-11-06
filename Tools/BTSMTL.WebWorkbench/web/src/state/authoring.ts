@@ -251,6 +251,7 @@ export const timelinePath = (documentId: string) => `timelines/${documentId}.jso
 
 let loadController: AbortController | null = null;
 let previewController: AbortController | null = null;
+type DocumentOpenResult = 'opened' | 'cancelled' | 'failed';
 
 useAuthoring.subscribe((state, previous) => {
   if (state.target !== previous.target) previewController?.abort();
@@ -651,9 +652,15 @@ export const authoringActions = {
   },
 
   // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
-  async open(target: AuthoringTarget) {
+  async open(target: AuthoringTarget): Promise<DocumentOpenResult> {
     const current = get().target;
-    if (current && authoringTargetKey(current) === authoringTargetKey(target)) target = current;
+    if (current && authoringTargetKey(current) === authoringTargetKey(target)) {
+      if (authoringDocument(useAuthoring.getState(), current).documentGraphs !== null) {
+        set({ author: true, resourceTarget: null });
+        return 'opened';
+      }
+      target = current;
+    }
     loadController?.abort();
     if (current !== null && authoringDocument(useAuthoring.getState()).loading)
       setDocument({ loading: false }, current);
@@ -676,17 +683,17 @@ export const authoringActions = {
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
       setDocument({ loading: false }, target);
-      return true;
+      return 'opened';
     } catch (error) {
-      if (isAbort(error)) return false;
+      if (isAbort(error)) return 'cancelled';
       setDocument({ loading: false }, target);
       consoleActions.error('作者', error);
-      return false;
+      return 'failed';
     }
   },
 
   async openInput(target: AuthoringTarget, path: string, schemeIndex: number, actorId: string) {
-    await authoringActions.open(target);
+    if (await authoringActions.open(target) !== 'opened') return;
     const current = get().target;
     if (current === null || authoringTargetKey(current) !== authoringTargetKey(target)) return;
     const plan = currentDocument(path) as JsonObject;

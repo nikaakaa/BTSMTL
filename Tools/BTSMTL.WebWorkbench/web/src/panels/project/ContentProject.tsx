@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { isAbort } from '../../api/http';
 import { authoringActions, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents, type ContentNode, type ContentTarget } from '../../state/projectContents';
@@ -39,7 +40,7 @@ export function ContentProject() {
   const perform = async (action: () => Promise<void>) => {
     setFailure(null);
     try { await action(); }
-    catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
+    catch (error) { if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Project', error) }); }
   };
   const create = (kind: SkillContentKind) => void perform(async () => {
     if (kind !== 'skill' && owner != null) await projectActions.openOwner(owner);
