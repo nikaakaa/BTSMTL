@@ -120,7 +120,7 @@ namespace BTSMTL.Timeline.Editor
                             TimelineAuthoringClipBinding.Configure(selected.Track.Timeline, selected, configuration);
                         }, "重绑独立源资源"))
                             return "源引用提交失败。";
-                        TimelineAuthoringSave.Save(m_Request.SerializedOwner);
+                        Timeline.AuthoringDocument.Save();
                         return string.Empty;
                     });
                 if (editing)
@@ -1141,7 +1141,7 @@ namespace BTSMTL.Timeline.Editor
                         if (!ApplyImmediate(() => Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), resource,
                             m_Session.SnapTime(OrchestrationTime.FromSeconds(time), null)), "创建源片段"))
                             return "源片段提交失败。";
-                        TimelineAuthoringSave.Save(m_Request.SerializedOwner);
+                        Timeline.AuthoringDocument.Save();
                         return string.Empty;
                     }));
             for (int index = 0; index < contract.AllowedClipKinds.Count; index++)

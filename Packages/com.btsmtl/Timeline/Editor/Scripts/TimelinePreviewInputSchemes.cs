@@ -93,7 +93,7 @@ namespace BTSMTL.Timeline.Editor
         public void Save()
         {
             if (SavesChanges && m_Asset != null)
-                TimelineAuthoringSave.Save(m_Asset);
+                ((ITimelineAuthoringDocument)m_Storage).Save();
         }
 
         public bool Select(int index)
