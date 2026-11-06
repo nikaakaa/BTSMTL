@@ -5,6 +5,7 @@
         "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Authoring",
+        "BTSMTL.Timeline.Unity",
         "BTSMTL.Compilation",
         "BTSMTL.Graphs",
         "GUID:3af8e02729705434aa5c2d77c4a5103a",
