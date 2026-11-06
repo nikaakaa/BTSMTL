@@ -1903,16 +1903,16 @@ export function skillElements(context?: InputPlanContext): Promise<SkillElements
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {
-  const target = useAuthoring(state => state.target);
+  const { target, loading } = useAuthoring(useShallow(state => ({ target: state.target, loading: authoringDocument(state).loading })));
   const key = target === null ? null : authoringTargetKey(target);
   const [elements, setElements] = useState<{ key: string; items: SkillElements } | null>(null);
   useEffect(() => {
-    if (!enabled || key === null) return;
+    if (!enabled || loading || key === null) return;
     let live = true;
     skillElements().then(items => { if (live) setElements({ key, items }); }, (error: unknown) => consoleActions.error('作者', error));
     return () => { live = false; };
-  }, [enabled, key]);
-  return enabled && elements?.key === key ? elements.items : null;
+  }, [enabled, key, loading]);
+  return enabled && !loading && elements?.key === key ? elements.items : null;
 }
 
 function createGraph(elements: SkillElements, role: string, name: string | null, ownership: GraphTemplate['ownership'] = null,
