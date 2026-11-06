@@ -988,7 +988,7 @@ export const authoringActions = {
   },
 
   async save(operation: 'save' | 'compile' | 'apply' = 'save') {
-    const variableResults = await Promise.allSettled(variableRequests);
+    const variableResults = await Promise.allSettled(variableRequests.values());
     const variableFailure = variableResults.find(result => result.status === 'rejected');
     if (variableFailure?.status === 'rejected') {
       const error: unknown = variableFailure.reason;
@@ -1000,8 +1000,8 @@ export const authoringActions = {
     const owner = get().resourceTarget;
     if (owner?.kind === 'scope') return;
     if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
-    const { target, saving } = get();
-    if (!target || saving) return;
+    const { target, documents } = get();
+    if (!target || Object.values(documents).some(document => document.saving)) return;
     const editingView = authoringActions.editingView();
     const apply = operation === 'apply';
     const submittedDocuments = new Map(editingView.writes.map(write => {
@@ -1883,7 +1883,7 @@ export function graphVariableOwner(graphId: string): string | null {
   return get().documentGraphs!.find(graph => graph.id === graphId)!.variableOwnerId;
 }
 
-const variableRequests = new Set<Promise<string>>();
+const variableRequests = new Map<string, Promise<string>>();
 const variableDocument = (state: AuthoringState, ownerId: string) => Object.entries(state.documents)
   .find(([, document]) => document.kind === 'variables' && document.identity === ownerId);
 
@@ -1962,8 +1962,12 @@ async function applyVariableEdit(ownerId: string, operation: VariableOperation):
 }
 
 function editVariable(ownerId: string, operation: VariableOperation): Promise<string> {
-  const request = applyVariableEdit(ownerId, operation).finally(() => variableRequests.delete(request));
-  variableRequests.add(request);
+  const previous = variableRequests.get(ownerId);
+  const apply = () => applyVariableEdit(ownerId, operation);
+  const request = (previous === undefined ? apply() : previous.then(apply, apply)).finally(() => {
+    if (variableRequests.get(ownerId) === request) variableRequests.delete(ownerId);
+  });
+  variableRequests.set(ownerId, request);
   return request;
 }
 

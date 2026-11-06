@@ -121,7 +121,7 @@ function DocumentAuthoringStatus() {
       dirty: documents.reduce((count, owner) => count + Object.keys(owner.edited).length + owner.removed.length, 0),
       removed: documents.reduce((count, owner) => count + owner.removed.length, 0),
       variablesWriting: documents.some(owner => owner.variablesWriting),
-      externalChange: document.externalChange, saving: document.saving, lastSave: document.lastSave,
+      externalChange: document.externalChange, saving: documents.some(owner => owner.saving), lastSave: document.lastSave,
       undoDepth: document.undo.length, redoDepth: document.redo.length };
   }));
   useEffect(() => {
