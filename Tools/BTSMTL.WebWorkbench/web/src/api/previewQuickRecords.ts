@@ -16,7 +16,7 @@ const source = object({ kind: text, authoring, revision: text, sceneRevision: te
 const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
   const { kind } = object({ kind: choice('documentInput', 'rootDefaults') })(value, path);
   switch (kind) {
-    case 'documentInput': return { kind, ...object({ documentPath: text, savedRevision: text, inputId: text })(value, path) };
+    case 'documentInput': return { kind, ...object({ documentPath: text, savedRevision: text, inputId: text, schemeId: text })(value, path) };
     case 'rootDefaults': return { kind };
   }
 };

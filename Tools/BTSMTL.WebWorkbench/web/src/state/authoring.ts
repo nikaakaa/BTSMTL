@@ -1855,6 +1855,7 @@ export const inputAuthoring = {
     if (!elements.previewInput.availability.available)
       throw new Error(elements.previewInput.availability.reason!);
     const plan = cloneJson(template!.value);
+    for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
     const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
     const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
     scheme.Name = name;
@@ -1909,7 +1910,7 @@ export const inputAuthoring = {
       const plan = document as JsonObject;
       const schemes = plan.Schemes as JsonObject[];
       const source = schemes[numberOf(plan.Selected)];
-      schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
+      schemes.push(sortedObject({ ...cloneJson(source), AuthoringId: crypto.randomUUID(), InputTimeline: timeline, Name: name }));
       plan.Selected = schemes.length - 1;
     });
     selectionActions.showTimeline(timeline, null, null);

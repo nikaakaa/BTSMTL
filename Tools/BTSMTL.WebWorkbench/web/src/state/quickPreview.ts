@@ -61,7 +61,7 @@ export const quickAuthoringKey = (target: PreviewQuickAuthoringTarget) => JSON.s
 
 export function quickInputSourceKey(source: PreviewQuickInputSource | null): string {
   return source?.kind === 'documentInput'
-    ? JSON.stringify([source.kind, source.documentPath, source.inputId])
+    ? JSON.stringify([source.kind, source.documentPath, source.inputId, source.schemeId])
     : JSON.stringify(source?.kind ?? null);
 }
 
