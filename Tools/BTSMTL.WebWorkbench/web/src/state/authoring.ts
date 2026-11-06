@@ -209,6 +209,8 @@ export function useDocumentGraphHierarchy() {
 }
 
 export const isTimelineFile = (path: string) => path === 'timeline.json' || path.startsWith('timelines/') && path.endsWith('.json');
+const usesGraphModels = (kind: AuthoringTarget['kind']) =>
+  kind === 'skill' || kind === 'timeline' || kind === 'graph' || kind === 'scenario';
 
 export function timelinePath(documentId: string) {
   const root = currentDocument('timeline.json') as JsonObject | null;
@@ -515,10 +517,15 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
+        const files = { ...source.files };
         for (const [path, content] of Object.entries(source.files)) {
           if (Object.hasOwn(edited, path)) edited[path] = parseSkillJson(content);
         }
-        documents[key] = { ...current, edited, projectRoot };
+        for (const path of [...Object.keys(edited), ...current.removed]) {
+          if (current.files[path] === undefined) delete files[path];
+          else files[path] = current.files[path];
+        }
+        documents[key] = { ...current, files, edited, projectRoot };
       }
     }
     const key = authoringTargetKey(target);
@@ -666,7 +673,8 @@ export const authoringActions = {
       controller.signal.throwIfAborted();
       setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
         ...(!opened || (opened.revision === null && !hasChanges(target))
-          ? { revision: snapshot.revision, files: snapshot.files, sourceFiles: snapshot.files } : {}),
+          ? { revision: snapshot.revision, sourceFiles: snapshot.files,
+            ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) } : {}),
       }, target);
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
@@ -777,7 +785,7 @@ export const authoringActions = {
       } else {
         const savedFiles = snapshot.value.files;
         const changedBaselines = [...new Set([...Object.keys(document.edited), ...document.removed])]
-          .filter(path => !paths.has(path) && savedFiles[path] !== document.files[path]);
+          .filter(path => !paths.has(path) && savedFiles[path] !== document.sourceFiles[path]);
         for (const path of changedBaselines)
           conflicts.push({ owner: target.documentPath, path, reason: '该未保存文件的磁盘内容也已变化' });
         if (blocked.has(target.documentPath) || changedBaselines.length !== 0) {
@@ -794,7 +802,7 @@ export const authoringActions = {
         }));
         documents[key] = { ...document, kind: snapshot.value.kind, rootFile: snapshot.value.rootFile, identity: snapshot.value.identity, authoringType: snapshot.value.authoringType ?? null, revision: snapshot.value.revision,
           sourceFiles: snapshot.value.files,
-          files: savedFiles,
+          files: usesGraphModels(snapshot.value.kind) ? document.files : savedFiles,
           sourceRevision: null, externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
         };
@@ -903,12 +911,13 @@ export const authoringActions = {
       const previousDocuments = useAuthoring.getState().documents;
       const documents = { ...previousDocuments };
       const savedFiles = new Map(receipts.map(receipt => [receipt.documentPath,
-        receipt.documentPath === target.documentPath && content !== null ? content.files : receipt.files]));
+        receipt.documentPath === target.documentPath && content !== null ? content.files :
+          usesGraphModels(receipt.kind) ? submittedDocuments.get(receipt.documentPath)!.files : receipt.files]));
       for (const receipt of receipts) {
         const submitted = submittedDocuments.get(receipt.documentPath)!;
         const current = documents[receipt.documentPath];
         const selected = receipt.documentPath === target.documentPath;
-        const files = selected && content !== null ? content.files : receipt.files;
+        const files = savedFiles.get(receipt.documentPath)!;
         const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
           rebaseSavedEdits(current.files, submitted.files, files, document, current.rootFile);
         const history = (items: Snapshot[]) => items.filter(item => !submitted.history.has(item)).map(item => {
@@ -1040,7 +1049,8 @@ export const authoringActions = {
       else {
         setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
           version: authoringDocument(useAuthoring.getState(), target).version + 1,
-          files: snapshot.files, sourceFiles: snapshot.files }, target);
+          sourceFiles: snapshot.files,
+          ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) }, target);
       }
     } catch (error) {
       consoleActions.error('作者', error);
