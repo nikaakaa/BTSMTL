@@ -13,17 +13,31 @@ namespace BTSMTL.Authoring.Workspace
     public sealed class AuthoringDocumentKind
     {
         public static readonly AuthoringDocumentKind Skill = new("skill", "Skills", "skill.json", "m_AbilityId");
-        public static readonly AuthoringDocumentKind Timeline = new("timeline", "Timelines", "timeline.json", "m_AuthoringId");
-        public static readonly AuthoringDocumentKind Curve = new("curve", "Curves", "curve.json", "m_AuthoringId");
+        public static readonly AuthoringDocumentKind Timeline = new("timeline", "Timelines", "timeline.json", "m_AuthoringId", "timeline");
+        public static readonly AuthoringDocumentKind Curve = new("curve", "Curves", "curve.json", "m_AuthoringId", "curve", "m_SourceIdentity");
         public static readonly AuthoringDocumentKind Scenario = new("scenario", "Scenarios", null, null);
-        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario };
+        public static readonly AuthoringDocumentKind AdmissionProfile = new("admission-profile", "AdmissionProfiles", "admission-profile.json",
+            "m_AuthoringId", "admission-profile", "m_SourceIdentity");
+        public static readonly AuthoringDocumentKind PoseGraph = new("pose-graph", "PoseGraphs", "pose-graph.json",
+            "m_AuthoringId", "pose-graph", "m_SourceIdentity");
+        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario, AdmissionProfile, PoseGraph };
 
-        AuthoringDocumentKind(string id, string directory, string rootFile, string identityMember)
-        { Id = id; Directory = directory; RootFile = rootFile; IdentityMember = identityMember; }
+        AuthoringDocumentKind(string id, string directory, string rootFile, string identityMember,
+            string rootElementKind = null, string sourceIdentityMember = null)
+        {
+            Id = id;
+            Directory = directory;
+            RootFile = rootFile;
+            IdentityMember = identityMember;
+            RootElementKind = rootElementKind;
+            SourceIdentityMember = sourceIdentityMember;
+        }
         public string Id { get; }
         public string Directory { get; }
         public string RootFile { get; }
         public string IdentityMember { get; }
+        public string RootElementKind { get; }
+        public string SourceIdentityMember { get; }
     }
 
     public sealed class AuthoringDocumentSnapshot
@@ -39,6 +53,13 @@ namespace BTSMTL.Authoring.Workspace
             Identity = kind.RootFile == null ? Path.GetFileName(directory) : (string)Root[kind.IdentityMember];
             if (string.IsNullOrEmpty(Identity))
                 throw new InvalidDataException($"作者文档 '{directory}' 缺少正式身份字段 '{kind.IdentityMember}'。");
+            if (kind.SourceIdentityMember != null)
+            {
+                if (string.IsNullOrEmpty(SourceIdentity))
+                    throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源身份字段 '{kind.SourceIdentityMember}'。");
+                if (string.IsNullOrEmpty(ContentDomain))
+                    throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源领域字段 'm_ContentDomain'。");
+            }
             Revision = AuthoringCommits.Revision(new JArray(files.OrderBy(file => file.Key, StringComparer.Ordinal)
                 .Select(file => new JArray(file.Key, file.Value))).ToString(Formatting.None));
         }
@@ -50,7 +71,7 @@ namespace BTSMTL.Authoring.Workspace
         public string SourcePath => Kind.RootFile == null ? DirectoryPath : Path.Combine(DirectoryPath, Kind.RootFile);
         public string Scope => (string)Root?["m_AuthoringScope"];
         public string ContentDomain => (string)Root?["m_ContentDomain"];
-        public string SourceIdentity => Kind == AuthoringDocumentKind.Curve ? (string)Root["m_SourceIdentity"] : Identity;
+        public string SourceIdentity => Kind.SourceIdentityMember == null ? Identity : (string)Root[Kind.SourceIdentityMember];
         public string Revision { get; }
         public IReadOnlyDictionary<string, string> Files { get; }
         public JObject Root { get; }
@@ -137,13 +158,13 @@ namespace BTSMTL.Authoring.Workspace
                 foreach (var file in owner.Files.OrderBy(file => file.Key, StringComparer.Ordinal))
                 {
                     string folder = Path.GetDirectoryName(file.Key)?.Replace('\\', '/');
-                    string kind = file.Key == "timeline.json" || folder == "timelines" ? "timeline" :
-                        folder == "graphs" ? "graph" : folder == "inputs" ? "input" :
-                        file.Key == "curve.json" ? "curve" : null;
+                    bool root = file.Key == owner.Kind.RootFile;
+                    string kind = root ? owner.Kind.RootElementKind : folder == "timelines" ? "timeline" :
+                        folder == "graphs" ? "graph" : folder == "inputs" ? "input" : null;
                     if (kind == null) continue;
                     JObject value = owner.Read(file.Key);
                     string identity = kind == "input" ? Path.GetFileNameWithoutExtension(file.Key) :
-                        (string)value[kind == "graph" ? "AuthoringId" : "m_AuthoringId"];
+                        (string)value[root ? owner.Kind.IdentityMember : kind == "graph" ? "AuthoringId" : "m_AuthoringId"];
                     elements.Add(new AuthoringDocumentElement(owner, kind, identity, file.Key, value));
                 }
             return elements;
@@ -174,7 +195,7 @@ namespace BTSMTL.Authoring.Workspace
                     throw new InvalidOperationException($"作者文档 '{read.Key}' 已在读取后变化，期望修订 {read.Value}、实际 {actual}。");
             }
             IReadOnlyList<AuthoringDocumentSnapshot> edited = Edit(captured, writes);
-            Elements(edited).Where(element => element.Kind == "graph" || element.Kind == "timeline" || element.Kind == "curve")
+            Elements(edited).Where(element => element.Kind != "input")
                 .GroupBy(element => (element.Kind, element.Identity)).ToList().ForEach(group =>
                 {
                     if (group.Count() != 1)
