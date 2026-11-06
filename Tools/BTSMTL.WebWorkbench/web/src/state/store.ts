@@ -231,7 +231,8 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   sources: null, previewMode: null, contentSelection: null, inputSource: null, localInputLimit: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
-  quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, accepted: null, seconds: 0, playback: null, outputDirectory: '' },
+  quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, accepted: null, seconds: 0, playback: null,
+    picture: { frame: null, request: { kind: 'idle' } }, outputDirectory: '' },
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,

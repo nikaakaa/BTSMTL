@@ -3,6 +3,7 @@ import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInputOverlay, PreviewQuickRequest,
   PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
   PreviewQuickAuthoringTarget, PreviewQuickInputSource,
+  PreviewQuickFrame, PreviewQuickSeekRequest,
 } from '../api/previewQuickRecords';
 import { authoringTargetKey } from '../api/authoring';
 import { authoringActions, useAuthoring } from './authoring';
@@ -26,11 +27,15 @@ export interface QuickPreviewState {
   accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
   seconds: number;
   playback: { origin: number; startedAt: number } | null;
+  picture: { frame: PreviewQuickFrame | null; request: { kind: 'idle' } | { kind: 'pending'; target: PreviewQuickSeekRequest }
+    | { kind: 'failed'; reason: string } };
   outputDirectory: string;
 }
 
 export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.kind === 'running' ||
-  ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null && !job.reply.data.completed);
+  (job.kind === 'settled' && job.reply.data?.stage === 'ready') ||
+  ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null &&
+    (!job.reply.data.completed || job.reply.data.stage === 'ready' || job.reply.data.cleanupErrors.length > 0));
 
 export function quickJobProgress(job: Job): string | null {
   switch (job.kind) {
@@ -50,6 +55,15 @@ let descriptionController: AbortController | null = null;
 let jobController: AbortController | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let playbackFrame: number | null = null;
+type Accepted = NonNullable<QuickPreviewState['accepted']>;
+interface PictureRequest {
+  accepted: Accepted;
+  target: PreviewQuickSeekRequest;
+  playback: QuickPreviewState['playback'];
+  controller: AbortController;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+let pictureRequest: PictureRequest | null = null;
 const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
@@ -128,6 +142,72 @@ function schedulePoll(request: PreviewQuickRequest) {
   pollTimer = setTimeout(() => { pollTimer = null; void readJob(request, false); }, 500);
 }
 
+function receiveFrame(frame: PreviewQuickFrame | null, accepted: Accepted, requestId: string, seconds: number) {
+  if (frame === null) throw new Error('原快预览未返回本次时间请求的实际画面');
+  if (frame.jobId !== accepted.jobId || frame.requestId !== requestId || frame.sourceRevision !== accepted.request.sourceRevision ||
+    frame.inputRevision !== accepted.plan.inputRevision || frame.requestedSeconds !== seconds)
+    throw new Error('快预览画面的作业、来源、输入或时间请求身份与当前请求不一致');
+  return frame;
+}
+
+function clearPicture() {
+  const request = pictureRequest;
+  pictureRequest = null;
+  if (request !== null) {
+    if (request.timer !== null) clearTimeout(request.timer);
+    request.controller.abort();
+  }
+  const picture = current().picture;
+  if (picture.frame !== null || picture.request.kind !== 'idle') set({ picture: { frame: null, request: { kind: 'idle' } } });
+}
+
+function pictureRequestCurrent(request: PictureRequest) {
+  const state = current();
+  return state.accepted === request.accepted && !quickPlanStale() &&
+    (state.seconds === request.target.seconds || request.playback !== null && state.playback === request.playback);
+}
+
+function requestPicture(force = false) {
+  const state = current();
+  const accepted = state.accepted;
+  if (accepted === null || quickPlanStale()) { clearPicture(); return; }
+  if (pictureRequest !== null || !force && state.picture.frame?.requestedSeconds === state.seconds) return;
+  const target: PreviewQuickSeekRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.request.sourceRevision,
+    inputRevision: accepted.plan.inputRevision, seconds: state.seconds };
+  const request: PictureRequest = { accepted, target, playback: state.playback, controller: new AbortController(), timer: null };
+  pictureRequest = request;
+  set({ picture: { ...state.picture, request: { kind: 'pending', target } } });
+  void readPicture(request, true);
+}
+
+async function readPicture(request: PictureRequest, submit: boolean) {
+  if (pictureRequest !== request) return;
+  if (!pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
+  try {
+    const reply = await (submit ? previewApi.seekQuick(request.accepted.jobId, request.target, request.controller.signal)
+      : previewApi.quickStatus(request.accepted.jobId, request.controller.signal));
+    if (pictureRequest !== request || request.controller.signal.aborted) return;
+    if (!pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
+    if (!reply.success) throw new Error(reply.message ?? reply.code ?? reply.data?.error ?? '快预览取帧失败');
+    if (reply.pending) {
+      request.timer = setTimeout(() => { request.timer = null; void readPicture(request, false); }, 500);
+      return;
+    }
+    const frame = receiveFrame(reply.data === null ? null : reply.data.frame, request.accepted, request.target.requestId, request.target.seconds);
+    set({ picture: { frame, request: { kind: 'idle' } } });
+    pictureRequest = null;
+    requestPicture();
+  } catch (error) {
+    if (pictureRequest !== request || request.controller.signal.aborted) return;
+    if (!pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
+    quickPreview.pause();
+    const reason = error instanceof Error ? error.message : String(error);
+    set({ picture: { frame: null, request: { kind: 'failed', reason } } });
+    pictureRequest = null;
+    consoleActions.error('快预览画面', error);
+  }
+}
+
 function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, cancelling: boolean) {
   if (!ownsRequest(request)) return;
   const status = reply.data;
@@ -146,19 +226,29 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
     set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: { ...reply, data: status }, reason: reply.message ?? status.error ?? '作业未完成，状态读取未获推进回执' } });
   } else {
     const selected = selectedRequest(request) && !cancelling && !status?.cancellationRequested;
-    set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' },
-      ...(selected && reply.success && status?.plan ? {
-        accepted: { request, jobId: status.jobId, plan: status.plan }, seconds: status.plan.clock.origin,
-      } : {}),
-    });
+    if (cancelling && status !== null && status.cleanupErrors.length > 0) {
+      set({ job: { kind: 'cancel-failed', request, reply: { ...reply, data: status }, reason: status.cleanupErrors.join('\n') } });
+    } else if (selected && reply.success && status?.plan) {
+      const accepted = { request, jobId: status.jobId, plan: status.plan };
+      try {
+        const frame = receiveFrame(status.frame, accepted, status.jobId, 0);
+        set({ job: { kind: 'settled', request, reply }, accepted, seconds: frame.requestedSeconds,
+          picture: { frame, request: { kind: 'idle' } } });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason } });
+        consoleActions.error('快预览画面', error);
+      }
+    } else set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' } });
   }
-  if (!reply.success) consoleActions.log('error', '快预览', `${reply.code ?? ''} ${reply.message ?? status?.error ?? '快预览失败'}`.trim(), reply.rawJson);
+  if (!reply.success && !(cancelling && status?.stage === 'cancelled' && status.cleanupErrors.length === 0))
+    consoleActions.log('error', '快预览', `${reply.code ?? ''} ${reply.message ?? status?.error ?? '快预览失败'}`.trim(), reply.rawJson);
 }
 
 async function readJob(request: PreviewQuickRequest, cancel: boolean) {
   const job = current().job;
-  if (!ownsRequest(request) || (job.kind !== 'running' && job.kind !== 'cancelling' && job.kind !== 'failed' && job.kind !== 'cancel-failed') || job.reply === null) return;
-  const receipt = job.reply;
+  if (!ownsRequest(request) || (job.kind !== 'running' && job.kind !== 'cancelling' && job.kind !== 'failed' && job.kind !== 'cancel-failed' && job.kind !== 'settled') || job.reply === null || job.reply.data === null) return;
+  const receipt = { ...job.reply, data: job.reply.data };
   const status = receipt.data;
   stopPoll();
   const controller = jobController = new AbortController();
@@ -178,8 +268,8 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
 function invalidateJob() {
   const job = current().job;
   if (job.kind === 'idle') return;
-  if (job.kind === 'settled' || ((job.kind === 'failed' || job.kind === 'cancel-failed') && (job.reply === null || job.reply.data.completed))) set({ job: { kind: 'idle' } });
-  else void quickPreview.cancel();
+  if (quickJobCancellable(job)) void quickPreview.cancel();
+  else if (job.kind === 'settled' || job.kind === 'failed' || job.kind === 'cancel-failed') set({ job: { kind: 'idle' } });
 }
 
 export function quickPlan() {
@@ -229,7 +319,7 @@ function preparation() {
   const scheme = data.root.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   if (scheme === undefined) return { kind: 'unavailable', reason: '选择宿主提供的输入方案' } as const;
   if (state.job.kind === 'starting' || state.job.kind === 'starting-cancelled' || state.job.kind === 'running' ||
-    state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && state.job.reply !== null && !state.job.reply.data.completed))
+    state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && quickJobCancellable(state.job)))
     return { kind: 'unavailable', reason: state.job.kind === 'cancelling' || state.job.kind === 'starting-cancelled'
       ? '正在取消原作业，等待清理结束' : '原作业尚未结束，请先完成或取消' } as const;
   const directory = state.outputDirectory || workbench.sources?.runDirectory;
@@ -340,8 +430,13 @@ export const quickPreview = {
     return result.kind === 'ready' ? null : result.reason;
   },
   async start(input: PreviewQuickInputOverlay = {}, rangeEndSeconds?: number) {
-    const prepared = preparation();
+    let prepared = preparation();
     if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
+    if (quickJobCancellable(current().job)) {
+      await quickPreview.cancel();
+      prepared = preparation();
+      if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
+    }
     const request: PreviewQuickRequest = {
       mode: 'quick', target: prepared.target, sourceRevision: prepared.source.revision,
       input: { source: prepared.scheme.source, revision: prepared.scheme.revision, ...input },
@@ -363,9 +458,11 @@ export const quickPreview = {
     }
   },
   async cancel() {
+    quickPreview.pause();
+    clearPicture();
     const job = current().job;
     if (job.kind === 'starting') { set({ job: { kind: 'starting-cancelled', request: job.request } }); return; }
-    if (job.kind === 'running' || job.kind === 'failed' || job.kind === 'cancel-failed') await readJob(job.request, true);
+    if (job.kind === 'running' || job.kind === 'failed' || job.kind === 'cancel-failed' || job.kind === 'settled') await readJob(job.request, true);
   },
   async readStatus() {
     const job = current().job;
@@ -377,7 +474,9 @@ export const quickPreview = {
     const bounds = quickBounds(plan);
     const value = Math.max(bounds.first, Math.min(bounds.last, seconds));
     set({ seconds: value, playback: current().playback === null ? null : { origin: value, startedAt: performance.now() } });
+    requestPicture();
   },
+  retryPicture() { requestPicture(true); },
   inputChanged() { invalidateJob(); },
   invalidate(reason: string) {
     descriptionController?.abort();
@@ -392,6 +491,9 @@ export const quickPreview = {
 
 useWorkbench.subscribe((state, previous) => {
   if (state.quickPreview.playback !== null && quickPlanStale()) quickPreview.pause();
+  if (quickPlanStale()) clearPicture();
+  else if (state.quickPreview.accepted !== previous.quickPreview.accepted || state.quickPreview.seconds !== previous.quickPreview.seconds ||
+    state.quickPreview.playback !== previous.quickPreview.playback) requestPicture();
   const contentChanged = selectionKey(state) !== selectionKey(previous);
   if (state.previewMode !== previous.previewMode || contentChanged) {
     if (state.quickPreview.target !== null) {

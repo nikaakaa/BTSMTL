@@ -3,15 +3,16 @@ import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
 import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '../../api/playerRecords';
+import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { quickJobCancellable, quickJobProgress, quickPlanStale, quickPreview } from '../../state/quickPreview';
+import { quickJobCancellable, quickJobProgress, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
-import { Empty, Facts, PanelBar } from '../../ui/blocks';
+import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './player.module.css';
@@ -47,24 +48,69 @@ function QuickPreviewPicture() {
     : quickPreview.sourceUnavailableReason();
   const accepted = stale ? null : state.accepted;
   return <div className={styles.root}>
-    <PanelBar wrap><strong>快速预览 · 静态路线</strong>
+    <PanelBar wrap><strong>快速预览</strong>
       <Button onClick={() => openPanel('timeline')}>输入与结果</Button>
       {state.description.kind === 'loading' && <Button onClick={() => quickPreview.cancelSourceRead()}>取消读取来源</Button>}
       {quickJobCancellable(job) &&
-        <Button onClick={() => void quickPreview.cancel()}>取消推导</Button>}
+        <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'settled' ? '结束预览' : '取消预览'}</Button>}
     </PanelBar>
     {reason !== null && <Empty text={reason} />}
     {(job.kind === 'failed' || job.kind === 'cancel-failed') && <Empty text={job.reason} />}
     {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案，可取消后重读。" />}
     {progress !== null && <div role="status">{progress}</div>}
     {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null &&
-      <Empty text="在 Timeline 中选择输入并推导路线；动画素材可在 Project 资源视图中预览。" /> : <Facts fields={[
-      { displayName: '当前路线', value: accepted.plan.status },
-      { displayName: '路线时长', value: `${accepted.plan.duration} ${accepted.plan.clock.unit}` },
-      { displayName: '片段数量', value: String(accepted.plan.segments.length) },
-      { displayName: '输入来源', value: accepted.plan.inputSource },
-      { displayName: '输入修订', value: accepted.plan.inputRevision },
-    ]} />}
+      <Empty text="在 Timeline 中选择输入并推导路线，随后拖动时间游标查看对应技能画面。" />
+      : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} picture={state.picture} />}
+  </div>;
+}
+
+function QuickPreviewStage({ result, seconds, picture }: {
+  result: NonNullable<QuickPreviewState['accepted']>; seconds: number; picture: QuickPreviewState['picture'];
+}) {
+  const video = useRef<HTMLCanvasElement>(null);
+  const panelWindow = usePanelWindow();
+  const visible = usePanelVisible();
+  const [drawn, setDrawn] = useState<PreviewQuickFrame | null>(null);
+  const [failure, setFailure] = useState<{ reason: string; entryId: number } | null>(null);
+  const frame = picture.frame;
+  useEffect(() => {
+    const canvas = video.current!;
+    if (!visible || frame === null) {
+      canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
+      setDrawn(null);
+      setFailure(null);
+      return;
+    }
+    let active = true;
+    const image = panelWindow.document.createElement('img');
+    image.src = `data:${frame.mediaType};base64,${frame.imageBase64}`;
+    void image.decode().then(() => {
+      if (!active || getState().quickPreview.picture.frame !== frame || quickPlanStale()) return;
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext('2d')!.drawImage(image, 0, 0);
+      setDrawn(frame);
+      setFailure(null);
+    }).catch((error: unknown) => {
+      if (!active || getState().quickPreview.picture.frame !== frame || quickPlanStale()) return;
+      setFailure({ reason: `技能预览画面解码失败：${error instanceof Error ? error.message : String(error)}`,
+        entryId: consoleActions.error('快预览画面', error) });
+    });
+    return () => { active = false; };
+  }, [frame, visible, panelWindow]);
+  const request = picture.request;
+  return <div className={styles.stage} data-quick-job-id={result.jobId} data-quick-target-seconds={seconds}
+    data-quick-frame-request-id={drawn?.requestId} data-quick-sampled-seconds={drawn?.sampledSeconds}
+    data-quick-sampled-revision={drawn?.sampledRevision} data-quick-source-revision={drawn?.sourceRevision}
+    data-quick-input-revision={drawn?.inputRevision}>
+    <canvas ref={video} className={styles.video} aria-label="技能快速预览画面" hidden={drawn === null} />
+    {failure !== null ? <ErrorLine text={failure.reason} entryId={failure.entryId} />
+      : request.kind === 'failed' ? <ErrorLine text={request.reason} entryId={null} />
+        : drawn === null && <Empty text="正在读取并绘制当前技能画面" />}
+    {(failure !== null || request.kind === 'failed') && <Button onClick={() => quickPreview.retryPicture()}>重试当前画面</Button>}
+    <div className={styles.source} role="status">目标 {seconds.toFixed(3)} 秒 ·
+      {drawn === null ? ' 尚未显示实际画面' : ` 画面 ${drawn.sampledSeconds.toFixed(3)} 秒 · 采样 ${drawn.sampledRevision}`}
+      {request.kind === 'pending' && ' · 正在取帧'}</div>
   </div>;
 }
 
