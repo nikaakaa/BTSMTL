@@ -63,7 +63,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .GetDeclaredSymbol(declaration);
                 if (storedMemberTypes.Add(Identity(type)))
                     ValidateStoredMemberDeclarations(context, type);
-                if (type.TypeKind == TypeKind.Class && AuthoringTypeHasFields(type))
+                if ((type.TypeKind == TypeKind.Class || type.TypeKind == TypeKind.Struct) && AuthoringTypeHasFields(type))
                     authoringTypes[Identity(type)] = type;
                 if (HasAttribute(type, UnionTemplateAttribute))
                     templates[Identity(type)] = type;

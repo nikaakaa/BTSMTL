@@ -129,11 +129,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return;
             void Error(ISymbol symbol, string reason) => context.ReportDiagnostic(Diagnostic.Create(
                 InvalidValueDeclaration, symbol.Locations.FirstOrDefault(), Identity(symbol), reason));
-            if (type.ContainingType != null || type.TypeKind != TypeKind.Class ||
+            if (type.ContainingType != null || type.TypeKind != TypeKind.Class && type.TypeKind != TypeKind.Struct ||
                 type.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax() is TypeDeclarationSyntax declaration &&
                     !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)))
             {
-                Error(type, "作者字段必须声明在顶层 partial class 的公开实例成员上");
+                Error(type, "作者字段必须声明在顶层 partial class 或 partial struct 的公开实例成员上");
                 return;
             }
             bool valid = true;
@@ -497,6 +497,8 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.AppendLine("public override object Apply(object target) {")
                 .AppendLine("var candidate = this;");
             if (inherited != null) code.AppendLine("target = base.Apply(target);");
+            if (type.IsValueType)
+                code.Append("var value = (").Append(TypeName(type)).AppendLine(")target;");
             foreach (Tuple<IMethodSymbol, AuthoringArgument[]> operation in operations)
             {
                 code.Append("if (").Append(string.Join(" || ", operation.Item2.SelectMany(argument => argument.Fields)
@@ -504,14 +506,16 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (operation.Item1.MethodKind == MethodKind.Constructor)
                     code.Append("return new ").Append(TypeName(type));
                 else
-                    code.Append("((").Append(TypeName(type)).Append(")target).").Append(Escape(operation.Item1.Name));
+                    code.Append(type.IsValueType ? "value." : "((" + TypeName(type) + ")target).")
+                        .Append(Escape(operation.Item1.Name));
                 code.Append('(').Append(string.Join(", ", operation.Item2.Select(argument => argument.Expression))).AppendLine(");");
             }
             if (assigned.Length != 0)
                 code.Append("if (").Append(string.Join(" || ", assigned.Select(field => "Changed_" + field.Name)))
-                    .Append(") ((").Append(TypeName(type)).Append(")target).ConfigureAuthoringFields(")
+                    .Append(") ").Append(type.IsValueType ? "value" : "((" + TypeName(type) + ")target)")
+                    .Append(".ConfigureAuthoringFields(")
                     .Append(string.Join(", ", assigned.Select(AuthoringCandidate))).AppendLine(");");
-            code.AppendLine("return target; } }");
+            code.AppendLine(type.IsValueType ? "return value; } }" : "return target; } }");
         }
 
         // 带点的 VisibleWhenField 是进入字段值的成员路径，由对应领域读取，不换算。
