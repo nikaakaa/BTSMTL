@@ -33,7 +33,9 @@ namespace BTSMTL.Timeline
         float SourceFrameRate { get; }
         string SourceFrameLabel { get; }
     }
+#endif
 
+#if UNITY_EDITOR || BTSMTL_AUTHORING
     public interface ITimelineAuthoringClipSplitSource
     {
         bool CanSplit { get; }
@@ -46,13 +48,17 @@ namespace BTSMTL.Timeline
             double currentStart, double currentEnd, bool trimStart,
             out float sourceStart, out float sourceEnd);
     }
+#endif
 
+#if UNITY_EDITOR
     public interface ITimelineAuthoringSourceCreationTrack
     {
         Type SourceAssetType { get; }
         string CreateSourceLabel { get; }
     }
+#endif
 
+#if UNITY_EDITOR || BTSMTL_AUTHORING
     public interface ITimelineAuthoringReferenceCurveSource
     {
         IReadOnlyList<TimelineReferenceCurveDescriptor> ReferenceCurves { get; }
