@@ -675,7 +675,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         string TimelineViewStateKey() => "BTSMTL.Timeline.View." +
-            GlobalObjectId.GetGlobalObjectIdSlow(m_SerializedOwner) + ":" + m_SerializedPropertyPath;
+            m_Timeline.AuthoringDocument.SourcePath + ":" + m_Timeline.AuthoringId;
 
         void OnAuthoringIssue(string message)
         {
