@@ -247,7 +247,12 @@ export function useDocumentGraphHierarchy() {
   return useMemo(() => graphHierarchy(graphs ?? [], relations), [graphs, relations]);
 }
 
-export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
+export const isTimelineFile = (path: string) => path === 'timeline.json' || path.startsWith('timelines/') && path.endsWith('.json');
+
+export function timelinePath(documentId: string) {
+  const root = currentDocument('timeline.json') as JsonObject | null;
+  return root?.m_AuthoringId === documentId ? 'timeline.json' : `timelines/${documentId}.json`;
+}
 
 let loadController: AbortController | null = null;
 let previewController: AbortController | null = null;
@@ -407,10 +412,12 @@ async function trackPreview(input: {
   }
 }
 
-// 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
+// Timeline 文档中的轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
 export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
-  return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json'))
-    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject));
+  return Object.entries(files).filter(([path]) => isTimelineFile(path)).map(([, text]) => {
+    const document = parseSkillJson(text) as JsonObject;
+    return timelineOf(document.m_AuthoringId as string, document);
+  });
 }
 
 export interface AuthorInputScheme {
@@ -2323,8 +2330,8 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
     };
   });
   for (const [path, document] of Object.entries(edited))
-    if (path.startsWith('timelines/') && !removed.includes(path)) {
-      const id = path.slice('timelines/'.length, -'.json'.length);
+    if (isTimelineFile(path) && !removed.includes(path)) {
+      const id = (document as JsonObject).m_AuthoringId as string;
       if (!source.some(timeline => timeline.documentId === id)) result.push(timelineOf(id, document as JsonObject));
     }
   return result;
