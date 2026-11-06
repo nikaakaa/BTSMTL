@@ -1,5 +1,5 @@
 import { authoringApi, authoringOwner, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
-import { workspaceDocumentsApi } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type WorkspaceDocumentElement } from '../api/workspaceDocuments';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
@@ -24,6 +24,9 @@ async function openOwner(item: Pick<ProjectItem, 'owner' | 'ownerName'>) {
 
 type GraphNavigation = Pick<NonNullable<SelectionSlice['graphRequest']>, 'origin' | 'observation' | 'caller'> & { panelId: string | null };
 
+export const documentElementKey = (element: WorkspaceDocumentElement) =>
+  JSON.stringify([element.documentPath, element.relativePath, element.jsonPath, element.sourceIdentity]);
+
 async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'ownerName'>, nodeId?: string,
   navigation: GraphNavigation | null = null): Promise<void> {
   const document = await openOwner(target);
@@ -41,6 +44,11 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 export const projectActions = {
   openGraph,
   openOwner,
+  async openDocumentElement(element: WorkspaceDocumentElement): Promise<void> {
+    await openOwner({ owner: element.documentPath, ownerName: element.documentPath });
+    selectionActions.select({ kind: 'content', id: documentElementKey(element) });
+    openPanel('inspector');
+  },
   async openDocument(documentPath: string): Promise<void> {
     const document = await openOwner({ owner: documentPath, ownerName: documentPath });
     if (document.rootFile === null) {

@@ -7,14 +7,21 @@ const readResourceReferenceFields = object({ domain: text, selection: nullable(c
   objectType: nullable(text), profile: nullable(text), mappingInputType: nullable(text), referenceType: text,
   availability: readAuthoringAvailability });
 export function readResourceReferenceMetadata(value: unknown, path = 'ResourceReference') {
+  const { source } = object({ source: nullable(choice('AdapterResource', 'AuthoringDocument')) })(value, path);
+  if (source === null) {
+    const rule = object({ domain: nullable(text), selection: nullable(choice('asset', 'mapped')),
+      contextFieldId: text, contextType: text, availability: readAuthoringAvailability })(value, path);
+    if (rule.domain !== null || rule.selection !== null || rule.availability.available)
+      throw new Error(`${path} 未解析的资源规则需要空领域、空选择方式和明确的不可用原因`);
+    return { ...rule, source, domain: null, selection: null, availability: rule.availability };
+  }
   const fields = readResourceReferenceFields(value, path);
-  const { source } = object({ source: choice('AdapterResource', 'AuthoringDocument') })(value, path);
   switch (source) {
     case 'AdapterResource': return { ...fields, source, ...object({
       catalog: object({ owner: choice('Authoring'), command: choice('catalog'), domain: text }),
     })(value, path) };
     case 'AuthoringDocument': return { ...fields, source, ...object({
-      catalog: object({ owner: choice('Authoring'), command: choice('documents'), domain: text }),
+      catalog: object({ owner: choice('Authoring'), command: choice('elements'), domain: text }),
     })(value, path) };
   }
 }

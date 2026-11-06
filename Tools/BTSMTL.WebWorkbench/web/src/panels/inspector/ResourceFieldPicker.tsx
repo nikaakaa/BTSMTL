@@ -19,29 +19,35 @@ interface ResourceFieldPickerProps {
 }
 
 export function ResourceFieldPicker(props: ResourceFieldPickerProps) {
-  return props.metadata.source === 'AuthoringDocument' ? <DocumentFieldPicker {...props} /> : <AdapterFieldPicker {...props} />;
+  switch (props.metadata.source) {
+    case null: return <ReferencePicker id={props.id} label={props.label} value={props.value} configuration={props.configuration}
+      catalog={{ kind: 'unavailable', reason: props.metadata.availability.reason }} onChoose={props.onChoose} />;
+    case 'AuthoringDocument': return <DocumentFieldPicker {...props} metadata={props.metadata} />;
+    case 'AdapterResource': return <AdapterFieldPicker {...props} metadata={props.metadata} />;
+  }
 }
 
-function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoose }: ResourceFieldPickerProps) {
-  const directory = useAuthoring(state => state.directory);
-  const reason = useAuthoring(state => state.unavailableReason);
-  const documents = directory?.filter(document => document.contentDomain === metadata.domain) ?? [];
+function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoose }:
+  ResourceFieldPickerProps & { metadata: Extract<ResourceReferenceMetadata, { source: 'AuthoringDocument' }> }) {
+  const catalog = useAuthoring(state => state.elementCatalog);
+  const elements = catalog.items.filter(element => element.contentDomain === metadata.domain && element.sourceIdentity !== null);
   const choices: ReferenceCatalog = !metadata.availability.available
     ? { kind: 'unavailable', reason: metadata.availability.reason }
-    : directory === null || reason !== null ? { kind: 'unavailable', reason: reason ?? '正在读取工作区作者文档。' }
-      : { kind: 'ready', referenceKind: metadata.domain, invalidReason: `当前引用不在领域 ${metadata.domain} 的工作区作者文档中，原字符串已保留。`,
-        items: documents.map(document => ({ value: document.sourceIdentity, name: document.identity,
-          detail: document.documentPath, source: document.rootFile === null ? document.documentPath : `${document.documentPath}/${document.rootFile}`,
-          conflict: documents.filter(other => other.sourceIdentity === document.sourceIdentity).length > 1
-            ? `领域 ${metadata.domain} 的引用 ${document.sourceIdentity} 命中多个正式作者文档。` : null,
+    : catalog.kind !== 'ready' ? { kind: 'unavailable', reason: catalog.kind === 'unavailable' ? catalog.reason : '正在读取工作区作者元素。' }
+      : { kind: 'ready', referenceKind: metadata.domain, invalidReason: `当前引用不在领域 ${metadata.domain} 的工作区作者元素中，原字符串已保留。`,
+        items: elements.map(element => ({ value: element.sourceIdentity, name: element.identity,
+          detail: `${element.documentPath} · ${element.jsonPath}`, source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`,
+          conflict: elements.filter(other => other.sourceIdentity === element.sourceIdentity).length > 1
+            ? `领域 ${metadata.domain} 的引用 ${element.sourceIdentity} 命中多个正式作者元素。` : null,
           targets: [], associated: [] })) };
-  const selected = documents.filter(document => document.sourceIdentity === value);
+  const selected = elements.filter(element => element.sourceIdentity === value);
   return <><ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />
-    {selected.length === 1 && <Button variant="ghost" onClick={() => void projectActions.openDocument(selected[0].documentPath)
-      .catch(error => consoleActions.error('作者文档', error))}>打开作者文档</Button>}</>;
+    {catalog.kind === 'ready' && selected.length === 1 && <Button variant="ghost" onClick={() => void projectActions.openDocumentElement(selected[0])
+      .catch(error => consoleActions.error('作者文档', error))}>定位作者内容</Button>}</>;
 }
 
-function AdapterFieldPicker({ id, label, metadata, value, configuration, onChoose }: ResourceFieldPickerProps) {
+function AdapterFieldPicker({ id, label, metadata, value, configuration, onChoose }:
+  ResourceFieldPickerProps & { metadata: Extract<ResourceReferenceMetadata, { source: 'AdapterResource' }> }) {
   const inherited = useContext(ResourceScopeContext);
   const preview = useAuthoring(state => authoringDocument(state).execution.previewScope);
   const scopeValue = inherited === undefined ? preview : inherited;

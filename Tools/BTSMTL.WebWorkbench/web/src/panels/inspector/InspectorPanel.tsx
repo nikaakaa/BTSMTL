@@ -10,7 +10,7 @@ import {
 import {
   applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
-import { projectActions } from '../../state/project';
+import { documentElementKey, projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
@@ -100,7 +100,15 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const documents = useAuthoring(state => state.documents);
   const target = useAuthoring(state => state.target);
   const editable = useAuthoring(state => state.author);
+  const element = useAuthoring(state => state.elementCatalog.items.find(element => documentElementKey(element) === id));
   const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
+  if (element !== undefined && target !== null && element.documentPath === target.documentPath) return <>
+    <Head name={element.identity} sub="作者元素" />
+    <Value label="所属文档" value={element.documentPath} mono={false} />
+    <DocumentFields editable={editable} location={{ kind: 'element', element }} />
+    <IdentityFold fields={[{ displayName: '作者文件', value: element.relativePath }, { displayName: 'JSON 路径', value: element.jsonPath },
+      { displayName: '资源引用身份', value: element.sourceIdentity }, { displayName: '所属文档修订', value: element.revision }]} />
+  </>;
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
@@ -108,7 +116,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Value label="所属文档" value={item.ownerName} mono={false} />
     <Value label="引用者" value={item.referenceCount} mono={false} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
-    {item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} />
+    {item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
       : <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>}
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;

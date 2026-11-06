@@ -4,6 +4,7 @@ import {
   type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField, type TypeDescription,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
+import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
 import {
   authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, variableTypes,
   type EdgeStep, type JsonKey, type JsonMutation,
@@ -430,15 +431,26 @@ function ValueFields({ value, description, owner, onSet }: {
   </>;
 }
 
-export function DocumentFields({ editable }: { editable: boolean }) {
+export function DocumentFields({ editable, location }: { editable: boolean;
+  location: { kind: 'root' } | { kind: 'element'; element: WorkspaceDocumentElement };
+}) {
   const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
-  const authoringType = useAuthoring(state => authoringDocument(state).authoringType);
-  const { document } = useCurrentDocument(rootFile);
-  if (rootFile === null || document === null) return null;
+  const rootType = useAuthoring(state => authoringDocument(state).authoringType);
+  const file = location.kind === 'root' ? rootFile : location.element.relativePath;
+  const jsonPath = location.kind === 'root' ? '/' : location.element.jsonPath;
+  const authoringType = location.kind === 'root' || location.element.jsonPath === '/' ? rootType : location.element.authoringType;
+  const keys = jsonPath === '/' ? [] : jsonPath.slice(1).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
+  const { document } = useCurrentDocument(file);
+  if (file === null || document === null) return null;
   if (authoringType === null) return <div className={styles.issue}>当前文档未提供作者字段声明</div>;
+  const value = getIn(document, keys);
+  if (value === undefined) return <div className={styles.issue}>所选作者位置已不在当前文档中：{jsonPath}</div>;
   return <fieldset className={styles.authorFields} disabled={!editable}>
-    <AuthoringValueFields label="文档配置" type={authoringType} value={document as JsonObject}
-      graphId={null} identity={rootFile} onSet={next => authoringActions.edit(rootFile, value => { Object.assign(value as JsonObject, next); })} />
+    <AuthoringValueFields label={jsonPath === '/' ? '文档配置' : '作者元素'} type={authoringType} value={value as JsonObject}
+      graphId={null} identity={`${file}#${jsonPath}`} onSet={next => authoringActions.edit(file, root => {
+        if (keys.length === 0) Object.assign(root as JsonObject, next);
+        else setIn(root, keys, next);
+      })} />
   </fieldset>;
 }
 

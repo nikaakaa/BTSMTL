@@ -8,7 +8,7 @@ import {
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
-import { workspaceDocumentsApi, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
 import { playerApi } from '../api/player';
 import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
   type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
@@ -38,6 +38,8 @@ export interface AuthoringState {
   target: AuthoringTarget | null;
   documents: Record<string, AuthoringDocument>;
   directory: WorkspaceDocumentInfo[] | null;
+  elementCatalog: { kind: 'loading' | 'ready'; items: WorkspaceDocumentElement[] }
+    | { kind: 'unavailable'; items: WorkspaceDocumentElement[]; reason: string };
   carrierRevision: string | null;
   resourceTarget: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null;
   profiles: Record<string, ProfileDocument>;
@@ -175,7 +177,8 @@ const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
 const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null, carrierRevision: null,
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null,
+  elementCatalog: { kind: 'loading', items: [] }, carrierRevision: null,
   resourceTarget: null, profiles: {}, scopes: {},
 }));
 
@@ -521,7 +524,7 @@ useWorkbench.subscribe((state, previous) => {
   if (receipt.stage !== saved.receipt.stage) acceptSaveJob(receipt);
 });
 
-async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
+function captureEditingView() {
   const capturedOwners = Object.entries(useAuthoring.getState().documents)
     .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
@@ -531,8 +534,16 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       capturedOwners.every(owner => current[owner.key].revision === owner.revision && current[owner.key].version === owner.version) &&
       JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
   };
+  return { editingView, isCurrentRequest };
+}
+
+async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
+  const { editingView, isCurrentRequest } = captureEditingView();
   try {
-    const document = await authoringApi.document(target.documentPath, editingView, signal);
+    const [document, view] = await Promise.all([
+      authoringApi.document(target.documentPath, editingView, signal),
+      workspaceDocumentsApi.editingView(editingView.writes, signal),
+    ]);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     const documents = { ...useAuthoring.getState().documents };
@@ -556,18 +567,20 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       documentSources: document.sources.map(source => source.skill),
       sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId };
-    set({ documents });
+    set({ documents, elementCatalog: { kind: 'ready', items: view.elements } });
   } catch (error) {
     if (isAbort(error)) throw error;
     if (!isCurrentRequest()) return;
-    setDocument({ sourceRevision: null, documentError: error instanceof ApiError ? error.reason : String(error) }, target);
+    const reason = error instanceof ApiError ? error.reason : String(error);
+    setDocument({ sourceRevision: null, documentError: reason }, target);
+    set({ elementCatalog: { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason } });
     consoleActions.error('作者', error);
   }
 }
 
 function reconcileSelection() {
   const { selection, graphs, timelines } = useWorkbench.getState();
-  if (!selection || selection.kind === 'actor' || selection.kind === 'resource' || selection.id.startsWith('input/') || selection.id.startsWith('curve/')) return;
+  if (!selection || selection.kind === 'actor' || selection.kind === 'resource' || selection.kind === 'content' || selection.id.startsWith('input/') || selection.id.startsWith('curve/')) return;
   const { edited, removed, addedPorts } = get();
   const { kind, id } = selection;
   let exists: boolean;
@@ -650,12 +663,20 @@ export const authoringActions = {
   },
 
   async listDocuments() {
+    const { editingView, isCurrentRequest } = captureEditingView();
     try {
-      const directory = await workspaceDocumentsApi.list();
-      set({ directory, available: true, unavailableReason: null });
+      const [directory, view] = await Promise.all([
+        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView.writes),
+      ]);
+      set({ directory, available: true, unavailableReason: null,
+        ...(isCurrentRequest() ? { elementCatalog: { kind: 'ready', items: view.elements } as const } : {}),
+      });
     } catch (error) {
-      set({ directory: [], available: false, unavailableReason: error instanceof ApiError && error.status === 404
-        ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
+      const reason = error instanceof ApiError && error.status === 404
+        ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error);
+      set({ directory: [], available: false, unavailableReason: reason,
+        ...(isCurrentRequest() ? { elementCatalog: { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason } as const } : {}),
+      });
     }
   },
 
