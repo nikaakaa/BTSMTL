@@ -8,8 +8,8 @@ import {
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
-import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
-import { variablesApi, type VariableDeclarationChanges, type VariableOperation, type VariablesQuery } from '../api/variables';
+import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
+import { variablesApi, type VariableDeclarationChanges, type VariableOperation, type VariablesQuery, type VariablesValue } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
@@ -126,6 +126,11 @@ const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
   saving: false, lastSave: null,
   documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, execution: { previewScope: null, runtimeScope: null }, product: null,
 });
+
+const variablesDrafts = (values: readonly VariablesValue[]): Record<string, AuthoringDocument> =>
+  Object.fromEntries(values.map((value): [string, AuthoringDocument] => [authoringTarget('variables', value.m_OwnerId).documentPath,
+    { ...newDocument(), kind: 'variables', rootFile: authoringRootFiles.variables, identity: value.m_OwnerId,
+      edited: { [authoringRootFiles.variables]: cloneJson(value) }, version: 1 }]));
 
 const closedDocument = newDocument();
 
@@ -611,7 +616,8 @@ export const authoringActions = {
       throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
-    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: target.kind, rootFile: 'skill.json', edited, version: 1,
+    set({ documents: { ...useAuthoring.getState().documents, ...variablesDrafts(draft.variables === null ? [] : [draft.variables]),
+      [key]: { ...newDocument(), kind: target.kind, rootFile: 'skill.json', edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
@@ -622,7 +628,8 @@ export const authoringActions = {
     const target = authoringTarget('scenario', name);
     const draft = await authoringApi.scenarioDraft(name, request);
     await workspaceDocumentsApi.save([{ kind: 'scenario', documentPath: target.documentPath, expectedRevision: '',
-      files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) }], []);
+      files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) },
+      ...Object.entries(variablesDrafts(draft.variables)).map(([path, document]) => documentWrite(path, document))], []);
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
@@ -727,22 +734,30 @@ export const authoringActions = {
     setDocument({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
   },
 
-  setFile(path: string, document: JsonValue) {
-    record();
+  setFile(path: string, document: JsonValue, createdDocuments: Record<string, AuthoringDocument> = {}) {
+    record(Object.keys(createdDocuments));
     const state = get();
-    setDocument({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
+    const key = state.target!.documentPath;
+    set({ documents: { ...state.documents, ...createdDocuments, [key]: { ...state.documents[key],
+      edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 } } });
   },
 
   // 删除文件：网页新建的直接丢弃，原有的保存时删除。
   remove(paths: string[]) {
     if (!paths.length) return;
-    record();
+    const graphIds = new Set<string | null>(paths.flatMap(path => /^graphs\/(.+)\.json$/.exec(path)?.slice(1) ?? []));
+    const related = Object.entries(get().documents).filter(([, document]) => document.kind === 'variables' &&
+      document.revision === null && graphIds.has(document.identity)).map(([key]) => key);
+    record(related);
     const state = get();
     const edited = { ...state.edited };
     for (const path of paths) delete edited[path];
-    setDocument({
+    const key = state.target!.documentPath;
+    const documents = { ...state.documents, [key]: { ...state.documents[key],
       edited, removed: [...new Set([...state.removed, ...paths.filter(path => state.files[path] !== undefined)])], version: state.version + 1,
-    });
+    } };
+    for (const path of related) delete documents[path];
+    set({ documents });
   },
 
   acceptSkillDeletion(receipt: Extract<SkillDeleteResult, { deleted: true }>) {
@@ -859,13 +874,7 @@ export const authoringActions = {
   editingView(): SkillEditingView {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
-    const writes = Object.entries(state.documents).map(([documentPath, document]) => {
-      const files = { ...document.sourceFiles };
-      for (const [path, content] of Object.entries(workingFiles(document.files, document, document.rootFile)))
-        if (content !== document.files[path]) files[path] = content;
-      for (const path of document.removed) delete files[path];
-      return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files };
-    });
+    const writes = Object.entries(state.documents).map(([path, document]) => documentWrite(path, document));
     return {
       writes,
       reads: Object.entries(state.documents).flatMap(([documentPath, document]) =>
@@ -1477,15 +1486,24 @@ interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections'
   edited: Record<string, JsonValue>;
   removed: string[];
   addedPorts: Record<string, AddedPort[]>;
+  relatedDocuments: Record<string, AuthoringDocument | null>;
 }
 
 const historyLimit = 100;
 
-const snapshot = (owner = get().target!): Snapshot => {
+const snapshotDocuments = (paths: readonly string[]): Record<string, AuthoringDocument | null> =>
+  Object.fromEntries(paths.map((path): [string, AuthoringDocument | null] => {
+    const document = useAuthoring.getState().documents[path];
+    return [path, document === undefined ? null : { ...document,
+      edited: Object.fromEntries(Object.entries(document.edited).map(([file, value]) => [file, cloneJson(value)])),
+      removed: [...document.removed] }];
+  }));
+
+const snapshot = (owner = get().target!, relatedDocuments: readonly string[] = []): Snapshot => {
   const state = authoringDocument(useAuthoring.getState(), owner);
   const { selection, canvasSelections, timelineSelections } = useWorkbench.getState();
   return { owner, edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
-    removed: [...state.removed], addedPorts: state.addedPorts,
+    removed: [...state.removed], addedPorts: state.addedPorts, relatedDocuments: snapshotDocuments(relatedDocuments),
     selection, canvasSelections, timelineSelections };
 };
 
@@ -1496,6 +1514,14 @@ function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'e
     result[path] = writeSkillJson(value, files[path] !== undefined ? shapeOf(files[path]) : format);
   for (const path of document.removed) delete result[path];
   return result;
+}
+
+function documentWrite(documentPath: string, document: AuthoringDocument): WorkspaceDocumentWrite {
+  const files = { ...document.sourceFiles };
+  for (const [path, content] of Object.entries(workingFiles(document.files, document, document.rootFile)))
+    if (content !== document.files[path]) files[path] = content;
+  for (const path of document.removed) delete files[path];
+  return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files };
 }
 
 function rebaseSavedEdits(previousFiles: Record<string, string>, submittedFiles: Record<string, string>,
@@ -1512,12 +1538,19 @@ function rebaseSavedEdits(previousFiles: Record<string, string>, submittedFiles:
   return { edited, removed, addedPorts: Object.keys(edited).length === 0 ? {} : document.addedPorts };
 }
 
-function record() {
+function record(relatedDocuments: readonly string[] = []) {
   if (get().resourceTarget !== null) set({ resourceTarget: null });
   const state = get();
-  if (state.recording) return;
+  if (state.recording) {
+    if (relatedDocuments.length !== 0) {
+      const previous = state.undo.at(-1)!;
+      setDocument({ undo: [...state.undo.slice(0, -1), { ...previous,
+        relatedDocuments: { ...snapshotDocuments(relatedDocuments), ...previous.relatedDocuments } }] });
+    }
+    return;
+  }
   const target = state.target!;
-  setDocument({ undo: [...state.undo, snapshot()].slice(-historyLimit), redo: [], recording: true }, target);
+  setDocument({ undo: [...state.undo, snapshot(target, relatedDocuments)].slice(-historyLimit), redo: [], recording: true }, target);
   queueMicrotask(() => {
     setDocument({ recording: false }, target);
     if (isActiveTarget(target)) reconcileSelection();
@@ -1535,12 +1568,18 @@ async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const previous = state[from].at(-1);
   if (!previous || state.saving) return;
   const target = state.target!;
-  const { owner: source, selection, canvasSelections, timelineSelections, ...content } = previous;
+  const { owner: source, selection, canvasSelections, timelineSelections, relatedDocuments, ...content } = previous;
   const document = authoringDocument(useAuthoring.getState(), source);
-  if (document.variablesWriting) return;
-  const next = snapshot(source);
-  setDocument({ ...content, variables: null, version: document.version + 1 }, source);
-  setDocument({ [from]: state[from].slice(0, -1), [to]: [...state[to], next] }, target);
+  const related = Object.keys(relatedDocuments);
+  if (document.variablesWriting || related.some(path => state.documents[path]?.variablesWriting)) return;
+  const next = snapshot(source, related);
+  const documents = { ...state.documents, [source.documentPath]: { ...document, ...content, variables: null, version: document.version + 1 } };
+  for (const [path, restored] of Object.entries(relatedDocuments)) {
+    if (restored === null) delete documents[path];
+    else documents[path] = { ...restored, variables: null };
+  }
+  documents[target.documentPath] = { ...documents[target.documentPath], [from]: state[from].slice(0, -1), [to]: [...state[to], next] };
+  set({ documents });
   if (isActiveTarget(target)) {
     useWorkbench.setState({ selection, canvasSelections, timelineSelections });
     reconcileSelection();
@@ -1838,7 +1877,7 @@ export const inputAuthoring = {
     const target = get().target;
     const fragment = await authoringApi.inputFragment(request);
     if (get().target !== target) return;
-    authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph);
+    authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph, variablesDrafts([fragment.variables]));
     authoringActions.edit(timelinePath(documentId), document => {
       const tracks = tracksOf(document);
       const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
@@ -1925,7 +1964,7 @@ function createGraph(elements: SkillElements, role: string, name: string | null,
   if (template.requiredContext.length !== 0 && context === undefined)
     throw new Error(`${role} 必须从实际拥有节点创建：${template.requiredContext.join('、')}`);
   for (const field of template.requiredContext) graph[field] = context![field];
-  authoringActions.setFile(graphPath(id), graph);
+  authoringActions.setFile(graphPath(id), graph, variablesDrafts(template.variables === null ? [] : [template.variables]));
   authoringActions.edit(layoutPath, document => { (document as JsonObject)[id] = cloneJson(template.layout); });
   return id;
 }
