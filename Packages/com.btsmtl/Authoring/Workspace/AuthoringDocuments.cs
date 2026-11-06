@@ -16,11 +16,9 @@ namespace BTSMTL.Authoring.Workspace
         public static readonly AuthoringDocumentKind Timeline = new("timeline", "Timelines", "timeline.json", "m_AuthoringId", "timeline");
         public static readonly AuthoringDocumentKind Curve = new("curve", "Curves", "curve.json", "m_AuthoringId", "curve", "m_SourceIdentity");
         public static readonly AuthoringDocumentKind Scenario = new("scenario", "Scenarios", null, null);
-        public static readonly AuthoringDocumentKind AdmissionProfile = new("admission-profile", "AdmissionProfiles", "admission-profile.json",
-            "m_AuthoringId", "admission-profile", "m_SourceIdentity");
-        public static readonly AuthoringDocumentKind PoseGraph = new("pose-graph", "PoseGraphs", "pose-graph.json",
-            "m_AuthoringId", "pose-graph", "m_SourceIdentity");
-        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario, AdmissionProfile, PoseGraph };
+        public static readonly AuthoringDocumentKind Profile = new("profile", "Profiles", "profile.json",
+            "m_AuthoringId", "profile", "m_SourceIdentity");
+        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario, Profile };
 
         AuthoringDocumentKind(string id, string directory, string rootFile, string identityMember,
             string rootElementKind = null, string sourceIdentityMember = null)
