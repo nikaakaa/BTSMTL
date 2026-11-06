@@ -1569,7 +1569,7 @@ async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   if (!previous || state.saving) return;
   const target = state.target!;
   const { owner: source, selection, canvasSelections, timelineSelections, relatedDocuments, ...content } = previous;
-  const document = authoringDocument(useAuthoring.getState(), source);
+  const document = state.documents[source.documentPath];
   const related = Object.keys(relatedDocuments);
   if (document.variablesWriting || related.some(path => state.documents[path]?.variablesWriting)) return;
   const next = snapshot(source, related);
