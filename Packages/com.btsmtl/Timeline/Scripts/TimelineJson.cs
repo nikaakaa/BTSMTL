@@ -46,7 +46,11 @@ namespace BTSMTL.Timeline
         public static IReadOnlyDictionary<string, FieldInfo> StoredFields(Type type)
         {
             var fields = new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
-            for (Type current = type; current != null && current != typeof(object); current = current.BaseType)
+            for (Type current = type; current != null && current != typeof(object)
+#if UNITY_EDITOR
+                 && current != typeof(UnityEngine.Object)
+#endif
+                 ; current = current.BaseType)
                 foreach (FieldInfo field in current.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
                 {
                     if (field.IsDefined(typeof(NonSerializedAttribute)) || typeof(Delegate).IsAssignableFrom(field.FieldType))
