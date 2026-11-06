@@ -88,6 +88,10 @@ namespace BTSMTL.Authoring.Graph
                 {
                     if (member.SerializedMemberPath.Count == 0)
                         continue;
+                    if (member.Annotation<GraphAuthoringResourceAttribute>() != null ||
+                        member.Annotation<GraphAuthoringResourceRuleAttribute>() != null ||
+                        !string.IsNullOrEmpty(member.Metadata.ResourceDomain))
+                        continue;
                     Type childType = member.ValueType.IsArray ? member.ValueType.GetElementType() : member.ValueType;
                     GraphAuthoringElementAttribute declaration = member.Annotation<GraphAuthoringElementAttribute>();
                     GraphAuthoringTypeContract child = Contract(childType);
