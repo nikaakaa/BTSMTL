@@ -71,7 +71,8 @@ namespace BTSMTL.Authoring.Workspace
         public string DocumentPath { get; }
         public string SourcePath => Kind.RootFile == null ? DirectoryPath : Path.Combine(DirectoryPath, Kind.RootFile);
         public string Scope => (string)Root?["m_AuthoringScope"];
-        public string ContentDomain => (string)Root?["m_ContentDomain"];
+        public string ContentDomain => Kind == AuthoringDocumentKind.Timeline ? Kind.RootElementKind :
+            (string)Root?["m_ContentDomain"];
         public string SourceIdentity => Kind.SourceIdentityMember == null ? Identity : (string)Root[Kind.SourceIdentityMember];
         public string Revision { get; }
         public IReadOnlyDictionary<string, string> Files { get; }
@@ -87,20 +88,24 @@ namespace BTSMTL.Authoring.Workspace
 
     public sealed class AuthoringDocumentElement
     {
+        readonly Func<object, object> m_ReadAuthoring;
+
         public AuthoringDocumentElement(AuthoringDocumentSnapshot owner, string domain, string identity, string path,
-            JObject value, object authoringValue)
-            : this(owner, domain, identity, path, value, domain, identity, authoringValue)
+            JObject value, Type authoringType, Func<object, object> readAuthoring)
+            : this(owner, domain, identity, path, value, domain, identity)
         {
+            AuthoringType = authoringType;
+            m_ReadAuthoring = readAuthoring;
             if (string.IsNullOrEmpty(identity))
                 throw new InvalidDataException($"作者文档 '{owner.DocumentPath}/{path}' 的元素 '{domain}' 在 '{JsonPath}' 缺少正式身份。");
         }
 
         internal AuthoringDocumentElement(AuthoringDocumentSnapshot owner, string kind, string identity, string path,
-            JObject value, string contentDomain, string sourceIdentity, object authoringValue = null)
+            JObject value, string contentDomain, string sourceIdentity)
         {
             Owner = owner; Kind = kind; Identity = identity; RelativePath = path; Value = value;
             ContentDomain = contentDomain; SourceIdentity = sourceIdentity;
-            AuthoringValue = authoringValue;
+            m_ReadAuthoring = authoring => authoring;
         }
         public AuthoringDocumentSnapshot Owner { get; }
         public string Kind { get; }
@@ -111,7 +116,8 @@ namespace BTSMTL.Authoring.Workspace
         public string ContentDomain { get; }
         public string SourceIdentity { get; }
         public string JsonPath => AuthoringJsonPointer.Of(Value);
-        public object AuthoringValue { get; }
+        public Type AuthoringType { get; }
+        public object ReadAuthoring(object authoring) => m_ReadAuthoring(authoring);
     }
 
     public sealed class AuthoringDocumentWrite
@@ -145,12 +151,10 @@ namespace BTSMTL.Authoring.Workspace
     public sealed class AuthoringDocumentRepository
     {
         readonly AuthoringCommits m_Commits;
-        readonly Func<AuthoringDocumentSnapshot, IReadOnlyList<AuthoringDocumentSnapshot>,
-            IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
+        readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
 
         public AuthoringDocumentRepository(string workspace,
-            Func<AuthoringDocumentSnapshot, IReadOnlyList<AuthoringDocumentSnapshot>,
-                IEnumerable<AuthoringDocumentElement>> declaredElements = null)
+            Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> declaredElements = null)
         {
             Workspace = Path.GetFullPath(workspace);
             m_Commits = AuthoringCommits.For(Workspace);
@@ -187,42 +191,53 @@ namespace BTSMTL.Authoring.Workspace
         }
 
         public IReadOnlyList<AuthoringDocumentElement> Elements(IReadOnlyList<AuthoringDocumentSnapshot> documents) =>
-            Elements(documents, false);
+            EnumerateElements(documents, null, null).ToArray();
 
-        IReadOnlyList<AuthoringDocumentElement> Elements(IReadOnlyList<AuthoringDocumentSnapshot> documents, bool contentOnly)
+        IEnumerable<AuthoringDocumentElement> EnumerateElements(IReadOnlyList<AuthoringDocumentSnapshot> documents,
+            string contentDomain, string sourceIdentity)
         {
-            var elements = new List<AuthoringDocumentElement>();
             foreach (AuthoringDocumentSnapshot owner in documents)
             {
-                foreach (var file in owner.Files.Where(file => !contentOnly || file.Key == owner.Kind.RootFile)
+                if (owner.Kind.RootElementKind == null || contentDomain != null && owner.ContentDomain != contentDomain ||
+                    sourceIdentity != null && owner.SourceIdentity != sourceIdentity)
+                    continue;
+                yield return new AuthoringDocumentElement(owner, owner.Kind.RootElementKind, owner.Identity,
+                    owner.Kind.RootFile, owner.Root, owner.ContentDomain, owner.SourceIdentity);
+            }
+            foreach (AuthoringDocumentSnapshot owner in documents)
+            {
+                foreach (var file in owner.Files.Where(file => file.Key != owner.Kind.RootFile)
                              .OrderBy(file => file.Key, StringComparer.Ordinal))
                 {
                     string folder = Path.GetDirectoryName(file.Key)?.Replace('\\', '/');
-                    bool root = file.Key == owner.Kind.RootFile;
-                    string kind = root ? owner.Kind.RootElementKind : folder == "timelines" ? "timeline" :
+                    string kind = folder == "timelines" ? "timeline" :
                         folder == "graphs" ? "graph" : folder == "inputs" ? "input" : null;
                     if (kind == null) continue;
-                    JObject value = root ? owner.Root : owner.Read(file.Key);
+                    string domain = kind == "timeline" ? AuthoringDocumentKind.Timeline.RootElementKind : null;
+                    if (contentDomain != null && domain != contentDomain) continue;
+                    JObject value = owner.Read(file.Key);
                     string identity = kind == "input" ? Path.GetFileNameWithoutExtension(file.Key) :
-                        (string)value[root ? owner.Kind.IdentityMember : kind == "graph" ? "AuthoringId" : "m_AuthoringId"];
-                    elements.Add(new AuthoringDocumentElement(owner, kind, identity, file.Key, value,
-                        root ? owner.ContentDomain : null, root ? owner.SourceIdentity : null));
+                        (string)value[kind == "graph" ? "AuthoringId" : "m_AuthoringId"];
+                    if (sourceIdentity != null && identity != sourceIdentity) continue;
+                    yield return new AuthoringDocumentElement(owner, kind, identity, file.Key, value,
+                        domain, domain == null ? null : identity);
                 }
                 if (m_DeclaredElements != null)
-                    elements.AddRange(m_DeclaredElements(owner, documents));
+                    foreach (AuthoringDocumentElement element in m_DeclaredElements(owner))
+                        if ((contentDomain == null || element.ContentDomain == contentDomain) &&
+                            (sourceIdentity == null || element.SourceIdentity == sourceIdentity))
+                            yield return element;
             }
-            return elements;
         }
 
         public AuthoringDocumentElement Resolve(IReadOnlyList<AuthoringDocumentSnapshot> documents, string kind, string identity) =>
-            Elements(documents).Single(element => element.Kind == kind && element.Identity == identity);
+            EnumerateElements(documents, null, null).Single(element => element.Kind == kind && element.Identity == identity);
 
         public AuthoringDocumentSnapshot ResolveContent(IReadOnlyList<AuthoringDocumentSnapshot> documents,
             string domain, string sourceIdentity) => ResolveContentElement(documents, domain, sourceIdentity).Owner;
 
         public AuthoringDocumentElement ResolveContentElement(IReadOnlyList<AuthoringDocumentSnapshot> documents,
-            string domain, string sourceIdentity) => Elements(documents, true).Single(element =>
-                element.ContentDomain == domain && element.SourceIdentity == sourceIdentity);
+            string domain, string sourceIdentity) => EnumerateElements(documents, domain, sourceIdentity).First();
 
         public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Save(IReadOnlyList<AuthoringDocumentWrite> writes,
             IReadOnlyList<AuthoringDocumentRead> reads) => m_Commits.Write(() =>

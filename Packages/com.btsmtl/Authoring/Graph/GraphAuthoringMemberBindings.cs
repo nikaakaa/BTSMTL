@@ -75,16 +75,16 @@ namespace BTSMTL.Authoring.Graph
             return result;
         }
 
-        public static IReadOnlyList<TElement> DocumentElements<TElement>(object authoring, JObject root,
-            Func<string, string, JObject, object, TElement> create)
+        public static IReadOnlyList<TElement> DocumentElements<TElement>(Type authoringType, JObject root,
+            Func<string, string, JObject, Type, Func<object, object>, TElement> create)
         {
             var elements = new List<TElement>();
-            Visit(authoring, root);
+            Visit(authoringType, root, authoring => authoring);
             return elements;
 
-            void Visit(object owner, JObject value)
+            void Visit(Type ownerType, JObject value, Func<object, object> readOwner)
             {
-                foreach (GraphAuthoringMember member in Contract(owner).Fields)
+                foreach (GraphAuthoringMember member in Contract(ownerType).Fields)
                 {
                     if (member.SerializedMemberPath.Count == 0)
                         continue;
@@ -105,19 +105,23 @@ namespace BTSMTL.Authoring.Graph
                         continue;
                     if (member.ValueType.IsArray)
                     {
-                        var items = (Array)member.Read(owner);
                         var values = (JArray)stored;
                         for (int index = 0; index < values.Count; index++)
-                            Add((JObject)values[index], items.GetValue(index));
+                        {
+                            int itemIndex = index;
+                            Add((JObject)values[index], authoring =>
+                                ((Array)member.Read(readOwner(authoring))).GetValue(itemIndex));
+                        }
                     }
                     else
-                        Add((JObject)stored, member.Read(owner));
+                        Add((JObject)stored, authoring => member.Read(readOwner(authoring)));
 
-                    void Add(JObject item, object authored)
+                    void Add(JObject item, Func<object, object> readAuthoring)
                     {
                         if (declaration != null)
-                            elements.Add(create(declaration.Domain, (string)Read(item, identity.SerializedMemberPath), item, authored));
-                        Visit(authored, item);
+                            elements.Add(create(declaration.Domain, (string)Read(item, identity.SerializedMemberPath),
+                                item, childType, readAuthoring));
+                        Visit(childType, item, readAuthoring);
                     }
                 }
             }
