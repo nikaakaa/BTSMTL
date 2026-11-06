@@ -37,7 +37,8 @@ public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Sa
 [JsonDerivedType(typeof(PreviewQuickRootInputs), "rootDefaults")]
 public abstract record PreviewQuickInputSource;
 public sealed record PreviewQuickDocumentInput([property: JsonRequired] string DocumentPath,
-    [property: JsonRequired] string SavedRevision, [property: JsonRequired] string InputId) : PreviewQuickInputSource;
+    [property: JsonRequired] string SavedRevision, [property: JsonRequired] string InputId,
+    [property: JsonRequired] string SchemeId) : PreviewQuickInputSource;
 public sealed record PreviewQuickRootInputs : PreviewQuickInputSource;
 public sealed record PreviewQuickInput([property: JsonRequired] PreviewQuickInputSource Source,
     [property: JsonRequired] string Revision, PreviewQuickInputPoint[]? Points = null,
