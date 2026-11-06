@@ -1,4 +1,5 @@
 import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from './skillJson';
+import { tangentJson, tangentOf } from './curveEdit';
 
 // 片段切分时的归一化曲线拆分（照 Unity BtsmtlSlateTimelineBinding.SplitNormalizedCurve）：
 // 取 [start, end] 内的关键帧换到 0–1，切线乘区间长度，两端缺关键帧时按原曲线求值补一帧。
@@ -7,7 +8,7 @@ import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from 
 interface Key { time: number; value: number; inTangent: number; outTangent: number; source: JsonObject }
 
 const keysOf = (curve: JsonObject): Key[] => (curve.keys as JsonObject[]).map(key => ({
-  time: numberOf(key.time), value: numberOf(key.value), inTangent: numberOf(key.inTangent), outTangent: numberOf(key.outTangent), source: key,
+  time: numberOf(key.time), value: numberOf(key.value), inTangent: tangentOf(key, 'left'), outTangent: tangentOf(key, 'right'), source: key,
 }));
 
 export const isWeighted = (curve: JsonObject) => (curve.keys as JsonObject[]).some(key => numberOf(key.weightedMode) !== 0);
@@ -56,9 +57,6 @@ function boundaryTangent(keys: Key[], time: number): number {
 }
 
 // 键按序号顺序排列，与宿主存盘一致。
-// 无穷切线（阶跃）原样保留。
-const tangentJson = (tangent: number, scale: number, raw?: JsonValue) => Number.isFinite(tangent) ? new JsonFloat(tangent * scale) : raw ?? 'Infinity';
-
 const keyJson = (time: number, value: number, inTangent: JsonValue, outTangent: JsonValue, source?: JsonObject): JsonObject => {
   const key: JsonObject = {
     ...(source ?? { inWeight: new JsonFloat(0), outWeight: new JsonFloat(0), tangentMode: 0, weightedMode: 0 }),
@@ -77,11 +75,11 @@ export function splitCurve(curve: JsonObject, start: number, end: number): JsonO
     const time = Math.min(1, Math.max(0, (key.time - start) / duration));
     hasStart ||= time === 0;
     hasEnd ||= time === 1;
-    result.push(keyJson(time, key.value, tangentJson(key.inTangent, duration, key.source.inTangent),
-      tangentJson(key.outTangent, duration, key.source.outTangent), key.source));
+    result.push(keyJson(time, key.value, tangentJson(key.inTangent * duration),
+      tangentJson(key.outTangent * duration), key.source));
   }
   const boundary = (at: number, normalized: number) => {
-    const tangent = tangentJson(boundaryTangent(keys, at), duration);
+    const tangent = tangentJson(boundaryTangent(keys, at) * duration);
     return keyJson(normalized, evaluate(keys, at), tangent, tangent);
   };
   if (!hasStart) result.push(boundary(start, 0));

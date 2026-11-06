@@ -10,8 +10,11 @@ const modeCodes: Record<TangentKind, number> = { free: 0, linear: 2, constant: 3
 const shifts: Record<TangentSide, number> = { left: 1, right: 5 };
 
 const modeOf = (key: JsonObject) => numberOf(key.tangentMode) | 0;
-export const tangentOf = (key: JsonObject, side: TangentSide) => numberOf(side === 'left' ? key.inTangent : key.outTangent);
-const slopeJson = (slope: number): JsonValue => Number.isFinite(slope) ? new JsonFloat(slope) : 'Infinity';
+export const tangentOf = (key: JsonObject, side: TangentSide) => {
+  const value = side === 'left' ? key.inTangent : key.outTangent;
+  return value === null ? Infinity : numberOf(value);
+};
+export const tangentJson = (slope: number): JsonValue => Math.abs(slope) === Infinity ? null : new JsonFloat(slope);
 
 export const keyTime = (key: JsonObject) => numberOf(key.time);
 export const keyValue = (key: JsonObject) => numberOf(key.value);
@@ -33,10 +36,10 @@ function updateTangents(keys: JsonObject[], index: number) {
   const key = keys[index];
   if (!key) return;
   const slope = (from: JsonObject, to: JsonObject) => (keyValue(to) - keyValue(from)) / (keyTime(to) - keyTime(from));
-  if (tangentKind(key, 'left') === 'linear' && index > 0) key.inTangent = slopeJson(slope(keys[index - 1], key));
-  if (tangentKind(key, 'right') === 'linear' && index + 1 < keys.length) key.outTangent = slopeJson(slope(key, keys[index + 1]));
-  if (tangentKind(key, 'left') === 'constant') key.inTangent = 'Infinity';
-  if (tangentKind(key, 'right') === 'constant') key.outTangent = 'Infinity';
+  if (tangentKind(key, 'left') === 'linear' && index > 0) key.inTangent = tangentJson(slope(keys[index - 1], key));
+  if (tangentKind(key, 'right') === 'linear' && index + 1 < keys.length) key.outTangent = tangentJson(slope(key, keys[index + 1]));
+  if (tangentKind(key, 'left') === 'constant') key.inTangent = null;
+  if (tangentKind(key, 'right') === 'constant') key.outTangent = null;
 }
 
 // 按时间排序后更新改动关键帧及其两侧的切线，返回新曲线与改动关键帧排序后的序号。

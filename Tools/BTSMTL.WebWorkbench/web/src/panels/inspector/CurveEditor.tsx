@@ -1,10 +1,11 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { tangentOf } from '../../state/curveEdit';
 import { Button, FieldLabel, NumberInput, Select } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
 import styles from './inspector.module.css';
 
-// 曲线字段（Unity AnimationCurve 的 JSON：keys 与前后循环方式）。图上拖动关键帧改时间与值，
+// 曲线字段（TimelineCurve 的 JSON：keys 与前后循环方式）。图上拖动关键帧改时间与值，
 // 下方表格逐项改时间、值和切线；预览按 Hermite 插值画，权重切线按非权重近似显示。
 
 export const isCurve = (value: JsonValue | undefined, clrType?: string) =>
@@ -29,10 +30,10 @@ const defaultCurve = (): JsonObject => ({
 interface Point { t: number; v: number; inTangent: number; outTangent: number }
 
 const pointsOf = (keys: JsonObject[]): Point[] => keys.map(key => ({
-  t: numberOf(key.time), v: numberOf(key.value), inTangent: numberOf(key.inTangent), outTangent: numberOf(key.outTangent),
+  t: numberOf(key.time), v: numberOf(key.value), inTangent: tangentOf(key, 'left'), outTangent: tangentOf(key, 'right'),
 }));
 
-// 段内 Hermite 采样；任一端切线为无穷（字符串 Infinity 读作 NaN）时为阶跃。
+// 段内 Hermite 采样；任一端切线为无穷时为阶跃。
 function sample(points: Point[]): [number, number][] {
   const result: [number, number][] = [];
   for (let index = 0; index + 1 < points.length; index++) {
@@ -153,7 +154,7 @@ function KeyRow({ label, keyValue, removable, onChange, onRemove }: {
 }) {
   const cell = (name: string) => {
     const current = keyValue[name];
-    // 无穷切线在 JSON 里是字符串，原样显示；改写时写回浮点。
+    // JSON null 表示无穷切线；输入有限值时写回浮点。
     const number = numberOf(current);
     return (
       <NumberInput wide label={`${label} ${name}`} value={Number.isNaN(number) ? null : number}
