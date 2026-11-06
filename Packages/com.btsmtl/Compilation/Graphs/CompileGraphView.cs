@@ -6,34 +6,6 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation
 {
-    // 图编译的值类型：编译值种类、平台全名（声明目录的 ValueType 字段）、枚举身份与该类型的零值。
-    public sealed class CompileValueType
-    {
-        public CompileValueType(SemanticValueKind kind, string fullName, object defaultValue, string enumIdentity = null)
-        {
-            if (kind == SemanticValueKind.Enum && string.IsNullOrEmpty(enumIdentity))
-                throw new ArgumentException("枚举值类型需要枚举身份。", nameof(enumIdentity));
-            Kind = kind;
-            FullName = fullName ?? throw new ArgumentNullException(nameof(fullName));
-            DefaultValue = defaultValue;
-            EnumIdentity = enumIdentity;
-        }
-
-        public SemanticValueKind Kind { get; }
-        public string FullName { get; }
-        public object DefaultValue { get; }
-        public string EnumIdentity { get; }
-        public bool IsEnum => Kind == SemanticValueKind.Enum;
-
-        // 作者值转为编译字面量：枚举按枚举身份与整数值，其余保持原值。
-        public object ToSemanticLiteral(object value) => IsEnum
-            ? new SemanticEnumValue(EnumIdentity, Convert.ToInt32(value, CultureInfo.InvariantCulture))
-            : value;
-
-        public bool SameType(CompileValueType other) => other != null &&
-            Kind == other.Kind && string.Equals(FullName, other.FullName, StringComparison.Ordinal);
-    }
-
     public enum CompileNodeRole : byte
     {
         Leaf,

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -22,25 +24,33 @@ namespace BTSMTL.Compilation
         public static readonly CompileValueType Quaternion = new(SemanticValueKind.Quaternion, "UnityEngine.Quaternion",
             new SemanticQuaternionValue(0d, 0d, 0d, 1d));
 
+        static readonly IReadOnlyDictionary<string, CompileValueType> s_Types = new Dictionary<string, CompileValueType>(StringComparer.Ordinal)
+        {
+            ["bool"] = Boolean, ["int"] = Int32, ["uint"] = UInt32, ["ulong"] = UInt64,
+            ["object-handle"] = ObjectHandle, ["float"] = Single, ["double"] = Double,
+            ["string"] = String, ["vector2"] = Vector2, ["vector3"] = Vector3, ["quaternion"] = Quaternion
+        };
+
         public static bool TryFromId(string valueTypeId, out CompileValueType type)
         {
-            type = valueTypeId switch
+            if (valueTypeId != null && valueTypeId.StartsWith("Enum:", StringComparison.Ordinal))
             {
-                "bool" => Boolean,
-                "int" => Int32,
-                "uint" => UInt32,
-                "ulong" => UInt64,
-                "object-handle" => ObjectHandle,
-                "float" => Single,
-                "double" => Double,
-                "string" => String,
-                "vector2" => Vector2,
-                "vector3" => Vector3,
-                "quaternion" => Quaternion,
-                _ => null
-            };
-            return type != null;
+                type = Enum(valueTypeId.Substring("Enum:".Length));
+                return true;
+            }
+            if (valueTypeId == null)
+            {
+                type = null;
+                return false;
+            }
+            return s_Types.TryGetValue(valueTypeId, out type);
         }
+
+        public static string Id(CompileValueType type) => type.IsEnum ? "Enum:" + type.EnumIdentity :
+            s_Types.Single(item => item.Value.SameType(type)).Key;
+
+        public static CompileValueType FromPlatformName(string fullName) =>
+            s_Types.Values.Single(type => type.FullName == fullName);
 
         public static CompileValueType FromId(string valueTypeId) =>
             TryFromId(valueTypeId, out CompileValueType type) ? type

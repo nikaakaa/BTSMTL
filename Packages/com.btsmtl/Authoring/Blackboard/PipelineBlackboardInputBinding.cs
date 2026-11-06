@@ -20,6 +20,12 @@ namespace BTSMTL.Authoring.Blackboard
         public bool IsDefined => !string.IsNullOrWhiteSpace(m_InputValueId);
         [GraphAuthoringField(nameof(m_Projection), typeof(PipelineBlackboardInputProjection), ReadOnly = true)]
         public PipelineBlackboardInputProjection Projection => m_Projection;
+        public string StoredInputValueId => m_InputValueId;
+
+        PipelineBlackboardInputBinding() { }
+
+        public static PipelineBlackboardInputBinding FromStored(string inputValueId, PipelineBlackboardInputProjection projection) =>
+            new PipelineBlackboardInputBinding { m_InputValueId = inputValueId, m_Projection = projection };
 
         public PipelineBlackboardInputBinding(string inputValueId, PipelineBlackboardInputProjection projection = PipelineBlackboardInputProjection.Direct)
         {

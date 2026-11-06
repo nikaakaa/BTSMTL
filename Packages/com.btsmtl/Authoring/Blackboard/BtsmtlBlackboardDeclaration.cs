@@ -48,6 +48,15 @@ namespace BTSMTL.Graphs
         public string Category => m_Category;
         [GraphAuthoringField(nameof(m_InputBinding), GraphAuthoringFieldValueKind.Object, ReadOnly = true, Optional = true)]
         public PipelineBlackboardInputBinding InputBinding => m_InputBinding != null && m_InputBinding.IsDefined ? m_InputBinding : null;
+        public PipelineBlackboardInputBinding StoredInputBinding => m_InputBinding;
+
+        public static BtsmtlBlackboardDeclaration FromStored(string variableId, PipelineBlackboardVariableScope scope,
+            PipelineBlackboardVariableLifetime lifetime, string category, PipelineBlackboardInputBinding inputBinding)
+        {
+            var declaration = new BtsmtlBlackboardDeclaration(variableId, scope, lifetime, category, inputBinding);
+            declaration.m_Category = category;
+            return declaration;
+        }
 
         public static void ValidateDefinition(SemanticValueKind kind, TypeCode typeCode,
             PipelineBlackboardVariableScope scope, PipelineBlackboardVariableLifetime lifetime,

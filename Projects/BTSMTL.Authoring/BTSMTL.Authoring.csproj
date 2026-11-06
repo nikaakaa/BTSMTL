@@ -51,5 +51,10 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardInputProjection.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardInputBinding.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlBlackboardDeclaration.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlGraphVariableDeclarations.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlGraphVariableDeclarationsJson.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueType.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueTypes.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/SemanticNumericValues.cs" />
   </ItemGroup>
 </Project>

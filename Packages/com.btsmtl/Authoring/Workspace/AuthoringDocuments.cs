@@ -18,7 +18,9 @@ namespace BTSMTL.Authoring.Workspace
         public static readonly AuthoringDocumentKind Scenario = new("scenario", "Scenarios", null, null);
         public static readonly AuthoringDocumentKind Profile = new("profile", "Profiles", "profile.json",
             "m_AuthoringId", "profile", "m_SourceIdentity");
-        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario, Profile };
+        public static readonly AuthoringDocumentKind Variables = new("variables", "Variables", "variables.json",
+            "m_OwnerId", "variables");
+        public static readonly IReadOnlyList<AuthoringDocumentKind> All = new[] { Skill, Timeline, Curve, Scenario, Profile, Variables };
 
         AuthoringDocumentKind(string id, string directory, string rootFile, string identityMember,
             string rootElementKind = null, string sourceIdentityMember = null)

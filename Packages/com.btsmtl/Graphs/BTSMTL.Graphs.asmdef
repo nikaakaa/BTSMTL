@@ -15,7 +15,7 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["System.Runtime.CompilerServices.Unsafe.dll"],
+    "precompiledReferences": ["System.Runtime.CompilerServices.Unsafe.dll", "Newtonsoft.Json.dll"],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
