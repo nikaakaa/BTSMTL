@@ -8,7 +8,7 @@ import {
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, edgeStep, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, edgeCondition, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { documentElementKey, projectActions } from '../../state/project';
 import { graphItemDescription, projectContents } from '../../state/projectContents';
@@ -319,26 +319,34 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
 
 function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefinition; nodeId: string; invocationPath: string; call: ExecutionCall | null }) {
   const hierarchy = useDocumentGraphHierarchy();
+  const { document } = useCurrentDocument(graphPath(graph.id));
   const runId = useWorkbench(state => state.runId);
   const children = nodeReferences(hierarchy, graph, nodeId);
   const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
     edge.invocationPath === invocationPath);
+  const openReference = (target: NodeNavigationTarget) => {
+    void projectActions.openReference(target, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId,
+      observation: call === null || runId === null ? null : { runId, call } })
+      .catch(reason => consoleActions.error('作者', reason));
+  };
   return (
     <>
       {children.map(child => (
         <Link key={`${child.kind}:${child.owner}:${child.id}`} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)"
           tip={child.kind === 'timeline' ? '在 Timeline 面板打开' : '在节点图面板打开'}
-          onOpen={() => {
-            void projectActions.openReference(child, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId,
-              observation: call === null || runId === null ? null : { runId, call } })
-              .catch(reason => consoleActions.error('作者', reason));
-          }} />
+          onOpen={() => openReference(child)} />
       ))}
       {transitions.map(edge => {
         const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
-        return <Value key={edge.id} label={`→ ${target}`} mono={false} value="条件图声明尚未提供" />;
+        const configured = edgeCondition(document, edge.id, true);
+        const label = `→ ${target}`;
+        if (configured === null) return <Value key={edge.id} label={label} mono={false} value="转移配置尚未读取" />;
+        if (configured.condition === null) return <Value key={edge.id} label={label} mono={false} value="未设置条件图" />;
+        const condition = [...hierarchy.graphs.values()].find(item => item.owner === source.owner && item.id === configured.condition)!;
+        return <Link key={edge.id} label={label} text={graphName(condition)} kind="var(--node-flow)" tip="在节点图面板打开条件图"
+          onOpen={() => openReference({ ...condition, kind: 'graph' })} />;
       })}
     </>
   );
@@ -402,11 +410,9 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const port = edge.source && !transition ? graph.ports.find(item => item.nodeId === edge.source!.nodeId && item.id === edge.source!.portId &&
     item.direction === 'output' && item.invocationPath === edge.invocationPath)?.displayName : undefined;
   const name = `${edge.source ? names.get(edge.source.nodeId) ?? '—' : '—'}${port ? ` · ${port}` : ''} → ${edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招'}`;
-  const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
-    .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === edge.id);
-  const step = editable && !transition ? edgeStep(document, edge.id) : null;
-  const condition = transition ? ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null
-    : (step?.step.m_Condition as string | null | undefined) ?? null;
+  const configured = editable ? edgeCondition(document, edge.id, transition) : null;
+  const step = configured?.step ?? null;
+  const condition = configured?.condition ?? null;
   const owned = editable && (transition || step);
   const conditionRows = owned ? (
     <OwnedGraph label="条件图" id={condition} createText="新建条件"

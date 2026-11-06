@@ -1718,6 +1718,15 @@ export function edgeStep(document: JsonValue | null, connectionId: string): Edge
   return null;
 }
 
+export function edgeCondition(document: JsonValue | null, edgeId: string, machine: boolean) {
+  if (!machine) {
+    const step = edgeStep(document, edgeId);
+    return step && { condition: (step.step.m_Condition as string | null | undefined) ?? null, step };
+  }
+  const connection = (document ? nodesOf(document).flatMap(connectionsOf) : []).find(item => item.UID === edgeId);
+  return connection ? { condition: ((connection.Payload as JsonObject).m_Condition as string | null | undefined) ?? null, step: null } : null;
+}
+
 function graphLayout(document: JsonValue, graphId: string): JsonObject {
   const layout = document as JsonObject;
   if (isDocumentGraph(graphId)) return layout.layout as JsonObject;

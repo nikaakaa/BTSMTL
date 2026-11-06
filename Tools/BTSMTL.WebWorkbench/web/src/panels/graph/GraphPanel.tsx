@@ -14,7 +14,7 @@ import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeStep, graphAuthoring, graphGroups, graphLayoutPath, graphPath, graphVariableOwner, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeCondition, graphAuthoring, graphGroups, graphLayoutPath, graphPath, graphVariableOwner, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
 } from '../../state/authoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
@@ -523,17 +523,6 @@ const edgeTypes = { route: memo(RouteEdgeView), transition: memo(TransitionEdgeV
 
 function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: LaidNode) {
   return !nodeReferences(hierarchy, graph, laid.node.id).length;
-}
-
-// 连线的条件：转移存在连线的 Payload 上，组合步骤存在出口所属的步骤上。
-function edgeCondition(document: JsonValue | null, edgeId: string, machine: boolean) {
-  if (!machine) {
-    const step = edgeStep(document, edgeId);
-    return step && { condition: (step.step.m_Condition as string | null | undefined) ?? null, step };
-  }
-  const connection = (document ? ((document as JsonObject).allNodes as JsonObject[]).flatMap(node => node.outConnections as JsonObject[]) : [])
-    .find(item => item.UID === edgeId);
-  return connection ? { condition: ((connection.Payload as JsonObject).m_Condition as string | null | undefined) ?? null, step: null } : null;
 }
 
 // 作者模式：当前技能的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
