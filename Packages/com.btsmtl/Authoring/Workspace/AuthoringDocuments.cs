@@ -119,10 +119,19 @@ namespace BTSMTL.Authoring.Workspace
         public AuthoringDocumentWrite(AuthoringDocumentKind kind, string directoryPath, string expectedRevision,
             IReadOnlyDictionary<string, string> files)
         { Kind = kind; DirectoryPath = directoryPath; ExpectedRevision = expectedRevision; Files = files; }
+        AuthoringDocumentWrite(AuthoringDocumentKind kind, string directoryPath, string expectedRevision)
+        {
+            Kind = kind; DirectoryPath = directoryPath; ExpectedRevision = expectedRevision;
+            Files = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
+            IsDeletion = true;
+        }
+        public static AuthoringDocumentWrite Delete(AuthoringDocumentKind kind, string directoryPath,
+            string expectedRevision) => new(kind, directoryPath, expectedRevision);
         public AuthoringDocumentKind Kind { get; }
         public string DirectoryPath { get; }
         public string ExpectedRevision { get; }
         public IReadOnlyDictionary<string, string> Files { get; }
+        public bool IsDeletion { get; }
     }
 
     public sealed class AuthoringDocumentRead
@@ -169,7 +178,10 @@ namespace BTSMTL.Authoring.Workspace
             foreach (AuthoringDocumentWrite write in writes)
             {
                 string directory = write.DirectoryPath;
-                documents[directory] = new AuthoringDocumentSnapshot(write.Kind, Workspace, directory, write.Files);
+                if (write.IsDeletion)
+                    documents.Remove(directory);
+                else
+                    documents[directory] = new AuthoringDocumentSnapshot(write.Kind, Workspace, directory, write.Files);
             }
             return documents.Values.OrderBy(document => document.DirectoryPath, StringComparer.Ordinal).ToArray();
         }
@@ -268,7 +280,8 @@ namespace BTSMTL.Authoring.Workspace
             string library = Path.Combine(Workspace, write.Kind.Directory) + Path.DirectorySeparatorChar;
             if (!directory.StartsWith(library, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException($"{write.Kind.Id} 文档必须位于 {library}：{directory}");
-            return new AuthoringDocumentWrite(write.Kind, directory, write.ExpectedRevision, write.Files);
+            return write.IsDeletion ? AuthoringDocumentWrite.Delete(write.Kind, directory, write.ExpectedRevision) :
+                new AuthoringDocumentWrite(write.Kind, directory, write.ExpectedRevision, write.Files);
         }).ToArray();
 
         IReadOnlyList<AuthoringDocumentSnapshot> Capture()
