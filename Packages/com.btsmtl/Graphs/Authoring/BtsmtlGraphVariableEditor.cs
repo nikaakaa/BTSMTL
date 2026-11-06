@@ -92,7 +92,7 @@ namespace BTSMTL.Graphs
             {
                 var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
                     PipelineBlackboardVariableLifetime.GraphInstance);
-                int order = m_Source.Variables.Length == 0 ? 0 : m_Source.Variables.Max(variable => variable.DeclarationOrder) + 1;
+                int order = m_Source.Variables.Count == 0 ? 0 : m_Source.Variables.Max(variable => variable.DeclarationOrder) + 1;
                 m_Source.Replace(m_Source.Variables.Append(new BtsmtlGraphVariableDeclaration(declaration, name,
                     BtsmtlGraphVariableUnity.TypeId(typeof(T)), BtsmtlGraphVariableUnity.DefaultJson(typeof(T), defaultValue), false, order)).ToArray());
                 created = new Variable<T>(name, id) { value = defaultValue };

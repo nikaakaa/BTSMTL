@@ -11,27 +11,34 @@ namespace BTSMTL.Graphs
 {
     public sealed partial class BtsmtlGraphVariableDeclaration
     {
+        readonly BtsmtlBlackboardDeclaration m_Declaration;
+        readonly string m_Name;
+        readonly string m_TypeId;
+        readonly JToken m_DefaultValue;
+        readonly bool m_IsPublic;
+        readonly int m_DeclarationOrder;
+
         public BtsmtlGraphVariableDeclaration() { }
 
         public BtsmtlGraphVariableDeclaration(BtsmtlBlackboardDeclaration declaration, string name,
             string typeId, JToken defaultValue, bool isPublic, int declarationOrder)
         {
-            Declaration = declaration; Name = name; TypeId = typeId;
-            DefaultValue = defaultValue.DeepClone(); IsPublic = isPublic; DeclarationOrder = declarationOrder;
+            m_Declaration = declaration; m_Name = name; m_TypeId = typeId;
+            m_DefaultValue = defaultValue.DeepClone(); m_IsPublic = isPublic; m_DeclarationOrder = declarationOrder;
         }
 
         [GraphAuthoringField("declaration", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
-        public BtsmtlBlackboardDeclaration Declaration;
+        public BtsmtlBlackboardDeclaration Declaration => m_Declaration;
         [GraphAuthoringField("name", GraphAuthoringFieldValueKind.String, ReadOnly = true)]
-        public string Name;
+        public string Name => m_Name;
         [GraphAuthoringField("type", GraphAuthoringFieldValueKind.String, ReadOnly = true)]
-        public string TypeId;
+        public string TypeId => m_TypeId;
         [GraphAuthoringField("default", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
-        public JToken DefaultValue;
+        public JToken DefaultValue => m_DefaultValue;
         [GraphAuthoringField("public", GraphAuthoringFieldValueKind.Boolean, ReadOnly = true)]
-        public bool IsPublic;
+        public bool IsPublic => m_IsPublic;
         [GraphAuthoringField("declarationOrder", GraphAuthoringFieldValueKind.Integer, ReadOnly = true)]
-        public int DeclarationOrder;
+        public int DeclarationOrder => m_DeclarationOrder;
 
         public string VariableId => Declaration.VariableId;
         public CompileValueType ValueType => CompileValueTypes.FromId(TypeId);
@@ -41,7 +48,7 @@ namespace BTSMTL.Graphs
     {
         string m_OwnerId;
         string m_Revision;
-        BtsmtlGraphVariableDeclaration[] m_Variables = Array.Empty<BtsmtlGraphVariableDeclaration>();
+        IReadOnlyList<BtsmtlGraphVariableDeclaration> m_Variables = Array.Empty<BtsmtlGraphVariableDeclaration>();
 
         public BtsmtlGraphVariableDeclarations() { }
 
@@ -50,7 +57,7 @@ namespace BTSMTL.Graphs
         {
             ConfigureIdentity(ownerId, revision);
             RequireVariables(variables);
-            m_Variables = variables.ToArray();
+            m_Variables = Array.AsReadOnly(variables.ToArray());
         }
 
         [GraphAuthoringField("ownerId", GraphAuthoringFieldValueKind.IdentityReference, ReadOnly = true)]
@@ -58,7 +65,7 @@ namespace BTSMTL.Graphs
         [GraphAuthoringField("revision", GraphAuthoringFieldValueKind.String, ReadOnly = true)]
         public string Revision => m_Revision;
         [GraphAuthoringField("variables", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
-        public BtsmtlGraphVariableDeclaration[] Variables => m_Variables;
+        public IReadOnlyList<BtsmtlGraphVariableDeclaration> Variables => m_Variables;
         public IReadOnlyList<BtsmtlBlackboardDeclaration> BlackboardDeclarations => m_Variables
             .OrderBy(variable => variable.DeclarationOrder).Select(variable => variable.Declaration).ToArray();
 
@@ -76,11 +83,11 @@ namespace BTSMTL.Graphs
 
         public void Replace(IReadOnlyList<BtsmtlGraphVariableDeclaration> variables)
         {
-            if (m_Variables.Length == variables.Count &&
+            if (m_Variables.Count == variables.Count &&
                 m_Variables.Zip(variables, BtsmtlGraphVariableDeclarationsJson.SameVariable).All(same => same))
                 return;
             RequireVariables(variables);
-            m_Variables = variables.ToArray();
+            m_Variables = Array.AsReadOnly(variables.ToArray());
             m_Revision = Guid.NewGuid().ToString("N");
         }
 
@@ -89,7 +96,9 @@ namespace BTSMTL.Graphs
             BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
             if (variable.IsPublic == isPublic)
                 return;
-            variable.IsPublic = isPublic;
+            m_Variables = Array.AsReadOnly(m_Variables.Select(current => current.VariableId == id
+                ? new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name, variable.TypeId,
+                    variable.DefaultValue, isPublic, variable.DeclarationOrder) : current).ToArray());
             m_Revision = Guid.NewGuid().ToString("N");
         }
 
@@ -102,7 +111,9 @@ namespace BTSMTL.Graphs
                 BtsmtlGraphVariableDeclarationsJson.TypeCode(variable.ValueType), scope, lifetime, inputBinding);
             if (BtsmtlGraphVariableDeclarationsJson.SameDeclaration(variable.Declaration, declaration))
                 return;
-            variable.Declaration = declaration;
+            m_Variables = Array.AsReadOnly(m_Variables.Select(current => current.VariableId == id
+                ? new BtsmtlGraphVariableDeclaration(declaration, variable.Name, variable.TypeId,
+                    variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder) : current).ToArray());
             m_Revision = Guid.NewGuid().ToString("N");
         }
 

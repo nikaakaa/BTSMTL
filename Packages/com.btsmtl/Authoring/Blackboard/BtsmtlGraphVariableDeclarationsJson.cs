@@ -23,9 +23,9 @@ namespace BTSMTL.Graphs
                 throw new InvalidDataException("图变量文档必须声明 graph-variables 领域。");
             return new BtsmtlGraphVariableDeclarations((string)Required(root, "m_OwnerId"), (string)Required(root, "m_Revision"),
                 ((JArray)Required(root, "m_Variables")).Cast<JObject>().Select(value =>
-                new BtsmtlGraphVariableDeclaration(ReadDeclaration((JObject)Required(value, "Declaration")),
-                    (string)Required(value, "Name"), (string)Required(value, "TypeId"), Required(value, "DefaultValue"),
-                    (bool)Required(value, "IsPublic"), (int)Required(value, "DeclarationOrder"))).ToArray());
+                new BtsmtlGraphVariableDeclaration(ReadDeclaration((JObject)Required(value, "m_Declaration")),
+                    (string)Required(value, "m_Name"), (string)Required(value, "m_TypeId"), Required(value, "m_DefaultValue"),
+                    (bool)Required(value, "m_IsPublic"), (int)Required(value, "m_DeclarationOrder"))).ToArray());
         }
 
         public static JObject Write(BtsmtlGraphVariableDeclarations source) => new()
@@ -33,9 +33,9 @@ namespace BTSMTL.Graphs
             ["m_ContentDomain"] = ContentDomain, ["m_OwnerId"] = source.OwnerId, ["m_Revision"] = source.Revision,
             ["m_Variables"] = new JArray(source.Variables.Select(variable => new JObject
             {
-                ["Declaration"] = WriteDeclaration(variable.Declaration), ["Name"] = variable.Name,
-                ["TypeId"] = variable.TypeId, ["DefaultValue"] = variable.DefaultValue.DeepClone(),
-                ["IsPublic"] = variable.IsPublic, ["DeclarationOrder"] = variable.DeclarationOrder
+                ["m_Declaration"] = WriteDeclaration(variable.Declaration), ["m_Name"] = variable.Name,
+                ["m_TypeId"] = variable.TypeId, ["m_DefaultValue"] = variable.DefaultValue.DeepClone(),
+                ["m_IsPublic"] = variable.IsPublic, ["m_DeclarationOrder"] = variable.DeclarationOrder
             }))
         };
 
