@@ -347,19 +347,17 @@ namespace BTSMTL.Timeline.Editor
             m_Resolution = m_Document.ResolveResource(m_Timeline, m_Domain, m_Reference);
         }
 
-        internal static void ApplyReference(Clip clip, string reference, UnityEngine.Object source)
+        internal static void ApplyReference(Clip clip, string reference)
         {
             TimelineAuthoringClipConfiguration configuration = TimelineAuthoringClipBinding.Read(clip);
             foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(clip))
                 if (property.IsSourceAsset) configuration.Set(property.PropertyId, reference);
             TimelineAuthoringClipBinding.Configure(clip.Timeline, clip, configuration);
-            if (clip is ITimelineAuthoringResourceClip resource)
-                resource.BindSourceAsset(source);
         }
 
         internal void Commit(Clip clip)
         {
-            m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference, Source), "选择 Timeline 资源");
+            m_Timeline.ApplyModify(() => ApplyReference(clip, m_Reference), "选择 Timeline 资源");
         }
     }
 

@@ -295,6 +295,17 @@ namespace BTSMTL.Timeline
             Init();
         }
         public Clip EnsureClip(TimelineContractCatalog catalog, Track track, string identity,
+            TimelineAuthoringClipConfiguration configuration, OrchestrationTime startTime, OrchestrationTime? endTime = null,
+            OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
+        {
+            TimelineAuthoringGraphBindings.Prepare(this);
+            Clip clip = PrepareClip(catalog, track, identity);
+            TimelineAuthoringClipBinding.Configure(this, clip, configuration);
+            return CompleteClip(catalog, track, clip, startTime, endTime, easeIn, easeOut, clipIn,
+                TimelineAuthoringClipBinding.SourceAsset(clip));
+        }
+
+        public Clip EnsureClip(TimelineContractCatalog catalog, Track track, string identity,
             UnityEngine.Object referenceObject, OrchestrationTime startTime, OrchestrationTime? endTime = null,
             OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
         {
@@ -320,8 +331,8 @@ namespace BTSMTL.Timeline
             string reference, OrchestrationTime startTime, OrchestrationTime? endTime = null,
             OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
         {
-            Clip clip = PrepareClip(catalog, track, identity);
             TimelineAuthoringGraphBindings.Prepare(this);
+            Clip clip = PrepareClip(catalog, track, identity);
             clip.ConfigureAuthoringReference(reference);
             TimelineAuthoringClipBinding.PrepareResource(clip);
             return CompleteClip(catalog, track, clip, startTime, endTime, easeIn, easeOut, clipIn,

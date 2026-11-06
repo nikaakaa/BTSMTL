@@ -1242,11 +1242,11 @@ namespace BTSMTL.Timeline.Editor
                         if (treeGraph == null)
                             treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.Owner, request.NewTreeGraphName, false);
                     }
-                    if (request.Prototype is ITimelineAuthoringResourceClip)
+                    bool resourceClip = TimelineAuthoringClipBinding.HasResourceReference(request.Prototype.GetType());
+                    if (resourceClip)
                     {
-                        added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), request.ResourceReference,
+                        added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), request.Configuration,
                             request.StartTime, presentationLayoutEnd);
-                        ((ITimelineAuthoringResourceClip)added).BindSourceAsset(request.Resource);
                     }
                     else
                         added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(),
@@ -1254,7 +1254,8 @@ namespace BTSMTL.Timeline.Editor
                             terminalLogicTreeClip ? terminalTime : presentationLayoutEnd);
                     if (added is TreeClip treeClip && track.Source.ExecutionDomain == TimelineExecutionDomain.Presentation)
                         treeClip.SetExitSource(request.TreeExitSource);
-                    TimelineAuthoringClipBinding.Configure(Timeline, added, request.Configuration);
+                    if (!resourceClip)
+                        TimelineAuthoringClipBinding.Configure(Timeline, added, request.Configuration);
                     added.Track.UpdateMix();
                 }, "Add Timeline Clip"))
                     return "正式 Timeline Clip 提交失败。";
