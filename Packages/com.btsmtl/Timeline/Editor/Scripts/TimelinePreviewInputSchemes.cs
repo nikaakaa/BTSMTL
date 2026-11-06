@@ -22,6 +22,9 @@ namespace BTSMTL.Timeline.Editor
     // 可提交，不参与运行时。正式文档放在哪里、叫什么都不影响归属。
     public sealed partial class TimelinePreviewInputSchemes : ScriptableObject
     {
+        [System.NonSerialized] ITimelineAuthoringDocument m_AuthoringDocument;
+        public ITimelineAuthoringDocument AuthoringDocument => m_AuthoringDocument;
+        public void BindAuthoringDocument(ITimelineAuthoringDocument document) => m_AuthoringDocument = document;
         public TimelineAssetPreviewPreferences Current => Schemes[Mathf.Clamp(Selected, 0, Schemes.Count - 1)];
     }
 
@@ -56,13 +59,15 @@ namespace BTSMTL.Timeline.Editor
         public string Path => m_Asset != null ? m_Storage.InputPath(m_Asset) : string.Empty;
         public TimelinePreviewRootIdentity Root => m_Root;
 
-        public void Load(TimelinePreviewRoot root, bool saveChanges = true, int? selection = null)
+        public void Load(TimelinePreviewRoot root, bool saveChanges = true, int? selection = null,
+            TimelinePreviewInputSchemes inputDocument = null)
         {
             m_Source = root.Entry;
             m_Label = root.Label;
             m_Root = root.Identity;
-            m_Storage = (ITimelinePreviewInputSchemeStorage)root.Entry.Data.AuthoringDocument;
-            m_Asset = m_Storage.Find(root.Identity);
+            m_Storage = (ITimelinePreviewInputSchemeStorage)(inputDocument != null
+                ? inputDocument.AuthoringDocument : root.Entry.Data.AuthoringDocument);
+            m_Asset = inputDocument != null ? inputDocument : m_Storage.Find(root.Identity);
             if (selection is { } index && (index < 0 || index >= All.Count))
                 throw new System.ArgumentOutOfRangeException(nameof(selection), "所选预览输入方案不存在。");
             SavesChanges = saveChanges;
@@ -112,6 +117,7 @@ namespace BTSMTL.Timeline.Editor
             TimelineAssetPreviewPreferences copy =
                 JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Current));
             copy.Name = name;
+            copy.AuthoringId = System.Guid.NewGuid().ToString("D");
             MarkChanged();
             if (Current.InputTimeline)
             {

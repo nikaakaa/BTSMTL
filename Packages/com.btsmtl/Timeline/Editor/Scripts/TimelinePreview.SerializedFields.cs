@@ -15,6 +15,7 @@ namespace BTSMTL.Timeline.Editor
         public static TimelinePreviewInputSchemes CreateDefault(string owner, string timeline,
             TimelineAssetPreviewPreferences initialScheme)
         {
+            initialScheme.AuthoringId = System.Guid.NewGuid().ToString("D");
 #if UNITY_EDITOR
             var schemes = UnityEngine.ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
 #else
@@ -43,6 +44,9 @@ namespace BTSMTL.Timeline.Editor
 
     public sealed partial class TimelineAssetPreviewPreferences
     {
+        [GraphAuthoringField(nameof(AuthoringId), GraphAuthoringFieldValueKind.String, ReadOnly = true, AuthoringVisible = false)]
+        public string AuthoringId;
+
         [GraphAuthoringField(nameof(Name), GraphAuthoringFieldValueKind.String)]
         public string Name = "默认";
         [GraphAuthoringField(nameof(InputTimeline), GraphAuthoringFieldValueKind.AssetReference, Optional = true)]
