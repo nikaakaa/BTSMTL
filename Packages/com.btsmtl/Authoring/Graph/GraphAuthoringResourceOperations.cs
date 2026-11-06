@@ -2,6 +2,12 @@ using System;
 
 namespace BTSMTL.Authoring.Graph
 {
+    public enum GraphAuthoringReferenceSource
+    {
+        AdapterResource,
+        AuthoringDocument
+    }
+
     public sealed class GraphAuthoringExecutionScopeSelection
     {
         public string PreviewScope { get; set; }
@@ -78,6 +84,7 @@ namespace BTSMTL.Authoring.Graph
         public string Profile { get; set; }
         public Type[] ObjectTypes { get; }
         public Type MappingInputType { get; set; }
+        public GraphAuthoringReferenceSource Source { get; set; }
     }
 
     public sealed class GraphAuthoringScopeQuery
@@ -222,6 +229,7 @@ namespace BTSMTL.Authoring.Graph
         public string Profile { get; set; }
         public string ObjectType { get; set; }
         public string MappingInputType { get; set; }
+        public GraphAuthoringReferenceSource Source { get; set; }
         public GraphAuthoringResourceAvailability Availability { get; set; }
     }
 

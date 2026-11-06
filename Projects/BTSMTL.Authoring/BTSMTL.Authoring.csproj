@@ -7,6 +7,7 @@
     <DefineConstants>$(DefineConstants);BTSMTL_AUTHORING</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <ProjectReference Include="../BTSMTL.Orchestration.Contracts/BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="../ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Timeline/*.cs" />
@@ -27,6 +28,10 @@
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineData.Content.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineData.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/ITimelineAuthoringDocument.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/ManagedReferenceCloneUtility.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineJson.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/TimelineData.Runtime.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.Marker.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.Sampling.cs" />

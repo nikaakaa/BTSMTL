@@ -1,10 +1,23 @@
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Timeline
 {
+    public interface ITimelineAuthoringDocument
+    {
+        string SourcePath { get; }
+        bool HasUnsavedChanges { get; }
+        void Prepare(TimelineData timeline, object graph = null);
+        IGraphNodeInterfaceResolver PrepareAuthoringContext(object graph);
+        object ResolveGraph(string authoringId);
+        void Apply(Action action, string name);
+        Task Save();
+    }
+
+#if UNITY_EDITOR
     public readonly struct TimelineAuthoringReferenceValue
     {
         public TimelineAuthoringReferenceValue(UnityEngine.Object asset, string errorCode = "", string errorMessage = "")
@@ -17,16 +30,6 @@ namespace BTSMTL.Timeline
         public string ErrorCode { get; }
         public string ErrorMessage { get; }
         public bool IsMissing => !Asset && !string.IsNullOrEmpty(ErrorCode);
-    }
-
-    public interface ITimelineAuthoringDocument
-    {
-        string SourcePath { get; }
-        bool HasUnsavedChanges { get; }
-        void Prepare(TimelineData timeline, UnityEngine.ScriptableObject graph = null);
-        BTSMTL.Authoring.Graph.IGraphNodeInterfaceResolver PrepareAuthoringContext(UnityEngine.ScriptableObject graph);
-        UnityEngine.ScriptableObject ResolveGraph(string authoringId);
-        void Save();
     }
 
     public interface ITimelineAuthoringResourceDocument
@@ -50,5 +53,6 @@ namespace BTSMTL.Timeline
         void BindResourceResolution(TimelineAuthoringReferenceValue resolution);
         void BindSourceAsset(UnityEngine.Object source);
     }
+#endif
 }
 #endif

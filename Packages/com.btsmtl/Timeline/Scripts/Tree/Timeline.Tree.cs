@@ -48,7 +48,7 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("assetTree", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference,
             AuthoringVisible = false)]
         [TimelineAuthoringProperty(IsSourceAsset = true)]
-        public ScriptableObject AssetTree => m_AssetTree.Length == 0 ? null : Timeline.AuthoringDocument.ResolveGraph(m_AssetTree);
+        public ScriptableObject AssetTree => m_AssetTree.Length == 0 ? null : (ScriptableObject)Timeline.AuthoringDocument.ResolveGraph(m_AssetTree);
 #endif
 #if UNITY_EDITOR || BTSMTL_AUTHORING
         public string AssetTreeId => m_AssetTree;

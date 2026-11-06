@@ -264,9 +264,6 @@ namespace BTSMTL.Timeline
 
     public partial class TimelineData
     {
-        public UnityEditor.SerializedObject SerializedTimeline;
-        public UnityEditor.SerializedProperty SerializedData;
-
         public Track EnsureTrack(Type type, TimelineContractCatalog catalog, string identity, string name,
             TimelineExecutionDomain? executionDomain = null, bool muted = false)
         {
@@ -490,7 +487,6 @@ namespace BTSMTL.Timeline
 
         public IDisposable BeginAuthoringBatch()
         {
-            UpdateSerializedTimeline();
             TimelineAuthoringGraphBindings.Prepare(this);
             m_AuthoringBatchDepth++;
             return new AuthoringBatch(this);
@@ -510,7 +506,6 @@ namespace BTSMTL.Timeline
             m_AuthoringBatchDepth--;
             UpdateMix();
             Init();
-            UnityEditor.EditorUtility.SetDirty(SerializedOwner);
             m_AuthoringBatchDepth++;
         }
 
@@ -521,32 +516,15 @@ namespace BTSMTL.Timeline
                 action();
                 return;
             }
-            if (!SerializedOwner || string.IsNullOrEmpty(SerializedPropertyPath))
-                throw new InvalidOperationException($"TimelineData {Name} is missing serialized owner/path.");
             TimelineAuthoringGraphBindings.Prepare(this);
-            UnityEditor.Undo.IncrementCurrentGroup();
-            int undoGroup = UnityEditor.Undo.GetCurrentGroup();
-            string undoName = $"Timeline: {name}";
-            UnityEditor.Undo.SetCurrentGroupName(undoName);
-            UnityEditor.Undo.RegisterCompleteObjectUndo(SerializedOwner, undoName);
-            try
+            AuthoringDocument.Apply(() =>
             {
-                UpdateSerializedTimeline();
-                action?.Invoke();
+                action();
                 TimelineAuthoringGraphBindings.Prepare(this);
                 Init();
                 if (AlignTerminalTimeClips())
                     Init();
-                UnityEditor.EditorUtility.SetDirty(SerializedOwner);
-                UnityEditor.Undo.CollapseUndoOperations(undoGroup);
-            }
-            catch
-            {
-                UnityEditor.Undo.FlushUndoRecordObjects();
-                UnityEditor.Undo.RevertAllDownToGroup(undoGroup);
-                UpdateSerializedTimeline();
-                throw;
-            }
+            }, name);
         }
 
         public bool AlignTerminalTimeClips()
@@ -595,15 +573,6 @@ namespace BTSMTL.Timeline
             OnValueChanged?.Invoke();
         }
 
-        public void UpdateSerializedTimeline()
-        {
-            if (!SerializedOwner || string.IsNullOrEmpty(SerializedPropertyPath))
-                throw new InvalidOperationException($"TimelineData {Name} is missing serialized owner/path.");
-            SerializedTimeline = new UnityEditor.SerializedObject(SerializedOwner);
-            SerializedData = SerializedTimeline.FindProperty(SerializedPropertyPath);
-            if (SerializedData == null)
-                throw new InvalidOperationException($"TimelineData {Name} serialized path is invalid: {SerializedPropertyPath}");
-        }
     }
 
     public abstract partial class Track

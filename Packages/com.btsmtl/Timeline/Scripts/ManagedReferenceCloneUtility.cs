@@ -3,7 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Reflection;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace BTSMTL.Timeline
 {
@@ -25,17 +27,12 @@ namespace BTSMTL.Timeline
             Type type = source.GetType();
             if (type.IsValueType || type.IsEnum || type == typeof(string))
                 return source;
+            if (source is TimelineCurve)
+                return source;
+#if UNITY_5_3_OR_NEWER
             if (source is UnityEngine.Object)
                 return source;
-            if (source is AnimationCurve curve)
-            {
-                AnimationCurve cloneCurve = new AnimationCurve(curve.keys)
-                {
-                    preWrapMode = curve.preWrapMode,
-                    postWrapMode = curve.postWrapMode
-                };
-                return cloneCurve;
-            }
+#endif
             if (visited.TryGetValue(source, out object existing))
                 return existing;
             if (type.IsArray)
@@ -56,15 +53,7 @@ namespace BTSMTL.Timeline
                 return cloneList;
             }
 
-            object clone;
-            try
-            {
-                clone = Activator.CreateInstance(type, true);
-            }
-            catch (MissingMethodException)
-            {
-                clone = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
-            }
+            object clone = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
             visited.Add(source, clone);
             foreach (FieldInfo field in s_Fields.GetOrAdd(type, s_DiscoverFields))
                 field.SetValue(clone, CloneValue(field.GetValue(source), visited));
@@ -82,8 +71,7 @@ namespace BTSMTL.Timeline
                     FieldInfo field = fields[i];
                     if (field.IsStatic || field.IsInitOnly || field.IsNotSerialized || typeof(Delegate).IsAssignableFrom(field.FieldType))
                         continue;
-                    if (field.IsPublic || field.IsDefined(typeof(SerializeField), true) || field.IsDefined(typeof(SerializeReference), true))
-                        result.Add(field);
+                    result.Add(field);
                 }
             }
             return result.ToArray();

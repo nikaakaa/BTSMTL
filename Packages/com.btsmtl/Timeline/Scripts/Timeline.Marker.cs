@@ -28,7 +28,7 @@ namespace BTSMTL.Timeline
         public bool ForceTriggerOnInitialSeek => m_ForceTriggerOnInitialSeek;
 #if UNITY_EDITOR
         [GraphAuthoringField(nameof(m_Graph), GraphAuthoringFieldValueKind.IdentityReference)]
-        public ScriptableObject Graph => m_Graph.Length == 0 ? null : m_Track.Timeline.AuthoringDocument.ResolveGraph(m_Graph);
+        public ScriptableObject Graph => m_Graph.Length == 0 ? null : (ScriptableObject)m_Track.Timeline.AuthoringDocument.ResolveGraph(m_Graph);
 #endif
 #if UNITY_EDITOR || BTSMTL_AUTHORING
         public string GraphId => m_Graph;

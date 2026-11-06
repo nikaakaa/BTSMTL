@@ -4,57 +4,37 @@ using System.Collections.ObjectModel;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
-#if UNITY_5_3_OR_NEWER
-using UnityEngine;
-#else
-using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
-#endif
 
 namespace BTSMTL.Timeline
 {
     public static class TimelineContentDiscovery
     {
-#if UNITY_5_3_OR_NEWER
-        public static TimelineContentCurve CaptureSourceCurve(string channelId, AnimationCurve curve)
+        public static TimelineContentCurve CaptureSourceCurve(string channelId, TimelineCurve curve)
         {
-            var keys = new TimelineContentCurveKey[curve.length];
+            var keys = new TimelineContentCurveKey[curve.Keys.Count];
             for (int i = 0; i < keys.Length; i++)
             {
-                Keyframe key = curve[i];
-                keys[i] = new TimelineContentCurveKey(key.time, key.value, key.inTangent, key.outTangent,
-                    key.inWeight, key.outWeight, (int)key.weightedMode);
+                TimelineCurveKey key = curve.Keys[i];
+                keys[i] = new TimelineContentCurveKey(key.Time, key.Value, key.InTangent, key.OutTangent,
+                    key.InWeight, key.OutWeight, key.WeightedMode);
             }
             return new TimelineContentCurve(channelId, channelId, TimelineCurveTimeDomain.SourceSeconds,
                 TimelineCurveValueDomain.Unbounded(0f, string.Empty),
-                (int)curve.preWrapMode, (int)curve.postWrapMode, keys);
+                curve.PreWrapMode, curve.PostWrapMode, keys);
         }
-#endif
 
-        static TimelineContentCurve CaptureCurve(TimelineCurveChannelDescriptor descriptor, AnimationCurve sourceCurve)
+        static TimelineContentCurve CaptureCurve(TimelineCurveChannelDescriptor descriptor, TimelineCurve sourceCurve)
         {
-#if UNITY_5_3_OR_NEWER
-            Keyframe[] keys = sourceCurve?.keys ?? Array.Empty<Keyframe>();
-            var curveKeys = new TimelineContentCurveKey[keys.Length];
-            for (int keyIndex = 0; keyIndex < keys.Length; keyIndex++)
-            {
-                Keyframe key = keys[keyIndex];
-                curveKeys[keyIndex] = new TimelineContentCurveKey(key.time, key.value, key.inTangent,
-                    key.outTangent, key.inWeight, key.outWeight, (int)key.weightedMode);
-            }
-            int preWrapMode = (int)(sourceCurve?.preWrapMode ?? WrapMode.ClampForever);
-            int postWrapMode = (int)(sourceCurve?.postWrapMode ?? WrapMode.ClampForever);
-#else
-            IReadOnlyList<GameplayAbilityCurveKey<double>> keys = sourceCurve?.Keys ?? Array.Empty<GameplayAbilityCurveKey<double>>();
+            IReadOnlyList<TimelineCurveKey> keys = sourceCurve?.Keys ?? Array.Empty<TimelineCurveKey>();
             var curveKeys = new TimelineContentCurveKey[keys.Count];
             for (int keyIndex = 0; keyIndex < keys.Count; keyIndex++)
             {
-                GameplayAbilityCurveKey<double> key = keys[keyIndex];
+                TimelineCurveKey key = keys[keyIndex];
                 curveKeys[keyIndex] = new TimelineContentCurveKey((float)key.Time, (float)key.Value,
                     (float)key.InTangent, (float)key.OutTangent, (float)key.InWeight, (float)key.OutWeight, key.WeightedMode);
             }
             int preWrapMode = sourceCurve?.PreWrapMode ?? 8;
             int postWrapMode = sourceCurve?.PostWrapMode ?? 8;
-#endif
             return new TimelineContentCurve(descriptor.ChannelId.Value, descriptor.DisplayName,
                 descriptor.TimeDomain, descriptor.ValueDomain, preWrapMode, postWrapMode, curveKeys);
         }

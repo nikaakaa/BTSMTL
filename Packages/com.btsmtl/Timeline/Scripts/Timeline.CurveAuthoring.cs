@@ -1,15 +1,12 @@
 using System;
 using System.Collections.Generic;
-#if UNITY_5_3_OR_NEWER
-using UnityEngine;
-#else
-using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
+using BTSMTL.Timeline.Runtime;
+using ThirdPersonSimulation;
 using Color = BTSMTL.Authoring.Graph.GraphAuthoringColor;
-#endif
 
 namespace BTSMTL.Timeline
 {
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
     public enum TimelineAuthoringContentKind : byte
     {
         SpanClip,
@@ -19,10 +16,10 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineCurveChannelDescriptor
     {
-        readonly Func<AnimationCurve> m_DefaultFactory;
+        readonly Func<TimelineCurve> m_DefaultFactory;
         readonly Func<Clip, bool> m_Availability;
-        readonly Func<object, AnimationCurve> m_Read;
-        readonly Action<object, AnimationCurve> m_Replace;
+        readonly Func<object, TimelineCurve> m_Read;
+        readonly Action<object, TimelineCurve> m_Replace;
         readonly Func<object, float> m_SourceDuration;
 
         public TimelineCurveChannelDescriptor(
@@ -31,9 +28,9 @@ namespace BTSMTL.Timeline
             string displayName,
             Color color,
             TimelineCurveValueDomain valueDomain,
-            Func<AnimationCurve> defaultFactory,
-            Func<object, AnimationCurve> read,
-            Action<object, AnimationCurve> replace,
+            Func<TimelineCurve> defaultFactory,
+            Func<object, TimelineCurve> read,
+            Action<object, TimelineCurve> replace,
             Func<Clip, bool> availability = null,
             TimelineCurveChannelRole role = TimelineCurveChannelRole.Value)
         {
@@ -60,8 +57,8 @@ namespace BTSMTL.Timeline
             int componentIndex,
             Color color,
             TimelineCurveValueDomain valueDomain,
-            Func<object, AnimationCurve> read,
-            Action<object, AnimationCurve> replace,
+            Func<object, TimelineCurve> read,
+            Action<object, TimelineCurve> replace,
             Func<object, float> sourceDuration)
         {
             ChannelId = channelId;
@@ -87,54 +84,43 @@ namespace BTSMTL.Timeline
         public TimelineCurveTimeDomain TimeDomain { get; }
         public TimelineCurveValueDomain ValueDomain { get; }
         public bool Supports(object owner) => owner != null && OwnerType.IsInstanceOfType(owner) && (m_Availability?.Invoke((Clip)owner) ?? true);
-#if UNITY_5_3_OR_NEWER
-        public AnimationCurve CreateDefaultCurve() => TimelineCurveAuthoring.CopyCurve(m_DefaultFactory());
-        public bool IsDefault(AnimationCurve curve) => m_DefaultFactory != null && TimelineCurveAuthoring.AreEquivalent(curve, CreateDefaultCurve());
-#else
-        public AnimationCurve CreateDefaultCurve() => m_DefaultFactory();
-#endif
+        public TimelineCurve CreateDefaultCurve() => m_DefaultFactory();
+        public bool IsDefault(TimelineCurve curve) => m_DefaultFactory != null && TimelineCurveAuthoring.AreEquivalent(curve, CreateDefaultCurve());
 
-        public AnimationCurve Read(object owner)
-        {
-#if UNITY_5_3_OR_NEWER
-            return TimelineCurveAuthoring.CopyCurve(m_Read(owner));
-#else
-            return m_Read(owner);
-#endif
-        }
+        public TimelineCurve Read(object owner) => m_Read(owner);
 
-#if UNITY_EDITOR
-        public void Replace(object owner, AnimationCurve curve)
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        public void Replace(object owner, TimelineCurve curve)
         {
             Validate(owner, curve);
-            m_Replace(owner, TimelineCurveAuthoring.CopyCurve(curve));
+            m_Replace(owner, curve);
+#if UNITY_EDITOR
             if (owner is Clip clip)
                 clip.RebindTimeline();
+#endif
         }
 #endif
 
-#if UNITY_5_3_OR_NEWER
-        public void Validate(object owner, AnimationCurve curve)
+        public void Validate(object owner, TimelineCurve curve)
         {
             if (TimeDomain == TimelineCurveTimeDomain.SourceSeconds)
                 TimelineCurveAuthoring.ValidateSourceSeconds(curve, ValueDomain, m_SourceDuration(owner), ChannelId.Value);
             else
                 TimelineCurveAuthoring.ValidateNormalized(curve, ValueDomain, 1);
         }
-#endif
 
     }
 
     public readonly struct TimelineCurveChannelValue
     {
-        public TimelineCurveChannelValue(TimelineCurveChannelId channelId, AnimationCurve curve)
+        public TimelineCurveChannelValue(TimelineCurveChannelId channelId, TimelineCurve curve)
         {
             ChannelId = channelId;
             Curve = curve;
         }
 
         public TimelineCurveChannelId ChannelId { get; }
-        public AnimationCurve Curve { get; }
+        public TimelineCurve Curve { get; }
     }
 
     public static class TimelineCurveChannelCatalog
@@ -158,33 +144,23 @@ namespace BTSMTL.Timeline
         }
 
         static TimelineCurveChannelDescriptor Sampled(string prefix, Type owner, TimelineSampledCurveChannel channel,
-            Func<object, AnimationCurve> read, Action<object, AnimationCurve> replace) =>
+            Func<object, TimelineCurve> read, Action<object, TimelineCurve> replace) =>
             new(new TimelineCurveChannelId(prefix + channel.Suffix), owner, channel.DisplayName,
                 DisplayColor(channel.Red, channel.Green, channel.Blue), channel.ValueDomain,
                 () => Linear(0f, channel.DefaultStart, 1f, channel.DefaultEnd), read, replace,
                 role: channel.Role);
 
         public static Color DisplayColor(byte red, byte green, byte blue)
-        {
-#if UNITY_5_3_OR_NEWER
-            return new Color32(red, green, blue, 255);
-#else
-            return new Color(red / 255f, green / 255f, blue / 255f);
-#endif
-        }
+            => new Color(red / 255f, green / 255f, blue / 255f);
 
-        public static AnimationCurve Linear(float startTime, float startValue, float endTime, float endValue)
+        public static TimelineCurve Linear(float startTime, float startValue, float endTime, float endValue)
         {
-#if UNITY_5_3_OR_NEWER
-            return AnimationCurve.Linear(startTime, startValue, endTime, endValue);
-#else
-            double tangent = (endValue - startValue) / (endTime - startTime);
-            return new AnimationCurve(8, 8, new[]
+            float tangent = (endValue - startValue) / (endTime - startTime);
+            return new TimelineCurve(8, 8, new[]
             {
-                new ThirdPersonSimulation.GameplayAbilityCurveKey<double>(startTime, startValue, tangent, tangent, 0d, 0d, 0, false),
-                new ThirdPersonSimulation.GameplayAbilityCurveKey<double>(endTime, endValue, tangent, tangent, 0d, 0d, 0, false)
+                new TimelineCurveKey(startTime, startValue, tangent, tangent, 1f / 3f, 1f / 3f, 0, 0),
+                new TimelineCurveKey(endTime, endValue, tangent, tangent, 1f / 3f, 1f / 3f, 0, 0)
             });
-#endif
         }
 
         public static TimelineCurveChannelDescriptor Require(Clip owner, string channelId)
@@ -197,121 +173,120 @@ namespace BTSMTL.Timeline
         }
     }
 
-#if UNITY_5_3_OR_NEWER
     public static class TimelineCurveAuthoring
     {
-        public static AnimationCurve Read(Clip owner, TimelineCurveChannelId channelId) =>
+        public static TimelineCurve Read(Clip owner, TimelineCurveChannelId channelId) =>
             TimelineCurveChannelCatalog.Require(owner, channelId.Value).Read(owner);
 
-#if UNITY_EDITOR
-        public static void Replace(Clip owner, TimelineCurveChannelId channelId, AnimationCurve curve) =>
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        public static void Replace(Clip owner, TimelineCurveChannelId channelId, TimelineCurve curve) =>
             TimelineCurveChannelCatalog.Require(owner, channelId.Value).Replace(owner, curve);
 #endif
 
-        public static void Validate(Clip owner, TimelineCurveChannelId channelId, AnimationCurve curve) =>
+        public static void Validate(Clip owner, TimelineCurveChannelId channelId, TimelineCurve curve) =>
             TimelineCurveChannelCatalog.Require(owner, channelId.Value).Validate(owner, curve);
 
-        public static AnimationCurve CopyCurve(AnimationCurve source)
+        public static bool AreEquivalent(TimelineCurve left, TimelineCurve right)
         {
-            if (source == null)
-                throw new InvalidOperationException("Timeline curve cannot be null.");
-            return new AnimationCurve(source.keys) { preWrapMode = source.preWrapMode, postWrapMode = source.postWrapMode };
-        }
-
-        public static bool AreEquivalent(AnimationCurve left, AnimationCurve right)
-        {
-            if (left == null || right == null || left.preWrapMode != right.preWrapMode ||
-                left.postWrapMode != right.postWrapMode || left.length != right.length)
+            if (left == null || right == null || left.PreWrapMode != right.PreWrapMode ||
+                left.PostWrapMode != right.PostWrapMode || left.Keys.Count != right.Keys.Count)
                 return false;
-            for (int i = 0; i < left.length; i++)
-                if (!AreEquivalent(left[i], right[i]))
+            for (int i = 0; i < left.Keys.Count; i++)
+                if (!AreEquivalent(left.Keys[i], right.Keys[i]))
                     return false;
             return true;
         }
 
-        public static bool AreEquivalent(Keyframe left, Keyframe right) => left.time == right.time &&
-            left.value == right.value && left.inTangent == right.inTangent && left.outTangent == right.outTangent &&
-            left.weightedMode == right.weightedMode && (left.weightedMode == WeightedMode.None ||
-            left.inWeight == right.inWeight && left.outWeight == right.outWeight);
+        public static bool AreEquivalent(TimelineCurveKey left, TimelineCurveKey right) => left.Time == right.Time &&
+            left.Value == right.Value && left.InTangent == right.InTangent && left.OutTangent == right.OutTangent &&
+            left.WeightedMode == right.WeightedMode && left.TangentMode == right.TangentMode &&
+            left.InWeight == right.InWeight && left.OutWeight == right.OutWeight;
 
-        public static ulong Revision(AnimationCurve curve)
+        public static ulong Revision(TimelineCurve curve)
         {
             if (curve == null)
                 return 0UL;
             unchecked
             {
                 ulong hash = 1469598103934665603UL;
-                Mix(ref hash, (int)curve.preWrapMode);
-                Mix(ref hash, (int)curve.postWrapMode);
-                Keyframe[] keys = curve.keys;
-                Mix(ref hash, keys.Length);
-                for (int i = 0; i < keys.Length; i++)
+                Mix(ref hash, curve.PreWrapMode);
+                Mix(ref hash, curve.PostWrapMode);
+                IReadOnlyList<TimelineCurveKey> keys = curve.Keys;
+                Mix(ref hash, keys.Count);
+                for (int i = 0; i < keys.Count; i++)
                 {
-                    Keyframe key = keys[i];
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.time));
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.value));
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.inTangent));
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.outTangent));
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.inWeight));
-                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.outWeight));
-                    Mix(ref hash, (int)key.weightedMode);
+                    TimelineCurveKey key = keys[i];
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.Time));
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.Value));
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.InTangent));
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.OutTangent));
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.InWeight));
+                    Mix(ref hash, BitConverter.SingleToInt32Bits(key.OutWeight));
+                    Mix(ref hash, key.WeightedMode);
+                    Mix(ref hash, key.TangentMode);
                 }
                 return hash;
             }
         }
 
-        public static void ValidateNormalized(AnimationCurve curve, TimelineCurveValueDomain domain, int minimumKeys)
+        public static void ValidateNormalized(TimelineCurve curve, TimelineCurveValueDomain domain, int minimumKeys)
         {
-            if (curve == null || curve.length < minimumKeys)
+            if (curve == null || curve.Keys.Count < minimumKeys)
                 throw new InvalidOperationException($"Timeline curve requires at least {minimumKeys} key(s).");
-            Keyframe[] keys = curve.keys;
-            for (int i = 0; i < keys.Length; i++)
+            IReadOnlyList<TimelineCurveKey> keys = curve.Keys;
+            for (int i = 0; i < keys.Count; i++)
             {
-                Keyframe key = keys[i];
-                if (!IsFinite(key.time) || !IsFinite(key.value) || !IsFinite(key.inWeight) || !IsFinite(key.outWeight) ||
-                    key.time < 0f || key.time > 1f || i > 0 && key.time <= keys[i - 1].time)
+                TimelineCurveKey key = keys[i];
+                if (!IsFinite(key.Time) || !IsFinite(key.Value) || !IsFinite(key.InWeight) || !IsFinite(key.OutWeight) ||
+                    key.Time < 0f || key.Time > 1f || i > 0 && key.Time <= keys[i - 1].Time)
                     throw new InvalidOperationException($"Timeline curve key {i} has an invalid normalized time or non-finite payload.");
-                if (domain.IsBounded && (key.value < domain.Minimum || key.value > domain.Maximum))
+                if (domain.IsBounded && (key.Value < domain.Minimum || key.Value > domain.Maximum))
                     throw new InvalidOperationException($"Timeline curve key {i} value is outside [{domain.Minimum}, {domain.Maximum}].");
             }
         }
 
-        public static void ValidateSourceSeconds(AnimationCurve curve, TimelineCurveValueDomain domain,
+        public static void ValidateSourceSeconds(TimelineCurve curve, TimelineCurveValueDomain domain,
             float duration, string source)
         {
-            if (curve == null || curve.length == 0)
+            if (curve == null || curve.Keys.Count == 0)
                 throw new InvalidOperationException($"{source} 缺少源曲线关键帧。");
-            Keyframe[] keys = curve.keys;
-            for (int i = 0; i < keys.Length; i++)
+            IReadOnlyList<TimelineCurveKey> keys = curve.Keys;
+            var builder = new TimelineRuntimeCurveBuilder<Float32Scalar, Float32ScalarContentLowering>();
+            TimelineRuntimeCurve<Float32Scalar> compiled = builder.PrepareOptional(
+                TimelineContentDiscovery.CaptureSourceCurve(source, curve), Float32Scalar.Zero);
+            GameplayAbilityCurveKey<Float32Scalar>[] compiledKeys = builder.ToKeyArray();
+            var evaluator = new TimelineRuntimeCurveEvaluator<Float32Scalar, Float32SimulationMath>();
+            float Evaluate(float time) => evaluator.Evaluate(in compiled, compiledKeys, Float32Scalar.FromSingle(time)).Value;
+            for (int i = 0; i < keys.Count; i++)
             {
-                Keyframe key = keys[i];
-                if (!float.IsFinite(key.time) || key.time < 0f || key.time > duration ||
-                    i > 0 && key.time <= keys[i - 1].time || !float.IsFinite(key.value) ||
-                    float.IsNaN(key.inTangent) || float.IsNaN(key.outTangent) ||
-                    !float.IsFinite(key.inWeight) || !float.IsFinite(key.outWeight) ||
-                    key.inWeight < 0f || key.inWeight > 1f || key.outWeight < 0f || key.outWeight > 1f ||
-                    (int)key.weightedMode < 0 || (int)key.weightedMode > (int)WeightedMode.Both)
+                TimelineCurveKey key = keys[i];
+                if (!float.IsFinite(key.Time) || key.Time < 0f || key.Time > duration ||
+                    i > 0 && key.Time <= keys[i - 1].Time || !float.IsFinite(key.Value) ||
+                    float.IsNaN(key.InTangent) || float.IsNaN(key.OutTangent) ||
+                    !float.IsFinite(key.InWeight) || !float.IsFinite(key.OutWeight) ||
+                    key.InWeight < 0f || key.InWeight > 1f || key.OutWeight < 0f || key.OutWeight > 1f ||
+                    key.WeightedMode < 0 || key.WeightedMode > 3)
                     throw new InvalidOperationException($"{source} 的关键帧 {i} 不符合源秒数、有限数值或切线权重合同。");
-                RequireSourceValue(key.value, domain, source);
+                RequireSourceValue(key.Value, domain, source);
                 if (i > 0)
-                    RequireSegmentRange(curve, keys[i - 1], key, domain, source);
+                    RequireSegmentRange(Evaluate, keys[i - 1], key, domain, source);
             }
-            RequireSourceValue(curve.Evaluate(0f), domain, source);
-            RequireSourceValue(curve.Evaluate(duration), domain, source);
+            RequireSourceValue(Evaluate(0f), domain, source);
+            RequireSourceValue(Evaluate(duration), domain, source);
         }
 
-        static void RequireSegmentRange(AnimationCurve curve, Keyframe left, Keyframe right,
+        static void RequireSegmentRange(Func<float, float> evaluate, TimelineCurveKey left, TimelineCurveKey right,
             TimelineCurveValueDomain domain, string source)
         {
-            if (float.IsInfinity(left.outTangent) || float.IsInfinity(right.inTangent))
+            if (float.IsInfinity(left.OutTangent) || float.IsInfinity(right.InTangent))
                 return;
-            double span = right.time - left.time;
-            double outWeight = (left.weightedMode & WeightedMode.Out) != 0 ? left.outWeight : 1d / 3d;
-            double inWeight = (right.weightedMode & WeightedMode.In) != 0 ? right.inWeight : 1d / 3d;
-            double p0 = left.value;
-            double p1 = p0 + span * left.outTangent * outWeight;
-            double p3 = right.value;
-            double p2 = p3 - span * right.inTangent * inWeight;
+            double span = right.Time - left.Time;
+            double outWeight = (left.WeightedMode & 2) != 0 ? left.OutWeight : 1d / 3d;
+            double inWeight = (right.WeightedMode & 1) != 0 ? right.InWeight : 1d / 3d;
+            double p0 = left.Value;
+            double p1 = p0 + span * left.OutTangent * outWeight;
+            double p3 = right.Value;
+            double p2 = p3 - span * right.InTangent * inWeight;
             double a = -p0 + 3d * p1 - 3d * p2 + p3;
             double b = 2d * (p0 - 2d * p1 + p2);
             double c = p1 - p0;
@@ -334,7 +309,7 @@ namespace BTSMTL.Timeline
                     return;
                 double u = 1d - t;
                 double x = 3d * u * u * t * outWeight + 3d * u * t * t * (1d - inWeight) + t * t * t;
-                RequireSourceValue(curve.Evaluate((float)(left.time + span * x)), domain, source);
+                RequireSourceValue(evaluate((float)(left.Time + span * x)), domain, source);
             }
         }
 
@@ -352,5 +327,4 @@ namespace BTSMTL.Timeline
             hash *= 1099511628211UL;
         }
     }
-#endif
 }

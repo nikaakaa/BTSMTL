@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using ThirdPersonSimulation;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
-#else
-using AnimationCurve = ThirdPersonSimulation.GameplayAbilityCurve<double>;
 #endif
 
 namespace BTSMTL.Timeline
@@ -59,7 +57,7 @@ namespace BTSMTL.Timeline
 #if UNITY_5_3_OR_NEWER
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
 #endif
-        AnimationCurve m_ValueCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 1f);
+        TimelineCurve m_ValueCurve = TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 1f);
 
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterCurveClip;
         public override string CurveChannelPrefix => "scene-presentation";
@@ -97,7 +95,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         [BTSMTL.Authoring.Graph.GraphAuthoringField("valueCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
 #endif
-        public AnimationCurve ValueCurve => m_ValueCurve;
+        public TimelineCurve ValueCurve => m_ValueCurve;
         public IReadOnlyList<TimelineExternalBindingUse> ExternalBindingUses => new[]
         {
             new TimelineExternalBindingUse(TargetBindingId, TimelineBindingValueKind.Target, TimelineBindingAccess.Input, TimelineBindingLifetime.Call),
@@ -105,7 +103,7 @@ namespace BTSMTL.Timeline
         };
 
         [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
-        public void ConfigureBindings(string targetBindingId, string parameterBindingId, AnimationCurve valueCurve)
+        public void ConfigureBindings(string targetBindingId, string parameterBindingId, TimelineCurve valueCurve)
         {
             m_TargetBindingId = targetBindingId?.Trim() ?? string.Empty;
             m_ParameterBindingId = parameterBindingId?.Trim() ?? string.Empty;
@@ -115,7 +113,7 @@ namespace BTSMTL.Timeline
 #endif
         }
 
-        public void SetValueCurve(AnimationCurve valueCurve)
+        public void SetValueCurve(TimelineCurve valueCurve)
         {
             m_ValueCurve = valueCurve ?? throw new ArgumentNullException(nameof(valueCurve));
 #if UNITY_EDITOR
@@ -126,7 +124,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
         [BTSMTL.Authoring.Graph.GraphAuthoringDefault(nameof(ValueCurve))]
-        public static AnimationCurve DefaultValueCurve => AnimationCurve.Linear(0f, 0f, 1f, 0f);
+        public static TimelineCurve DefaultValueCurve => TimelineCurveChannelCatalog.Linear(0f, 0f, 1f, 0f);
 
 #endif
     }
@@ -166,11 +164,7 @@ namespace BTSMTL.Timeline
         {
             ScenePresentationParameterCurveClip parameterClip = clip as ScenePresentationParameterCurveClip;
             if (parameterClip == null || parameterClip.ValueCurve == null ||
-#if UNITY_5_3_OR_NEWER
-                parameterClip.ValueCurve.length == 0)
-#else
                 parameterClip.ValueCurve.Keys.Count == 0)
-#endif
                 errors?.Add($"Timeline scene presentation clip '{clip?.AuthoringId}' requires a value curve.");
             if (parameterClip?.Track?.Timeline != null)
             {

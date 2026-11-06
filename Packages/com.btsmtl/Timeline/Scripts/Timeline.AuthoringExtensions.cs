@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
 using BTSMTL.Orchestration;
-#if UNITY_5_3_OR_NEWER
-using UnityEngine;
-#endif
 
 namespace BTSMTL.Timeline
 {
@@ -58,10 +55,10 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineReferenceCurveDescriptor
     {
-        readonly Action<AnimationCurve, float, float, float> m_Update;
+        readonly Func<TimelineCurve, float, float, float, TimelineCurve> m_Update;
 
         public TimelineReferenceCurveDescriptor(string channelId, string displayName, string referenceLabel,
-            Action<AnimationCurve, float, float, float> update)
+            Func<TimelineCurve, float, float, float, TimelineCurve> update)
         {
             ChannelId = channelId;
             DisplayName = displayName;
@@ -72,7 +69,7 @@ namespace BTSMTL.Timeline
         public string ChannelId { get; }
         public string DisplayName { get; }
         public string ReferenceLabel { get; }
-        public void Update(AnimationCurve target, float sourceStart, float sourceEnd, float duration) =>
+        public TimelineCurve Update(TimelineCurve target, float sourceStart, float sourceEnd, float duration) =>
             m_Update(target, sourceStart, sourceEnd, duration);
     }
 #endif
