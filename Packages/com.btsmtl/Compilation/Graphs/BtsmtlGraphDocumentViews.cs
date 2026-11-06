@@ -32,7 +32,9 @@ namespace BTSMTL.Compilation
 
         public BtsmtlGraphDocument Document(string id) => m_Document(id);
 
-        public CompileGraph Read(BtsmtlGraphDocument document)
+        public CompileGraph Read(BtsmtlGraphDocument document) => Read(document, document.Domains);
+
+        CompileGraph Read(BtsmtlGraphDocument document, IReadOnlyList<string> rootDomains)
         {
             if (m_Active.Contains(document.AuthoringId))
                 throw new InvalidDataException($"子图 '{document.AuthoringId}' 递归调用自身。");
@@ -47,7 +49,7 @@ namespace BTSMTL.Compilation
                     document.Inputs.Select(Parameter).ToArray(), document.Outputs.Select(Parameter).ToArray());
                 var connected = new HashSet<(string, string)>(document.Nodes.SelectMany(node => node.OutConnections)
                     .Select(edge => ((string)edge["targetNode"], (string)edge["targetPortID"])));
-                var nodes = document.Nodes.Select(node => Node(document, node, connected)).ToArray();
+                var nodes = document.Nodes.Select(node => Node(document, node, connected, rootDomains)).ToArray();
                 view.Complete(nodes, node => document.Node(node.Id).OutConnections.Select(edge =>
                     new CompileEdge((string)edge["UID"], "BTSMTL.Graphs.Connection", node,
                         (string)edge["sourcePortID"], (string)edge["targetNode"], (string)edge["targetPortID"],
@@ -69,7 +71,7 @@ namespace BTSMTL.Compilation
         }
 
         CompileNode Node(BtsmtlGraphDocument document, BtsmtlGraphDocumentNode source,
-            HashSet<(string, string)> connected)
+            HashSet<(string, string)> connected, IReadOnlyList<string> rootDomains)
         {
             BtsmtlNativeValueNodeCatalog.TryGet(source.TypeName, out BtsmtlNativeValueNodeDefinition native);
             CompileNodeRole role = source.TypeName switch
@@ -117,9 +119,9 @@ namespace BTSMTL.Compilation
                 _ => Describe(source, definition, native, fields));
             if (callee != null)
             {
-                if (!callee.IsMacro || callee.Domains.Except(document.Domains, StringComparer.Ordinal).Any())
+                if (!callee.IsMacro || callee.Domains.Except(rootDomains, StringComparer.Ordinal).Any())
                     throw new InvalidDataException($"调用 '{source.Id}' 的子图类型或领域不属于调用方。");
-                node.WithCallee(Read(callee));
+                node.WithCallee(Read(callee, rootDomains));
             }
             if (definition is IBtsmtlVariableFlowNode reference)
                 node.WithVariable(reference.OwnerId, reference.VariableId, reference.Writes);

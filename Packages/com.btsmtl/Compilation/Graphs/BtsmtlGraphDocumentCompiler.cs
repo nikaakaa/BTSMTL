@@ -163,6 +163,11 @@ namespace BTSMTL.Compilation
             }
             else
             {
+                foreach (CompileNode node in m_Graphs.Read(document).Nodes.Where(node => node.Role == CompileNodeRole.Variable))
+                    if (node.VariableOwnerId != variables.OwnerId ||
+                        !node.ValueOutputs.Single(port => port.Id == "Value").Type
+                            .SameType(variables.RequireVariable(node.VariableId).ValueType))
+                        throw new InvalidOperationException($"{route}/node:{node.Id}: 没有引用所属 owner 中同类型的变量声明。");
                 if (document.IsMacro && variables.Variables.Any(variable => variable.IsPublic ||
                         variable.Declaration.Scope != PipelineBlackboardVariableScope.Graph ||
                         variable.Declaration.Lifetime != PipelineBlackboardVariableLifetime.GraphInstance))

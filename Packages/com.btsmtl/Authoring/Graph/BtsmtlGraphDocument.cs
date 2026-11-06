@@ -156,5 +156,12 @@ namespace BTSMTL.Authoring.Graph
     {
         public static BtsmtlGraphDocument Read(JObject root) => new(root);
         public static JObject Write(BtsmtlGraphDocument source) => source.Json();
+        public static string CompilationInput(BtsmtlGraphDocument source, BtsmtlGraphVariableDeclarations variables)
+        {
+            JObject graph = source.Json();
+            graph.Remove("layout");
+            return new JObject { ["graph"] = graph, ["variables"] = BtsmtlGraphVariableDeclarationsJson.Write(variables) }
+                .ToString(Newtonsoft.Json.Formatting.None);
+        }
     }
 }
