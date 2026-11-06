@@ -24,6 +24,8 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPorts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationNodeDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortShapes.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlGraphDocument.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlGraphEntryDeclaration.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/*SerializedFields.cs" />

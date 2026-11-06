@@ -15,25 +15,6 @@ using UnityEditor;
 
 namespace BTSMTL.Graphs
 {
-    [Serializable]
-    public sealed class BtsmtlGraphEntryDeclaration
-    {
-        [SerializeField] string m_EntryId;
-        [SerializeField] string m_NodeId;
-        [SerializeField] OrchestrationExecutionContract m_Contract;
-
-        public BtsmtlGraphEntryDeclaration(string entryId, string nodeId,
-            OrchestrationExecutionContract contract)
-        {
-            m_EntryId = entryId;
-            m_NodeId = nodeId;
-            m_Contract = contract;
-        }
-        public string EntryId => m_EntryId;
-        public string NodeId => m_NodeId;
-        public OrchestrationExecutionContract Contract => m_Contract;
-    }
-
     [CreateAssetMenu(fileName = "BtsmtlGraph", menuName = "BTSMTL/Graph")]
     public sealed partial class BtsmtlGraphRoot : BtsmtlFlowGraph, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
