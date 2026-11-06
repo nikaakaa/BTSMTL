@@ -134,7 +134,7 @@ namespace BTSMTL.Graphs
             if (!valid)
                 throw new InvalidDataException($"图变量 '{CompileValueTypes.Id(type)}' 必须提供对应类型的完整 JSON 默认值。");
             if (type.Kind == SemanticValueKind.Number)
-                ValueValidation.RequireFinite(type.FullName == "System.Single" ? (double)(float)value : (double)value, nameof(value));
+                SemanticNumeric.RequireFinite(type.FullName == "System.Single" ? (double)(float)value : (double)value, nameof(value));
             ReadDefault(type, value);
         }
 
