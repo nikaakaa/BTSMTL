@@ -8,6 +8,7 @@ import {
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
+import { workspaceDocumentsApi, type WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import { playerApi } from '../api/player';
 import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
   type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
@@ -36,8 +37,7 @@ export interface AuthoringState {
   author: boolean;
   target: AuthoringTarget | null;
   documents: Record<string, AuthoringDocument>;
-  skills: string[] | null;
-  scenarios: string[] | null;
+  directory: WorkspaceDocumentInfo[] | null;
   carrierRevision: string | null;
   resourceTarget: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null;
   profiles: Record<string, ProfileDocument>;
@@ -170,7 +170,7 @@ const newDocument = (): AuthoringDocument => ({
 const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, target: null, documents: {}, skills: null, scenarios: null, carrierRevision: null,
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null, carrierRevision: null,
   resourceTarget: null, profiles: {}, scopes: {},
 }));
 
@@ -623,7 +623,7 @@ export const authoringActions = {
     const target = { kind: 'skill', name: request.parameters.name } as const;
     const key = authoringTargetKey(target);
     const state = useAuthoring.getState();
-    if (state.skills?.includes(target.name) || state.documents[key] !== undefined)
+    if (state.directory?.some(document => document.documentPath === key) || state.documents[key] !== undefined)
       throw new Error(`技能目录 ${target.name} 已存在或已经打开，请使用其他名称`);
     const identityOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
       (document.edited['skill.json'] as JsonObject | undefined)?.m_AbilityId === request.parameters.abilityId);
@@ -645,15 +645,15 @@ export const authoringActions = {
       editingView: authoringActions.editingView(), preview: null });
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
-    await Promise.all([authoringActions.listSkills(), session.loadInputs()]);
+    await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
   },
 
-  async listSkills() {
+  async listDocuments() {
     try {
-      const [skills, scenarios] = await Promise.all([authoringApi.list('skill'), authoringApi.list('scenario')]);
-      set({ skills, scenarios, available: true, unavailableReason: null });
+      const directory = await workspaceDocumentsApi.list();
+      set({ directory, available: true, unavailableReason: null });
     } catch (error) {
-      set({ skills: [], available: false, unavailableReason: error instanceof ApiError && error.status === 404
+      set({ directory: [], available: false, unavailableReason: error instanceof ApiError && error.status === 404
         ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
     }
   },
@@ -755,7 +755,7 @@ export const authoringActions = {
     delete documents[authoringTargetKey(target)];
     const closing = isActiveTarget(target);
     if (closing) loadController?.abort();
-    set({ documents, skills: state.skills === null ? null : state.skills.filter(skill => skill !== receipt.skill),
+    set({ documents, directory: state.directory === null ? null : state.directory.filter(document => document.documentPath !== authoringTargetKey(target)),
       carrierRevision: receipt.authoringRevision, ...(closing ? { target: null } : {}) });
     if (closing) {
       useWorkbench.setState({ graphRequest: null, timelineRequest: null });
@@ -991,7 +991,7 @@ export const authoringActions = {
         lastSave: currentScene ? lastSave : { ...lastSave,
           message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
       }, target);
-      if (revision === null) void authoringActions.listSkills();
+      if (revision === null) void authoringActions.listDocuments();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
     try {

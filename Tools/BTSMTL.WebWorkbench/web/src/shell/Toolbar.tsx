@@ -68,17 +68,18 @@ function ContentChoice() {
 
 // 技能是节点图、Timeline 与检查器共同打开的内容，属于全局选择。
 function SkillChoice() {
-  const { skills, target, available } = useAuthoring(useShallow(state => ({
-    skills: state.skills, target: state.target, available: state.available,
+  const { directory, target, available } = useAuthoring(useShallow(state => ({
+    directory: state.directory, target: state.target, available: state.available,
   })));
-  useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
+  useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
+  const skills = directory?.filter(document => document.kind === 'skill');
   if (available === false) return null;
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
       {target?.kind === 'scenario' ? <span className={styles.crumbText}>{target.name}</span> : (
         <Select variant="ghost" label="技能" placeholder="选择技能" value={target?.name ?? null} disabled={!skills?.length}
-          options={(skills ?? []).map(item => ({ value: item, label: item }))}
+          options={(skills ?? []).map(item => ({ value: item.documentPath.slice('Skills/'.length), label: item.documentPath.slice('Skills/'.length) }))}
           onChange={value => void authoringActions.open({ kind: 'skill', name: value })} />
       )}
     </>

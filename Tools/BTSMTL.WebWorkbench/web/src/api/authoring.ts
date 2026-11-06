@@ -762,7 +762,6 @@ export const authoringApi = {
     postJson<{ files: SkillFile[] }>(`${targetPath({ kind: 'scenario', name })}/draft`, request),
   inputFragment: async (request: InputFragmentRequest) =>
     parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment,
-  list: (kind: AuthoringTarget['kind'], signal?: AbortSignal) => getJson<string[]>(folderPath(kind), signal),
   read: async (target: AuthoringTarget, signal?: AbortSignal) => readSkillSnapshot(await getJson<unknown>(targetPath(target), signal)),
   deleteSkill: (skill: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
     deleteJson<SkillDeleteResult>(targetPath({ kind: 'skill', name: skill }), request, [409]),

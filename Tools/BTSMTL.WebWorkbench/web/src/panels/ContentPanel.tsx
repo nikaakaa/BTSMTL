@@ -82,13 +82,13 @@ function RunSources() {
 }
 
 function ScenarioFolders() {
-  const { scenarios, target, editable } = useAuthoring(useShallow(state => ({ scenarios: state.scenarios, target: state.target,
+  const { directory, target, editable } = useAuthoring(useShallow(state => ({ directory: state.directory, target: state.target,
     editable: state.author && state.target?.kind === 'scenario' && !authoringDocument(state).loading })));
   const [creating, setCreating] = useState(false);
   const [creatingInput, setCreatingInput] = useState(false);
   const scenePath = useWorkbench(state => selectedScene(state)?.path ?? null);
-  useEffect(() => { if (scenarios === null) void authoringActions.listSkills(); }, [scenarios]);
-  if (scenarios === null) return <Empty text="正在读取场景方案" />;
+  if (directory === null) return <Empty text="正在读取场景方案" />;
+  const scenarios = directory.filter(document => document.kind === 'scenario');
   return <>
     <Button onClick={() => setCreating(!creating)}>新建场景方案</Button>
     {creating && <NewScenario key={scenePath} onCreated={() => setCreating(false)} />}
@@ -96,11 +96,13 @@ function ScenarioFolders() {
     {creatingInput && editable && <InputPlanCreationForm key={target!.name} onCancel={() => setCreatingInput(false)}
       onCreated={() => { setCreatingInput(false); openPanel('timeline'); }} />}
     <div className={styles.list} role="listbox" aria-label="场景方案">
-    {scenarios.map(name => <button key={name} className={styles.row} role="option"
+    {scenarios.map(document => {
+      const name = document.documentPath.slice('Scenarios/'.length);
+      return <button key={document.documentPath} className={styles.row} role="option"
       aria-selected={target?.kind === 'scenario' && target.name === name}
       onClick={() => void authoringActions.open({ kind: 'scenario', name })}>
       <span className={styles.rowText}>{name}</span>
-    </button>)}
+    </button>; })}
     </div>
   </>;
 }
