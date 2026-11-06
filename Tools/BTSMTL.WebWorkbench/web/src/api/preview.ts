@@ -1,7 +1,7 @@
 import { getJson, postJson, query } from './http';
 import type { Sources } from './types';
 import { readPlayerHost, readPlayerInputCatalog } from './playerRecords';
-import { readPublishedTimelineScene, readQuickDescriptionReply, readQuickScenes, readQuickStatusReply, type PreviewQuickJobId, type PreviewQuickRequest, type PreviewQuickTarget } from './previewQuickRecords';
+import { readPublishedTimelineScene, readQuickDescriptionReply, readQuickScenes, readQuickStatusReply, type PreviewQuickJobId, type PreviewQuickRequest, type PreviewQuickSeekRequest, type PreviewQuickTarget } from './previewQuickRecords';
 
 const base = '/api/preview';
 
@@ -21,6 +21,9 @@ export const previewApi = {
     postJson<unknown>(`${base}/quick/plans`, request, signal, [409]).then(value => readQuickStatusReply(value, 'PreviewQuick.start')),
   quickStatus: (jobId: PreviewQuickJobId, signal?: AbortSignal) =>
     getJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}`, signal, [409]).then(value => readQuickStatusReply(value, 'PreviewQuick.status')),
+  seekQuick: (jobId: PreviewQuickJobId, request: PreviewQuickSeekRequest, signal?: AbortSignal) =>
+    postJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}/seek`, request, signal, [409])
+      .then(value => readQuickStatusReply(value, 'PreviewQuick.seek')),
   cancelQuick: (jobId: PreviewQuickJobId, signal?: AbortSignal) =>
     postJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}/cancel`, undefined, signal, [409])
       .then(value => readQuickStatusReply(value, 'PreviewQuick.cancel')),

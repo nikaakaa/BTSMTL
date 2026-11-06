@@ -52,11 +52,15 @@ const plan = object({
   })),
   declaredInputs: array(inputDeclaration), inputsUsed: array(inputPoint), inputSource: text,
 });
+const frame = object({
+  jobId: identity<'quick-job'>(), requestId: text, sourceRevision: text, inputRevision: text,
+  requestedSeconds: number, sampledSeconds: number, sampledRevision: text, mediaType: text, imageBase64: text,
+});
 const status = object({
   jobId: identity<'quick-job'>(), stage: text, completed: boolean, cancellationRequested: boolean,
   nativeMode: text, adoptedMode: nullable(text), source: nullable(source), samplesDone: number, samplesTotal: number,
   outputDirectory: nullable(text), summaryPath: nullable(text), plan: nullable(plan), error: nullable(text),
-  cleanupErrors: array(text), notes: array(text), logErrors: array(text),
+  cleanupErrors: array(text), notes: array(text), logErrors: array(text), frame: nullable(frame),
 });
 const reply = <T>(data: Decoder<T>) => object({ success: boolean, pending: boolean, code: nullable(text), message: nullable(text), data: nullable(data), rawJson: text });
 
@@ -68,6 +72,8 @@ export type PreviewQuickPlan = ReturnType<typeof plan>;
 export type PreviewQuickLocation = ReturnType<typeof location>;
 export type PreviewQuickStatus = ReturnType<typeof status>;
 export type PreviewQuickJobId = PreviewQuickStatus['jobId'];
+export type PreviewQuickFrame = ReturnType<typeof frame>;
+export type PreviewQuickSeekRequest = Pick<PreviewQuickFrame, 'requestId' | 'sourceRevision' | 'inputRevision'> & { seconds: number };
 export type PreviewQuickStatusReply = ReturnType<typeof readQuickStatusReply>;
 export type PreviewQuickDescriptionReply = ReturnType<typeof readQuickDescriptionReply>;
 export type PreviewQuickInputPoint = ReturnType<typeof inputPoint>;
