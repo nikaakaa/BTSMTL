@@ -635,10 +635,9 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
   const id = declaration.m_VariableId;
   const type = choices.types.find(type => type.typeId === variable.m_TypeId)!;
   const scope = choices.scopes.find(scope => scope.value === declaration.m_Scope)!;
-  const configuration: VariableConfiguration = { scope: declaration.m_Scope, lifetime: declaration.m_Lifetime,
-    category: declaration.m_Category, inputBinding: declaration.m_InputBinding === null ? null : {
-      inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection } };
-  const configure = (patch: Partial<VariableConfiguration>) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, { ...configuration, ...patch }));
+  const inputBinding = declaration.m_InputBinding === null ? null : {
+    inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection };
+  const configure = (patch: Partial<VariableConfiguration>) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, patch));
   return <div className={styles.group}>
     <div className={styles.groupHead}>{variable.m_Name}<span className={styles.count}>{type.typeId}</span>
       {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
@@ -647,7 +646,7 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
     {editable ? <>
       <Row label="名称"><TextValue label="名称" value={variable.m_Name} onSet={next =>
         perform(() => graphAuthoring.renameVariable(ownerId, id, next))} /></Row>
-      <VariableDefaultValue type={type} value={variable.m_DefaultValue} onSet={value => perform(() => graphAuthoring.setVariableValue(ownerId, id, value))} />
+      <VariableDefaultValue type={type} value={variable.m_DefaultValue} onSet={(keys, value) => perform(() => graphAuthoring.setVariableValue(ownerId, id, keys, value))} />
       <Row label="公开"><Checkbox label="公开变量" checked={variable.m_IsPublic}
         onChange={isPublic => perform(() => graphAuthoring.setVariablePublic(ownerId, id, isPublic))} /></Row>
       <Row label="作用域"><Select label="作用域" value={String(declaration.m_Scope)}
@@ -659,7 +658,7 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
         onChange={next => configure({ lifetime: Number(next) })} /></Row>
       <Row label="分类"><TextValue label="分类" value={declaration.m_Category}
         onSet={next => configure({ category: next })} /></Row>
-      <VariableInputBinding binding={configuration.inputBinding} projections={choices.inputProjections} onSet={inputBinding => configure({ inputBinding })} />
+      <VariableInputBinding binding={inputBinding} projections={choices.inputProjections} onSet={inputBinding => configure({ inputBinding })} />
     </> : <>
       <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.m_DefaultValue, ' ')}</span></Row>
       <Row label="公开"><span className={styles.readOnly}>{variable.m_IsPublic ? '是' : '否'}</span></Row>
@@ -671,17 +670,17 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
   </div>;
 }
 
-function VariableDefaultValue({ type, value, onSet }: { type: VariableType; value: JsonValue; onSet(value: JsonValue): void }) {
+function VariableDefaultValue({ type, value, onSet }: { type: VariableType; value: JsonValue; onSet: SetValue }) {
   if (type.enumMembers !== null) return <Row label="默认值"><Select label="默认值" value={String(numberOf(value))}
-    options={type.enumMembers.map(member => ({ value: String(member.value), label: member.name }))} onChange={next => onSet(Number(next))} /></Row>;
+    options={type.enumMembers.map(member => ({ value: String(member.value), label: member.name }))} onChange={next => onSet([], Number(next))} /></Row>;
   if (type.valueKind === 'ObjectHandle' || (type.valueKind === 'UInt64' && typeof type.defaultValue === 'string'))
-    return <Row label="默认值"><IntegerValue label="默认值" value={value} onSet={onSet} /></Row>;
+    return <Row label="默认值"><IntegerValue label="默认值" value={value} onSet={next => onSet([], next)} /></Row>;
   if (type.clrType === 'System.String') return <Row label="默认值">
-    <Checkbox label="空值 null" checked={value === null} onChange={next => onSet(next ? null : cloneJson(type.defaultValue))} />
-    <TextValue label="默认值" value={value as string | null} onSet={onSet} />
+    <Checkbox label="空值 null" checked={value === null} onChange={next => onSet([], next ? null : cloneJson(type.defaultValue))} />
+    <TextValue label="默认值" value={value as string | null} onSet={next => onSet([], next)} />
   </Row>;
   return <ValueEditor label="默认值" value={value} shape={{ clrType: type.clrType, hasAuthoringFields: false, enumValues: null, elementType: null }} keys={[]}
-    onSet={(keys, next) => { if (!keys.length) onSet(next); else { const updated = cloneJson(value); setIn(updated, keys, next); onSet(updated); } }} />;
+    onSet={onSet} />;
 }
 
 function VariableInputBinding({ binding, projections, onSet }: {

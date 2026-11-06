@@ -1961,9 +1961,10 @@ async function applyVariableEdit(ownerId: string, operation: VariableOperation):
   }
 }
 
-function editVariable(ownerId: string, operation: VariableOperation): Promise<string> {
+function editVariable(ownerId: string, operation: VariableOperation | ((source: VariablesQuery['value']) => VariableOperation)): Promise<string> {
   const previous = variableRequests.get(ownerId);
-  const apply = () => applyVariableEdit(ownerId, operation);
+  const apply = () => applyVariableEdit(ownerId, typeof operation === 'function'
+    ? operation(variableDocument(useAuthoring.getState(), ownerId)![1].variables!.value) : operation);
   const request = (previous === undefined ? apply() : previous.then(apply, apply)).finally(() => {
     if (variableRequests.get(ownerId) === request) variableRequests.delete(ownerId);
   });
@@ -2295,10 +2296,19 @@ export const graphAuthoring = {
   addVariable: (ownerId: string, typeId: string, name?: string) =>
     editVariable(ownerId, { kind: 'create', typeId, ...(name === undefined ? {} : { name }) }),
   renameVariable: (ownerId: string, variableId: string, name: string) => editVariable(ownerId, { kind: 'rename', variableId, name }),
-  setVariableValue: (ownerId: string, variableId: string, value: JsonValue) => editVariable(ownerId, { kind: 'set-default', variableId, value }),
+  setVariableValue: (ownerId: string, variableId: string, keys: JsonKey[], next: JsonValue) => editVariable(ownerId, source => {
+    const current = source.m_Variables.find(variable => variable.m_Declaration.m_VariableId === variableId)!;
+    const value = keys.length === 0 ? next : cloneJson(current.m_DefaultValue);
+    if (keys.length !== 0) setIn(value, keys, next);
+    return { kind: 'set-default', variableId, value };
+  }),
   setVariablePublic: (ownerId: string, variableId: string, isPublic: boolean) => editVariable(ownerId, { kind: 'configure-public', variableId, isPublic }),
-  setDeclarationValue: (ownerId: string, variableId: string, configuration: VariableConfiguration) =>
-    editVariable(ownerId, { kind: 'configure-blackboard', variableId, ...configuration }),
+  setDeclarationValue: (ownerId: string, variableId: string, patch: Partial<VariableConfiguration>) => editVariable(ownerId, source => {
+    const declaration = source.m_Variables.find(variable => variable.m_Declaration.m_VariableId === variableId)!.m_Declaration;
+    return { kind: 'configure-blackboard', variableId, scope: declaration.m_Scope, lifetime: declaration.m_Lifetime,
+      category: declaration.m_Category, inputBinding: declaration.m_InputBinding === null ? null : {
+        inputValueId: declaration.m_InputBinding.m_InputValueId, projection: declaration.m_InputBinding.m_Projection }, ...patch };
+  }),
   removeVariable: (ownerId: string, variableId: string) => editVariable(ownerId, { kind: 'delete', variableId }),
 
   move(graphId: string, positions: Record<string, { x: number; y: number }>) {
