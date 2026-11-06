@@ -106,9 +106,8 @@ namespace BTSMTL.Graphs
         public void ConfigureVariable(string id, bool isPublic) => Edit("配置图变量发布", () =>
             m_Blackboard.variables.Values.Single(variable => variable.ID == id).isExposedPublic = isPublic);
 
-        public void ConfigureBlackboard(string id, PipelineBlackboardVariableScope scope,
-            PipelineBlackboardVariableLifetime lifetime, string category = "", PipelineBlackboardInputBinding inputBinding = null) =>
-            Edit("配置图变量黑板语义", () => m_Source.ConfigureBlackboard(id, scope, lifetime, category, inputBinding));
+        public void ConfigureBlackboard(string id, JObject changes) =>
+            Edit("配置图变量黑板语义", () => m_Source.ConfigureBlackboard(id, changes));
 
         public void Replace(IReadOnlyList<Variable> variables) => Edit("编辑图变量列表", () =>
             m_Blackboard.variables = variables.ToDictionary(variable => variable.name, variable => variable, StringComparer.Ordinal));

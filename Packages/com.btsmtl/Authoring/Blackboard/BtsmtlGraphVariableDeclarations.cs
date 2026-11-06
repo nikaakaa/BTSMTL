@@ -169,15 +169,18 @@ namespace BTSMTL.Graphs
                 variable.TypeId, variable.DefaultValue, isPublic, variable.DeclarationOrder));
         }
 
-        public void ConfigureBlackboard(string id, PipelineBlackboardVariableScope scope,
-            PipelineBlackboardVariableLifetime lifetime, string category = "", PipelineBlackboardInputBinding inputBinding = null)
+        public void ConfigureBlackboard(string id, JObject changes)
         {
             BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
-            var declaration = new BtsmtlBlackboardDeclaration(id, scope, lifetime, category, inputBinding);
-            BtsmtlBlackboardDeclaration.ValidateDefinition(variable.ValueType.Kind,
-                BtsmtlGraphVariableDeclarationsJson.TypeCode(variable.ValueType), scope, lifetime, inputBinding);
-            if (BtsmtlGraphVariableDeclarationsJson.SameDeclaration(variable.Declaration, declaration))
+            BtsmtlBlackboardDeclaration previous = variable.Declaration;
+            BtsmtlBlackboardDeclaration declaration = BtsmtlGraphVariableDeclarationsJson.ConfigureDeclaration(previous, changes);
+            if (BtsmtlGraphVariableDeclarationsJson.SameDeclaration(previous, declaration))
                 return;
+            bool bindingChanged = !BtsmtlGraphVariableDeclarationsJson.SameInputBinding(previous.StoredInputBinding, declaration.StoredInputBinding);
+            if (previous.Scope != declaration.Scope || previous.Lifetime != declaration.Lifetime || bindingChanged)
+                BtsmtlBlackboardDeclaration.ValidateDefinition(variable.ValueType.Kind,
+                    BtsmtlGraphVariableDeclarationsJson.TypeCode(variable.ValueType), declaration.Scope, declaration.Lifetime,
+                    bindingChanged ? declaration.StoredInputBinding : declaration.InputBinding);
             ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(declaration, variable.Name,
                 variable.TypeId, variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder));
         }

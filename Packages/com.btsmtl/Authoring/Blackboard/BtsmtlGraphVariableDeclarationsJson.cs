@@ -65,6 +65,18 @@ namespace BTSMTL.Graphs
             };
         }
 
+        internal static BtsmtlBlackboardDeclaration ConfigureDeclaration(BtsmtlBlackboardDeclaration source, JObject changes)
+        {
+            JObject stored = WriteDeclaration(source);
+            foreach (JProperty change in changes.Properties())
+            {
+                if (change.Name == "m_VariableId" || stored.Property(change.Name) == null)
+                    throw new InvalidDataException($"'{change.Name}' 不是可配置的黑板声明成员。");
+                stored[change.Name] = change.Value.DeepClone();
+            }
+            return ReadDeclaration(stored);
+        }
+
         public static object ReadDefault(CompileValueType type, JToken value)
         {
             if (type.IsEnum) return (int)value;
@@ -154,12 +166,13 @@ namespace BTSMTL.Graphs
 
         public static bool SameDeclaration(BtsmtlBlackboardDeclaration left, BtsmtlBlackboardDeclaration right)
         {
-            PipelineBlackboardInputBinding a = left.StoredInputBinding;
-            PipelineBlackboardInputBinding b = right.StoredInputBinding;
             return left.VariableId == right.VariableId && left.Scope == right.Scope && left.Lifetime == right.Lifetime &&
-                left.Category == right.Category && (a == null && b == null || a != null && b != null &&
-                    a.StoredInputValueId == b.StoredInputValueId && a.Projection == b.Projection);
+                left.Category == right.Category && SameInputBinding(left.StoredInputBinding, right.StoredInputBinding);
         }
+
+        internal static bool SameInputBinding(PipelineBlackboardInputBinding left, PipelineBlackboardInputBinding right) =>
+            left == null && right == null || left != null && right != null &&
+            left.StoredInputValueId == right.StoredInputValueId && left.Projection == right.Projection;
 
         public static bool SameVariable(BtsmtlGraphVariableDeclaration left, BtsmtlGraphVariableDeclaration right) =>
             left.Name == right.Name && left.TypeId == right.TypeId && left.IsPublic == right.IsPublic &&

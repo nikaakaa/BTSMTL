@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Compilation;
@@ -172,14 +173,17 @@ namespace BTSMTL.Graphs
             {
                 PipelineBlackboardVariableLifetime lifetime = PipelineBlackboardVariablePolicy.DefaultLifetime(scope);
                 menu.AddItem(new GUIContent("黑板作用域/" + scope), current.Scope == scope, () =>
-                    graph.VariableEditor.ConfigureBlackboard(variable.ID, scope, lifetime, current.Category));
+                    graph.VariableEditor.ConfigureBlackboard(variable.ID, new JObject
+                    {
+                        ["m_Scope"] = (int)scope, ["m_Lifetime"] = (int)lifetime
+                    }));
             }
             foreach (PipelineBlackboardVariableLifetime lifetime in Enum.GetValues(typeof(PipelineBlackboardVariableLifetime)))
             {
                 if (!PipelineBlackboardVariablePolicy.IsValid(current.Scope, lifetime))
                     continue;
                 menu.AddItem(new GUIContent("黑板生命周期/" + lifetime), current.Lifetime == lifetime, () =>
-                    graph.VariableEditor.ConfigureBlackboard(variable.ID, current.Scope, lifetime, current.Category, current.InputBinding));
+                    graph.VariableEditor.ConfigureBlackboard(variable.ID, new JObject { ["m_Lifetime"] = (int)lifetime }));
             }
             return menu;
 
