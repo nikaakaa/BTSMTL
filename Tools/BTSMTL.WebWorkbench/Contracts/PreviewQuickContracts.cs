@@ -1,47 +1,85 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.WebWorkbench;
+
+public static class PreviewQuickProtocol
+{
+    public const string Identity = "btsmtl.native-timeline-preview/3";
+}
+
+public sealed record AuthoringDocumentEdit([property: JsonRequired, JsonPropertyName("kind")] string Kind,
+    [property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
+    [property: JsonRequired, JsonPropertyName("expectedRevision")] string ExpectedRevision,
+    [property: JsonRequired, JsonPropertyName("files")] IReadOnlyDictionary<string, string> Files);
+public sealed record AuthoringDocumentReadRevision([property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
+    [property: JsonRequired, JsonPropertyName("revision")] string Revision);
+public sealed record AuthoringDocumentEditingView([property: JsonRequired, JsonPropertyName("writes")] AuthoringDocumentEdit[] Writes,
+    [property: JsonRequired, JsonPropertyName("reads")] AuthoringDocumentReadRevision[] Reads,
+    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null,
+    SkillAuthoringProductScope? Product = null);
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(PreviewQuickGraphEntry), "graph")]
+[JsonDerivedType(typeof(PreviewQuickTimelineEntry), "timeline")]
+public abstract record PreviewQuickEntry;
+public sealed record PreviewQuickGraphEntry([property: JsonRequired] string GraphId, int Machine = 0) : PreviewQuickEntry;
+public sealed record PreviewQuickTimelineEntry([property: JsonRequired] string TimelineId) : PreviewQuickEntry;
+public sealed record PreviewQuickAuthoringTarget([property: JsonRequired] string DocumentPath,
+    [property: JsonRequired] string SavedRevision, [property: JsonRequired] PreviewQuickEntry Entry);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(PreviewQuickNativeRoot), "nativeDocument")]
 [JsonDerivedType(typeof(PreviewQuickWebRoot), "webEditingView")]
-[JsonDerivedType(typeof(PreviewQuickTimelineRoot), "timelineAsset")]
-public abstract record PreviewQuickRoot;
-public sealed record PreviewQuickNativeRoot([property: JsonRequired] string Path, int Machine = 0) : PreviewQuickRoot;
-public sealed record PreviewQuickWebRoot([property: JsonRequired] string Skill,
-    [property: JsonRequired] SkillAuthoringEditingView EditingView, int Machine = 0) : PreviewQuickRoot;
-public sealed record PreviewQuickTimelineRoot([property: JsonRequired] string Path,
-    [property: JsonRequired] string ElementId) : PreviewQuickRoot;
+[JsonDerivedType(typeof(PreviewQuickDocumentRoot), "authoringDocument")]
+public abstract record PreviewQuickRoot([property: JsonRequired] PreviewQuickAuthoringTarget Authoring);
+public sealed record PreviewQuickNativeRoot(PreviewQuickAuthoringTarget Authoring) : PreviewQuickRoot(Authoring);
+public sealed record PreviewQuickWebRoot(PreviewQuickAuthoringTarget Authoring,
+    [property: JsonRequired] AuthoringDocumentEditingView EditingView) : PreviewQuickRoot(Authoring);
+public sealed record PreviewQuickDocumentRoot(PreviewQuickAuthoringTarget Authoring) : PreviewQuickRoot(Authoring);
+
 public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null);
 public sealed record PreviewQuickInputPoint(string InputId, double Time, JsonElement Value);
 public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault);
-public sealed record PreviewQuickInput([property: JsonRequired] int Scheme, [property: JsonRequired] string Revision,
-    PreviewQuickInputPoint[]? Points = null, PreviewQuickConditionPoint[]? Conditions = null);
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(PreviewQuickDocumentInput), "documentInput")]
+[JsonDerivedType(typeof(PreviewQuickRootInputs), "rootDefaults")]
+public abstract record PreviewQuickInputSource;
+public sealed record PreviewQuickDocumentInput([property: JsonRequired] string DocumentPath,
+    [property: JsonRequired] string SavedRevision, [property: JsonRequired] string InputId) : PreviewQuickInputSource;
+public sealed record PreviewQuickRootInputs : PreviewQuickInputSource;
+public sealed record PreviewQuickInput([property: JsonRequired] PreviewQuickInputSource Source,
+    [property: JsonRequired] string Revision, PreviewQuickInputPoint[]? Points = null,
+    PreviewQuickConditionPoint[]? Conditions = null);
 public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
     [property: JsonRequired] PreviewQuickTarget Target, [property: JsonRequired] string SourceRevision,
     [property: JsonRequired] PreviewQuickInput Input, [property: JsonRequired] string OutputDirectory,
     double? RangeEndSeconds = null, int TimeoutSeconds = 180);
 
 public sealed record PreviewQuickReply<T>(bool Success, bool Pending, string? Code, string? Message, T? Data, string RawJson);
-public sealed record PreviewQuickDocument(string Path, string Revision, string? SavedRevision, bool? HasUnsavedChanges);
-public sealed record PreviewQuickSource(string Kind, string Identity, string Path, string Revision,
+public sealed record PreviewQuickDocument(string Kind, string DocumentPath, string Identity, string Revision,
+    string SavedRevision, bool HasUnsavedChanges);
+public sealed record PreviewQuickSource(string Kind, PreviewQuickAuthoringTarget Authoring, string Revision,
     string SceneRevision, PreviewQuickDocument[] Documents);
-public sealed record PreviewQuickSkill(string Directory, string DisplayName, string Identity);
+public sealed record PreviewQuickEntryChoice(PreviewQuickEntry Entry, string DisplayName);
+public sealed record PreviewQuickDocumentChoice(string Kind, string DocumentPath, string Identity,
+    string DisplayName, string SavedRevision, PreviewQuickEntryChoice[] Entries);
 public sealed record PreviewQuickScene(PreviewSourceFile Publication, string ScenePath, string SceneGuid, string SceneRevision);
-public sealed record PreviewQuickTimeline(string Path, string ElementId, string Name, string Identity);
-public sealed record PreviewQuickMachine(int Index, int Operation, string? EntryTimeline, string? EntryTimelineId);
-public sealed record PreviewQuickScheme(int Index, string Name, string Revision, string? TimelineId);
+public sealed record PreviewQuickMachine(PreviewQuickAuthoringTarget Authoring, int Operation,
+    string? EntryTimeline, string? EntryTimelineId);
+public sealed record PreviewQuickScheme(PreviewQuickInputSource Source, string Name, string Revision, string? TimelineId);
 public sealed record PreviewQuickInputDeclaration(string InputId, string Kind, string? Type);
 public sealed record PreviewQuickInputRequest(string InputId, double BufferSeconds);
-public sealed record PreviewQuickRootDescription(string Owner, string Label, PreviewQuickMachine[] Machines,
-    PreviewQuickScheme[] InputSchemes, int CurrentInputScheme, string InputSchemeSource);
+public sealed record PreviewQuickRootDescription(PreviewQuickAuthoringTarget Authoring, string Label,
+    PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource CurrentInputScheme);
 public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
-    int TickRate, PreviewQuickSkill[] Skills, PreviewQuickTimeline[] Timelines, PreviewQuickInputDeclaration[] Inputs,
+    int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
 
-public sealed record PreviewQuickLocation(string GraphId, string NodeId, string EdgeId, string DisplayPath);
-public sealed record PreviewQuickSegment(string? Timeline, string? TimelineId, string? AssetPath, string State,
+public sealed record PreviewQuickLocation(string DocumentPath, string GraphId, string NodeId, string EdgeId, string DisplayPath);
+public sealed record PreviewQuickSegment(string? Timeline, string? TimelineId, string? DocumentPath, string State,
     PreviewQuickLocation? StateSource, double Start, double End, double LocalStart, double LocalEnd,
     int Playback, int Cycle, int Occurrence, bool PlaybackCompleted, int CallerPlayback, string CallerClipId);
 public sealed record PreviewQuickCondition(string Key, string Label, string Source, int OperationIndex, bool Undeterminable);
@@ -51,7 +89,7 @@ public sealed record PreviewQuickSuggestion(string FromState, string ToState, st
     double Start, double End, PreviewQuickMissingCondition[] Missing);
 public sealed record PreviewQuickClock(string Unit, double Origin, string Owner, int TickRate);
 public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQuickClock Clock,
-    int InputScheme, string InputSchemeRevision, string InputRevision, PreviewQuickConditionPoint[] ConditionsUsed,
+    PreviewQuickInputSource Input, string InputSchemeRevision, string InputRevision, PreviewQuickConditionPoint[] ConditionsUsed,
     string[] Assumptions, double Duration, string? StopReason, string? StopDetail, string Status,
     PreviewQuickSegment[] Segments, PreviewQuickCondition[] Conditions, PreviewQuickSuggestion[] Suggestions,
     PreviewQuickInputDeclaration[] DeclaredInputs, PreviewQuickInputPoint[] InputsUsed, string InputSource);
