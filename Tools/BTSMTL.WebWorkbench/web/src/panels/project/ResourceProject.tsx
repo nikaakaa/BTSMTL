@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { authoringApi, authoringTarget, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
-import { profileQueryKey, scopeQueryKey } from '../../api/resourceRegistration';
+import { scopeQueryKey } from '../../api/resourceRegistration';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { authoringActions, authoringDocument, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
 import { useResourceScope } from '../../state/resourceScope';
@@ -12,7 +12,7 @@ import { Button, Select } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { AssetObjectPicker } from './AssetObjectPicker';
 import { AnimationDetails } from './AnimationDetails';
-import { ProfileEditor, ProfileSources } from './ProfileEditor';
+import { ProfileSources } from './ProfileEditor';
 import { ResourceCatalogView, type ResourceCatalogSelection } from './ResourceCatalogView';
 import { ReferenceReplacementImpact, ResourceReferenceReplacement, type ReferenceReplacementRefresh } from './ResourceReferenceReplacement';
 import { ScopeEditor } from './ScopeEditor';
@@ -55,10 +55,6 @@ export function ResourceProject() {
       <Button variant="ghost" onClick={() => void adapterCatalogCache.refresh(authoringApi.catalog)}>刷新资源目录</Button></PanelBar>
     {scope.kind === 'unavailable' && <div className={styles.note}>{scope.reason}</div>}
     {field?.resourceObjects !== undefined && <AssetObjectPicker key={field.id} fieldName={field.name} selection={field.resourceObjects} />}
-    {owner?.kind === 'profile' && <div className={styles.referenceDetails}>
-      <PanelBar><span>实际 Profile 编辑</span><Button onClick={() => authoringActions.releaseProfile(owner.query)}>关闭</Button></PanelBar>
-      <ProfileEditor key={profileQueryKey(owner.query)} query={owner.query} location={undefined} />
-    </div>}
     {owner?.kind === 'scope' && <div className={styles.referenceDetails}>
       <PanelBar><span>Scope 声明</span><Button onClick={() => authoringActions.releaseScope(owner.query)}>关闭</Button></PanelBar>
       <ScopeEditor key={scopeQueryKey(owner.query)} query={owner.query} />

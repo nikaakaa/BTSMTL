@@ -11,9 +11,7 @@ import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
 import { variablesApi, type VariableConfiguration, type VariableOperation, type VariablesQuery } from '../api/variables';
 import { playerApi } from '../api/player';
-import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
-  type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
-  type ResourceReference, type ResourceMappingInput, type ScopeQuery } from '../api/resourceRegistration';
+import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
@@ -42,8 +40,7 @@ export interface AuthoringState {
   elementCatalog: { kind: 'loading' | 'ready'; items: WorkspaceDocumentElement[] }
     | { kind: 'unavailable'; items: WorkspaceDocumentElement[]; reason: string };
   carrierRevision: string | null;
-  resourceTarget: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null;
-  profiles: Record<string, ProfileDocument>;
+  resourceTarget: { kind: 'scope'; query: ScopeQuery } | null;
   scopes: Record<string, ScopeDocument>;
 }
 
@@ -52,55 +49,6 @@ export interface ScopeDocument {
 }
 export const scopeDocument = (state: AuthoringState, target = state.resourceTarget?.kind === 'scope' ? state.resourceTarget.query : null) =>
   target === null ? undefined : state.scopes[scopeQueryKey(target)];
-
-interface ProfileDraft {
-  configuration: JsonObject;
-  resourceConfigurations: Record<string, JsonObject>;
-}
-type ProfileConfigurationTarget = { kind: 'profile' } | { kind: 'resource'; reference: ResourceReference };
-export interface ProfileDocument extends ProfileDraft {
-  source: AuthoringProfile;
-  configurationTarget: ProfileConfigurationTarget;
-  undo: ProfileHistory[];
-  redo: ProfileHistory[];
-  writing: boolean;
-  failure: { text: string; entryId: number | null } | null;
-  message: string;
-}
-interface ProfileHistory extends ProfileDraft { transaction: AuthoringDataTransaction | null }
-export const profileDocument = (state: AuthoringState, target = state.resourceTarget?.kind === 'profile' ? state.resourceTarget.query : null) =>
-  target === null ? undefined : state.profiles[profileQueryKey(target)];
-const profileConfiguration = (json: string): JsonObject => {
-  const configuration = parseSkillJson(json);
-  if (configuration === null || typeof configuration !== 'object' || Array.isArray(configuration) || configuration instanceof JsonFloat)
-    throw new Error('Profile 正式 configuration 必须是对象。');
-  return configuration;
-};
-export const profileConfigurationDirty = (document: ProfileDocument) =>
-  writeSkillJson(document.configuration, shapeOf(document.source.configurationJson)) !== document.source.configurationJson;
-export function profileResourceDirty(document: ProfileDocument, identity: string) {
-  const source = document.source.resources.find(item => resourceReferenceKey(item.reference) === identity)?.configurationJson;
-  return source == null || writeSkillJson(document.resourceConfigurations[identity], shapeOf(source)) !== source;
-}
-export const profileDirty = (document: ProfileDocument) => profileConfigurationDirty(document) ||
-  Object.keys(document.resourceConfigurations).some(identity => profileResourceDirty(document, identity));
-export function profileConfigurationStatus(document: ProfileDocument) {
-  const target = document.configurationTarget;
-  if (target.kind === 'profile') return { label: '全局配置', available: true, dirty: profileConfigurationDirty(document) };
-  const identity = resourceReferenceKey(target.reference);
-  const source = document.source.resources.find(item => resourceReferenceKey(item.reference) === identity);
-  return { label: `${target.reference.domain} · ${target.reference.value}`, available: source?.configurationJson != null,
-    dirty: document.resourceConfigurations[identity] !== undefined && profileResourceDirty(document, identity) };
-}
-const profileDraft = (document: ProfileDraft): ProfileDraft => cloneJson({ configuration: document.configuration,
-  resourceConfigurations: document.resourceConfigurations });
-function profileResourceConfigurations(source: AuthoringProfile, previous?: ProfileDocument, savedIdentity?: string) {
-  const configurations = Object.fromEntries(source.resources.filter(item => item.configurationJson !== null)
-    .map(item => [resourceReferenceKey(item.reference), profileConfiguration(item.configurationJson!)]));
-  if (previous !== undefined) for (const [identity, configuration] of Object.entries(previous.resourceConfigurations))
-    if (identity !== savedIdentity && profileResourceDirty(previous, identity)) configurations[identity] = configuration;
-  return configurations;
-}
 
 export interface AuthoringDocument {
   kind: WorkspaceDocumentInfo['kind'];
@@ -184,7 +132,7 @@ const closedDocument = newDocument();
 export const useAuthoring = create<AuthoringState>()(() => ({
   available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null,
   elementCatalog: { kind: 'loading', items: [] }, carrierRevision: null,
-  resourceTarget: null, profiles: {}, scopes: {},
+  resourceTarget: null, scopes: {},
 }));
 
 export const authoringDocument = (state: AuthoringState, target = state.target): Omit<AuthoringDocument, 'kind'> =>
@@ -762,8 +710,7 @@ export const authoringActions = {
     setDocument({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
   },
 
-  // 新建技能文件（状态体、条件图、Timeline 片段图）；保存时一并写出。
-  create(path: string, document: JsonValue) {
+  setFile(path: string, document: JsonValue) {
     record();
     const state = get();
     setDocument({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
@@ -892,71 +839,6 @@ export const authoringActions = {
     updateScope(query, { source });
   },
 
-  activateProfile(query: ProfileQuery) { set({ resourceTarget: { kind: 'profile', query } }); },
-  releaseProfile(query: ProfileQuery) {
-    const current = get().resourceTarget;
-    if (current?.kind === 'profile' && profileQueryKey(current.query) === profileQueryKey(query)) set({ resourceTarget: null });
-  },
-  async openProfile(query: ProfileQuery, signal?: AbortSignal, reload = false) {
-    set({ resourceTarget: { kind: 'profile', query } });
-    const opened = profileDocument(useAuthoring.getState(), query);
-    if (opened !== undefined && !reload) return;
-    const source = await resourceRegistrationApi.readProfile(query, signal);
-    signal?.throwIfAborted();
-    const previous = profileDocument(useAuthoring.getState(), query);
-    updateProfile(query, previous === undefined ? { source, configuration: profileConfiguration(source.configurationJson),
-      resourceConfigurations: profileResourceConfigurations(source), configurationTarget: { kind: 'profile' }, undo: [], redo: [],
-      writing: false, failure: null, message: '' } : { ...previous, source,
-      configuration: profileConfigurationDirty(previous) ? previous.configuration : profileConfiguration(source.configurationJson),
-      resourceConfigurations: profileResourceConfigurations(source, previous), failure: null, message: '已读取正式来源，当前编辑仍保留。' });
-  },
-  selectProfileConfiguration(query: ProfileQuery, configurationTarget: ProfileConfigurationTarget) {
-    const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ resourceTarget: { kind: 'profile', query } });
-    updateProfile(query, { ...document, configurationTarget });
-  },
-  editProfile(query: ProfileQuery, configuration: JsonObject) {
-    const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ resourceTarget: { kind: 'profile', query } });
-    updateProfile(query, { ...document, configuration, configurationTarget: { kind: 'profile' },
-      undo: [...document.undo, { ...profileDraft(document), transaction: null }].slice(-historyLimit), redo: [], failure: null });
-  },
-  resetProfile(query: ProfileQuery) {
-    authoringActions.editProfile(query, profileConfiguration(profileDocument(useAuthoring.getState(), query)!.source.configurationJson));
-  },
-  editProfileResource(query: ProfileQuery, reference: ResourceReference, configuration: JsonObject) {
-    const document = profileDocument(useAuthoring.getState(), query)!;
-    set({ resourceTarget: { kind: 'profile', query } });
-    updateProfile(query, { ...document, configurationTarget: { kind: 'resource', reference },
-      resourceConfigurations: { ...document.resourceConfigurations, [resourceReferenceKey(reference)]: configuration },
-      undo: [...document.undo, { ...profileDraft(document), transaction: null }].slice(-historyLimit), redo: [], failure: null });
-  },
-  resetProfileResource(query: ProfileQuery, reference: ResourceReference) {
-    const resource = profileDocument(useAuthoring.getState(), query)!.source.resources
-      .find(item => resourceReferenceKey(item.reference) === resourceReferenceKey(reference))!;
-    authoringActions.editProfileResource(query, reference, profileConfiguration(resource.configurationJson!));
-  },
-  mapProfileResource: (query: ProfileQuery, domain: string, input: ResourceMappingInput) =>
-    applyProfile(query, source => resourceRegistrationApi.mapProfile(source, domain, input), null),
-  setProfileCapacity: (query: ProfileQuery, domain: string, value: string, capacity: number) =>
-    applyProfile(query, source => resourceRegistrationApi.profileCapacity(source, domain, value, capacity), null),
-  saveProfileConfiguration: (query: ProfileQuery) => applyProfile(query, source => resourceRegistrationApi.configureProfile(source,
-    stringifySkillJson(profileDocument(useAuthoring.getState(), query)!.configuration, '\n')), { kind: 'profile' }),
-  saveProfileResource: (query: ProfileQuery, reference: ResourceReference) => applyProfile(query,
-    source => resourceRegistrationApi.configureProfileResource(source, reference,
-      stringifySkillJson(profileDocument(useAuthoring.getState(), query)!.resourceConfigurations[resourceReferenceKey(reference)], '\n')),
-    { kind: 'resource', reference }),
-  async saveProfile(query: ProfileQuery): Promise<ProfileOperationResult | null> {
-    const document = profileDocument(useAuthoring.getState(), query);
-    if (document === undefined || document.writing) return null;
-    if (!profileConfigurationStatus(document).available) {
-      updateProfile(query, { ...document, failure: { text: '当前条目在正式来源中已无可编辑配置；未保存内容仍保留，请核对来源变化。', entryId: null } });
-      return null;
-    }
-    return document.configurationTarget.kind === 'profile' ? authoringActions.saveProfileConfiguration(query)
-      : authoringActions.saveProfileResource(query, document.configurationTarget.reference);
-  },
-
   editingView(): SkillEditingView {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
@@ -998,8 +880,7 @@ export const authoringActions = {
       return;
     }
     const owner = get().resourceTarget;
-    if (owner?.kind === 'scope') return;
-    if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
+    if (owner !== null) return;
     const { target, documents } = get();
     if (!target || Object.values(documents).some(document => document.saving)) return;
     const editingView = authoringActions.editingView();
@@ -1170,7 +1051,7 @@ export const authoringActions = {
 
   createTimeline(template: ElementTemplate, name: string): string {
     const id = crypto.randomUUID();
-    authoringActions.create(timelinePath(id), sortedObject({ ...cloneJson(template.value), m_AuthoringId: id, m_Name: name }));
+    authoringActions.setFile(timelinePath(id), sortedObject({ ...cloneJson(template.value), m_AuthoringId: id, m_Name: name }));
     return id;
   },
 
@@ -1624,73 +1505,13 @@ function record() {
   });
 }
 
-function updateProfile(query: ProfileQuery, document: ProfileDocument) {
-  set({ profiles: { ...useAuthoring.getState().profiles, [profileQueryKey(query)]: document } });
-}
-
 function updateScope(query: ScopeQuery, document: ScopeDocument) {
   set({ scopes: { ...useAuthoring.getState().scopes, [scopeQueryKey(query)]: document } });
 }
 
-function invalidateResourceConsumers() {
-  set({ carrierRevision: null });
-  void adapterCatalogCache.refresh(authoringApi.catalog);
-  const state = get();
-  if (state.target !== null) setDocument({ sourceRevision: null, version: state.version + 1 });
-}
-
-async function applyProfile(query: ProfileQuery, operation: (source: AuthoringProfile) => Promise<ProfileOperationResult>, savedConfiguration: ProfileConfigurationTarget | null) {
-  const document = profileDocument(useAuthoring.getState(), query);
-  if (document === undefined || document.writing) return null;
-  updateProfile(query, { ...document, writing: true, failure: null });
-  try {
-    const result = await operation(document.source);
-    updateProfile(query, { ...document, source: result.profile,
-      configuration: savedConfiguration?.kind === 'profile' ? profileConfiguration(result.profile.configurationJson) : document.configuration,
-      resourceConfigurations: profileResourceConfigurations(result.profile, document,
-        savedConfiguration?.kind === 'resource' ? resourceReferenceKey(savedConfiguration.reference) : undefined),
-      undo: result.transaction.changes.length ? [...document.undo, { ...profileDraft(document), transaction: result.transaction }].slice(-historyLimit) : document.undo,
-      redo: [], writing: false, failure: null,
-      message: savedConfiguration?.kind === 'resource'
-        ? `Profile 条目 ${savedConfiguration.reference.value} 配置已保存；运行内容待生成和采用。`
-        : `Profile 作者数据已保存${result.value === null ? '' : `，映射 ${result.value}${result.reused ? '已复用' : '已创建'}`}${
-        result.instanceCapacity === null ? '' : `，实际容量 ${result.instanceCapacity}`}；运行内容待生成和采用。`,
-    });
-    invalidateResourceConsumers();
-    return result;
-  } catch (error) {
-    updateProfile(query, { ...document, writing: false, failure: { text: resourceOperationError(error), entryId: consoleActions.error('Profile', error) } });
-    return null;
-  }
-}
-
-async function stepProfile(query: ProfileQuery, from: 'undo' | 'redo', to: 'undo' | 'redo') {
-  const document = profileDocument(useAuthoring.getState(), query);
-  if (document === undefined) return;
-  const previous = document[from].at(-1);
-  if (previous === undefined || document.writing) return;
-  const next = { ...profileDraft(document), transaction: previous.transaction };
-  if (previous.transaction === null) {
-    updateProfile(query, { ...document, configuration: previous.configuration, resourceConfigurations: previous.resourceConfigurations,
-      [from]: document[from].slice(0, -1), [to]: [...document[to], next] });
-    return;
-  }
-  updateProfile(query, { ...document, writing: true, failure: null });
-  try {
-    const result = await resourceRegistrationApi.replayProfile(query, from, previous.transaction);
-    updateProfile(query, { ...document, source: result.profile, configuration: previous.configuration, resourceConfigurations: previous.resourceConfigurations,
-      [from]: document[from].slice(0, -1), [to]: [...document[to], next], writing: false,
-      failure: null, message: `Profile 数据已${from === 'undo' ? '撤销' : '重做'}，运行内容待生成和采用。` });
-    invalidateResourceConsumers();
-  } catch (error) {
-    updateProfile(query, { ...document, writing: false, failure: { text: resourceOperationError(error), entryId: consoleActions.error('Profile 数据撤销', error) } });
-  }
-}
-
 async function step(from: 'undo' | 'redo', to: 'undo' | 'redo') {
   const owner = get().resourceTarget;
-  if (owner?.kind === 'profile') return stepProfile(owner.query, from, to);
-  if (owner?.kind === 'scope') return;
+  if (owner !== null) return;
   const state = get();
   const previous = state[from].at(-1);
   if (!previous || state.saving) return;
@@ -1987,7 +1808,7 @@ export const inputAuthoring = {
     scheme.Name = name;
     scheme.InputTimeline = timeline;
     const id = crypto.randomUUID();
-    authoringActions.create(`inputs/${id}.json`, plan);
+    authoringActions.setFile(`inputs/${id}.json`, plan);
     setDocument({ inputActorId: plan.Actor as string | null });
     selectionActions.select(null);
     selectionActions.showTimeline(timeline, null, null);
@@ -1998,7 +1819,7 @@ export const inputAuthoring = {
     const target = get().target;
     const fragment = await authoringApi.inputFragment(request);
     if (get().target !== target) return;
-    authoringActions.create(graphPath(fragment.graph.AuthoringId as string), fragment.graph);
+    authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph);
     authoringActions.edit(timelinePath(documentId), document => {
       const tracks = tracksOf(document);
       const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
@@ -2085,7 +1906,7 @@ function createGraph(elements: SkillElements, role: string, name: string | null,
   if (template.requiredContext.length !== 0 && context === undefined)
     throw new Error(`${role} 必须从实际拥有节点创建：${template.requiredContext.join('、')}`);
   for (const field of template.requiredContext) graph[field] = context![field];
-  authoringActions.create(graphPath(id), graph);
+  authoringActions.setFile(graphPath(id), graph);
   authoringActions.edit(layoutPath, document => { (document as JsonObject)[id] = cloneJson(template.layout); });
   return id;
 }

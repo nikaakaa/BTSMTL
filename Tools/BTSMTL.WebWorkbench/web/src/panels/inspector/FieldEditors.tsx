@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
-  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField, type TypeDescription,
+  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
@@ -49,13 +49,6 @@ const memberLabel = (member: string) => {
 
 function Row({ label, tip, children }: { label: string; tip?: string; children: ReactNode }) {
   return <div className={styles.field}><FieldLabel label={label} tip={tip} /><div className={styles.editor}>{children}</div></div>;
-}
-
-export function ConfigurationFields({ value, onSet }: { value: JsonObject; onSet(value: JsonObject): void }) {
-  return <>{Object.entries(value).map(([member, current]) => <ValueEditor key={member} label={memberLabel(member)} value={current}
-    shape={null} keys={[member]} onSet={(keys, next) => {
-      const configuration = cloneJson(value); setIn(configuration, keys, next); onSet(configuration);
-    }} />)}</>;
 }
 
 // 文本：失焦或回车提交；空文本按存储类型写空字符串或 null。
@@ -407,16 +400,6 @@ function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: 
   </Fold>;
 }
 
-export function MetadataConfigurationFields({ description, identity, value, onSet }: {
-  description: TypeDescription; identity: string; value: JsonObject; onSet(value: JsonObject): void;
-}) {
-  const fields = { stored: description.fields.items.filter((item): item is StoredField => !item.computed),
-    computed: description.fields.items.filter((item): item is ComputedField => item.computed === true) };
-  return description.availability.available
-    ? <ValueFields value={value} description={fields} owner={{ kind: 'value', graphId: null, identity }} onSet={onSet} />
-    : <div className={styles.issue}>{description.availability.reason}</div>;
-}
-
 function ValueFields({ value, description, owner, onSet }: {
   value: JsonObject; description: Pick<Description, 'stored' | 'computed'> | null; owner: ReferenceOwner; onSet(value: JsonObject): void;
 }) {
@@ -439,12 +422,16 @@ export function DocumentFields({ editable, location }: { editable: boolean;
 }) {
   const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
   const rootType = useAuthoring(state => authoringDocument(state).authoringType);
+  const kind = useAuthoring(state => state.target?.kind);
   const file = location.kind === 'root' ? rootFile : location.element.relativePath;
   const jsonPath = location.kind === 'root' ? '/' : location.element.jsonPath;
   const authoringType = location.kind === 'root' || location.element.jsonPath === '/' ? rootType : location.element.authoringType;
   const keys = jsonPath === '/' ? [] : jsonPath.slice(1).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
   const { document } = useCurrentDocument(file);
   if (file === null || document === null) return null;
+  if (kind === 'profile') return <fieldset className={styles.authorFields} disabled={!editable}>
+    <ProfileDocumentFields file={file} jsonPath={jsonPath} />
+  </fieldset>;
   if (authoringType === null) return <div className={styles.issue}>当前文档未提供作者字段声明</div>;
   const value = getIn(document, keys);
   if (value === undefined) return <div className={styles.issue}>所选作者位置已不在当前文档中：{jsonPath}</div>;
@@ -455,6 +442,50 @@ export function DocumentFields({ editable, location }: { editable: boolean;
         else setIn(root, keys, next);
       })} />
   </fieldset>;
+}
+
+function ProfileDocumentFields({ file, jsonPath }: { file: string; jsonPath: string }) {
+  const target = useAuthoring(state => state.target);
+  const version = useAuthoring(state => authoringDocument(state).version);
+  const carrierRevision = useAuthoring(state => state.carrierRevision);
+  const scene = useWorkbench(state => selectedScene(state));
+  const [source, setSource] = useState<
+    | { key: string; kind: 'ready'; query: Awaited<ReturnType<typeof authoringApi.profile>> }
+    | { key: string; kind: 'failed'; message: string }
+    | null>(null);
+  const documentPath = target?.documentPath ?? null;
+  const requestKey = JSON.stringify([documentPath, version, carrierRevision, scene]);
+  useEffect(() => {
+    if (documentPath === null) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      authoringApi.profile(documentPath, authoringActions.editingView(), controller.signal).then(result => {
+        if (!controller.signal.aborted) setSource({ key: requestKey, kind: 'ready', query: result });
+      }, (error: unknown) => {
+        if (!isAbort(error)) {
+          setSource({ key: requestKey, kind: 'failed', message: error instanceof Error ? error.message : String(error) });
+          consoleActions.error('Profile 字段', error);
+        }
+      });
+    }, 150);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [documentPath, requestKey]);
+  if (source === null || source.key !== requestKey) return <div className={styles.note}>正在读取文档字段</div>;
+  if (source.kind === 'failed') return <div className={styles.issue}>{source.message}</div>;
+  const query = source.query;
+  if (!query.availability.available) return <div className={styles.issue}>{query.availability.reason}</div>;
+  const keys = jsonPath === '/' ? [] : jsonPath.slice(1).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
+  if (getIn(query.value, keys) === undefined) return <div className={styles.issue}>所选作者位置已不在当前文档中：{jsonPath}</div>;
+  const includes = (field: FieldMetadata) => keys.every((key, index) => field.serializedMemberPath[index] === key);
+  const description = {
+    stored: query.fields.items.filter((item): item is StoredField => !item.computed)
+      .map(item => ({ ...item, fields: item.fields.filter(includes) })).filter(item => item.fields.length > 0),
+    computed: query.fields.items.filter((item): item is ComputedField => item.computed === true).filter(includes),
+  };
+  return <Fold title={jsonPath === '/' ? '文档配置' : '作者元素'} defaultOpen>
+    <ValueFields value={query.value} description={description} owner={{ kind: 'value', graphId: null, identity: `${documentPath}/${file}#${jsonPath}` }}
+      onSet={next => authoringActions.setFile(file, next)} />
+  </Fold>;
 }
 
 export function SkillFields({ editable }: { editable: boolean }) {

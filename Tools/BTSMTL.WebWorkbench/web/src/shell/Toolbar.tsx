@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
 import { projectActions } from '../state/project';
-import { authoringActions, authoringDocument, profileConfigurationStatus, profileDirty, profileDocument, scopeDocument, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, scopeDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { consoleActions, contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
@@ -86,7 +86,7 @@ function SkillChoice() {
 
 function AuthoringStatus() {
   const owner = useAuthoring(state => state.resourceTarget);
-  return owner === null ? <DocumentAuthoringStatus /> : owner.kind === 'profile' ? <ProfileAuthoringStatus /> : <ScopeAuthoringStatus />;
+  return owner === null ? <DocumentAuthoringStatus /> : <ScopeAuthoringStatus />;
 }
 
 function ScopeAuthoringStatus() {
@@ -94,21 +94,6 @@ function ScopeAuthoringStatus() {
   if (document === undefined) return <div className={styles.authoring}>实际 Scope 来源尚未就绪。</div>;
   return <div className={styles.authoring}>
     <span>Scope · {document.source.scope} · 声明只读</span>
-  </div>;
-}
-
-function ProfileAuthoringStatus() {
-  const document = useAuthoring(state => profileDocument(state));
-  if (document === undefined) return <div className={styles.authoring}>实际 Profile 来源尚未就绪。</div>;
-  const configuration = profileConfigurationStatus(document);
-  return <div className={styles.authoring}>
-    <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={document.writing || !document.undo.length}
-      tip="撤销当前 Profile（Ctrl+Z）" onClick={() => authoringActions.undo()}><UndoIcon /></Button>
-    <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={document.writing || !document.redo.length}
-      tip="重做当前 Profile（Ctrl+Y）" onClick={() => authoringActions.redo()}><RedoIcon /></Button>
-    <span>Profile · {document.source.domain} · {configuration.label}{profileDirty(document) ? ' · 未保存' : ''}</span>
-    <Button disabled={document.writing || !configuration.available || !configuration.dirty}
-      onClick={() => void authoringActions.save()}>{document.writing ? '正在提交' : '保存当前配置'}</Button>
   </div>;
 }
 

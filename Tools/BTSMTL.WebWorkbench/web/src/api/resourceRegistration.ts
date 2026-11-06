@@ -1,6 +1,5 @@
-import { ApiError, getJson, postJson } from './http';
-import { array, boolean, choice, nullable, number, object, opaque, optional, text } from './playerRecords';
-import type { JsonObject } from '../state/skillJson';
+import { ApiError, postJson } from './http';
+import { array, choice, nullable, number, object, opaque, optional, text } from './playerRecords';
 import { readAuthoringAvailability } from './authoringAvailability';
 
 const readResourceReferenceFields = object({ domain: text, selection: nullable(choice('asset', 'mapped')),
@@ -26,9 +25,6 @@ export function readResourceReferenceMetadata(value: unknown, path = 'ResourceRe
   }
 }
 export type ResourceReferenceMetadata = ReturnType<typeof readResourceReferenceMetadata>;
-export const readResourceReference = object({ domain: text, value: text, context: text });
-export type ResourceReference = ReturnType<typeof readResourceReference>;
-export const resourceReferenceKey = (value: ResourceReference) => JSON.stringify([value.domain, value.value, value.context]);
 export const readExecutionScopeSelection = object({ previewScope: nullable(text), runtimeScope: nullable(text) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
 const readDeclarationSource = (value: unknown, path = 'ResourceDeclaration.source') => {
@@ -42,12 +38,6 @@ const readDeclarationSource = (value: unknown, path = 'ResourceDeclaration.sourc
 export const readResourceDeclaration = object({ domain: text, selection: nullable(choice('asset', 'mapped')), profile: nullable(text), source: readDeclarationSource,
   mappingInputType: nullable(text), objectType: nullable(text), availability: readAuthoringAvailability });
 export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
-const readProfileResourceValue = object({ domain: text, value: text, context: text, token: nullable(text), instanceCapacity: nullable(number),
-  configurationJson: nullable(text) });
-const readProfileResource = (value: unknown) => {
-  const { domain, value: reference, context, ...resource } = readProfileResourceValue(value);
-  return { ...resource, reference: { domain, value: reference, context } };
-};
 export type ResourceObjectQuery = { adapter: string; domain: string; context: string; asset: string; objectType: string };
 export type ResourceObjectCapability =
   | { kind: 'available'; scope: Omit<ResourceObjectQuery, 'asset'>; valueMember: string }
@@ -71,55 +61,13 @@ function readResourceObjects(value: unknown) {
   return { ...object({ revision: nullable(text), items: array(readObjectCandidate) })(value, 'ResourceObjects'), ...availability };
 }
 export type ResourceObjects = ReturnType<typeof readResourceObjects>;
-const readTransaction = object({ changes: array(object({ path: text, before: nullable(text), after: nullable(text) })) });
-export type AuthoringDataTransaction = ReturnType<typeof readTransaction>;
 const readScope = object({ scope: text, adapter: text, context: text, revision: text, resourceDeclarations: array(readResourceDeclaration) });
 export type AuthoringScope = ReturnType<typeof readScope>;
 export type ScopeQuery = Pick<AuthoringScope, 'scope' | 'adapter'>;
 export const scopeQueryKey = (query: ScopeQuery) => JSON.stringify([query.scope, query.adapter]);
-const readProfile = object({ group: text, adapter: text, assetToken: text, domain: text, context: text,
-  revision: text, configurationJson: text, resourceDeclarations: array(readResourceDeclaration), resources: array(readProfileResource),
-  operations: array(object({ command: text, inputType: text, resultType: text })) });
-export type AuthoringProfile = ReturnType<typeof readProfile>;
-export type ProfileQuery = Pick<AuthoringProfile, 'group' | 'adapter' | 'assetToken'>;
-export const profileQueryKey = (query: ProfileQuery) => JSON.stringify([query.group, query.adapter, query.assetToken]);
-const readProfileResult = object({ value: nullable(text), reused: boolean, instanceCapacity: nullable(number),
-  transaction: readTransaction, profile: readProfile, runtimeState: choice('pending') });
-export type ProfileOperationResult = ReturnType<typeof readProfileResult>;
-export type ResourceMappingInput = JsonObject & { kind: string };
-const readProfileLocation = object({
-  adapter: text, group: text, assetToken: text, domain: text, context: text, display: text, source: text,
-});
-function readProfiles(value: unknown) {
-  const { availability } = object({ availability: readAuthoringAvailability })(value, 'Profiles');
-  if (!availability.available) return { kind: 'unavailable' as const, reason: availability.reason };
-  return { kind: 'ready' as const, ...object({ revision: text, items: array(readProfileLocation) })(value, 'Profiles') };
-}
-export type ProfileLocation = ReturnType<typeof readProfileLocation>;
 export const resourceRegistrationApi = {
-  profiles: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/profiles', signal).then(value => readProfiles(value)),
   readScope: (query: ScopeQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/scopes/read', query, signal).then(value => readScope(value)),
-  readProfile: (query: ProfileQuery, signal?: AbortSignal) =>
-    postJson<unknown>('/api/authoring/profiles/read', query, signal).then(value => readProfile(value)),
-  mapProfile: (profile: AuthoringProfile, domain: string, input: ResourceMappingInput) => {
-    return postJson<unknown>('/api/authoring/profiles/resources/map', { group: profile.group, adapter: profile.adapter,
-      context: profile.context, domain, input, profile: { assetToken: profile.assetToken, expectedRevision: profile.revision } })
-      .then(value => readProfileResult(value));
-  },
-  profileCapacity: (profile: AuthoringProfile, domain: string, value: string, instanceCapacity: number) =>
-    postJson<unknown>('/api/authoring/profiles/resources/capacity', { group: profile.group, adapter: profile.adapter,
-      context: profile.context, domain, value, instanceCapacity, profile: { assetToken: profile.assetToken, expectedRevision: profile.revision } })
-      .then(value => readProfileResult(value)),
-  configureProfile: (profile: AuthoringProfile, configurationJson: string) =>
-    postJson<unknown>('/api/authoring/profiles/configure', { group: profile.group, adapter: profile.adapter,
-      profile: { assetToken: profile.assetToken, expectedRevision: profile.revision }, configurationJson }).then(value => readProfileResult(value)),
-  configureProfileResource: (profile: AuthoringProfile, reference: ResourceReference, configurationJson: string) =>
-    postJson<unknown>('/api/authoring/profiles/resources/configure', { group: profile.group, adapter: profile.adapter,
-      context: reference.context, domain: reference.domain, value: reference.value,
-      profile: { assetToken: profile.assetToken, expectedRevision: profile.revision }, configurationJson }).then(value => readProfileResult(value)),
-  replayProfile: (query: ProfileQuery, direction: 'undo' | 'redo', transaction: AuthoringDataTransaction) =>
-    postJson<unknown>(`/api/authoring/profiles/data/${direction}`, { ...query, transaction }).then(value => readProfileResult(value)),
   objects: (query: ResourceObjectQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/resources/objects', query, signal).then(readResourceObjects),
 };

@@ -4,7 +4,7 @@ import { deleteJson, getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
-  type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
+  type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
   type StartPlayerJobRequest } from './playerRecords';
 
@@ -790,11 +790,20 @@ export const authoringApi = {
   describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'),
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
-  describeAuthoringConfiguration: async (input: { type: string; configuration: JsonObject | null; domain: string | null;
-    owner: { kind: 'profile'; query: ProfileQuery } | { kind: 'scope'; query: ScopeQuery } | null }, signal?: AbortSignal) =>
-    readTypeDescription(await postText('/api/authoring/types/describe', stringifySkillJson({ type: input.type, configuration: input.configuration,
-      domain: input.domain, ...(input.owner?.kind === 'profile' ? { profile: input.owner.query } : input.owner?.kind === 'scope' ? { scope: input.owner.query } : {}),
-      offset: 0, limit: 128 }, '\n'), signal)),
+  profile: async (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal) => {
+    const items: FieldItem[] = [];
+    for (let offset = 0; ; offset += 128) {
+      const result = parseSkillJson(await postText(documentQueryPath(documentPath, 'queries/profile'),
+        { offset, limit: 128, editingView }, signal)) as unknown as {
+        success: boolean; document: WorkspaceDocumentSnapshot; value: JsonObject; fields: Page<FieldItem>; availability: QueryAvailability;
+      };
+      items.push(...result.fields.items);
+      if (!result.fields.hasMore) return { ...result,
+        document: readWorkspaceDocumentSnapshot(result.document, 'Profile.document'),
+        availability: readAuthoringAvailability(result.availability, 'Profile.availability'),
+        fields: { ...result.fields, items: readFieldItems(items) } };
+    }
+  },
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<IdentityItem>(documentQueryPath(target.documentPath, 'queries/references'), { editingView }, signal).then(page => page.items),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
@@ -832,7 +841,12 @@ export const authoringApi = {
 
 function readTypeDescription(text: string): TypeDescription {
   const description = parseSkillJson(text) as unknown as TypeDescription;
-  const fields = description.fields.items.flatMap(item => item.computed ? [item] : item.fields);
+  readFieldItems(description.fields.items);
+  return description;
+}
+
+function readFieldItems(items: FieldItem[]): FieldItem[] {
+  const fields = items.flatMap(item => item.computed ? [item] : item.fields);
   const valueOf = (value: JsonValue, clrType: string) =>
     typeof value === 'string' && (clrType === 'System.Int64' || clrType === 'System.UInt64') ? parseSkillJson(value) : value;
   for (const field of fields) {
@@ -845,7 +859,7 @@ function readTypeDescription(text: string): TypeDescription {
       })),
     }));
   }
-  return description;
+  return items;
 }
 
 async function allPages<T, Result extends Page<T> = Page<T>>(path: string, input: { editingView: SkillEditingView }, signal?: AbortSignal): Promise<Result> {
