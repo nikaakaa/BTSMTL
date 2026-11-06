@@ -449,7 +449,7 @@ namespace BTSMTL.Timeline.Editor
         {
             wantsMouseMove = true;
             s_Windows.Add(this);
-            Undo.undoRedoPerformed += QueueStateQueryRefresh;
+            Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPreviewPlayModeChanged;
         }
 
@@ -569,7 +569,21 @@ namespace BTSMTL.Timeline.Editor
                 m_SourceGraphAuthoringId);
         }
 
-        TimelineData ResolveTimelineData() => m_Owner.Data;
+        void OnUndoRedo() => EditorApplication.delayCall += RestoreUndoBinding;
+
+        void RestoreUndoBinding()
+        {
+            if (!m_Owner)
+            {
+                DisposeView();
+                BuildUnboundView();
+                return;
+            }
+            BtsmtlSlateTimelineViewState? view = m_SlateProjection?.CaptureViewState();
+            Bind(m_Owner.Data, m_Owner, m_OwnershipLabel, m_SourceNodeGuid, m_SourceGraphAuthoringId);
+            if (view is { } savedView)
+                m_SlateProjection.RestoreViewState(savedView);
+        }
 
         void OpenClip(Clip clip)
         {
@@ -613,7 +627,8 @@ namespace BTSMTL.Timeline.Editor
 
         void OnDisable()
         {
-            Undo.undoRedoPerformed -= QueueStateQueryRefresh;
+            EditorApplication.delayCall -= RestoreUndoBinding;
+            Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPreviewPlayModeChanged;
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
                 (TimelineAssetPreviewHost.Shared.Covers(SourceAsset) || TimelineAssetPreviewHost.Shared.IsInputTimeline(SourceAsset)))

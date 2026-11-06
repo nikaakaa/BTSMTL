@@ -10,16 +10,17 @@ namespace BTSMTL.Timeline.Editor
     public static class TimelineInspectorSelection
     {
         static UnityEngine.Object s_Owner;
-        static object s_Element;
+        static string s_ElementId;
 
         public static event Action Changed;
 
         public static void Set(UnityEngine.Object owner, object element)
         {
-            if (ReferenceEquals(s_Owner, owner) && ReferenceEquals(s_Element, element))
+            string identity = ElementId(element);
+            if (ReferenceEquals(s_Owner, owner) && s_ElementId == identity)
                 return;
             s_Owner = owner;
-            s_Element = element;
+            s_ElementId = identity;
             Changed?.Invoke();
         }
 
@@ -28,20 +29,32 @@ namespace BTSMTL.Timeline.Editor
             if (!ReferenceEquals(s_Owner, owner))
                 return;
             s_Owner = null;
-            s_Element = null;
+            s_ElementId = null;
             Changed?.Invoke();
         }
 
         public static bool TryGetElement(UnityEngine.Object owner, out object element)
         {
-            if (ReferenceEquals(s_Owner, owner) && s_Element != null)
+            if (ReferenceEquals(s_Owner, owner) && s_ElementId != null)
             {
-                element = s_Element;
-                return true;
+                TimelineData timeline = ((TimelineAsset)owner).Data;
+                element = timeline.Tracks.Cast<object>()
+                    .Concat(timeline.Tracks.SelectMany(track => track.Clips).Cast<object>())
+                    .Concat(timeline.Tracks.SelectMany(track => track.Markers).Cast<object>())
+                    .SingleOrDefault(value => ElementId(value) == s_ElementId);
+                return element != null;
             }
             element = null;
             return false;
         }
+
+        static string ElementId(object value) => value switch
+        {
+            Track track => track.AuthoringId,
+            Clip clip => clip.AuthoringId,
+            TimelineMarker marker => marker.AuthoringId,
+            _ => throw new ArgumentException("Timeline Inspector只能选择Track、Clip或Marker。", nameof(value))
+        };
     }
 
     public enum TimelineEditorSelectionKind : byte

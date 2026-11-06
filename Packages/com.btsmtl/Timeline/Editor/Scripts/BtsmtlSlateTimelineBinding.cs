@@ -1684,7 +1684,14 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_Parameters.Add(new BtsmtlTimelineReferenceParameterBinding(this, descriptor.ChannelId,
                     descriptor.DisplayName, descriptor.ReferenceLabel,
-                    curve => descriptor.Update(curve, m_SourceStartTime, m_SourceEndTime, Length)));
+                    curve =>
+                    {
+                        AnimationCurve updated = TimelineCurveUnity.Create(descriptor.Update(
+                            TimelineCurveUnity.Capture(curve), m_SourceStartTime, m_SourceEndTime, Length));
+                        curve.keys = updated.keys;
+                        curve.preWrapMode = updated.preWrapMode;
+                        curve.postWrapMode = updated.postWrapMode;
+                    }));
             }
 
             void RefreshReferenceCurves()

@@ -52,12 +52,14 @@ namespace BTSMTL.Timeline.Editor
 
         void OnAttachToPanel(AttachToPanelEvent evt)
         {
+            Undo.undoRedoPerformed += Rebuild;
             TimelineInspectorSelection.Changed += Rebuild;
             Rebuild();
         }
 
         void OnDetachFromPanel(DetachFromPanelEvent evt)
         {
+            Undo.undoRedoPerformed -= Rebuild;
             TimelineInspectorSelection.Changed -= Rebuild;
         }
 
@@ -73,12 +75,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 text = "Open Timeline Editor"
             });
-
-            SerializedProperty data = serializedObject.FindProperty("m_Data");
-            PropertyField field = new PropertyField(data, "Timeline Data");
-            field.BindProperty(data);
-            field.SetEnabled(false);
-            m_Root.Add(field);
 
             if (TimelineInspectorSelection.TryGetElement(asset, out object selected))
             {
