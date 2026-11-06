@@ -497,7 +497,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   try {
     const [document, view, project] = await Promise.all([
       authoringApi.document(target.documentPath, editingView, signal),
-      workspaceDocumentsApi.editingView(editingView.writes, signal),
+      workspaceDocumentsApi.editingView(editingView, signal),
       authoringApi.project(target, editingView, signal),
     ]);
     signal.throwIfAborted();
@@ -632,7 +632,7 @@ export const authoringActions = {
     const { editingView, isCurrentRequest } = captureEditingView();
     try {
       const [directory, view] = await Promise.allSettled([
-        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView.writes),
+        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView),
       ]);
       if (directory.status === 'rejected') throw directory.reason;
       let elementCatalog: AuthoringState['elementCatalog'];

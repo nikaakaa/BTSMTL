@@ -55,8 +55,8 @@ export const workspaceDocumentsApi = {
     getJson<unknown>(`/api/authoring/documents/content${query({ documentPath })}`, signal).then(value => readOpen(value).document),
   elements: (kind?: WorkspaceDocumentElement['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),
-  editingView: (writes: WorkspaceDocumentWrite[], signal?: AbortSignal) =>
-    postJson<unknown>('/api/authoring/documents/editing-view', { writes }, signal).then(value => readView(value)),
+  editingView: (editingView: WorkspaceEditingView, signal?: AbortSignal) =>
+    postJson<unknown>('/api/authoring/documents/editing-view', editingView, signal).then(value => readView(value)),
   save: (writes: WorkspaceDocumentWrite[], reads: WorkspaceDocumentRead[]) =>
     putJson<unknown>('/api/authoring/documents', { writes, reads }).then(value => readView(value)),
 };
