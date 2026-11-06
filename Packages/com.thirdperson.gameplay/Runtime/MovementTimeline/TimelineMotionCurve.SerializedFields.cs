@@ -104,7 +104,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
         }
 
         [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
-        [BTSMTL.Authoring.Graph.GraphAuthoringResource("motion-curve", typeof(RootMotionCurveContent),
+        [BTSMTL.Authoring.Graph.GraphAuthoringResource("motion-curve", typeof(RootMotionCurveAuthoring),
             Selection = "asset", Profile = "Motion", Source = BTSMTL.Authoring.Graph.GraphAuthoringReferenceSource.AuthoringDocument)]
         [TimelineAuthoringProperty(IsSourceAsset = true, SourceAssetKind = "motion-curve")]
 #endif
