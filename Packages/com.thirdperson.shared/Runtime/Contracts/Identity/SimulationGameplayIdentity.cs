@@ -118,8 +118,9 @@ namespace ThirdPersonSimulation
         public static bool operator !=(SimulationTick left, SimulationTick right) => !left.Equals(right);
     }
 
-    public readonly struct CommittedMovementPlaybackClock : IEquatable<CommittedMovementPlaybackClock>
+    public readonly partial struct CommittedMovementPlaybackClock : IEquatable<CommittedMovementPlaybackClock>
     {
+        [ValueRecordedState]
         public CommittedMovementPlaybackClock(
             string ownerIdentity,
             ulong generation,
@@ -176,13 +177,14 @@ namespace ThirdPersonSimulation
             CommittedMovementPlaybackClock right) => !left.Equals(right);
     }
 
-    public readonly struct CommittedLocomotionPlanarMotionTimeline : IEquatable<CommittedLocomotionPlanarMotionTimeline>
+    public readonly partial struct CommittedLocomotionPlanarMotionTimeline : IEquatable<CommittedLocomotionPlanarMotionTimeline>
     {
+        [ValueRecordedState]
         public CommittedLocomotionPlanarMotionTimeline(
-            string ownerIdentity,
-            ulong generation,
-            SimulationTick authorityTick,
-            int tickRate,
+            [ValueRecordedStateContext] string ownerIdentity,
+            [ValueRecordedStateContext] ulong generation,
+            [ValueRecordedStateContext] SimulationTick authorityTick,
+            [ValueRecordedStateContext] int tickRate,
             float currentVelocityX,
             float currentVelocityZ,
             float bodyYawVelocityDegreesPerSecond,
