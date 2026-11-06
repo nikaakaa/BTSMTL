@@ -631,11 +631,20 @@ export const authoringActions = {
   async listDocuments() {
     const { editingView, isCurrentRequest } = captureEditingView();
     try {
-      const [directory, view] = await Promise.all([
+      const [directory, view] = await Promise.allSettled([
         workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView.writes),
       ]);
-      set({ directory, available: true, unavailableReason: null,
-        ...(isCurrentRequest() ? { elementCatalog: { kind: 'ready', items: view.elements } as const } : {}),
+      if (directory.status === 'rejected') throw directory.reason;
+      let elementCatalog: AuthoringState['elementCatalog'];
+      if (view.status === 'fulfilled') elementCatalog = { kind: 'ready', items: view.value.elements };
+      else {
+        const error: unknown = view.reason;
+        const reason = error instanceof Error ? error.message : String(error);
+        elementCatalog = { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason };
+        consoleActions.error('作者元素目录', error);
+      }
+      set({ directory: directory.value, available: true, unavailableReason: null,
+        ...(isCurrentRequest() ? { elementCatalog } : {}),
       });
     } catch (error) {
       const reason = error instanceof ApiError && error.status === 404

@@ -69,11 +69,15 @@ function ContentChoice() {
 
 // 技能是节点图、Timeline 与检查器共同打开的内容，属于全局选择。
 function SkillChoice() {
-  const { directory, target, available } = useAuthoring(useShallow(state => ({
-    directory: state.directory, target: state.target, available: state.available,
+  const { directory, target, available, unavailableReason } = useAuthoring(useShallow(state => ({
+    directory: state.directory, target: state.target, available: state.available, unavailableReason: state.unavailableReason,
   })));
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
-  if (available === false) return null;
+  if (available === false) return <>
+    <CrumbArrow className={styles.crumbSeparator} />
+    <Tip content={unavailableReason}><span className={styles.warn} role="status">作者目录读取失败</span></Tip>
+    <Button variant="ghost" onClick={() => void authoringActions.listDocuments()}>重读作者目录</Button>
+  </>;
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
