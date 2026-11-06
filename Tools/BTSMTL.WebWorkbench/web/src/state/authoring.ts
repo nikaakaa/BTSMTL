@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
+  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
   type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
-import { workspaceDocumentsApi, type WorkspaceDocumentInfo } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot } from '../api/workspaceDocuments';
 import { playerApi } from '../api/player';
 import { profileQueryKey, resourceOperationError, resourceReferenceKey, resourceRegistrationApi, scopeQueryKey,
   type AuthoringDataTransaction, type AuthoringProfile, type AuthoringScope, type ProfileOperationResult, type ProfileQuery,
@@ -963,46 +963,56 @@ export const authoringActions = {
     const owner = get().resourceTarget;
     if (owner?.kind === 'scope') return;
     if (owner?.kind === 'profile') return authoringActions.saveProfile(owner.query);
-    const { target, saving, removed, revision } = get();
+    const { target, saving, removed } = get();
     if (!target || saving) return;
     const editingView = authoringActions.editingView();
     const content = { files: authoringActions.changedFiles(target), removedFiles: removed };
     if (target.kind === 'scenario' && !content.files.length && !content.removedFiles.length) return;
-    const submittedDocument = authoringDocument(useAuthoring.getState(), target);
-    const submittedFiles = workingFiles(submittedDocument.files, submittedDocument, submittedDocument.rootFile);
-    const earlierHistory = new Set([...submittedDocument.undo, ...submittedDocument.redo]);
+    const submittedDocuments = new Map(editingView.writes.map(write => {
+      const document = useAuthoring.getState().documents[write.documentPath];
+      return [write.documentPath, { revision: document.revision,
+        files: workingFiles(document.files, document, document.rootFile),
+        history: new Set([...document.undo, ...document.redo]) }] as const;
+    }));
     previewController?.abort();
     const controller = previewController = new AbortController();
     const viewport = useWorkbench.getState().playerViewport;
     const scene = editingView.scene;
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
-    const accept = (content: Pick<SkillSnapshot, 'revision' | 'files' | 'sourceFiles'>, lastSave: SaveOutcome) => {
+    const accept = (receipts: WorkspaceDocumentSnapshot[], content: SkillSnapshot | null, lastSave: SaveOutcome) => {
+      if (!receipts.some(document => document.documentPath === target.documentPath))
+        throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
-      const current = authoringDocument(useAuthoring.getState(), target);
-      const files = content.files;
-      const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
-        rebaseSavedEdits(current.files, submittedFiles, files, document, current.rootFile);
-      const history = (items: Snapshot[]) => items.filter(item => !earlierHistory.has(item))
-        .map(item => ({ ...item, ...rebase(item) }));
-      setDocument({
-        revision: content.revision, sourceRevision: null, documentRevision: null, files,
-        sourceFiles: content.sourceFiles,
-        ...rebase(current), externalChange: false,
-        undo: history(current.undo), redo: history(current.redo), version: current.version + 1, saving: false,
-        lastSave: currentScene ? lastSave : { ...lastSave,
-          message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` },
-      }, target);
-      if (revision === null) void authoringActions.listDocuments();
+      const documents = { ...useAuthoring.getState().documents };
+      for (const receipt of receipts) {
+        const submitted = submittedDocuments.get(receipt.documentPath)!;
+        const current = documents[receipt.documentPath];
+        const selected = receipt.documentPath === target.documentPath;
+        const files = selected && content !== null ? content.files : receipt.files;
+        const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
+          rebaseSavedEdits(current.files, submitted.files, files, document, current.rootFile);
+        const history = (items: Snapshot[]) => items.filter(item => !submitted.history.has(item))
+          .map(item => ({ ...item, ...rebase(item) }));
+        documents[receipt.documentPath] = {
+          ...current, kind: receipt.kind, rootFile: receipt.rootFile, revision: receipt.revision,
+          sourceRevision: null, documentRevision: null, files, sourceFiles: receipt.files,
+          ...rebase(current), externalChange: false,
+          undo: history(current.undo), redo: history(current.redo), version: current.version + 1,
+          ...(selected ? { saving: false, lastSave: currentScene ? lastSave : { ...lastSave,
+            message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` } } : { lastSave: null }),
+        };
+      }
+      set({ documents });
+      if (receipts.some(document => submittedDocuments.get(document.documentPath)!.revision === null))
+        void authoringActions.listDocuments();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
     try {
       if (!apply) {
         const writes = editingView.writes.filter(write => write.documentPath === target.documentPath);
         const result = await workspaceDocumentsApi.save(writes, editingView.reads);
-        const saved = result.documents.find(document => document.documentPath === target.documentPath);
-        if (saved === undefined) throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
         const message = '作者内容已保存；未请求编译与发布，运行未应用。';
-        accept({ revision: saved.revision, files: saved.files, sourceFiles: saved.files },
+        accept(result.documents, null,
           { saved: true, compilationState: 'not-requested', runtimeState: 'pending', preview: null, ok: true, message, errors: [] });
         consoleActions.log('info', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
@@ -1019,14 +1029,14 @@ export const authoringActions = {
       });
       if (result.compilationState === 'not-requested') {
         const message = '作者内容已保存；未请求编译与发布，运行未应用。';
-        accept(result.content, { saved: true, compilationState: 'not-requested', runtimeState: result.runtimeState,
+        accept(result.documents, result.content, { saved: true, compilationState: 'not-requested', runtimeState: result.runtimeState,
           preview: null, ok: true, message, errors: [] });
         consoleActions.log('info', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
       }
       if (result.compilationState === 'not-started') {
         const message = `作者内容已保存；运行未应用：${result.availability.reason}`;
-        accept(result.content, { saved: true, compilationState: 'not-started', preview: null, ok: false, message, errors: [] });
+        accept(result.documents, result.content, { saved: true, compilationState: 'not-started', preview: null, ok: false, message, errors: [] });
         consoleActions.log('warn', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
       }
@@ -1036,7 +1046,7 @@ export const authoringActions = {
         const detail = !apply ? null : result.job === null ? result.jobError === null ? `未提交封存作业：${jobBlocked ?? '宿主未返回作业'}` : null
           : '新输入封存作业已受理，等待完成；旧观察层已过期';
         const message = `${inputSaveMessage(result)}（${result.inputs.length} 项）${detail === null ? '' : `；${detail}`}`;
-        const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
+        const currentSkill = accept(result.documents, result.content, { saved: true, compilationState: 'not-required', preview,
           previewError: result.previewError, jobError: result.jobError, ok: true, message, errors: [] });
         consoleActions.log(result.previewError !== null || result.jobError !== null || stage === 'rejected' || stage === 'not-applied'
           ? 'error' : 'info', '作者', message, JSON.stringify(result));
@@ -1050,14 +1060,14 @@ export const authoringActions = {
         return;
       }
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
-      const currentSkill = accept(result.content, outcome);
+      const currentSkill = accept(result.documents, result.content, outcome);
       consoleActions.log(outcome.ok ? 'info' : 'error', '作者', `${target.documentPath}：${outcome.message}`, JSON.stringify(result, null, 2));
       if (currentSkill && result.preview !== null && !controller.signal.aborted) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
         void trackPreview({ save: result, receipt: result.preview, controller, viewport });
       }
     } catch (error) {
-      if (apply && error instanceof ApiError && error.status === 422) {
+      if (apply && error instanceof ApiError && [400, 422].includes(error.status)) {
         const rejection = readSkillSaveRejection(JSON.parse(error.raw));
         const errors = rejection.stage === 'source-rejected' ? rejection.detail.errors : [];
         const detail = rejection.stage === 'source-rejected' ? rejection.detail.message : rejection.error;
@@ -1078,10 +1088,20 @@ export const authoringActions = {
             publicationState: 'failed', jobError: null };
         }
         if (rejection.content === null) setDocument({ saving: false, lastSave }, target);
-        else accept(rejection.content, lastSave);
+        else accept(rejection.documents, rejection.content, lastSave);
         if (rejection.compilationState === 'not-required') setDocument({ inputRevision: { kind: 'rejected', reason: message } }, target);
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           detail, error.raw].filter(Boolean).join('\n'));
+        return;
+      }
+      if (apply && error instanceof ApiError && error.status === 409) {
+        const conflict = readSkillSaveConflict(JSON.parse(error.raw));
+        const outcome = { ok: false, message: conflict.message, errors: [], preview: null } as const;
+        if (conflict.saved) accept(conflict.documents, conflict.content,
+          { ...outcome, saved: true, compilationState: 'not-started' });
+        else setDocument({ saving: false, externalChange: true,
+          lastSave: { ...outcome, saved: false, compilationState: null } }, target);
+        consoleActions.log('error', '作者', conflict.message, error.raw);
         return;
       }
       const revisionConflict = error instanceof ApiError && error.status === 409;

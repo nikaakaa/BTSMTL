@@ -2,7 +2,7 @@ import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type Jso
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
 import { deleteJson, getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
-import { workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceEditingView } from './workspaceDocuments';
+import { readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ProfileQuery, type ResourceObjectCapability, type ScopeQuery, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -483,6 +483,7 @@ export interface CompiledSkillSaveResult {
   saved: true;
   compilationState: 'succeeded';
   content: SkillSnapshot;
+  documents: WorkspaceDocumentSnapshot[];
   compilation: SkillCompilation;
   preview: PlayerSkillRefreshReceipt | null;
   jobError: string | null;
@@ -493,9 +494,9 @@ const readSaved = (value: unknown, path = 'SkillSave.saved'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
 };
+const savedContentFields = { saved: readSaved, content: readSkillSnapshot, documents: array(readWorkspaceDocumentSnapshot) };
 const readInputSaveResult = object({
-  saved: readSaved, compilationState: choice('not-required'),
-  content: readSkillSnapshot,
+  ...savedContentFields, compilationState: choice('not-required'),
   inputs: array(object({ planId: text, path: text, revision: text })),
   preview: nullable(readPlayerCommandResult), job: nullable(readPlayerJobReceipt),
   previewError: nullable(text), jobError: nullable(text),
@@ -507,12 +508,12 @@ const readNull = (value: unknown, path = 'Authoring'): null => {
   return null;
 };
 const readPendingSaveResult = object({
-  saved: readSaved, compilationState: choice('not-requested'), runtimeState: choice('pending'),
-  content: readSkillSnapshot, compilation: readNull, preview: readNull,
+  ...savedContentFields, compilationState: choice('not-requested'), runtimeState: choice('pending'),
+  compilation: readNull, preview: readNull,
 });
 function readUnavailableSaveResult(value: unknown, path = 'SkillSave') {
-  const result = object({ saved: readSaved, compilationState: choice('not-started'), runtimeState: choice('pending'),
-    content: readSkillSnapshot, availability: readAuthoringAvailability })(value, path);
+  const result = object({ ...savedContentFields, compilationState: choice('not-started'), runtimeState: choice('pending'),
+    availability: readAuthoringAvailability })(value, path);
   const availability = result.availability;
   if (availability.available) throw new Error(`${path}：not-started 回执需要明确的不可用原因`);
   return { ...result, availability };
@@ -623,8 +624,21 @@ const readSkillFormatError = object({
   type: optional(nullable(text)), file: optional(nullable(text)), graphId: optional(nullable(text)),
   nodeId: optional(nullable(text)), path: optional(nullable(text)),
 });
-const readSavedContent = object({ saved: readSaved, content: readSkillSnapshot });
+const readSavedContent = object(savedContentFields);
 const readCompilerFailure = object({ exitCode: number, output: text, error: text, outputPath: text, errorPath: text });
+
+function readSaveReceipt(value: unknown) {
+  const receipt = object({ saved: boolean, content: nullable(readSkillSnapshot), documents: array(readWorkspaceDocumentSnapshot) })(value);
+  if (receipt.saved && receipt.content !== null)
+    return { ...receipt, saved: true as const, content: receipt.content };
+  if (!receipt.saved && receipt.content === null)
+    return { ...receipt, saved: false as const, content: null };
+  throw new Error('SkillSave.saved 与 content 不一致');
+}
+
+export const readSkillSaveConflict = (value: unknown) => ({
+  ...readSaveReceipt(value), ...object({ code: text, message: text })(value),
+});
 
 function readSourceRejection(value: unknown) {
   const { diagnostic } = object({ diagnostic: optional(opaque) })(value);
@@ -633,12 +647,7 @@ function readSourceRejection(value: unknown) {
     : object({ message: text, errors: array(readSkillFormatError) })(diagnostic);
   const { compilationState } = object({ compilationState: choice('not-started', 'not-required') })(value);
   if (compilationState === 'not-required') return { ...readSavedContent(value), compilationState, detail };
-  const content = object({ saved: boolean, content: nullable(readSkillSnapshot) })(value);
-  if (content.saved && content.content !== null)
-    return { saved: true as const, content: content.content, compilationState, detail };
-  if (!content.saved && content.content === null)
-    return { saved: false as const, content: null, compilationState, detail };
-  throw new Error('SkillSave.saved 与 content 不一致');
+  return { ...readSaveReceipt(value), compilationState, detail };
 }
 
 export function readSkillSaveRejection(value: unknown) {
@@ -776,7 +785,7 @@ export const authoringApi = {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
       case 'not-requested': return readPendingSaveResult(result, 'SkillSave');
       case 'not-started': return readUnavailableSaveResult(result, 'SkillSave');
-      case 'succeeded': return { ...object({ saved: readSaved, content: readSkillSnapshot, compilation: readSkillCompilation,
+      case 'succeeded': return { ...object({ ...savedContentFields, compilation: readSkillCompilation,
         jobError: nullable(text), preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
     }
   },
