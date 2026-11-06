@@ -110,9 +110,8 @@ namespace BTSMTL.Timeline.Editor
 
         Source CreateSource(TimelineAsset asset)
         {
-            var request = new TimelineEditorOpenRequest(asset.Data, asset, "m_Data",
-                AssetDatabase.IsSubAsset(asset) ? "Private Asset" : "Shared Asset", null, m_Contracts,
-                m_Host);
+            var request = new TimelineEditorOpenRequest(asset.Data, asset,
+                AssetDatabase.IsSubAsset(asset) ? "Private Asset" : "Shared Asset", null, m_Contracts, m_Host);
             var source = new Source { Asset = asset, Session = new TimelineEditorSessionContext(request) };
             source.Binding = new BtsmtlSlateTimelineBinding(request, source.Session, m_OpenSourceClip);
             source.Binding.RepaintRequested += Repaint;
