@@ -23,10 +23,6 @@ const keyOf = (time: number, value: number, inTangent: number, outTangent: numbe
   outWeight: new JsonFloat(weight), tangentMode: 0, time: new JsonFloat(time), value: new JsonFloat(value), weightedMode: 0,
 });
 
-const defaultCurve = (): JsonObject => ({
-  keys: [keyOf(0, 0, 0, 0, 0), keyOf(1, 1, 0, 0, 0)], postWrapMode: 8, preWrapMode: 8,
-});
-
 interface Point { t: number; v: number; inTangent: number; outTangent: number }
 
 const pointsOf = (keys: JsonObject[]): Point[] => keys.map(key => ({
@@ -66,13 +62,17 @@ function boundsOf(samples: [number, number][]): Bounds {
   return { t0, t1, v0: v0 - margin, v1: v1 + margin };
 }
 
-export function CurveEditor({ label, value, onSet }: { label: string; value: JsonValue; onSet(value: JsonValue): void }) {
+export function CurveEditor({ label, value, defaultValue, onSet }: {
+  label: string; value: JsonValue; defaultValue: JsonValue | undefined; onSet(value: JsonValue): void;
+}) {
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ index: number; t: number; v: number; bounds: Bounds } | null>(null);
   if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof JsonFloat) {
     return (
       <div className={styles.field}><FieldLabel label={label} />
-        <div className={styles.editor}><Button variant="ghost" onClick={() => onSet(defaultCurve())}>创建曲线</Button></div>
+        <div className={styles.editor}>{defaultValue == null
+          ? <span className={styles.issue}>该曲线没有正式的创建默认值</span>
+          : <Button variant="ghost" onClick={() => onSet(cloneJson(defaultValue))}>创建曲线</Button>}</div>
       </div>
     );
   }

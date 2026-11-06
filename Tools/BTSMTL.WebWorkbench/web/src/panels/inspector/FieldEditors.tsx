@@ -147,7 +147,7 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
   if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (isCurve(value, shape?.clrType))
-    return <CurveEditor label={label} value={value ?? null} onSet={next => onSet(keys, next)} />;
+    return <CurveEditor label={label} value={value ?? null} defaultValue={shape?.defaultValue} onSet={next => onSet(keys, next)} />;
   if (shape?.enumValues?.length)
     return <Row label={label}><Select label={label} value={typeof value === 'string' ? value : null}
       options={shape.enumValues.map(name => ({ value: name, label: name }))} onChange={next => set(next)} /></Row>;
