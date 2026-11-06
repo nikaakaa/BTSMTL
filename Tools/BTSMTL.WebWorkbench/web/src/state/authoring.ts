@@ -101,6 +101,7 @@ function profileResourceConfigurations(source: AuthoringProfile, previous?: Prof
 
 export interface AuthoringDocument {
   kind: WorkspaceDocumentInfo['kind'];
+  rootFile: WorkspaceDocumentInfo['rootFile'];
   documentSources: string[];
   programId: string | null;
   inputActorId: string | null;
@@ -161,7 +162,7 @@ export interface AddedPort {
 }
 
 const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  documentSources: [],
+  rootFile: null, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -543,7 +544,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const key = authoringTargetKey(authoringTarget('skill', source.skill));
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), kind: 'skill', revision: source.revision, product: editingView.product, execution: editingView.execution,
+        documents[key] = { ...newDocument(), kind: 'skill', rootFile: 'skill.json', revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
@@ -634,7 +635,7 @@ export const authoringActions = {
       throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
-    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: target.kind, edited, version: 1,
+    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: target.kind, rootFile: 'skill.json', edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
@@ -687,7 +688,7 @@ export const authoringActions = {
       if (!opened || (opened.revision === null && !hasChanges(target))) {
         const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
         controller.signal.throwIfAborted();
-        setDocument({ revision: snapshot.revision, files: snapshot.files, sourceFiles: snapshot.files }, target);
+        setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, revision: snapshot.revision, files: snapshot.files, sourceFiles: snapshot.files }, target);
       }
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
@@ -814,7 +815,7 @@ export const authoringActions = {
           edited: Object.fromEntries(Object.entries(item.edited).filter(([path]) => !paths.has(path))),
           removed: item.removed.filter(path => !paths.has(path)),
         }));
-        documents[key] = { ...document, revision: snapshot.value.revision,
+        documents[key] = { ...document, kind: snapshot.value.kind, rootFile: snapshot.value.rootFile, revision: snapshot.value.revision,
           sourceFiles: snapshot.value.files,
           files: savedFiles,
           sourceRevision: null, externalChange: false,
@@ -927,7 +928,7 @@ export const authoringActions = {
   // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
   changedFiles(target = get().target): { path: string; content: string }[] {
     const state = authoringDocument(useAuthoring.getState(), target);
-    return Object.entries(workingFiles(state.files, state)).filter(([path, content]) => content !== state.files[path])
+    return Object.entries(workingFiles(state.files, state, state.rootFile)).filter(([path, content]) => content !== state.files[path])
       .map(([path, content]) => ({ path, content }));
   },
 
@@ -936,7 +937,7 @@ export const authoringActions = {
     const scene = selectedScene(useWorkbench.getState());
     const writes = Object.entries(state.documents).map(([documentPath, document]) => {
       const files = { ...document.sourceFiles };
-      for (const [path, content] of Object.entries(workingFiles(document.files, document)))
+      for (const [path, content] of Object.entries(workingFiles(document.files, document, document.rootFile)))
         if (content !== document.files[path]) files[path] = content;
       for (const path of document.removed) delete files[path];
       return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files };
@@ -972,7 +973,7 @@ export const authoringActions = {
     const content = { files: authoringActions.changedFiles(target), removedFiles: removed };
     if (target.kind === 'scenario' && !content.files.length && !content.removedFiles.length) return;
     const submittedDocument = authoringDocument(useAuthoring.getState(), target);
-    const submittedFiles = workingFiles(submittedDocument.files, submittedDocument);
+    const submittedFiles = workingFiles(submittedDocument.files, submittedDocument, submittedDocument.rootFile);
     const earlierHistory = new Set([...submittedDocument.undo, ...submittedDocument.redo]);
     previewController?.abort();
     const controller = previewController = new AbortController();
@@ -984,7 +985,7 @@ export const authoringActions = {
       const current = authoringDocument(useAuthoring.getState(), target);
       const files = content.files;
       const rebase = (document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) =>
-        rebaseSavedEdits(current.files, submittedFiles, files, document);
+        rebaseSavedEdits(current.files, submittedFiles, files, document, current.rootFile);
       const history = (items: Snapshot[]) => items.filter(item => !earlierHistory.has(item))
         .map(item => ({ ...item, ...rebase(item) }));
       setDocument({
@@ -1539,9 +1540,9 @@ const snapshot = (): Snapshot => {
     selection, canvasSelections, timelineSelections };
 };
 
-function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed'>) {
+function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed'>, rootFile: string | null) {
   const result = { ...files };
-  const format = shapeOf(files['skill.json'] ?? '\n');
+  const format = shapeOf(rootFile === null ? '\n' : files[rootFile] ?? '\n');
   for (const [path, value] of Object.entries(document.edited))
     result[path] = writeSkillJson(value, files[path] !== undefined ? shapeOf(files[path]) : format);
   for (const path of document.removed) delete result[path];
@@ -1549,8 +1550,8 @@ function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'e
 }
 
 function rebaseSavedEdits(previousFiles: Record<string, string>, submittedFiles: Record<string, string>,
-  savedFiles: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>) {
-  const working = workingFiles(previousFiles, document);
+  savedFiles: Record<string, string>, document: Pick<Snapshot, 'edited' | 'removed' | 'addedPorts'>, rootFile: string | null) {
+  const working = workingFiles(previousFiles, document, rootFile);
   const edited: Record<string, JsonValue> = {};
   const removed: string[] = [];
   for (const path of new Set([...Object.keys(submittedFiles), ...Object.keys(working)])) {
