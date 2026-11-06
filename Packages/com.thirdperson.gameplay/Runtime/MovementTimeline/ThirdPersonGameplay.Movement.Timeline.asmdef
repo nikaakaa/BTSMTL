@@ -15,7 +15,7 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": [],
+    "precompiledReferences": ["Newtonsoft.Json.dll"],
     "autoReferenced": false,
     "defineConstraints": [],
     "versionDefines": [],
