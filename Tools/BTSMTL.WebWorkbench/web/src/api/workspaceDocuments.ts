@@ -1,0 +1,38 @@
+import { getJson, postJson, putJson, query } from './http';
+import { array, boolean, choice, hosted, nullable, object, text } from './playerRecords';
+
+const documentFields = {
+  kind: choice('skill', 'timeline', 'curve', 'scenario'), identity: text, documentPath: text,
+  rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
+};
+const readDocument = object(documentFields);
+export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
+
+const readFiles = (value: unknown, path = 'WorkspaceDocument.files'): Record<string, string> =>
+  Object.fromEntries(Object.entries(hosted({})(value, path)).map(([name, content]) => [name, text(content, `${path}.${name}`)]));
+const readSnapshot = object({ ...documentFields, files: readFiles });
+export type WorkspaceDocumentSnapshot = ReturnType<typeof readSnapshot>;
+
+const readElement = object({ kind: choice('timeline', 'graph', 'input', 'curve'), identity: text,
+  documentPath: text, relativePath: text });
+export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
+export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
+export type WorkspaceDocumentRead = Pick<WorkspaceDocumentInfo, 'documentPath' | 'revision'>;
+
+const readList = object({ success: boolean, documents: array(readDocument) });
+const readOpen = object({ success: boolean, document: readSnapshot });
+const readElements = object({ success: boolean, elements: array(readElement) });
+const readView = object({ success: boolean, documents: array(readSnapshot), elements: array(readElement) });
+
+export const workspaceDocumentsApi = {
+  list: (kind?: WorkspaceDocumentInfo['kind'], signal?: AbortSignal) =>
+    getJson<unknown>(`/api/authoring/documents${query({ kind })}`, signal).then(value => readList(value).documents),
+  open: (documentPath: string, signal?: AbortSignal) =>
+    getJson<unknown>(`/api/authoring/documents/content${query({ documentPath })}`, signal).then(value => readOpen(value).document),
+  elements: (kind?: WorkspaceDocumentElement['kind'], signal?: AbortSignal) =>
+    getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),
+  editingView: (writes: WorkspaceDocumentWrite[], signal?: AbortSignal) =>
+    postJson<unknown>('/api/authoring/documents/editing-view', { writes }, signal).then(value => readView(value)),
+  save: (writes: WorkspaceDocumentWrite[], reads: WorkspaceDocumentRead[]) =>
+    putJson<unknown>('/api/authoring/documents', { writes, reads }).then(value => readView(value)),
+};
