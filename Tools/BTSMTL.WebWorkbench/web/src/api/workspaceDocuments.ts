@@ -21,13 +21,13 @@ const readElement = object({ kind: choice('timeline', 'graph', 'input', 'curve')
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
 export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
 export type WorkspaceDocumentRead = Pick<WorkspaceDocumentInfo, 'documentPath' | 'revision'>;
-export interface WorkspaceEditingView {
+export type WorkspaceEditingView = {
   writes: WorkspaceDocumentWrite[];
   reads: WorkspaceDocumentRead[];
   execution: ExecutionScopeSelection;
   product: Pick<AuthoringProduct, 'value' | 'revision'> | null;
   scene?: Pick<SourceFile, 'path' | 'revision'>;
-}
+};
 
 const readList = object({ success: boolean, documents: array(readDocument) });
 const readOpen = object({ success: boolean, document: readSnapshot });
