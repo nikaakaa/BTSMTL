@@ -277,7 +277,7 @@ export function StepFields({ graphId, step, children }: { graphId: string; step:
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === step.nodeId) ?? null;
-  const { description } = useDescription(skill, graphId, node?.type as string | undefined, node ? configurationOf(node) : null);
+  const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId: step.nodeId });
   const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
   const selector = step.nodeType === 'BtsmtlSkillSelectorFlowNode';
   const set: SetValue = (keys, value) => graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, ...keys], value }]);
@@ -290,7 +290,7 @@ export function StepFields({ graphId, step, children }: { graphId: string; step:
             ? { ...member, enumValues: (member.enumValues ?? []).filter(name => name === 'None' || name === 'Self') } : member}
           keys={[member.member]} onSet={set} />
       ))}
-      {!shape && <div className={styles.note}>读取字段</div>}
+      <DescriptionStatus description={description} issues={issues} />
     </Fold>
   );
 }
@@ -308,27 +308,30 @@ interface DescribeIssue {
   message: string;
 }
 
-// 节点身份、类型与连线不属于配置；节点名是图上的显示名，不交给类型描述。
-const configurationOf = (node: JsonObject): JsonObject =>
-  Object.fromEntries(Object.entries(node).filter(([key]) => !['UID', 'type', 'outConnections', '_name'].includes(key)));
+type DescriptionSource = { kind: 'node'; graphId: string; nodeId: string }
+  | { kind: 'configuration'; graphId: string | null; type: string; configuration: JsonObject };
 
-function useDescription(skill: AuthoringTarget | null, graphId: string | null, type: string | undefined, configuration: JsonObject | null) {
+function useDescription(skill: AuthoringTarget | null, source: DescriptionSource | null) {
   const version = useAuthoring(state => authoringDocument(state).version);
   const carrierRevision = useAuthoring(state => state.carrierRevision);
   const scene = useWorkbench(state => selectedScene(state));
   const [description, setDescription] = useState<Description | null>(null);
   const [issues, setIssues] = useState<DescribeIssue[]>([]);
-  // 节点对象被原地编辑，按配置文本判断是否需要重新描述。
-  const key = configuration ? stringifySkillJson(configuration, '\n') : null;
-  const latest = useRef(configuration);
-  latest.current = configuration;
+  const key = source === null ? null : stringifySkillJson(source, '\n');
+  const latest = useRef(source);
+  latest.current = source;
   useEffect(() => {
     setDescription(null);
     setIssues([]);
-    if (!skill || !type || key === null) return;
+    if (!skill || key === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      authoringApi.describeConfiguration(skill, type, latest.current!, graphId, authoringActions.editingView(), controller.signal).then(result => {
+      const current = latest.current!;
+      const editingView = authoringActions.editingView();
+      const request = current.kind === 'node'
+        ? authoringApi.describeNode(skill, current.graphId, current.nodeId, editingView, controller.signal)
+        : authoringApi.describeConfiguration(skill, current.type, current.configuration, current.graphId, editingView, controller.signal);
+      request.then(result => {
         if (controller.signal.aborted) return;
         const items = result.fields.items;
         setDescription({
@@ -346,7 +349,7 @@ function useDescription(skill: AuthoringTarget | null, graphId: string | null, t
       });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [skill, type, key, graphId, version, carrierRevision, scene]);
+  }, [skill, key, version, carrierRevision, scene]);
   return { description, issues };
 }
 
@@ -392,7 +395,7 @@ function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: 
   label: string; type: string; value: JsonObject; graphId: string | null; identity: string; onSet(value: JsonObject): void;
 }) {
   const skill = useAuthoring(state => state.target);
-  const { description, issues } = useDescription(skill, graphId, type, value);
+  const { description, issues } = useDescription(skill, { kind: 'configuration', graphId, type, configuration: value });
   const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.documentPath, identity]) };
   return <Fold title={label} defaultOpen>
     <DescriptionStatus description={description} issues={issues} />
@@ -510,7 +513,7 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
-  const { description, issues } = useDescription(skill, graphId, node?.type as string | undefined, node ? configurationOf(node) : null);
+  const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId });
   if (!node) return null;
   const setFields: SetFields = changes => graphAuthoring.setNodeValues(graphId, nodeId, changes);
   const set: SetValue = (keys, value) => setFields([{ keys, value }]);
@@ -571,7 +574,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   keys: import('../../api/types').InputCatalog['players'][number]['keys'];
 }) {
   const target = useAuthoring(state => state.target);
-  const { description, issues } = useDescription(target, graphId, node.type as string, configurationOf(node));
+  const { description, issues } = useDescription(target, { kind: 'node', graphId, nodeId: node.UID as string });
   const key = getIn(node, contract.keyPath);
   const kind = keys.find(item => item.name === key)?.kind;
   const fields = description?.stored.map(item => ({ ...item, fields: item.fields
@@ -1050,7 +1053,8 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const shape = useElementShape('clips', clip?.ContractKind);
   const elements = useSkillElements(skill !== null);
   const template = elements?.clips.find(template => template.kind === clip?.ContractKind);
-  const { description, issues } = useDescription(skill, null, template?.clrType, clip);
+  const { description, issues } = useDescription(skill, template === undefined || clip === null ? null
+    : { kind: 'configuration', graphId: null, type: template.clrType, configuration: clip });
   if (!clip) return null;
   const setFields: SetFields = changes => authoringActions.setClipValues(documentId, clipId, changes);
   const set: SetValue = (keys, value) => setFields([{ keys, value }]);

@@ -799,6 +799,13 @@ export const authoringApi = {
   describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'),
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
+  describeNode: async (target: AuthoringTarget, graphId: string, nodeId: string, editingView: SkillEditingView, signal?: AbortSignal) => {
+    const page = <T>(operation: 'fields' | 'ports') => allPages<T>(async offset =>
+      parseSkillJson(await postText(documentQueryPath(target.documentPath, `queries/${operation}`),
+        { graphId, nodeId, offset, limit: 128, editingView }, signal)) as unknown as Page<T>);
+    const [fields, ports] = await Promise.all([page<FieldItem>('fields'), page<DescribedPort>('ports')]);
+    return { fields: { ...fields, items: readFieldItems(fields.items) }, ports };
+  },
   profile: async (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal) => {
     const items: FieldItem[] = [];
     for (let offset = 0; ; offset += 128) {
@@ -814,11 +821,14 @@ export const authoringApi = {
     }
   },
   identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<IdentityItem>(documentQueryPath(target.documentPath, 'queries/references'), { editingView }, signal).then(page => page.items),
+    allPages<IdentityItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/references'),
+      { editingView, offset, limit: 128 }, signal)).then(page => page.items),
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<BlackboardItem>(documentQueryPath(target.documentPath, 'queries/blackboards'), { editingView }, signal).then(page => page.items),
+    allPages<BlackboardItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/blackboards'),
+      { editingView, offset, limit: 128 }, signal)).then(page => page.items),
   project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectItem, AuthoringProject>(documentQueryPath(target.documentPath, 'queries/project'), { editingView }, signal),
+    allPages<ProjectItem, AuthoringProject>(offset => postJson(documentQueryPath(target.documentPath, 'queries/project'),
+      { editingView, offset, limit: 128 }, signal)),
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
@@ -873,10 +883,10 @@ function readFieldItems(items: FieldItem[]): FieldItem[] {
   return items;
 }
 
-async function allPages<T, Result extends Page<T> = Page<T>>(path: string, input: { editingView: SkillEditingView }, signal?: AbortSignal): Promise<Result> {
+async function allPages<T, Result extends Page<T> = Page<T>>(readPage: (offset: number) => Promise<Result>): Promise<Result> {
   const items: T[] = [];
   for (let offset = 0; ; offset += 128) {
-    const page = await postJson<Result>(path, { ...input, offset, limit: 128 }, signal);
+    const page = await readPage(offset);
     items.push(...page.items);
     if (!page.hasMore) return { ...page, items };
   }
