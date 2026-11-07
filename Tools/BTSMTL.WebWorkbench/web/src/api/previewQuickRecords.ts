@@ -54,7 +54,7 @@ const plan = object({
 });
 const frame = object({
   jobId: identity<'quick-job'>(), requestId: text, sourceRevision: text, inputRevision: text,
-  requestedSeconds: number, sampledSeconds: number, sampledRevision: text, mediaType: text, imageBase64: text,
+  requestedSeconds: number, sampledSeconds: number, sampledRevision: text, mediaType: text, imageBase64: text, flipY: boolean,
 });
 const status = object({
   jobId: identity<'quick-job'>(), stage: text, completed: boolean, cancellationRequested: boolean,

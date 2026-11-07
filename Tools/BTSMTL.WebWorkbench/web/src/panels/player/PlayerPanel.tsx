@@ -97,7 +97,17 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
       if (!ownsFrame()) return;
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
-      canvas.getContext('2d')!.drawImage(image, 0, 0);
+      const context = canvas.getContext('2d')!;
+      context.save();
+      try {
+        if (frame.flipY) {
+          context.translate(0, canvas.height);
+          context.scale(1, -1);
+        }
+        context.drawImage(image, 0, 0);
+      } finally {
+        context.restore();
+      }
       setDrawn(frame);
       setFailure(null);
     }).catch((error: unknown) => {
