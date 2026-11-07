@@ -6,7 +6,7 @@ public interface IPreviewHost<out TSourceCatalog, out TInputCatalog>
     TSourceCatalog Sources();
     TInputCatalog Inputs(string target, string revision);
     Task<PreviewQuickReply<PreviewQuickDescription>> DescribeQuick(PreviewQuickTarget target, CancellationToken cancellation);
-    Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, CancellationToken cancellation);
+    Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, int localPort, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> QuickStatus(string jobId, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> SeekQuick(string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> CancelQuick(string jobId, CancellationToken cancellation);
@@ -27,8 +27,8 @@ public static class PreviewApi
         routes.MapGet("/inputs", (string scene, string revision) => host.Inputs(scene, revision));
         routes.MapPost("/quick/describe", async (PreviewQuickTarget target, CancellationToken cancellation) =>
             QuickResult(await host.DescribeQuick(target, cancellation)));
-        routes.MapPost("/quick/plans", async (PreviewQuickRequest request, CancellationToken cancellation) =>
-            QuickResult(await host.PlanQuick(request, cancellation)));
+        routes.MapPost("/quick/plans", async (PreviewQuickRequest request, HttpContext context, CancellationToken cancellation) =>
+            QuickResult(await host.PlanQuick(request, context.Connection.LocalPort, cancellation)));
         routes.MapGet("/quick/plans/{jobId}", async (string jobId, CancellationToken cancellation) =>
             QuickResult(await host.QuickStatus(jobId, cancellation)));
         routes.MapPost("/quick/plans/{jobId}/seek", async (string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation) =>

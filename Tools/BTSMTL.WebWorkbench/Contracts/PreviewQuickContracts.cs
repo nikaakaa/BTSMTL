@@ -28,7 +28,8 @@ public sealed record PreviewQuickWebRoot(PreviewQuickAuthoringTarget Authoring,
     [property: JsonRequired] AuthoringDocumentEditingView EditingView) : PreviewQuickRoot(Authoring);
 public sealed record PreviewQuickDocumentRoot(PreviewQuickAuthoringTarget Authoring) : PreviewQuickRoot(Authoring);
 
-public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null);
+public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null,
+    PreviewSourceFile? ScenePublication = null);
 public sealed record PreviewQuickInputPoint(string InputId, double Time, JsonElement Value);
 public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault);
 
@@ -91,4 +92,5 @@ public sealed record PreviewQuickStatus(string JobId, string Stage, bool Complet
     string? OutputDirectory, string? SummaryPath, PreviewQuickPlan? Plan, string? Error,
     string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame);
 public sealed record PreviewQuickFrame(string JobId, string RequestId, string SourceRevision, string InputRevision,
-    double RequestedSeconds, double SampledSeconds, string SampledRevision, string MediaType, string ImageBase64);
+    double RequestedSeconds, double SampledSeconds, string SampledRevision, string MediaType, string ImageBase64,
+    [property: JsonRequired] bool FlipY);
