@@ -203,15 +203,16 @@ namespace BTSMTL.Authoring.Workspace
     {
         static readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> NoDeclaredElements =
             _ => Array.Empty<AuthoringDocumentElement>();
-        readonly AuthoringCommits m_Commits;
         readonly AuthoringDocumentCache m_Cache;
         readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
+
+        // 只组合内存编辑视图的调用方（如持锁宿主启动的编译子进程）不触碰磁盘，不能在构造时抢占跨进程作者锁。
+        AuthoringCommits Commits => AuthoringCommits.For(Workspace);
 
         public AuthoringDocumentRepository(string workspace,
             Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> declaredElements = null)
         {
             Workspace = Path.GetFullPath(workspace);
-            m_Commits = AuthoringCommits.For(Workspace);
             m_Cache = AuthoringDocumentCache.For(Workspace);
             m_DeclaredElements = declaredElements;
         }
@@ -222,9 +223,9 @@ namespace BTSMTL.Authoring.Workspace
             Inside(Path.Combine(Workspace, kind.Directory, identity));
 
         public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Read() =>
-            m_Commits.Read(() => Task.FromResult(Capture()));
+            Commits.Read(() => Task.FromResult(Capture()));
 
-        public Task<AuthoringDocumentSnapshot> Open(string identityOrPath) => m_Commits.Read(() =>
+        public Task<AuthoringDocumentSnapshot> Open(string identityOrPath) => Commits.Read(() =>
             Task.FromResult(Find(Capture(), identityOrPath)));
 
         public IReadOnlyList<AuthoringDocumentSnapshot> EditingView(IReadOnlyList<AuthoringDocumentSnapshot> source,
@@ -295,7 +296,7 @@ namespace BTSMTL.Authoring.Workspace
             string domain, string sourceIdentity) => EnumerateElements(documents, domain, sourceIdentity).First();
 
         public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Save(IReadOnlyList<AuthoringDocumentWrite> writes,
-            IReadOnlyList<AuthoringDocumentRead> reads) => m_Commits.Write(() =>
+            IReadOnlyList<AuthoringDocumentRead> reads) => Commits.Write(() =>
         {
             writes = Prepare(writes);
             IReadOnlyList<AuthoringDocumentSnapshot> captured = Capture();
@@ -339,7 +340,7 @@ namespace BTSMTL.Authoring.Workspace
                 foreach (string removed in previous.Keys.Except(write.Files.Keys, StringComparer.Ordinal))
                     changes.Add(new AuthoringFileChange(DocumentFile(directory, removed), null));
             }
-            m_Commits.Commit(changes);
+            Commits.Commit(changes);
             return Task.FromResult(edited);
         });
 
