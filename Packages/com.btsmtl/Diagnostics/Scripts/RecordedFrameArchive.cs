@@ -170,7 +170,7 @@ namespace ThirdPersonSimulation
             int encodedBytes;
             try
             {
-                if (!format.TryReadCollectionHeader(out encodedBytes))
+                if (!format.DangerousTryReadCollectionHeader(out encodedBytes))
                     throw new InvalidDataException("录制帧页不能为空。");
             }
             finally { format.Dispose(); }
