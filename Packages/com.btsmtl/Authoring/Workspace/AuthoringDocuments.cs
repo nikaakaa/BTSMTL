@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -76,8 +77,10 @@ namespace BTSMTL.Authoring.Workspace
         public string SourceIdentity => Kind.SourceIdentityMember == null ? Identity : (string)Root[Kind.SourceIdentityMember];
         public string Revision { get; }
         public IReadOnlyDictionary<string, string> Files { get; }
+        // 快照按文件戳在同一工作区的读取之间复用，Root 与 Read 的结果只读使用。
         public JObject Root { get; }
         public JObject Read(string relativePath) => Parse(Files[relativePath]);
+        internal ConcurrentDictionary<Delegate, AuthoringDocumentIdentities> Identities { get; } = new();
 
         internal static JObject Parse(string text)
         {
@@ -148,9 +151,60 @@ namespace BTSMTL.Authoring.Workspace
         public string Revision { get; }
     }
 
+    // 单份文档参与全库身份唯一性检查的键；随快照缓存，未变化的文档不再重新解析。
+    sealed class AuthoringDocumentIdentities
+    {
+        public AuthoringDocumentIdentities((string Kind, string Identity)[] roots, (string Domain, string Source)[] contents)
+        { Roots = roots; Contents = contents; }
+        public (string Kind, string Identity)[] Roots { get; }
+        public (string Domain, string Source)[] Contents { get; }
+    }
+
+    // 同一工作区的文档快照，按目录内全部 JSON 的相对路径、修改时间与长度判定复用。
+    sealed class AuthoringDocumentCache
+    {
+        static readonly ConcurrentDictionary<string, AuthoringDocumentCache> s_Workspaces = new(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, (string Stamp, AuthoringDocumentSnapshot Snapshot)> m_Documents = new(StringComparer.OrdinalIgnoreCase);
+
+        public static AuthoringDocumentCache For(string workspace) => s_Workspaces.GetOrAdd(workspace, _ => new AuthoringDocumentCache());
+
+        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory)
+        {
+            FileInfo[] files = new DirectoryInfo(directory).GetFiles("*.json", SearchOption.AllDirectories);
+            var relative = new string[files.Length];
+            for (int i = 0; i < files.Length; i++)
+                relative[i] = Path.GetRelativePath(directory, files[i].FullName).Replace('\\', '/');
+            Array.Sort(relative, files, StringComparer.Ordinal);
+            var stamp = new StringBuilder();
+            for (int i = 0; i < files.Length; i++)
+                stamp.Append(relative[i]).Append('|').Append(files[i].LastWriteTimeUtc.Ticks).Append('|').Append(files[i].Length).Append('\n');
+            string key = stamp.ToString();
+            lock (m_Documents)
+                if (m_Documents.TryGetValue(directory, out var cached) && cached.Stamp == key)
+                    return cached.Snapshot;
+            var contents = new Dictionary<string, string>(files.Length, StringComparer.Ordinal);
+            for (int i = 0; i < files.Length; i++)
+                contents.Add(relative[i], File.ReadAllText(files[i].FullName, Encoding.UTF8));
+            var snapshot = new AuthoringDocumentSnapshot(kind, workspace, directory, contents);
+            lock (m_Documents)
+                m_Documents[directory] = (key, snapshot);
+            return snapshot;
+        }
+
+        public void Retain(HashSet<string> directories)
+        {
+            lock (m_Documents)
+                foreach (string removed in m_Documents.Keys.Where(directory => !directories.Contains(directory)).ToArray())
+                    m_Documents.Remove(removed);
+        }
+    }
+
     public sealed class AuthoringDocumentRepository
     {
+        static readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> NoDeclaredElements =
+            _ => Array.Empty<AuthoringDocumentElement>();
         readonly AuthoringCommits m_Commits;
+        readonly AuthoringDocumentCache m_Cache;
         readonly Func<AuthoringDocumentSnapshot, IEnumerable<AuthoringDocumentElement>> m_DeclaredElements;
 
         public AuthoringDocumentRepository(string workspace,
@@ -158,6 +212,7 @@ namespace BTSMTL.Authoring.Workspace
         {
             Workspace = Path.GetFullPath(workspace);
             m_Commits = AuthoringCommits.For(Workspace);
+            m_Cache = AuthoringDocumentCache.For(Workspace);
             m_DeclaredElements = declaredElements;
         }
 
@@ -257,19 +312,18 @@ namespace BTSMTL.Authoring.Workspace
                     throw new InvalidOperationException($"作者文档 '{read.Key}' 已在读取后变化，期望修订 {read.Value}、实际 {actual}。");
             }
             IReadOnlyList<AuthoringDocumentSnapshot> edited = Edit(captured, writes);
-            IReadOnlyList<AuthoringDocumentElement> elements = Elements(edited);
-            elements.Where(element => element.Kind != "input" && element.Value.Parent == null)
-                .GroupBy(element => (element.Kind, element.Identity)).ToList().ForEach(group =>
-                {
-                    if (group.Count() != 1)
-                        throw new InvalidDataException($"作者 {group.Key.Kind} 身份 '{group.Key.Identity}' 有多个正式来源。");
-                });
-            elements.Where(element => element.ContentDomain != null)
-                .GroupBy(element => (element.ContentDomain, element.SourceIdentity)).ToList().ForEach(group =>
-                {
-                    if (group.Count() != 1)
-                        throw new InvalidDataException($"作者内容 '{group.Key.ContentDomain}' 的身份 '{group.Key.SourceIdentity}' 有多个正式来源。");
-                });
+            var roots = new HashSet<(string, string)>();
+            var contents = new HashSet<(string, string)>();
+            foreach (AuthoringDocumentSnapshot document in edited)
+            {
+                AuthoringDocumentIdentities identities = IdentitiesOf(document);
+                foreach (var root in identities.Roots)
+                    if (!roots.Add(root))
+                        throw new InvalidDataException($"作者 {root.Kind} 身份 '{root.Identity}' 有多个正式来源。");
+                foreach (var content in identities.Contents)
+                    if (!contents.Add(content))
+                        throw new InvalidDataException($"作者内容 '{content.Domain}' 的身份 '{content.Source}' 有多个正式来源。");
+            }
             var changes = new List<AuthoringFileChange>();
             foreach (AuthoringDocumentWrite write in writes)
             {
@@ -299,9 +353,21 @@ namespace BTSMTL.Authoring.Workspace
                 new AuthoringDocumentWrite(write.Kind, directory, write.ExpectedRevision, write.Files);
         }).ToArray();
 
+        AuthoringDocumentIdentities IdentitiesOf(AuthoringDocumentSnapshot document) =>
+            document.Identities.GetOrAdd(m_DeclaredElements ?? NoDeclaredElements, _ =>
+            {
+                AuthoringDocumentElement[] elements = EnumerateElements(new[] { document }, null, null).ToArray();
+                return new AuthoringDocumentIdentities(
+                    elements.Where(element => element.Kind != "input" && element.Value.Parent == null)
+                        .Select(element => (element.Kind, element.Identity)).ToArray(),
+                    elements.Where(element => element.ContentDomain != null)
+                        .Select(element => (element.ContentDomain, element.SourceIdentity)).ToArray());
+            });
+
         IReadOnlyList<AuthoringDocumentSnapshot> Capture()
         {
             var documents = new List<AuthoringDocumentSnapshot>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (AuthoringDocumentKind kind in AuthoringDocumentKind.All)
             {
                 string library = Path.Combine(Workspace, kind.Directory);
@@ -310,12 +376,11 @@ namespace BTSMTL.Authoring.Workspace
                     Directory.EnumerateFiles(library, kind.RootFile, SearchOption.AllDirectories).Select(Path.GetDirectoryName);
                 foreach (string directory in directories.OrderBy(path => path, StringComparer.Ordinal))
                 {
-                    var files = Directory.EnumerateFiles(directory, "*.json", SearchOption.AllDirectories)
-                        .ToDictionary(path => Path.GetRelativePath(directory, path).Replace('\\', '/'),
-                            path => File.ReadAllText(path, Encoding.UTF8), StringComparer.Ordinal);
-                    documents.Add(new AuthoringDocumentSnapshot(kind, Workspace, directory, files));
+                    documents.Add(m_Cache.Read(kind, Workspace, directory));
+                    seen.Add(directory);
                 }
             }
+            m_Cache.Retain(seen);
             return documents;
         }
 
