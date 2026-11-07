@@ -802,13 +802,16 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
     } : null,
     crumbs: [{ label: focused ? timelineName(focused) : '全部 Timeline' }],
   };
-  const clock = useMemo<PreviewClock>(() => quickPlan !== null ? { kind: 'quick', documentId: focused?.documentId ?? null,
-      source: quickInput ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } }
-    : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, source:
+  const clock = useMemo<PreviewClock>(() => {
+    const documentId = focused?.documentId ?? null;
+    if (quickPlan !== null) return { kind: 'quick', documentId,
+      source: quickInput ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } };
+    if (inputScheme) return { kind: 'input', documentId: inputScheme.documentId, source:
       !quickMode && (inputObservation.kind === 'ready' || realArchive && inputObservation.kind === 'before-start') ? 'archive'
-        : realArchive ? 'unavailable' : 'author' }
-      : { kind: realArchive && authorObservation === null ? 'archive' : 'document', documentId: focused?.documentId ?? null, observation: observed },
-  [quickMode, realArchive, quickPlan, quickInput, quickSegment, focused?.documentId, observed, authorObservation, inputScheme, inputObservation.kind]);
+        : realArchive ? 'unavailable' : 'author' };
+    if (realArchive && authorObservation === null) return { kind: 'archive', documentId, observation: observed };
+    return { kind: 'document', documentId, observation: authorObservation };
+  }, [quickMode, realArchive, quickPlan, quickInput, quickSegment, focused?.documentId, observed, authorObservation, inputScheme, inputObservation.kind]);
   const curveClock = useWorkbench(useShallow((state): CurveClock => {
     if (clock.kind === 'archive' && timelineNotice !== null) return { kind: 'unavailable', reason: timelineNotice };
     if (quickMode || (clock.kind === 'input' && clock.source !== 'archive')) return { kind: 'unavailable', reason: '当前没有对应的运行观察' };
