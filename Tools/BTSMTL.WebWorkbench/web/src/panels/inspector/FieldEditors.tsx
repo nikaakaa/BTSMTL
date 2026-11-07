@@ -773,19 +773,14 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
 
 const trackFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_Clips', 'm_Markers']);
 
-// 轨道与片段按原 C# 类型的存储形状编辑（枚举给下拉、布尔给勾选）；形状取宿主 elements 中同合同种类的模板。
-function useElementShape(kind: 'tracks' | 'clips', contract: JsonValue | undefined): StorageShape | null {
-  const elements = useSkillElements(true);
-  return elements?.[kind].find(item => item.kind === contract)?.shape ?? null;
-}
-
 const memberShape = (shape: StorageShape | null, member: string) => shape?.members?.find(item => item.member === member) ?? null;
 
 export function TrackFields({ documentId, trackId, children }: { documentId: string; trackId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
-  const shape = useElementShape('tracks', track?.ContractKind);
+  const elements = useSkillElements(true);
+  const shape = elements?.tracks.find(template => template.kind === track?.ContractKind)?.shape ?? null;
   if (!track) return null;
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
   return (
