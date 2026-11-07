@@ -116,6 +116,8 @@ namespace BTSMTL.Preview
             m_Project.WriteStatus();
         }
 
+        public void RequestStreamFrame() => m_CaptureRequested = true;
+
         public void LateUpdate()
         {
             PreviewPlaybackState state = m_Project.Playback.State;
@@ -125,7 +127,7 @@ namespace BTSMTL.Preview
                 Time.unscaledTime >= m_NextVideo)
             {
                 m_NextVideo = Time.unscaledTime + 1f / Mathf.Max(1f, m_MaxFps);
-                m_CaptureRequested = true;
+                RequestStreamFrame();
             }
         }
 
@@ -246,12 +248,14 @@ namespace BTSMTL.Preview
                 }
                 if (!m_CaptureRequested)
                     continue;
-                m_CaptureRequested = false;
                 Camera camera = m_Project.ActiveCamera();
                 if (!camera)
                     throw new InvalidOperationException("实时画面没有实际输出相机。");
                 if (m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera, out int captureSlot))
+                {
                     m_Project.FreezeStreamSource(captureSlot);
+                    m_CaptureRequested = false;
+                }
             }
         }
 
