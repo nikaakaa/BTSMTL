@@ -12,23 +12,8 @@
     <ProjectReference Include="../ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/BtsmtlRuntimeEditableAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Timeline/*.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/FieldContracts.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringGeneratedContract.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringMemberBindings.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldAttribute.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/UnityGraphAuthoringResourceTypes.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringIdentities.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/CapabilityCatalog.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/PortContracts.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringColor.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringResourceOperations.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPorts.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationNodeDeclarations.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortShapes.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlGraphDocument.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlGraphEntryDeclaration.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlGraphNodeContracts.cs" />
+    <!-- Authoring/Graph 与 Blackboard 整目录为引擎外共享作者合同；只排除依赖 UnityEngine 的文件。 -->
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/*.cs" Exclude="../../Packages/com.btsmtl/Authoring/Graph/*.Unity.cs;../../Packages/com.btsmtl/Authoring/Graph/DomainContracts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlFlowNodes.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/*SerializedFields.cs" />
@@ -50,18 +35,6 @@
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Timeline.AuthoringExtensions.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/Timeline.Tree.cs" />
     <Compile Include="../../Packages/com.btsmtl/Timeline/Editor/Scripts/*SerializedFields.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/BtsmtlNativeValueNodeCatalog.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardInputProjection.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardInputBinding.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlBlackboardDeclaration.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlGraphVariableDeclarations.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/BtsmtlGraphVariableDeclarationsJson.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueType.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/CompileValueTypes.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/GraphHostContracts.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/SemanticNumericValues.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/*.cs" Exclude="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableReference.cs" />
   </ItemGroup>
 </Project>

@@ -65,77 +65,81 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 
 以上合同的生产者和网页消费者源码已接通，项目原 CLI／Host 全 ProjectReference 类型检查也已通过；Main Editor／Native 完整类型、目标 Editor 加载 v2 及真实预览仍未证明。网页 tsc、正式 .NET 根类型通过都不证明部署、实际服务版本或现场 UI 行为，原阶段见[项目接入检查](../../../3C/docs/测试/WorkbenchGameplay接入.md#2026-11-02-网页-quick-v2-源码接续)。
 
-## 技能与场景作者文件
+## 作者文档、技能与场景
+
+作者内容以工作区文档为单位读写：`documentPath` 为工作区相对路径，`kind` 为文档种类（如技能、Timeline）。读写都带修订：编辑视图 `editingView` 为 `{writes:[{kind,documentPath,expectedRevision,files:{<相对路径>:<完整 JSON 原文>}}],reads:[{documentPath,revision}],execution?,scene?,product?}`，`writes` 是本次未保存内容，`reads` 是查询所依据的已读修订；任一修订与磁盘不符时拒绝，不覆盖外部修改。查询都可带同一 `editingView`，按未保存内容回答，不需要先保存。
 
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
+| `GET /api/authoring/documents` | `kind?` | 文档目录 |
+| `GET /api/authoring/documents/content` | `documentPath` | 文档原文与修订 |
+| `GET /api/authoring/documents/elements` | `kind?` | 文档种类的正式模板 |
+| `POST /api/authoring/documents/editing-view` | `editingView` | 按编辑视图解析后的文档快照，不写盘 |
+| `PUT /api/authoring/documents` | `editingView` | 只保存作者文档；修订冲突拒绝 |
+| `POST /api/authoring/documents/apply?documentPath=` | `{editingView,preview?,job?}` | 保存并编译技能，按需刷新 Live 或提交作业，见下文 |
+| `POST /api/authoring/documents/document?documentPath=` | `{offset?,limit?,graphId?,editingView?}` | 技能文档的图与引用关系，不要求先创建运行 |
 | `GET /api/authoring/skills` | 无 | 技能目录名 `string[]` |
-| `GET /api/authoring/skills/{skill}` | 无 | `SkillSnapshot`：`{skill,revision,files:[{path,content}]}` |
-| `GET /api/authoring/skills/{skill}/changes` | `revision` | `{skill,revision,changed,files:[{path,revision}]}` |
-| `GET /api/authoring/skills/{skill}/document` | 无 | `{skill,programId,sourceRevision,tickRate,graphs:SkillDocumentGraph[],relations:SkillDocumentRelation[]}`；不要求先创建运行 |
-| `PUT /api/authoring/skills/{skill}` | `SkillSaveRequest`，见下文 | 编译保存或输入保存的分支回执；拒绝时保留正式诊断 |
+| `GET /api/authoring/skills/creation-options` | 无 | 新建技能的宿主参数表 |
+| `POST /api/authoring/skills/draft-create` | `{parameters}` | 新技能草稿文档，尚未保存 |
+| `DELETE /api/authoring/skills/{skill}` | `{expectedRevision,editingView}` | 删除技能目录及其引用改动 |
+| `POST /api/authoring/references/replace` | `{action,domain,oldValue,newValue,context?,expectedRevision?}` | 引用批量替换回执 |
 | `GET /api/authoring/scenarios` | 无 | 场景方案目录名 `string[]` |
-| `GET /api/authoring/scenarios/{scenario}` | 无 | 与 `SkillSnapshot` 相同文件快照结构 |
-| `GET /api/authoring/scenarios/{scenario}/changes` | `revision` | 与技能 changes 相同结构 |
-| `PUT /api/authoring/scenarios/{scenario}` | `SkillSaveRequest` | 输入保存回执，`compilationState="not-required"` |
-| `POST /api/authoring/scenarios/{scenario}/draft` | `{scene,sceneRevision,actorId,schemeName,rangeEndSeconds}` | `{files:[{path,content}]}`；只生成草稿，尚未写目录，随后用 PUT 保存 |
+| `GET /api/authoring/scenarios/{scenario}` | 无 | `{skill,revision,files:[{path,content}]}` 文件快照 |
+| `GET /api/authoring/scenarios/{scenario}/changes` | `revision` | `{skill,revision,changed,files:[{path,revision}]}` |
+| `PUT /api/authoring/scenarios/{scenario}` | `{editingView,preview?,job?}` | 输入保存回执，`compilationState="not-required"` |
+| `POST /api/authoring/scenarios/{scenario}/draft` | `{scene,sceneRevision,actorId,schemeName,rangeEndSeconds}` | `{files:[{path,content}]}`；只生成草稿，随后用 PUT 保存 |
 | `POST /api/authoring/scenarios/{scenario}/recordings` | `{archive,scene,actorId,planId?}` | `{content,input:{planId,path,revision}}`；实际写入／更新录制方案，`archive` 是归档 `archive.json` 路径 |
 | `POST /api/authoring/input-fragments` | `{scene,sceneRevision,actorId,key,operation,startSeconds,endSeconds}` | `{track,clip,graph,tickRate,sceneRevision,availability}`；返回正式 JSON 对象，尚未保存 |
 
+目录、产品与运行配置另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/abilities/runtime/read|configure`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs` 与宿主同名记录。
+
 `input-fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
 
-文件快照 `revision` 是文件内容哈希清单的修订；`document.sourceRevision` 是正式作者内容闭包修订，两者职责不同。运行图是否可叠加还需对应 `programId/programRevision` 及实际调用。未保存内容不能继续显示旧运行值为当前结果。
+文档修订是文件内容的修订；技能文档的 `sourceRevision` 是正式作者内容闭包修订，两者职责不同。运行图是否可叠加还需对应 `programId/programRevision` 及实际调用。未保存内容不能继续显示旧运行值为当前结果。
 
-`document.relations` 从节点正式字段合同读取引用：`source` 给出原 owner、文件、graphId、nodeId、fieldId 与 serializedMemberPath；`target` 给出 `kind=graph|timeline`、id、displayName、owner、ownerName、file。图目标保留 role 与 ownership；Timeline 目标的这两项为 null。节点标题按钮、双击与检查器引用入口消费同一关系，先打开目标 owner，再按 kind 打开节点图或 Timeline；不从节点名称猜目标，也不要求先运行到该节点。
+文档 `relations` 从节点正式字段合同读取引用：`source` 给出原 owner、文件、graphId、nodeId、fieldId 与 serializedMemberPath；`target` 给出 `kind=graph|timeline`、id、displayName、owner、ownerName、file。图目标保留 role 与 ownership；Timeline 目标的这两项为 null。节点标题按钮、双击与检查器引用入口消费同一关系，先打开目标 owner，再按 kind 打开节点图或 Timeline；不从节点名称猜目标，也不要求先运行到该节点。
 
 ### 类型、字段、端口和模板
 
-下表技能查询前缀为 `/api/authoring/skills/{skill}/queries`。`offset` 默认 0 且不得为负，`limit` 默认 128、范围 1～128；分页结果还包含 `total/offset/limit/hasMore/items` 等查询字段。
+下表都为 `POST`，查询串带 `documentPath`，请求体可带 `editingView`。`offset` 默认 0 且不得为负，`limit` 默认 128、范围 1～128；分页结果还包含 `total/offset/limit/hasMore/items` 等查询字段。
 
-| 方法与完整路径 | 参数或请求 | 核心数据 |
+| 路径 | 请求 | 核心数据 |
 | --- | --- | --- |
-| `GET /api/authoring/skills/{skill}/queries/types` | `search?,offset?,limit?` | 实际节点类型；`type,clrType,family,kind,nativeType,timelineDomains`，`clrType` 可以为 null |
-| `POST /api/authoring/skills/{skill}/queries/type` | `{type,configuration?,graphId?,offset?,limit?}` | 默认或当前草稿 `configuration`、字段分页及独立的端口可用性／分页 |
-| `GET /api/authoring/skills/{skill}/queries/nodes` | `graphId?,offset?,limit?` | 已保存节点 |
-| `GET /api/authoring/skills/{skill}/queries/fields` | `graphId,nodeId,offset?,limit?` | 已保存节点字段 |
-| `GET /api/authoring/skills/{skill}/queries/ports` | `graphId,nodeId,offset?,limit?` | 已保存节点端口 |
-| `GET /api/authoring/skills/{skill}/queries/references` | `offset?,limit?` | `identity,asset,referenceCount` |
-| `GET /api/authoring/skills/{skill}/queries/referrers` | `identity,offset?,limit?` | 指定身份的真实引用方 |
-| `GET /api/authoring/skills/{skill}/queries/blackboards` | `offset?,limit?` | `identity,graphId,id,key,type,category` |
-| `GET /api/authoring/skills/{skill}/queries/elements` | 无 | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状 |
-| `GET /api/authoring/scenarios/{scenario}/queries/types` | `search?,offset?,limit?` | 场景方案的类型查询 |
-| `POST /api/authoring/scenarios/{scenario}/queries/type` | 与技能 type 请求相同 | 场景方案的默认／草稿配置描述 |
-| `GET /api/authoring/scenarios/{scenario}/queries/elements` | 无 | 场景输入编辑模板 |
+| `/api/authoring/documents/queries/types` | 查询串 `search?`；体 `{offset?,limit?}` | 实际节点类型；`type,clrType,family,kind,nativeType,timelineDomains`，`clrType` 可以为 null |
+| `/api/authoring/documents/queries/type` | `{type,configuration?,graphId?,offset?,limit?}` | 默认或当前草稿 `configuration`、字段分页及独立的端口可用性／分页 |
+| `/api/authoring/documents/queries/nodes` | `{graphId?,offset?,limit?}` | 节点 |
+| `/api/authoring/documents/queries/fields` | `{graphId,nodeId,offset?,limit?}` | 节点字段 |
+| `/api/authoring/documents/queries/ports` | `{graphId,nodeId,offset?,limit?}` | 节点端口 |
+| `/api/authoring/documents/queries/profile` | `{offset?,limit?}` | 文档档案字段 |
+| `/api/authoring/documents/queries/references` | `{offset?,limit?}` | `identity,asset,referenceCount` |
+| `/api/authoring/documents/queries/referrers` | `{identity?,target?,offset?,limit?}` | 指定身份的真实引用方 |
+| `/api/authoring/documents/queries/reference-curves` | 与 referrers 相同 | 引用目标的曲线 |
+| `/api/authoring/documents/queries/project` | `{offset?,limit?}` | 文档所属工程条目 |
+| `/api/authoring/documents/queries/blackboards` | `{offset?,limit?}` | `identity,graphId,id,key,type,category` |
+| `/api/authoring/documents/queries/elements` | 查询串 `timelineId?` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状 |
 
-新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。
+场景方案沿用 `GET /api/authoring/scenarios/{scenario}/queries/types`（`search?,offset?,limit?`）、`POST .../queries/type`（与上表 type 相同）与 `GET .../queries/elements`（`scene?,actor?`）。
 
-`elements` 提供 `anchors/transition/tracks/clips/marker/previewInput/blackboard`；轨道和片段模板带 `kind/clrType/value/shape`。输入节点类型、按键成员路径和各值类型成员从 `previewInput` 取。
+新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。存储形状成员带 `authoring`（`fieldId,displayName,authoringVisible,readOnly,allowedValues,graphReference`），检查器只显示作者可见、非图引用的成员；组合节点步骤的中断策略可选值随所属组合节点给出。
+
+`elements` 提供 `anchors/transition/tracks/clips/marker/previewInput/blackboard`；轨道和片段模板带 `kind/clrType/value/shape/structureMembers`，`structureMembers` 是由时间轴结构编辑、不作为普通字段的成员。输入节点类型、按键成员路径和各值类型成员从 `previewInput` 取。
 
 整体 `availability.available=true` 不等于端口可用。例如宏输入节点缺少所属 Subgraph 上下文时，HTTP 仍为 200，`fields` 可读，但 `ports` 为 `{availability:{available:false,reason},errors:[...]}`，没有 `hasMore/items`。端口可用时才是 `{availability:{available:true,reason:null},hasMore,items,...}`。UI 保留该原因并在上下文补齐后重查，不能把它显示成“此节点没有端口”。
 
 ### 保存、编译与采用
 
-```json
-{
-  "content": {
-    "files": [{ "path": "graphs/<id>.json", "content": "<完整 JSON 原文>" }],
-    "removedFiles": ["graphs/<已删除 id>.json"]
-  },
-  "preview": null
-}
-```
-
-`files` 可只包含本次修改或新建的文件，删除必须列入 `removedFiles`；不能因未出现在 `files` 就推断删除。可选 `preview` 为 `{requestId,liveId,scene,sceneRevision,source,channels}`；可选 `job` 是下文完整 `StartPlayerJobRequest`。
+`documents/apply` 与场景 `PUT` 的请求为 `{editingView,preview?,job?}`：`editingView.writes` 只需包含本次修改的文档，每份带读取时的 `expectedRevision`；可选 `preview` 为 `{requestId,liveId,scene,sceneRevision,source,channels}`；可选 `job` 是下文完整 `StartPlayerJobRequest`。
 
 | 保存结果 | 必须处理的回执 |
 | --- | --- |
 | 技能内容成功 | HTTP 200，`saved:true,compilationState:"succeeded",content,compilation,preview,jobError`；`compilation` 含 `compilationKey,sourceRevision,artifactReceiptPath,reused` |
 | 仅输入闭包修改／场景方案 | HTTP 200，`saved:true,compilationState:"not-required",content,inputs,preview,job`；没有技能 `compilation` |
 | 作者格式或编译拒绝 | HTTP 422，`saved:true,content,stage,compilationState`，附 `diagnostic` 或原 `error/output/exitCode`；文件已经落盘，不能展示为“没有保存” |
+| 修订冲突 | HTTP 409；没有写盘，需重读后再编辑 |
 
 技能刷新回执单独使用 `stage=accepted/adopted/failed/unavailable`，并提供 `statusPath`；通过 `GET /api/preview/refreshes/{id}` 继续读取原请求。只有实际载入 ACK 为 applied 才为 adopted。只改输入时，宿主更新引用本目录方案的实际输入修订后载入或提交作业；包含技能内容的保存不能直接以旧场景包自动启动新档案，回执会给出 `jobError`。
 
-`changes` 提供外部修改观察；通用 PUT 当前没有 `expectedRevision` 或 `If-Match` 参数，不能宣称它提供服务端乐观锁。引用、私有图与 Timeline 的新增删除应放在同一次作者事务的完整变更集合中。
+作者库写入由跨进程文件锁串行（工作区根 `.transaction.lock`），Unity Editor 与 Host 同时保存时后到者等待，持锁超过 30 秒报错；引用、私有图与 Timeline 的新增删除应放在同一次 `editingView` 中提交。
 
 ## Live 生命周期、载入与控制
 

@@ -7,12 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="10.0.14" />
-    <Compile Include="Program.cs" />
-    <Compile Include="WorkbenchApplication.cs" />
-    <Compile Include="PreviewApi.cs" />
-    <Compile Include="PreviewImageApi.cs" />
-    <Compile Include="WebAnimationLibrary.cs" />
-    <Compile Include="AnimationResourceApi.cs" />
+    <!-- 只取本目录源文件；Contracts 是独立工程，web/ 是前端。 -->
+    <Compile Include="*.cs" />
     <ProjectReference Include="Contracts/BTSMTL.WebWorkbench.Contracts.csproj" />
   </ItemGroup>
 </Project>
