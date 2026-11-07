@@ -114,13 +114,13 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | `/api/authoring/documents/queries/references` | `{offset?,limit?}` | `identity,asset,referenceCount` |
 | `/api/authoring/documents/queries/referrers` | `{identity?,target?,offset?,limit?}` | 指定身份的真实引用方 |
 | `/api/authoring/documents/queries/reference-curves` | 与 referrers 相同 | 引用目标的曲线 |
-| `/api/authoring/documents/queries/project` | `{offset?,limit?}` | 文档所属工程条目 |
+| `/api/authoring/documents/queries/project` | 首页 `{offset?,limit?,editingView?}`；后续页 `{snapshot,offset,limit?}` | 文档所属工程条目；回执带 `snapshot`，后续页只带它、不再带 `editingView`，宿主从同一份快照切片。宿主只留最近 8 份快照，失效时报错，需从首页重读 |
 | `/api/authoring/documents/queries/blackboards` | `{offset?,limit?}` | `identity,graphId,id,key,type,category` |
-| `/api/authoring/documents/queries/elements` | 查询串 `timelineId?` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状 |
+| `/api/authoring/documents/queries/elements` | 查询串 `timelineId?` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状；图模板带 `role/seed/ownership`，`value` 与已读入图同为展开模型；`state` 为状态机新状态模板，`flowOutputs` 列出带执行出口列表的节点成员及其元素形状 |
 
 场景方案沿用 `GET /api/authoring/scenarios/{scenario}/queries/types`（`search?,offset?,limit?`）、`POST .../queries/type`（与上表 type 相同）与 `GET .../queries/elements`（`scene?,actor?`）。
 
-新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。存储形状成员带 `authoring`（`fieldId,displayName,authoringVisible,readOnly,allowedValues,graphReference`），检查器只显示作者可见、非图引用的成员；组合节点步骤的中断策略可选值随所属组合节点给出。
+新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。存储形状成员带 `authoring`（`fieldId,displayName,authoringVisible,readOnly,allowedValues,optional,graphTargets`），`graphTargets` 非空的成员是专属图槽位（目标 `role/ownership/ownerBinding/seed`），检查器按槽位提供打开、新建与可选时的移除，其余只显示作者可见的成员；组合节点步骤的中断策略可选值随所属组合节点给出。
 
 `elements` 提供 `anchors/transition/tracks/clips/marker/previewInput/blackboard`；轨道和片段模板带 `kind/clrType/value/shape/structureMembers`，`structureMembers` 是由时间轴结构编辑、不作为普通字段的成员。输入节点类型、按键成员路径和各值类型成员从 `previewInput` 取。
 

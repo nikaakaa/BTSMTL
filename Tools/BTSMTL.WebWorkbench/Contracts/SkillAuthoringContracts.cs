@@ -33,6 +33,9 @@ public sealed record SkillAuthoringConfigurationQuery([property: JsonRequired] s
     GraphAuthoringProfileQuery? Profile = null, string? Domain = null, int Offset = 0, int Limit = 128);
 public sealed record SkillAuthoringPageQuery(int Offset = 0, int Limit = 128, string? GraphId = null,
     AuthoringDocumentEditingView? EditingView = null);
+// 工程目录：首页带编辑视图并取得快照标识，后续页只带快照标识。
+public sealed record SkillAuthoringProjectQuery(int Offset = 0, int Limit = 128, string? Snapshot = null,
+    AuthoringDocumentEditingView? EditingView = null);
 public sealed record SkillAuthoringNodeQuery([property: JsonRequired] string GraphId,
     [property: JsonRequired] string NodeId, int Offset = 0, int Limit = 128,
     AuthoringDocumentEditingView? EditingView = null);

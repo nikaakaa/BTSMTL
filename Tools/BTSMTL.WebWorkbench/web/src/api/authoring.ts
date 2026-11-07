@@ -278,6 +278,7 @@ export type ProjectItem = ProjectItemBase & (
 );
 
 export interface AuthoringProject extends Page<ProjectItem> {
+  snapshot: string;
   catalogRevision: string;
   resourceCatalogRevision: string;
 }
@@ -850,9 +851,13 @@ export const authoringApi = {
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<BlackboardItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/blackboards'),
       { editingView, offset, limit: 128 }, signal)).then(page => page.items),
-  project: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
-    allPages<ProjectItem, AuthoringProject>(offset => postJson(documentQueryPath(target.documentPath, 'queries/project'),
-      { editingView, offset, limit: 128 }, signal)),
+  // 首页按编辑视图计算并取得快照，后续页凭快照切片，不重复上传编辑视图。
+  project: async (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) => {
+    const path = documentQueryPath(target.documentPath, 'queries/project');
+    const first = await postJson<AuthoringProject>(path, { editingView, offset: 0, limit: 128 }, signal);
+    return allPages<ProjectItem, AuthoringProject>(offset => offset === 0 ? Promise.resolve(first)
+      : postJson(path, { snapshot: first.snapshot, offset, limit: 128 }, signal));
+  },
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
