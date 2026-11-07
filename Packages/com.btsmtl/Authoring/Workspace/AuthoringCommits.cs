@@ -28,14 +28,16 @@ public sealed class AuthoringReadRevision
     public string Revision { get; }
 }
 
-// 作者数据的跨文件整体提交。同一作者根目录（Authoring）只有一个实例：读取持有读锁，提交持有写锁；
+// 作者数据的跨文件整体提交。同一作者根目录（Authoring）每个进程一个实例：读取持有读锁，提交持有写锁；
+// 进程内锁之外再持有根目录锁文件，Unity Editor、Host 与 CLI 之间同样读写互斥。
 // 新内容先全部写到目标旁的同卷临时文件，再写事务日志，逐个原子替换后删除日志。中途失败时只向前完成，不回滚。
 public sealed class AuthoringCommits
 {
     public const string JournalName = ".transaction.json";
+    public const string LockName = ".transaction.lock";
     static readonly ConcurrentDictionary<string, AuthoringCommits> s_Roots = new(StringComparer.OrdinalIgnoreCase);
     static readonly UTF8Encoding Utf8 = new(false);
-    readonly AuthoringReaderWriterLock m_Lock = new();
+    readonly AuthoringReaderWriterLock m_Lock;
 
     sealed class JournalEntry
     {
@@ -47,7 +49,9 @@ public sealed class AuthoringCommits
     AuthoringCommits(string root)
     {
         Root = root;
-        Recover();
+        m_Lock = new AuthoringReaderWriterLock(Path.Combine(root, LockName));
+        using (AuthoringProcessLock.Acquire(Path.Combine(root, LockName), true))
+            Recover();
     }
 
     public string Root { get; }
@@ -161,9 +165,41 @@ public sealed class AuthoringCommits
     }
 }
 
+// 跨进程读写锁：读取以共享读打开锁文件，写入以独占打开；句柄随进程退出由系统释放，不留残锁。
+// 争用时在当前线程短轮询，不让出到同步上下文：Unity 主线程上的同步等待调用不会因此自锁。
+static class AuthoringProcessLock
+{
+    static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    const int RetryMilliseconds = 10;
+
+    public static FileStream Acquire(string path, bool exclusive)
+    {
+        var started = DateTime.UtcNow;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, exclusive ? FileAccess.ReadWrite : FileAccess.Read,
+                    exclusive ? FileShare.None : FileShare.Read);
+            }
+            catch (IOException) when (DateTime.UtcNow - started < Timeout)
+            {
+                Thread.Sleep(RetryMilliseconds);
+            }
+            catch (IOException exception)
+            {
+                throw new InvalidOperationException(
+                    $"作者库锁 '{path}' 被其它进程持有超过 {Timeout.TotalSeconds} 秒，请确认 Unity Editor、Host 或 CLI 没有卡在作者读写中。", exception);
+            }
+        }
+    }
+}
+
 // 异步读写锁：写入优先；同一调用链已持有的读取可重入，写入内的读取与写入可重入。读取内不得请求写入。
+// 最外层持有者再取跨进程锁文件：进程内读者各持一个共享句柄，写者持独占句柄。
 sealed class AuthoringReaderWriterLock
 {
+    readonly string m_ProcessLockPath;
     readonly SemaphoreSlim m_Writer = new(1);
     readonly object m_Sync = new();
     readonly AsyncLocal<bool> m_Writing = new();
@@ -171,6 +207,8 @@ sealed class AuthoringReaderWriterLock
     int m_Readers;
     TaskCompletionSource<object> m_Drained;
     TaskCompletionSource<object> m_WriterDone;
+
+    public AuthoringReaderWriterLock(string processLockPath) => m_ProcessLockPath = processLockPath;
 
     public bool IsWriting => m_Writing.Value;
 
@@ -194,6 +232,7 @@ sealed class AuthoringReaderWriterLock
         }
         try
         {
+            using FileStream shared = AuthoringProcessLock.Acquire(m_ProcessLockPath, false);
             m_Reading.Value = true;
             return await action();
         }
@@ -223,6 +262,7 @@ sealed class AuthoringReaderWriterLock
         try
         {
             await drained;
+            using FileStream exclusive = AuthoringProcessLock.Acquire(m_ProcessLockPath, true);
             m_Writing.Value = true;
             return await action();
         }
