@@ -111,8 +111,10 @@ namespace BTSMTL.Authoring.Workspace
 
     public sealed class AuthoringCatalog
     {
+        // 按文件修改时间与长度判定复用，与作者文档快照一致；戳变化才重新读盘、算修订与解析。
         sealed class Cached
         {
+            public string Stamp;
             public string Text;
             public string Revision;
             public AuthoringCatalogEntry[] Entries;
@@ -137,27 +139,30 @@ namespace BTSMTL.Authoring.Workspace
                 string directory = Path.Combine(path, "catalog");
                 if (!Directory.Exists(directory))
                     continue;
-                foreach (string file in Directory.EnumerateFiles(directory, "*.json").OrderBy(item => item, StringComparer.Ordinal))
+                foreach (FileInfo info in new DirectoryInfo(directory).EnumerateFiles("*.json")
+                             .OrderBy(item => item.FullName, StringComparer.Ordinal))
                 {
-                    string text = System.IO.File.ReadAllText(file, Encoding.UTF8);
-                    string revision = AuthoringCommits.Revision(text);
-                    Cached parsed = s_Files.AddOrUpdate(file, _ => Parse(file, path, text, revision),
-                        (_, current) => current.Revision == revision ? current : Parse(file, path, text, revision));
+                    string file = info.FullName;
+                    string stamp = info.LastWriteTimeUtc.Ticks + "|" + info.Length;
+                    if (!s_Files.TryGetValue(file, out Cached parsed) || parsed.Stamp != stamp)
+                        s_Files[file] = parsed = Parse(file, path, stamp);
                     entries.AddRange(parsed.Entries);
                     inputs.Add(file, parsed.Text);
-                    revisions.Append(Path.GetRelativePath(m_Workspace, file)).Append(':').Append(revision).Append('\n');
+                    revisions.Append(Path.GetRelativePath(m_Workspace, file)).Append(':').Append(parsed.Revision).Append('\n');
                 }
             }
             return new AuthoringCatalogSnapshot(AuthoringCommits.Revision(revisions.ToString()), entries, inputs);
         }
 
-        static Cached Parse(string file, string adapterPath, string text, string revision)
+        static Cached Parse(string file, string adapterPath, string stamp)
         {
+            string text = System.IO.File.ReadAllText(file, Encoding.UTF8);
+            string revision = AuthoringCommits.Revision(text);
             string adapter = Path.GetFileName(adapterPath), domain = Path.GetFileNameWithoutExtension(file);
             using var reader = new JsonTextReader(new StringReader(text)) { DateParseHandling = DateParseHandling.None };
             AuthoringCatalogEntry[] entries = JArray.Load(reader).Cast<JObject>()
                 .Select(item => new AuthoringCatalogEntry(adapter, domain, file, item)).ToArray();
-            return new Cached { Text = text, Revision = revision, Entries = entries };
+            return new Cached { Stamp = stamp, Text = text, Revision = revision, Entries = entries };
         }
     }
 }
