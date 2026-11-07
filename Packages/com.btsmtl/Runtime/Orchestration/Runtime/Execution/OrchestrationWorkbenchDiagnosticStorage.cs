@@ -636,6 +636,13 @@ namespace BTSMTL.Orchestration
                         return selected;
                 }
             int entry = (borrowed ? m_TraceBorrowedFrameEntries : m_TraceFrameEntries)[frame];
+            if (entry < 0 && !borrowed && cursor.IsForceStopping && frame == cursor.ExecutionFrameIndex)
+            {
+                ref readonly OrchestrationExecutionFrameState closingFrame = ref cursor.FrameHeader(frame);
+                // Timeline 正文在退出回调建立入口之前关闭，帧头持有正文入口。
+                if (closingFrame.TimelineStart.PlaybackIdentity != 0 && !closingFrame.Marker)
+                    entry = closingFrame.EntryOperationIndex;
+            }
             int invocation = FindTraceInvocation(in group, entry);
             if (invocation < 0)
                 throw new InvalidOperationException($"Trace operation '{operationIndex}' requires its actual invocation entry scope for execution frame '{frame}'.");
