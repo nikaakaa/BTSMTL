@@ -753,7 +753,8 @@ namespace BTSMTL.Timeline.Editor
                 m_Prefetching = false;
                 AdvanceTarget(deadline);
             }
-            catch (TimelineAssetPreviewInputUnavailableException exception)
+            catch (InvalidOperationException exception) when (exception is TimelineAssetPreviewInputUnavailableException or
+                TimelineStaticInputUnavailableException)
             {
                 m_TargetStep = TargetStage.None;
                 m_Instance?.AbortTarget();
@@ -1009,8 +1010,6 @@ namespace BTSMTL.Timeline.Editor
             m_Parallel.Clear();
             m_Conditions.Clear();
             m_Suggestions.Clear();
-            int playback = -1;
-            int branch = 0;
             // 编排执行的容量覆盖整份程序，同一状态机里每个 Timeline 都要先准备。
             if (m_Query != null)
             {
@@ -1021,155 +1020,29 @@ namespace BTSMTL.Timeline.Editor
                     if (call.Callee != null)
                         ContentFor(m_Query.ResolveTimeline(call.CalleeIdentity));
             }
+            OrchestrationTime previewEnd = OrchestrationTime.FromSeconds(Preferences.RangeEnd);
+            TimelineStaticRoute route;
+            TimelineRuntimePreparedContent standalone = null;
+            TimelineAssetPreviewReadIntervals inputs = null;
             if (m_EntryMachine < 0)
             {
-                TimelineRuntimePreparedContent source = ContentFor(Source);
-                BuildStandalone(source?.Content ?? Discover(Source), source);
-                RootStart = OrchestrationTime.Zero;
-                playback = 0;
-                Chain = null;
+                standalone = ContentFor(Source);
+                route = TimelineStaticRoute.BuildStandalone(standalone?.Content ?? Discover(Source), previewEnd);
             }
             else
             {
-                var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
-                if (inputs.RootStart >= OrchestrationTime.FromSeconds(Preferences.RangeEnd))
-                    throw new TimelineAssetPreviewInputUnavailableException(
-                        $"输入方案在 {inputs.RootStart.AsSingle:0.###} 秒才起手根，已超出预览范围终点。");
-                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine, inputs.RootStart,
-                    OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
-                RootStart = inputs.RootStart;
-                AddChain(Chain, 0, m_Traversals, ref playback);
-                AddBranches(Chain, ref branch, ref playback);
+                inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
+                route = TimelineStaticRoute.Build(m_Query.Query, m_EntryMachine, previewEnd, inputs.Intervals);
             }
-            if (m_Query != null)
-            {
-                foreach (IGrouping<int, TimelineAssetPreviewTraversal> caller in m_Traversals.Concat(m_Parallel)
-                             .GroupBy(value => value.Playback).ToArray())
-                    AddCalls(caller.ToArray(), new HashSet<string>(StringComparer.Ordinal), ref branch, ref playback);
-            }
-            RebuildFastRoute();
+            RootStart = route.RootStart;
+            Chain = route.Chain;
+            ApplyFastRoute(route, standalone);
             if (Chain != null)
-                CollectConditions(new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests));
+                CollectConditions(inputs);
             Time = Mathf.Min(Time, Duration);
             m_SampleRequested = true;
             Revision++;
             Changed?.Invoke();
-        }
-
-        // 一条链的各段：经转移进入或换 Timeline 时开始一次新播放，其余为同一次播放按圈拆开。
-        void AddChain(TimelineStaticChain chain, int branch, List<TimelineAssetPreviewTraversal> result, ref int playback)
-        {
-            OrchestrationStaticTransition entry = null;
-            TimelineAsset previous = null;
-            foreach (TimelineStaticChainSpan span in chain.Spans)
-            {
-                TimelineAsset source = m_Query.ResolveTimeline(span.State.TimelineIdentity);
-                TimelineRuntimePreparedContent content = ContentFor(source);
-                if (previous == null || entry != null || source != previous)
-                    playback++;
-                result.Add(new TimelineAssetPreviewTraversal(source, content, span.Start, span.End,
-                    span.LocalStart, span.LocalEnd, span.Cycle, entry, span.State, span.PlaybackCompleted, branch, playback));
-                previous = source;
-                entry = null;
-                foreach (TimelineStaticChainMarker marker in chain.Markers)
-                    if (marker.Time == span.End)
-                        entry = marker.Transition;
-            }
-        }
-
-        // 状态 Root 中并行的状态机（含嵌套）各为一个分支，与主链共用播放编号。
-        void AddBranches(TimelineStaticChain chain, ref int branch, ref int playback)
-        {
-            foreach (TimelineStaticChainBranch value in chain.Branches)
-            {
-                AddChain(value.Chain, ++branch, m_Parallel, ref playback);
-                AddBranches(value.Chain, ref branch, ref playback);
-            }
-        }
-
-        // Clip 与 Marker 调用拉起的嵌套播放：调用方该次播放的每一圈经过调用时刻就起播一次，与调用方共用预览时间，
-        // 各为一个分支交给领域与主链合并，寿命受调用图执行帧与父播放共同限制。
-        void AddCalls(TimelineAssetPreviewTraversal[] caller, HashSet<string> chain, ref int branch, ref int playback)
-        {
-            TimelineAssetPreviewTraversal first = caller[0];
-            OrchestrationStaticTimeline timeline = first.Call != null ? first.Call.Callee : first.State?.Timeline;
-            if (timeline == null)
-                return;
-            int operation = first.Call != null ? first.Call.OperationIndex : first.State.TimelineOperationIndex;
-            OrchestrationTime playbackEnd = OrchestrationTime.Zero;
-            foreach (TimelineAssetPreviewTraversal span in caller)
-                playbackEnd = OrchestrationTime.Max(playbackEnd, span.End);
-            chain.Add(timeline.Identity);
-            foreach (OrchestrationStaticTimelineCall call in timeline.Calls)
-            {
-                if (call.CallerOperationIndex != operation || !call.StartsOnCallback || call.Callee == null ||
-                    chain.Contains(call.CalleeIdentity))
-                    continue;
-                for (int callerIndex = 0; callerIndex < caller.Length; callerIndex++)
-                {
-                    TimelineAssetPreviewTraversal span = caller[callerIndex];
-                    bool destroy = call.Hook == OrchestrationTimelineHook.Destroy;
-                    if (destroy && callerIndex != caller.Length - 1)
-                        continue;
-                    OrchestrationTime offset = destroy ? span.LocalEnd : call.Offset;
-                    if (call.Hook == OrchestrationTimelineHook.Disable && callerIndex == caller.Length - 1 &&
-                        call.Clip.Start <= span.LocalEnd && call.Clip.End > span.LocalEnd)
-                        offset = span.LocalEnd;
-                    if (offset < span.LocalStart || offset > span.LocalEnd ||
-                        offset == span.LocalEnd && !span.PlaybackCompleted && !call.IsInstantaneous)
-                        continue;
-                    OrchestrationTime start = span.Start + offset - span.LocalStart;
-                    OrchestrationTime end = OrchestrationTime.Min(playbackEnd, OrchestrationTime.FromSeconds(Preferences.RangeEnd));
-                    if (!call.IsInstantaneous && call.Limit is { } limit)
-                        end = OrchestrationTime.Min(end, span.Start + limit - span.LocalStart);
-                    if (end < start || end == start && !call.IsInstantaneous)
-                        continue;
-                    TimelineAsset source = m_Query.ResolveTimeline(call.CalleeIdentity);
-                    TimelineRuntimePreparedContent content = ContentFor(source);
-                    int nestedPlayback = ++playback;
-                    int nestedBranch = ++branch;
-                    OrchestrationTime duration = call.Callee.Duration;
-                    OrchestrationTime local = call.CalleeStartTime;
-                    OrchestrationTime time = start;
-                    int cycle = 0;
-                    var nested = new List<TimelineAssetPreviewTraversal>();
-                    if (call.IsInstantaneous)
-                        nested.Add(new TimelineAssetPreviewTraversal(source, content, start, start, local, local,
-                            cycle, null, null, false, nestedBranch, nestedPlayback, call, span.Playback));
-                    while (!call.IsInstantaneous && time < end)
-                    {
-                        if (local >= duration)
-                        {
-                            if (call.PlaybackMode == OrchestrationTimelinePlaybackMode.HoldLastFrame)
-                            {
-                                nested.Add(new TimelineAssetPreviewTraversal(source, content, time, end,
-                                    duration, duration, cycle, null, null, false, nestedBranch, nestedPlayback, call,
-                                    span.Playback));
-                                break;
-                            }
-                            if (call.PlaybackMode != OrchestrationTimelinePlaybackMode.Loop || duration <= OrchestrationTime.Zero)
-                                break;
-                            local = OrchestrationTime.Zero;
-                            cycle++;
-                        }
-                        OrchestrationTime spanEnd = OrchestrationTime.Min(end, time + duration - local);
-                        bool completed = call.PlaybackMode == OrchestrationTimelinePlaybackMode.Once &&
-                            spanEnd == time + duration - local;
-                        nested.Add(new TimelineAssetPreviewTraversal(source, content, time, spanEnd, local,
-                            local + spanEnd - time, cycle, null, null, completed, nestedBranch, nestedPlayback, call,
-                            span.Playback));
-                        local += spanEnd - time;
-                        time = spanEnd;
-                        if (completed)
-                            break;
-                    }
-                    if (nested.Count == 0)
-                        continue;
-                    m_Parallel.AddRange(nested);
-                    AddCalls(nested.ToArray(), chain, ref branch, ref playback);
-                }
-            }
-            chain.Remove(timeline.Identity);
         }
 
         TimelineContentUnit Discover(TimelineAsset source)
@@ -1180,32 +1053,9 @@ namespace BTSMTL.Timeline.Editor
             return discovery.Content;
         }
 
-        void BuildStandalone(TimelineContentUnit content, TimelineRuntimePreparedContent prepared)
-        {
-            if (content.Loop && content.Duration <= OrchestrationTime.Zero)
-                throw new InvalidOperationException("循环资产预览的 Timeline 时长必须大于零。");
-            OrchestrationTime limit = OrchestrationTime.FromSeconds(Preferences.RangeEnd);
-            OrchestrationTime global = OrchestrationTime.Zero;
-            int cycle = 0;
-            do
-            {
-                OrchestrationTime end = OrchestrationTime.Min(global + content.Duration, limit);
-                OrchestrationTime localEnd = end - global;
-                m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared,
-                    global, end, OrchestrationTime.Zero, localEnd, cycle, null, null,
-                    !content.Loop && localEnd == content.Duration, 0, 0));
-                global = end;
-                if (!content.Loop)
-                    break;
-                cycle++;
-            } while (global < limit);
-        }
-
         // 路线经过的状态出边读到的条件（按含义键去重），以及没走成的出边所缺条件：读到的运行数据在该状态播放区间内没有全程成立。
         void CollectConditions(TimelineAssetPreviewReadIntervals inputs)
         {
-            m_Conditions.Clear();
-            m_Suggestions.Clear();
             var taken = new HashSet<OrchestrationStaticTransition>();
             CollectTaken(Chain, taken);
             var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -1335,21 +1185,29 @@ namespace BTSMTL.Timeline.Editor
             m_RouteEnd = OrchestrationTime.Max(m_RouteEnd, segment.End);
         }
 
-        // 快速档：主链与并行分支的全部播放，与采样使用同一组区间；第几次播放按开始时刻计。
-        void RebuildFastRoute()
+        void ApplyFastRoute(TimelineStaticRoute route, TimelineRuntimePreparedContent standalone)
         {
+            foreach (TimelineStaticRouteSpan span in route.Main)
+                m_Traversals.Add(Project(span));
+            foreach (TimelineStaticRouteSpan span in route.Parallel)
+                m_Parallel.Add(Project(span));
             ClearRoute();
-            var occurrences = new Dictionary<TimelineAsset, int>();
-            var playbacks = new Dictionary<int, int>();
-            foreach (TimelineAssetPreviewTraversal traversal in m_Traversals.Concat(m_Parallel)
-                         .OrderBy(value => value.Start).ThenBy(value => value.Branch))
+            foreach ((TimelineStaticRouteSpan span, int occurrence) in route.OrderedSpans())
+                m_Route.Add(new TimelinePreviewRouteSegment(SourceOf(span), span.State, span.Start, span.End,
+                    span.LocalStart, span.LocalEnd, span.Cycle, span.Playback, occurrence, span.PlaybackCompleted,
+                    null, span.CallerPlayback, span.Call?.CallerElementId, span.Call));
+            m_RouteEnd = route.End;
+
+            TimelineAsset SourceOf(TimelineStaticRouteSpan span) =>
+                route.Chain == null ? Source : m_Query.ResolveTimeline(span.TimelineIdentity);
+
+            TimelineAssetPreviewTraversal Project(TimelineStaticRouteSpan span)
             {
-                if (!playbacks.TryGetValue(traversal.Playback, out int occurrence))
-                    playbacks.Add(traversal.Playback, occurrence = Occurrence(occurrences, traversal.Source));
-                AddRoute(new TimelinePreviewRouteSegment(traversal.Source, traversal.State, traversal.Start,
-                    traversal.End, traversal.LocalStart, traversal.LocalEnd, traversal.Cycle, traversal.Playback,
-                    occurrence, traversal.PlaybackCompleted, null, traversal.CallerPlayback,
-                    traversal.CallerPlayback >= 0 ? traversal.Call?.CallerElementId : null, traversal.Call));
+                TimelineAsset source = SourceOf(span);
+                TimelineRuntimePreparedContent content = route.Chain == null ? standalone : ContentFor(source);
+                return new TimelineAssetPreviewTraversal(source, content, span.Start, span.End, span.LocalStart,
+                    span.LocalEnd, span.Cycle, span.Transition, span.State, span.PlaybackCompleted, span.Branch,
+                    span.Playback, span.Call, span.CallerPlayback);
             }
         }
 

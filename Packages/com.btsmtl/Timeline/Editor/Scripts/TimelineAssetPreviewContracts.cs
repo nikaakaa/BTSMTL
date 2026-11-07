@@ -114,15 +114,14 @@ namespace BTSMTL.Timeline.Editor
     {
         public TimelinePreviewInputRequest(string inputId, int tickRate, ulong bufferTicks)
         {
-            InputId = inputId;
-            TickRate = tickRate;
-            BufferTicks = bufferTicks;
+            StaticRequest = new TimelineStaticInputRequest(inputId, tickRate, bufferTicks);
         }
 
-        public string InputId { get; }
-        public int TickRate { get; }
-        public ulong BufferTicks { get; }
-        public double DurationSeconds => (BufferTicks + 1) / (double)TickRate;
+        internal TimelineStaticInputRequest StaticRequest { get; }
+        public string InputId => StaticRequest.InputId;
+        public int TickRate => StaticRequest.TickRate;
+        public ulong BufferTicks => StaticRequest.BufferTicks;
+        public double DurationSeconds => StaticRequest.DurationSeconds;
     }
 
     [Serializable]

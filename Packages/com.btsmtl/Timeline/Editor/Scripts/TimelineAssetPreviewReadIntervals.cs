@@ -1,122 +1,53 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Compilation.Analysis;
 using BTSMTL.Graphs;
 using BTSMTL.Orchestration;
-using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
 {
     public sealed class TimelineAssetPreviewReadIntervals : ITimelineStaticReadIntervals
     {
-        readonly TimelineAssetPreviewPreferences m_Preferences;
-        readonly Dictionary<string, IReadOnlyList<TimelineStaticInterval>> m_Intervals = new(StringComparer.Ordinal);
-
         public TimelineAssetPreviewReadIntervals(TimelineAssetPreviewPreferences preferences,
             IReadOnlyList<GraphHostInputDescriptor> descriptors,
             IReadOnlyList<TimelinePreviewInputRequest> requests)
         {
-            m_Preferences = preferences;
-            var requestInputs = requests.ToDictionary(request => request.InputId, StringComparer.Ordinal);
-            // 作者假设：方案里最早的一次动作请求起手根，被起手消耗，不再作为根内读取。
-            // 会话按逻辑 Tick 读取请求，起手与请求成立时刻都向上取整到 Tick。
-            TimelinePreviewInputPoint activation = preferences.Inputs
-                .Where(point => point.Boolean && requestInputs.ContainsKey(point.InputId))
-                .OrderBy(point => point.Time).FirstOrDefault();
-            if (activation != null)
+            try
             {
-                Activation = activation;
-                RootStart = OrchestrationTime.FromSeconds(
-                    TickCeiling(activation.Time, requestInputs[activation.InputId].TickRate));
+                Intervals = new TimelineStaticReadIntervals(preferences.Inputs.Select(ReadInput),
+                    ReadConditions(), descriptors, requests.Select(request => request.StaticRequest), preferences.RangeEnd);
             }
-            foreach (var input in preferences.Inputs.GroupBy(point => point.InputId))
+            catch (TimelineStaticInputUnavailableException exception)
             {
-                TimelinePreviewInputPoint[] points = input.OrderBy(point => point.Time).ToArray();
-                GraphHostInputDescriptor descriptor = descriptors.FirstOrDefault(value => value.InputId == input.Key);
-                if (descriptor == null)
-                    throw new TimelineAssetPreviewInputUnavailableException($"预览日程中的输入 '{input.Key}' 已不在当前角色的正式输入声明中，请删除该日程项。");
-                var intervals = new List<TimelineStaticInterval>();
-                if (requestInputs.TryGetValue(input.Key, out TimelinePreviewInputRequest request))
-                {
-                    foreach (TimelinePreviewInputPoint point in points)
-                        if (point.Boolean && !ReferenceEquals(point, Activation))
-                        {
-                            double start = TickCeiling(point.Time, request.TickRate);
-                            intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(start),
-                                OrchestrationTime.FromSeconds(start + request.DurationSeconds)));
-                        }
-                }
-                else
-                    for (int i = 0; i < points.Length; i++)
-                        if (Holds(descriptor, points[i]))
-                            intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(points[i].Time),
-                                OrchestrationTime.FromSeconds(i + 1 < points.Length ? points[i + 1].Time : preferences.RangeEnd)));
-                m_Intervals.Add(input.Key, intervals);
+                throw new TimelineAssetPreviewInputUnavailableException(exception.Message);
+            }
+            if (Intervals.ActivationIndex >= 0)
+                Activation = preferences.Inputs[Intervals.ActivationIndex];
+
+            TimelineStaticInputPoint ReadInput(TimelinePreviewInputPoint point)
+            {
+                bool vector2 = descriptors.Any(value => value.InputId == point.InputId && value.ValueKind == GraphHostValueKind.Vector2);
+                return new TimelineStaticInputPoint(point.InputId, point.Time, point.Boolean, point.Integer, point.Scalar,
+                    vector2 ? point.Vector2.x : point.Vector3.x, vector2 ? point.Vector2.y : point.Vector3.y, point.Vector3.z);
+            }
+
+            IEnumerable<TimelineStaticConditionPoint> ReadConditions()
+            {
+                foreach (TimelinePreviewConditionPoint point in preferences.ConditionPoints)
+                    yield return new TimelineStaticConditionPoint(point.Key, point.Time, point.Satisfied, point.RestoreDefault);
             }
         }
 
-        static double TickCeiling(double seconds, int tickRate) => Math.Ceiling(seconds * tickRate - 1e-6) / tickRate;
-
-        // 起手根的请求；方案没有动作请求时为 null，根从 0 秒开始。
+        internal TimelineStaticReadIntervals Intervals { get; }
         public TimelinePreviewInputPoint Activation { get; }
-        public OrchestrationTime RootStart { get; } = OrchestrationTime.Zero;
+        public OrchestrationTime RootStart => Intervals.RootStart;
+        public IReadOnlyList<TimelineStaticInterval> HostInput(string inputId) => Intervals.HostInput(inputId);
+        public IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read) => Intervals.RuntimeData(in read);
 
-        // 输入作为条件读取时：开关为真、数值与向量非零才算成立（如"有移动输入"读方向键非零）。
-        static bool Holds(GraphHostInputDescriptor descriptor, TimelinePreviewInputPoint point) => descriptor.ValueKind switch
-        {
-            GraphHostValueKind.Bool => point.Boolean,
-            GraphHostValueKind.Int32 or GraphHostValueKind.Enum => point.Integer != 0,
-            GraphHostValueKind.Float32 => point.Scalar != 0f,
-            GraphHostValueKind.Vector2 => point.Vector2 != Vector2.zero,
-            GraphHostValueKind.Vector3 => point.Vector3 != Vector3.zero,
-            _ => true
-        };
-
-        public IReadOnlyList<TimelineStaticInterval> HostInput(string inputId) =>
-            m_Intervals.TryGetValue(inputId, out IReadOnlyList<TimelineStaticInterval> intervals)
-                ? intervals : Array.Empty<TimelineStaticInterval>();
-
-        // 运行数据按输入 Timeline 上"预览条件"的写入分段：没写过取默认值，写入后保持到同一条件的下一次写入。
-        public IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read)
-        {
-            bool fallback = DefaultSatisfied(in read);
-            bool value = fallback;
-            var result = new List<TimelineStaticInterval>();
-            OrchestrationTime start = OrchestrationTime.Zero;
-            foreach (TimelinePreviewConditionPoint point in m_Preferences.ConditionPoints)
-            {
-                bool next = point.RestoreDefault ? fallback : point.Satisfied;
-                if (point.Key != read.Key || next == value)
-                    continue;
-                OrchestrationTime at = OrchestrationTime.FromSeconds(point.Time);
-                if (value && at > start)
-                    result.Add(new TimelineStaticInterval(start, at));
-                value = next;
-                start = at;
-            }
-            if (value)
-                result.Add(new TimelineStaticInterval(start, OrchestrationTime.MaxValue));
-            return result;
-        }
-
-        // 资产预览只运行本链上的 Clip：没有 Clip 提供的 Clip 状态默认未成立，其它运行数据默认成立。
         public static bool DefaultSatisfied(in OrchestrationStaticRead read) =>
-            read.Source != OrchestrationStaticReadSource.ClipState;
+            TimelineStaticReadIntervals.DefaultSatisfied(in read);
 
-        // 某时刻条件的取值与来源（输入 Timeline 写入或默认）。
-        public bool ValueAt(in OrchestrationStaticRead read, OrchestrationTime time, out bool written)
-        {
-            bool fallback = DefaultSatisfied(in read);
-            bool value = fallback;
-            written = false;
-            foreach (TimelinePreviewConditionPoint point in m_Preferences.ConditionPoints)
-                if (point.Key == read.Key && OrchestrationTime.FromSeconds(point.Time) <= time)
-                {
-                    value = point.RestoreDefault ? fallback : point.Satisfied;
-                    written = !point.RestoreDefault;
-                }
-            return value;
-        }
+        public bool ValueAt(in OrchestrationStaticRead read, OrchestrationTime time, out bool written) =>
+            Intervals.ValueAt(in read, time, out written);
     }
 }
