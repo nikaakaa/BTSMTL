@@ -164,7 +164,7 @@ namespace BTSMTL.Authoring.Workspace
     sealed class AuthoringDocumentCache
     {
         static readonly ConcurrentDictionary<string, AuthoringDocumentCache> s_Workspaces = new(StringComparer.OrdinalIgnoreCase);
-        readonly Dictionary<string, (string Stamp, AuthoringDocumentSnapshot Snapshot)> m_Documents = new(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, (string Stamp, Lazy<AuthoringDocumentSnapshot> Snapshot)> m_Documents = new(StringComparer.OrdinalIgnoreCase);
 
         public static AuthoringDocumentCache For(string workspace) => s_Workspaces.GetOrAdd(workspace, _ => new AuthoringDocumentCache());
 
@@ -179,16 +179,31 @@ namespace BTSMTL.Authoring.Workspace
             for (int i = 0; i < files.Length; i++)
                 stamp.Append(relative[i]).Append('|').Append(files[i].LastWriteTimeUtc.Ticks).Append('|').Append(files[i].Length).Append('\n');
             string key = stamp.ToString();
+            // 同一目录、同一文件戳的并发读取共用一次读盘与解析；失败不缓存，下一次读取重新尝试。
+            Lazy<AuthoringDocumentSnapshot> entry;
             lock (m_Documents)
-                if (m_Documents.TryGetValue(directory, out var cached) && cached.Stamp == key)
-                    return cached.Snapshot;
-            var contents = new Dictionary<string, string>(files.Length, StringComparer.Ordinal);
-            for (int i = 0; i < files.Length; i++)
-                contents.Add(relative[i], File.ReadAllText(files[i].FullName, Encoding.UTF8));
-            var snapshot = new AuthoringDocumentSnapshot(kind, workspace, directory, contents);
-            lock (m_Documents)
-                m_Documents[directory] = (key, snapshot);
-            return snapshot;
+            {
+                if (!m_Documents.TryGetValue(directory, out var cached) || cached.Stamp != key)
+                    m_Documents[directory] = cached = (key, new Lazy<AuthoringDocumentSnapshot>(() =>
+                    {
+                        var contents = new Dictionary<string, string>(files.Length, StringComparer.Ordinal);
+                        for (int i = 0; i < files.Length; i++)
+                            contents.Add(relative[i], File.ReadAllText(files[i].FullName, Encoding.UTF8));
+                        return new AuthoringDocumentSnapshot(kind, workspace, directory, contents);
+                    }));
+                entry = cached.Snapshot;
+            }
+            try
+            {
+                return entry.Value;
+            }
+            catch
+            {
+                lock (m_Documents)
+                    if (m_Documents.TryGetValue(directory, out var failed) && failed.Snapshot == entry)
+                        m_Documents.Remove(directory);
+                throw;
+            }
         }
 
         public void Retain(HashSet<string> directories)
