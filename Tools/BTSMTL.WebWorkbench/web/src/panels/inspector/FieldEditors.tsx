@@ -1050,9 +1050,9 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
-  const shape = useElementShape('clips', clip?.ContractKind);
   const elements = useSkillElements(skill !== null);
   const template = elements?.clips.find(template => template.kind === clip?.ContractKind);
+  const shape = template?.shape ?? null;
   const { description, issues } = useDescription(skill, template === undefined || clip === null ? null
     : { kind: 'configuration', graphId: null, type: template.clrType, configuration: clip });
   if (!clip) return null;
