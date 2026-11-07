@@ -1,4 +1,5 @@
 import { array, boolean, choice, identity, nullable, number, object, opaque, text, type Decoder } from './playerRecords';
+import type { SourceFile } from './types';
 import type { WorkspaceEditingView } from './workspaceDocuments';
 
 export const readQuickScenes = array(object({ publication: object({ path: text, revision: text }), scenePath: text, sceneGuid: text, sceneRevision: text }));
@@ -84,7 +85,11 @@ export type PreviewQuickInputSource = ReturnType<typeof inputSource>;
 export type PreviewQuickRoot = { kind: 'nativeDocument'; authoring: PreviewQuickAuthoringTarget }
   | { kind: 'webEditingView'; authoring: PreviewQuickAuthoringTarget; editingView: WorkspaceEditingView }
   | { kind: 'authoringDocument'; authoring: PreviewQuickAuthoringTarget };
-export interface PreviewQuickTarget { scenePath: string; root: PreviewQuickRoot | null }
+export interface PreviewQuickTarget {
+  scenePath: string;
+  scenePublication?: SourceFile;
+  root: PreviewQuickRoot | null;
+}
 export type PreviewQuickInputOverlay = { points: PreviewQuickInputPoint[]; conditions: PreviewQuickConditionPoint[] }
   | { points?: never; conditions?: never };
 export type PreviewQuickInput = PreviewQuickInputOverlay & {

@@ -69,7 +69,9 @@ const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
   const root = target?.root;
-  return JSON.stringify([target?.scenePath, root?.kind, root == null ? null : quickAuthoringKey(root.authoring)]);
+  const publication = target?.scenePublication;
+  return JSON.stringify([target?.scenePath, publication?.path, publication?.revision,
+    root?.kind, root == null ? null : quickAuthoringKey(root.authoring)]);
 }
 
 export const quickAuthoringKey = (target: PreviewQuickAuthoringTarget) => JSON.stringify([target.documentPath, target.entry]);
@@ -364,7 +366,9 @@ export const quickPreview = {
     const scope = selectionKey();
     const previousRoot = current().target?.root;
     let chosen = authoring ?? previousRoot?.authoring ?? null;
-    let target: PreviewQuickTarget = { scenePath: source.kind === 'scene' ? source.scene.scenePath : source.timeline.scene.path, root: null };
+    let target: PreviewQuickTarget = source.kind === 'scene'
+      ? { scenePath: source.scene.scenePath, scenePublication: source.scene.publication, root: null }
+      : { scenePath: source.timeline.scene.path, root: null };
     set({ description: { kind: 'loading' } });
     invalidateJob();
     try {
@@ -388,7 +392,7 @@ export const quickPreview = {
         chosen = { documentPath: matches[0].document.documentPath, savedRevision: matches[0].document.savedRevision, entry: matches[0].choice.entry };
       }
       const document = useAuthoring.getState().documents[chosen.documentPath];
-      target = { scenePath: target.scenePath, root: document === undefined
+      target = { ...target, root: document === undefined
         ? { kind: 'authoringDocument', authoring: chosen }
         : { kind: 'webEditingView', authoring: { ...chosen, savedRevision: document.revision ?? '' }, editingView: authoringActions.editingView() } };
       if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
