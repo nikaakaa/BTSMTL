@@ -122,7 +122,8 @@ namespace BTSMTL.Timeline
         {
             foreach (Track track in timeline.Tracks)
                 foreach (Clip clip in track.Clips)
-                    PrepareResource(clip);
+                    if (HasResourceReference(clip.GetType()))
+                        PrepareSource(timeline, clip, Read(clip));
         }
 
         public static IReadOnlyList<TimelineAuthoringProperty> Properties(Clip clip) =>
