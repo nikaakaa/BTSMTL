@@ -41,22 +41,6 @@ function migrateGraphSelections(layout: SerializedDockview) {
   }
 }
 
-// 同组页签：按类型找默认所在组。
-const companions: Record<PanelType, PanelType[]> = {
-  player: ['player', 'viewport', 'resources'],
-  viewport: ['player', 'viewport', 'resources'],
-  resources: ['player', 'viewport', 'resources'],
-  graph: ['graph'],
-  inspector: ['inspector', 'frames'],
-  'wall-contact': ['inspector', 'frames'],
-  frames: ['inspector', 'frames'],
-  timeline: ['timeline', 'query', 'console'],
-  query: ['timeline', 'query', 'console'],
-  console: ['timeline', 'query', 'console'],
-  content: ['content'],
-  export: ['timeline', 'query', 'console'],
-};
-
 function dock(): DockviewApi {
   if (!api) throw new Error('停靠外壳尚未就绪');
   return api;
@@ -79,12 +63,13 @@ function addInstance(type: PanelType, number: number, position: AddPanelPosition
 }
 
 function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
-  for (const companion of companions[type]) {
+  // 同组页签：按类型找默认所在组。
+  for (const companion of panelInfo[type].companions) {
     const anchor = instances(companion)[0];
     if (anchor) return { referenceGroup: anchor.group, direction: 'within' };
   }
   if (type === 'graph') {
-    const player = companions.player.map(item => instances(item)[0]).find(Boolean);
+    const player = panelInfo.player.companions.map(item => instances(item)[0]).find(Boolean);
     if (player) return { referenceGroup: player.group, direction: 'right' };
   }
   switch (type) {

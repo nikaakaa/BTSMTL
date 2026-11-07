@@ -16,7 +16,7 @@ import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './player.module.css';
-import { WallContactPanel } from './WallContactPanel';
+import { playerTools } from '../../extensions';
 
 const playerStates: Record<PlayerState, string> = {
   idle: '空闲', loading: '载入中', paused: '已暂停', playing: '播放中', stepping: '单步中', seeking: '跳帧中', failed: '失败',
@@ -28,7 +28,7 @@ const liveLabel = (live: LivePlayer) => `${processStates[live.state] ?? live.sta
 interface Params {
   overlay: boolean;
   stats: boolean;
-  wallContact: boolean;
+  tools: string[];
 }
 
 export function PlayerPanel() {
@@ -124,7 +124,7 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
 }
 
 function PlayerView() {
-  const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false, wallContact: false });
+  const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false, tools: [] });
   const authoringSkill = useAuthoring(state => state.target?.kind === 'skill');
   const documentNotice = useDocumentObservationNotice();
   const state = useWorkbench(useShallow(current => ({
@@ -239,11 +239,12 @@ function PlayerView() {
           onClick={() => setCaptureBinding(captureEnabled ? null : binding)}>接管输入</Button>}
         {ready && <Button variant="ghost" onClick={() => void playerService.capture()}>截图</Button>}
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
-        <Button variant="ghost" pressed={params.wallContact} onClick={() => setParams({ wallContact: !params.wallContact })}>扶墙</Button>
+        {playerTools.map(tool => <Button key={tool.id} variant="ghost" pressed={params.tools.includes(tool.id)}
+          onClick={() => setParams({ tools: params.tools.includes(tool.id) ? params.tools.filter(id => id !== tool.id) : [...params.tools, tool.id] })}>{tool.label}</Button>)}
         {state.runId && <Button variant="ghost" pressed={params.overlay} disabled={overlayReason !== null}
           tip={overlayReason ?? '叠加画面同次表现的角色根位置'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>}
       </PanelBar>
-      {params.wallContact && <WallContactPanel />}
+      {playerTools.filter(tool => params.tools.includes(tool.id)).map(tool => <tool.component key={tool.id} />)}
       <Stage key={binding} stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay && overlayReason === null} stats={params.stats}
         captureEnabled={ready && captureEnabled && player?.inputMode === 'device'} />
     </div>

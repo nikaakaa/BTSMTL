@@ -35,7 +35,8 @@
 | `src/shell/` | 停靠外壳、主工具栏、布局保存与弹出窗口、快捷键、地址同步、就绪标记、唯一主题文件 `theme.css` |
 | `src/state/` | 全局 store、会话与播放、帧缓存、各面板数据模型、播放器连接 |
 | `src/api/` | 作者、Player 与档案 HTTP，以及画面 WebSocket 的类型和读取入口 |
-| `src/panels/` | 各面板；`registry.tsx` 登记面板类型与组件 |
+| `src/panels/` | 各面板；`registry.tsx` 登记内置与宿主扩展面板的组件 |
+| `src/extensions.ts`、`src/sdk.ts` | 宿主扩展登记（停靠面板、画面工具）与扩展唯一导入入口 `@btsmtl/workbench` |
 | `src/ui/` | 基础控件、组件头、空状态、身份折叠、虚拟列表 |
 | `src/workers/` | 记录查询与格式化的 Worker |
 
@@ -51,11 +52,11 @@
 | `frames` | 帧记录 | 当前帧或固定帧的分区记录 |
 | `timeline` | Timeline | 运行 Timeline 与预览输入轨道、标尺、游标 |
 | `query` | 记录查询 | 按条件查询整条运行的记录 |
-| `compare` | 比较 | 两个运行逐帧比较 |
+| `export` | 内容导出 | 当前内容的导出操作与结果 |
 | `console` | 控制台 | 请求失败与运行消息 |
 | `content` | 内容 | 场景、运行来源与输入方案 |
 
-`viewport`、`graph`、`inspector`、`frames` 可开多个实例，实例 id 为"类型 id-序号"。布局保存在浏览器本地，主工具栏 Layout 菜单可恢复默认布局或打开面板。
+`viewport`、`graph`、`inspector`、`frames` 可开多个实例，实例 id 为"类型 id-序号"。宿主项目面板不在本表：宿主构建时经 `BTSMTL_WORKBENCH_EXTENSIONS` 给出扩展入口，面板类型追加在内置面板之后，画面工具显示在画面工具条；未给出时工作台不含任何宿主面板。布局保存在浏览器本地，主工具栏 Layout 菜单可恢复默认布局或打开面板。
 
 ## 外观与文字
 

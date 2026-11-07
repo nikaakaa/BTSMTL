@@ -1,7 +1,8 @@
 import type { IDockviewPanelProps } from 'dockview-react';
 import type { FunctionComponent } from 'react';
+import { workbenchExtensions } from '../extensions';
 import { PanelFrame } from '../shell/panel';
-import { panelTypes, type PanelType } from '../shell/panelTypes';
+import { panelTypes, type BuiltinPanelType } from '../shell/panelTypes';
 import { ConsolePanel } from './ConsolePanel';
 import { ContentPanel } from './ContentPanel';
 import { ExportPanel } from './export/ExportPanel';
@@ -13,11 +14,9 @@ import { QueryPanel } from './records/QueryPanel';
 import { ProjectPanel } from './project/ProjectPanel';
 import { TimelinePanel } from './timeline/TimelinePanel';
 import { ViewportPanel } from './viewport/ViewportPanel';
-import { WallContactPanel } from './wall-contact/WallContactPanel';
 
-const contents: Record<PanelType, FunctionComponent> = {
+const builtinContents: Record<BuiltinPanelType, FunctionComponent> = {
   player: PlayerPanel,
-  'wall-contact': WallContactPanel,
   viewport: ViewportPanel,
   resources: ProjectPanel,
   graph: GraphPanel,
@@ -28,6 +27,12 @@ const contents: Record<PanelType, FunctionComponent> = {
   console: ConsolePanel,
   content: ContentPanel,
   export: ExportPanel,
+};
+
+const contents: Record<string, FunctionComponent> = {
+  ...builtinContents,
+  ...Object.fromEntries(workbenchExtensions.flatMap(extension =>
+    (extension.panels ?? []).map(panel => [panel.type, panel.component]))),
 };
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(

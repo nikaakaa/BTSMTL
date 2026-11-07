@@ -394,16 +394,8 @@ export interface InputCommand {
   padButtons: number;
 }
 
-type WallContactNode = import('./playerRecords').WallContactTarget;
-export type WallContactRequest =
-  | ({ operation: 'read' } & (WallContactNode | {
-      graphId?: never; nodeId?: never; instanceId?: never; graphRevision?: never }))
-  | ({ operation: 'observe'; loadCommandId: string } & WallContactNode)
-  | ({ operation: 'apply'; loadCommandId: string; expectedParameterVersion: string;
-      values: { id: string; value: string }[] } & WallContactNode)
-  | ({ operation: 'wall'; loadCommandId: string; wall: import('./playerRecords').WallContactSurface } & WallContactNode)
-;
-export type WallContactCommand = { type: 'wall-contact'; commandId: string; focusActorId: string } & WallContactRequest;
+// 宿主扩展声明的播放器命令：类型与载荷由宿主与其播放器约定，工作台只按原命令身份转发与关联回执。
+export type HostLiveCommand = { type: string; commandId: string } & { readonly [key: string]: unknown };
 
 export type LiveCommand =
   | { type: 'play' | 'pause' | 'capture' | 'stop'; commandId: string }
@@ -412,7 +404,6 @@ export type LiveCommand =
   | { type: 'pick'; commandId: string; x: number; y: number }
   | ({ type: 'camera' } & CameraCommand)
   | ({ type: 'input' } & InputCommand)
-  | WallContactCommand
   | { type: 'stream'; enabled: boolean; quality?: number; maxFps?: number };
 
 export type PlayerState = 'idle' | 'loading' | 'paused' | 'playing' | 'stepping' | 'seeking' | 'failed';

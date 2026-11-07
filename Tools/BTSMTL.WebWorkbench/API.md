@@ -264,16 +264,14 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 
 图与 Timeline 运行叠加使用完整 `ExecutionCall`：`actorId,programId,programRevision,invocationPath,parentInvocationPath,actionId,executionGeneration,invocationGeneration,parentInvocationGeneration,playbackId`。Timeline 还区分 Logic／Presentation 域；多个实际调用需要明确选择，固定后缺失当前记录不借另一实例。`loopIteration` 为可空的真实记录，不按事件出现次数估算。作者图实例路径与实际运行路径分别保留，不能裁后缀匹配父调用。
 
-## 动画资源与专用扩展
+## 动画资源与宿主扩展
 
 | 方法与路径 | 参数／请求 | 响应 |
 | --- | --- | --- |
 | `GET /api/resources/animations` | 无；Host 需配置 AnimationLibrary | `AnimationLibrary` 正式清单与内容 SHA256 |
 | `GET /api/resources/animations/file/{hash}` | 清单实际哈希；先读取清单 | glb，支持 Range 和 ETag |
-| `POST /api/authoring/wall-contact/read` | `{sourceAssetId,graphId,nodeId}` | 正式来源 `WallSource`，含 `revision/values` |
-| `POST /api/authoring/wall-contact/save` | `{target:{sourceAssetId,graphId,nodeId},expectedRevision,values:[{id,value}]}` | 实际保存后的来源与修订；走原目标 Unity 工具 |
 
-扶墙调参运行命令沿同一个 Live `/commands`，使用已登记的 `type:"wall-contact"` 及 `read/observe/apply/wall` 操作；完整请求、参数版本、实例身份、结果和重查入口在 [wall-contact/protocol.ts](web/src/panels/wall-contact/protocol.ts)。运行参数采用和保存正式来源是两个操作，各自按原回执确认；这里不新增另一条运行或保存路径。
+宿主扩展的 HTTP 接口与 Live 命令由宿主自行登记和记录，不进入本表。网页扩展在宿主构建时经 `BTSMTL_WORKBENCH_EXTENSIONS` 组合，入口模块默认导出 `WorkbenchExtension`（停靠面板、画面工具），只经 `@btsmtl/workbench`（[src/sdk.ts](web/src/sdk.ts)）使用工作台。扩展命令走同一个 Live `/commands`（`playerService.hostCommand`），回执附加字段原样保留给扩展解析；Player 状态附加字段在 `rawJson` 中。
 
 `WS /api/preview/live/{id}/player?token=...` 是 Native Player 的回连入口，供宿主启动的 Player 使用，UI 使用 `/view`，不持有或转发该 token。
 

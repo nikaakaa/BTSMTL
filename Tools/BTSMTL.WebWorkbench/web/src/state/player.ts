@@ -1,7 +1,7 @@
 import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
-import type { CameraCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage, WallContactCommand } from '../api/types';
+import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
 import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
 import { transport } from './transport';
 
@@ -132,7 +132,8 @@ function releaseDeviceInput() {
 }
 
 export const playerService = {
-  wallContact: (message: WallContactCommand) => command('wall-contact', liveId => playerApi.command(liveId, message)),
+  // 宿主扩展命令：与内置命令同一条命令通道与回执记录。
+  hostCommand: (message: HostLiveCommand) => command(message.type, liveId => playerApi.command(liveId, message)),
   subscribeAck(listener: (ack: PlayerAck) => void) {
     ackListeners.add(listener);
     return () => { ackListeners.delete(listener); };
