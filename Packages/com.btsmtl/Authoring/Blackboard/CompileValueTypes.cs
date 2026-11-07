@@ -71,9 +71,19 @@ namespace BTSMTL.Compilation
             SemanticValueKind.UInt64 => type.FullName == "System.UInt32" ? typeof(uint) : typeof(ulong),
             SemanticValueKind.Identity => typeof(string), SemanticValueKind.ObjectHandle => typeof(ObjectHandle),
             SemanticValueKind.Vector2 => typeof(Vector2), SemanticValueKind.Vector3 => typeof(Vector3),
-            SemanticValueKind.Quaternion => typeof(Quaternion), SemanticValueKind.Enum => Type.GetType(type.EnumIdentity, true),
+            SemanticValueKind.Quaternion => typeof(Quaternion), SemanticValueKind.Enum => EnumClrType(type),
             _ => throw new InvalidOperationException($"作者值类型 '{type.FullName}' 没有 CLR 类型映射。")
         };
+
+        static Type EnumClrType(CompileValueType declaration)
+        {
+            Type[] matches = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType(declaration.FullName, false))
+                .Where(type => type != null && type.IsEnum).Distinct().ToArray();
+            if (matches.Length != 1)
+                throw new InvalidOperationException($"枚举 '{declaration.EnumIdentity}' 在当前平台没有唯一 CLR 类型（{matches.Length} 个）。");
+            return matches[0];
+        }
 
         public static CompileValueType FromPlatformName(string fullName) =>
             s_Types.Values.Single(type => type.FullName == fullName);
