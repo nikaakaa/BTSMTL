@@ -1,12 +1,13 @@
 import { ApiError, postJson } from './http';
-import { array, choice, nullable, number, object, opaque, optional, text } from './playerRecords';
+import { array, choice, nullable, object, opaque, optional, text } from './playerRecords';
 import { readAuthoringAvailability } from './authoringAvailability';
 
+const readReferenceSource = choice('AdapterResource', 'AuthoringDocument');
 const readResourceReferenceFields = object({ domain: text, selection: nullable(choice('asset', 'mapped')),
   objectType: nullable(text), profile: nullable(text), mappingInputType: nullable(text), referenceType: text,
   availability: readAuthoringAvailability });
 export function readResourceReferenceMetadata(value: unknown, path = 'ResourceReference') {
-  const { source } = object({ source: nullable(choice('AdapterResource', 'AuthoringDocument')) })(value, path);
+  const { source } = object({ source: nullable(readReferenceSource) })(value, path);
   if (source === null) {
     const rule = object({ domain: nullable(text), selection: nullable(choice('asset', 'mapped')),
       contextFieldId: text, contextType: text, availability: readAuthoringAvailability })(value, path);
@@ -27,15 +28,7 @@ export function readResourceReferenceMetadata(value: unknown, path = 'ResourceRe
 export type ResourceReferenceMetadata = ReturnType<typeof readResourceReferenceMetadata>;
 export const readExecutionScopeSelection = object({ previewScope: nullable(text), runtimeScope: nullable(text) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
-const readDeclarationSource = (value: unknown, path = 'ResourceDeclaration.source') => {
-  const source = number(value, path);
-  switch (source) {
-    case 0: return 'AdapterResource' as const;
-    case 1: return 'AuthoringDocument' as const;
-    default: throw new Error(`${path} 不支持 ${source}`);
-  }
-};
-export const readResourceDeclaration = object({ domain: text, selection: nullable(choice('asset', 'mapped')), profile: nullable(text), source: readDeclarationSource,
+export const readResourceDeclaration = object({ domain: text, selection: nullable(choice('asset', 'mapped')), profile: nullable(text), source: readReferenceSource,
   mappingInputType: nullable(text), objectType: nullable(text), availability: readAuthoringAvailability });
 export type ResourceDeclaration = ReturnType<typeof readResourceDeclaration>;
 export type ResourceObjectQuery = { adapter: string; domain: string; context: string; asset: string; objectType: string };
