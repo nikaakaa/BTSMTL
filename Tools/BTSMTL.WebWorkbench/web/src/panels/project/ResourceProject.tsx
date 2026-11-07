@@ -17,7 +17,7 @@ import { ResourceCatalogView, type ResourceCatalogSelection } from './ResourceCa
 import { ReferenceReplacementImpact, ResourceReferenceReplacement, type ReferenceReplacementRefresh } from './ResourceReferenceReplacement';
 import { ScopeEditor } from './ScopeEditor';
 import { ProductScope } from './ProductScope';
-import { TargetReferrers } from './TargetReferrers';
+import { TargetReferrersFold } from './TargetReferrers';
 import styles from './project.module.css';
 
 export function ResourceProject() {
@@ -77,7 +77,7 @@ export function ResourceProject() {
             <Button disabled={authoring.target?.kind !== 'skill'} onClick={() => authoringActions.selectExecutionScope('runtimeScope', item.value)}>设为运行 Scope</Button>
             <Button onClick={() => authoringActions.activateScope({ adapter: item.adapter, scope: item.value })}>查看 Scope 声明</Button>
           </PanelBar>}
-          <TargetReferrers key={sourceKey} target={target} />
+          <TargetReferrersFold target={target} />
           <ResourceReferenceReplacement key={sourceKey} source={{ domain: target.domain, value: target.value,
             display: item?.display ?? target.value }} candidates={items} currentContext={target.context}
             conflicts={plan => referenceReplacementConflicts(plan, authoring)} onPrepare={authoringApi.prepareReferenceReplacement}
