@@ -10,15 +10,25 @@ namespace BTSMTL.Timeline
 {
     public static class TimelineJson
     {
+        public const string ContractKindMember = "ContractKind";
+        public const string ClipsMember = "m_Clips";
+        const string TracksMember = "m_Tracks";
+
+        // 轨道与片段中由时间轴结构本身编辑的成员（身份、合同种类、所含片段与标记、片段起止与片段图），不作为普通字段编辑。
+        public static readonly IReadOnlyList<string> TrackStructureMembers =
+            new[] { "m_AuthoringId", ContractKindMember, ClipsMember, "m_Markers" };
+        public static readonly IReadOnlyList<string> ClipStructureMembers =
+            new[] { "m_AuthoringId", ContractKindMember, "m_AssetTree", "m_StartTimeFPRawValue", "m_EndTimeFPRawValue" };
+
         public static TimelineData Read(JObject source, Func<JToken, Type, object> readValue)
         {
             var timeline = new TimelineData();
-            ReadFields(timeline, source, readValue, "m_Tracks");
-            foreach (JObject stored in source["m_Tracks"])
+            ReadFields(timeline, source, readValue, TracksMember);
+            foreach (JObject stored in source[TracksMember])
             {
-                var track = (Track)Activator.CreateInstance(TimelineAuthoringTypeCatalog.RequireTrackType((string)stored["ContractKind"]));
-                ReadFields(track, stored, readValue, "m_Clips");
-                foreach (JObject clip in stored["m_Clips"])
+                var track = (Track)Activator.CreateInstance(TimelineAuthoringTypeCatalog.RequireTrackType((string)stored[ContractKindMember]));
+                ReadFields(track, stored, readValue, ClipsMember);
+                foreach (JObject clip in stored[ClipsMember])
                     track.Clips.Add((Clip)readValue(clip, track.ClipType));
                 timeline.Tracks.Add(track);
             }
@@ -27,15 +37,15 @@ namespace BTSMTL.Timeline
 
         public static JObject Write(TimelineData source, Func<object, Type, JToken> writeValue)
         {
-            JObject result = WriteFields(source, writeValue, "m_Tracks");
-            result["m_Tracks"] = new JArray(source.Tracks.Select(track =>
+            JObject result = WriteFields(source, writeValue, TracksMember);
+            result[TracksMember] = new JArray(source.Tracks.Select(track =>
             {
-                JObject stored = WriteFields(track, writeValue, "m_Clips");
-                stored["ContractKind"] = track.ContractKind;
-                stored["m_Clips"] = new JArray(track.Clips.Select(clip =>
+                JObject stored = WriteFields(track, writeValue, ClipsMember);
+                stored[ContractKindMember] = track.ContractKind;
+                stored[ClipsMember] = new JArray(track.Clips.Select(clip =>
                 {
                     JObject value = WriteFields(clip, writeValue);
-                    value["ContractKind"] = clip.ContractKind;
+                    value[ContractKindMember] = clip.ContractKind;
                     return value;
                 }));
                 return stored;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
-  type GraphReferenceTarget, type ReferenceChoice, type StorageShape, type StoredField,
+  type GraphReferenceTarget, type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
@@ -44,6 +44,14 @@ const memberLabel = (member: string) => {
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
+
+// 复合值中按作者合同编辑的成员：有合同的类型只编辑合同中可见的字段，图引用交给所属子图行；
+// 合同给出的可选值（含所属节点收窄后的结果）替换枚举全集。
+const contractMembers = (shape: StorageShape | null | undefined): MemberShape[] =>
+  (shape?.members ?? []).filter(member => !shape!.hasAuthoringFields ||
+    member.authoring != null && member.authoring.authoringVisible && !member.authoring.graphReference)
+    .map(member => member.authoring?.allowedValues && member.enumValues ? { ...member, enumValues: member.authoring.allowedValues } : member);
+const contractLabel = (member: MemberShape) => member.authoring?.displayName || memberLabel(member.member);
 
 // ── 基本输入 ──
 
@@ -240,7 +248,7 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
     write(next);
   };
   const add = () => {
-    const created: JsonObject = { ...(defaultFor(shape?.element) as JsonObject), m_Condition: null, m_Id: crypto.randomUUID().replaceAll('-', '') };
+    const created: JsonObject = { ...(defaultFor(shape?.element) as JsonObject), m_Id: crypto.randomUUID().replaceAll('-', '') };
     write([...value, Object.fromEntries(Object.keys(created).sort().map(key => [key, created[key]]))]);
   };
   return (
@@ -271,24 +279,21 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
   );
 }
 
-// 连线所属步骤的调度字段（条件失效时中断、优先级）；条件图由 children 的引用行新建、移除与进入。
-// 规格：LowerPriority／Both 只用于选择执行的步骤，其它组合不提供。
+// 连线所属步骤的作者字段；条件图由 children 的引用行新建、移除与进入。
+// 中断策略的可选值由所属组合节点的编排语义经宿主收窄后给出。
 export function StepFields({ graphId, step, children }: { graphId: string; step: EdgeStep; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
   const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === step.nodeId) ?? null;
   const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId: step.nodeId });
   const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
-  const selector = step.nodeType === 'BtsmtlSkillSelectorFlowNode';
   const set: SetValue = (keys, value) => graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, ...keys], value }]);
   return (
     <Fold title="步骤" defaultOpen>
       {children}
-      {(shape?.members ?? []).filter(member => !['m_Id', 'm_Name', 'm_Condition'].includes(member.member)).map(member => (
-        <ValueEditor key={member.member} label={memberLabel(member.member)} value={step.step[member.member]}
-          shape={member.member === 'm_AbortPolicy' && !selector
-            ? { ...member, enumValues: (member.enumValues ?? []).filter(name => name === 'None' || name === 'Self') } : member}
-          keys={[member.member]} onSet={set} />
+      {contractMembers(shape).map(member => (
+        <ValueEditor key={member.member} label={contractLabel(member)} value={step.step[member.member]}
+          shape={member} keys={[member.member]} onSet={set} />
       ))}
       <DescriptionStatus description={description} issues={issues} />
     </Fold>
@@ -528,7 +533,8 @@ export function NodeFields({ graphId, nodeId, children }: { graphId: string; nod
       <Fold title="节点" defaultOpen>
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
         <DescriptionStatus description={description} issues={issues} />
-        {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
+        {/* 状态体按合同的图引用角色识别，由检查器的“状态体”一栏新建、移除与进入，不按身份字符串编辑。 */}
+        {description?.stored.filter(item => item.member !== '_inputPortValues' && !item.fields.some(field => field.graphTargets.some(target => target.role === 'StateBody'))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
             owner={{ kind: 'node', graphId, nodeId }} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
@@ -593,8 +599,6 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   </Fold>;
 }
 
-// 状态机的状态：状态体由检查器的“状态体”一栏新建、移除与进入，不按身份字符串编辑。
-export const isState = (node: JsonObject) => typeof node.type === 'string' && /^BtsmtlSkillNative\w*State$/.test(node.type);
 
 // ── 转移：Payload 按原 C# 存储形状编辑；条件图由检查器单独新建与移除 ──
 
@@ -610,8 +614,8 @@ export function TransitionFields({ graphId, connectionId, shape, children }: {
   const set: SetValue = (keys, value) => graphAuthoring.setTransitionValue(graphId, connectionId, keys, value);
   return (
     <Fold title="转移" defaultOpen>
-      {(shape.members ?? []).filter(member => member.member !== 'm_Condition').map(member => (
-        <ValueEditor key={member.member} label={memberLabel(member.member)} value={payload[member.member]} shape={member}
+      {contractMembers(shape).map(member => (
+        <ValueEditor key={member.member} label={contractLabel(member)} value={payload[member.member]} shape={member}
           keys={[member.member]} onSet={set} />
       ))}
       {children}
@@ -769,9 +773,7 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
   );
 }
 
-// ── 轨道字段：与片段相同按 JSON 值编辑；身份、合同与所含片段、标记不在此编辑 ──
-
-const trackFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_Clips', 'm_Markers']);
+// ── 轨道字段：与片段相同按 JSON 值编辑；时间轴结构成员（身份、合同与所含片段、标记）由宿主模板声明，不在此编辑 ──
 
 const memberShape = (shape: StorageShape | null, member: string) => shape?.members?.find(item => item.member === member) ?? null;
 
@@ -780,12 +782,14 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
   const elements = useSkillElements(true);
-  const shape = elements?.tracks.find(template => template.kind === track?.ContractKind)?.shape ?? null;
+  const template = elements?.tracks.find(item => item.kind === track?.ContractKind) ?? null;
   if (!track) return null;
+  const shape = template?.shape ?? null;
+  const structure = new Set(template?.structureMembers ?? []);
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
   return (
     <Fold title="轨道" defaultOpen>
-      {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
+      {template !== null && Object.keys(track).filter(key => !structure.has(key)).map(key => (
         <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />
       ))}
       {children}
@@ -1014,9 +1018,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   </>;
 }
 
-// ── 片段字段：没有类型合同，按 JSON 值本身的类型编辑；FP 时间以秒显示 ──
-
-const clipFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_AssetTree', 'm_StartTimeFPRawValue', 'm_EndTimeFPRawValue']);
+// ── 片段字段：按 JSON 值本身的类型编辑；时间轴结构成员由宿主模板声明；FP 时间以秒显示 ──
 
 // 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
@@ -1070,7 +1072,7 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {!timeOnly && description !== null && Object.keys(clip).filter(key => !clipFixed.has(key) && !resourceMembers.has(key)).map(key => key.endsWith('FPRawValue') ? (
+      {!timeOnly && description !== null && template !== undefined && Object.keys(clip).filter(key => !template!.structureMembers.includes(key) && !resourceMembers.has(key)).map(key => key.endsWith('FPRawValue') ? (
         <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />

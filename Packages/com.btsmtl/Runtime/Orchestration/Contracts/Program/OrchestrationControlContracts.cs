@@ -102,6 +102,20 @@ namespace BTSMTL.Orchestration
         Both = 3
     }
 
+    // 子步骤可选的中断策略：只有按顺序挑选的 Selector 会让排在前面的步骤打断后面正在执行的步骤。
+    public static class OrchestrationAbortPolicies
+    {
+        static readonly OrchestrationAbortPolicy[] s_Selection =
+        {
+            OrchestrationAbortPolicy.None, OrchestrationAbortPolicy.Self,
+            OrchestrationAbortPolicy.LowerPriority, OrchestrationAbortPolicy.Both
+        };
+        static readonly OrchestrationAbortPolicy[] s_Ordered = { OrchestrationAbortPolicy.None, OrchestrationAbortPolicy.Self };
+
+        public static System.Collections.Generic.IReadOnlyList<OrchestrationAbortPolicy> ForChildOf(OrchestrationOperationCode parent) =>
+            parent == OrchestrationOperationCode.Selector ? s_Selection : s_Ordered;
+    }
+
     public enum OrchestrationLifecycleHook : byte
     {
         OperationActivated = 1,

@@ -124,8 +124,19 @@ export interface StorageShape {
   members?: MemberShape[];
 }
 
+// 所属类型作者合同中对应该存储成员的字段：没有字段的成员不是作者内容；图引用由所属的子图行编辑。
+export interface MemberAuthoring {
+  fieldId: string;
+  displayName: string | null;
+  authoringVisible: boolean;
+  readOnly: boolean;
+  allowedValues: string[] | null;
+  graphReference: boolean;
+}
+
 export interface MemberShape extends StorageShape {
   member: string;
+  authoring?: MemberAuthoring | null;
 }
 
 export interface FieldReference {
@@ -346,6 +357,8 @@ export type TrackOverlap = 'Reject' | 'Parallel' | 'Blend';
 // 轨道与片段带正式 Timeline 合同，与 Unity 合同目录同一份定义。
 export interface TrackTemplate extends ElementTemplate {
   kind: string;
+  // 由时间轴结构本身编辑的成员（TimelineJson 声明），不作为普通字段编辑。
+  structureMembers: string[];
   contract: { overlap: TrackOverlap; domain: string; domains: string[]; clipKinds: string[] };
 }
 
@@ -358,6 +371,7 @@ export interface ClipCurveChannel {
 
 export interface ClipTemplate extends ElementTemplate {
   kind: string;
+  structureMembers: string[];
   contract: { trackKind: string; domains: string[] };
   curves: ClipCurveChannel[];
   // 正式 ClipCapabilities：起止按逻辑 tick 量化；可设 ClipIn（素材时间按 ClipIn 映射）。

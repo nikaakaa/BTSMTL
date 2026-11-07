@@ -41,6 +41,7 @@ namespace BTSMTL.Graphs
     {
         int StepCount { get; }
         IBtsmtlGraphStepPort GetStep(int index);
+        IReadOnlyList<OrchestrationAbortPolicy> StepAbortPolicies { get; }
     }
 
 #if UNITY_EDITOR
@@ -87,6 +88,8 @@ namespace BTSMTL.Graphs
     public abstract partial class BtsmtlCompositeFlowNode<TStep> : BtsmtlFlowNode, IBtsmtlCompositeFlowNode
         where TStep : IBtsmtlGraphStepPort
     {
+        public IReadOnlyList<OrchestrationAbortPolicy> StepAbortPolicies => OrchestrationAbortPolicies.ForChildOf(
+            ((BtsmtlGraphOperationAttribute)Attribute.GetCustomAttribute(GetType(), typeof(BtsmtlGraphOperationAttribute), false)).Code);
 #if UNITY_5_3_OR_NEWER
         protected override void RegisterPorts()
         {
