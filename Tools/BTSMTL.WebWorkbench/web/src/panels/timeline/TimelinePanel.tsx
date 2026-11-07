@@ -126,12 +126,11 @@ const ClipGridContext = createContext<ClipGridOf>(() => null);
 const snapGrid = (seconds: number, grid: Grid | null) =>
   grid ? grid.offset + Math.round((seconds - grid.offset) / grid.step) * grid.step : seconds;
 
-function useClipGrid(snap: Snap, tick: number | null): ClipGridOf {
+function useClipGrid(snap: Snap, tick: number | null, elements: SkillElements | null): ClipGridOf {
   const enabled = useAuthoring(state => state.author && state.target !== null);
-  const elements = useSkillElements(enabled);
   const rates = useAnimationFrameRates(enabled && snap === 'frame');
   return useCallback((documentId: string, clipId: string): Grid | null => {
-    const source = elements && clipSnapSource(elements, documentId, clipId);
+    const source = enabled && elements && clipSnapSource(elements, documentId, clipId);
     if (!source) return null;
     const tickGrid = tick === null ? null : { step: tick, offset: 0 };
     if (source.template.tickQuantized || snap === 'tick') return tickGrid;
@@ -139,7 +138,7 @@ function useClipGrid(snap: Snap, tick: number | null): ClipGridOf {
     if (snap !== 'frame') return { step: Number(snap), offset: 0 };
     const rate = source.template.clipInable ? source.references.map(reference => rates?.get(reference)).find(value => value) : undefined;
     return rate ? { step: 1 / rate, offset: source.start - source.clipIn } : null;
-  }, [elements, rates, snap, tick]);
+  }, [enabled, elements, rates, snap, tick]);
 }
 type TimelineObservation = { call: ExecutionCall; domain: string };
 const observationKey = (observation: TimelineObservation) => JSON.stringify([callKey(observation.call), observation.domain]);
@@ -290,6 +289,7 @@ function fitRange(bounds: Range): Range {
 
 function TimelineWindow() {
   const [params, setParams] = usePanelParams<Params>(defaults);
+  const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const schemes = useInputSchemes();
   const authorTimelines = useAuthorTimelines();
   const focusId = params.focus === allTimelines ? null
@@ -309,7 +309,7 @@ function TimelineWindow() {
   const rate = scenario ? inputRate : tickRate;
   const frameStep = rate === null ? null : 1 / rate;
   const step = snapStep(params.snap, frameStep);
-  const clipGrid = useClipGrid(params.snap ?? defaults.snap, frameStep);
+  const clipGrid = useClipGrid(params.snap ?? defaults.snap, frameStep, elements);
   const bounds = useMemo(() => ({ start: 0, end: Math.max(minSpan, documentLength) }), [documentLength]);
   const range = params.range && params.range.end > bounds.start && params.range.start < bounds.end ? params.range : fitRange(bounds);
   const rangeRef = useRef(range);
@@ -347,7 +347,7 @@ function TimelineWindow() {
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
         <SnapContext.Provider value={step}>
           <ClipGridContext.Provider value={clipGrid}>
-            <TimelineBody params={params} setParams={setParams} bounds={bounds} rate={rate} onRangeChanged={onRangeChanged} />
+            <TimelineBody elements={elements} params={params} setParams={setParams} bounds={bounds} rate={rate} onRangeChanged={onRangeChanged} />
           </ClipGridContext.Provider>
         </SnapContext.Provider>
       </TimelineContext>
@@ -387,13 +387,13 @@ interface DragSession {
 // 单个片段可拖到同一 Timeline 的另一条轨道（照 TimelineData.MoveClip：轨道能放这种片段且执行域相同），
 // 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段与标记整体平移、不换轨，拖其中的片段或标记都一样。
 // 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合；标记不许落到同轨其它标记的时刻。
-function ClipEditing({ rows, offsets, scroller, step, mover }: {
+function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
+  elements: SkillElements | null;
   rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>; step: number; mover: RefObject<GroupMove | null>;
 }) {
   const panelId = usePanelId();
   const panelWindow = usePanelWindow();
   const { range, timelineRef, sidebarWidth: sidebar, valueToPixels, getValueFromScreenX } = useTimelineContext();
-  const elements = useSkillElements(useAuthoring(state => state.author && state.target !== null));
   const drag = useClipEditing(state => state.drag?.panelId === panelId ? state.drag : null);
   const clipGrid = useContext(ClipGridContext);
   const session = useRef<DragSession | null>(null);
@@ -654,7 +654,8 @@ const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
   }, [bag.timelineRef, bag.sidebarWidth, onPanEnd]);
 };
 
-function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
+function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChanged }: {
+  elements: SkillElements | null;
   params: Params;
   setParams(patch: Partial<Params>): void;
   bounds: Range;
@@ -680,7 +681,6 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
   const edited = useAuthoring(state => authoringDocument(state).edited);
   const files = useAuthoring(state => authoringDocument(state).files);
   const timelines = useAuthorTimelines();
-  const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const references = useReferenceCurves();
   const segments = useMemo(() => documentSegments(timelines).map(segment => {
@@ -997,7 +997,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>
-            <AddTrack documentId={focused?.documentId ?? null} caret />
+            <AddTrack elements={elements} documentId={focused?.documentId ?? null} caret />
             <label className={styles.search}>
               <SearchIcon className={styles.searchIcon} />
               <TextInput className={styles.searchInput} placeholder="搜索轨道" value={params.filter}
@@ -1007,7 +1007,7 @@ function TimelineBody({ params, setParams, bounds, rate, onRangeChanged }: {
           <Ruler bounds={bounds} origin={origin} rate={rate} seekAt={seekAt} />
         </div>
         <CurveViewContext.Provider value={curveView}>
-          <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+          <Rows elements={elements} rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
         </CurveViewContext.Provider>
         <div className={styles.footer}>
           <div className={styles.footHead} />
@@ -1032,9 +1032,8 @@ interface Subject {
 }
 
 // 在 Timeline 上添加轨道（编辑行带下拉三角的＋，分组头的＋）：种类与默认值取原 C# 轨道类型。
-function AddTrack({ documentId, caret }: { documentId: string | null; caret?: boolean }) {
+function AddTrack({ elements, documentId, caret }: { elements: SkillElements | null; documentId: string | null; caret?: boolean }) {
   const author = useAuthoring(state => state.author && state.target !== null);
-  const elements = useSkillElements(author && documentId !== null);
   const schemes = useInputSchemes();
   if (!author || !documentId) return null;
   if (schemes.some(scheme => scheme.documentId === documentId)) return <AddInput documentId={documentId} caret={caret} />;
@@ -1293,7 +1292,8 @@ interface GroupMove { start(box: string, x: number, y: number): void; move(): vo
 const GroupMoveContext = createContext<RefObject<GroupMove | null>>({ current: null });
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
+function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
+  elements: SkillElements | null;
   rows: Row[];
   collapsed: string[];
   toggle(id: string): void;
@@ -1410,8 +1410,8 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
       {rows.slice(first, last).map((row, offset) => {
         const nest = nesting[first + offset];
         switch (row.kind) {
-          case 'group': return <GroupLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
-          case 'track': return <TrackLine key={row.id} row={row} nest={nest} toggleCurves={toggleCurves} />;
+          case 'group': return <GroupLine key={row.id} elements={elements} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
+          case 'track': return <TrackLine key={row.id} elements={elements} row={row} nest={nest} toggleCurves={toggleCurves} />;
           case 'inputGroup':
             return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
@@ -1425,7 +1425,7 @@ function Rows({ rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoo
       <div style={{ height: total - offsets[last] }} />
       </GroupMoveContext.Provider>
       </BoxedContext.Provider>
-      {step !== null && <ClipEditing rows={rows} offsets={offsets} scroller={scroller} step={step} mover={groupMove} />}
+      {step !== null && <ClipEditing elements={elements} rows={rows} offsets={offsets} scroller={scroller} step={step} mover={groupMove} />}
       {box && (
         <div className={styles.selectBox} style={{
           left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1),
@@ -1503,7 +1503,8 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
   );
 }
 
-const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
+const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
+  elements: SkillElements | null;
   row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string): void;
 }) {
   const segment = row.segment;
@@ -1516,7 +1517,7 @@ const GroupLine = memo(function GroupLine({ row, nest, open, toggle, enter }: {
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId)} />
-        {!row.focused && <AddTrack documentId={segment.documentId} />}
+        {!row.focused && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
@@ -1593,7 +1594,7 @@ function pasteAfterSelection() {
 
 // 作者模式右键轨道（照 Timeline Editor 轨道与片段菜单）：在点击处添加片段、标记或粘贴，
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
-function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void): MenuEntry[] {
+function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: SkillElements | null): MenuEntry[] {
   const author = useAuthoring(state => state.author && state.target !== null);
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
@@ -1602,7 +1603,6 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const step = snap ?? 1 / 65536;
   const schemes = useInputSchemes();
   const input = useInputContext(row.timeline.documentId);
-  const elements = useSkillElements(author);
   const documentId = row.timeline.documentId;
   const templates = useMemo(() => elements ? clipTemplatesFor(elements, documentId, row.track.id) : [],
     // version：轨道与片段的配对随编辑变化。
@@ -1683,14 +1683,16 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   ];
 }
 
-const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: TrackRow; nest: Nest | undefined; toggleCurves(id: string): void }) {
+const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }: {
+  elements: SkillElements | null; row: TrackRow; nest: Nest | undefined; toggleCurves(id: string): void;
+}) {
   const clock = useContext(PreviewClockContext);
   const selected = useSelected(row.selectId, 'track');
   const { range, getValueFromScreenX } = useTimelineContext();
   const at = useRef(0);
   const [naming, setNaming] = useState(false);
   const author = useAuthoring(state => state.author && state.target !== null);
-  const menu = useTrackMenu(row, at, () => setNaming(true));
+  const menu = useTrackMenu(row, at, () => setNaming(true), elements);
   const documentId = row.timeline.documentId;
   const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const step = useContext(SnapContext) ?? 1 / 60;
@@ -1699,7 +1701,6 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const markers = row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end);
   // 照 Clip.UpdateMix 只给可混合的片段算混合：轨道合同为 Blend 的动画与位移曲线轨。
-  const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const blend = elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
@@ -1779,7 +1780,7 @@ const TrackLine = memo(function TrackLine({ row, nest, toggleCurves }: { row: Tr
         </span>}
       </TrackHead>
     }>
-      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
+      {visible.map(clip => <Clip key={clip.key} elements={elements} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
         documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
       {curves > 0 && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} height={curves} />}
       {markers.map(marker => {
@@ -2262,12 +2263,12 @@ function Positioned({ start, end, className, children, style, tip }: {
   );
 }
 
-const Clip = memo(function Clip({ clip, kind, mix, documentId, segmentId, trackId }: {
+const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segmentId, trackId }: {
+  elements: SkillElements | null;
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   useAuthoring(state => authoringDocument(state).version);
-  const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
   const animation = source?.choiceKind === animationReferenceKind ? source : null;
   const library = useAnimationLibrary(animation !== null);

@@ -1952,14 +1952,23 @@ export function skillElements(context?: InputPlanContext): Promise<SkillElements
 }
 
 export function useSkillElements(enabled: boolean): SkillElements | null {
-  const { target, loading } = useAuthoring(useShallow(state => ({ target: state.target, loading: authoringDocument(state).loading })));
-  const key = target === null ? null : authoringTargetKey(target);
+  const { target, loading, owners, carrierRevision } = useAuthoring(useShallow(state => ({
+    target: state.target, loading: authoringDocument(state).loading, carrierRevision: state.carrierRevision,
+    owners: JSON.stringify(Object.entries(state.documents).map(([path, document]) => [path, document.revision, document.version])),
+  })));
+  const scene = useWorkbench(state => selectedScene(state));
+  const key = JSON.stringify([target === null ? null : authoringTargetKey(target), owners, carrierRevision, scene]);
   const [elements, setElements] = useState<{ key: string; items: SkillElements } | null>(null);
   useEffect(() => {
-    if (!enabled || loading || key === null) return;
-    let live = true;
-    skillElements().then(items => { if (live) setElements({ key, items }); }, (error: unknown) => consoleActions.error('作者', error));
-    return () => { live = false; };
+    if (!enabled || loading || target === null) return;
+    const controller = new AbortController();
+    const { editingView, isCurrentRequest } = captureEditingView();
+    void authoringApi.elements(target, editingView, controller.signal).then(items => {
+      if (!controller.signal.aborted && isCurrentRequest()) setElements({ key, items });
+    }, (error: unknown) => {
+      if (!controller.signal.aborted && !isAbort(error)) consoleActions.error('作者', error);
+    });
+    return () => controller.abort();
   }, [enabled, key, loading]);
   return enabled && !loading && elements?.key === key ? elements.items : null;
 }
