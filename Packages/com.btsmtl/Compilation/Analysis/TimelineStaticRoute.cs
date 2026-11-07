@@ -43,6 +43,25 @@ namespace BTSMTL.Compilation.Analysis
         public int CallerPlayback { get; }
     }
 
+    public readonly struct TimelineStaticConditionSuggestion
+    {
+        internal TimelineStaticConditionSuggestion(OrchestrationStaticState state, OrchestrationStaticTransition transition,
+            IReadOnlyList<OrchestrationStaticRead> missing, OrchestrationTime start, OrchestrationTime end)
+        {
+            State = state;
+            Transition = transition;
+            Missing = missing;
+            Start = start;
+            End = end;
+        }
+
+        public OrchestrationStaticState State { get; }
+        public OrchestrationStaticTransition Transition { get; }
+        public IReadOnlyList<OrchestrationStaticRead> Missing { get; }
+        public OrchestrationTime Start { get; }
+        public OrchestrationTime End { get; }
+    }
+
     public sealed class TimelineStaticRoute
     {
         readonly List<TimelineStaticRouteSpan> m_Main = new();
@@ -106,7 +125,7 @@ namespace BTSMTL.Compilation.Analysis
         {
             var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
             var playbacks = new Dictionary<int, int>();
-            foreach (TimelineStaticRouteSpan span in m_Main.Concat(m_Parallel).OrderBy(value => value.Start).ThenBy(value => value.Branch))
+            foreach (TimelineStaticRouteSpan span in SpansInOrder())
             {
                 if (!playbacks.TryGetValue(span.Playback, out int occurrence))
                 {
@@ -116,6 +135,71 @@ namespace BTSMTL.Compilation.Analysis
                 }
                 yield return (span, occurrence);
             }
+        }
+
+        IEnumerable<TimelineStaticRouteSpan> SpansInOrder() =>
+            m_Main.Concat(m_Parallel).OrderBy(value => value.Start).ThenBy(value => value.Branch);
+
+        public (IReadOnlyList<OrchestrationStaticRead> Reads, IReadOnlyList<TimelineStaticConditionSuggestion> Suggestions)
+            Conditions(TimelineStaticReadIntervals inputs)
+        {
+            if (Chain == null)
+                return (Array.Empty<OrchestrationStaticRead>(), Array.Empty<TimelineStaticConditionSuggestion>());
+            var reads = new List<OrchestrationStaticRead>();
+            var suggestions = new List<TimelineStaticConditionSuggestion>();
+            var taken = new HashSet<OrchestrationStaticTransition>();
+            CollectTaken(Chain, taken);
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var suggested = new HashSet<(OrchestrationStaticTransition, OrchestrationTime)>();
+            foreach (TimelineStaticRouteSpan span in SpansInOrder())
+            {
+                OrchestrationStaticState state = span.State;
+                if (state == null)
+                    continue;
+                // 只列决定走哪条转移的读取；Clip 内部读取（如 Motion Warp 目标）按默认值，不进条件菜单。
+                foreach (OrchestrationStaticTransition transition in state.Transitions)
+                {
+                    var missing = new List<OrchestrationStaticRead>();
+                    foreach (OrchestrationStaticRead read in transition.Reads)
+                    {
+                        OrchestrationStaticReadSource source = state.Timeline == null
+                            ? read.Source : OrchestrationStaticReads.EffectiveSource(state.Timeline, in read);
+                        if (source != OrchestrationStaticReadSource.RuntimeData)
+                            continue;
+                        if (keys.Add(read.Key))
+                            reads.Add(read);
+                        if (!Covers(inputs.RuntimeData(in read), span.Start, span.End) &&
+                            !missing.Exists(value => value.Key == read.Key))
+                            missing.Add(read);
+                    }
+                    if (missing.Count != 0 && !taken.Contains(transition) && suggested.Add((transition, span.Start)))
+                        suggestions.Add(new TimelineStaticConditionSuggestion(state, transition, missing, span.Start, span.End));
+                }
+            }
+            return (reads, suggestions);
+        }
+
+        static void CollectTaken(TimelineStaticChain chain, HashSet<OrchestrationStaticTransition> taken)
+        {
+            foreach (TimelineStaticChainMarker marker in chain.Markers)
+                taken.Add(marker.Transition);
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                CollectTaken(branch.Chain, taken);
+        }
+
+        static bool Covers(IReadOnlyList<TimelineStaticInterval> intervals, OrchestrationTime start, OrchestrationTime end)
+        {
+            OrchestrationTime reached = start;
+            foreach (TimelineStaticInterval interval in intervals.OrderBy(value => value.Start))
+            {
+                if (interval.Start > reached)
+                    return false;
+                if (interval.End > reached)
+                    reached = interval.End;
+                if (reached >= end)
+                    return true;
+            }
+            return reached >= end;
         }
 
         static void AddChain(TimelineStaticChain chain, int branch, List<TimelineStaticRouteSpan> result, ref int playback)

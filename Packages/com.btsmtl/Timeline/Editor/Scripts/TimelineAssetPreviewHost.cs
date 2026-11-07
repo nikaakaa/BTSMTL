@@ -1023,7 +1023,7 @@ namespace BTSMTL.Timeline.Editor
             OrchestrationTime previewEnd = OrchestrationTime.FromSeconds(Preferences.RangeEnd);
             TimelineStaticRoute route;
             TimelineRuntimePreparedContent standalone = null;
-            TimelineAssetPreviewReadIntervals inputs = null;
+            TimelineStaticReadIntervals inputs = null;
             if (m_EntryMachine < 0)
             {
                 standalone = ContentFor(Source);
@@ -1031,14 +1031,17 @@ namespace BTSMTL.Timeline.Editor
             }
             else
             {
-                inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
-                route = TimelineStaticRoute.Build(m_Query.Query, m_EntryMachine, previewEnd, inputs.Intervals);
+                inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests).Intervals;
+                route = TimelineStaticRoute.Build(m_Query.Query, m_EntryMachine, previewEnd, inputs);
             }
             RootStart = route.RootStart;
             Chain = route.Chain;
             ApplyFastRoute(route, standalone);
-            if (Chain != null)
-                CollectConditions(inputs);
+            var conditions = route.Conditions(inputs);
+            m_Conditions.AddRange(conditions.Reads);
+            foreach (TimelineStaticConditionSuggestion suggestion in conditions.Suggestions)
+                m_Suggestions.Add(new TimelinePreviewConditionSuggestion(suggestion.State, suggestion.Transition,
+                    suggestion.Missing, suggestion.Start, suggestion.End));
             Time = Mathf.Min(Time, Duration);
             m_SampleRequested = true;
             Revision++;
@@ -1051,68 +1054,6 @@ namespace BTSMTL.Timeline.Editor
             if (!discovery.IsValid)
                 throw new InvalidOperationException(string.Join("\n", discovery.Errors));
             return discovery.Content;
-        }
-
-        // 路线经过的状态出边读到的条件（按含义键去重），以及没走成的出边所缺条件：读到的运行数据在该状态播放区间内没有全程成立。
-        void CollectConditions(TimelineAssetPreviewReadIntervals inputs)
-        {
-            var taken = new HashSet<OrchestrationStaticTransition>();
-            CollectTaken(Chain, taken);
-            var keys = new HashSet<string>(StringComparer.Ordinal);
-            var suggested = new HashSet<(OrchestrationStaticTransition, OrchestrationTime)>();
-            foreach (TimelinePreviewRouteSegment segment in m_Route)
-            {
-                OrchestrationStaticState state = segment.State;
-                if (state == null)
-                    continue;
-                // 只列决定走哪条转移的读取；Clip 内部读取（如 Motion Warp 目标）按默认值，不进条件菜单。
-                foreach (OrchestrationStaticTransition transition in state.Transitions)
-                {
-                    var missing = new List<OrchestrationStaticRead>();
-                    foreach (OrchestrationStaticRead read in transition.Reads)
-                        if (AddCondition(state.Timeline, in read, keys) &&
-                            !Covers(inputs.RuntimeData(in read), segment.Start, segment.End) &&
-                            !missing.Exists(value => value.Key == read.Key))
-                            missing.Add(read);
-                    if (missing.Count != 0 && !taken.Contains(transition) && suggested.Add((transition, segment.Start)))
-                        m_Suggestions.Add(new TimelinePreviewConditionSuggestion(state, transition, missing,
-                            segment.Start, segment.End));
-                }
-            }
-        }
-
-        // 是条件（运行数据，含本链没有 Clip 提供的状态）时登记并返回 true。
-        bool AddCondition(OrchestrationStaticTimeline timeline, in OrchestrationStaticRead read, HashSet<string> keys)
-        {
-            OrchestrationStaticReadSource source = timeline == null ? read.Source : OrchestrationStaticReads.EffectiveSource(timeline, in read);
-            if (source != OrchestrationStaticReadSource.RuntimeData)
-                return false;
-            if (keys.Add(read.Key))
-                m_Conditions.Add(read);
-            return true;
-        }
-
-        static void CollectTaken(TimelineStaticChain chain, HashSet<OrchestrationStaticTransition> taken)
-        {
-            foreach (TimelineStaticChainMarker marker in chain.Markers)
-                taken.Add(marker.Transition);
-            foreach (TimelineStaticChainBranch branch in chain.Branches)
-                CollectTaken(branch.Chain, taken);
-        }
-
-        static bool Covers(IReadOnlyList<TimelineStaticInterval> intervals, OrchestrationTime start, OrchestrationTime end)
-        {
-            OrchestrationTime reached = start;
-            foreach (TimelineStaticInterval interval in intervals.OrderBy(value => value.Start))
-            {
-                if (interval.Start > reached)
-                    return false;
-                if (interval.End > reached)
-                    reached = interval.End;
-                if (reached >= end)
-                    return true;
-            }
-            return reached >= end;
         }
 
         // 真实档：执行记录变化时重建真实路线并与快速推导对比，游标跟随会话。

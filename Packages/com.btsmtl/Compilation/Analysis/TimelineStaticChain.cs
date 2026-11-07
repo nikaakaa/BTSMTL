@@ -1,29 +1,10 @@
 using System;
 using System.Collections.Generic;
 using BTSMTL.Orchestration;
+using ConditionTime = BTSMTL.Compilation.Analysis.TimelineStaticConditionEvaluator.ConditionTime;
 
 namespace BTSMTL.Compilation.Analysis
 {
-    public readonly struct TimelineStaticInterval
-    {
-        public TimelineStaticInterval(OrchestrationTime start, OrchestrationTime end)
-        {
-            Start = start;
-            End = end;
-        }
-
-        public OrchestrationTime Start { get; }
-        public OrchestrationTime End { get; }
-    }
-
-    public interface ITimelineStaticReadIntervals
-    {
-        // 区间采用预览全局时间，左闭右开；运行数据的成立区间（含默认值）由预览提供者持有。
-        // RuntimeData 收到原始读取：来源仍为 ClipState 表示当前 Timeline 没有 Clip 静态提供该状态。
-        IReadOnlyList<TimelineStaticInterval> HostInput(string inputId);
-        IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read);
-    }
-
     public enum TimelineStaticChainStopReason : byte
     {
         TimelineCompleted,
@@ -134,7 +115,7 @@ namespace BTSMTL.Compilation.Analysis
             HashSet<int> activeMachines)
         {
             foreach (OrchestrationStaticTransition initial in query.InitialTransitions(machineOperationIndex))
-                if (Earliest(initial.Condition, new ConditionTime(null, start,
+                if (TimelineStaticConditionEvaluator.Earliest(initial.Condition, new ConditionTime(null, start,
                     OrchestrationTime.Zero, start, true, false), inputs,
                     out OrchestrationTime time, out _, out _) && time == start)
                 {
@@ -315,9 +296,9 @@ namespace BTSMTL.Compilation.Analysis
             // 出边已按正式比较器排序（AnyState 优先，再按优先级与顺序）；同一时刻先成立的胜出。
             foreach (OrchestrationStaticTransition transition in state.Transitions)
             {
-                var context = new ConditionTime(state, start, local, end, completed,
+                var context = new ConditionTime(state.Timeline?.Clips, start, local, end, completed,
                     completed && !transition.FromAnyState);
-                if (Earliest(transition.Condition, in context, inputs, out OrchestrationTime time,
+                if (TimelineStaticConditionEvaluator.Earliest(transition.Condition, in context, inputs, out OrchestrationTime time,
                     out OrchestrationStaticRead? blocked, out bool unresolved))
                 {
                     if (!selected.Exists || time < selected.Time)
@@ -338,8 +319,8 @@ namespace BTSMTL.Compilation.Analysis
                         readsCompletion |= read.Source == OrchestrationStaticReadSource.StateCompletion;
                     if (!readsCompletion)
                         continue;
-                    var context = new ConditionTime(state, end, local + end - start, end, true, true);
-                    if (Earliest(transition.Condition, in context, inputs, out _, out _, out _))
+                    var context = new ConditionTime(state.Timeline?.Clips, end, local + end - start, end, true, true);
+                    if (TimelineStaticConditionEvaluator.Earliest(transition.Condition, in context, inputs, out _, out _, out _))
                         nextTickAny = true;
                 }
             needsSession |= nextTickAny;
@@ -351,202 +332,8 @@ namespace BTSMTL.Compilation.Analysis
         public static bool EvaluateConditionAt(OrchestrationStaticCondition condition,
             OrchestrationStaticState state, OrchestrationTime localTime, OrchestrationTime previewTime, bool rootCompleted,
             ITimelineStaticReadIntervals inputs, out OrchestrationStaticRead? unavailable, out bool needsSession) =>
-            Earliest(condition, new ConditionTime(state, previewTime, localTime,
-                previewTime, true, rootCompleted), inputs, out _, out unavailable, out needsSession);
-
-        readonly struct ConditionTime
-        {
-            internal ConditionTime(OrchestrationStaticState state,
-                OrchestrationTime start, OrchestrationTime local, OrchestrationTime end, bool includesEnd, bool completed)
-            {
-                State = state;
-                Start = start;
-                Local = local;
-                End = end;
-                IncludesEnd = includesEnd;
-                Completed = completed;
-            }
-
-            internal OrchestrationStaticState State { get; }
-            internal OrchestrationTime Start { get; }
-            internal OrchestrationTime Local { get; }
-            internal OrchestrationTime End { get; }
-            internal bool IncludesEnd { get; }
-            internal bool Completed { get; }
-        }
-
-        // 时间采用正式 Raw 整数格；闭合格点集合能精确表示完成事件，不给它制造持续区间。
-        readonly struct TimeRange
-        {
-            internal TimeRange(long first, long last)
-            {
-                First = first;
-                Last = last;
-            }
-
-            internal long First { get; }
-            internal long Last { get; }
-        }
-
-        static List<TimeRange> Universe(in ConditionTime context) => new()
-        {
-            new TimeRange(context.Start.RawValue, context.End.RawValue - (context.IncludesEnd ? 0 : 1))
-        };
-
-        static bool Earliest(OrchestrationStaticCondition condition, in ConditionTime context,
-            ITimelineStaticReadIntervals inputs, out OrchestrationTime earliest,
-            out OrchestrationStaticRead? unavailable, out bool needsSession)
-        {
-            unavailable = null;
-            needsSession = false;
-            List<TimeRange> intervals = Intersect(Universe(in context),
-                Intervals(condition, in context, inputs, ref unavailable, ref needsSession));
-            earliest = intervals.Count == 0 ? default : OrchestrationTime.FromRaw(intervals[0].First);
-            return intervals.Count != 0;
-        }
-
-        static List<TimeRange> Intervals(OrchestrationStaticCondition condition, in ConditionTime context,
-            ITimelineStaticReadIntervals inputs, ref OrchestrationStaticRead? unavailable, ref bool needsSession)
-        {
-            List<TimeRange> universe = Universe(in context);
-            switch (condition.Kind)
-            {
-                case OrchestrationStaticConditionKind.Constant:
-                    return condition.ConstantValue ? universe : new List<TimeRange>();
-                case OrchestrationStaticConditionKind.All:
-                {
-                    List<TimeRange> result = universe;
-                    foreach (OrchestrationStaticCondition child in condition.Children)
-                    {
-                        result = Intersect(result, Intervals(child, in context, inputs, ref unavailable, ref needsSession));
-                        if (result.Count == 0)
-                            break;
-                    }
-                    return result;
-                }
-                case OrchestrationStaticConditionKind.Any:
-                {
-                    var result = new List<TimeRange>();
-                    foreach (OrchestrationStaticCondition child in condition.Children)
-                        result.AddRange(Intervals(child, in context, inputs, ref unavailable, ref needsSession));
-                    Normalize(result);
-                    return result;
-                }
-                case OrchestrationStaticConditionKind.Not:
-                    return Complement(Intersect(universe,
-                        Intervals(condition.Children[0], in context, inputs, ref unavailable, ref needsSession)), in context);
-                case OrchestrationStaticConditionKind.StateRootCompleted:
-                    return context.Completed
-                        ? new List<TimeRange> { new(context.End.RawValue, context.End.RawValue) } : new List<TimeRange>();
-                case OrchestrationStaticConditionKind.TimelineTime:
-                {
-                    if (context.State?.Timeline == null)
-                    {
-                        needsSession = true;
-                        return new List<TimeRange>();
-                    }
-                    long at = (context.Start + condition.Threshold - context.Local).RawValue;
-                    long first = context.Start.RawValue;
-                    long last = context.End.RawValue - (context.IncludesEnd ? 0 : 1);
-                    var result = new List<TimeRange>();
-                    switch (condition.Comparison)
-                    {
-                        case OrchestrationComparisonKind.Equal: result.Add(new TimeRange(at, at)); break;
-                        case OrchestrationComparisonKind.NotEqual:
-                            result.Add(new TimeRange(first, at - 1));
-                            result.Add(new TimeRange(at + 1, last));
-                            break;
-                        case OrchestrationComparisonKind.LessThan: result.Add(new TimeRange(first, at - 1)); break;
-                        case OrchestrationComparisonKind.LessThanOrEqual: result.Add(new TimeRange(first, at)); break;
-                        case OrchestrationComparisonKind.GreaterThanOrEqual: result.Add(new TimeRange(at, last)); break;
-                        default: result.Add(new TimeRange(at + 1, last)); break;
-                    }
-                    Normalize(result);
-                    return Intersect(universe, result);
-                }
-                default:
-                {
-                    OrchestrationStaticRead raw = condition.Read;
-                    OrchestrationStaticRead read = OrchestrationStaticReads.EffectiveRead(context.State?.Timeline, in raw);
-                    var result = new List<TimeRange>();
-                    switch (read.Source)
-                    {
-                        case OrchestrationStaticReadSource.ClipState:
-                            foreach (OrchestrationStaticClip clip in context.State.Timeline.Clips)
-                                foreach (string key in clip.ProvidedStateKeys)
-                                    if (key == read.Key)
-                                        result.Add(new TimeRange((context.Start + clip.Start - context.Local).RawValue,
-                                            (context.Start + clip.End - context.Local).RawValue - 1));
-                            break;
-                        case OrchestrationStaticReadSource.HostInput:
-                            foreach (TimelineStaticInterval interval in inputs.HostInput(read.Key))
-                                result.Add(new TimeRange(interval.Start.RawValue, interval.End.RawValue - 1));
-                            break;
-                        default:
-                            foreach (TimelineStaticInterval interval in inputs.RuntimeData(in raw))
-                                result.Add(new TimeRange(interval.Start.RawValue,
-                                    interval.End == OrchestrationTime.MaxValue ? long.MaxValue : interval.End.RawValue - 1));
-                            break;
-                    }
-                    Normalize(result);
-                    if (Intersect(universe, result).Count == 0 && !unavailable.HasValue)
-                        unavailable = read;
-                    return result;
-                }
-            }
-        }
-
-        static void Normalize(List<TimeRange> ranges)
-        {
-            ranges.Sort((left, right) => left.First.CompareTo(right.First));
-            int count = 0;
-            for (int i = 0; i < ranges.Count; i++)
-            {
-                TimeRange range = ranges[i];
-                if (range.First > range.Last)
-                    continue;
-                if (count != 0 && range.First - 1 <= ranges[count - 1].Last)
-                    ranges[count - 1] = new TimeRange(ranges[count - 1].First, Math.Max(ranges[count - 1].Last, range.Last));
-                else
-                    ranges[count++] = range;
-            }
-            ranges.RemoveRange(count, ranges.Count - count);
-        }
-
-        static List<TimeRange> Intersect(List<TimeRange> left, List<TimeRange> right)
-        {
-            var result = new List<TimeRange>();
-            int i = 0;
-            int j = 0;
-            while (i < left.Count && j < right.Count)
-            {
-                long first = Math.Max(left[i].First, right[j].First);
-                long last = Math.Min(left[i].Last, right[j].Last);
-                if (first <= last)
-                    result.Add(new TimeRange(first, last));
-                if (left[i].Last <= right[j].Last)
-                    i++;
-                else
-                    j++;
-            }
-            return result;
-        }
-
-        static List<TimeRange> Complement(List<TimeRange> ranges, in ConditionTime context)
-        {
-            var result = new List<TimeRange>();
-            long first = context.Start.RawValue;
-            long last = context.End.RawValue - (context.IncludesEnd ? 0 : 1);
-            foreach (TimeRange range in ranges)
-            {
-                if (first < range.First)
-                    result.Add(new TimeRange(first, range.First - 1));
-                first = range.Last + 1;
-            }
-            if (first <= last)
-                result.Add(new TimeRange(first, last));
-            return result;
-        }
+            TimelineStaticConditionEvaluator.EvaluateConditionAt(condition, state?.Timeline?.Clips, localTime,
+                previewTime, rootCompleted, inputs, out unavailable, out needsSession);
 
         static IReadOnlyList<OrchestrationStaticClip> Providers(OrchestrationStaticState state,
             OrchestrationStaticTransition transition, OrchestrationTime local)
@@ -555,10 +342,9 @@ namespace BTSMTL.Compilation.Analysis
             foreach (OrchestrationStaticClip clip in state.Timeline.Clips)
                 if (clip.Start <= local && local < clip.End)
                     foreach (OrchestrationStaticRead read in transition.Reads)
-                        if (read.Source == OrchestrationStaticReadSource.ClipState && !providers.Contains(clip))
-                            foreach (string key in clip.ProvidedStateKeys)
-                                if (string.Equals(key, read.Key, StringComparison.Ordinal))
-                                    providers.Add(clip);
+                        if (read.Source == OrchestrationStaticReadSource.ClipState && !providers.Contains(clip) &&
+                            TimelineStaticConditionEvaluator.ProvidesState(clip, read.Key))
+                            providers.Add(clip);
             return providers;
         }
 

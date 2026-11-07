@@ -71,7 +71,7 @@ namespace BTSMTL.Compilation.Analysis
                 var union = new List<TimelineStaticInterval>();
                 if (timeline != null)
                     foreach (OrchestrationStaticClip clip in timeline.Clips)
-                        if (Contains(clip.ProvidedStateKeys, read.Key))
+                        if (TimelineStaticConditionEvaluator.ProvidesState(clip, read.Key))
                         {
                             union.Add(new TimelineStaticInterval(clip.Start, clip.End));
                             if (!window.m_Providers.Contains(clip))
@@ -127,14 +127,6 @@ namespace BTSMTL.Compilation.Analysis
             }
             return result;
         }
-
-        internal static bool Contains(IReadOnlyList<string> values, string value)
-        {
-            for (int i = 0; i < values.Count; i++)
-                if (string.Equals(values[i], value, StringComparison.Ordinal))
-                    return true;
-            return false;
-        }
     }
 
     // 单个状态各出边的可走时段：由静态查询即时推导，不保存副本；内容变化后重新查询。
@@ -174,23 +166,9 @@ namespace BTSMTL.Compilation.Analysis
     public static class OrchestrationStaticReads
     {
         public static OrchestrationStaticReadSource EffectiveSource(OrchestrationStaticTimeline timeline,
-            in OrchestrationStaticRead read)
-        {
-            if (read.Source != OrchestrationStaticReadSource.ClipState)
-                return read.Source;
-            if (timeline != null)
-                foreach (OrchestrationStaticClip clip in timeline.Clips)
-                    if (OrchestrationTransitionWindow.Contains(clip.ProvidedStateKeys, read.Key))
-                        return OrchestrationStaticReadSource.ClipState;
-            return OrchestrationStaticReadSource.RuntimeData;
-        }
+            in OrchestrationStaticRead read) => TimelineStaticConditionEvaluator.EffectiveSource(timeline?.Clips, in read);
 
         public static OrchestrationStaticRead EffectiveRead(OrchestrationStaticTimeline timeline,
-            in OrchestrationStaticRead read)
-        {
-            OrchestrationStaticReadSource source = EffectiveSource(timeline, in read);
-            return source == read.Source ? read : new OrchestrationStaticRead(read.OperationIndex,
-                source, read.Key, true, read.Label);
-        }
+            in OrchestrationStaticRead read) => TimelineStaticConditionEvaluator.EffectiveRead(timeline?.Clips, in read);
     }
 }
