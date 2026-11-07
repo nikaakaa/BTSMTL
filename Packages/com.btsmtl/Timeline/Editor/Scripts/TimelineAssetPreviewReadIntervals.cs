@@ -15,7 +15,7 @@ namespace BTSMTL.Timeline.Editor
             try
             {
                 Intervals = new TimelineStaticReadIntervals(preferences.Inputs.Select(ReadInput),
-                    ReadConditions(), descriptors, requests.Select(request => request.StaticRequest), preferences.RangeEnd);
+                    ReadConditions(), InputKind, requests.Select(request => request.StaticRequest), preferences.RangeEnd);
             }
             catch (TimelineStaticInputUnavailableException exception)
             {
@@ -23,6 +23,21 @@ namespace BTSMTL.Timeline.Editor
             }
             if (Intervals.ActivationIndex >= 0)
                 Activation = preferences.Inputs[Intervals.ActivationIndex];
+
+            OrchestrationValueKind? InputKind(string inputId) =>
+                descriptors.FirstOrDefault(value => value.InputId == inputId)?.ValueKind switch
+                {
+                    GraphHostValueKind.Bool => OrchestrationValueKind.Boolean,
+                    GraphHostValueKind.Int32 => OrchestrationValueKind.Int32,
+                    GraphHostValueKind.Float32 => OrchestrationValueKind.Scalar,
+                    GraphHostValueKind.Vector2 => OrchestrationValueKind.Vector2,
+                    GraphHostValueKind.Vector3 => OrchestrationValueKind.Vector3,
+                    GraphHostValueKind.Quaternion => OrchestrationValueKind.Quaternion,
+                    GraphHostValueKind.Enum => OrchestrationValueKind.Enum,
+                    GraphHostValueKind.Text => OrchestrationValueKind.Identity,
+                    GraphHostValueKind.ObjectHandle => OrchestrationValueKind.ObjectHandle,
+                    _ => null
+                };
 
             TimelineStaticInputPoint ReadInput(TimelinePreviewInputPoint point)
             {

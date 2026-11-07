@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BTSMTL.Graphs;
 using BTSMTL.Orchestration;
 
 namespace BTSMTL.Compilation.Analysis
@@ -69,16 +68,21 @@ namespace BTSMTL.Compilation.Analysis
 
     public sealed class TimelineStaticReadIntervals : ITimelineStaticReadIntervals
     {
-        readonly IEnumerable<TimelineStaticConditionPoint> m_Conditions;
+        static readonly IReadOnlyList<TimelineStaticInterval> s_DefaultSatisfiedIntervals = Array.AsReadOnly(new[]
+        {
+            new TimelineStaticInterval(OrchestrationTime.Zero, OrchestrationTime.MaxValue)
+        });
+
+        readonly ILookup<string, (OrchestrationTime Time, bool Satisfied, bool RestoreDefault)> m_Conditions;
+        readonly Dictionary<(string Key, bool DefaultValue), IReadOnlyList<TimelineStaticInterval>> m_RuntimeIntervals = new();
         readonly Dictionary<string, IReadOnlyList<TimelineStaticInterval>> m_Intervals = new(StringComparer.Ordinal);
         // 与原 Native Vector2/Vector3 的零向量比较使用同一平方阈值。
         const float VectorZeroSquared = 1e-5f * 1e-5f;
 
         public TimelineStaticReadIntervals(IEnumerable<TimelineStaticInputPoint> inputs,
-            IEnumerable<TimelineStaticConditionPoint> conditions, IReadOnlyList<GraphHostInputDescriptor> descriptors,
+            IEnumerable<TimelineStaticConditionPoint> conditions, Func<string, OrchestrationValueKind?> inputKind,
             IEnumerable<TimelineStaticInputRequest> requests, double rangeEnd)
         {
-            m_Conditions = conditions;
             var requestInputs = requests.ToDictionary(request => request.InputId, StringComparer.Ordinal);
             var points = inputs.Select((point, index) => (Point: point, Index: index)).ToArray();
             // 最早动作请求由起手消耗。起手和后续动作请求都在逻辑 Tick 读取。
@@ -92,8 +96,8 @@ namespace BTSMTL.Compilation.Analysis
             foreach (var input in points.GroupBy(value => value.Point.InputId))
             {
                 var ordered = input.OrderBy(value => value.Point.Time).ToArray();
-                GraphHostInputDescriptor descriptor = descriptors.FirstOrDefault(value => value.InputId == input.Key);
-                if (descriptor == null)
+                OrchestrationValueKind? kind = inputKind(input.Key);
+                if (!kind.HasValue)
                     throw new TimelineStaticInputUnavailableException($"预览日程中的输入 '{input.Key}' 已不在当前角色的正式输入声明中，请删除该日程项。");
                 var intervals = new List<TimelineStaticInterval>();
                 if (requestInputs.TryGetValue(input.Key, out TimelineStaticInputRequest request))
@@ -108,10 +112,18 @@ namespace BTSMTL.Compilation.Analysis
                 }
                 else
                     for (int i = 0; i < ordered.Length; i++)
-                        if (Holds(descriptor.ValueKind, ordered[i].Point))
+                        if (Holds(kind.Value, ordered[i].Point))
                             intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(ordered[i].Point.Time),
                                 OrchestrationTime.FromSeconds(i + 1 < ordered.Length ? ordered[i + 1].Point.Time : rangeEnd)));
                 m_Intervals.Add(input.Key, intervals);
+            }
+
+            m_Conditions = conditions.ToLookup(point => point.Key,
+                point => (OrchestrationTime.FromSeconds(point.Time), point.Satisfied, point.RestoreDefault), StringComparer.Ordinal);
+            foreach (var group in m_Conditions)
+            {
+                m_RuntimeIntervals.Add((group.Key, false), ConditionIntervals(group, false));
+                m_RuntimeIntervals.Add((group.Key, true), ConditionIntervals(group, true));
             }
         }
 
@@ -120,13 +132,13 @@ namespace BTSMTL.Compilation.Analysis
 
         static double TickCeiling(double seconds, int tickRate) => Math.Ceiling(seconds * tickRate - 1e-6) / tickRate;
 
-        static bool Holds(GraphHostValueKind kind, TimelineStaticInputPoint point) => kind switch
+        static bool Holds(OrchestrationValueKind kind, TimelineStaticInputPoint point) => kind switch
         {
-            GraphHostValueKind.Bool => point.Boolean,
-            GraphHostValueKind.Int32 or GraphHostValueKind.Enum => point.Integer != 0,
-            GraphHostValueKind.Float32 => point.Scalar != 0f,
-            GraphHostValueKind.Vector2 => !(point.X * point.X + point.Y * point.Y < VectorZeroSquared),
-            GraphHostValueKind.Vector3 => !(point.X * point.X + point.Y * point.Y + point.Z * point.Z < VectorZeroSquared),
+            OrchestrationValueKind.Boolean => point.Boolean,
+            OrchestrationValueKind.Int32 or OrchestrationValueKind.Enum => point.Integer != 0,
+            OrchestrationValueKind.Scalar => point.Scalar != 0f,
+            OrchestrationValueKind.Vector2 => !(point.X * point.X + point.Y * point.Y < VectorZeroSquared),
+            OrchestrationValueKind.Vector3 => !(point.X * point.X + point.Y * point.Y + point.Z * point.Z < VectorZeroSquared),
             _ => true
         };
 
@@ -136,24 +148,30 @@ namespace BTSMTL.Compilation.Analysis
 
         public IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read)
         {
-            bool fallback = DefaultSatisfied(in read);
-            bool value = fallback;
+            bool defaultValue = DefaultSatisfied(in read);
+            return m_RuntimeIntervals.TryGetValue((read.Key, defaultValue), out IReadOnlyList<TimelineStaticInterval> intervals)
+                ? intervals : defaultValue ? s_DefaultSatisfiedIntervals : Array.Empty<TimelineStaticInterval>();
+        }
+
+        static IReadOnlyList<TimelineStaticInterval> ConditionIntervals(
+            IEnumerable<(OrchestrationTime Time, bool Satisfied, bool RestoreDefault)> points, bool defaultValue)
+        {
+            bool value = defaultValue;
             var result = new List<TimelineStaticInterval>();
             OrchestrationTime start = OrchestrationTime.Zero;
-            foreach (TimelineStaticConditionPoint point in m_Conditions)
+            foreach (var point in points)
             {
-                bool next = point.RestoreDefault ? fallback : point.Satisfied;
-                if (point.Key != read.Key || next == value)
+                bool next = point.RestoreDefault ? defaultValue : point.Satisfied;
+                if (next == value)
                     continue;
-                OrchestrationTime at = OrchestrationTime.FromSeconds(point.Time);
-                if (value && at > start)
-                    result.Add(new TimelineStaticInterval(start, at));
+                if (value && point.Time > start)
+                    result.Add(new TimelineStaticInterval(start, point.Time));
                 value = next;
-                start = at;
+                start = point.Time;
             }
             if (value)
                 result.Add(new TimelineStaticInterval(start, OrchestrationTime.MaxValue));
-            return result;
+            return result.AsReadOnly();
         }
 
         public static bool DefaultSatisfied(in OrchestrationStaticRead read) =>
@@ -161,13 +179,13 @@ namespace BTSMTL.Compilation.Analysis
 
         public bool ValueAt(in OrchestrationStaticRead read, OrchestrationTime time, out bool written)
         {
-            bool fallback = DefaultSatisfied(in read);
-            bool value = fallback;
+            bool defaultValue = DefaultSatisfied(in read);
+            bool value = defaultValue;
             written = false;
-            foreach (TimelineStaticConditionPoint point in m_Conditions)
-                if (point.Key == read.Key && OrchestrationTime.FromSeconds(point.Time) <= time)
+            foreach (var point in m_Conditions[read.Key])
+                if (point.Time <= time)
                 {
-                    value = point.RestoreDefault ? fallback : point.Satisfied;
+                    value = point.RestoreDefault ? defaultValue : point.Satisfied;
                     written = !point.RestoreDefault;
                 }
             return value;
