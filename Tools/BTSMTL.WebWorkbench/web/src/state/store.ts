@@ -251,6 +251,8 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 }));
 
 export const getState = useWorkbench.getState;
+export const isRealArchive = (state: Pick<WorkbenchState, 'previewMode' | 'sealed' | 'summary'>) =>
+  state.previewMode === 'real' && state.sealed && state.summary?.adoptedMode === 'real';
 const set = useWorkbench.setState;
 
 // ── 请求代次：切换运行或场景时递增，旧结果丢弃 ──

@@ -24,7 +24,7 @@ import { inputAuthoring } from '../../state/authoringInputs';
 import {
   clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, markersTaken, trackHasCurves, trackOverlap, useReferenceCurves,
 } from '../../state/authoringTimeline';
-import { consoleActions, getState, inputRootKey, runActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, getState, inputRootKey, isRealArchive, runActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import {
   clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   timelineObservationNotice, trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
@@ -35,6 +35,7 @@ import { quickBounds, quickInputSourceKey, quickPreview } from '../../state/quic
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
+import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationLibrary } from '../../state/resources';
 import { acceptsReferenceDrag } from '../../state/referenceSelection';
 import { useTimelineResourceCatalog } from '../../state/resourceScope';
@@ -465,6 +466,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   const binding = useDocumentObservationBinding();
   const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
+  const realArchive = useWorkbench(isRealArchive);
   const runId = useWorkbench(state => state.runId);
   const trace = useWorkbench(useShallow(routeObservation));
   const routeFrames = useWorkbench(state => state.routeFrames);
@@ -539,25 +541,40 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
     if (quickMode || callerNotice !== null) return [];
     for (const playback of playbacks ?? [])
       if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding) &&
-        timelineObservationNotice(timelineBinding, frameSource, playback.documentId, playback.call) === null &&
+        (realArchive || timelineObservationNotice(timelineBinding, frameSource, playback.documentId, playback.call) === null) &&
         (caller === null || parentCallMatches(caller.call, playback.call))) {
         const observation = { call: playback.call, domain: playback.domain };
         result.set(observationKey(observation), observation);
       }
     return [...result.values()];
-  }, [quickMode, playbacks, focused?.documentId, binding, timelineBinding, frameSource, caller, callerNotice]);
+  }, [quickMode, realArchive, playbacks, focused?.documentId, binding, timelineBinding, frameSource, caller, callerNotice]);
   const pin = params.pin;
   const pinNotice = pin === null ? null : pin.runId !== runId ? '固定播放属于另一份运行档案，固定身份已保留'
     : pin.documentId !== focused?.documentId ? '固定播放不属于当前 Timeline，固定身份已保留'
     : documentObservationNotice(currentRoute, binding, pin.observation.call)
-      ?? timelineObservationNotice(timelineBinding, frameSource, pin.documentId, pin.observation.call);
-  const observed = quickMode || currentRoute === null || pinNotice !== null || callerNotice !== null ? null
+      ?? (caller !== null && !parentCallMatches(caller.call, pin.observation.call) ? '固定播放不属于来源调用'
+        : realArchive ? null : timelineObservationNotice(timelineBinding, frameSource, pin.documentId, pin.observation.call));
+  const observed = quickMode || (currentRoute === null && !(realArchive && pin?.recordIndex !== undefined)) ||
+    pinNotice !== null || callerNotice !== null ? null
     : pin !== null ? pin.observation : params.call !== null ? observations.find(observation => observationKey(observation) === params.call) ?? null
       : observations.length === 1 ? observations[0] : null;
   const timelineNotice = timelineObservationNotice(timelineBinding, frameSource, focused?.documentId ?? null, observed?.call ?? null);
+  const authorObservation = timelineNotice === null ? observed : null;
+  const playbackNotice = trace.kind === 'unavailable' ? trace.reason
+    : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例'
+      : caller !== null && observations.length === 0 && observed === null ? [...new Set((playbacks ?? []).filter(playback =>
+        playback.documentId === focused?.documentId && playback.call !== null)
+        .map(playback => parentCallNotice(playback.call!)).filter(reason => reason !== null))].join('；') || '本帧没有完整父身份与来源调用匹配的播放'
+        : observations.length > 1 && observed === null ? '本帧存在多个实际播放，请显式固定发生实例' : null;
   const choices = observations;
+  const pinCall = (observation: TimelineObservation, call: string | null) => {
+    const state = getState();
+    if (runId === null || focused === null || state.runId !== runId || state.frame?.hostFrame !== state.hostFrame ||
+      !playbackFor(state.frame, focused.documentId, observation)) return;
+    setParams({ call, pin: { runId, documentId: focused.documentId, observation, recordIndex: state.frameIndex } });
+  };
   const togglePin = pin ? () => setParams({ pin: null, call: null }) : observed === null || runId === null || focused === null ? undefined
-    : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
+    : () => pinCall(observed, observationKey(observed));
   const loadedCalls = useMemo(() => recordedGraphCalls(routeFrames, graphs ?? [], binding), [routeFrames, graphs, binding]);
   const currentCalls = useMemo(() => recordedGraphCalls(currentRoute === null ? [] : [currentRoute], graphs ?? [], binding), [currentRoute, graphs, binding]);
   const recorded = useMemo(() => graphCallsAtFrame(loadedCalls, currentRoute, currentCalls), [loadedCalls, currentRoute, currentCalls]);
@@ -568,16 +585,16 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   };
   const selectCall = runId === null || focused === null ? undefined : (value: string) => {
     const observation = choices.find(item => observationKey(item) === value)!;
-    setParams({ call: null, pin: { runId, documentId: focused.documentId, observation } });
+    pinCall(observation, null);
   };
   useEffect(() => {
     const selection = getState().selection;
     if ((selection?.kind === 'clip' || selection?.kind === 'track') && selection.id.startsWith(`${focused?.documentId}/`)) {
       const previous = selection.call ? callKey(selection.call) : null;
-      const next = observed ? callKey(observed.call) : null;
-      if (previous !== next || selection.call === undefined) selectionActions.select({ ...selection, call: observed === null ? null : observed.call });
+      const next = authorObservation ? callKey(authorObservation.call) : null;
+      if (previous !== next || selection.call === undefined) selectionActions.select({ ...selection, call: authorObservation?.call ?? null });
     }
-  }, [focused?.documentId, observed]);
+  }, [focused?.documentId, authorObservation]);
 
   const enter = useCallback((documentId: string) => {
     const segment = segments.find(item => item.documentId === documentId);
@@ -692,28 +709,50 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
       else quickPreview.seek(quickSegment.start + seconds - quickSegment.localStart);
       return;
     }
-    if (!quickMode && inputScheme && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start')) {
-      if (inputObservation.kind === 'before-start') {
+    if (!quickMode && inputScheme) {
+      if (inputObservation.kind === 'before-start' && !realArchive) {
         consoleActions.log('warn', 'Timeline', `${inputObservation.reason}，当前没有正式输入时间；请先按录制帧定位`);
         return;
       }
-      const state = getState();
-      const times = new Map((state.runId === null ? [] : archive.inputFrames(state.runId, inputObservation.input.actorId))
-        .map(sample => [sample.index, sample.seconds]));
-      const position = recordedLocalPosition(state, seconds, (frame, index) =>
-        samePreviewLoad(frame.source, inputObservation.frame.input?.source ?? null) ? times.get(index) ?? null : null);
-      if (position.kind === 'record') transport.seekRecord(position.index);
-      else consoleActions.log('warn', 'Timeline', position.reason);
+      if (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start') {
+        const state = getState();
+        const samples = runId === null ? [] : archive.inputFrames(runId, inputObservation.input.actorId)
+          .filter(sample => samePreviewLoad(sample.source, inputObservation.source));
+        const times = new Map(samples.map(sample => [sample.index, sample.seconds]));
+        const first = inputObservation.kind === 'before-start' ? samples.find(sample => sample.seconds !== null) : undefined;
+        const position = recordedLocalPosition(state, seconds, (frame, index) =>
+          samePreviewLoad(frame.source, inputObservation.source) ? times.get(index) ?? null : null, first?.index);
+        if (position.kind === 'record') transport.seekRecord(position.index);
+        else consoleActions.log('warn', 'Timeline', position.reason);
+        return;
+      }
+      if (realArchive) {
+        consoleActions.log('warn', 'Timeline', inputObservation.reason);
+        return;
+      }
+    }
+    if (observed === null) {
+      if (realArchive) consoleActions.log('warn', 'Timeline', pinNotice ?? callerNotice ?? playbackNotice
+        ?? '本帧没有可定位的实际播放，请先按录制帧定位到播放区间');
+      else useAuthorCursor.setState({ documentId: focused.documentId, seconds });
       return;
     }
-    if (!observed) {
-      useAuthorCursor.setState({ documentId: focused.documentId, seconds });
-      return;
+    const state = getState();
+    const anchor = realArchive ? pin?.recordIndex : undefined;
+    if (anchor !== undefined && state.runId !== null) {
+      const frame = cachedFrame(state.runId, anchor) ?? null;
+      const anchorRoute = routeObservation({ ...state, frame, hostFrame: frame?.hostFrame ?? null });
+      if (anchorRoute.kind === 'unavailable') {
+        consoleActions.log('warn', 'Timeline', frame === null ? '固定播放的原始录制帧尚未读取，请先按录制帧回到该播放区间' : anchorRoute.reason);
+        return;
+      }
     }
-    const position = recordedLocalPosition(getState(), seconds, frame => playbackFor(frame, focused.documentId, observed)?.cursorSeconds ?? null);
+    const position = recordedLocalPosition(state, seconds,
+      frame => playbackFor(frame, focused.documentId, observed)?.cursorSeconds ?? null, anchor);
     if (position.kind === 'record') transport.seekRecord(position.index);
     else consoleActions.log('warn', 'Timeline', position.reason);
-  }, [quickMode, quickPlan, quickInput, quickSegment, observed, focused, step, inputScheme, inputObservation]);
+  }, [quickMode, realArchive, quickPlan, quickInput, quickSegment, observed, focused, step, inputScheme, inputObservation,
+    runId, pin?.recordIndex, pinNotice, callerNotice, playbackNotice]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
   const [pickedKeys, setPickedKeys] = useState<number[]>([]);
   const curveView = useMemo<CurveView>(() => ({
@@ -765,11 +804,14 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   };
   const clock = useMemo<PreviewClock>(() => quickPlan !== null ? { kind: 'quick', documentId: focused?.documentId ?? null,
       source: quickInput ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } }
-    : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: !quickMode && inputObservation.kind === 'ready' }
-      : { kind: 'document', documentId: focused?.documentId ?? null, observation: observed },
-  [quickMode, quickPlan, quickInput, quickSegment, focused?.documentId, observed, inputScheme, inputObservation.kind]);
+    : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, source:
+      !quickMode && (inputObservation.kind === 'ready' || realArchive && inputObservation.kind === 'before-start') ? 'archive'
+        : realArchive ? 'unavailable' : 'author' }
+      : { kind: realArchive && authorObservation === null ? 'archive' : 'document', documentId: focused?.documentId ?? null, observation: observed },
+  [quickMode, realArchive, quickPlan, quickInput, quickSegment, focused?.documentId, observed, authorObservation, inputScheme, inputObservation.kind]);
   const curveClock = useWorkbench(useShallow((state): CurveClock => {
-    if (quickMode || (clock.kind === 'input' && !clock.observing)) return { kind: 'unavailable', reason: '当前没有对应的运行观察' };
+    if (clock.kind === 'archive' && timelineNotice !== null) return { kind: 'unavailable', reason: timelineNotice };
+    if (quickMode || (clock.kind === 'input' && clock.source !== 'archive')) return { kind: 'unavailable', reason: '当前没有对应的运行观察' };
     const frame = state.frame;
     if (frame === null || frame.hostFrame !== state.hostFrame) return { kind: 'unavailable', reason: '正在读取当前档案帧的来源时钟' };
     if (frame.source === null) return { kind: 'unavailable', reason: '此档案帧没有记录来源时钟' };
@@ -788,11 +830,8 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
         quickPlayback={quickPlayback}
         navigationOrigin={params.origin}
         observations={choices} selectCall={selectCall} pin={quickMode || pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
-        observationNotice={quickMode ? null : pinNotice ?? callerNotice ?? (inputScheme ? null : timelineNotice) ?? (trace.kind === 'unavailable' ? trace.reason
-          : params.call !== null && observed === null ? '此帧没有所选播放的记录，未选择其它实例'
-            : caller !== null && observations.length === 0 ? [...new Set((playbacks ?? []).filter(playback => playback.documentId === focused?.documentId && playback.call !== null)
-              .map(playback => parentCallNotice(playback.call!)).filter(reason => reason !== null))].join('；') || '本帧没有完整父身份与来源调用匹配的播放'
-                : observations.length > 1 && observed === null ? '本帧存在多个实际播放，请显式固定发生实例' : null)} />
+        observationNotice={quickMode || realArchive && inputScheme ? null : pinNotice ?? callerNotice
+          ?? (realArchive ? playbackNotice ?? timelineNotice : (inputScheme ? null : timelineNotice) ?? playbackNotice)} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>

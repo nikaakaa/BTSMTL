@@ -59,7 +59,7 @@ export interface Params {
   // 编辑吸附（照 Timeline Editor 时间网格）：逻辑 tick、秒间隔或关闭。
   snap: Snap;
   call: string | null;
-  pin: { runId: PlayerJobId; documentId: string; observation: TimelineObservation } | null;
+  pin: { runId: PlayerJobId; documentId: string; observation: TimelineObservation; recordIndex?: number } | null;
   caller: { runId: PlayerJobId; call: ExecutionCall } | null;
   origin: GraphNavigationOrigin | null;
 }
@@ -103,14 +103,16 @@ export type QuickSegment = PreviewQuickPlan['segments'][number];
 export type QuickPlaybackChoice = { value: string; options: { value: string; label: string }[]; select(value: string): void };
 
 export type PreviewClock = { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
-  | { kind: 'input'; documentId: string; observing: boolean }
+  | { kind: 'archive'; documentId: string | null; observation: TimelineObservation | null }
+  | { kind: 'input'; documentId: string; source: 'archive' | 'author' | 'unavailable' }
   | { kind: 'quick'; documentId: string | null; source: { kind: 'input' } | { kind: 'timeline'; segment: QuickSegment | null } };
 export const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
 export type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number }
   | { kind: 'unavailable'; reason: string };
 export const CurveClockContext = createContext<CurveClock>({ kind: 'unavailable', reason: '没有当前帧的来源时钟' });
 export function documentPlayback(state: WorkbenchState, clock: PreviewClock) {
-  if (clock.kind !== 'document' || clock.observation === null) return undefined;
+  if ((clock.kind !== 'document' && clock.kind !== 'archive') || clock.observation === null ||
+    state.frame?.hostFrame !== state.hostFrame) return undefined;
   return playbackFor(state.frame, clock.documentId, clock.observation);
 }
 
@@ -120,21 +122,21 @@ export function playbackFor(frame: Frame | null | undefined, documentId: string 
 }
 
 export function recordedLocalPosition(state: WorkbenchState, seconds: number,
-  cursorAt: (frame: Frame, index: number) => number | null): ReturnType<typeof transport.recordPosition> {
-  const { runId, summary, frameIndex } = state;
+  cursorAt: (frame: Frame, index: number) => number | null, anchorIndex = state.frameIndex): ReturnType<typeof transport.recordPosition> {
+  const { runId, summary } = state;
   if (runId === null || summary === null) return { kind: 'unavailable', reason: '尚未打开运行档案' };
-  const current = cachedFrame(runId, frameIndex);
-  const cursor = current === undefined ? null : cursorAt(current, frameIndex);
+  const current = cachedFrame(runId, anchorIndex);
+  const cursor = current === undefined ? null : cursorAt(current, anchorIndex);
   if (current === undefined || cursor === null)
     return { kind: 'unavailable', reason: '当前录制帧没有所选播放或输入的实际本地时间记录' };
   const source = current.source;
   if (source === null || source.content === null)
     return { kind: 'unavailable', reason: '当前记录缺少实际采用内容身份，不能按本地时间定位' };
-  const anchor = { index: frameIndex, cursor, source };
+  const anchor = { index: anchorIndex, cursor, source };
   const samples = [anchor];
   for (const direction of [-1, 1]) {
     let previous = anchor.cursor;
-    for (let index = frameIndex + direction; index >= 0 && index < summary.frameCount; index += direction) {
+    for (let index = anchorIndex + direction; index >= 0 && index < summary.frameCount; index += direction) {
       const frame = cachedFrame(runId, index);
       const local = frame === undefined ? null : cursorAt(frame, index);
       if (frame === undefined || local === null || frame.source === null || !samePreviewLoad(source, frame.source)) break;
@@ -148,26 +150,26 @@ export function recordedLocalPosition(state: WorkbenchState, seconds: number,
     return { kind: 'unavailable', reason: `当前所选观察的已读记录只覆盖本地 ${timeText(start)}—${timeText(end)}；请先按录制帧定位，不能外推或跨圈定位` };
   const nearest = samples.reduce((chosen, sample) => {
     const distance = Math.abs(sample.cursor - seconds), previousDistance = Math.abs(chosen.cursor - seconds);
-    return distance < previousDistance || distance === previousDistance && Math.abs(sample.index - frameIndex) < Math.abs(chosen.index - frameIndex)
-      ? sample : chosen;
+    return distance < previousDistance || distance === previousDistance && sample.index < chosen.index ? sample : chosen;
   }, anchor);
   const position = transport.recordPosition(runId, nearest.index, nearest.source);
   if (position.kind === 'record' && samples.some(sample => sample.index !== nearest.index && sample.cursor === nearest.cursor))
-    consoleActions.log('info', 'Timeline', `本地游标在 ${timeText(nearest.cursor)} 秒未前进，已吸附到距当前游标最近的录制帧 ${position.index}`);
+    consoleActions.log('info', 'Timeline', `本地游标在 ${timeText(nearest.cursor)} 秒未前进，已定位到该时刻的首个录制帧 ${position.index}`);
   return position;
 }
 // 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
 export const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
 export const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, clock: PreviewClock) =>
-  ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && !clock.observing)) && clock.documentId !== null
+  ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && clock.source === 'author')) && clock.documentId !== null
     ? cursor.documentId === clock.documentId ? cursor.seconds : 0 : null;
 export const quickLocalSeconds = (segment: QuickSegment, seconds: number) => seconds < segment.start || seconds > segment.end ? null
   : seconds === segment.end ? segment.localEnd : segment.localStart + seconds - segment.start;
 export function previewSeconds(state: WorkbenchState, clock: PreviewClock, author: number | null): number | null {
   if (clock.kind === 'quick') return clock.source.kind === 'input' ? state.quickPreview.seconds
     : clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds);
-  return clock.kind === 'input' ? author ?? state.archiveFrame?.input?.inputTimeSeconds ?? null
-    : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
+  if (clock.kind === 'input') return clock.source === 'archive' && state.archiveFrame?.hostFrame === state.hostFrame
+    ? state.archiveFrame?.input?.inputTimeSeconds ?? null : author;
+  return author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
 }
 // 游标秒数：运行档案、运行观察或编辑游标。
 export function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {

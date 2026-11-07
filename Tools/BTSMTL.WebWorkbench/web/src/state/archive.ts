@@ -251,7 +251,8 @@ export const archive = {
       .sort(([left], [right]) => Number(left.slice(prefix.length)) - Number(right.slice(prefix.length)))
       .flatMap(([id, frame]) => {
       const record = frame.input, input = record?.actors.find(actor => actor.actorId === actorId);
-      return record && input ? [{ frame: frame.hostFrame, index: Number(id.slice(prefix.length)), input, seconds: record.inputTimeSeconds }] : [];
+      return record && input ? [{ frame: frame.hostFrame, index: Number(id.slice(prefix.length)),
+        input, seconds: record.inputTimeSeconds, source: record.source }] : [];
     });
   },
 

@@ -82,7 +82,10 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
   const structureNotice = useAuthoring(state => authoringDocument(state).documentError);
   const documentNotice = useDocumentObservationNotice(clock.kind === 'document' ? clock.observation?.call ?? null : null);
-  const shownObservation = pin ?? (clock.kind === 'document' ? clock.observation : null);
+  const observed = clock.kind === 'document' || clock.kind === 'archive' ? clock.observation : null;
+  const shownObservation = pin ?? observed;
+  const seekWithoutCursor = (clock.kind === 'input' && clock.source === 'archive' && input.kind === 'before-start') ||
+    (clock.kind === 'archive' && observed !== null);
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
   const notice = useWorkbench(state => {
     if (observationNotice !== null) return observationNotice;
@@ -98,7 +101,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   });
   return (
     <PanelBar>
-      <TimeField origin={origin} seek={seek} />
+      <TimeField origin={origin} seek={seek} seekWithoutCursor={seekWithoutCursor} />
       {structureNotice !== null && <span role="alert" className={styles.hint}>{structureNotice}；保留上次完整作者结构</span>}
       {subject.selector && (
         <MenuButton label={subject.selector.label} variant="ghost" className={styles.selector} iconOnly caret entries={subject.selector.entries}>
@@ -117,7 +120,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
         ))}
       </span>
       {observations.length > 0 && selectCall !== undefined && <Select variant="ghost" label="固定某次实际播放" placeholder="选择并固定实际播放" onChange={selectCall}
-        value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
+        value={observed === null ? null : observationKey(observed)}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
       {quickPlayback !== null && <Select variant="ghost" label="推导播放" value={quickPlayback.value}
         options={quickPlayback.options} onChange={quickPlayback.select} />}
@@ -144,7 +147,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
 
 // 游标时刻的文字：秒，至多四位小数（照 Timeline 时间框的 0.####）。
 // 时间框（TimeCodeGUI，宽 100）：显示游标在所看 Timeline 里的秒数；回车或离开输入框后跳到输入的时刻，Esc 放弃输入。
-function TimeField({ origin, seek }: { origin: number; seek(value: number): void }) {
+function TimeField({ origin, seek, seekWithoutCursor }: { origin: number; seek(value: number): void; seekWithoutCursor: boolean }) {
   const clock = useContext(PreviewClockContext);
   const seconds = usePreviewSelect(clock, value => value);
   const [draft, setDraft] = useState<string | null>(null);
@@ -155,7 +158,7 @@ function TimeField({ origin, seek }: { origin: number; seek(value: number): void
     if (draft.trim() && Number.isFinite(value) && value >= 0) seek(origin + value);
   };
   return (
-    <TextInput className={styles.timeField} aria-label="游标时间（秒）" disabled={seconds === null}
+    <TextInput className={styles.timeField} aria-label="游标时间（秒）" disabled={seconds === null && !seekWithoutCursor}
       value={draft ?? (seconds === null ? '' : timeText(seconds - origin))}
       onChange={event => setDraft(event.currentTarget.value)} onBlur={commit}
       onKeyDown={event => {
