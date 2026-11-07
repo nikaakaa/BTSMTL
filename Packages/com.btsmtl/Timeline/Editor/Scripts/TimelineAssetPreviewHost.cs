@@ -303,6 +303,7 @@ namespace BTSMTL.Timeline.Editor
             }
             catch (Exception exception)
             {
+                Debug.LogException(exception);
                 Fail("打开预览场景失败", exception);
             }
         }
