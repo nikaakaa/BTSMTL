@@ -14,9 +14,11 @@ import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, edgeCondition, graphAuthoring, graphGroups, graphLayoutPath, graphPath, graphVariableOwner, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
-  useDocumentGraphHierarchy, useDocumentObservationBinding, type CanvasGroup,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphLayoutPath, graphPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
+  useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
+import { graphVariableOwner } from '../../state/authoringVariables';
+import { edgeCondition, graphAuthoring, graphGroups, type CanvasGroup } from '../../state/graphAuthoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, resolveReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';

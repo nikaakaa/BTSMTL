@@ -2,20 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ClipCurveChannel, type ClipTemplate, type ElementTemplate,
-  type GraphReferenceTarget, type GraphTemplate, type InputFragmentRequest, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ProjectItem,
-  type ReferenceCurves, type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type TrackOverlap,
+  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
+  type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ProjectItem,
+  type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
+  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
-import { variablesApi, type VariableDeclarationChanges, type VariableOperation, type VariablesQuery, type VariablesValue } from '../api/variables';
+import type { VariablesQuery, VariablesValue } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
-  JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, shapeOf, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
+  JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, setIn, shapeOf, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
 import { adapterCatalogCache } from './adapterCatalog';
@@ -117,7 +117,7 @@ export interface AddedPort {
   valueType: string;
 }
 
-const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
+export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
   rootFile: null, identity: null, authoringType: null, projectRoot: null, variables: null, variablesWriting: false, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
@@ -127,7 +127,7 @@ const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
   documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, execution: { previewScope: null, runtimeScope: null }, product: null,
 });
 
-const variablesDrafts = (values: readonly VariablesValue[]): Record<string, AuthoringDocument> =>
+export const variablesDrafts = (values: readonly VariablesValue[]): Record<string, AuthoringDocument> =>
   Object.fromEntries(values.map((value): [string, AuthoringDocument] => [authoringTarget('variables', value.m_OwnerId).documentPath,
     { ...newDocument(), kind: 'variables', rootFile: authoringRootFiles.variables, identity: value.m_OwnerId,
       edited: { [authoringRootFiles.variables]: cloneJson(value) }, version: 1 }]));
@@ -148,12 +148,12 @@ export const ownsAuthoringGraph = (state: AuthoringState, id: string): boolean =
   return target !== null && authoringDocument(state).documentGraphs?.some(graph => graph.id === id && graph.owner === target.documentPath) === true;
 };
 
-const get = () => {
+export const get = () => {
   const state = useAuthoring.getState();
   return { ...state, ...authoringDocument(state) };
 };
-const set = useAuthoring.setState;
-const setDocument = (patch: Partial<AuthoringDocument>, target = get().target!) => {
+export const set = useAuthoring.setState;
+export const setDocument = (patch: Partial<AuthoringDocument>, target = get().target!) => {
   const state = useAuthoring.getState();
   const key = authoringTargetKey(target);
   set({ documents: { ...state.documents, [key]: { ...state.documents[key], ...patch } } });
@@ -484,7 +484,7 @@ useWorkbench.subscribe((state, previous) => {
   if (receipt.stage !== saved.receipt.stage) acceptSaveJob(receipt);
 });
 
-function captureEditingView() {
+export function captureEditingView() {
   const capturedOwners = Object.entries(useAuthoring.getState().documents)
     .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
@@ -1320,7 +1320,7 @@ export const authoringActions = {
   },
 };
 
-const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as JsonObject[];
+export const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as JsonObject[];
 
 const markersOf = (track: JsonObject) => (track.m_Markers as JsonObject[] | undefined) ?? [];
 
@@ -1339,112 +1339,16 @@ export function markerTimeTaken(documentId: string, trackId: string, seconds: nu
 }
 
 // 一起平移 shift（定点值）的标记是否落到同轨其它标记的时刻；一起移动的标记之间不算。
-function markersCollide(document: JsonValue, ids: ReadonlySet<string>, shift: number): boolean {
+export function markersCollide(document: JsonValue, ids: ReadonlySet<string>, shift: number): boolean {
   return tracksOf(document).some(track => {
     const fixed = new Set(markersOf(track).filter(marker => !ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)));
     return markersOf(track).some(marker => ids.has(marker.m_AuthoringId as string) && fixed.has(numberOf(marker.m_TimeFPRawValue) + shift));
   });
 }
 
-export function markersTaken(documentId: string, markerIds: ReadonlySet<string>, deltaSeconds: number): boolean {
-  const document = currentDocument(timelinePath(documentId));
-  return !!document && markersCollide(document, markerIds, fpRaw(deltaSeconds));
-}
 
 let clipClipboard: JsonObject | null = null;
 
-// 轨道的正式合同与当前（可能未保存的）执行域；轨道种类不在元素查询里时为 null。
-function trackPlacement(elements: SkillElements, documentId: string, trackId: string) {
-  const document = currentDocument(timelinePath(documentId));
-  const track = document ? tracksOf(document).find(item => item.m_AuthoringId === trackId) : undefined;
-  const template = track && elements.tracks.find(item => item.kind === track.ContractKind);
-  return template ? { template, domain: track!.m_ExecutionDomain as string } : null;
-}
-
-export const trackOverlap = (elements: SkillElements, documentId: string, trackId: string): TrackOverlap | null =>
-  trackPlacement(elements, documentId, trackId)?.template.contract.overlap ?? null;
-
-// 轨道可放的片段种类（照 TimelineDefinitionCatalog.RequireClipPlacement）：轨道合同允许、片段属于这种轨道，
-// 且轨道与片段都支持轨道的执行域。
-export function clipTemplatesFor(elements: SkillElements, documentId: string, trackId: string): ClipTemplate[] {
-  const placement = trackPlacement(elements, documentId, trackId);
-  if (!placement) return [];
-  const { template, domain } = placement;
-  return elements.clips.filter(clip => template.contract.clipKinds.includes(clip.kind) && clip.contract.trackKind === template.kind &&
-    template.contract.domains.includes(domain) && clip.contract.domains.includes(domain));
-}
-
-// 轨道能放带曲线通道或参考曲线的片段时可展开曲线。
-export const trackHasCurves = (elements: SkillElements, documentId: string, trackId: string) =>
-  clipTemplatesFor(elements, documentId, trackId).some(template => template.curves.length > 0 || template.referenceCurves !== null);
-
-// 片段各曲线通道的当前曲线；字段未设置（null）时 curve 为 null，运行时该通道不起作用。
-export function clipCurves(elements: SkillElements, documentId: string, clipId: string): { channel: ClipCurveChannel; curve: JsonObject | null }[] {
-  const document = currentDocument(timelinePath(documentId));
-  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
-  const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
-  if (!clip || !template) return [];
-  return template.curves.map(channel => {
-    const value = clip[channel.member];
-    return { channel, curve: value && typeof value === 'object' && Array.isArray((value as JsonObject).keys) ? value as JsonObject : null };
-  });
-}
-
-// 片段吸附所需的作者数据：合同模板、起点与 ClipIn 秒数、片段直接引用的资源（"guid:localFileId" 字符串字段）。
-export function clipSnapSource(elements: SkillElements, documentId: string, clipId: string) {
-  const document = currentDocument(timelinePath(documentId));
-  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
-  const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
-  if (!clip || !template) return null;
-  const source = template.sourceAsset ? { ...template.sourceAsset, value: getIn(clip, template.sourceAsset.serializedMemberPath) } : null;
-  const references = source?.choiceKind === 'animation-clip' && typeof source.value === 'string' ? [source.value] : [];
-  return {
-    template, source, references, start: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), clipIn: fpSeconds(numberOf(clip.m_ClipInTimeFPRawValue ?? 0)),
-  };
-}
-
-// 片段的参考曲线源：模板 referenceCurves 成员引用的资源身份与片段的源区间（SampledClip 源起止秒数）。
-export function clipReferenceSource(elements: SkillElements, documentId: string, clipId: string) {
-  const document = currentDocument(timelinePath(documentId));
-  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
-  const member = clip && elements.clips.find(item => item.kind === clip.ContractKind)?.referenceCurves;
-  const identity = member ? clip[member] : null;
-  return typeof identity === 'string'
-    ? { identity, sourceStart: numberOf(clip!.m_SourceStartTime), sourceEnd: numberOf(clip!.m_SourceEndTime) } : null;
-}
-
-// 参考曲线按资源身份缓存（源资产只在 Unity 里改，刷新网页重读）；读失败记一次控制台错误。
-export type ReferenceEntry = ReferenceCurves | { failed: string };
-export const useReferenceCurves = create<Record<string, ReferenceEntry>>(() => ({}));
-const referenceRequests = new Set<string>();
-export function requestReferenceCurves(identity: string) {
-  const target = get().target;
-  if (!target || referenceRequests.has(identity)) return;
-  referenceRequests.add(identity);
-  authoringApi.referenceCurves(target, identity, authoringActions.editingView()).then(result => useReferenceCurves.setState({ [identity]: result }), (error: unknown) => {
-    consoleActions.error('作者', error);
-    useReferenceCurves.setState({ [identity]: { failed: error instanceof Error ? error.message : String(error) } });
-  });
-}
-
-// 通道的默认曲线（两端线性切线，非权重），与 Unity 目录的 AnimationCurve.Linear 相同。
-export function defaultChannelCurve(channel: ClipCurveChannel): JsonObject {
-  const tangent = channel.defaultEnd - channel.defaultStart;
-  const key = (time: number, value: number): JsonObject => ({
-    inTangent: new JsonFloat(tangent), inWeight: new JsonFloat(0), outTangent: new JsonFloat(tangent), outWeight: new JsonFloat(0),
-    tangentMode: 0, time: new JsonFloat(time), value: new JsonFloat(value), weightedMode: 0,
-  });
-  return { keys: [key(0, channel.defaultStart), key(1, channel.defaultEnd)], postWrapMode: 8, preWrapMode: 8 };
-}
-
-// 片段换轨（照 TimelineData.MoveClip）：目标轨道能放这种片段，且执行域与原轨道相同；可以时为 null，否则给出原因。
-export function clipMoveIssue(elements: SkillElements, documentId: string, clipKind: string, fromTrackId: string, toTrackId: string): string | null {
-  const from = trackPlacement(elements, documentId, fromTrackId), to = trackPlacement(elements, documentId, toTrackId);
-  if (!from || !to) return '轨道种类不在元素查询里';
-  if (!clipTemplatesFor(elements, documentId, toTrackId).some(template => template.kind === clipKind))
-    return `${to.template.kind} 轨道不能放 ${clipKind} 片段`;
-  return from.domain === to.domain ? null : `跨轨道移动必须保持执行域（${from.domain} → ${to.domain}）`;
-}
 
 export const hasChanges = (target = get().target) => {
   const document = authoringDocument(useAuthoring.getState(), target);
@@ -1489,7 +1393,7 @@ interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections'
   relatedDocuments: Record<string, AuthoringDocument | null>;
 }
 
-const historyLimit = 100;
+export const historyLimit = 100;
 
 const snapshotDocuments = (paths: readonly string[]): Record<string, AuthoringDocument | null> =>
   Object.fromEntries(paths.map((path): [string, AuthoringDocument | null] => {
@@ -1499,7 +1403,7 @@ const snapshotDocuments = (paths: readonly string[]): Record<string, AuthoringDo
       removed: [...document.removed] }];
   }));
 
-const snapshot = (owner = get().target!, relatedDocuments: readonly string[] = []): Snapshot => {
+export const snapshot = (owner = get().target!, relatedDocuments: readonly string[] = []): Snapshot => {
   const state = authoringDocument(useAuthoring.getState(), owner);
   const { selection, canvasSelections, timelineSelections } = useWorkbench.getState();
   return { owner, edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
@@ -1641,7 +1545,7 @@ function orphanFiles(seeds: string[]): string[] {
 }
 
 // 删除不再被引用的专属文件及其布局。
-function dropOrphans(seeds: string[]) {
+export function dropOrphans(seeds: string[]) {
   const orphans = orphanFiles(seeds);
   if (!orphans.length) return;
   const graphs = orphans.filter(path => path.startsWith('graphs/')).map(path => fileIdOf(path)!);
@@ -1681,268 +1585,27 @@ export function useCurrentDocument(path: string | null): { document: JsonValue |
     [edited, text, removed, version]);
 }
 
-const isDocumentGraph = (graphId: string) => {
+export const isDocumentGraph = (graphId: string) => {
   const { target, identity } = get();
   return target?.kind === 'graph' && identity === graphId;
 };
 export const graphPath = (graphId: string) => isDocumentGraph(graphId) ? authoringRootFiles.graph : `graphs/${graphId}.json`;
 export const layoutPath = 'layout.json';
 export const graphLayoutPath = (graphId: string) => isDocumentGraph(graphId) ? authoringRootFiles.graph : layoutPath;
-const graphLayoutKey = (graphId: string) => isDocumentGraph(graphId) ? 'layout' : graphId;
+export const graphLayoutKey = (graphId: string) => isDocumentGraph(graphId) ? 'layout' : graphId;
 
-// 节点身份为 32 位十六进制，连线身份为带连字符的 UUID，与现有文件一致。
-const nodeUid = () => crypto.randomUUID().replaceAll('-', '');
-const connectionUid = () => crypto.randomUUID();
 
 // 节点对象的键按序号顺序排列，与宿主存盘一致。
-const sortedObject = (value: JsonObject): JsonObject =>
+export const sortedObject = (value: JsonObject): JsonObject =>
   Object.fromEntries(Object.keys(value).sort((left, right) => left < right ? -1 : left > right ? 1 : 0).map(key => [key, value[key]]));
 
-const nodesOf = (document: JsonValue) => (document as JsonObject).allNodes as JsonObject[];
-const connectionsOf = (node: JsonObject) => node.outConnections as JsonObject[];
+export const nodesOf = (document: JsonValue) => (document as JsonObject).allNodes as JsonObject[];
+export const connectionsOf = (node: JsonObject) => node.outConnections as JsonObject[];
 
-// 组合节点的一个步骤就是一个执行出口（身份 m_Id 即端口），步骤的条件与调度从该出口唯一的连线编辑。
-export interface EdgeStep { nodeId: string; nodeType: string; member: string; index: number; step: JsonObject }
 
-export function edgeStep(document: JsonValue | null, connectionId: string): EdgeStep | null {
-  for (const node of document ? nodesOf(document) : []) {
-    const connection = connectionsOf(node).find(item => item.UID === connectionId);
-    if (!connection) continue;
-    for (const [member, value] of Object.entries(node)) {
-      if (!Array.isArray(value)) continue;
-      const index = value.findIndex(item => item !== null && typeof item === 'object' && (item as JsonObject).m_Id === connection.sourcePortID);
-      if (index >= 0) return { nodeId: node.UID as string, nodeType: node.type as string, member, index, step: value[index] as JsonObject };
-    }
-    return null;
-  }
-  return null;
-}
 
-export function edgeCondition(document: JsonValue | null, edgeId: string, machine: boolean) {
-  if (!machine) {
-    const step = edgeStep(document, edgeId);
-    return step && { condition: (step.step.m_Condition as string | null | undefined) ?? null, step };
-  }
-  const connection = (document ? nodesOf(document).flatMap(connectionsOf) : []).find(item => item.UID === edgeId);
-  return connection ? { condition: ((connection.Payload as JsonObject).m_Condition as string | null | undefined) ?? null, step: null } : null;
-}
+export const variableRequests = new Map<string, Promise<string>>();
 
-function graphLayout(document: JsonValue, graphId: string): JsonObject {
-  const layout = document as JsonObject;
-  if (isDocumentGraph(graphId)) return layout.layout as JsonObject;
-  return (layout[graphId] ??= { allNodes: {}, canvasGroups: [], translation: { x: new JsonFloat(0), y: new JsonFloat(0) }, zoomFactor: new JsonFloat(1) }) as JsonObject;
-}
-
-const layoutNodes = (document: JsonValue, graphId: string) => graphLayout(document, graphId).allNodes as JsonObject;
-
-const positionValue = (graphId: string, position: { x: number; y: number }): JsonObject =>
-  ({ comments: null, ...(isDocumentGraph(graphId) ? { isBreakpoint: false } : {}),
-    position: { x: new JsonFloat(Math.round(position.x)), y: new JsonFloat(Math.round(position.y)) } });
-
-export interface GroupRect { x: number; y: number; width: number; height: number }
-
-const rectValue = (rect: GroupRect): JsonObject => ({
-  height: new JsonFloat(Math.round(rect.height)), width: new JsonFloat(Math.round(rect.width)),
-  x: new JsonFloat(Math.round(rect.x)), y: new JsonFloat(Math.round(rect.y)),
-});
-
-function groupsOf(document: JsonValue, graphId: string): JsonObject[] {
-  return (graphLayout(document, graphId).canvasGroups ??= []) as JsonObject[];
-}
-
-export interface CanvasGroup { index: number; name: string; rect: GroupRect; color: string | null }
-
-// 布局中的分组；颜色全透明为 NodeCanvas 默认色。
-export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGroup[] {
-  const groups = ((layout as JsonObject | null)?.[graphLayoutKey(graphId)] as JsonObject | undefined)?.canvasGroups as JsonObject[] | undefined;
-  return (groups ?? []).map((group, index) => {
-    const rect = group.rect as JsonObject, color = group.color as JsonObject | null;
-    const alpha = color ? numberOf(color.a) : 0;
-    return {
-      index, name: (group.name as string | null) ?? '',
-      rect: { x: numberOf(rect.x), y: numberOf(rect.y), width: numberOf(rect.width), height: numberOf(rect.height) },
-      color: alpha > 0 ? `rgb(${numberOf(color!.r) * 255} ${numberOf(color!.g) * 255} ${numberOf(color!.b) * 255} / ${alpha})` : null,
-    };
-  });
-}
-
-export function graphVariableOwner(graphId: string): string | null {
-  const graph = get().documentGraphs!.find(graph => graph.id === graphId)!;
-  if (graph.role === null) return graph.variableOwnerId;
-  return graph.role === 'StateMachine' ? null : graphId;
-}
-
-const variableRequests = new Map<string, Promise<string>>();
-const variableDocument = (state: AuthoringState, ownerId: string) => Object.entries(state.documents)
-  .find(([, document]) => document.kind === 'variables' && document.identity === ownerId);
-
-async function loadVariables(ownerId: string, signal: AbortSignal): Promise<void> {
-  const captured = variableDocument(useAuthoring.getState(), ownerId)?.[1];
-  const result = await variablesApi.query(ownerId, authoringActions.editingView(), signal);
-  signal.throwIfAborted();
-  const key = result.document.documentPath;
-  const current = useAuthoring.getState().documents[key];
-  if (current?.version !== captured?.version || current?.revision !== captured?.revision) return;
-  if (current === undefined) {
-    const saved = await workspaceDocumentsApi.open(key, signal);
-    signal.throwIfAborted();
-    if (useAuthoring.getState().documents[key] !== undefined) return;
-    set({ documents: { ...useAuthoring.getState().documents, [key]: { ...newDocument(), kind: saved.kind,
-      rootFile: saved.rootFile, identity: saved.identity, authoringType: saved.authoringType ?? null,
-      revision: saved.revision, sourceFiles: saved.files, files: saved.files } } });
-    return loadVariables(ownerId, signal);
-  }
-  setDocument({ variables: result }, authoringOwner(key));
-}
-
-export function useVariables(ownerId: string | null) {
-  const source = useAuthoring(useShallow(state => {
-    const document = ownerId === null ? undefined : variableDocument(state, ownerId)?.[1];
-    return { value: document?.variables ?? null, version: document?.version ?? null,
-      revision: document?.revision ?? null, writing: document?.variablesWriting === true };
-  }));
-  const [failure, setFailure] = useState<{ ownerId: string; text: string } | null>(null);
-  useEffect(() => {
-    if (ownerId === null) return;
-    const controller = new AbortController();
-    setFailure(null);
-    loadVariables(ownerId, controller.signal).catch((error: unknown) => {
-      if (!isAbort(error)) {
-        setFailure({ ownerId, text: error instanceof Error ? error.message : String(error) });
-        consoleActions.error('变量', error);
-      }
-    });
-    return () => controller.abort();
-  }, [ownerId, source.version, source.revision]);
-  return { value: source.value, writing: source.writing, failure: failure?.ownerId === ownerId ? failure.text : null };
-}
-
-async function applyVariableEdit(ownerId: string, operation: VariableOperation): Promise<string> {
-  if (get().resourceTarget !== null) set({ resourceTarget: null });
-  const [key, current] = variableDocument(useAuthoring.getState(), ownerId)!;
-  const target = authoringOwner(key);
-  const historyTarget = get().target!;
-  const before = snapshot(target);
-  const { editingView, isCurrentRequest } = captureEditingView();
-  setDocument({ variablesWriting: true }, target);
-  try {
-    const result = await variablesApi.edit(ownerId, editingView, operation);
-    const currentCatalog = isCurrentRequest();
-    const document = authoringDocument(useAuthoring.getState(), target);
-    const changed = result.value.m_Revision !== current.variables!.value.m_Revision;
-    if (changed) {
-      const write = result.editingView.writes.find(write => write.documentPath === key)!;
-      const edited = { ...document.edited };
-      for (const [path, content] of Object.entries(write.files)) {
-        if (content === document.files[path]) delete edited[path];
-        else edited[path] = parseSkillJson(content);
-      }
-      const history = authoringDocument(useAuthoring.getState(), historyTarget);
-      setDocument({ undo: [...history.undo, before].slice(-historyLimit), redo: [] }, historyTarget);
-      setDocument({ edited, version: document.version + 1 }, target);
-    }
-    setDocument({ variables: { ...current.variables!, document: result.document, value: result.value, availability: result.availability } }, target);
-    if (currentCatalog) set({ elementCatalog: { kind: 'ready', items: result.elements } });
-    else void authoringActions.listDocuments();
-    return result.variableId;
-  } finally {
-    setDocument({ variablesWriting: false }, target);
-  }
-}
-
-function editVariable(ownerId: string, operation: VariableOperation | ((source: VariablesQuery['value']) => VariableOperation)): Promise<string> {
-  const previous = variableRequests.get(ownerId);
-  const apply = () => applyVariableEdit(ownerId, typeof operation === 'function'
-    ? operation(variableDocument(useAuthoring.getState(), ownerId)![1].variables!.value) : operation);
-  const request = (previous === undefined ? apply() : previous.then(apply, apply)).finally(() => {
-    if (variableRequests.get(ownerId) === request) variableRequests.delete(ownerId);
-  });
-  variableRequests.set(ownerId, request);
-  return request;
-}
-
-// ── 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline ──
-
-export const inputAuthoring = {
-  async createPlan(name: string, context: InputPlanContext) {
-    const elements = await skillElements(context);
-    const template = elements.previewInput.plan;
-    if (!elements.previewInput.availability.available)
-      throw new Error(elements.previewInput.availability.reason!);
-    const plan = cloneJson(template!.value);
-    for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
-    const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
-    const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
-    scheme.Name = name;
-    scheme.InputTimeline = timeline;
-    const id = crypto.randomUUID();
-    authoringActions.setFile(`inputs/${id}.json`, plan);
-    setDocument({ inputActorId: plan.Actor as string | null });
-    selectionActions.select(null);
-    selectionActions.showTimeline(timeline, null, null);
-    return id;
-  },
-
-  async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {
-    const target = get().target;
-    const fragment = await authoringApi.inputFragment(request);
-    if (get().target !== target) return;
-    authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph, variablesDrafts([fragment.variables]));
-    authoringActions.edit(timelinePath(documentId), document => {
-      const tracks = tracksOf(document);
-      const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
-      if (trackId === null) tracks.push(track);
-      (track.m_Clips as JsonObject[]).push(fragment.clip);
-    });
-    selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
-  },
-
-  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: SkillElements['previewInput']) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const nodes = (document as JsonObject).allNodes as JsonObject[];
-      const node = nodes.find(item => item.UID === nodeId)!;
-      const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);
-      for (const { keys, value } of changes) {
-        if (keys.join('/') !== contract.keyPath.join('/')) setIn(node, keys, value);
-        else {
-          const previous = at(node);
-          for (const writer of nodes.filter(item => item.type === contract.nodeType && at(item) === previous))
-            setIn(writer, contract.keyPath, value);
-        }
-      }
-    });
-  },
-
-  setValue(path: string, keys: JsonKey[], value: JsonValue) {
-    authoringActions.edit(path, document => setIn(document, keys, value));
-  },
-
-  // 新方案复制所选方案的设置，配一条新的空输入 Timeline。
-  async addScheme(path: string, name: string) {
-    const elements = await skillElements();
-    const timeline = authoringActions.createTimeline(elements.timeline, 'Timeline');
-    authoringActions.edit(path, document => {
-      const plan = document as JsonObject;
-      const schemes = plan.Schemes as JsonObject[];
-      const source = schemes[numberOf(plan.Selected)];
-      schemes.push(sortedObject({ ...cloneJson(source), AuthoringId: crypto.randomUUID(), InputTimeline: timeline, Name: name }));
-      plan.Selected = schemes.length - 1;
-    });
-    selectionActions.showTimeline(timeline, null, null);
-  },
-
-  removeScheme(path: string, index: number) {
-    const plan = currentDocument(path) as JsonObject | null;
-    const timeline = ((plan?.Schemes as JsonObject[] | undefined)?.[index]?.InputTimeline as string | undefined) ?? null;
-    authoringActions.edit(path, document => {
-      const target = document as JsonObject;
-      const schemes = target.Schemes as JsonObject[];
-      schemes.splice(index, 1);
-      target.Selected = Math.min(numberOf(target.Selected), schemes.length - 1);
-    });
-    if (timeline) dropOrphans([timeline]);
-  },
-};
 
 export function skillElements(context?: InputPlanContext): Promise<SkillElements> {
   const target = get().target;
@@ -1973,7 +1636,7 @@ export function useSkillElements(enabled: boolean): SkillElements | null {
   return enabled && !loading && elements?.key === key ? elements.items : null;
 }
 
-function createGraph(elements: SkillElements, role: string, name: string | null, ownership: GraphTemplate['ownership'] = null,
+export function createGraph(elements: SkillElements, role: string, name: string | null, ownership: GraphTemplate['ownership'] = null,
   context?: { OwnerGraphId: string; OwnerNodeId: string }): string {
   const template = elements.graphs.find(item => item.role === role && item.ownership === ownership);
   if (!template) throw new Error(`正式作者接口未提供 ${role} / ${ownership ?? '专属'} 图的创建合同`);
@@ -1988,267 +1651,6 @@ function createGraph(elements: SkillElements, role: string, name: string | null,
   return id;
 }
 
-// 复制缓冲：节点原对象、相对位置与端口，跨图粘贴时生成新身份。
-let clipboard: { nodes: JsonObject[]; positions: Record<string, { x: number; y: number }>; ports: Record<string, AddedPort[]> } | null = null;
-
-export const graphAuthoring = {
-  async createOwnedReference({ graphId, nodeId, path, target }: {
-    graphId: string; nodeId: string; path: string[];
-    target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
-  }): Promise<string> {
-    const elements = await skillElements();
-    const id = createGraph(elements, target.role, null, null, { OwnerGraphId: graphId, OwnerNodeId: nodeId });
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: path, value: id }]);
-    return id;
-  },
-
-  async createPage(role: string, ownership: GraphTemplate['ownership'], name: string,
-    context?: { OwnerGraphId: string; OwnerNodeId: string }): Promise<string> {
-    const elements = await skillElements();
-    return createGraph(elements, role, name, ownership, context);
-  },
-  // 按类型描述新建节点：配置取描述的默认配置，端口取描述结果。
-  addNode(graphId: string, type: string, configuration: JsonObject, ports: AddedPort[], position: { x: number; y: number }): string {
-    const uid = nodeUid();
-    authoringActions.edit(graphPath(graphId), document => {
-      nodesOf(document).push(sortedObject({ ...cloneJson(configuration), UID: uid, outConnections: [], type }));
-    });
-    authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
-    setDocument({ addedPorts: { ...get().addedPorts, [uid]: ports } });
-    return uid;
-  },
-
-  // 删除节点及所有指向它们的连线与布局；它们专属的状态体、条件图、状态机与 Timeline 不再被引用时一并删除。
-  deleteNodes(graphId: string, nodeIds: string[]) {
-    const removed = new Set(nodeIds);
-    const source = currentDocument(graphPath(graphId));
-    const seeds = source ? nodesOf(source).flatMap(node => removed.has(node.UID as string) ? referencedFiles(node)
-      : connectionsOf(node).filter(connection => removed.has(connection.targetNode as string)).flatMap(referencedFiles)) : [];
-    authoringActions.edit(graphPath(graphId), document => {
-      const graph = document as JsonObject;
-      graph.allNodes = nodesOf(graph).filter(node => !removed.has(node.UID as string));
-      for (const node of nodesOf(graph)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.targetNode as string));
-    });
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      const nodes = layoutNodes(document, graphId);
-      for (const id of nodeIds) delete nodes[id];
-    });
-    dropOrphans(seeds);
-  },
-
-  // ── 状态机（照 Unity 原生 Skill FSM）：新状态带专属状态体；转移按序号排在源状态之后，条件图按需创建 ──
-
-  async addState(graphId: string, configuration: JsonObject, position: { x: number; y: number }): Promise<string> {
-    const elements = await skillElements();
-    const uid = nodeUid();
-    const body = createGraph(elements, 'StateBody', '状态内容');
-    authoringActions.edit(graphPath(graphId), document => {
-      nodesOf(document).push(sortedObject({
-        ...cloneJson(configuration), UID: uid, _name: '新状态', m_Body: body, outConnections: [], type: 'BtsmtlSkillNativeState',
-      }));
-    });
-    authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
-    return uid;
-  },
-
-  connectStates(graphId: string, elements: SkillElements, sourceId: string, targetId: string) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === sourceId);
-      if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);
-      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf((connection.Payload as JsonObject).m_Order))) + 1;
-      connectionsOf(node).push({
-        Payload: sortedObject({ ...cloneJson(elements.transition.value), m_Order: order }), UID: connectionUid(), targetNode: targetId,
-      });
-    });
-  },
-
-  // 转移字段：Payload 内按键写值。
-  setTransitionValue(graphId: string, connectionId: string, keys: JsonKey[], value: JsonValue) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const connection = nodesOf(document).flatMap(connectionsOf).find(item => item.UID === connectionId);
-      if (!connection) throw new Error(`状态机 ${graphId} 中没有转移 ${connectionId}`);
-      setIn(connection.Payload as JsonObject, keys, value);
-    });
-  },
-
-  // 给状态建状态体、给转移建条件图；移除时原图不再被引用就删除。
-  async createStateBody(graphId: string, nodeId: string) {
-    const elements = await skillElements();
-    const body = createGraph(elements, 'StateBody', '状态内容');
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: body }]);
-  },
-
-  async createCondition(graphId: string, connectionId: string) {
-    const elements = await skillElements();
-    const condition = createGraph(elements, 'ConditionRule', '转移条件');
-    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], condition);
-  },
-
-  removeStateBody(graphId: string, nodeId: string, body: string) {
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: null }]);
-    dropOrphans([body]);
-  },
-
-  removeCondition(graphId: string, connectionId: string, condition: string) {
-    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], null);
-    dropOrphans([condition]);
-  },
-
-  // 组合步骤的条件从该步骤出发的连线新建；新条件默认成立，原本无条件的步骤在改图前照常进入。
-  async createStepCondition(graphId: string, step: EdgeStep): Promise<string> {
-    const elements = await skillElements();
-    const condition = createGraph(elements, 'ConditionRule', '步骤条件');
-    authoringActions.edit(graphPath(condition), document => {
-      for (const node of nodesOf(document)) node._inputPortValues = { m_Result: true };
-    });
-    graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, 'm_Condition'], value: condition }]);
-    return condition;
-  },
-
-  removeStepCondition(graphId: string, step: EdgeStep, condition: string) {
-    graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, 'm_Condition'], value: null }]);
-    dropOrphans([condition]);
-  },
-
-  connect(graphId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === source.nodeId);
-      if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
-      const duplicate = connectionsOf(node).some(connection => connection.sourcePortID === source.portId &&
-        connection.targetNode === target.nodeId && connection.targetPortID === target.portId);
-      if (duplicate) return;
-      connectionsOf(node).push({ UID: connectionUid(), sourcePortID: source.portId, targetNode: target.nodeId, targetPortID: target.portId });
-    });
-  },
-
-  reconnect(graphId: string, connectionId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const nodes = nodesOf(document);
-      for (const owner of nodes) {
-        const connections = connectionsOf(owner);
-        const index = connections.findIndex(connection => connection.UID === connectionId);
-        if (index < 0) continue;
-        const connection = connections[index];
-        if (owner.UID !== source.nodeId) {
-          const node = nodes.find(item => item.UID === source.nodeId);
-          if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
-          connections.splice(index, 1);
-          connectionsOf(node).push(connection);
-        }
-        connection.sourcePortID = source.portId;
-        connection.targetNode = target.nodeId;
-        connection.targetPortID = target.portId;
-        return;
-      }
-      throw new Error(`图 ${graphId} 中没有连线 ${connectionId}`);
-    });
-  },
-
-  disconnect(graphId: string, connectionIds: string[]) {
-    const removed = new Set(connectionIds);
-    const source = currentDocument(graphPath(graphId));
-    const seeds = source ? nodesOf(source).flatMap(connectionsOf).filter(connection => removed.has(connection.UID as string)).flatMap(referencedFiles) : [];
-    authoringActions.edit(graphPath(graphId), document => {
-      for (const node of nodesOf(document)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.UID as string));
-    });
-    dropOrphans(seeds);
-  },
-
-  // 检查器字段：节点对象内按键路径写值（成员、端口默认值或节点名）。
-  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[]) {
-    authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === nodeId);
-      if (!node) throw new Error(`图 ${graphId} 中没有节点 ${nodeId}`);
-      for (const { keys, value } of changes) setIn(node, keys, value);
-    });
-  },
-
-  // ── 分组（NodeCanvas CanvasGroup，存于布局）：名称、矩形、颜色、自动分组与备注 ──
-
-  addGroup(graphId: string, rect: GroupRect, name: string) {
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      groupsOf(document, graphId).push({
-        autoGroup: false, color: { a: new JsonFloat(0), b: new JsonFloat(0), g: new JsonFloat(0), r: new JsonFloat(0) },
-        name, notes: null, rect: rectValue(rect),
-      });
-    });
-  },
-
-  updateGroup(graphId: string, index: number, patch: { name?: string; rect?: GroupRect }) {
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      const group = groupsOf(document, graphId)[index];
-      if (!group) throw new Error(`图 ${graphId} 中没有第 ${index} 个分组`);
-      if (patch.name !== undefined) group.name = patch.name;
-      if (patch.rect) group.rect = rectValue(patch.rect);
-    });
-  },
-
-  deleteGroups(graphId: string, indices: number[]) {
-    const removed = new Set(indices);
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      const graph = graphLayout(document, graphId);
-      graph.canvasGroups = groupsOf(document, graphId).filter((_, index) => !removed.has(index));
-    });
-  },
-
-  addVariable: (ownerId: string, typeId: string, name?: string) =>
-    editVariable(ownerId, { kind: 'create', typeId, ...(name === undefined ? {} : { name }) }),
-  renameVariable: (ownerId: string, variableId: string, name: string) => editVariable(ownerId, { kind: 'rename', variableId, name }),
-  setVariableValue: (ownerId: string, variableId: string, keys: JsonKey[], next: JsonValue) => editVariable(ownerId, source => {
-    const current = source.m_Variables.find(variable => variable.m_Declaration.m_VariableId === variableId)!;
-    const value = keys.length === 0 ? next : cloneJson(current.m_DefaultValue);
-    if (keys.length !== 0) setIn(value, keys, next);
-    return { kind: 'set-default', variableId, value };
-  }),
-  setVariablePublic: (ownerId: string, variableId: string, isPublic: boolean) => editVariable(ownerId, { kind: 'configure-public', variableId, isPublic }),
-  setDeclarationValue: (ownerId: string, variableId: string, changes: VariableDeclarationChanges) =>
-    editVariable(ownerId, { kind: 'configure-blackboard', variableId, changes }),
-  removeVariable: (ownerId: string, variableId: string) => editVariable(ownerId, { kind: 'delete', variableId }),
-
-  move(graphId: string, positions: Record<string, { x: number; y: number }>) {
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      const nodes = layoutNodes(document, graphId);
-      for (const [id, position] of Object.entries(positions)) {
-        const next = positionValue(graphId, position);
-        nodes[id] = { ...next, ...(nodes[id] as JsonObject | undefined), position: next.position };
-      }
-    });
-  },
-
-  copy(graphId: string, nodeIds: string[], positions: Record<string, { x: number; y: number }>, ports: Record<string, AddedPort[]>) {
-    const state = get();
-    const path = graphPath(graphId);
-    const document = state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
-    if (!document) return 0;
-    const wanted = new Set(nodeIds);
-    clipboard = { nodes: nodesOf(document).filter(node => wanted.has(node.UID as string)).map(node => cloneJson(node)), positions, ports };
-    return clipboard.nodes.length;
-  },
-
-  // 粘贴：新身份，复制集合内部的连线重接到新节点，指向集合外的连线丢弃；位置整体偏移。
-  paste(graphId: string, offset: { x: number; y: number }): string[] {
-    if (!clipboard) return [];
-    const ids = new Map(clipboard.nodes.map(node => [node.UID as string, nodeUid()]));
-    const nodes = clipboard.nodes.map(node => sortedObject({
-      ...cloneJson(node), UID: ids.get(node.UID as string)!,
-      outConnections: connectionsOf(node).filter(connection => ids.has(connection.targetNode as string))
-        .map(connection => ({ ...connection, UID: connectionUid(), targetNode: ids.get(connection.targetNode as string)! })),
-    }));
-    const source = clipboard;
-    authoringActions.edit(graphPath(graphId), document => { nodesOf(document).push(...nodes); });
-    authoringActions.edit(graphLayoutPath(graphId), document => {
-      const layout = layoutNodes(document, graphId);
-      for (const [from, to] of ids) {
-        const position = source.positions[from] ?? { x: 0, y: 0 };
-        layout[to] = positionValue(graphId, { x: position.x + offset.x, y: position.y + offset.y });
-      }
-    });
-    const ports = { ...get().addedPorts };
-    for (const [from, to] of ids) ports[to] = source.ports[from] ?? [];
-    setDocument({ addedPorts: ports });
-    return [...ids.values()];
-  },
-};
 
 export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string, JsonValue>,
   addedPorts: Record<string, AddedPort[]>): SkillDocumentGraph {
@@ -2311,7 +1713,7 @@ export function findEditedGraph(graphs: SkillDocumentGraph[] | null, selectId: s
   return null;
 }
 
-function findTimelineClip(timeline: JsonObject, clipId: string): JsonObject | null {
+export function findTimelineClip(timeline: JsonObject, clipId: string): JsonObject | null {
   for (const track of (timeline.m_Tracks as JsonObject[] | undefined) ?? [])
     for (const clip of (track.m_Clips as JsonObject[] | undefined) ?? [])
       if (clip.m_AuthoringId === clipId) return clip;

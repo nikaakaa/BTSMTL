@@ -8,8 +8,9 @@ import {
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, edgeCondition, findEditedGraph, graphAuthoring, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
+import { edgeCondition, graphAuthoring } from '../../state/graphAuthoring';
 import { documentElementKey, projectActions } from '../../state/project';
 import { graphItemDescription, projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';

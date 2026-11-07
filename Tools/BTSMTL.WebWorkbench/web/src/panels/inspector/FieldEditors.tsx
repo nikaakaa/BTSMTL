@@ -7,9 +7,12 @@ import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
 import type { VariableDeclarationChanges, VariableEntry, VariableType, VariablesQuery } from '../../api/variables';
 import {
-  authoringActions, authoringDocument, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements, useVariables,
-  type EdgeStep, type JsonKey, type JsonMutation,
+  authoringActions, authoringDocument, graphPath, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements,
+  type JsonKey, type JsonMutation,
 } from '../../state/authoring';
+import { inputAuthoring } from '../../state/authoringInputs';
+import { useVariables } from '../../state/authoringVariables';
+import { graphAuthoring, type EdgeStep } from '../../state/graphAuthoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { InputPlanContext } from '../../api/authoring';
-import { inputAuthoring, useAuthoring, useAuthorTimelines, useInputSchemes } from '../../state/authoring';
+import { useAuthoring, useAuthorTimelines, useInputSchemes } from '../../state/authoring';
+import { inputAuthoring } from '../../state/authoringInputs';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { PanelBar } from '../../ui/blocks';

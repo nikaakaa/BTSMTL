@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
-import { authoringActions, graphAuthoring, type useSkillElements } from '../../state/authoring';
+import { authoringActions, type useSkillElements } from '../../state/authoring';
+import { graphAuthoring } from '../../state/graphAuthoring';
 import { projectActions } from '../../state/project';
 import { consoleActions, selectionActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';

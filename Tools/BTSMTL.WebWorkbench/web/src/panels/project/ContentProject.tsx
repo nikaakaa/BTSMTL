@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { isAbort } from '../../api/http';
-import { authoringActions, graphAuthoring, useAuthoring, useSkillElements } from '../../state/authoring';
+import { authoringActions, useAuthoring, useSkillElements } from '../../state/authoring';
+import { graphAuthoring } from '../../state/graphAuthoring';
 import { projectActions } from '../../state/project';
 import { projectContents, type ContentNode, type ContentTarget } from '../../state/projectContents';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
