@@ -168,9 +168,9 @@ namespace BTSMTL.Authoring.Workspace
 
         public static AuthoringDocumentCache For(string workspace) => s_Workspaces.GetOrAdd(workspace, _ => new AuthoringDocumentCache());
 
-        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory)
+        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory, List<FileInfo> owned)
         {
-            FileInfo[] files = new DirectoryInfo(directory).GetFiles("*.json", SearchOption.AllDirectories);
+            FileInfo[] files = owned.ToArray();
             var relative = new string[files.Length];
             for (int i = 0; i < files.Length; i++)
                 relative[i] = Path.GetRelativePath(directory, files[i].FullName).Replace('\\', '/');
@@ -373,12 +373,25 @@ namespace BTSMTL.Authoring.Workspace
             {
                 string library = Path.Combine(Workspace, kind.Directory);
                 if (!Directory.Exists(library)) continue;
-                IEnumerable<string> directories = kind.RootFile == null ? Directory.EnumerateDirectories(library) :
-                    Directory.EnumerateFiles(library, kind.RootFile, SearchOption.AllDirectories).Select(Path.GetDirectoryName);
-                foreach (string directory in directories.OrderBy(path => path, StringComparer.Ordinal))
+                // 每个库只遍历一次目录树：全部 JSON 的路径、修改时间与长度按所属文档目录分组，再交缓存判定复用。
+                FileInfo[] files = new DirectoryInfo(library).GetFiles("*.json", SearchOption.AllDirectories);
+                var owned = new Dictionary<string, List<FileInfo>>(StringComparer.OrdinalIgnoreCase);
+                if (kind.RootFile == null)
+                    foreach (string directory in Directory.EnumerateDirectories(library))
+                        owned[directory] = new List<FileInfo>();
+                else
+                    foreach (FileInfo file in files)
+                        if (string.Equals(file.Name, kind.RootFile, StringComparison.OrdinalIgnoreCase))
+                            owned[file.DirectoryName] = new List<FileInfo>();
+                foreach (FileInfo file in files)
+                    for (string directory = file.DirectoryName; directory != null && directory.Length > library.Length;
+                         directory = Path.GetDirectoryName(directory))
+                        if (owned.TryGetValue(directory, out List<FileInfo> list))
+                            list.Add(file);
+                foreach (var document in owned.OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 {
-                    documents.Add(m_Cache.Read(kind, Workspace, directory));
-                    seen.Add(directory);
+                    documents.Add(m_Cache.Read(kind, Workspace, document.Key, document.Value));
+                    seen.Add(document.Key);
                 }
             }
             m_Cache.Retain(seen);
