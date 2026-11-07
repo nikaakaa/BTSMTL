@@ -1,6 +1,7 @@
 import type { ProjectItem, SkillDocumentRelation } from '../api/authoring';
 import { timelineOf, type AuthoringState } from './authoring';
 import { getIn, parseSkillJson, type JsonObject } from './skillJson';
+import { findNode, nodeId, nodeLabel, nodesOf } from './graphDocument';
 
 export type ContentTarget = { kind: 'item'; item: ProjectItem }
   | { kind: 'node'; owner: string; ownerName: string; graphId: string; nodeId: string }
@@ -75,14 +76,14 @@ export function projectContents(documents: AuthoringState['documents']) {
   };
   for (const relation of relations.values()) {
     const source = values.get(JSON.stringify([relation.source.owner, relation.source.file]));
-    const node = (source?.allNodes as JsonObject[] | undefined)?.find(node => node.UID === relation.source.nodeId);
+    const node = source === undefined ? undefined : findNode(source, relation.source.nodeId) ?? undefined;
     if (node === undefined) continue;
     const identity = getIn(node, relation.source.serializedMemberPath);
     if (typeof identity !== 'string' || identity === '') continue;
     const target = byIdentity.get(identity);
     if (target !== undefined && items.get(target)!.kind === 'timeline' && node.m_Ownership === 'Shared') items.get(target)!.ownership = 'Shared';
     const key = JSON.stringify([relation.source.owner, relation.source.graphId, relation.source.nodeId]);
-    const label = node._name as string ?? node.type as string;
+    const label = nodeLabel(node);
     addUse(identity, { key: JSON.stringify([key, relation.source.serializedMemberPath]), label: `${relation.source.ownerName} / ${label} / ${relation.source.fieldId}`,
       target: { kind: 'node', owner: relation.source.owner, ownerName: relation.source.ownerName,
         graphId: relation.source.graphId, nodeId: relation.source.nodeId } }, key);
@@ -128,10 +129,10 @@ export function projectContents(documents: AuthoringState['documents']) {
     node.children.push(...childItems(key));
     if (item.kind === 'graph') {
       const data = values.get(key)!;
-      for (const raw of data.allNodes as JsonObject[]) {
-        const id = raw.UID as string;
+      for (const raw of nodesOf(data)) {
+        const id = nodeId(raw);
         const key = JSON.stringify([item.owner, item.identity, id]);
-        const label = raw._name as string ?? raw.type as string;
+        const label = nodeLabel(raw);
         node.children.push({ key, label, description: 'role' in item && item.role === 'StateMachine' ? '状态' : '节点',
           target: { kind: 'node', owner: item.owner, ownerName: item.ownerName, graphId: item.identity, nodeId: id },
           children: childItems(key), referrers: [] });

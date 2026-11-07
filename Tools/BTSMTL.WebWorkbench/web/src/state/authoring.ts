@@ -15,8 +15,12 @@ import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type Scope
 import type { PlayerJobReceipt } from '../api/playerRecords';
 import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
 import {
-  JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, setIn, shapeOf, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
+  JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, setIn, shapeOf, sortedObject, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
+import {
+  connectionId, connectionSourcePort, connectionTarget, connectionTargetPort, connectionsOf, layoutNodesOf, nodeId, nodeLabel, nodesOf,
+  storedNodeName, transitionPayload,
+} from './graphDocument';
 import { isWeighted, splitCurve } from './curveSplit';
 import { adapterCatalogCache } from './adapterCatalog';
 import { consoleActions, selectedScene, selectionActions, useWorkbench, type SelectionSlice } from './store';
@@ -1294,7 +1298,7 @@ export const authoringActions = {
   // 片段图种类（tree.clip）带专属 TimelineBody 图；标记带专属 TimelineTrigger 图。
   async addClipAt(documentId: string, trackId: string, template: ElementTemplate, startSeconds: number, endSeconds: number): Promise<string> {
     const elements = await skillElements();
-    const graph = 'm_AssetTree' in template.value ? createGraph(elements, 'TimelineBody', '片段内容') : null;
+    const graph = 'm_AssetTree' in template.value ? createGraph(elements, { role: 'TimelineBody', name: '片段内容' }) : null;
     return authoringActions.addClip(documentId, trackId, template.value, startSeconds, endSeconds, graph);
   },
 
@@ -1304,7 +1308,7 @@ export const authoringActions = {
       consoleActions.log('warn', '作者', `同一轨道在 ${seconds.toFixed(3)} s 已有标记，标记不能重叠`);
       return null;
     }
-    return authoringActions.addMarker(documentId, trackId, elements.marker.value, seconds, createGraph(elements, 'TimelineTrigger', '标记触发'));
+    return authoringActions.addMarker(documentId, trackId, elements.marker.value, seconds, createGraph(elements, { role: 'TimelineTrigger', name: '标记触发' }));
   },
 
   addMarker(documentId: string, trackId: string, template: JsonObject, seconds: number, graph: string): string {
@@ -1595,14 +1599,6 @@ export const graphLayoutPath = (graphId: string) => isDocumentGraph(graphId) ? a
 export const graphLayoutKey = (graphId: string) => isDocumentGraph(graphId) ? 'layout' : graphId;
 
 
-// 节点对象的键按序号顺序排列，与宿主存盘一致。
-export const sortedObject = (value: JsonObject): JsonObject =>
-  Object.fromEntries(Object.keys(value).sort((left, right) => left < right ? -1 : left > right ? 1 : 0).map(key => [key, value[key]]));
-
-export const nodesOf = (document: JsonValue) => (document as JsonObject).allNodes as JsonObject[];
-export const connectionsOf = (node: JsonObject) => node.outConnections as JsonObject[];
-
-
 
 export const variableRequests = new Map<string, Promise<string>>();
 
@@ -1614,32 +1610,53 @@ export function skillElements(context?: InputPlanContext): Promise<SkillElements
   return authoringApi.elements(target, authoringActions.editingView(), signal, context).then(elements => { signal.throwIfAborted(); return elements; });
 }
 
+// 各面板共用同一作者视图的一次元素查询；结果对应的视图已过期时丢弃，等新视图重新查询。
+let elementsRequest: { key: string; promise: Promise<SkillElements | null> } | null = null;
+
+function sharedElements(key: string, target: AuthoringTarget) {
+  if (elementsRequest?.key === key) return elementsRequest.promise;
+  const { editingView, isCurrentRequest } = captureEditingView();
+  const promise = authoringApi.elements(target, editingView, loadController?.signal).then(items => isCurrentRequest() ? items : null);
+  const request = elementsRequest = { key, promise };
+  promise.then(items => { if (items === null && elementsRequest === request) elementsRequest = null; }, (error: unknown) => {
+    if (elementsRequest === request) elementsRequest = null;
+    if (!isAbort(error)) consoleActions.error('作者', error);
+  });
+  return promise;
+}
+
+// 文档改动后重新查询期间，同一技能、载体与场景下继续给出上一份结果，连线标签与图槽位不随每次编辑清空；
+// 新建等写入操作经 skillElements 读取当前视图。
 export function useSkillElements(enabled: boolean): SkillElements | null {
   const { target, loading, owners, carrierRevision } = useAuthoring(useShallow(state => ({
     target: state.target, loading: authoringDocument(state).loading, carrierRevision: state.carrierRevision,
     owners: JSON.stringify(Object.entries(state.documents).map(([path, document]) => [path, document.revision, document.version])),
   })));
   const scene = useWorkbench(state => selectedScene(state));
-  const key = JSON.stringify([target === null ? null : authoringTargetKey(target), owners, carrierRevision, scene]);
-  const [elements, setElements] = useState<{ key: string; items: SkillElements } | null>(null);
+  const base = JSON.stringify([target === null ? null : authoringTargetKey(target), carrierRevision, scene]);
+  const key = JSON.stringify([base, owners]);
+  const [elements, setElements] = useState<{ base: string; items: SkillElements } | null>(null);
   useEffect(() => {
     if (!enabled || loading || target === null) return;
-    const controller = new AbortController();
-    const { editingView, isCurrentRequest } = captureEditingView();
-    void authoringApi.elements(target, editingView, controller.signal).then(items => {
-      if (!controller.signal.aborted && isCurrentRequest()) setElements({ key, items });
-    }, (error: unknown) => {
-      if (!controller.signal.aborted && !isAbort(error)) consoleActions.error('作者', error);
-    });
-    return () => controller.abort();
+    let current = true;
+    sharedElements(key, target).then(items => { if (current && items) setElements({ base, items }); }, () => {});
+    return () => { current = false; };
   }, [enabled, key, loading]);
-  return enabled && !loading && elements?.key === key ? elements.items : null;
+  return enabled && !loading && elements?.base === base ? elements.items : null;
 }
 
-export function createGraph(elements: SkillElements, role: string, name: string | null, ownership: GraphTemplate['ownership'] = null,
-  context?: { OwnerGraphId: string; OwnerNodeId: string }): string {
-  const template = elements.graphs.find(item => item.role === role && item.ownership === ownership);
-  if (!template) throw new Error(`正式作者接口未提供 ${role} / ${ownership ?? '专属'} 图的创建合同`);
+// 新建图：按角色、初始内容与归属选宿主模板；名称省略时用模板（合同默认）名称。
+export interface GraphCreation {
+  role: string;
+  seed?: GraphTemplate['seed'];
+  ownership?: GraphTemplate['ownership'];
+  name?: string | null;
+  context?: { OwnerGraphId: string; OwnerNodeId: string };
+}
+
+export function createGraph(elements: SkillElements, { role, seed = 'Anchors', ownership = null, name = null, context }: GraphCreation): string {
+  const template = elements.graphs.find(item => item.role === role && item.seed === seed && item.ownership === ownership);
+  if (!template) throw new Error(`正式作者接口未提供 ${role} / ${seed} / ${ownership ?? '专属'} 图的创建合同`);
   const graph = cloneJson(template.value);
   const id = graph.AuthoringId as string;
   if (name !== null) graph.name = name;
@@ -1658,25 +1675,25 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
   const document = edited[graphPath(graph.id)] as JsonObject | undefined;
   const layout = (edited[graphLayoutPath(graph.id)] as JsonObject | undefined)?.[graphLayoutKey(graph.id)] as JsonObject | undefined;
   if (!document && !layout) return graph;
-  const positions = (layout?.allNodes ?? {}) as Record<string, JsonObject>;
+  const positions = (layout ? layoutNodesOf(layout) ?? {} : {}) as Record<string, JsonObject>;
   const positionOf = (id: string, fallback: GraphNode['position']) => {
     const position = positions[id]?.position as JsonObject | undefined;
     return position ? { x: numberOf(position.x), y: numberOf(position.y) } : fallback;
   };
   const sourceNodes = document ? nodesOf(document) : null;
-  const sources = new Map((sourceNodes ?? []).map(node => [node.UID as string, node]));
+  const sources = new Map((sourceNodes ?? []).map(node => [nodeId(node), node]));
   const kept = sourceNodes ? new Set(sources.keys()) : null;
   const known = new Set(graph.nodes.map(node => node.id));
   const nodes: GraphNode[] = graph.nodes.filter(node => !kept || kept.has(node.id))
-    .map(node => ({
-      ...node, position: positionOf(node.id, node.position),
-      displayName: (sources.get(node.id)?._name as string | undefined) || node.displayName,
-    }));
+    .map(node => {
+      const source = sources.get(node.id);
+      return { ...node, position: positionOf(node.id, node.position), displayName: (source && storedNodeName(source)) || node.displayName };
+    });
   const ports: GraphPort[] = graph.ports.filter(port => !kept || kept.has(port.nodeId));
   for (const node of sourceNodes ?? []) {
-    const id = node.UID as string;
+    const id = nodeId(node);
     if (known.has(id)) continue;
-    nodes.push({ id, displayName: (node._name as string | undefined) ?? (node.type as string), invocationPath: path, position: positionOf(id, { x: 0, y: 0 }) });
+    nodes.push({ id, displayName: nodeLabel(node), invocationPath: path, position: positionOf(id, { x: 0, y: 0 }) });
     for (const port of addedPorts[id] ?? [])
       ports.push({ nodeId: id, id: port.id, displayName: port.displayName, direction: port.direction, isTrigger: port.isTrigger, valueType: port.valueType, invocationPath: path });
   }
@@ -1684,17 +1701,17 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
   if (sourceNodes) {
     const triggers = new Set(ports.filter(port => port.isTrigger).map(port => `${port.nodeId}/${port.direction}/${port.id}`));
     const connections = sourceNodes.flatMap(node => connectionsOf(node).map(connection => ({ node, connection })));
-    const ids = new Set(connections.map(item => item.connection.UID as string));
+    const ids = new Set(connections.map(item => connectionId(item.connection)));
     const existing = new Set(graph.edges.map(edge => edge.id));
     edges = [
       ...graph.edges.filter(edge => ids.has(edge.id)),
-      // 状态机转移没有端口，带 Payload。
-      ...connections.filter(item => !existing.has(item.connection.UID as string)).map(({ node, connection }) => ({
-        id: connection.UID as string,
-        kind: connection.Payload ? 'Transition' : triggers.has(`${node.UID}/output/${connection.sourcePortID}`) ? 'Child' : 'Value',
+      // 状态机转移没有端口，带转移载荷。
+      ...connections.filter(item => !existing.has(connectionId(item.connection))).map(({ node, connection }) => ({
+        id: connectionId(connection),
+        kind: transitionPayload(connection) ? 'Transition' : triggers.has(`${nodeId(node)}/output/${connectionSourcePort(connection)}`) ? 'Child' : 'Value',
         invocationPath: path, available: true, reason: '',
-        source: { graphId: graph.id, nodeId: node.UID as string, portId: (connection.sourcePortID as string | undefined) ?? '' },
-        target: { graphId: graph.id, nodeId: connection.targetNode as string, portId: (connection.targetPortID as string | undefined) ?? '' },
+        source: { graphId: graph.id, nodeId: nodeId(node), portId: connectionSourcePort(connection) ?? '' },
+        target: { graphId: graph.id, nodeId: connectionTarget(connection), portId: connectionTargetPort(connection) ?? '' },
       })),
     ];
   }

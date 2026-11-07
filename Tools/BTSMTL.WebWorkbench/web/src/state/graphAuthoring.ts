@@ -1,50 +1,90 @@
 // 节点图画布编辑：节点、连线、分组、复制粘贴与组合步骤，经作者文档原地编辑并进入撤销。
-import type { GraphReferenceTarget, GraphTemplate, SkillElements } from '../api/authoring';
+import type { GraphReferenceTarget, GraphTemplate, SkillElements, StorageShape } from '../api/authoring';
 import type { VariableDeclarationChanges } from '../api/variables';
 import {
-  authoringActions, connectionsOf, createGraph, currentDocument, dropOrphans, get, graphLayoutKey, graphLayoutPath, graphPath, isDocumentGraph, nodesOf,
-  referencedFiles, setDocument, skillElements, sortedObject, type AddedPort, type JsonKey, type JsonMutation,
+  authoringActions, createGraph, currentDocument, dropOrphans, get, graphLayoutKey, graphLayoutPath, graphPath, isDocumentGraph,
+  referencedFiles, setDocument, skillElements, type AddedPort, type JsonKey, type JsonMutation,
 } from './authoring';
 import { editVariable } from './authoringVariables';
+import {
+  connectionId, connectionSourcePort, connectionTarget, connectionTargetPort, connectionsOf, copyNode, createNode, createPortConnection, createTransition, findConnection,
+  emptyLayout, findNode, layoutNodesOf, nodeId, nodeType, nodesOf, outputPortId, payloadKey, replaceConnections, replaceNodes, retarget, transitionPayload,
+} from './graphDocument';
 import { JsonFloat, cloneJson, numberOf, parseSkillJson, setIn, type JsonObject, type JsonValue } from './skillJson';
 
 // 节点身份为 32 位十六进制，连线身份为带连字符的 UUID，与现有文件一致。
 const nodeUid = () => crypto.randomUUID().replaceAll('-', '');
 const connectionUid = () => crypto.randomUUID();
 
-// 组合节点的一个步骤就是一个执行出口（身份 m_Id 即端口），步骤的条件与调度从该出口唯一的连线编辑。
-export interface EdgeStep { nodeId: string; nodeType: string; member: string; index: number; step: JsonObject }
+// 组合节点的一个步骤就是一个执行出口，步骤的条件与调度从该出口唯一的连线编辑；
+// 出口列表成员与元素形状由宿主 flowOutputs 给出。
+export interface EdgeStep { nodeId: string; nodeType: string; member: string; index: number; step: JsonObject; shape: StorageShape }
 
-export function edgeStep(document: JsonValue | null, connectionId: string): EdgeStep | null {
-  for (const node of document ? nodesOf(document) : []) {
-    const connection = connectionsOf(node).find(item => item.UID === connectionId);
-    if (!connection) continue;
-    for (const [member, value] of Object.entries(node)) {
-      if (!Array.isArray(value)) continue;
-      const index = value.findIndex(item => item !== null && typeof item === 'object' && (item as JsonObject).m_Id === connection.sourcePortID);
-      if (index >= 0) return { nodeId: node.UID as string, nodeType: node.type as string, member, index, step: value[index] as JsonObject };
-    }
-    return null;
+export function edgeStep(document: JsonValue | null, elements: SkillElements, edgeId: string): EdgeStep | null {
+  const found = findConnection(document, edgeId);
+  if (!found) return null;
+  const port = connectionSourcePort(found.connection);
+  for (const output of elements.flowOutputs.filter(item => item.type === nodeType(found.node))) {
+    const list = found.node[output.member];
+    if (!Array.isArray(list)) continue;
+    const index = list.findIndex(item => outputPortId(item) === port);
+    if (index >= 0) return {
+      nodeId: nodeId(found.node), nodeType: nodeType(found.node), member: output.member, index, step: list[index] as JsonObject, shape: output.element,
+    };
   }
   return null;
 }
 
-export function edgeCondition(document: JsonValue | null, edgeId: string, machine: boolean) {
-  if (!machine) {
-    const step = edgeStep(document, edgeId);
-    return step && { condition: (step.step.m_Condition as string | null | undefined) ?? null, step };
-  }
-  const connection = (document ? nodesOf(document).flatMap(connectionsOf) : []).find(item => item.UID === edgeId);
-  return connection ? { condition: ((connection.Payload as JsonObject).m_Condition as string | null | undefined) ?? null, step: null } : null;
+// 专属图槽位：节点或连线上按合同路径存放的图身份。keys 相对节点对象或连线对象；
+// targets 来自字段的图引用声明，新建时按其角色与初始内容取宿主图模板。
+export type SlotOwner = { kind: 'node'; nodeId: string } | { kind: 'connection'; connectionId: string };
+
+export interface GraphSlot {
+  graphId: string;
+  owner: SlotOwner;
+  keys: JsonKey[];
+  label: string | null;
+  optional: boolean;
+  targets: GraphReferenceTarget[];
+  value: string | null;
 }
+
+export const graphReferenceMembers = (shape: StorageShape | null | undefined) =>
+  (shape?.members ?? []).filter(member => (member.authoring?.graphTargets.length ?? 0) !== 0);
+
+const memberSlots = (graphId: string, owner: SlotOwner, base: JsonKey[], shape: StorageShape | null | undefined, value: JsonObject): GraphSlot[] =>
+  graphReferenceMembers(shape).map(member => ({
+    graphId, owner, keys: [...base, member.member], label: member.authoring!.displayName, optional: member.authoring!.optional,
+    targets: member.authoring!.graphTargets, value: (value[member.member] as string | null | undefined) || null,
+  }));
+
+// 连线上的专属图：转移按宿主转移模板的形状，执行出口连线按所属节点出口列表的元素形状。
+export function edgeGraphSlots(document: JsonValue | null, elements: SkillElements, graphId: string, edgeId: string): GraphSlot[] {
+  const found = findConnection(document, edgeId);
+  if (!found) return [];
+  const payload = transitionPayload(found.connection);
+  if (payload) return memberSlots(graphId, { kind: 'connection', connectionId: edgeId }, [payloadKey], elements.transition.shape, payload);
+  const step = edgeStep(document, elements, edgeId);
+  return step ? memberSlots(graphId, { kind: 'node', nodeId: step.nodeId }, [step.member, step.index], step.shape, step.step) : [];
+}
+
+// 槽位显示名：字段合同的显示名，没有时用目标角色的图模板名称（合同默认名称）。
+export const slotLabel = (slot: GraphSlot, elements: SkillElements) => slot.label ??
+  (elements.graphs.find(template => template.role === slot.targets[0]?.role)?.value.name as string | undefined) ?? slot.targets[0]?.role ?? '';
+
+const ownerContext = (slot: GraphSlot, target: GraphReferenceTarget) => {
+  if (target.ownerBinding !== 'ReferenceNode') return undefined;
+  if (slot.owner.kind !== 'node') throw new Error(`${target.role} 必须由引用节点拥有`);
+  return { OwnerGraphId: slot.graphId, OwnerNodeId: slot.owner.nodeId };
+};
 
 function graphLayout(document: JsonValue, graphId: string): JsonObject {
   const layout = document as JsonObject;
   if (isDocumentGraph(graphId)) return layout.layout as JsonObject;
-  return (layout[graphId] ??= { allNodes: {}, canvasGroups: [], translation: { x: new JsonFloat(0), y: new JsonFloat(0) }, zoomFactor: new JsonFloat(1) }) as JsonObject;
+  return (layout[graphId] ??= emptyLayout()) as JsonObject;
 }
 
-const layoutNodes = (document: JsonValue, graphId: string) => graphLayout(document, graphId).allNodes as JsonObject;
+const layoutNodes = (document: JsonValue, graphId: string) => layoutNodesOf(graphLayout(document, graphId));
 
 const positionValue = (graphId: string, position: { x: number; y: number }): JsonObject =>
   ({ comments: null, ...(isDocumentGraph(graphId) ? { isBreakpoint: false } : {}),
@@ -81,26 +121,37 @@ export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGr
 let clipboard: { nodes: JsonObject[]; positions: Record<string, { x: number; y: number }>; ports: Record<string, AddedPort[]> } | null = null;
 
 export const graphAuthoring = {
-  async createOwnedReference({ graphId, nodeId, path, target }: {
-    graphId: string; nodeId: string; path: string[];
-    target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
-  }): Promise<string> {
+  // 专属图槽位新建：按目标的角色与初始内容取宿主模板（名称用合同默认名称），身份写入槽位；
+  // 由引用节点拥有的图（状态机）带所属图与节点。
+  async createOwnedGraph(slot: GraphSlot, target: GraphReferenceTarget): Promise<string> {
     const elements = await skillElements();
-    const id = createGraph(elements, target.role, null, null, { OwnerGraphId: graphId, OwnerNodeId: nodeId });
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: path, value: id }]);
+    const id = createGraph(elements, { role: target.role, seed: target.seed, context: ownerContext(slot, target) });
+    graphAuthoring.setSlotValues(slot.graphId, slot.owner, [{ keys: slot.keys, value: id }]);
     return id;
+  },
+
+  // 移除：槽位清空，原图不再被引用就删除。
+  removeOwnedGraph(slot: GraphSlot) {
+    if (slot.value === null) return;
+    graphAuthoring.setSlotValues(slot.graphId, slot.owner, [{ keys: slot.keys, value: null }]);
+    dropOrphans([slot.value]);
+  },
+
+  setSlotValues(graphId: string, owner: SlotOwner, changes: readonly JsonMutation[]) {
+    if (owner.kind === 'node') graphAuthoring.setNodeValues(graphId, owner.nodeId, changes);
+    else graphAuthoring.setConnectionValues(graphId, owner.connectionId, changes);
   },
 
   async createPage(role: string, ownership: GraphTemplate['ownership'], name: string,
     context?: { OwnerGraphId: string; OwnerNodeId: string }): Promise<string> {
     const elements = await skillElements();
-    return createGraph(elements, role, name, ownership, context);
+    return createGraph(elements, { role, ownership, name, context });
   },
   // 按类型描述新建节点：配置取描述的默认配置，端口取描述结果。
   addNode(graphId: string, type: string, configuration: JsonObject, ports: AddedPort[], position: { x: number; y: number }): string {
     const uid = nodeUid();
     authoringActions.edit(graphPath(graphId), document => {
-      nodesOf(document).push(sortedObject({ ...cloneJson(configuration), UID: uid, outConnections: [], type }));
+      nodesOf(document).push(createNode(configuration, uid, type));
     });
     authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
     setDocument({ addedPorts: { ...get().addedPorts, [uid]: ports } });
@@ -111,12 +162,11 @@ export const graphAuthoring = {
   deleteNodes(graphId: string, nodeIds: string[]) {
     const removed = new Set(nodeIds);
     const source = currentDocument(graphPath(graphId));
-    const seeds = source ? nodesOf(source).flatMap(node => removed.has(node.UID as string) ? referencedFiles(node)
-      : connectionsOf(node).filter(connection => removed.has(connection.targetNode as string)).flatMap(referencedFiles)) : [];
+    const seeds = source ? nodesOf(source).flatMap(node => removed.has(nodeId(node)) ? referencedFiles(node)
+      : connectionsOf(node).filter(connection => removed.has(connectionTarget(connection))).flatMap(referencedFiles)) : [];
     authoringActions.edit(graphPath(graphId), document => {
-      const graph = document as JsonObject;
-      graph.allNodes = nodesOf(graph).filter(node => !removed.has(node.UID as string));
-      for (const node of nodesOf(graph)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.targetNode as string));
+      replaceNodes(document, nodesOf(document).filter(node => !removed.has(nodeId(node))));
+      for (const node of nodesOf(document)) replaceConnections(node, connectionsOf(node).filter(connection => !removed.has(connectionTarget(connection))));
     });
     authoringActions.edit(graphLayoutPath(graphId), document => {
       const nodes = layoutNodes(document, graphId);
@@ -125,129 +175,87 @@ export const graphAuthoring = {
     dropOrphans(seeds);
   },
 
-  // ── 状态机（照 Unity 原生 Skill FSM）：新状态带专属状态体；转移按序号排在源状态之后，条件图按需创建 ──
+  // ── 状态机（照 Unity 原生 Skill FSM）：新状态按宿主状态模板创建，必填的专属图（状态内容）一并新建；
+  //    转移按序号排在源状态之后，条件图按需从转移新建 ──
 
-  async addState(graphId: string, configuration: JsonObject, position: { x: number; y: number }): Promise<string> {
+  async addState(graphId: string, position: { x: number; y: number }): Promise<string> {
     const elements = await skillElements();
     const uid = nodeUid();
-    const body = createGraph(elements, 'StateBody', '状态内容');
-    authoringActions.edit(graphPath(graphId), document => {
-      nodesOf(document).push(sortedObject({
-        ...cloneJson(configuration), UID: uid, _name: '新状态', m_Body: body, outConnections: [], type: 'BtsmtlSkillNativeState',
-      }));
-    });
+    const { state } = elements;
+    const slots = memberSlots(graphId, { kind: 'node', nodeId: uid }, [], state.shape, state.value)
+      .filter(slot => !slot.optional && slot.targets.length === 1);
+    const configuration = { ...state.value };
+    for (const slot of slots) {
+      const target = slot.targets[0];
+      configuration[slot.keys[0] as string] = createGraph(elements, { role: target.role, seed: target.seed, context: ownerContext(slot, target) });
+    }
+    authoringActions.edit(graphPath(graphId), document => { nodesOf(document).push(createNode(configuration, uid, state.type, state.name)); });
     authoringActions.edit(graphLayoutPath(graphId), document => { layoutNodes(document, graphId)[uid] = positionValue(graphId, position); });
     return uid;
   },
 
   connectStates(graphId: string, elements: SkillElements, sourceId: string, targetId: string) {
     authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === sourceId);
+      const node = findNode(document, sourceId);
       if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);
-      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf((connection.Payload as JsonObject).m_Order))) + 1;
-      connectionsOf(node).push({
-        Payload: sortedObject({ ...cloneJson(elements.transition.value), m_Order: order }), UID: connectionUid(), targetNode: targetId,
-      });
+      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf(transitionPayload(connection)!.m_Order))) + 1;
+      connectionsOf(node).push(createTransition(connectionUid(), { ...elements.transition.value, m_Order: order }, targetId));
     });
   },
 
-  // 转移字段：Payload 内按键写值。
+  // 转移字段：转移载荷内按键写值。
   setTransitionValue(graphId: string, connectionId: string, keys: JsonKey[], value: JsonValue) {
+    graphAuthoring.setConnectionValues(graphId, connectionId, [{ keys: [payloadKey, ...keys], value }]);
+  },
+
+  setConnectionValues(graphId: string, id: string, changes: readonly JsonMutation[]) {
     authoringActions.edit(graphPath(graphId), document => {
-      const connection = nodesOf(document).flatMap(connectionsOf).find(item => item.UID === connectionId);
-      if (!connection) throw new Error(`状态机 ${graphId} 中没有转移 ${connectionId}`);
-      setIn(connection.Payload as JsonObject, keys, value);
+      const found = findConnection(document, id);
+      if (!found) throw new Error(`图 ${graphId} 中没有连线 ${id}`);
+      for (const { keys, value } of changes) setIn(found.connection, keys, value);
     });
-  },
-
-  // 给状态建状态体、给转移建条件图；移除时原图不再被引用就删除。
-  async createStateBody(graphId: string, nodeId: string) {
-    const elements = await skillElements();
-    const body = createGraph(elements, 'StateBody', '状态内容');
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: body }]);
-  },
-
-  async createCondition(graphId: string, connectionId: string) {
-    const elements = await skillElements();
-    const condition = createGraph(elements, 'ConditionRule', '转移条件');
-    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], condition);
-  },
-
-  removeStateBody(graphId: string, nodeId: string, body: string) {
-    graphAuthoring.setNodeValues(graphId, nodeId, [{ keys: ['m_Body'], value: null }]);
-    dropOrphans([body]);
-  },
-
-  removeCondition(graphId: string, connectionId: string, condition: string) {
-    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], null);
-    dropOrphans([condition]);
-  },
-
-  // 组合步骤的条件从该步骤出发的连线新建；新条件默认成立，原本无条件的步骤在改图前照常进入。
-  async createStepCondition(graphId: string, step: EdgeStep): Promise<string> {
-    const elements = await skillElements();
-    const condition = createGraph(elements, 'ConditionRule', '步骤条件');
-    authoringActions.edit(graphPath(condition), document => {
-      for (const node of nodesOf(document)) node._inputPortValues = { m_Result: true };
-    });
-    graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, 'm_Condition'], value: condition }]);
-    return condition;
-  },
-
-  removeStepCondition(graphId: string, step: EdgeStep, condition: string) {
-    graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, 'm_Condition'], value: null }]);
-    dropOrphans([condition]);
   },
 
   connect(graphId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
     authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === source.nodeId);
+      const node = findNode(document, source.nodeId);
       if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
-      const duplicate = connectionsOf(node).some(connection => connection.sourcePortID === source.portId &&
-        connection.targetNode === target.nodeId && connection.targetPortID === target.portId);
+      const duplicate = connectionsOf(node).some(connection => connectionSourcePort(connection) === source.portId &&
+        connectionTarget(connection) === target.nodeId && connectionTargetPort(connection) === target.portId);
       if (duplicate) return;
-      connectionsOf(node).push({ UID: connectionUid(), sourcePortID: source.portId, targetNode: target.nodeId, targetPortID: target.portId });
+      connectionsOf(node).push(createPortConnection(connectionUid(), source.portId, target.nodeId, target.portId));
     });
   },
 
-  reconnect(graphId: string, connectionId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
+  reconnect(graphId: string, id: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
     authoringActions.edit(graphPath(graphId), document => {
-      const nodes = nodesOf(document);
-      for (const owner of nodes) {
-        const connections = connectionsOf(owner);
-        const index = connections.findIndex(connection => connection.UID === connectionId);
-        if (index < 0) continue;
-        const connection = connections[index];
-        if (owner.UID !== source.nodeId) {
-          const node = nodes.find(item => item.UID === source.nodeId);
-          if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
-          connections.splice(index, 1);
-          connectionsOf(node).push(connection);
-        }
-        connection.sourcePortID = source.portId;
-        connection.targetNode = target.nodeId;
-        connection.targetPortID = target.portId;
-        return;
+      const found = findConnection(document, id);
+      if (!found) throw new Error(`图 ${graphId} 中没有连线 ${id}`);
+      if (nodeId(found.node) !== source.nodeId) {
+        const node = findNode(document, source.nodeId);
+        if (!node) throw new Error(`图 ${graphId} 中没有节点 ${source.nodeId}`);
+        replaceConnections(found.node, connectionsOf(found.node).filter(connection => connection !== found.connection));
+        connectionsOf(node).push(found.connection);
       }
-      throw new Error(`图 ${graphId} 中没有连线 ${connectionId}`);
+      retarget(found.connection, source.portId, target.nodeId, target.portId);
     });
   },
 
   disconnect(graphId: string, connectionIds: string[]) {
     const removed = new Set(connectionIds);
     const source = currentDocument(graphPath(graphId));
-    const seeds = source ? nodesOf(source).flatMap(connectionsOf).filter(connection => removed.has(connection.UID as string)).flatMap(referencedFiles) : [];
+    const seeds = source ? nodesOf(source).flatMap(connectionsOf).filter(connection => removed.has(connectionId(connection))).flatMap(referencedFiles) : [];
     authoringActions.edit(graphPath(graphId), document => {
-      for (const node of nodesOf(document)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.UID as string));
+      for (const node of nodesOf(document)) replaceConnections(node, connectionsOf(node).filter(connection => !removed.has(connectionId(connection))));
     });
     dropOrphans(seeds);
   },
 
   // 检查器字段：节点对象内按键路径写值（成员、端口默认值或节点名）。
-  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[]) {
+  setNodeValues(graphId: string, id: string, changes: readonly JsonMutation[]) {
     authoringActions.edit(graphPath(graphId), document => {
-      const node = nodesOf(document).find(item => item.UID === nodeId);
-      if (!node) throw new Error(`图 ${graphId} 中没有节点 ${nodeId}`);
+      const node = findNode(document, id);
+      if (!node) throw new Error(`图 ${graphId} 中没有节点 ${id}`);
       for (const { keys, value } of changes) setIn(node, keys, value);
     });
   },
@@ -310,19 +318,15 @@ export const graphAuthoring = {
     const document = state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
     if (!document) return 0;
     const wanted = new Set(nodeIds);
-    clipboard = { nodes: nodesOf(document).filter(node => wanted.has(node.UID as string)).map(node => cloneJson(node)), positions, ports };
+    clipboard = { nodes: nodesOf(document).filter(node => wanted.has(nodeId(node))).map(node => cloneJson(node)), positions, ports };
     return clipboard.nodes.length;
   },
 
   // 粘贴：新身份，复制集合内部的连线重接到新节点，指向集合外的连线丢弃；位置整体偏移。
   paste(graphId: string, offset: { x: number; y: number }): string[] {
     if (!clipboard) return [];
-    const ids = new Map(clipboard.nodes.map(node => [node.UID as string, nodeUid()]));
-    const nodes = clipboard.nodes.map(node => sortedObject({
-      ...cloneJson(node), UID: ids.get(node.UID as string)!,
-      outConnections: connectionsOf(node).filter(connection => ids.has(connection.targetNode as string))
-        .map(connection => ({ ...connection, UID: connectionUid(), targetNode: ids.get(connection.targetNode as string)! })),
-    }));
+    const ids = new Map(clipboard.nodes.map(node => [nodeId(node), nodeUid()]));
+    const nodes = clipboard.nodes.map(node => copyNode(node, ids, connectionUid));
     const source = clipboard;
     authoringActions.edit(graphPath(graphId), document => { nodesOf(document).push(...nodes); });
     authoringActions.edit(graphLayoutPath(graphId), document => {

@@ -42,6 +42,10 @@ export function cloneJson<T extends JsonValue>(value: T): T {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneJson(item)])) as T;
 }
 
+// 按键序（序数比较）重排对象成员，与宿主写出的 JSON 一致。
+export const sortedObject = (value: JsonObject): JsonObject =>
+  Object.fromEntries(Object.keys(value).sort((left, right) => left < right ? -1 : left > right ? 1 : 0).map(key => [key, value[key]]));
+
 export const numberOf = (value: JsonValue | undefined) => value instanceof JsonFloat ? value.value : typeof value === 'number' ? value : NaN;
 
 const floatText = (value: number) => Object.is(value, -0) ? '-0.0' : Number.isInteger(value) ? `${value}.0` : String(value);

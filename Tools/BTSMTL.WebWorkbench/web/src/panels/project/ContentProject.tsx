@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { isAbort } from '../../api/http';
 import { authoringActions, useAuthoring, useSkillElements } from '../../state/authoring';
 import { graphAuthoring } from '../../state/graphAuthoring';
+import { nodeNameKey } from '../../state/graphDocument';
 import { projectActions } from '../../state/project';
 import { projectContents, type ContentNode, type ContentTarget } from '../../state/projectContents';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
@@ -113,7 +114,7 @@ function ContentObject({ node, target, perform }: { node: ContentNode; target: E
       <TextInput aria-label="对象名称" value={name} onChange={event => setName(event.currentTarget.value)} />
       <Button disabled={!name.trim()} onClick={() => void perform(async () => {
         await projectActions.openOwner(target);
-        if (target.kind === 'node') graphAuthoring.setNodeValues(target.graphId, target.nodeId, [{ keys: ['_name'], value: name }]);
+        if (target.kind === 'node') graphAuthoring.setNodeValues(target.graphId, target.nodeId, [{ keys: [nodeNameKey], value: name }]);
         else authoringActions.setTrackValue(target.timelineId, target.id, ['Name'], name);
       })}>应用名称</Button>
     </>}

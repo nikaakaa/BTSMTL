@@ -18,7 +18,7 @@ import {
   useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { graphVariableOwner } from '../../state/authoringVariables';
-import { edgeCondition, graphAuthoring, graphGroups, type CanvasGroup } from '../../state/graphAuthoring';
+import { edgeGraphSlots, graphAuthoring, graphGroups, slotLabel, type CanvasGroup } from '../../state/graphAuthoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, resolveReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
@@ -541,8 +541,8 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
   const { document: layout } = useCurrentDocument(author.own ? graphLayoutPath(graph.id) : null);
   const groupsText = JSON.stringify(graphGroups(layout, graph.id));
   const groups = useMemo(() => JSON.parse(groupsText) as CanvasGroup[], [groupsText]);
-  // 新建状态、转移与图的锚点和默认值。
-  const elements = useSkillElements(editable);
+  // 新建状态、转移与图的锚点和默认值；连线上的专属图（条件）也按其中的形状识别，只读时同样用于连线标签。
+  const elements = useSkillElements(author.own);
   return <GraphCanvas {...props} graph={shown} editable={editable} groups={groups} elements={elements} />;
 }
 
@@ -639,9 +639,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     for (const edge of layout.edges) counts.set(pairKey(edge), (counts.get(pairKey(edge)) ?? 0) + 1);
     const system = new Set(machine ? layout.nodes.filter(laid => isSystemNode(graph, hierarchy, laid)).map(laid => laid.node.id) : []);
     return layout.edges.map(edge => {
-      const id = edgeCondition(authored, edge.id, machine)?.condition ?? null;
-      const found = id === null ? undefined : [...hierarchy.graphs.values()].find(item => item.owner === graph.owner && item.id === id);
-      const conditions = found ? [found] : [];
+      const ids = elements ? edgeGraphSlots(authored, elements, graph.id, edge.id).map(slot => slot.value) : [];
+      const conditions = [...hierarchy.graphs.values()].filter(item => item.owner === graph.owner && ids.includes(item.id));
       const label = conditions.map(graphName).join(' · ');
       if (machine) {
         const pair = pairKey(edge);
@@ -664,7 +663,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
         data: { edge, conditions, label, offset: 0, minor: false, trigger: output?.isTrigger ?? true },
       };
     });
-  }, [layout, graph, machine, hierarchy, authored]);
+  }, [layout, graph, machine, hierarchy, authored, elements]);
 
   useEffect(() => {
     const records = graphRecords(route, graph, binding).filter(item => callKey(item.call) === observedCallKey);
@@ -725,17 +724,16 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     if (isGroupNode(node)) return;
     openNode(node.data);
   }, [openNode]);
-  // 双击连线进入条件图；没有时新建（步骤条件默认成立），网页新建的图保存后才能进入。
+  // 双击连线进入其专属图；都为空时按第一个槽位声明的目标新建（初始内容由宿主图模板给出），
+  // 网页新建的图保存后才能进入。
   const openEdge = useCallback((edge: FlowEdge) => {
     if (edge.data!.conditions.length) { enter(edge.data!.conditions[0]); return; }
-    const owner = editable && elements ? edgeCondition(currentDocument(graphPath(graph.id)), edge.id, machine) : null;
-    if (!owner || !elements) return;
-    if (owner.condition === null) {
-      const creation = owner.step ? graphAuthoring.createStepCondition(graph.id, owner.step)
-        : graphAuthoring.createCondition(graph.id, edge.id);
-      void creation.then(() => consoleActions.log('info', '作者', '已新建条件图'), error => consoleActions.error('作者', error));
-    }
-  }, [enter, editable, elements, graph.id, machine]);
+    const slots = editable && elements ? edgeGraphSlots(currentDocument(graphPath(graph.id)), elements, graph.id, edge.id) : [];
+    const empty = slots.find(slot => slot.value === null && slot.targets.length !== 0);
+    if (!empty || slots.some(slot => slot.value !== null)) return;
+    void graphAuthoring.createOwnedGraph(empty, empty.targets[0])
+      .then(() => consoleActions.log('info', '作者', `已新建${slotLabel(empty, elements!)}`), (error: unknown) => consoleActions.error('作者', error));
+  }, [enter, editable, elements, graph.id]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => openEdge(edge), [openEdge]);
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
@@ -870,13 +868,10 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     else return;
     event.preventDefault();
   };
-  // 添加状态：默认配置取宿主对状态类型的描述。
+  // 添加状态：类型、名称与默认配置取宿主状态模板。
   const addState = async (position: { x: number; y: number }) => {
     try {
-      const skill = useAuthoring.getState().target!;
-      const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id, authoringActions.editingView());
-      if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
-      selectCreated(await graphAuthoring.addState(graph.id, description.configuration, position));
+      selectCreated(await graphAuthoring.addState(graph.id, position));
     } catch (error) {
       consoleActions.error('作者', error);
     }
@@ -895,27 +890,25 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     graphAuthoring.addGroup(graph.id, rect, '新分组');
   };
   const blocked = '只能编辑顶栏所选技能的图';
-  // 右键连线（线或线上的条件名）：打开或新建条件、删除条件、删除连线，排在画布菜单前面。
+  // 右键连线（线或线上的图名）：打开或新建专属图（条件）、移除、删除连线，排在画布菜单前面。
   const [menuEdgeId, setMenuEdgeId] = useState<string | null>(null);
   const menuEdge = menuEdgeId === null ? null : edges.find(edge => edge.id === menuEdgeId) ?? null;
-  const menuOwner = menuEdge && editable ? edgeCondition(authored, menuEdge.id, machine) : null;
-  // 只有转移和组合步骤的连线带条件；数据线与普通执行线只能删除。
-  const conditional = !!menuEdge && (machine || menuEdge.data!.conditions.length > 0 || menuOwner !== null);
+  const menuSlots = menuEdge && editable && elements ? edgeGraphSlots(authored, elements, graph.id, menuEdge.id) : [];
+  const menuName = menuSlots.length && elements ? slotLabel(menuSlots[0], elements) : '图';
+  const removable = menuSlots.filter(slot => slot.optional && slot.value !== null);
+  // 只有形状里带图引用成员的连线（转移、组合步骤）有专属图；数据线与普通执行线只能删除。
+  const conditional = !!menuEdge && (machine || menuEdge.data!.conditions.length > 0 || menuSlots.length > 0);
   const edgeMenu: MenuEntry[] = !menuEdge ? [] : [
     ...(!conditional ? [] : [
       {
-        label: menuEdge.data!.conditions.length || menuOwner?.condition ? '打开条件' : '新建条件',
-        disabled: !menuEdge.data!.conditions.length && !(menuOwner && elements),
-        tip: menuEdge.data!.conditions.length || menuOwner ? undefined : blocked,
+        label: menuEdge.data!.conditions.length || menuSlots.some(slot => slot.value !== null) ? `打开${menuName}` : `新建${menuName}`,
+        disabled: !menuEdge.data!.conditions.length && menuSlots.length === 0,
+        tip: menuEdge.data!.conditions.length || menuSlots.length ? undefined : blocked,
         onSelect: () => openEdge(menuEdge),
       },
       {
-        label: '删除条件', disabled: !menuOwner?.condition, tip: editable ? undefined : blocked,
-        onSelect: () => {
-          const condition = menuOwner!.condition!;
-          if (menuOwner!.step) graphAuthoring.removeStepCondition(graph.id, menuOwner!.step, condition);
-          else graphAuthoring.removeCondition(graph.id, menuEdge.id, condition);
-        },
+        label: `移除${menuName}`, disabled: removable.length === 0, tip: editable ? undefined : blocked,
+        onSelect: () => { for (const slot of removable) graphAuthoring.removeOwnedGraph(slot); },
       },
     ]),
     { label: '删除连线', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.disconnect(graph.id, [menuEdge.id]) },

@@ -10,7 +10,7 @@ import {
 import {
   applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
-import { edgeCondition, graphAuthoring } from '../../state/graphAuthoring';
+import { edgeGraphSlots, edgeStep, slotLabel } from '../../state/graphAuthoring';
 import { documentElementKey, projectActions } from '../../state/project';
 import { graphItemDescription, projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';
@@ -23,7 +23,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import styles from './inspector.module.css';
 
@@ -292,12 +292,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
   const samples = records.filter(isPortSample).sort(compareSequence);
   const availabilityNotice = route?.availability.filter(item => !item.available || !item.complete).map(item => item.reason).join('\n');
   const ports = graph.ports.filter(port => port.nodeId === node.id && port.invocationPath === node.invocationPath);
-  const references = (
-    <>
-      {editable && <StateBody graph={graph} nodeId={node.id} />}
-      <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} call={observedCall} />
-    </>
-  );
+  const references = <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} call={observedCall} />;
   return (
     <>
       <Head name={nodeName(node)} sub={graphName(graph)} />
@@ -321,6 +316,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
 function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefinition; nodeId: string; invocationPath: string; call: ExecutionCall | null }) {
   const hierarchy = useDocumentGraphHierarchy();
   const { document } = useCurrentDocument(graphPath(graph.id));
+  const elements = useSkillElements(document !== null);
   const runId = useWorkbench(state => state.runId);
   const children = nodeReferences(hierarchy, graph, nodeId);
   const source = hierarchy.graphs.get(graphKey(graph))!;
@@ -341,57 +337,20 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
       ))}
       {transitions.map(edge => {
         const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
-        const configured = edgeCondition(document, edge.id, true);
         const label = `→ ${target}`;
-        if (configured === null) return <Value key={edge.id} label={label} mono={false} value="转移配置尚未读取" />;
-        if (configured.condition === null) return <Value key={edge.id} label={label} mono={false} value="未设置条件图" />;
-        const condition = [...hierarchy.graphs.values()].find(item => item.owner === source.owner && item.id === configured.condition)!;
-        return <Link key={edge.id} label={label} text={graphName(condition)} kind="var(--node-flow)" tip="在节点图面板打开条件图"
-          onOpen={() => openReference({ ...condition, kind: 'graph' })} />;
+        const slots = elements ? edgeGraphSlots(document, elements, graph.id, edge.id) : null;
+        if (slots === null || slots.length === 0) return <Value key={edge.id} label={label} mono={false} value="转移配置尚未读取" />;
+        const owned = [...hierarchy.graphs.values()].filter(item => item.owner === source.owner && slots.some(slot => slot.value === item.id));
+        if (owned.length === 0) return <Value key={edge.id} label={label} mono={false}
+          value={slots.some(slot => slot.value !== null) ? '新建的图保存后可进入' : '未设置条件图'} />;
+        return owned.map(item => <Link key={`${edge.id}/${item.id}`} label={label} text={graphName(item)} kind="var(--node-flow)"
+          tip="在节点图面板打开" onOpen={() => openReference({ ...item, kind: 'graph' })} />);
       })}
     </>
   );
 }
 
-// 专属图（状态体、转移条件）：已在展开结果里的可进入；网页新建的保存后才有展开结果。
-function OwnedGraph({ label, id, onCreate, onRemove, createText }: {
-  label: string; id: string | null; onCreate: (() => Promise<unknown>) | null; onRemove(id: string): void; createText: string;
-}) {
-  const graphs = useWorkbench(state => state.graphs);
-  const target = id ? graphs?.find(item => item.id === id) ?? null : null;
-  const error = useAuthoring(state => authoringDocument(state).documentError);
-  return (
-    <div className={styles.field}>
-      <FieldLabel label={label} />
-      <div className={styles.actions}>
-        {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => {
-          void onCreate?.().catch(error => consoleActions.error('作者', error));
-        }}>{createText}</Button> : (
-          <>
-            {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={() => openGraph(target)} />
-              : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
-            <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => onRemove(id)}>移除</Button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }) {
-  const { document } = useCurrentDocument(graphPath(graph.id));
-  const elements = useSkillElements(true);
-  const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId);
-  // 只有普通状态带状态体；入口、任意状态与出口是系统锚点。
-  if (node?.type !== 'BtsmtlSkillNativeState') return null;
-  return (
-    <OwnedGraph label="状态体" id={(node.m_Body as string | null) ?? null} createText="新建状态体"
-      onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, nodeId) : null}
-      onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
-  );
-}
-
-// ── 连线：状态机转移与组合步骤的连线都带条件图；步骤的条件与调度存在步骤上，从这里编辑 ──
+// ── 连线：状态机转移与组合步骤的连线按形状中的图引用成员带专属图（条件）；步骤的条件与调度存在步骤上，从这里编辑 ──
 
 function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const graphs = useWorkbench(state => state.graphs);
@@ -411,16 +370,11 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const port = edge.source && !transition ? graph.ports.find(item => item.nodeId === edge.source!.nodeId && item.id === edge.source!.portId &&
     item.direction === 'output' && item.invocationPath === edge.invocationPath)?.displayName : undefined;
   const name = `${edge.source ? names.get(edge.source.nodeId) ?? '—' : '—'}${port ? ` · ${port}` : ''} → ${edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招'}`;
-  const configured = editable ? edgeCondition(document, edge.id, transition) : null;
-  const step = configured?.step ?? null;
-  const condition = configured?.condition ?? null;
-  const owned = editable && (transition || step);
-  const conditionRows = owned ? (
-    <OwnedGraph label="条件图" id={condition} createText="新建条件"
-      onCreate={!elements ? null : step ? () => graphAuthoring.createStepCondition(graph.id, step)
-        : () => graphAuthoring.createCondition(graph.id, edge.id)}
-      onRemove={item => step ? graphAuthoring.removeStepCondition(graph.id, step, item) : graphAuthoring.removeCondition(graph.id, edge.id, item)} />
-  ) : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
+  const step = editable && elements && !transition ? edgeStep(document, elements, edge.id) : null;
+  const slots = editable && elements ? edgeGraphSlots(document, elements, graph.id, edge.id) : [];
+  const conditionRows = slots.length !== 0
+    ? slots.map(slot => <OwnedGraphRow key={slot.keys.join('/')} label={slotLabel(slot, elements!)} slot={slot} />)
+    : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
   return (
     <>
       <Head name={name} sub={graphName(graph)} />

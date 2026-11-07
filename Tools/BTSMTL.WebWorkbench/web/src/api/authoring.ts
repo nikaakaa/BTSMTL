@@ -124,14 +124,16 @@ export interface StorageShape {
   members?: MemberShape[];
 }
 
-// 所属类型作者合同中对应该存储成员的字段：没有字段的成员不是作者内容；图引用由所属的子图行编辑。
+// 所属类型作者合同中对应该存储成员的字段：没有字段的成员不是作者内容；带图引用目标的成员是专属图槽位，
+// 由图引用行新建、进入与移除。
 export interface MemberAuthoring {
   fieldId: string;
   displayName: string | null;
   authoringVisible: boolean;
   readOnly: boolean;
+  optional: boolean;
   allowedValues: string[] | null;
-  graphReference: boolean;
+  graphTargets: GraphReferenceTarget[];
 }
 
 export interface MemberShape extends StorageShape {
@@ -179,9 +181,12 @@ type FieldChoices =
   | { choiceKind: null; choicesAvailability: null; choices: null }
   | { choiceKind: string; choicesAvailability: QueryAvailability; choices: ReferenceChoice[] };
 
+// 图引用目标：角色、归属、所有者绑定，以及从引用处新建私有图时的初始内容（宿主图模板按同一 seed 给出）。
+export type GraphSeed = 'Anchors' | 'ConditionPasses';
+
 export type GraphReferenceTarget =
-  | { role: string; ownership: 'PrivateOrShared' | 'Private' | 'AbilityLocal' | 'Shared'; ownerBinding: 'None' }
-  | { role: string; ownership: 'Private'; ownerBinding: 'ReferenceNode' };
+  | { role: string; ownership: 'PrivateOrShared' | 'Private' | 'AbilityLocal' | 'Shared'; ownerBinding: 'None'; seed: GraphSeed }
+  | { role: string; ownership: 'Private'; ownerBinding: 'ReferenceNode'; seed: GraphSeed };
 
 export interface AuthoringSubtype {
   identity: string;
@@ -394,7 +399,11 @@ export type InputPlanContext = { kind: 'skill' } | { kind: 'timeline'; timeline:
 export interface SkillElements {
   graphs: GraphTemplate[];
   anchors: Record<string, GraphAnchor[]>;
+  // 状态机里新建的普通状态：节点类型、默认名称与默认配置；必填图引用成员随状态一并新建。
+  state: ElementTemplate & { type: string; name: string };
   transition: ElementTemplate;
+  // 带执行出口列表的节点：列表成员与元素形状；元素的图引用成员是从该出口连线编辑的专属图。
+  flowOutputs: { type: string; member: string; element: StorageShape }[];
   timeline: ElementTemplate;
   tracks: TrackTemplate[];
   clips: ClipTemplate[];
@@ -409,6 +418,7 @@ export interface SkillElements {
 
 export interface GraphTemplate {
   role: string;
+  seed: GraphSeed;
   ownership: 'Private' | 'Shared' | null;
   value: JsonObject;
   variables: VariablesValue | null;

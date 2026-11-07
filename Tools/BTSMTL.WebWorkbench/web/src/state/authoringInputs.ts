@@ -1,10 +1,11 @@
 // 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline。
 import { authoringApi, type InputFragmentRequest, type InputPlanContext, type SkillElements } from '../api/authoring';
 import {
-  authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements, sortedObject, timelinePath, tracksOf, variablesDrafts,
+  authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements, timelinePath, tracksOf, variablesDrafts,
   type JsonKey, type JsonMutation,
 } from './authoring';
-import { cloneJson, numberOf, setIn, type JsonObject, type JsonValue } from './skillJson';
+import { cloneJson, numberOf, setIn, sortedObject, type JsonObject, type JsonValue } from './skillJson';
+import { findNode, nodeType, nodesOf } from './graphDocument';
 import { selectionActions } from './store';
 
 export const inputAuthoring = {
@@ -43,14 +44,13 @@ export const inputAuthoring = {
 
   setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: SkillElements['previewInput']) {
     authoringActions.edit(graphPath(graphId), document => {
-      const nodes = (document as JsonObject).allNodes as JsonObject[];
-      const node = nodes.find(item => item.UID === nodeId)!;
+      const node = findNode(document, nodeId)!;
       const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);
       for (const { keys, value } of changes) {
         if (keys.join('/') !== contract.keyPath.join('/')) setIn(node, keys, value);
         else {
           const previous = at(node);
-          for (const writer of nodes.filter(item => item.type === contract.nodeType && at(item) === previous))
+          for (const writer of nodesOf(document).filter(item => nodeType(item) === contract.nodeType && at(item) === previous))
             setIn(writer, contract.keyPath, value);
         }
       }

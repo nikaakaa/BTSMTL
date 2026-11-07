@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
-  type GraphReferenceTarget, type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
+  type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
@@ -12,12 +12,18 @@ import {
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import { useVariables } from '../../state/authoringVariables';
-import { graphAuthoring, type EdgeStep } from '../../state/graphAuthoring';
-import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
+import { graphAuthoring, type EdgeStep, type GraphSlot } from '../../state/graphAuthoring';
+import {
+  connectionSourcePort, connectionTarget, connectionTargetPort, connectionsOf, findConnection, findNode, inputValueKeys, inputValuesKey,
+  nodeId, nodeNameKey, nodeType, nodesOf, outputPortId, storedNodeName, transitionPayload, withOutputPortId,
+} from '../../state/graphDocument';
+import { graphName } from '../../state/graphModel';
+import { projectActions } from '../../state/project';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
-import { Button, Checkbox, FieldLabel, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
+import { Button, Checkbox, FieldLabel, NumberInput, ObjectField, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
 import { CurveEditor, isCurve } from './CurveEditor';
 import { ReferencePicker } from './ReferencePicker';
@@ -52,7 +58,7 @@ const memberLabel = (member: string) => {
 // 合同给出的可选值（含所属节点收窄后的结果）替换枚举全集。
 const contractMembers = (shape: StorageShape | null | undefined): MemberShape[] =>
   (shape?.members ?? []).filter(member => !shape!.hasAuthoringFields ||
-    member.authoring != null && member.authoring.authoringVisible && !member.authoring.graphReference)
+    member.authoring != null && member.authoring.authoringVisible && member.authoring.graphTargets.length === 0)
     .map(member => member.authoring?.allowedValues && member.enumValues ? { ...member, enumValues: member.authoring.allowedValues } : member);
 const contractLabel = (member: MemberShape) => member.authoring?.displayName || memberLabel(member.member);
 
@@ -237,13 +243,13 @@ function ListEditor({ label, value, shape, keys, graphId, scope, onSet }: {
   );
 }
 
-// 每项是一个执行出口的列表（组合步骤，身份 m_Id 即端口）：节点上只改名称、顺序与增删；
+// 每项是一个执行出口的列表（组合步骤，元素身份即端口）：节点上只改名称、顺序与增删；
 // 条件与调度在该出口的连线上编辑。连着线的出口要先断线才能删。
 function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
   label: string; value: JsonObject[]; shape: StorageShape | null | undefined; keys: JsonKey[]; node: JsonObject;
   outputs: DescribedPort[]; onSet: SetValue;
 }) {
-  const connected = new Set((node.outConnections as JsonObject[]).map(connection => connection.sourcePortID as string));
+  const connected = new Set(connectionsOf(node).map(connectionSourcePort));
   const write = (next: JsonObject[]) => onSet(keys, next.map(item => cloneJson(item)));
   const move = (from: number, to: number) => {
     const next = [...value];
@@ -251,8 +257,7 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
     write(next);
   };
   const add = () => {
-    const created: JsonObject = { ...(defaultFor(shape?.element) as JsonObject), m_Id: crypto.randomUUID().replaceAll('-', '') };
-    write([...value, Object.fromEntries(Object.keys(created).sort().map(key => [key, created[key]]))]);
+    write([...value, sortedObject(withOutputPortId(defaultFor(shape?.element) as JsonObject, crypto.randomUUID().replaceAll('-', '')))]);
   };
   return (
     <div className={styles.group}>
@@ -261,7 +266,7 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
         <Button variant="ghost" className={styles.iconButton} tip="添加一个出口" aria-label="添加一个出口" onClick={add}><AddIcon /></Button>
       </div>
       {value.map((item, index) => {
-        const id = item.m_Id as string;
+        const id = outputPortId(item)!;
         const linked = connected.has(id);
         const port = outputs.find(entry => entry.port.ID === id)?.port.name ?? `${index + 1}.`;
         return (
@@ -287,7 +292,7 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
 export function StepFields({ graphId, step, children }: { graphId: string; step: EdgeStep; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
-  const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === step.nodeId) ?? null;
+  const node = findNode(document, step.nodeId);
   const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId: step.nodeId });
   const shape = description?.stored.find(item => item.member === step.member)?.shape?.element;
   const set: SetValue = (keys, value) => graphAuthoring.setNodeValues(graphId, step.nodeId, [{ keys: [step.member, step.index, ...keys], value }]);
@@ -516,40 +521,42 @@ export function SkillFields({ editable }: { editable: boolean }) {
   </fieldset>;
 }
 
-// 节点一栏：名称与按合同描述的字段；children 为同栏的引用行（状态体、子图、转移等）。
-export function NodeFields({ graphId, nodeId, children }: { graphId: string; nodeId: string; children?: ReactNode }) {
+// 节点一栏：名称与按合同描述的字段；图引用字段没有候选来源时按专属图槽位编辑（状态内容、状态机等）；
+// children 为同栏的引用行（子图、转移等）。系统锚点由图本身持有，不另带专属图。
+export function NodeFields({ graphId, nodeId: id, children }: { graphId: string; nodeId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
-  const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId) ?? null;
-  const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId });
+  const elements = useSkillElements(skill !== null);
+  const node = findNode(document, id);
+  const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId: id });
   if (!node) return null;
-  const setFields: SetFields = changes => graphAuthoring.setNodeValues(graphId, nodeId, changes);
+  const setFields: SetFields = changes => graphAuthoring.setNodeValues(graphId, id, changes);
   const set: SetValue = (keys, value) => setFields([{ keys, value }]);
   const values = descriptionValues(description, node);
   const computed = description?.computed.filter(field => visible(field, values)) ?? [];
-  const connected = new Set(((document as JsonObject).allNodes as JsonObject[]).flatMap(item =>
-    (item.outConnections as JsonObject[]).filter(connection => connection.targetNode === nodeId).map(connection => connection.targetPortID as string)));
+  const connected = new Set(nodesOf(document!).flatMap(item =>
+    connectionsOf(item).filter(connection => connectionTarget(connection) === id).map(connectionTargetPort)));
   const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
   const outputs = (description?.ports ?? []).filter(port => port.direction === 'output');
+  const anchor = elements !== null && Object.values(elements.anchors).some(anchors => anchors.some(item => item.uid === id));
   return (
     <>
       <Fold title="节点" defaultOpen>
-        <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
+        <Row label="名称"><TextValue label="名称" value={storedNodeName(node) ?? ''} onSet={next => set([nodeNameKey], next)} /></Row>
         <DescriptionStatus description={description} issues={issues} />
-        {/* 状态体按合同的图引用角色识别，由检查器的“状态体”一栏新建、移除与进入，不按身份字符串编辑。 */}
-        {description?.stored.filter(item => item.member !== '_inputPortValues' && !item.fields.some(field => field.graphTargets.some(target => target.role === 'StateBody'))).map(item => (
+        {description?.stored.filter(item => item.member !== inputValuesKey && !(anchor && item.fields.some(field => field.graphTargets.length !== 0))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
-            owner={{ kind: 'node', graphId, nodeId }} outputs={outputs} onSet={set} onSetFields={setFields} />
+            owner={{ kind: 'node', graphId, nodeId: id }} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
         {children}
       </Fold>
       {inputs.length > 0 && (
         <Fold title="端口默认值" defaultOpen>
           {inputs.map(port => {
-            const keys = ['_inputPortValues', port.port.ID];
+            const keys = inputValueKeys(port.port.ID);
             const current = getIn(node, keys) ?? (port.port.serializedValue as JsonValue);
             return <ValueEditor key={port.port.ID} label={port.port.name} value={current} shape={portShape(port.port.type)}
-              keys={keys} graphId={graphId} scope={`${graphId}/${nodeId}/${port.port.ID}`} onSet={set} />;
+              keys={keys} graphId={graphId} scope={`${graphId}/${id}/${port.port.ID}`} onSet={set} />;
           })}
         </Fold>
       )}
@@ -565,15 +572,13 @@ export function InputClipFields({ documentId, graphId }: { documentId: string; g
   const { document } = useCurrentDocument(graphPath(graphId));
   if (!elements || !document) return <div className={styles.note}>正在读取输入字段</div>;
   if (context.kind === 'unavailable') return <div className={styles.note}>{context.reason}</div>;
-  const graph = document as JsonObject;
-  const nodes = graph.allNodes as JsonObject[];
-  const anchor = elements.anchors[graph.Role as string]?.find(item => item.kind === '@timelineEnable');
-  const entry = nodes.find(node => node.UID === anchor?.uid);
-  const writers = ((entry?.outConnections as JsonObject[] | undefined) ?? [])
-    .map(edge => nodes.find(node => node.UID === edge.targetNode)!)
-    .filter(node => node.type === elements.previewInput.nodeType);
+  const anchor = elements.anchors[(document as JsonObject).Role as string]?.find(item => item.kind === '@timelineEnable');
+  const entry = anchor ? findNode(document, anchor.uid) : null;
+  const writers = (entry ? connectionsOf(entry) : [])
+    .map(edge => findNode(document, connectionTarget(edge))!)
+    .filter(node => nodeType(node) === elements.previewInput.nodeType);
   return <>
-    {writers.map(node => <InputWriterFields key={node.UID as string} graphId={graphId} node={node}
+    {writers.map(node => <InputWriterFields key={nodeId(node)} graphId={graphId} node={node}
       contract={elements.previewInput} keys={context.actor.keys} />)}
   </>;
 }
@@ -583,7 +588,7 @@ function InputWriterFields({ graphId, node, contract, keys }: {
   keys: import('../../api/types').InputCatalog['players'][number]['keys'];
 }) {
   const target = useAuthoring(state => state.target);
-  const { description, issues } = useDescription(target, { kind: 'node', graphId, nodeId: node.UID as string });
+  const { description, issues } = useDescription(target, { kind: 'node', graphId, nodeId: nodeId(node) });
   const key = getIn(node, contract.keyPath);
   const kind = keys.find(item => item.name === key)?.kind;
   const fields = description?.stored.map(item => ({ ...item, fields: item.fields
@@ -593,27 +598,25 @@ function InputWriterFields({ graphId, node, contract, keys }: {
       ? { ...field, choiceKind: 'preview-input-key', choicesAvailability: { available: true },
         choices: keys.map(item => ({ value: item.name, name: item.name, detail: item.kind, source: '当前载体输入', conflict: null, targets: [], associated: [] })) } : field),
   })).filter(item => item.fields.length) ?? [];
-  const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, node.UID as string, changes, contract);
+  const setFields: SetFields = changes => inputAuthoring.setNodeValues(graphId, nodeId(node), changes, contract);
   const set: SetValue = (path, value) => setFields([{ keys: path, value }]);
   return <Fold title="输入" defaultOpen>
     {issues.map((issue, index) => <div key={index} className={styles.issue}>{issue.message}</div>)}
     {fields.map(item => <StoredItem key={item.member} item={item} node={node} values={new Map()}
-      owner={{ kind: 'node', graphId, nodeId: String(node.UID) }} onSet={set} onSetFields={setFields} />)}
+      owner={{ kind: 'node', graphId, nodeId: nodeId(node) }} onSet={set} onSetFields={setFields} />)}
   </Fold>;
 }
 
 
-// ── 转移：Payload 按原 C# 存储形状编辑；条件图由检查器单独新建与移除 ──
+// ── 转移：载荷按原 C# 存储形状编辑；图引用成员（条件）由 children 的专属图行新建与移除 ──
 
 export function TransitionFields({ graphId, connectionId, shape, children }: {
   graphId: string; connectionId: string; shape: StorageShape; children?: ReactNode;
 }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
-  const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
-    .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === connectionId) ?? null;
-  if (!connection) return null;
-  const payload = connection.Payload as JsonObject;
+  const payload = transitionPayload(findConnection(document, connectionId)?.connection ?? {});
+  if (!payload) return null;
   const set: SetValue = (keys, value) => graphAuthoring.setTransitionValue(graphId, connectionId, keys, value);
   return (
     <Fold title="转移" defaultOpen>
@@ -824,16 +827,30 @@ function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetField
   );
 }
 
-function CreateOwnedGraph({ owner, path, target }: {
-  owner: Extract<ReferenceOwner, { kind: 'node' }>; path: string[]; target: Extract<GraphReferenceTarget, { ownerBinding: 'ReferenceNode' }>;
-}) {
+// 专属图槽位（状态内容、条件、状态机等）：已有图可进入；可选槽位可移除，原图不再被引用时保存删除；
+// 空槽位按声明的每个目标新建。网页新建的图保存后才有展开结果。
+export function OwnedGraphRow({ label, slot }: { label: string; slot: GraphSlot }) {
+  const graphs = useWorkbench(state => state.graphs);
+  const error = useAuthoring(state => authoringDocument(state).documentError);
   const [creating, setCreating] = useState(false);
-  return <Button disabled={creating} onClick={() => {
-    setCreating(true);
-    graphAuthoring.createOwnedReference({ ...owner, path, target })
-      .catch((error: unknown) => consoleActions.error('作者', error))
-      .finally(() => setCreating(false));
-  }}>{creating ? '正在创建' : `新建 ${target.role}`}</Button>;
+  const target = slot.value === null ? null : graphs?.find(item => item.id === slot.value) ?? null;
+  const open = () => {
+    const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(item => item.id === slot.value);
+    if (graph) void projectActions.openGraph(graph, undefined, { origin: null, observation: null, caller: null, panelId: null })
+      .catch(reason => consoleActions.error('作者', reason));
+  };
+  return <Row label={label}><div className={styles.actions}>
+    {slot.value === null ? slot.targets.map(item => <Button key={`${item.role}/${item.seed}`} variant="ghost" disabled={creating} onClick={() => {
+      setCreating(true);
+      graphAuthoring.createOwnedGraph(slot, item)
+        .catch((reason: unknown) => consoleActions.error('作者', reason))
+        .finally(() => setCreating(false));
+    }}>{creating ? '正在创建' : slot.targets.length === 1 ? `新建${label}` : `新建 ${item.role}`}</Button>) : <>
+      {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={open} />
+        : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
+      {slot.optional && <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => graphAuthoring.removeOwnedGraph(slot)}>移除</Button>}
+    </>}
+  </div></Row>;
 }
 
 const belowPath = (path: string[], parent: string[]) => path.length > parent.length &&
@@ -980,11 +997,13 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
     return <div className={styles.group}><div className={styles.groupHead}>{label}</div>{childFields(path)}
       {field.optional && <Row label=""><Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button></Row>}
     </div>;
-  const ownedTargets = field.graphTargets.filter(target => target.ownerBinding === 'ReferenceNode');
-  if (owner.kind === 'node' && ownedTargets.length !== 0)
-    return <Row label={label}>{value == null || value === ''
-      ? ownedTargets.map(target => <CreateOwnedGraph key={target.role} owner={owner} path={path} target={target} />)
-      : <span className={styles.readOnly}>{valueText(value)}</span>}</Row>;
+  // 图引用字段没有候选来源时就是专属图槽位：按声明的目标新建、进入或移除。
+  if (owner.kind === 'node' && field.graphTargets.length !== 0 && field.choiceKind === null && field.pickerKind === null &&
+      field.resourceReference === null && field.objectSelection === null)
+    return <OwnedGraphRow label={label} slot={{
+      graphId: owner.graphId, owner: { kind: 'node', nodeId: owner.nodeId }, keys: path, label: field.displayName,
+      optional: field.optional, targets: field.graphTargets, value: typeof value === 'string' && value !== '' ? value : null,
+    }} />;
   if (field.resourceReference !== null || field.objectSelection !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
     return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
       onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
