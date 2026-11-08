@@ -209,6 +209,7 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticQueryInput(IReadOnlyList<SemanticOperation> operations,
             IReadOnlyList<SemanticLiteral> literals, IReadOnlyList<ProgramControlFlowEdge> controlFlow,
             IReadOnlyList<ProgramSourceMapEntry> sourceMap, Func<string, TimelineContentUnit> resolveTimeline,
+            Func<string, OrchestrationStaticQueryInput> resolveClipGraph,
             IReadOnlyList<IOrchestrationStateKeyDeclarations> declarations, IReadOnlyList<ProgramReference> references,
             IReadOnlyList<SemanticConstantInputBinding> constantInputs, OrchestrationIdentityTable identities,
             IReadOnlyDictionary<string, double> numberDefaults)
@@ -219,6 +220,7 @@ namespace BTSMTL.Compilation.Analysis
             ControlFlow = controlFlow;
             SourceMap = sourceMap;
             ResolveTimeline = resolveTimeline;
+            ResolveClipGraph = resolveClipGraph ?? throw new ArgumentNullException(nameof(resolveClipGraph));
             Declarations = declarations;
             References = references;
             ConstantInputs = constantInputs;
@@ -230,6 +232,8 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<ProgramControlFlowEdge> ControlFlow { get; }
         public IReadOnlyList<ProgramSourceMapEntry> SourceMap { get; }
         public Func<string, TimelineContentUnit> ResolveTimeline { get; }
+        // Clip 绑定的图各自独立编译：按图身份给出该图的语义程序，用于读取 Clip 生命周期内提供的状态。
+        public Func<string, OrchestrationStaticQueryInput> ResolveClipGraph { get; }
         public IReadOnlyList<IOrchestrationStateKeyDeclarations> Declarations { get; }
         public IReadOnlyList<ProgramReference> References { get; }
         public IReadOnlyList<SemanticConstantInputBinding> ConstantInputs { get; }
@@ -255,6 +259,7 @@ namespace BTSMTL.Compilation.Analysis
         readonly Dictionary<int, List<OrchestrationStaticTransition>> m_InitialTransitions = new();
         readonly Dictionary<string, OrchestrationStaticTimeline> m_Timelines = new(StringComparer.Ordinal);
         readonly Dictionary<int, OrchestrationStaticTimelineCall> m_Calls = new();
+        readonly Dictionary<string, OrchestrationStaticQuery> m_ClipGraphs = new(StringComparer.Ordinal);
         readonly List<string> m_Errors = new();
 
         OrchestrationStaticQuery(OrchestrationStaticQueryInput input)
@@ -506,8 +511,18 @@ namespace BTSMTL.Compilation.Analysis
             }
             var clips = new List<OrchestrationStaticClip>(content.Clips.Count);
             foreach (TimelineContentClip clip in content.Clips)
-                clips.Add(new OrchestrationStaticClip(identity, clip.AuthoringId, clip.TrackAuthoringId,
-                    clip.StartTime, clip.EndTime, clip.ExecutionPolicy.Domain, clip.TrackMuted));
+            {
+                var value = new OrchestrationStaticClip(identity, clip.AuthoringId, clip.TrackAuthoringId,
+                    clip.StartTime, clip.EndTime, clip.ExecutionPolicy.Domain, clip.TrackMuted);
+                string graphId = clip.GraphBinding.GraphId;
+                if (!string.IsNullOrEmpty(graphId))
+                {
+                    value.HasGraph = true;
+                    if (!value.Muted && value.Domain == TimelineExecutionDomain.Logic)
+                        ClipGraph(graphId).CollectEntryProvides(value.m_Provided, value.m_StartWrites);
+                }
+                clips.Add(value);
+            }
             var timeline = new OrchestrationStaticTimeline(content, clips);
             m_Timelines.Add(identity, timeline);
             return timeline;
@@ -648,6 +663,30 @@ namespace BTSMTL.Compilation.Analysis
                 }
             }
             return visited;
+        }
+
+        OrchestrationStaticQuery ClipGraph(string graphId)
+        {
+            if (!m_ClipGraphs.TryGetValue(graphId, out OrchestrationStaticQuery query))
+                m_ClipGraphs.Add(graphId, query = new OrchestrationStaticQuery(m_Input.ResolveClipGraph(graphId) ??
+                    throw new InvalidOperationException($"Clip 图 '{graphId}' 没有正式编译的语义程序。")));
+            return query;
+        }
+
+        // 独立编译的 Clip 图：片段启用钩子完整执行、技能入口执行到首个等待为止，期间无条件提供的状态随 Clip 生命周期存在。
+        void CollectEntryProvides(List<string> provided, List<(string, double)> writes)
+        {
+            for (int index = 0; index < Operations.Count; index++)
+            {
+                if (m_Incoming[index].Count != 0)
+                    continue;
+                SemanticOperation operation = Operations[index];
+                if (operation.Code == OrchestrationOperationCode.TimelineEnter &&
+                    (OrchestrationTimelineHook)operation.Integer0 == OrchestrationTimelineHook.Enable)
+                    CollectUnconditionalProvides(index, provided, writes, new HashSet<int>(), true);
+                else if (operation.Code == OrchestrationOperationCode.Root)
+                    CollectUnconditionalProvides(index, provided, writes, new HashSet<int>(), false);
+            }
         }
 
         bool CollectUnconditionalProvides(int index, List<string> provided, List<(string, double)> writes,
