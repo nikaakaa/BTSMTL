@@ -25,7 +25,7 @@ interface OpenArchive {
 }
 type OpeningArchive = Pick<OpenArchive, 'jobId' | 'generation' | 'controller'> & { kind: 'opening' };
 let current: OpenArchive | OpeningArchive | null = null;
-let imageController: AbortController | null = null;
+let imageRead: { cursor: number; controller: AbortController } | null = null;
 let frameRequest = 0;
 
 function remember(jobId: PlayerJobId, index: number, frame: ArchiveFrame) {
@@ -207,10 +207,16 @@ async function imageObservations(context: OpenArchive, metadata: PlayerFrameImag
   return { presentation, cameras: cameraRecords, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
 }
 
+function cancelImageRead() {
+  imageRead?.controller.abort();
+  imageRead = null;
+}
+
 async function loadImage(context: OpenArchive, hostFrame: string, request: number) {
-  imageController?.abort();
-  imageController = new AbortController();
-  const signal = AbortSignal.any([context.controller.signal, imageController.signal]);
+  if (imageRead !== null && (imageRead.cursor === request || getState().reviewing)) return;
+  cancelImageRead();
+  const read = imageRead = { cursor: request, controller: new AbortController() };
+  const signal = AbortSignal.any([context.controller.signal, read.controller.signal]);
   const id = `${context.jobId}:${hostFrame}`;
   let image = images.get(id);
   try {
@@ -228,12 +234,12 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
           image = { kind: 'frame', metadata, image: blob, ...observations };
         } else image = { kind: 'unavailable', hostFrame, reason: `档案未记录${context.summary.frameDisplayName} ${hostFrame}的画面` };
       } else image = { kind: 'unavailable', hostFrame, reason: imageChannel?.reason ?? '当前档案未声明帧画面通道' };
+      signal.throwIfAborted();
       images.set(id, image);
       while (images.size > imageCacheLimit)
         for (const oldest of images.keys()) { images.delete(oldest); break; }
     }
-    signal.throwIfAborted();
-    if (request === frameRequest && isCurrent(context.generation))
+    if (isCurrent(context.generation) && (request === frameRequest || getState().reviewing && image.kind === 'frame'))
       runActions.setData(context.generation, { archiveImage: image });
   } catch (error) {
     if (signal.aborted || request !== frameRequest || !isCurrent(context.generation)) return;
@@ -241,8 +247,30 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
     runActions.setData(context.generation, { archiveImage: {
       kind: 'unavailable', hostFrame, reason: error instanceof Error ? error.message : String(error),
     } });
+  } finally {
+    if (imageRead === read) {
+      imageRead = null;
+      const state = getState();
+      if (state.reviewing && request !== frameRequest && state.archiveFrame !== null)
+        void loadImage(context, state.archiveFrame.hostFrame, frameRequest);
+    }
   }
 }
+
+useWorkbench.subscribe((state, previous) => {
+  if (!previous.reviewing || state.reviewing || current?.kind !== 'ready') return;
+  const context = current;
+  const request = frameRequest;
+  queueMicrotask(() => {
+    const { archiveImage, archiveFrame, reviewing } = getState();
+    if (current !== context || request !== frameRequest || reviewing) return;
+    if (imageRead !== null && imageRead.cursor !== request) cancelImageRead();
+    const shown = archiveImage?.kind === 'frame' ? archiveImage.metadata.source.clock.position.hostFrame : archiveImage?.hostFrame;
+    if (shown === archiveFrame?.hostFrame) return;
+    if (archiveImage !== null) runActions.setData(context.generation, { archiveImage: null });
+    if (archiveFrame !== null) void loadImage(context, archiveFrame.hostFrame, request);
+  });
+});
 
 export const archive = {
   inputFrames(jobId: PlayerJobId, actorId: string) {
@@ -283,7 +311,7 @@ export const archive = {
   cancel() {
     current?.controller.abort();
     current = null;
-    imageController?.abort();
+    cancelImageRead();
     for (const request of pages.values()) request.controller.abort();
     pages.clear();
     pending.clear();
@@ -327,14 +355,15 @@ export const archive = {
 
   loadFrame() {
     const context = current;
-    const { runId, frameIndex, summary, generation } = getState();
+    const { runId, frameIndex, summary, generation, reviewing } = getState();
     if (context?.kind !== 'ready' || runId !== context.jobId || !summary?.frameCount) return;
     const frameKey = key(runId, frameIndex);
     if (getState().frameKey === frameKey) return;
     const page = Math.floor(frameIndex / pageFrames);
     const request = ++frameRequest;
-    imageController?.abort();
-    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, archiveImage: null, failure: null });
+    if (!reviewing) cancelImageRead();
+    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, failure: null,
+      ...(reviewing ? {} : { archiveImage: null }) });
     const allowed = new Set([page - 1, page, page + 1]);
     for (const [id, request] of pages) if (!allowed.has(request.page)) {
       request.controller.abort();

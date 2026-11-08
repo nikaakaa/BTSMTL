@@ -348,7 +348,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         frameSize.current = { width: frame.width, height: frame.height };
         overlayDraw.current(frame);
         const state = getState();
-        if (state.runId && drawnKey && state.frameKey === drawnKey && state.frame?.hostFrame === frame.hostFrame)
+        if (state.runId && drawnKey && state.frameKey === drawnKey && state.archiveFrame?.hostFrame === frame.hostFrame)
           reportRendered(panelId, drawnKey);
       } catch (error) {
         if (!alive || currentPicture()?.image !== frame.image) return;
@@ -367,7 +367,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     const unsubscribeVideo = playerService.subscribeVideo(() => { if (getState().runId === null) void draw(); });
     const unsubscribeState = useWorkbench.subscribe((state, previous) => {
       if (state.liveId !== previous.liveId || state.runId !== previous.runId || state.archiveImage !== previous.archiveImage ||
-        state.frameKey !== previous.frameKey || state.viewerOpen !== previous.viewerOpen) void draw();
+        state.viewerOpen !== previous.viewerOpen) void draw();
     });
     return () => { alive = false; unsubscribeVideo(); unsubscribeState(); clearRendered(panelId); };
   }, [visible, panelWindow, panelId]);
