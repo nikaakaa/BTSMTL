@@ -323,6 +323,8 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
 function invalidateJob() {
   const job = current().job;
   if (job.kind === 'idle') return;
+  // 只有失败的身份不自动重试；因内容变化被撤下的作业不算尝试过，读完来源后照常自动重新生成。
+  if (job.kind !== 'failed' && job.kind !== 'cancel-failed') autoAttempt = null;
   if (quickJobCancellable(job)) void quickPreview.cancel();
   else if (job.kind === 'settled' || job.kind === 'failed' || job.kind === 'cancel-failed') set({ job: { kind: 'idle' } });
 }
