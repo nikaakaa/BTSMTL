@@ -6,6 +6,7 @@ import {
 } from '../../state/referenceSelection';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
 import { Button, TextInput } from '../../ui/controls';
+import { VirtualList } from '../../ui/VirtualList';
 import { openPanel } from '../../shell/layout';
 import styles from './referencePicker.module.css';
 
@@ -76,20 +77,22 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
     {open && <div className={styles.popup} onKeyDown={event => { if (event.key === 'Escape') setOpen(false); }}>
       <TextInput autoFocus aria-label={`搜索${label}`} placeholder="搜索名称、说明或来源" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
-      <div className={styles.list} role="listbox" aria-label={label}>
-        {items.map((item, index) => <button type="button" key={`${index}:${referenceValueKey(item.value)}`}
-          className={styles.item} role="option" aria-selected={matchesReferenceChoice(item, current)}
-          disabled={item.conflict !== null} draggable={item.conflict === null} onDragStart={event => {
-            if (catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, catalog.referenceKind, item);
-          }} onClick={() => choose(item)}>
-          <strong>{item.name}</strong>
-          <span>{item.detail}</span>
-          <small>{referenceValueKey(item.value)}</small>
-          <small>{item.source}</small>
-          {item.conflict && <span className={styles.issue}>{item.conflict}</span>}
-        </button>)}
-        {items.length === 0 && <div className={styles.note}>没有匹配的候选</div>}
-      </div>
+      {items.length === 0 ? <div className={styles.note}>没有匹配的候选</div>
+        : <VirtualList className={styles.list} count={items.length} rowHeight={98} role="listbox" label={label}
+          revealIndex={0} revealKey={query} render={index => {
+            const item = items[index];
+            const address = referenceValueKey(item.value);
+            return <button type="button" className={styles.item} role="option" aria-selected={matchesReferenceChoice(item, current)}
+              aria-posinset={index + 1} aria-setsize={items.length} disabled={item.conflict !== null} draggable={item.conflict === null}
+              onDragStart={event => { if (catalog.kind === 'ready') writeReferenceDrag(event.dataTransfer, catalog.referenceKind, item); }}
+              onClick={() => choose(item)}>
+              <strong title={item.name}>{item.name}</strong>
+              <span title={item.detail}>{item.detail}</span>
+              <small title={address}>{address}</small>
+              <small title={item.source}>{item.source}</small>
+              {item.conflict && <span className={styles.issue} title={item.conflict}>{item.conflict}</span>}
+            </button>;
+          }} />}
       <Button variant="ghost" onClick={() => setOpen(false)}>关闭</Button>
     </div>}
   </div>;
