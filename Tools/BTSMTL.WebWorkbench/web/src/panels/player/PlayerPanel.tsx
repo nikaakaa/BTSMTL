@@ -4,6 +4,7 @@ import { Matrix4 } from 'three';
 import type { CameraCommand, PlayerState, VideoFrame } from '../../api/types';
 import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '../../api/playerRecords';
 import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
+import { isRestoringRunAddress } from '../../shell/address';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { liveSurface, playerService, sceneLoadContent } from '../../state/player';
@@ -35,7 +36,9 @@ interface Params {
 export function PlayerPanel() {
   const hostAvailable = useWorkbench(state => state.hostAvailable);
   const mode = useWorkbench(state => state.previewMode);
+  const runId = useWorkbench(state => state.runId);
   if (hostAvailable === false) return <Empty text="未接入运行宿主" />;
+  if (runId === null && isRestoringRunAddress()) return <Empty text="正在打开运行档案" />;
   if (mode === 'quick') return <QuickPreviewPicture />;
   return <PlayerView />;
 }
