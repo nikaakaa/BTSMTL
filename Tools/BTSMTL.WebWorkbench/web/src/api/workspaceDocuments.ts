@@ -39,6 +39,8 @@ const readChanged = object({ success: boolean, document: optional(readWorkspaceD
 const readElements = object({ success: boolean, elements: array(readElement) });
 export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
 const readView = readWorkspaceDocumentView;
+type WorkspaceDocumentView = ReturnType<typeof readView>;
+let pendingView: { key: string; result: Promise<WorkspaceDocumentView> } | null = null;
 const readEditingView = object({
   writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles })),
   reads: array(object({ documentPath: text, revision: text })), execution: readExecutionScopeSelection,
@@ -60,8 +62,17 @@ export const workspaceDocumentsApi = {
       .then(value => readChanged(value).document ?? null),
   elements: (kind?: WorkspaceDocumentElement['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),
-  editingView: (editingView: WorkspaceEditingView, signal?: AbortSignal) =>
-    postJson<unknown>('/api/authoring/documents/editing-view', editingView, signal).then(value => readView(value)),
+  // 同一编辑视图的并发请求共用一次宿主计算（打开文档时目录与文档读取同时需要）；各调用方返回后自行检查取消。
+  editingView: (editingView: WorkspaceEditingView, signal?: AbortSignal) => {
+    const key = JSON.stringify(editingView);
+    if (pendingView?.key !== key) {
+      const result: Promise<WorkspaceDocumentView> = postJson<unknown>('/api/authoring/documents/editing-view', editingView)
+        .then(value => readView(value))
+        .finally(() => { if (pendingView?.result === result) pendingView = null; });
+      pendingView = { key, result };
+    }
+    return pendingView.result.then(view => { signal?.throwIfAborted(); return view; });
+  },
   save: (editingView: Pick<WorkspaceEditingView, 'writes' | 'reads'> & Partial<Omit<WorkspaceEditingView, 'writes' | 'reads'>>) =>
     putJson<unknown>('/api/authoring/documents', editingView).then(value => readView(value)),
 };
