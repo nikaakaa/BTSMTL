@@ -232,7 +232,7 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<ProgramControlFlowEdge> ControlFlow { get; }
         public IReadOnlyList<ProgramSourceMapEntry> SourceMap { get; }
         public Func<string, TimelineContentUnit> ResolveTimeline { get; }
-        // Clip 绑定的图各自独立编译：按图身份给出该图的语义程序，用于读取 Clip 生命周期内提供的状态。
+        // Clip 绑定的图各自独立编译：按图作者身份给出该图的语义程序，用于读取 Clip 生命周期内提供的状态。
         public Func<string, OrchestrationStaticQueryInput> ResolveClipGraph { get; }
         public IReadOnlyList<IOrchestrationStateKeyDeclarations> Declarations { get; }
         public IReadOnlyList<ProgramReference> References { get; }
@@ -514,12 +514,13 @@ namespace BTSMTL.Compilation.Analysis
             {
                 var value = new OrchestrationStaticClip(identity, clip.AuthoringId, clip.TrackAuthoringId,
                     clip.StartTime, clip.EndTime, clip.ExecutionPolicy.Domain, clip.TrackMuted);
-                string graphId = clip.GraphBinding.GraphId;
-                if (!string.IsNullOrEmpty(graphId))
+                string binding = clip.GraphBinding.GraphId;
+                if (!string.IsNullOrEmpty(binding))
                 {
                     value.HasGraph = true;
                     if (!value.Muted && value.Domain == TimelineExecutionDomain.Logic)
-                        ClipGraph(graphId).CollectEntryProvides(value.m_Provided, value.m_StartWrites);
+                        ClipGraph(TimelineGraphBinding.GraphAuthoringId(binding))
+                            .CollectEntryProvides(value.m_Provided, value.m_StartWrites);
                 }
                 clips.Add(value);
             }
