@@ -1196,8 +1196,8 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
-        <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion}
-          tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
+        <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion} dim={span.dim}
+          tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s${span.dim ? ' · 本段未播放' : ''}`} />
       ))}
     </Line>
   );
@@ -1474,13 +1474,13 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   );
 });
 
-function Positioned({ start, end, className, children, style, tip }: {
-  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string;
+function Positioned({ start, end, className, children, style, tip, dim }: {
+  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string; dim?: boolean;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   return (
     <Tip content={tip}>
-      <div className={className} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
+      <div className={className} data-dim={dim || undefined} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
         {children}
       </div>
     </Tip>
@@ -1514,7 +1514,7 @@ const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segment
   } : undefined, [author, clip, documentId]);
   return (
     <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={label} start={clip.start} end={clip.end}
-      exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
+      enter={clip.enter} exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
       referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
       onAnimationDrop={author && kind === 'anim' ? transfer => {
         if (!animation) { consoleActions.log('warn', 'Timeline', '当前片段未提供正式动画源资产字段，原值已保留'); return; }
@@ -1601,10 +1601,10 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 }
 
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
-// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；exit 之后的部分压暗。
+// 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；enter 之前与 exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
-  boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number;
+function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
+  boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; enter?: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
   referenceInvalid?: boolean; referenceIssue?: string | null; onAnimationDrop?(transfer: DataTransfer): void;
 }) {
@@ -1622,8 +1622,9 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
   const [easeDraft, setEaseDraft] = useState<EaseDraft | null>(null);
   const clipGrid = useContext(ClipGridContext);
   const width = valueToPixels(end - start);
-  const dimmed = start >= exit;
+  const dimmed = start >= exit || end <= enter;
   const cut = !dimmed && end > exit ? valueToPixels(exit - start) : null;
+  const skipped = !dimmed && start < enter ? valueToPixels(enter - start) : null;
   const mixIn = mix?.in ?? 0, mixOut = mix?.out ?? 0;
   // 照 Clip.UpdateMix：自身淡入不超过时长减去混出，淡出不超过时长减去混入。
   const selfIn = Math.min(ease?.in ?? 0, end - start - mixOut), selfOut = Math.min(ease?.out ?? 0, end - start - mixIn);
@@ -1667,6 +1668,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, graphId, edi
             start={start} end={end} draft={easeDraft} setDraft={setEaseDraft} sides={{ in: mixIn <= 0, out: mixOut <= 0 }}
             step={(edit && clipGrid(edit.documentId, edit.clipId)?.step) ?? minimumStep} />}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
+          {skipped !== null && <i className={styles.clipCut} style={{ left: 0, right: 'auto', width: skipped }} />}
           {edit && <><i className={styles.clipResize} data-side="start" /><i className={styles.clipResize} data-side="end" /></>}
         </button>
         </Tip>

@@ -60,7 +60,8 @@ export interface ClipInstance {
   label: string;
   start: number;
   end: number;
-  // 段离开时刻；之后的部分压暗显示。
+  // 段进入与离开时刻；之前（从中途进入时跳过）与之后（被跳转截断）的部分压暗显示。
+  enter: number;
   exit: number;
 }
 
@@ -88,16 +89,24 @@ export interface GroupRow {
   focused?: boolean;
 }
 
-// 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）。
-export function clipUnions(segment: TimelineSegment): Span[] {
-  const result: Span[] = [];
+// 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）；
+// 并集按段的进入、离开时刻切开，段外（中途进入跳过的、被跳转截断的）部分标为 dim。
+export function clipUnions(segment: TimelineSegment): (Span & { dim: boolean })[] {
+  const unions: Span[] = [];
   for (const track of segment.timeline.tracks) {
     let current: Span | null = null;
     for (const clip of [...track.clips].sort((left, right) => left.startSeconds - right.startSeconds)) {
       const start = segment.origin + clip.startSeconds, end = segment.origin + clip.endSeconds;
       if (current && start < current.end) current.end = Math.max(current.end, end);
-      else result.push(current = { start, end });
+      else unions.push(current = { start, end });
     }
+  }
+  const result: (Span & { dim: boolean })[] = [];
+  for (const { start, end } of unions) {
+    const enter = Math.min(Math.max(segment.start, start), end), exit = Math.max(Math.min(segment.end, end), enter);
+    if (enter > start) result.push({ start, end: enter, dim: true });
+    if (exit > enter) result.push({ start: enter, end: exit, dim: false });
+    if (end > exit) result.push({ start: exit, end, dim: true });
   }
   return result;
 }
@@ -191,7 +200,7 @@ export function segmentRows(segment: TimelineSegment, graphNames: Map<string, st
     clips: track.clips.map(clip => ({
       key: `${segment.id}/${clip.id}`, selectId: clipSelectId(timeline.documentId, clip.id), clip,
       kind: clipKind(clip), label: clipLabel(clip, track, graphNames),
-      start: segment.origin + clip.startSeconds, end: segment.origin + clip.endSeconds, exit: segment.end,
+      start: segment.origin + clip.startSeconds, end: segment.origin + clip.endSeconds, enter: segment.start, exit: segment.end,
     })),
     markers: track.markers.map(marker => ({
       key: `${segment.id}/${marker.id}`, selectId: clipSelectId(timeline.documentId, marker.id), seconds: segment.origin + marker.seconds,
