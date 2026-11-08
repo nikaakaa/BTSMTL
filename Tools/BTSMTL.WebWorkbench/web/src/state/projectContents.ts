@@ -11,8 +11,8 @@ export interface ContentNode {
   key: string; label: string; description: string; target: ContentTarget | null; children: ContentNode[]; referrers: ContentUse[];
 }
 const itemKey = (item: Pick<ProjectItem, 'owner' | 'file'>) => JSON.stringify([item.owner, item.file]);
-const graphLabels: Record<string, string> = { Ability: '技能图', StateMachine: '状态机', StateBody: '状态内容',
-  Condition: '条件图', Subgraph: '子图', TimelineEvent: '事件图' };
+const graphLabels: Record<string, string> = { Ability: '技能图', Skill: '技能图', StateMachine: '状态机', StateBody: '状态内容',
+  Condition: '条件图', ConditionRule: '条件', Subgraph: '子图', TimelineEvent: '事件图', TimelineBody: '片段内容', TimelineTrigger: '触发片段' };
 export const graphItemDescription = (item: Extract<ProjectItem, { kind: 'graph' }>) =>
   'role' in item ? graphLabels[item.role] ?? item.role : item.contentDomain;
 
@@ -23,9 +23,12 @@ export function projectContents(documents: AuthoringState['documents']) {
   const uses = new Map<string, ContentUse[]>();
   const children = new Map<string, string[]>();
   const roots: ProjectItem[] = [];
+  // 宿主按所属节点、片段或 Timeline 推出的图名称；没有时才用引用者拼名。
+  const hostNamed = new Set<string>();
   for (const [key, document] of Object.entries(documents)) {
     if (document.kind === 'scenario') continue;
     const owner = key;
+    const graphNames = new Map((document.documentGraphs ?? []).flatMap(graph => graph.displayName ? [[graph.id, graph.displayName] as const] : []));
     const source = new Map([...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
       .filter(path => !document.removed.includes(path) && (path === document.rootFile ||
         path.startsWith('graphs/') || path.startsWith('timelines/') || path.startsWith('inputs/'))).map(path => [path,
@@ -43,9 +46,13 @@ export function projectContents(documents: AuthoringState['documents']) {
         if (document.projectRoot === null) continue;
         item = { ...document.projectRoot };
       }
-      else if (file.startsWith('graphs/')) item = { ...base, kind: 'graph', identity: data.AuthoringId as string,
-        name: graphLabels[data.Role as string] ?? data.Role as string, role: data.Role as string,
-        ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private' };
+      else if (file.startsWith('graphs/')) {
+        const name = graphNames.get(data.AuthoringId as string);
+        if (name !== undefined) hostNamed.add(itemKey({ owner, file }));
+        item = { ...base, kind: 'graph', identity: data.AuthoringId as string,
+          name: name ?? graphLabels[data.Role as string] ?? data.Role as string, role: data.Role as string,
+          ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private' };
+      }
       else if (file === 'timeline.json' || file.startsWith('timelines/')) item = { ...base, kind: 'timeline', identity: data.m_AuthoringId as string,
         name: data.m_Name as string, ownership: 'Private' };
       else if (file === document.rootFile && (document.kind === 'curve' || document.kind === 'profile' || document.kind === 'variables')) {
@@ -110,7 +117,7 @@ export function projectContents(documents: AuthoringState['documents']) {
     const independentGraph = documents[item.owner].kind === 'graph';
     if (!independentGraph) item.referenceCount = uses.get(key)?.length ?? 0;
     if (!independentGraph && item.referenceCount > 1) item.ownership = 'Shared';
-    if (item.kind === 'graph' && 'role' in item) {
+    if (item.kind === 'graph' && 'role' in item && !hostNamed.has(key)) {
       const references = uses.get(key) ?? [];
       const names = [...new Set(references.map(reference => reference.label.split(' / ').slice(1, -1).join(' / ')).filter(Boolean))];
       if (names.length > 0) item.name = `${names.join('、')} · ${graphLabels[item.role] ?? item.role}`;
@@ -166,17 +173,18 @@ export function projectContents(documents: AuthoringState['documents']) {
     if (shared.length > 0) root.children.push({ key: `${root.key}/shared`, label: '共享', description: `${shared.length} 项`, target: null, children: shared, referrers: [] });
     if (unreferenced.length > 0) root.children.push({ key: `${root.key}/unreferenced`, label: '其他内容', description: `${unreferenced.length} 项`, target: null, children: unreferenced, referrers: [] });
   }
-  const nameSiblings = (nodes: ContentNode[], parent: string) => {
+  // 同一层重名时只按出现顺序编号，位置由树本身表达。
+  const nameSiblings = (nodes: ContentNode[]) => {
     const counts = new Map<string, number>();
     for (const node of nodes) counts.set(node.label, (counts.get(node.label) ?? 0) + 1);
     const order = new Map<string, number>();
     for (const node of nodes) {
       const name = node.label;
       order.set(name, (order.get(name) ?? 0) + 1);
-      if (counts.get(name)! > 1) node.label = `${name} · ${parent} / ${order.get(name)}`;
-      nameSiblings(node.children, `${parent} / ${name}`);
+      if (counts.get(name)! > 1) node.label = `${name}（${order.get(name)}）`;
+      nameSiblings(node.children);
     }
   };
-  nameSiblings(tree, '已打开内容');
+  nameSiblings(tree);
   return { tree, items: [...items.values()] };
 }

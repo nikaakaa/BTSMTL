@@ -12,7 +12,7 @@ import styles from './project.module.css';
 export const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案', curve: '曲线文档', profile: 'Profile 文档', variables: '变量文档' };
 export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kind, item.identity]);
 
-// Project 文件夹中选中技能作者文件时的详情：打开、重命名、带引用检查的删除与引用者。
+// 检查器中所选作者内容的操作：打开、重命名、带引用检查的删除与引用者。
 export function SkillItemDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
   const [referrers, setReferrers] = useState<ReferrersResult | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
@@ -63,12 +63,6 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
         onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>删除</Button>}
     </PanelBar>
     {failure && <ErrorLine {...failure} />}
-    <div className={styles.facts}>
-      <strong>{item.name}</strong>
-      <span>{kindNames[item.kind]} · {item.ownerName} · {item.ownership === 'Shared' ? '共享' : '私有'}</span>
-      <code>{item.file}</code>
-      <small>{item.identity}</small>
-    </div>
     {renaming && (item.kind === 'skill' || item.kind === 'timeline' || item.kind === 'input-plan') && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
       await projectActions.rename(item, name, scheme); setRenaming(false);
     })} />}

@@ -1,19 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { isAbort } from '../../api/http';
-import { authoringActions, useAuthoring, useSkillElements } from '../../state/authoring';
-import { graphAuthoring } from '../../state/graphAuthoring';
-import { nodeNameKey } from '../../state/graphDocument';
+import { useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
-import { projectContents, type ContentNode, type ContentTarget } from '../../state/projectContents';
+import { projectContents, type ContentNode } from '../../state/projectContents';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, MenuButton, TextInput } from '../../ui/controls';
+import { MenuButton, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { SkillContentCreation, type SkillContentKind } from './SkillContentCreation';
-import { SkillItemDetails } from './SkillItemDetails';
 import styles from './project.module.css';
 
 export function ContentProject() {
@@ -49,7 +46,8 @@ export function ContentProject() {
     if (kind !== 'skill' && owner != null) await projectActions.openOwner(owner);
     setCreating(kind);
   });
-  return <div className={styles.contentGrid}>
+  // 单击在检查器中查看并操作所选内容，Project 只负责找到和创建。
+  return <div className={styles.contentGrid} data-creating={creating !== null || undefined}>
     <div className={styles.contentTree}>
       <PanelBar wrap><TextInput aria-label="搜索作者内容" placeholder="搜索技能、状态、Timeline 或片段" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
@@ -90,33 +88,9 @@ export function ContentProject() {
           </div>;
         }} />}
     </div>
-    <div className={styles.contentDetails}>
-      {creating !== null ? <SkillContentCreation key={`${creating}/${target?.documentPath}`} kind={creating} skill={composition && target !== null ? target.documentPath : null}
-        elements={elements} onDone={() => setCreating(null)} /> : node === undefined ? <Empty text="单击查看检查器，双击打开图或 Timeline；拖动内容设置作者引用" /> : <>
-        {node.target?.kind === 'item' ? <SkillItemDetails item={node.target.item} items={contents.items}
-          stamp={JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version]))} onChanged={() => setSelected(null)} />
-          : node.target !== null && <ContentObject key={node.key} node={node} target={node.target} perform={perform} />}
-        {node.target?.kind === 'item' && node.target.item.kind === 'graph' && <div className={styles.note}>图的显示名称由所属节点、片段或 Timeline 推出，可从引用者进入对应对象修改。</div>}
-        {node.referrers.length > 0 && <><div className={styles.heading}>当前打开文档中的引用者 · {node.referrers.length}</div>
-          {node.referrers.map(reference => <button key={reference.key} className={styles.referrer}
-            onClick={() => void perform(() => projectActions.inspect(reference.target))}>{reference.label}</button>)}</>}
-      </>}
-    </div>
-  </div>;
-}
-
-function ContentObject({ node, target, perform }: { node: ContentNode; target: Exclude<ContentTarget, { kind: 'item' }>;
-  perform(action: () => Promise<void>): Promise<void> }) {
-  const [name, setName] = useState(node.label);
-  return <div className={styles.facts}><strong>{node.label}</strong><span>{node.description}</span>
-    <Button onClick={() => void perform(() => projectActions.openContent(target))}>打开编辑器</Button>
-    {target.kind !== 'clip' && <>
-      <TextInput aria-label="对象名称" value={name} onChange={event => setName(event.currentTarget.value)} />
-      <Button disabled={!name.trim()} onClick={() => void perform(async () => {
-        await projectActions.openOwner(target);
-        if (target.kind === 'node') graphAuthoring.setNodeValues(target.graphId, target.nodeId, [{ keys: [nodeNameKey], value: name }]);
-        else authoringActions.setTrackValue(target.timelineId, target.id, ['Name'], name);
-      })}>应用名称</Button>
-    </>}
+    {creating !== null && <div className={styles.contentDetails}>
+      <SkillContentCreation key={`${creating}/${target?.documentPath}`} kind={creating} skill={composition && target !== null ? target.documentPath : null}
+        elements={elements} onDone={() => setCreating(null)} />
+    </div>}
   </div>;
 }

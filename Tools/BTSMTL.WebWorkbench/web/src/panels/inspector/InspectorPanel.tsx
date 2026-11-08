@@ -25,6 +25,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
 import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
+import { SkillItemDetails } from '../project/SkillItemDetails';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -102,7 +103,9 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const target = useAuthoring(state => state.target);
   const editable = useAuthoring(state => state.author);
   const element = useAuthoring(state => state.elementCatalog.items.find(element => documentElementKey(element) === id));
-  const item = useMemo(() => projectContents(documents).items.find(item => JSON.stringify([item.owner, item.file]) === id), [documents, id]);
+  const items = useMemo(() => projectContents(documents).items, [documents]);
+  const item = items.find(item => JSON.stringify([item.owner, item.file]) === id);
+  const stamp = useMemo(() => JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version])), [documents]);
   if (element !== undefined && target !== null && element.documentPath === target.documentPath) return <>
     <Head name={element.identity} sub="作者元素" />
     <Value label="所属文档" value={element.documentPath} mono={false} />
@@ -115,13 +118,11 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
   if (item.kind === 'skill') return <SkillSummary />;
   return <>
-    <Head name={item.name} sub={item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} />
-    <Value label="所属文档" value={item.ownerName} mono={false} />
-    <Value label="引用者" value={item.referenceCount} mono={false} />
+    <Head name={item.name} sub={`${item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} · ${item.ownerName} · ${item.ownership === 'Shared' ? '共享' : '私有'}`} />
     {item.kind === 'timeline' && <TimelineScopeFields documentId={item.identity} />}
-    {item.kind === 'variables' ? <BlackboardFields ownerId={item.identity} editable={editable} />
-      : item.kind === 'curve' || item.kind === 'profile' ? <DocumentFields editable={editable} location={{ kind: 'root' }} />
-      : <Button onClick={() => void projectActions.open(item).catch(error => consoleActions.error('Project', error))}>打开编辑器</Button>}
+    {item.kind === 'variables' && <BlackboardFields ownerId={item.identity} editable={editable} />}
+    {(item.kind === 'curve' || item.kind === 'profile') && <DocumentFields editable={editable} location={{ kind: 'root' }} />}
+    <SkillItemDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;
 }
