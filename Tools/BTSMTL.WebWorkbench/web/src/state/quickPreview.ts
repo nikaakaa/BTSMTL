@@ -582,6 +582,7 @@ export const quickPreview = {
   },
   retryPicture() { requestPicture(true); },
   invalidate(reason: string) {
+    autoAttempt = null;
     contentFollow = false;
     descriptionController?.abort();
     set({ description: { kind: 'stale', reason } });
