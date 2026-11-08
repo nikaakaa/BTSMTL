@@ -9,6 +9,7 @@ import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
 import { consoleActions, selectionActions, useWorkbench } from '../../state/store';
+import { session } from '../../state/session';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
 import styles from './quickPreview.module.css';
@@ -80,9 +81,10 @@ export function QuickBar() {
     })));
   }, [description, active]);
   const busy = progress !== null || state.description.kind === 'loading';
+  const runBlocked = useWorkbench(() => session.canStartNewRun());
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
-      <strong>快档</strong>
+      <strong>快速预览</strong>
       {description && roots.length > 0 && <Select variant="ghost" label="推导根" placeholder="选择推导根"
         value={state.target?.root == null ? null : quickAuthoringKey(state.target.root.authoring)} disabled={busy}
         options={roots.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
@@ -112,6 +114,8 @@ export function QuickBar() {
         : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入方案重新推导路线'}
           onClick={() => quickPreview.rederive()}>重新推导</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
+      <Button variant="ghost" disabled={runBlocked !== null} tip={runBlocked ?? '切到真实运行，按当前场景和输入方案完整运行一次并录制'}
+        onClick={() => void session.startNewRun()}>真实运行一次</Button>
     </PanelBar>
     {open && <QuickDetails />}
   </section>;

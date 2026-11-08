@@ -49,7 +49,7 @@ function QuickPreviewPicture() {
   const accepted = pictureCurrent ? state.accepted : null;
   return <div className={styles.root}>
     <PanelBar wrap><strong>快速预览</strong>
-      <Button onClick={() => openPanel('timeline')}>输入与结果</Button>
+      <Button onClick={() => openPanel('timeline')}>在 Timeline 看路线</Button>
       {quickJobCancellable(job) &&
         <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'settled' ? '结束预览' : '取消预览'}</Button>}
     </PanelBar>
@@ -140,6 +140,7 @@ function PlayerView() {
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
     runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
   })));
+  const startBlocked = useWorkbench(() => session.canStartNewRun());
   const stage = useRef<HTMLDivElement>(null);
   const [captureBinding, setCaptureBinding] = useState<string | null>(null);
   const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
@@ -235,6 +236,8 @@ function PlayerView() {
               const result = await playerService.loadContent(content!);
               if (result?.stage === 'applied') session.selectRun(null);
             }}>载入</Button>}
+          <Button disabled={startBlocked !== null} tip={startBlocked ?? '按当前场景和输入方案运行一次并录制，Timeline 显示实际路线'}
+            onClick={() => void session.startNewRun()}>新建运行</Button>
           {ready && <span className={styles.split}>
             <Button variant="ghost" pressed={orbit} tip="左键拖动旋转 · 右键或 Shift 拖动平移 · 滚轮缩放"
               onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>

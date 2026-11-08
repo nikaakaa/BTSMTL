@@ -331,16 +331,14 @@ function PreviewModeChoice() {
   if (!modes?.length && !observing) return null;
   const unavailable = modes?.find(mode => mode.id === selected && !mode.available);
   const adoptedLabel = adoptedMode === null ? '未记录' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
+  // 档位按钮即预览入口：说明写在按钮提示里，实际采用档位只在所选按钮的提示中给出，工具条不再另列。
   return (
-    <div className={styles.modes} role="group" aria-label="预览档位">
-      <Tip content="按宿主提供的可用档位提交请求；实际采用以宿主回执为准"><span className={styles.dim}>请求</span></Tip>
+    <div className={styles.modes} role="group" aria-label="预览方式">
       {modes?.map(mode => (
-        <Button key={mode.id} variant="ghost" pressed={selected === mode.id} tip={mode.reason} disabled={!mode.available}
+        <Button key={mode.id} variant="ghost" pressed={selected === mode.id} disabled={!mode.available}
+          tip={selected === mode.id && observing ? `${mode.reason}\n实际采用：${adoptedLabel}` : mode.reason}
           onClick={() => contentActions.selectPreviewMode(mode.id)}>{mode.displayName}</Button>
       ))}
-      {observing && <Tip content={adoptedMode === null ? '该来源未记录实际采用档位；采用值未知不代表载入失败。' : `宿主记录的实际采用档位：${adoptedMode}`}>
-        <span className={styles.dim} role="status">实际采用：{adoptedLabel}</span>
-      </Tip>}
       {unavailable && <span role="status">{unavailable.reason}</span>}
     </div>
   );

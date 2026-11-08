@@ -46,6 +46,7 @@ import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } fr
 import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar, locateQuickSource, useQuickName } from './QuickPreview';
+import { RunBar } from './RunBar';
 import { quickRoute, realRoute, type RouteBar, type RouteView } from './routeRows';
 import { AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
@@ -65,7 +66,7 @@ import styles from './timeline.module.css';
 // 轨道头宽度，约占窗口三分之一，面板窄时收窄让出时间区；CSS 经 --sidebar 读取。
 export function TimelinePanel() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
-  return <div className={styles.window}>{quick && <QuickBar />}<DocumentTimeline /></div>;
+  return <div className={styles.window}>{quick ? <QuickBar /> : <RunBar />}<DocumentTimeline /></div>;
 }
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
