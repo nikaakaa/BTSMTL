@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickLocation } from '../../api/previewQuickRecords';
 import { authoringTargetKey, type SkillDocumentGraph } from '../../api/authoring';
-import { quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobProgress, quickPlan, quickPlanStale, quickPreview } from '../../state/quickPreview';
+import {
+  quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview,
+} from '../../state/quickPreview';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
@@ -25,6 +27,17 @@ export async function locateQuickSource(location: PreviewQuickLocation) {
 }
 
 const locate = (source: PreviewQuickLocation) => void locateQuickSource(source).catch(error => consoleActions.error('快预览', error));
+
+// 推导结果只带状态身份路径；作者看到的名字取当前编辑文档里同一图节点的名称，节点未命名时保留身份路径。
+export type QuickName = (source: PreviewQuickLocation | null, identity: string) => string;
+export function useQuickName(): QuickName {
+  const documents = useAuthoring(state => state.documents);
+  return useCallback((source, identity) => {
+    if (source === null || !source.nodeId) return identity;
+    const graph = documents[source.documentPath]?.documentGraphs?.find(item => item.id === source.graphId);
+    return graph?.nodes.find(node => node.id === source.nodeId)?.displayName || identity;
+  }, [documents]);
+}
 
 function LocationButton({ source, label }: { source: PreviewQuickLocation; label: string }) {
   return <Button variant="ghost" tip={source.displayPath} onClick={() => locate(source)}>{label}</Button>;
@@ -53,8 +66,8 @@ export function QuickBar() {
   const plan = state.accepted?.plan ?? null;
   const sourceReason = quickPreview.sourceUnavailableReason();
   const reason = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
-    : sourceReason ?? quickPreview.unavailableReason();
-  const failure = job.kind === 'failed' || job.kind === 'cancel-failed' ? job.reason : null;
+    : sourceReason ?? (progress === null ? quickPreview.unavailableReason() : null);
+  const failure = quickJobFailure(job);
   const status = state.description.kind === 'loading' ? '正在读取来源'
     : progress ?? (plan === null ? null : `${stale ? '路线已过期 · ' : ''}${plan.status} · ${plan.duration.toFixed(3)} ${plan.clock.unit}`);
   // 推导根只列当前作者文档的入口；当前文档不在目录里时列全部。
@@ -113,6 +126,7 @@ function QuickDetails() {
   const scheme = description?.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   const result = state.accepted;
   const plan = result?.plan ?? null;
+  const name = useQuickName();
   const identity = useMemo(() => result === null || plan === null ? [] : [
     { displayName: '结果作业', value: result.jobId }, { displayName: '结果来源修订', value: result.request.sourceRevision },
     { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
@@ -133,10 +147,10 @@ function QuickDetails() {
     {plan && <Fold title={`条件与转移建议（${plan.conditions.length} / ${plan.suggestions.length}）`}>
       {plan.conditions.map(condition => <p key={condition.key}>{condition.label} · {condition.source}{condition.undeterminable ? ' · 无法确定' : ''}</p>)}
       {plan.suggestions.map((suggestion, index) => <div key={index}>
-        {suggestion.fromSource ? <LocationButton source={suggestion.fromSource} label={suggestion.fromState} /> : suggestion.fromState}
+        {suggestion.fromSource ? <LocationButton source={suggestion.fromSource} label={name(suggestion.fromSource, suggestion.fromState)} /> : suggestion.fromState}
         <span> → </span>
-        {suggestion.toSource ? <LocationButton source={suggestion.toSource} label={suggestion.toState} /> : suggestion.toState}
-        <LocationButton source={suggestion.transitionSource} label={suggestion.transition} />
+        {suggestion.toSource ? <LocationButton source={suggestion.toSource} label={name(suggestion.toSource, suggestion.toState)} /> : suggestion.toState}
+        <LocationButton source={suggestion.transitionSource} label="打开转移" />
         <span>{suggestion.start}–{suggestion.end} {plan.clock.unit} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
       </div>)}
     </Fold>}
@@ -164,11 +178,12 @@ export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   const plan = useQuickPlan();
   const stale = useWorkbench(quickPlanStale);
   const seconds = useWorkbench(state => state.quickPreview.seconds);
+  const name = useQuickName();
   if (plan === null) return null;
   const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
   return <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
     <Button key={index} variant="ghost" tip={`路线区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) locate(segment.stateSource); }}>
-      {segment.state} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻该图没有推导区间</span>}
+      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻该图没有推导区间</span>}
   </PanelBar>;
 }

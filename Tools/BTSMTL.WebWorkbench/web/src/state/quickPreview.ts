@@ -53,6 +53,13 @@ export function quickJobProgress(job: Job): string | null {
   }
 }
 
+// 作业失败的原因：本地失败或宿主已完成但回执失败（如播放器拒绝载入）。
+export function quickJobFailure(job: Job): string | null {
+  if (job.kind === 'failed' || job.kind === 'cancel-failed') return job.reason;
+  if (job.kind !== 'settled' || job.reply.success) return null;
+  return job.reply.message ?? job.reply.data?.error ?? job.reply.code ?? '快预览失败';
+}
+
 let descriptionController: AbortController | null = null;
 let jobController: AbortController | null = null;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;

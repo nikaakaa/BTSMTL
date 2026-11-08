@@ -9,7 +9,7 @@ import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService } from '../../state/player';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { quickJobCancellable, quickJobProgress, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
+import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -54,10 +54,10 @@ function QuickPreviewPicture() {
         <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'settled' ? '结束预览' : '取消预览'}</Button>}
     </PanelBar>
     {reason !== null && <Empty text={reason} />}
-    {(job.kind === 'failed' || job.kind === 'cancel-failed') && <Empty text={job.reason} />}
+    {quickJobFailure(job) !== null && <Empty text={quickJobFailure(job)!} />}
     {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案" />}
     {progress !== null && <div role="status">{progress}</div>}
-    {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null &&
+    {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
       <Empty text="快档按当前技能与输入方案自动推导路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
       : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
   </div>;

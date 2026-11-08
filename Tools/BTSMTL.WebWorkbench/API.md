@@ -61,7 +61,7 @@ quick 经项目 Host 调用目标 Editor 的原 Native 资产预览，不在 .NE
 
 Source.documents 中每份文档有实际 revision；网页捕获的 savedRevision／hasUnsavedChanges 为 null，decoder 保留未知状态，不补成 false 或伪造 dirty。结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份，segments／conditions／suggestions 只供原 Timeline／Graph 静态计划定位，不写 Real RouteStore 或实际端口帧。`adoptedMode` 只在原 Fast Host 实际 Ready 后为 quick，否则保留 null／实际值，不从请求 mode 回填。
 
-响应保留 success／pending、Data、code／message／rawJson 与 cleanupErrors；成功完成为 200、在途为 202、失败为 409。job_lost、preview_mode_mismatch、editor_busy、preview_job_busy、preview_request_invalid、preview_failed 和 preview_cancelled 按原回执显示。网页只持当前根和一个当前 job；编辑、Undo、作者回读、切根、场景发布修订或输入覆盖变化隔离在途和迟到结果，旧路线标过期，匹配的新结果才采用。取消失败保留取消意图和回执并允许手动重试，后续 status 不恢复旧计划；仅轮询真实当前未完 job，不闲时扫描作业。
+响应保留 success／pending、Data、code／message／rawJson 与 cleanupErrors；成功完成为 200、在途为 202、失败为 409。job_lost、preview_mode_mismatch、editor_busy、preview_job_busy、preview_request_invalid、preview_failed 和 preview_cancelled 按原回执显示。网页只持当前根和一个当前 job；编辑、Undo、作者回读、切根或场景发布修订隔离在途和迟到结果，旧路线标过期但保留显示，匹配的新结果才采用；来源过期自动重读，来源与方案修订就绪后自动推导一次，同一身份失败不自动重试。网页不发送 `input.points／conditions` 与 `rangeEndSeconds`，输入只来自方案的输入 Timeline。取消失败保留取消意图和回执并允许手动重试，后续 status 不恢复旧计划；仅轮询真实当前未完 job，不闲时扫描作业。
 
 以上合同的生产者和网页消费者源码已接通，项目原 CLI／Host 全 ProjectReference 类型检查也已通过；Main Editor／Native 完整类型、目标 Editor 加载 v2 及真实预览仍未证明。网页 tsc、正式 .NET 根类型通过都不证明部署、实际服务版本或现场 UI 行为，原阶段见[项目接入检查](../../../3C/docs/测试/WorkbenchGameplay接入.md#2026-11-02-网页-quick-v2-源码接续)。
 

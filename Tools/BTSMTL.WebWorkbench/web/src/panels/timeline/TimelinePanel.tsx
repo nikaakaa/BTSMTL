@@ -45,7 +45,7 @@ import { ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, T
 import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } from '../../ui/icons';
 import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
-import { QuickBar, locateQuickSource } from './QuickPreview';
+import { QuickBar, locateQuickSource, useQuickName } from './QuickPreview';
 import { quickRoute, realRoute, type RouteBar, type RouteView } from './routeRows';
 import { AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
@@ -107,19 +107,19 @@ function TimelineWindow() {
   const authorTimelines = useAuthorTimelines();
   // 快档与真档默认看路线：输入方案的输入 Timeline；作者档默认看第一个 Timeline。
   const quickInputTimeline = useQuickInputTimeline();
-  const previewMode = useWorkbench(state => state.previewMode);
-  const realRun = useWorkbench(state => state.previewMode === 'real' && state.runId !== null);
-  const routeTimeline = quickInputTimeline ?? (realRun ? schemes[0]?.documentId ?? null : null);
+  // 路线来源：快档，或回看某份运行档案；切到新的来源时回到路线视图。
+  const routeKey = useWorkbench(state => state.previewMode === 'quick' ? 'quick' : state.runId !== null ? `run:${state.runId}` : null);
+  const routeTimeline = routeKey === 'quick' ? quickInputTimeline : routeKey !== null ? schemes[0]?.documentId ?? null : null;
   const fallback = routeTimeline !== null && authorTimelines.some(item => item.documentId === routeTimeline) ? routeTimeline
     : authorTimelines[0]?.documentId ?? null;
   const focusId = params.focus === allTimelines ? null
     : authorTimelines.some(item => item.documentId === params.focus) ? params.focus : fallback;
-  const switched = useRef(previewMode);
+  const switched = useRef(routeKey);
   useEffect(() => {
-    if (switched.current === previewMode) return;
-    switched.current = previewMode;
-    if (previewMode === 'quick' || previewMode === 'real') setParams({ focus: null, range: null, call: null, pin: null, caller: null, origin: null });
-  }, [previewMode, setParams]);
+    if (switched.current === routeKey) return;
+    switched.current = routeKey;
+    if (routeKey !== null) setParams({ focus: null, range: null, call: null, pin: null, caller: null, origin: null });
+  }, [routeKey, setParams]);
   const quickRouteEnd = useQuickRouteEnd();
   const documentLength = useMemo(() => {
     const selected = authorTimelines.find(item => item.documentId === focusId);
@@ -573,13 +573,14 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   const routeLoad = routeInput === null ? null : JSON.stringify([routeInput.input.actorId, routeInput.stepSeconds,
     routeInput.source?.loadCommandId, routeInput.source?.contentRevision, routeInput.source?.inputRevision]);
   const routeActor = routeInput?.input.actorId ?? null, routeStep = routeInput?.stepSeconds ?? null;
+  const stateName = useQuickName();
   const route = useMemo<RouteView | null>(() => {
     if (focused === null || !schemes.some(scheme => scheme.documentId === focused.documentId)) return null;
-    if (quickMode) return quickPlan !== null && quickInput ? quickRoute(quickPlan, timelines, focused.documentId, quickStale) : null;
+    if (quickMode) return quickPlan !== null && quickInput ? quickRoute(quickPlan, timelines, focused.documentId, quickStale, stateName) : null;
     if (runId === null || routeLoad === null || routeActor === null || routeStep === null) return null;
     const samples = archive.inputFrames(runId, routeActor).filter(sample => samePreviewLoad(sample.source, routeSource.current));
     return realRoute(routeFrames, samples, timelines, routeStep);
-  }, [focused?.documentId, schemes, quickMode, quickPlan, quickInput, quickStale, timelines, runId, routeLoad, routeActor, routeStep, routeFrames]);
+  }, [focused?.documentId, schemes, quickMode, quickPlan, quickInput, quickStale, stateName, timelines, runId, routeLoad, routeActor, routeStep, routeFrames]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
   const callerNotice = caller !== null && caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例' : null;
@@ -728,7 +729,8 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
         if (!collapsed.has('route')) {
           route.lanes.forEach((bars, index) =>
             result.push({ kind: 'routeLane', id: `route:lane:${index}`, name: route.lanes.length > 1 ? `播放 ${index + 1}` : '播放', bars, hint: false }));
-          if (route.hints.length) result.push({ kind: 'routeLane', id: 'route:hints', name: '缺条件转移', bars: route.hints, hint: true });
+          route.hints.forEach((bars, index) =>
+            result.push({ kind: 'routeLane', id: `route:hint:${index}`, name: index === 0 ? '缺条件转移' : `缺条件转移 ${index + 1}`, bars, hint: true }));
         }
         // 每次推导播放按全局时间摆出所播 Timeline 的轨道，拖动、改长仍写回该 Timeline 的作者内容。
         for (const segment of route.segments) {
