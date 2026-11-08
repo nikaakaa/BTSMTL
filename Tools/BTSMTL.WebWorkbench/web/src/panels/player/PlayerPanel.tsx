@@ -6,7 +6,8 @@ import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '
 import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
-import { playerService, sceneLoadContent } from '../../state/player';
+import { liveSurface, playerService, sceneLoadContent } from '../../state/player';
+import { useNativeSurface } from '../../shell/nativeSurface';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
 import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
@@ -307,6 +308,8 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
   useViewportMeasure(stageRef);
+  // 桌面壳里常驻播放器窗口直接盖在画面区上；回看档案时仍显示档案画面。
+  useNativeSurface(liveSurface, stageRef, visible && panelWindow === window && view.liveId !== null && view.runId === null);
 
   // ── 画面：挂载且可见时解码最新一帧并绘制 ──
   useEffect(() => {

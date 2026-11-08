@@ -2,6 +2,7 @@ import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
+import { nativeSurfaceAvailable, nativeSurfaceHandle } from '../shell/nativeSurface';
 import { consoleActions, getState, initialPlayerTarget, selectedScene, useWorkbench } from './store';
 import { transport } from './transport';
 
@@ -11,6 +12,8 @@ import { transport } from './transport';
 
 const source = 'player';
 const pendingStartKey = 'btsmtl.player.pending-start';
+// 常驻播放器在桌面壳里的画面区身份。
+export const liveSurface = 'live';
 
 let socket: WebSocket | null = null;
 let latest: VideoFrame | null = null;
@@ -232,7 +235,8 @@ export const playerService = {
     let pending = sessionStorage.getItem(pendingStartKey);
     if (!pending) {
       const evenWidth = Math.max(640, Math.round(width / 16) * 16);
-      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, width: evenWidth, height: Math.round(evenWidth * 9 / 16) });
+      const parentWindow = nativeSurfaceAvailable ? await nativeSurfaceHandle(liveSurface) : undefined;
+      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, width: evenWidth, height: Math.round(evenWidth * 9 / 16), parentWindow });
       sessionStorage.setItem(pendingStartKey, pending);
     }
     try {

@@ -361,6 +361,8 @@ export interface StartLivePlayerRequest {
   playerBuildId: string;
   width: number;
   height: number;
+  // 桌面壳画面区的原生窗口句柄；播放器窗口作为它的子窗口显示。
+  parentWindow?: number;
 }
 
 export type LiveCommandResult = ReturnType<typeof readPlayerCommandResult>;
