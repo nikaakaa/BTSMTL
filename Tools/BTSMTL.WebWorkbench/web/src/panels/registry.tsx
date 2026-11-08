@@ -4,7 +4,6 @@ import { workbenchExtensions } from '../extensions';
 import { PanelFrame } from '../shell/panel';
 import { panelTypes, type BuiltinPanelType } from '../shell/panelTypes';
 import { ConsolePanel } from './ConsolePanel';
-import { ContentPanel } from './ContentPanel';
 import { ExportPanel } from './export/ExportPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
@@ -25,7 +24,6 @@ const builtinContents: Record<BuiltinPanelType, FunctionComponent> = {
   timeline: TimelinePanel,
   query: QueryPanel,
   console: ConsolePanel,
-  content: ContentPanel,
   export: ExportPanel,
 };
 

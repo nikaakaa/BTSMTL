@@ -15,7 +15,8 @@ import { documentElementKey, projectActions } from '../../state/project';
 import { graphItemDescription, projectContents } from '../../state/projectContents';
 import { useAnimationLibrary } from '../../state/resources';
 import type { JsonObject } from '../../state/skillJson';
-import { consoleActions, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
+import { consoleActions, contentSelectionKey, previewContentChoices, selectionActions, useWorkbench, type Selection, type SelectionSlice } from '../../state/store';
+import { SceneDetails } from './SceneInspector';
 import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, timelineObservationNotice, trackKind } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
@@ -51,6 +52,7 @@ export function InspectorPanel() {
   };
   // 动画资源不属于技能，没有打开技能时同样可检查。
   const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
+    : shown?.kind === 'scene' ? <SceneInspector />
     : !target ? <Empty text="选择要编辑的内容" />
       : shown ? <Content key={`${target.documentPath}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
         : <DocumentSummary />;
@@ -92,7 +94,7 @@ function DocumentSummary() {
   if (target.kind === 'skill') return <SkillSummary />;
   const document = documents[target.documentPath];
   if (document.loading) return <Empty text="正在读取文档" />;
-  if (target.kind === 'scenario') return <><Head name={target.documentPath} sub="场景输入文档" /><p>从内容面板选择要编辑的输入方案。</p></>;
+  if (target.kind === 'scenario') return <SceneInspector />;
   const root = projectContents(documents).items.find(item => item.owner === target.documentPath && item.file === document.rootFile);
   return root === undefined ? <Empty text={document.documentError ?? '文档根文件尚未读取'} />
     : <ContentInspector id={JSON.stringify([root.owner, root.file])} missing={<Empty text="文档根文件尚未读取" />} />;
@@ -130,6 +132,23 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
 // ── 通用部件 ──
 
 // 对象头：有真实矢量图标的对象（轨道、片段、动画资源）在左侧显示类型图标。
+// 场景：名字与 Unity 场景在头部，运行设置与输入声明在正文，发布路径和修订只放身份折叠。
+function SceneInspector() {
+  const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
+  const key = contentSelectionKey(selection);
+  const choice = sources ? previewContentChoices(sources).find(option => option.value === key) : undefined;
+  if (!choice) return <Empty text={sources ? '在 Project 的场景页选择场景' : '正在读取场景'} />;
+  return <>
+    <Head name={choice.label} sub={choice.selection.kind === 'timeline' ? 'Timeline 预览包' : choice.current ? '场景 · 当前发布' : '场景 · 历史发布'} />
+    {choice.scenePath !== null && <Value label="Unity 场景" mono={false} value={choice.scenePath} />}
+    <SceneDetails />
+    <IdentityFold fields={[
+      { displayName: '发布', value: choice.selection.kind === 'scene' ? choice.selection.path : choice.selection.package },
+      { displayName: '修订', value: choice.revision },
+    ]} />
+  </>;
+}
+
 function Head({ icon, name, sub }: { icon?: ReactNode; name: ReactNode; sub?: ReactNode }) {
   const lock = useContext(LockContext);
   return (

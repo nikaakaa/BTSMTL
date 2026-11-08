@@ -75,7 +75,6 @@ function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
   switch (type) {
     case 'inspector': case 'frames': return { direction: 'right' };
     case 'timeline': case 'query': case 'console': return { direction: 'below' };
-    case 'content': return { direction: 'left' };
     default: return undefined;
   }
 }
@@ -112,9 +111,12 @@ function buildDefault() {
 
 // ── 保存与恢复 ──
 
-function removeRetiredComparison(layout: SerializedDockview) {
+// 已退役的面板：对比面板，以及并入 Project 与检查器的内容面板。
+const retiredPanels = new Set(['compare', 'content']);
+
+function removeRetiredPanels(layout: SerializedDockview) {
   const removed = new Set(Object.values(layout.panels)
-    .filter(panel => panel.contentComponent === 'compare' && panel.id.slice(0, panel.id.lastIndexOf('-')) === 'compare')
+    .filter(panel => retiredPanels.has(panel.contentComponent ?? '') && panel.id.slice(0, panel.id.lastIndexOf('-')) === panel.contentComponent)
     .map(panel => panel.id));
   if (!removed.size) return;
   for (const id of removed) delete layout.panels[id];
@@ -196,7 +198,7 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
       return { reason: error instanceof Error ? error.message : String(error) };
     }
   }
-  removeRetiredComparison(saved.layout);
+  removeRetiredPanels(saved.layout);
   const counts = new Map<PanelType, number>();
   for (const panel of Object.values(saved.layout.panels)) {
     const type = panelTypeOf(panel.id);

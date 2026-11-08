@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { InputPlanContext } from '../../api/authoring';
 import { useAuthoring, useAuthorTimelines, useInputSchemes } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
-import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
+import { consoleActions, contentSelectionKey, previewContentChoices, selectedScene, useWorkbench } from '../../state/store';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { PanelBar } from '../../ui/blocks';
 import styles from './project.module.css';
@@ -12,7 +12,8 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
   const target = useAuthoring(state => state.target!);
   const timelines = useAuthorTimelines();
   const inputs = useInputSchemes();
-  const { scene, catalog } = useWorkbench(useShallow(state => ({ scene: selectedScene(state), catalog: state.inputCatalog })));
+  const { scene, catalog, sceneName } = useWorkbench(useShallow(state => ({ scene: selectedScene(state), catalog: state.inputCatalog,
+    sceneName: state.sources && previewContentChoices(state.sources).find(choice => choice.value === contentSelectionKey(state.contentSelection))?.label })));
   const [kind, setKind] = useState<'skill' | 'timeline' | 'scene'>(target.kind === 'skill' ? 'skill' : target.kind === 'timeline' ? 'timeline' : 'scene');
   const [timeline, setTimeline] = useState<string | null>(null);
   const [actor, setActor] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
       options={availableTimelines.map(item => ({ value: item.documentId, label: item.displayName ?? item.documentId }))}
       onChange={setTimeline} />}
     {kind === 'scene' && <>
-      <span>{scene?.path ?? '先在内容面板选择场景'}</span>
+      <span>{sceneName ?? '先在 Project 场景页选择场景'}</span>
       <Select label="目标角色" placeholder="选择场景角色" value={actor} disabled={busy || players.length === 0}
         options={players.map(player => ({ value: player.actorId, label: player.actorId }))} onChange={setActor} />
     </>}

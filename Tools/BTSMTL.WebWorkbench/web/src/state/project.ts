@@ -4,7 +4,7 @@ import { authoringActions, authoringDocument, currentDocument, layoutPath, useAu
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
-import { selectionActions, type GraphNavigationOrigin, type SelectionSlice } from './store';
+import { contentSelectionKey, getState, selectionActions, type GraphNavigationOrigin, type SelectionSlice } from './store';
 import { openPanel } from '../shell/layout';
 import { clipSelectId, trackSelectId } from './timelineModel';
 import { projectContents, type ContentTarget } from './projectContents';
@@ -52,8 +52,8 @@ export const projectActions = {
   async openDocument(documentPath: string): Promise<void> {
     const document = await openOwner({ owner: documentPath, ownerName: documentPath });
     if (document.rootFile === null) {
-      selectionActions.select(null);
-      openPanel('content');
+      selectionActions.select({ kind: 'scene', id: contentSelectionKey(getState().contentSelection) ?? '' });
+      openPanel('inspector');
       return;
     }
     const item = projectContents(useAuthoring.getState().documents).items.find(item => item.owner === documentPath && item.file === document.rootFile);

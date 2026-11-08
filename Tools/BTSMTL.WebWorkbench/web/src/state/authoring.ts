@@ -429,14 +429,14 @@ export function useInputContext(documentId: string | null) {
     reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
   })));
   if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;
-  if (!scene) return { kind: 'unavailable', reason: '先在工具栏或内容面板选择场景' } as const;
+  if (!scene) return { kind: 'unavailable', reason: '先在顶栏或 Project 场景页选择场景' } as const;
   if (!catalog || scene.revision !== catalog.revision)
-    return { kind: 'unavailable', reason: failure !== null ? '输入声明读取失败，见控制台；可在内容面板重新读取'
+    return { kind: 'unavailable', reason: failure !== null ? '输入声明读取失败，见控制台；可在场景检查器重新读取'
       : reading ? '正在读取场景的输入声明' : '场景的输入声明尚未读取' } as const;
   if (scheme.scene && scheme.scene !== scene.path)
     return { kind: 'unavailable', reason: '所选场景与输入方案的 Scene 不一致' } as const;
   const actor = catalog.players.find(player => player.actorId === (scheme.actorId || actorId));
-  if (!actor) return { kind: 'unavailable', reason: '从内容面板为具体角色打开输入方案' } as const;
+  if (!actor) return { kind: 'unavailable', reason: '在场景检查器为具体角色打开输入方案' } as const;
   return { kind: 'ready', scheme, scene, actor, tickRate: catalog.tickRate } as const;
 }
 
@@ -555,7 +555,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
 
 function reconcileSelection() {
   const { selection, graphs, timelines } = useWorkbench.getState();
-  if (!selection || selection.kind === 'actor' || selection.kind === 'resource' || selection.kind === 'content' || selection.id.startsWith('input/') || selection.id.startsWith('curve/')) return;
+  if (!selection || selection.kind === 'actor' || selection.kind === 'resource' || selection.kind === 'content' || selection.kind === 'scene' || selection.id.startsWith('input/') || selection.id.startsWith('curve/')) return;
   const { edited, removed, addedPorts } = get();
   const { kind, id } = selection;
   let exists: boolean;

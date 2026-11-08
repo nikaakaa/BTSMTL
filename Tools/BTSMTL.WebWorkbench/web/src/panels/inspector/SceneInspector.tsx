@@ -1,85 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Sources } from '../api/types';
-import { authoringTarget } from '../api/authoring';
-import { ErrorLine } from '../ui/ErrorLine';
-import { session } from '../state/session';
-import { contentActions, contentSelectionKey, previewContentChoices, selectedScene, useWorkbench } from '../state/store';
-import { authoringActions, authoringDocument, useAuthoring } from '../state/authoring';
-import { openPanel } from '../shell/layout';
-import { BarSeparator, Empty, Facts, Fold, PanelBar } from '../ui/blocks';
-import { Button, NumberInput, Select, TextInput } from '../ui/controls';
-import { InputPlanCreationForm } from './project/InputPlanCreationForm';
-import styles from './panel.module.css';
+import { authoringTarget } from '../../api/authoring';
+import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
+import { session } from '../../state/session';
+import { contentActions, selectedScene, useWorkbench } from '../../state/store';
+import { openPanel } from '../../shell/layout';
+import { Empty, Facts, Fold } from '../../ui/blocks';
+import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
+import { ErrorLine } from '../../ui/ErrorLine';
+import { InputPlanCreationForm } from '../project/InputPlanCreationForm';
+import styles from '../panel.module.css';
 
-// 内容面板：场景与录像列表、输入声明；选择结果写入 content 分片，工具栏新建运行使用。
-export function ContentPanel() {
-  const { sources, hostAvailable, contentKind } = useWorkbench(useShallow(state => ({
-    sources: state.sources, hostAvailable: state.hostAvailable, contentKind: state.contentSelection?.kind,
-  })));
+// 场景检查器正文：当前所选场景的运行设置（输入来源、输入方案、新建运行）、场景方案与输入声明。
+// 场景由 Project 场景页或顶栏选择，内容选择是唯一来源。
+export function SceneDetails() {
+  const kind = useWorkbench(state => state.contentSelection?.kind);
   const startBlocked = useWorkbench(() => session.canStart());
-  return (
-    <div className={styles.root}>
-      <PanelBar>
-        <Button variant="ghost" tip={startBlocked} disabled={!!startBlocked} onClick={() => void session.startRun()}>新建运行</Button>
-        <BarSeparator />
-        <Button variant="ghost" disabled={!hostAvailable} onClick={() => void session.refresh()}>刷新</Button>
-      </PanelBar>
-      <div className={styles.scroll}>
-        {!sources ? <Empty text={hostAvailable === false ? '未接入运行宿主' : '读取中'} /> : (
-          <>
-            <Fold title="内容" defaultOpen><Contents sources={sources} /></Fold>
-            {contentKind !== 'timeline' && <>
-              <Fold title="场景方案" defaultOpen><ScenarioFolders /></Fold>
-              <Fold title="运行来源" defaultOpen><RunSources /></Fold>
-              <Fold title="输入声明"><InputDeclarations /></Fold>
-            </>}
-          </>
-        )}
-      </div>
-    </div>
-  );
+  return <>
+    <Fold title="运行" defaultOpen>
+      <Button tip={startBlocked} disabled={!!startBlocked} onClick={() => void session.startRun()}>新建运行</Button>
+      {startBlocked && <Empty text={startBlocked} />}
+      {kind === 'scene' && <RunSources />}
+    </Fold>
+    {kind === 'scene' && <>
+      <Fold title="场景方案" defaultOpen><ScenarioFolders /></Fold>
+      <Fold title="输入声明"><InputDeclarations /></Fold>
+    </>}
+  </>;
 }
 
-function Contents({ sources }: { sources: Sources }) {
-  const selection = useWorkbench(state => state.contentSelection);
-  const choices = previewContentChoices(sources);
-  if (!choices.length) return <Empty text="宿主尚未提供正式内容" />;
-  return (
-    <div className={styles.list} role="listbox" aria-label="内容">
-      {choices.map(choice => (
-        <button key={choice.value} className={styles.row} role="option" aria-selected={choice.value === contentSelectionKey(selection)}
-          onClick={() => contentActions.selectContent(choice.selection)}>
-          <span className={styles.rowText}>{choice.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
+const local = 'local';
 
 function RunSources() {
   const { replays, selected } = useWorkbench(useShallow(state => ({
     replays: state.sources?.replays ?? [], selected: state.inputSource,
   })));
-  return (
-    <>
-    <div className={styles.list} role="listbox" aria-label="运行来源">
-      <button className={styles.row} role="option" aria-selected={selected?.kind === 'local'}
-        onClick={() => contentActions.selectInputSource({ kind: 'local' })}>
-        <span className={styles.rowText}>本地输入方案</span>
-      </button>
-      {replays.map(replay => (
-        <button key={replay.id} className={styles.row} role="option"
-          aria-selected={selected?.kind === 'recorded' && replay.id === selected.id}
-          onClick={() => contentActions.selectInputSource({ kind: 'recorded', id: replay.id })}>
-          <span className={styles.rowText}>{replay.displayName}</span>
-          <span className={styles.rowValue}>录像</span>
-        </button>
-      ))}
-    </div>
+  // 录像可能有几十条，收进下拉，默认的本地输入方案排第一。
+  return <>
+    <Select label="输入来源" value={selected?.kind === 'recorded' ? selected.id : selected?.kind === 'local' ? local : null}
+      options={[{ value: local, label: '本地输入方案' }, ...replays.map(replay => ({ value: replay.id, label: `录像 · ${replay.displayName}` }))]}
+      onChange={value => contentActions.selectInputSource(value === local ? { kind: 'local' } : { kind: 'recorded', id: value })} />
     {selected?.kind === 'local' && <LocalInputChoices />}
-    </>
-  );
+  </>;
 }
 
 function ScenarioFolders() {
@@ -97,21 +59,20 @@ function ScenarioFolders() {
     {creatingInput && editable && <InputPlanCreationForm key={target!.documentPath} onCancel={() => setCreatingInput(false)}
       onCreated={() => { setCreatingInput(false); openPanel('timeline'); }} />}
     <div className={styles.list} role="listbox" aria-label="场景方案">
-    {scenarios.map(document => {
-      const name = document.documentPath.slice('Scenarios/'.length);
-      return <button key={document.documentPath} className={styles.row} role="option"
-      aria-selected={target?.kind === 'scenario' && target.documentPath === document.documentPath}
-      onClick={() => void authoringActions.open({ kind: 'scenario', documentPath: document.documentPath })}>
-      <span className={styles.rowText}>{name}</span>
-    </button>; })}
+      {scenarios.map(document => (
+        <button key={document.documentPath} className={styles.row} role="option"
+          aria-selected={target?.kind === 'scenario' && target.documentPath === document.documentPath}
+          onClick={() => void authoringActions.open({ kind: 'scenario', documentPath: document.documentPath })}>
+          <span className={styles.rowText}>{document.documentPath.slice('Scenarios/'.length)}</span>
+        </button>
+      ))}
     </div>
   </>;
 }
 
 function NewScenario({ onCreated }: { onCreated(): void }) {
   const { scene, catalog, failure } = useWorkbench(useShallow(state => ({
-    scene: selectedScene(state), catalog: state.inputCatalog,
-    failure: state.inputCatalogFailure,
+    scene: selectedScene(state), catalog: state.inputCatalog, failure: state.inputCatalogFailure,
   })));
   const [name, setName] = useState('');
   const [actorId, setActorId] = useState<string | null>(null);
@@ -177,37 +138,32 @@ function LocalInputChoices() {
 
 // 输入声明在选定场景后自动读取；这里显示结果，失败后可重新读取。
 function InputDeclarations() {
-  const { catalog, scene, reading, failure } = useWorkbench(useShallow(state => ({
-    catalog: state.inputCatalog, scene: selectedScene(state), reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
+  const { catalog, reading, failure } = useWorkbench(useShallow(state => ({
+    catalog: state.inputCatalog, reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
   })));
-  return (
-    <>
-      {!scene && <Empty text="先选择内容" />}
-      {reading && <Empty text="正在读取输入声明" />}
-      {failure !== null && !catalog && <>
-        <ErrorLine text="输入声明读取失败" entryId={failure} />
-        <Button onClick={() => void session.loadInputs()}>重新读取</Button>
-      </>}
-      {catalog && (
-        <>
+  return <>
+    {reading && <Empty text="正在读取输入声明" />}
+    {failure !== null && !catalog && <>
+      <ErrorLine text="输入声明读取失败" entryId={failure} />
+      <Button onClick={() => void session.loadInputs()}>重新读取</Button>
+    </>}
+    {catalog && <>
+      <Facts fields={[
+        { displayName: 'Tick／秒', value: String(catalog.tickRate) },
+        { displayName: '本地角色', value: String(catalog.players.length) },
+        { displayName: '目标角色', value: catalog.actorTargets.join('、') || '无' },
+      ]} />
+      {catalog.players.map(player => (
+        <Fold key={player.actorId} title={player.actorId} defaultOpen>
           <Facts fields={[
-            { displayName: 'Tick／秒', value: String(catalog.tickRate) },
-            { displayName: '本地角色', value: String(catalog.players.length) },
-            { displayName: '目标角色', value: catalog.actorTargets.join('、') || '无' },
+            ...player.values.map(value => ({ displayName: value.inputId, value: `${value.kind} · ${value.encoding}` })),
+            ...player.requests.map(request => ({
+              displayName: request.inputId,
+              value: `请求 · 缓冲 ${request.bufferTicks} Tick · 优先级 ${request.priority}`,
+            })),
           ]} />
-          {catalog.players.map(player => (
-            <Fold key={player.actorId} title={player.actorId} defaultOpen>
-              <Facts fields={[
-                ...player.values.map(value => ({ displayName: value.inputId, value: `${value.kind} · ${value.encoding}` })),
-                ...player.requests.map(request => ({
-                  displayName: request.inputId,
-                  value: `请求 · 缓冲 ${request.bufferTicks} Tick · 优先级 ${request.priority}`,
-                })),
-              ]} />
-            </Fold>
-          ))}
-        </>
-      )}
-    </>
-  );
+        </Fold>
+      ))}
+    </>}
+  </>;
 }

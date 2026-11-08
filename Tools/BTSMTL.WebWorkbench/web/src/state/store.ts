@@ -43,14 +43,29 @@ export interface ContentSlice {
 export const contentSelectionKey = (selection: ContentSelection | null) => selection === null ? null
   : selection.kind === 'scene' ? `scene:${selection.path}` : `timeline:${selection.package}`;
 
+// 场景发布按生成时间倒序。正式发布目录为“场景 GUID/修订/scene.json”，每个 Unity 场景最新一份是当前场景，按场景名显示；
+// 同场景的旧修订、旧命名发布包和技能刷新临时包都归历史。
 export function previewContentChoices(sources: Sources) {
+  const seen = new Set<string>();
+  const scenes = sources.quickScenes.map(scene => {
+    const name = scene.scenePath.slice(scene.scenePath.lastIndexOf('/') + 1).replace(/\.unity$/, '');
+    const parts = scene.publication.path.split('/');
+    const official = parts.length === 3 && parts[0] === scene.sceneGuid;
+    const current = official && !seen.has(scene.sceneGuid);
+    if (current) seen.add(scene.sceneGuid);
+    const label = current ? name : official ? `${name} · 修订 ${parts[1].slice(0, 8)}`
+      : parts[0] === 'skill-refreshes' ? `${name} · 技能刷新 ${parts[1].slice(0, 8)}` : parts.length === 2 && parts[0] !== scene.sceneGuid && parts[0] !== name ? parts[0] : `${name} · 旧发布`;
+    return { value: `scene:${scene.publication.path}`, label, current, scenePath: scene.scenePath, revision: scene.publication.revision,
+      selection: { kind: 'scene', path: scene.publication.path } as const };
+  });
   return [
-    ...sources.scenes.map(scene => ({ value: `scene:${scene.path}`,
-      label: scene.path.replace(/\/scene\.json$/, ''), selection: { kind: 'scene', path: scene.path } as const })),
+    ...scenes,
     ...sources.timelines.map(item => ({ value: `timeline:${item.content.package}`,
-      label: `Timeline · ${item.content.package}`, selection: { kind: 'timeline', package: item.content.package } as const })),
+      label: `Timeline 预览包 · ${item.content.package.split('/').slice(-2, -1)[0] ?? item.content.package}`, current: false,
+      scenePath: null, revision: item.content.revision, selection: { kind: 'timeline', package: item.content.package } as const })),
   ];
 }
+export type PreviewContentChoice = ReturnType<typeof previewContentChoices>[number];
 
 export function selectedScene(state: Pick<ContentSlice, 'sources' | 'contentSelection'>) {
   const selection = state.contentSelection;
@@ -159,7 +174,7 @@ export interface ResourceSlice {
 
 // ── selection ──
 // resource：动画资源，身份为 guid:localFileId。
-export type SelectionKind = 'node' | 'edge' | 'clip' | 'track' | 'actor' | 'resource' | 'content';
+export type SelectionKind = 'node' | 'edge' | 'clip' | 'track' | 'actor' | 'resource' | 'content' | 'scene';
 export interface Selection {
   kind: SelectionKind;
   // 稳定身份，地址 select 参数原样使用。
@@ -229,7 +244,7 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, previewMode: null, contentSelection: null, inputSource: null, localInputLimit: null, inputCatalog: null,
+  sources: null, previewMode: null, contentSelection: null, inputSource: { kind: 'local' }, localInputLimit: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
   quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, accepted: null, seconds: 0, playback: null,
     picture: { frame: null, request: { kind: 'idle' } }, outputDirectory: '' },
@@ -275,7 +290,9 @@ export function bumpGeneration(): number {
 
 export const connectionActions = {
   setHost(available: boolean, host: HostDescription | null) {
-    set({ hostAvailable: available, host, connected: true, lastError: null });
+    // 本地输入上限默认取宿主声明的初始值，作者改过后保留。
+    const limit = getState().localInputLimit ?? (host ? Number(host.inputLimit.initialValue) : null);
+    set({ hostAvailable: available, host, connected: true, lastError: null, localInputLimit: limit });
   },
   setImages(images: ImageSourceAvailability['description']) {
     set({ images });
@@ -312,10 +329,13 @@ export const contentActions = {
     const state = getState();
     const scene = selectedScene(state);
     if (scene?.path !== scenePath || scene.revision !== inputCatalog.revision) return;
-    const inputChoices = state.inputChoices.flatMap(choice => {
-      const plan = inputCatalog.players.find(player => player.actorId === choice.actorId)?.localPlans
-        .find(item => item.path === choice.inputPlanRoot && item.schemes.some(scheme => scheme.index === choice.schemeIndex));
-      return plan ? [{ ...choice, inputPlanRevision: plan.revision }] : [];
+    // 保留仍有效的选择；没有选择的角色默认用第一个本地输入方案的第一套方案，打开即可新建运行。
+    const inputChoices = inputCatalog.players.flatMap(player => {
+      const choice = state.inputChoices.find(item => item.actorId === player.actorId);
+      const plan = choice && player.localPlans.find(item => item.path === choice.inputPlanRoot && item.schemes.some(scheme => scheme.index === choice.schemeIndex));
+      if (choice && plan) return [{ ...choice, inputPlanRevision: plan.revision }];
+      const first = player.localPlans.find(item => item.schemes.length > 0);
+      return first ? [{ actorId: player.actorId, inputPlanRoot: first.path, inputPlanRevision: first.revision, schemeIndex: first.schemes[0].index }] : [];
     });
     set({ inputCatalog, inputChoices });
   },

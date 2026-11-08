@@ -24,7 +24,6 @@ const builtinPanels = {
   timeline: { title: 'Timeline', multi: false, companions: bottomGroup },
   query: { title: '记录查询', multi: false, companions: bottomGroup },
   console: { title: '控制台', multi: false, companions: bottomGroup },
-  content: { title: '内容', multi: false, companions: ['content'] },
   export: { title: '内容导出', multi: false, companions: bottomGroup },
 } satisfies Record<string, PanelDefinition>;
 

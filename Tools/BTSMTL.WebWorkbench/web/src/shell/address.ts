@@ -9,7 +9,7 @@ import { setAddressPanel } from './readiness';
 // 地址同步（D8）：/?run=&frame=&select=&panel=，不选运行时为 /?skill=&select=，资源为 /?panel=resources&resource=&time=。
 // 加载时恢复，状态变化时用 replaceState 回写。
 
-const selectionKinds: SelectionKind[] = ['node', 'edge', 'clip', 'track', 'actor', 'resource', 'content'];
+const selectionKinds: SelectionKind[] = ['node', 'edge', 'clip', 'track', 'actor', 'resource', 'content', 'scene'];
 const writeDelay = 200;
 
 function parseSelection(text: string | null): Selection | null {
