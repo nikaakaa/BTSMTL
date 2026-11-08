@@ -186,7 +186,7 @@ namespace BTSMTL.Authoring.Workspace
 
         public static AuthoringDocumentCache For(string workspace) => s_Workspaces.GetOrAdd(workspace, _ => new AuthoringDocumentCache());
 
-        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory, List<FileInfo> owned)
+        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory, IEnumerable<FileInfo> owned)
         {
             FileInfo[] files = owned.ToArray();
             var relative = new string[files.Length];
@@ -262,7 +262,34 @@ namespace BTSMTL.Authoring.Workspace
             Commits.Read(() => Task.FromResult(Capture()));
 
         public Task<AuthoringDocumentSnapshot> Open(string identityOrPath) => Commits.Read(() =>
-            Task.FromResult(Find(Capture(), identityOrPath)));
+            Task.FromResult(Path.IsPathRooted(identityOrPath) || AuthoringDocumentKind.All.Any(kind =>
+                    identityOrPath.Replace('\\', '/').StartsWith(kind.Directory + "/", StringComparison.OrdinalIgnoreCase))
+                ? ReadDirectory(identityOrPath) : Capture().Single(document => document.Identity == identityOrPath)));
+
+        AuthoringDocumentSnapshot ReadDirectory(string documentPath)
+        {
+            string requested = Inside(Path.Combine(Workspace, documentPath))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string[] segments = Path.GetRelativePath(Workspace, requested).Split(Path.DirectorySeparatorChar);
+            AuthoringDocumentKind kind = AuthoringDocumentKind.All.Single(item =>
+                string.Equals(item.Directory, segments[0], StringComparison.OrdinalIgnoreCase));
+            int depth = Path.IsPathRooted(documentPath) && File.Exists(requested) &&
+                string.Equals(segments[segments.Length - 1], kind.RootFile, StringComparison.OrdinalIgnoreCase)
+                ? segments.Length - 1 : segments.Length;
+            string directory = Workspace;
+            for (int index = 0; index < depth; index++)
+            {
+                string segment = segments[index];
+                directory = Directory.EnumerateDirectories(directory, segment)
+                    .Single(path => string.Equals(Path.GetFileName(path), segment, StringComparison.OrdinalIgnoreCase));
+            }
+            FileInfo[] files = new DirectoryInfo(directory).GetFiles("*.json", SearchOption.AllDirectories);
+            bool ownsDocument = kind.RootFile == null ? depth == 2 : depth > 1 && files.Any(file =>
+                file.DirectoryName == directory && string.Equals(file.Name, kind.RootFile, StringComparison.OrdinalIgnoreCase));
+            if (!ownsDocument)
+                throw new InvalidDataException($"'{documentPath}' 不是正式 {kind.Id} 作者文档路径。");
+            return m_Cache.Read(kind, Workspace, directory, files);
+        }
 
         public IReadOnlyList<AuthoringDocumentSnapshot> EditingView(IReadOnlyList<AuthoringDocumentSnapshot> source,
             IReadOnlyList<AuthoringDocumentWrite> writes) => Edit(source, Prepare(writes));
@@ -436,11 +463,6 @@ namespace BTSMTL.Authoring.Workspace
             m_Cache.Retain(seen);
             return documents;
         }
-
-        static AuthoringDocumentSnapshot Find(IReadOnlyList<AuthoringDocumentSnapshot> documents, string identityOrPath) =>
-            documents.Single(document => document.Identity == identityOrPath || document.DocumentPath == identityOrPath ||
-                string.Equals(document.DirectoryPath.Replace('\\', '/'), identityOrPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(document.SourcePath.Replace('\\', '/'), identityOrPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
 
         string Inside(string path)
         {
