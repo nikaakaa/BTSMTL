@@ -126,11 +126,13 @@ const runSource = (value: unknown, path = 'Player.source') => {
 };
 const sceneContent = object({ kind: choice('scene'), scene: text, revision: text, source: runSource });
 const timelineContent = object({ kind: choice('timeline'), package: text, revision: text, timeline: text });
+const quickContent = object({ kind: choice('quick'), package: text, revision: text });
 const previewContent = (value: unknown, path = 'Player.content') => {
   if (typeof value !== 'object' || value === null || !('kind' in value)) throw new Error(`${path} 缺少 kind`);
   switch (value.kind) {
     case 'scene': return sceneContent(value, path);
     case 'timeline': return timelineContent(value, path);
+    case 'quick': return quickContent(value, path);
     default: throw new Error(`${path} 的 kind 不受支持`);
   }
 };

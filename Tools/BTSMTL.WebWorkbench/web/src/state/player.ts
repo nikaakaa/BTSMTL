@@ -2,7 +2,7 @@ import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
-import { consoleActions, getState, initialPlayerTarget, useWorkbench } from './store';
+import { consoleActions, getState, initialPlayerTarget, selectedScene, useWorkbench } from './store';
 import { transport } from './transport';
 
 // 播放器服务（D12）：画面 WebSocket、命令与回执由这里持有，随“载入／停止播放器”开关；
@@ -30,7 +30,7 @@ function matchesRequestedLoad(sample: PreviewSampleSource) {
   const request = requestedLoad;
   const content = sample.content;
   return request === null || sample.loadCommandId === request.commandId && content !== null && content.kind === request.content.kind &&
-    content.revision === request.content.revision && (request.content.kind === 'scene' || content.documentId === request.content.timeline);
+    content.revision === request.content.revision && (request.content.kind !== 'timeline' || content.documentId === request.content.timeline);
 }
 
 function acceptVideo(frame: VideoFrame) {
@@ -154,6 +154,7 @@ export const playerService = {
       useWorkbench.setState({ playerBuilds: builds.items, lives });
       const state = getState(), selected = lives.find(live => live.liveId === state.liveId);
       if (!state.viewerOpen && selected) acceptStatus(selected);
+      connectDefault();
     } catch (error) {
       consoleActions.error(source, error);
     }
@@ -307,6 +308,58 @@ export const playerService = {
   },
   connected: () => !!socket && socket.readyState === WebSocket.OPEN,
 };
+
+// 打开工作台即接入播放器：沿用正在运行的一台，没有就按最新构建启动一台（本页只自动启动一次）。
+// 画面连上后自动载入当前所选场景，用实时设备输入试玩；同一播放器与场景修订只自动载入一次，失败留给手动“载入”。
+let autoStarted = false;
+const autoLoaded = new Set<string>();
+
+function connectDefault() {
+  const state = getState();
+  if (state.liveId !== null || state.runId !== null || sessionStorage.getItem(pendingStartKey)) return;
+  // 快档推导占用的播放器由快档作业持有，不接管。
+  const running = state.lives.find(live => live.state !== 'exited' && live.previewTarget?.content.kind !== 'quick');
+  if (running) {
+    playerService.attach(running.liveId);
+    return;
+  }
+  const build = state.playerBuilds?.[0];
+  if (autoStarted || build === undefined) return;
+  autoStarted = true;
+  void playerService.start(build.buildId, 1280);
+}
+
+export function sceneLoadContent(scene: { path: string; revision: string }): PlayerPreviewContent {
+  return { kind: 'scene', scene: scene.path, revision: scene.revision, source: { kind: 'device' } };
+}
+
+// 场景载入常超过命令回执的等待时限，自动播放等状态里出现本次载入的内容再发。
+let autoPlay: string | null = null;
+
+function loadDefault(state: ReturnType<typeof getState>) {
+  const live = state.live, scene = selectedScene(state);
+  if (state.runId !== null || state.previewMode === 'quick' || !state.viewerOpen || live === null || scene === undefined ||
+    live.hello === null || live.identity.liveProtocol !== 'btsmtl.preview-live/1' || requestedLoad !== null) return;
+  const source = live.player?.source;
+  if (autoPlay !== null && source?.loadCommandId === autoPlay) {
+    if (live.player?.state === 'loading') return;
+    autoPlay = null;
+    if (live.player?.state === 'paused')
+      void command('play', liveId => playerApi.command(liveId, { type: 'play', commandId: crypto.randomUUID() }));
+    return;
+  }
+  if (source?.content?.kind === 'scene' && source.content.revision === scene.revision) return;
+  const key = JSON.stringify([live.liveId, scene.path, scene.revision]);
+  if (autoLoaded.has(key)) return;
+  autoLoaded.add(key);
+  void playerService.loadContent(sceneLoadContent(scene));
+  autoPlay = (requestedLoad as { commandId: string } | null)?.commandId ?? null;
+}
+
+useWorkbench.subscribe((state, previous) => {
+  if (state.live !== previous.live || state.viewerOpen !== previous.viewerOpen || state.contentSelection !== previous.contentSelection ||
+    state.sources !== previous.sources || state.runId !== previous.runId || state.previewMode !== previous.previewMode) loadDefault(state);
+});
 
 useWorkbench.subscribe((state, previous) => {
   if (state.runId === previous.runId && state.generation === previous.generation) return;
