@@ -3,9 +3,11 @@ using System.Runtime.InteropServices;
 namespace BTSMTL.WebWorkbench.Shell;
 
 // 画面区：后端渲染窗口以它为父窗口；画面区改大小时把直接子窗口铺满，网页浮层所在处挖空。
+// 子窗口属于另一进程，同步等它（SendMessage、MoveWindow）会与它同步回调父窗口互相等死；对子窗口只投递、只异步改位置。
 sealed class NativeSurface : Control
 {
     const int WmActivate = 0x0006;
+    const uint SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010, SwpAsyncWindowPos = 0x4000;
 
     public NativeSurface()
     {
@@ -36,7 +38,7 @@ sealed class NativeSurface : Control
     public void Activate(bool active)
     {
         foreach (IntPtr child in Children())
-            SendMessage(child, WmActivate, active ? 1 : 0, IntPtr.Zero);
+            PostMessage(child, WmActivate, active ? 1 : 0, IntPtr.Zero);
     }
 
     protected override void OnResize(EventArgs e)
@@ -52,7 +54,8 @@ sealed class NativeSurface : Control
         foreach (IntPtr child in Children())
             if (GetWindowRect(child, out NativeRect rect) &&
                 (rect.Right - rect.Left != ClientSize.Width || rect.Bottom - rect.Top != ClientSize.Height))
-                MoveWindow(child, 0, 0, ClientSize.Width, ClientSize.Height, true);
+                SetWindowPos(child, IntPtr.Zero, 0, 0, ClientSize.Width, ClientSize.Height,
+                    SwpNoZOrder | SwpNoActivate | SwpAsyncWindowPos);
     }
 
     List<IntPtr> Children()
@@ -85,8 +88,8 @@ sealed class NativeSurface : Control
     static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
 
     [DllImport("user32.dll")]
-    static extern bool MoveWindow(IntPtr window, int x, int y, int width, int height, bool repaint);
+    static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
 
     [DllImport("user32.dll")]
-    static extern IntPtr SendMessage(IntPtr window, int message, int wParam, IntPtr lParam);
+    static extern bool PostMessage(IntPtr window, int message, int wParam, IntPtr lParam);
 }
