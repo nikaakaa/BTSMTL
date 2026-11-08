@@ -27,6 +27,8 @@ export interface QuickPreviewState {
   scheme: PreviewQuickInputSource | null;
   job: Job;
   accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
+  // Host 静态推导的路线：作业状态一带计划就采用，不等播放器画面；画面准备失败时仍显示输入推出的 Timeline。
+  route: { request: PreviewQuickRequest; plan: PreviewQuickPlan } | null;
   seconds: number;
   playback: QuickPlayback | null;
   picture: { frame: { value: PreviewQuickFrame; playback: QuickPlayback | null } | null; request: { kind: 'idle' } | { kind: 'pending'; target: PreviewQuickSeekRequest }
@@ -196,14 +198,14 @@ function clearPicture() {
 
 function pictureRequestCurrent(request: PictureRequest) {
   const state = current();
-  return state.accepted === request.accepted && !quickPlanStale() &&
+  return state.accepted === request.accepted && quickPictureCurrent() &&
     (state.seconds === request.target.seconds || request.playback !== null && state.playback === request.playback);
 }
 
 function requestPicture(force = false) {
   const state = current();
   const accepted = state.accepted;
-  if (accepted === null || quickPlanStale()) { clearPicture(); return; }
+  if (accepted === null || !quickPictureCurrent()) { clearPicture(); return; }
   if (pictureRequest !== null || !force && state.picture.frame?.value.requestedSeconds === state.seconds) return;
   const target: PreviewQuickSeekRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.request.sourceRevision,
     inputRevision: accepted.plan.inputRevision, seconds: state.seconds };
@@ -251,6 +253,7 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
     consoleActions.log('error', '快预览', reason, reply.rawJson);
     return;
   }
+  if (status?.plan && selectedRequest(request) && current().route?.request !== request) set({ route: { request, plan: status.plan } });
   if (status !== null && !status.completed && reply.pending) {
     set({ job: { kind: cancelling || status.cancellationRequested ? 'cancelling' : 'running', request, reply: { ...reply, data: status } } });
     if (!selectedRequest(request) && !cancelling && !status.cancellationRequested) void quickPreview.cancel();
@@ -306,13 +309,19 @@ function invalidateJob() {
 }
 
 export function quickPlan() {
-  return current().accepted?.plan ?? null;
+  return current().route?.plan ?? null;
 }
 
 export function quickPlanStale() {
   const state = current();
-  return state.accepted !== null && (getState().previewMode !== 'quick' || state.description.kind !== 'ready' ||
-    state.job.kind !== 'settled' || state.job.request !== state.accepted.request);
+  return state.route !== null && (getState().previewMode !== 'quick' || state.description.kind !== 'ready' ||
+    state.job.kind === 'idle' || state.job.request !== state.route.request);
+}
+
+// 画面只认与当前路线同一请求、已拿到首帧的作业；路线先到而画面未到或失败时不显示旧画面。
+export function quickPictureCurrent() {
+  const state = current();
+  return state.accepted !== null && !quickPlanStale() && state.accepted.request === state.route?.request;
 }
 
 export function quickBounds(plan: PreviewQuickPlan) {
@@ -429,7 +438,7 @@ export const quickPreview = {
       target = { ...target, root: document === undefined
         ? { kind: 'authoringDocument', authoring: chosen }
         : { kind: 'webEditingView', authoring: { ...chosen, savedRevision: document.revision ?? '' }, editingView: authoringActions.editingView() } };
-      if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, seconds: 0 });
+      if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, route: null, seconds: 0 });
       set({ target });
       const reply = await previewApi.describeQuick(target, controller.signal);
       if (controller.signal.aborted) return;
@@ -455,7 +464,7 @@ export const quickPreview = {
     }
   },
   selectScheme(scheme: PreviewQuickInputSource) {
-    set({ scheme, accepted: null, seconds: 0 });
+    set({ scheme, accepted: null, route: null, seconds: 0 });
     invalidateJob();
   },
   // 手动重推：清掉失败记忆，来源可用时直接推导，否则先重读来源。
@@ -523,7 +532,7 @@ export const quickPreview = {
     invalidateJob();
   },
   clearTarget(reason: string) {
-    set({ target: null, accepted: null, seconds: 0 });
+    set({ target: null, accepted: null, route: null, seconds: 0 });
     quickPreview.invalidate(reason);
   },
 };

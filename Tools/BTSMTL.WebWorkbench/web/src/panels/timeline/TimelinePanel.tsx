@@ -76,8 +76,8 @@ function useQuickInputTimeline() {
       .find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null : null;
   });
 }
-const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.accepted !== null
-  ? quickBounds(state.quickPreview.accepted.plan).last : 0);
+const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.route !== null
+  ? quickBounds(state.quickPreview.route.plan).last : 0);
 
 // 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
@@ -515,7 +515,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const references = useReferenceCurves();
   // 快档保留上一份路线直到新路线采用：过期时照常显示与定位，状态栏注明过期。
-  const quickPlan = useWorkbench(state => state.previewMode === 'quick' ? state.quickPreview.accepted?.plan ?? null : null);
+  const quickPlan = useWorkbench(state => state.previewMode === 'quick' ? state.quickPreview.route?.plan ?? null : null);
   const quickStale = useWorkbench(quickPlanStale);
   const quickInputTimeline = useQuickInputTimeline();
   const quickRouteEnd = useQuickRouteEnd();

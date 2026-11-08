@@ -9,7 +9,7 @@ import { clearRendered, reportRendered } from '../../shell/readiness';
 import { playerService, sceneLoadContent } from '../../state/player';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPlanStale, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
+import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -41,12 +41,12 @@ export function PlayerPanel() {
 
 function QuickPreviewPicture() {
   const state = useWorkbench(current => current.quickPreview);
-  const stale = useWorkbench(quickPlanStale);
+  const pictureCurrent = useWorkbench(quickPictureCurrent);
   const job = state.job;
   const progress = quickJobProgress(job);
   const reason = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
     : quickPreview.sourceUnavailableReason();
-  const accepted = stale ? null : state.accepted;
+  const accepted = pictureCurrent ? state.accepted : null;
   return <div className={styles.root}>
     <PanelBar wrap><strong>快速预览</strong>
       <Button onClick={() => openPanel('timeline')}>输入与结果</Button>
@@ -87,7 +87,7 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
     const frame = snapshot.value;
     const ownsFrame = () => {
       const state = getState().quickPreview;
-      return active && state.picture.frame === snapshot && !quickPlanStale() &&
+      return active && state.picture.frame === snapshot && quickPictureCurrent() &&
         (state.seconds === frame.requestedSeconds || snapshot.playback !== null && state.playback === snapshot.playback);
     };
     const image = panelWindow.document.createElement('img');

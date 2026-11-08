@@ -63,7 +63,7 @@ export function QuickBar() {
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const job = state.job;
   const progress = quickJobProgress(job);
-  const plan = state.accepted?.plan ?? null;
+  const plan = state.route?.plan ?? null;
   const sourceReason = quickPreview.sourceUnavailableReason();
   const reason = state.description.kind === 'failed' || state.description.kind === 'stale' ? state.description.reason
     : sourceReason ?? (progress === null ? quickPreview.unavailableReason() : null);
@@ -124,15 +124,15 @@ function QuickDetails() {
   const receipt = 'reply' in job ? job.reply : null;
   const status = receipt?.data;
   const scheme = description?.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
-  const result = state.accepted;
-  const plan = result?.plan ?? null;
+  const route = state.route;
+  const plan = route?.plan ?? null;
   const name = useQuickName();
-  const identity = useMemo(() => result === null || plan === null ? [] : [
-    { displayName: '结果作业', value: result.jobId }, { displayName: '结果来源修订', value: result.request.sourceRevision },
+  const identity = useMemo(() => route === null || plan === null ? [] : [
+    { displayName: '结果作业', value: status?.jobId ?? '' }, { displayName: '结果来源修订', value: route.request.sourceRevision },
     { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
     { displayName: '输入来源', value: plan.inputSource }, { displayName: '有效输入修订', value: plan.inputRevision },
     { displayName: '实际输入', value: JSON.stringify(plan.inputsUsed) }, { displayName: '实际条件覆盖', value: JSON.stringify(plan.conditionsUsed) },
-  ], [result, plan]);
+  ], [route, plan, status?.jobId]);
   return <div className={styles.details}>
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
       { displayName: '推导来源', value: description.source === null ? '尚未选根' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
