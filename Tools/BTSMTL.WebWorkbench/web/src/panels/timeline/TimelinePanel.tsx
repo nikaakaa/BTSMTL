@@ -1196,8 +1196,8 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
-        <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion} dim={span.dim}
-          tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s${span.dim ? ' · 本段未播放' : ''}`} />
+        <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion}
+          tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
       ))}
     </Line>
   );
@@ -1474,13 +1474,13 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   );
 });
 
-function Positioned({ start, end, className, children, style, tip, dim }: {
-  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string; dim?: boolean;
+function Positioned({ start, end, className, children, style, tip }: {
+  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   return (
     <Tip content={tip}>
-      <div className={className} data-dim={dim || undefined} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
+      <div className={className} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
         {children}
       </div>
     </Tip>

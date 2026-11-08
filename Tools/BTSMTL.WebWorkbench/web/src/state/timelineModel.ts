@@ -90,8 +90,8 @@ export interface GroupRow {
 }
 
 // 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）；
-// 并集按段的进入、离开时刻切开，段外（中途进入跳过的、被跳转截断的）部分标为 dim。
-export function clipUnions(segment: TimelineSegment): (Span & { dim: boolean })[] {
+// 只保留段内实际播放的部分：中途进入跳过的、被跳转截断的不画，条的起止即进入、离开该状态的时刻。
+export function clipUnions(segment: TimelineSegment): Span[] {
   const unions: Span[] = [];
   for (const track of segment.timeline.tracks) {
     let current: Span | null = null;
@@ -101,12 +101,10 @@ export function clipUnions(segment: TimelineSegment): (Span & { dim: boolean })[
       else unions.push(current = { start, end });
     }
   }
-  const result: (Span & { dim: boolean })[] = [];
+  const result: Span[] = [];
   for (const { start, end } of unions) {
-    const enter = Math.min(Math.max(segment.start, start), end), exit = Math.max(Math.min(segment.end, end), enter);
-    if (enter > start) result.push({ start, end: enter, dim: true });
-    if (exit > enter) result.push({ start: enter, end: exit, dim: false });
-    if (end > exit) result.push({ start: exit, end, dim: true });
+    const enter = Math.max(segment.start, start), exit = Math.min(segment.end, end);
+    if (exit > enter) result.push({ start: enter, end: exit });
   }
   return result;
 }
