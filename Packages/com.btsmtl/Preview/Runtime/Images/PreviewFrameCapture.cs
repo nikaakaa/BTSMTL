@@ -13,7 +13,7 @@ namespace BTSMTL.Preview
 
     public readonly struct PreviewEncodedFrame : IDisposable
     {
-        public PreviewEncodedFrame(int frame, int width, int height, bool flipY,
+        public PreviewEncodedFrame(int frame, int width, int height, bool flipY, bool pixelsFlipY,
             Matrix4x4 viewProjection, PreviewImageEncoding encoding, NativeArray<byte> bytes,
             NativeArray<byte> pixels, int captureSlot, long captureTimestamp, Action release)
         {
@@ -22,6 +22,7 @@ namespace BTSMTL.Preview
             Width = width;
             Height = height;
             FlipY = flipY;
+            PixelsFlipY = pixelsFlipY;
             ViewProjection = viewProjection;
             Encoding = encoding;
             Bytes = bytes;
@@ -33,10 +34,12 @@ namespace BTSMTL.Preview
         public int Frame { get; }
         public int Width { get; }
         public int Height { get; }
+        // FlipY 针对编码图（编码器把首行当图像底行）；PixelsFlipY 针对按首行在上显示的原始 RGBA，二者相反。
         public bool FlipY { get; }
+        public bool PixelsFlipY { get; }
         public Matrix4x4 ViewProjection { get; }
         public PreviewImageEncoding Encoding { get; }
-        // 未要求编码的帧没有 Bytes，只借出读回的 RGBA（行序同 GPU 读回，FlipY 指示上下翻转），Dispose 后归还。
+        // 未要求编码的帧没有 Bytes，只借出读回的 RGBA（行序同 GPU 读回，PixelsFlipY 指示上下翻转），Dispose 后归还。
         public NativeArray<byte> Bytes { get; }
         public NativeArray<byte> Pixels { get; }
         public bool IsEncoded => Bytes.IsCreated;
@@ -156,18 +159,13 @@ namespace BTSMTL.Preview
             try
             {
                 NativeArray<byte> bytes;
-                bool flipY;
+                bool flipY = m_FlipY;
+                bool pixelsFlipY = !m_FlipY;
                 if (!encode(selected.Index))
-                {
                     bytes = default;
-                    flipY = m_FlipY;
-                }
                 else if (m_Encoding == PreviewImageEncoding.Jpeg)
-                {
                     bytes = ImageConversion.EncodeNativeArrayToJPG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height, 0, selected.Quality);
-                    flipY = m_FlipY;
-                }
                 else
                 {
                     if (m_FlipY)
@@ -175,10 +173,11 @@ namespace BTSMTL.Preview
                     bytes = ImageConversion.EncodeNativeArrayToPNG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height);
                     flipY = false;
+                    pixelsFlipY = true;
                 }
                 Volatile.Write(ref selected.State, SlotState.Encoded);
                 frame = new PreviewEncodedFrame(selected.Frame, m_Width, m_Height,
-                    flipY, selected.ViewProjection, m_Encoding, bytes, selected.Pixels, selected.Index, selected.CaptureTimestamp, selected.Release);
+                    flipY, pixelsFlipY, selected.ViewProjection, m_Encoding, bytes, selected.Pixels, selected.Index, selected.CaptureTimestamp, selected.Release);
                 return true;
             }
             catch (Exception failure)

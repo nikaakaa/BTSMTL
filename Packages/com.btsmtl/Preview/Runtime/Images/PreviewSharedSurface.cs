@@ -71,6 +71,25 @@ namespace BTSMTL.Preview
                 throw new ArgumentException($"写入共享画面区的像素长度 {pixels.Length} 与 {Width}×{Height} 不符。", nameof(pixels));
             byte* target = Slot(slot);
             UnsafeUtility.MemCpy(target + SlotHeaderBytes, NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(pixels), length);
+            Publish(slot, target, sequence, captureTimestamp);
+        }
+
+        // 解码后的 RGB24（如 JPEG 载入的纹理）直接逐像素展开成 RGBA 写入帧槽，不经中间缓冲。
+        public void CommitRgb24(int slot, ulong sequence, NativeArray<byte> rgb, long captureTimestamp)
+        {
+            long count = (long)Width * Height;
+            if (rgb.Length != count * 3)
+                throw new ArgumentException($"写入共享画面区的 RGB24 长度 {rgb.Length} 与 {Width}×{Height} 不符。", nameof(rgb));
+            byte* target = Slot(slot);
+            byte* source = (byte*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(rgb);
+            uint* pixels = (uint*)(target + SlotHeaderBytes);
+            for (long index = 0; index < count; index++, source += 3)
+                pixels[index] = source[0] | (uint)source[1] << 8 | (uint)source[2] << 16 | 0xFF000000u;
+            Publish(slot, target, sequence, captureTimestamp);
+        }
+
+        void Publish(int slot, byte* target, ulong sequence, long captureTimestamp)
+        {
             long elapsed = Stopwatch.GetTimestamp() - captureTimestamp;
             QueryPerformanceCounter(out long written);
             QueryPerformanceFrequency(out long frequency);
