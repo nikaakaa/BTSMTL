@@ -160,7 +160,7 @@ namespace BTSMTL.Preview
                 if (failure == null)
                     Interlocked.CompareExchange(ref m_State, (int)PreviewConnectionState.Closed,
                         (int)PreviewConnectionState.Connected);
-                else
+                else if (stateBefore is not (PreviewConnectionState.Closed or PreviewConnectionState.Failed))
                 {
                     Failure = failure;
                     Volatile.Write(ref m_State, (int)PreviewConnectionState.Failed);
