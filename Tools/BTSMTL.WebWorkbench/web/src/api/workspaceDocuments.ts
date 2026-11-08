@@ -19,7 +19,7 @@ const readFiles = (value: unknown, path = 'WorkspaceDocument.files'): Record<str
 export const readWorkspaceDocumentSnapshot = object({ ...documentFields, files: readFiles });
 export type WorkspaceDocumentSnapshot = ReturnType<typeof readWorkspaceDocumentSnapshot>;
 
-const readElement = object({ kind: text, identity: text,
+const readElement = object({ kind: text, identity: text, name: text,
   contentDomain: nullable(text), sourceIdentity: nullable(text), documentPath: text, relativePath: text,
   jsonPath: text, revision: text, authoringType: nullable(text) });
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;

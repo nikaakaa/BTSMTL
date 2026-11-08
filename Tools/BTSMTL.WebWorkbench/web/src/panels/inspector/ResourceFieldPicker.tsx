@@ -35,7 +35,7 @@ function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoo
     ? { kind: 'unavailable', reason: metadata.availability.reason }
     : catalog.kind !== 'ready' ? { kind: 'unavailable', reason: catalog.kind === 'unavailable' ? catalog.reason : '正在读取工作区作者元素。' }
       : { kind: 'ready', referenceKind: metadata.domain, invalidReason: `当前引用不在领域 ${metadata.domain} 的工作区作者元素中，原字符串已保留。`,
-        items: elements.map(element => ({ value: element.sourceIdentity, name: element.identity,
+        items: elements.map(element => ({ value: element.sourceIdentity, name: element.name,
           detail: `${element.documentPath} · ${element.jsonPath}`, source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`,
           conflict: elements.filter(other => other.sourceIdentity === element.sourceIdentity).length > 1
             ? `领域 ${metadata.domain} 的引用 ${element.sourceIdentity} 命中多个正式作者元素。` : null,

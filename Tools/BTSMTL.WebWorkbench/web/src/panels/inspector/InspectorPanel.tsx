@@ -109,7 +109,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const item = items.find(item => JSON.stringify([item.owner, item.file]) === id);
   const stamp = useMemo(() => JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version])), [documents]);
   if (element !== undefined && target !== null && element.documentPath === target.documentPath) return <>
-    <Head name={element.identity} sub="作者元素" />
+    <Head name={element.name} sub="作者元素" />
     <Value label="所属文档" value={element.documentPath} mono={false} />
     {target.kind === 'variables' && element.jsonPath === '/' ? <BlackboardFields ownerId={element.identity} editable={editable} />
       : <DocumentFields editable={editable} location={{ kind: 'element', element }} />}

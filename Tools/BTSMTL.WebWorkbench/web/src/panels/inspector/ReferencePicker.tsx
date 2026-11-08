@@ -61,8 +61,8 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
       else setRejection(result.reason);
     }}>
     <Button className={invalid ? styles.invalid : styles.trigger} aria-label={label} aria-expanded={open}
-      onClick={() => { focus(); setOpen(!open); }}>
-      {title}
+      title={title} onClick={() => { focus(); setOpen(!open); }}>
+      <span className={styles.title}>{title}</span>
     </Button>
     {domain !== null && <Button variant="ghost" onClick={() => { focus(); openPanel('resources'); }}>在资源视图中选择</Button>}
     {selection === 'asset' && <div className={styles.note}>选择适配者提供的实际文件或子对象；保存所选候选的原字符串。</div>}

@@ -1,5 +1,6 @@
 .root { position: relative; min-width: 0; }
-.trigger, .invalid { width: 100%; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.trigger, .invalid { width: 100%; min-width: 0; justify-content: flex-start; text-align: left; }
+.title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .invalid { border-color: var(--warn); }
 .popup { position: absolute; z-index: 20; top: 100%; right: 0; width: max(100%, 300px); max-width: 440px; display: grid; gap: 6px; padding: 8px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 5px; box-shadow: 0 8px 24px #0006; }
 .list { max-height: 300px; overflow: auto; display: grid; gap: 3px; }
