@@ -63,7 +63,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
     referenceValueKey(row.item.value) === referenceValueKey(currentValue));
   const choices = selectedItem !== null && inCurrentScope(selectedItem) && activeField?.domain === selectedItem.domain && activeField.catalog.kind === 'ready'
     ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(selectedItem.value)) : [];
-  return <div className={styles.contentGrid}>
+  return <div className={styles.resourceCatalog}>
     <div className={styles.contentTree}>
       <PanelBar wrap>
         <Select label="资源领域" value={domain ?? ''} options={[{ value: '', label: '全部领域' },
