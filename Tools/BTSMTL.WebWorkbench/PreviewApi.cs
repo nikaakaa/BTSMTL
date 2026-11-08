@@ -7,7 +7,8 @@ public interface IPreviewHost<out TSourceCatalog, out TInputCatalog>
     TInputCatalog Inputs(string target, string revision);
     Task<PreviewQuickReply<PreviewQuickDescription>> DescribeQuick(PreviewQuickTarget target, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, int localPort, CancellationToken cancellation);
-    Task<PreviewQuickReply<PreviewQuickStatus>> QuickStatus(string jobId, CancellationToken cancellation);
+    // stage 非空时等到作业离开该阶段或结束再答复。
+    Task<PreviewQuickReply<PreviewQuickStatus>> QuickStatus(string jobId, string? stage, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> SeekQuick(string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> CancelQuick(string jobId, CancellationToken cancellation);
 }
@@ -29,8 +30,8 @@ public static class PreviewApi
             QuickResult(await host.DescribeQuick(target, cancellation)));
         routes.MapPost("/quick/plans", async (PreviewQuickRequest request, HttpContext context, CancellationToken cancellation) =>
             QuickResult(await host.PlanQuick(request, context.Connection.LocalPort, cancellation)));
-        routes.MapGet("/quick/plans/{jobId}", async (string jobId, CancellationToken cancellation) =>
-            QuickResult(await host.QuickStatus(jobId, cancellation)));
+        routes.MapGet("/quick/plans/{jobId}", async (string jobId, string? stage, CancellationToken cancellation) =>
+            QuickResult(await host.QuickStatus(jobId, stage, cancellation)));
         routes.MapPost("/quick/plans/{jobId}/seek", async (string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation) =>
             QuickResult(await host.SeekQuick(jobId, request, cancellation)));
         routes.MapPost("/quick/plans/{jobId}/cancel", async (string jobId, CancellationToken cancellation) =>
