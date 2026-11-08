@@ -41,11 +41,13 @@ public sealed record PreviewQuickDocumentInput([property: JsonRequired] string D
     [property: JsonRequired] string SavedRevision, [property: JsonRequired] string InputId,
     [property: JsonRequired] string SchemeId) : PreviewQuickInputSource;
 public sealed record PreviewQuickRootInputs : PreviewQuickInputSource;
+// SourceRevision 与 Input.Revision 为 null 表示跟随当前内容：宿主只捕获一次，按本次捕获的来源与方案推导，
+// 并在作业状态里交回实际修订和完整来源描述；非 null 时须与本次捕获一致。
 public sealed record PreviewQuickInput([property: JsonRequired] PreviewQuickInputSource Source,
-    [property: JsonRequired] string Revision, PreviewQuickInputPoint[]? Points = null,
+    string? Revision, PreviewQuickInputPoint[]? Points = null,
     PreviewQuickConditionPoint[]? Conditions = null);
 public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
-    [property: JsonRequired] PreviewQuickTarget Target, [property: JsonRequired] string SourceRevision,
+    [property: JsonRequired] PreviewQuickTarget Target, string? SourceRevision,
     [property: JsonRequired] PreviewQuickInput Input, [property: JsonRequired] string OutputDirectory,
     double? RangeEndSeconds = null, int TimeoutSeconds = 180);
 public sealed record PreviewQuickSeekRequest([property: JsonRequired] string RequestId,
@@ -90,7 +92,7 @@ public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQui
 public sealed record PreviewQuickStatus(string JobId, string Stage, bool Completed, bool CancellationRequested,
     string NativeMode, string? AdoptedMode, PreviewQuickSource? Source, int SamplesDone, int SamplesTotal,
     string? OutputDirectory, string? SummaryPath, PreviewQuickPlan? Plan, string? Error,
-    string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame);
+    string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame, PreviewQuickDescription? Description);
 public sealed record PreviewQuickFrame(string JobId, string RequestId, string SourceRevision, string InputRevision,
     double RequestedSeconds, double SampledSeconds, string SampledRevision, string MediaType, string ImageBase64,
     [property: JsonRequired] bool FlipY);

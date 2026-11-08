@@ -61,7 +61,7 @@ const status = object({
   jobId: identity<'quick-job'>(), stage: text, completed: boolean, cancellationRequested: boolean,
   nativeMode: text, adoptedMode: nullable(text), source: nullable(source), samplesDone: number, samplesTotal: number,
   outputDirectory: nullable(text), summaryPath: nullable(text), plan: nullable(plan), error: nullable(text),
-  cleanupErrors: array(text), notes: array(text), logErrors: array(text), frame: nullable(frame),
+  cleanupErrors: array(text), notes: array(text), logErrors: array(text), frame: nullable(frame), description: nullable(description),
 });
 const reply = <T>(data: Decoder<T>) => object({ success: boolean, pending: boolean, code: nullable(text), message: nullable(text), data: nullable(data), rawJson: text });
 
@@ -88,14 +88,15 @@ export interface PreviewQuickTarget {
   scenePublication?: SourceFile;
   root: PreviewQuickRoot | null;
 }
+// 两个修订为 null 表示跟随当前内容：宿主只捕获一次，在作业状态里交回实际修订与完整来源描述。
 export interface PreviewQuickInput {
   source: PreviewQuickInputSource;
-  revision: string;
+  revision: string | null;
 }
 export interface PreviewQuickRequest {
   mode: 'quick';
   target: PreviewQuickTarget & { root: PreviewQuickRoot };
-  sourceRevision: string;
+  sourceRevision: string | null;
   input: PreviewQuickInput;
   outputDirectory: string;
   timeoutSeconds?: number;
