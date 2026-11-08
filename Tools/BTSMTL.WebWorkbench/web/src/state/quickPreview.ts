@@ -75,8 +75,12 @@ interface PictureRequest {
   playback: QuickPreviewState['playback'];
   controller: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
+  startedAt: number;
 }
+// 宿主已缓存的时刻十几毫秒就回；超过这个时长仍未回的请求在等播放器烘焙，让位给拖动的最新位置。
+const PictureSupersedeMs = 100;
 let pictureRequest: PictureRequest | null = null;
+let supersedeTimer: ReturnType<typeof setTimeout> | null = null;
 const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
@@ -208,10 +212,23 @@ function requestPicture(force = false) {
   const state = current();
   const accepted = state.accepted;
   if (accepted === null || !quickPictureCurrent()) { clearPicture(); return; }
-  if (pictureRequest !== null || !force && state.picture.frame?.value.requestedSeconds === state.seconds) return;
+  if (pictureRequest !== null) {
+    if (pictureRequestCurrent(pictureRequest)) return;
+    const wait = pictureRequest.startedAt + PictureSupersedeMs - performance.now();
+    if (wait > 0) {
+      supersedeTimer ??= setTimeout(() => { supersedeTimer = null; requestPicture(); }, wait);
+      return;
+    }
+    if (pictureRequest.timer !== null) clearTimeout(pictureRequest.timer);
+    pictureRequest.controller.abort();
+    pictureRequest = null;
+    force = true;
+  }
+  if (!force && state.picture.frame?.value.requestedSeconds === state.seconds) return;
   const target: PreviewQuickSeekRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.request.sourceRevision,
     inputRevision: accepted.plan.inputRevision, seconds: state.seconds };
-  const request: PictureRequest = { accepted, target, playback: state.playback, controller: new AbortController(), timer: null };
+  const request: PictureRequest = { accepted, target, playback: state.playback, controller: new AbortController(), timer: null,
+    startedAt: performance.now() };
   pictureRequest = request;
   set({ picture: { ...state.picture, request: { kind: 'pending', target } } });
   void readPicture(request, true);
