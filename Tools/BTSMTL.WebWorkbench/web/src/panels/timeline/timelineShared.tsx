@@ -14,7 +14,6 @@ import type { GroupRow, TimelineSegment, TrackRow } from '../../state/timelineMo
 import { callKey } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import type { ReceivedInput, ReceivedSpan } from '../../state/inputReceipts';
-import type { RouteBar, RouteView } from './routeRows';
 import { cachedFrame } from '../../state/frames';
 import { useAnimationFrameRates } from '../../state/resources';
 export const sidebarFor = (width: number) => Math.round(Math.max(150, Math.min(380, width * 0.3)));
@@ -44,10 +43,7 @@ export interface CurveGroupRow { kind: 'curves'; id: string }
 export interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
 export interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
 export interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
-export interface RouteGroupRow { kind: 'routeGroup'; id: string; route: RouteView }
-export interface RouteLaneRow { kind: 'routeLane'; id: string; name: string; bars: RouteBar[] }
-export type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow
-  | RouteGroupRow | RouteLaneRow;
+export type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 export interface Params {
   range: Range | null;
@@ -206,7 +202,7 @@ export const CurveViewContext = createContext<CurveView>({
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
 export type Nest = 'head' | 'single' | 'child' | 'last';
-export const groupKinds: ReadonlySet<Row['kind']> = new Set(['group', 'inputGroup', 'curves', 'receivedGroup', 'routeGroup']);
+export const groupKinds: ReadonlySet<Row['kind']> = new Set(['group', 'inputGroup', 'curves', 'receivedGroup']);
 export function rowNesting(rows: Row[]): (Nest | undefined)[] {
   let grouped = false;
   return rows.map((row, index) => {

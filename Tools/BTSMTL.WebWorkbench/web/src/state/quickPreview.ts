@@ -41,11 +41,11 @@ export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.
   ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null &&
     (!job.reply.data.completed || job.reply.data.stage === 'ready' || job.reply.data.cleanupErrors.length > 0));
 
-const quickStageText: Record<string, string> = { planning: '正在计算路线', loading: '路线已生成，正在加载画面', ready: '画面就绪' };
+const quickStageText: Record<string, string> = { planning: '正在生成', loading: '正在加载画面', ready: '画面就绪' };
 
 export function quickJobProgress(job: Job): string | null {
   switch (job.kind) {
-    case 'starting': return '正在提交路线计算';
+    case 'starting': return '正在提交';
     case 'starting-cancelled': return '等待作业身份以取消';
     case 'running': return `${quickStageText[job.reply.data.stage] ?? job.reply.data.stage} · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
     case 'cancelling': return `取消与清理中 · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
@@ -250,7 +250,7 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
   const status = reply.data;
   if (status?.plan && (status.source?.revision !== request.sourceRevision ||
     JSON.stringify(status.plan.input) !== JSON.stringify(request.input.source) || status.plan.inputSchemeRevision !== request.input.revision)) {
-    const reason = '宿主计划的来源或输入方案修订与本次请求不一致，未采用该路线';
+    const reason = '宿主计划的来源或输入方案修订与本次请求不一致，未采用该结果';
     set({ job: { kind: cancelling ? 'cancel-failed' : 'failed', request, reply: { ...reply, data: status }, reason } });
     consoleActions.log('error', '快预览', reason, reply.rawJson);
     return;
@@ -332,7 +332,7 @@ export function quickBounds(plan: PreviewQuickPlan) {
 }
 
 function playbackReason() {
-  return quickPlan() === null ? '先计算路线' : quickPlanStale() ? '路线已过期，请按当前内容与输入重新计算' : null;
+  return quickPlan() === null ? '预览尚未生成' : quickPlanStale() ? '内容已变化，正在按当前内容与输入重新生成' : null;
 }
 
 function advancePlayback(now: number) {

@@ -1,128 +1,17 @@
-// 路线视图的动态轨道：输入方案时间即路线全局时间。快档按 Host 算出的路线、真档按已读档案帧的实际播放记录，
-// 拼成路线条（重叠的播放分到多条）；快档的每次播放再按“全局＝起点＋本地－本地起点”摆出所播 Timeline 的轨道，可直接编辑。
+// 快档：输入方案时间即全局时间，Host 算出的每次播放按“全局＝起点＋本地－本地起点”摆出所播 Timeline 的轨道，可直接编辑。
 
-import type { PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
-import type { AuthorTimeline, RouteFrame } from '../../api/types';
-import { callKey, callLabel } from '../../state/graphModel';
+import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
+import type { AuthorTimeline } from '../../api/types';
 import type { TimelineSegment } from '../../state/timelineModel';
-import { timeText, type TimelineObservation } from './timelineShared';
 
-export interface RouteBar {
-  key: string;
-  start: number;
-  end: number;
-  label: string;
-  tip: string;
-  documentId: string | null;
-  // 单击定位：快档为路线秒数，真档为该次播放首个已读录制帧。
-  target: { kind: 'quick'; seconds: number } | { kind: 'record'; index: number };
-  source: PreviewQuickLocation | null;
-  // 双击进入所播 Timeline 时选中的这次播放或实际调用。
-  quickIndex: number | null;
-  observation: TimelineObservation | null;
-}
-
-export interface RouteView {
-  kind: 'quick' | 'real';
-  title: string;
-  meta: string;
-  tip: string;
-  notice: string | null;
-  lanes: RouteBar[][];
-  segments: TimelineSegment[];
-}
-
-type StateName = (source: PreviewQuickLocation | null, identity: string) => string;
-
-function pack(bars: RouteBar[]): RouteBar[][] {
-  const lanes: RouteBar[][] = [];
-  for (const bar of [...bars].sort((left, right) => left.start - right.start || left.end - right.end)) {
-    const lane = lanes.find(items => items[items.length - 1].end <= bar.start + 1e-9);
-    if (lane) lane.push(bar);
-    else lanes.push([bar]);
-  }
-  return lanes;
-}
-
-const range = (start: number, end: number) => `${timeText(start)}—${timeText(end)} s`;
-
-export function quickRoute(plan: PreviewQuickPlan, timelines: AuthorTimeline[], inputTimeline: string, stale: boolean, stateName: StateName): RouteView {
+export function quickPlayedSegments(plan: PreviewQuickPlan, timelines: AuthorTimeline[], inputTimeline: string): TimelineSegment[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
   const segments: TimelineSegment[] = [];
-  const bars = plan.segments.map((segment, index): RouteBar => {
+  plan.segments.forEach((segment, index) => {
     const timeline = segment.timelineId === null ? undefined : byId.get(segment.timelineId);
-    const name = segment.timeline ?? timeline?.displayName ?? segment.timelineId?.slice(0, 8) ?? '无 Timeline';
-    const state = stateName(segment.stateSource, segment.state);
     if (timeline && timeline.documentId !== inputTimeline)
       segments.push({ id: `route:${index}`, documentId: timeline.documentId, origin: segment.start - segment.localStart,
         start: segment.start, end: segment.end, timeline, length: segment.localEnd - segment.localStart });
-    return {
-      key: `quick:${index}`, start: segment.start, end: segment.end, label: state === name ? name : `${state} · ${name}`,
-      tip: `${state} · ${name}\n路线 ${range(segment.start, segment.end)}\n本地 ${range(segment.localStart, segment.localEnd)}\n` +
-        `播放 ${segment.playback} · 循环 ${segment.cycle} · 出现 ${segment.occurrence}${segment.playbackCompleted ? ' · 播放完成' : ''}` +
-        `${segment.callerClipId ? `\n调用方播放 ${segment.callerPlayback} · Clip ${segment.callerClipId}` : ''}\n单击定位 · 双击进入 Timeline`,
-      documentId: timeline ? timeline.documentId : null, target: { kind: 'quick', seconds: segment.start },
-      source: segment.stateSource, quickIndex: index, observation: null,
-    };
   });
-  return {
-    kind: 'quick', title: '路线', meta: `${plan.status} · ${timeText(plan.duration)} ${plan.clock.unit}`,
-    tip: ['按技能内容和输入轨直接算出依次播放哪些 Timeline，不跑物理；命中与数值以真预览为准', plan.stopReason, plan.stopDetail, ...plan.assumptions].filter(Boolean).join('\n'),
-    notice: stale ? '内容或输入已变化，正在重算；新路线出来前保留上一份' : bars.length === 0 ? '路线没有播放任何 Timeline' : null,
-    lanes: pack(bars), segments,
-  };
-}
-
-interface InputSample { frame: string; index: number; seconds: number | null }
-
-// 真档：已读帧按宿主帧换成输入时间，同一 Timeline、执行域与完整调用身份的连续帧合成一次播放；未读的帧不外推。
-export function realRoute(frames: RouteFrame[], samples: InputSample[], timelines: AuthorTimeline[], step: number): RouteView {
-  const times = new Map(samples.flatMap(sample => sample.seconds === null ? [] : [[sample.frame, sample] as const]));
-  const names = new Map(timelines.map(timeline => [timeline.documentId, timeline.displayName]));
-  // 同一次调用在逻辑与表现执行域各有一条播放记录，路线上合成一条，执行域写在提示里。
-  type Span = { bar: RouteBar; last: number; localStart: number; localEnd: number; status: string; domains: Set<string> };
-  const open = new Map<string, Span>();
-  const spans: Span[] = [];
-  let read = 0;
-  for (const frame of frames) {
-    const sample = times.get(frame.hostFrame);
-    if (sample === undefined || sample.seconds === null) continue;
-    read++;
-    for (const playback of frame.playbacks) {
-      if (playback.call === null || playback.domain === null) continue;
-      const key = JSON.stringify([playback.documentId, callKey(playback.call)]);
-      const current = open.get(key);
-      if (current !== undefined && current.last >= sample.index - 1) {
-        current.domains.add(playback.domain);
-        if (current.last === sample.index) continue;
-        current.bar.end = sample.seconds + step;
-        current.last = sample.index;
-        current.localEnd = playback.cursorSeconds;
-        current.status = playback.status;
-        continue;
-      }
-      const span: Span = {
-        bar: {
-          key: `real:${key}:${sample.index}`, start: sample.seconds, end: sample.seconds + step,
-          label: names.get(playback.documentId) ?? playback.documentId.slice(0, 8), tip: '',
-          documentId: names.has(playback.documentId) ? playback.documentId : null, target: { kind: 'record', index: sample.index },
-          source: null, quickIndex: null, observation: { call: playback.call, domain: playback.domain },
-        },
-        last: sample.index, localStart: playback.cursorSeconds, localEnd: playback.cursorSeconds, status: playback.status,
-        domains: new Set([playback.domain]),
-      };
-      open.set(key, span);
-      spans.push(span);
-    }
-  }
-  for (const span of spans)
-    span.bar.tip = `${span.bar.label} · ${[...span.domains].join(' / ')}\n输入时间 ${range(span.bar.start, span.bar.end)}\n` +
-      `本地游标 ${range(span.localStart, span.localEnd)} · ${span.status}\n${callLabel(span.bar.observation!.call)}\n` +
-      '单击定位到首个已读帧 · 双击进入 Timeline 并选中这次调用';
-  return {
-    kind: 'real', title: '实际路线', meta: `已读 ${read} 帧 · ${spans.length} 次播放`,
-    tip: '按已读档案帧的实际播放记录拼出，随游标分页读取；未读的帧不外推',
-    notice: read === 0 ? '尚未读到带输入时间的档案帧' : spans.length === 0 ? '已读帧内没有 Timeline 播放记录' : null,
-    lanes: pack(spans.map(span => span.bar)), segments: [],
-  };
+  return segments;
 }

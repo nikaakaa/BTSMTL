@@ -26,7 +26,7 @@ export function Toolbar() {
         <ContentChoice />
         <SkillChoice />
         <AuthoringStatus />
-        {quick ? <Button variant="ghost" tip="在 Timeline 面板选择入口与输入方案，按输入算出路线" onClick={() => openPanel('timeline')}>路线</Button> : <RunMenu />}
+        {!quick && <RunMenu />}
       </div>
       <div className={styles.center}>
         <Transport />{quick ? <QuickCursor /> : <FrameField />}
@@ -207,8 +207,8 @@ function useTransportState() {
       const playing = state.quickPreview.playback !== null;
       const blocked = quickPreview.playbackReason();
       return { playing, blocked,
-        previous: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds <= bounds.first ? '已是路线起点' : null),
-        next: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds >= bounds.last ? '已是路线终点' : null) };
+        previous: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds <= bounds.first ? '已在开头' : null),
+        next: blocked ?? (playing ? '需要先暂停' : bounds !== null && state.quickPreview.seconds >= bounds.last ? '已在结尾' : null) };
     }
     const source = transport.source();
     const count = state.summary?.frameCount ?? 0;

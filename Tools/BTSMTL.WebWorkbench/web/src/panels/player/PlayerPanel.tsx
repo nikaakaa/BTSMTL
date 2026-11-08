@@ -69,7 +69,7 @@ function QuickPreviewPicture() {
   const accepted = pictureCurrent ? state.accepted : null;
   return <div className={styles.root}>
     <PanelBar wrap><strong>快速预览</strong>
-      <Button onClick={() => openPanel('timeline')}>在 Timeline 看路线</Button>
+      <Button onClick={() => openPanel('timeline')}>打开 Timeline</Button>
       {quickJobCancellable(job) &&
         <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'settled' ? '结束预览' : '取消预览'}</Button>}
     </PanelBar>
@@ -79,7 +79,7 @@ function QuickPreviewPicture() {
       {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案" />}
       {progress !== null && <div role="status">{progress}</div>}
       {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
-        <Empty text="快速预览按当前技能与输入轨自动算出路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
+        <Empty text="在 Timeline 输入轨编辑按键，快速预览自动出画面；拖动游标查看对应画面。" />
         : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
     </div>
   </div>;
@@ -258,7 +258,7 @@ function PlayerView() {
               const result = await playerService.loadContent(content!);
               if (result?.stage === 'applied') session.selectRun(null);
             }}>载入</Button>}
-          <Button disabled={startBlocked !== null} tip={startBlocked ?? '按当前场景和输入方案运行一次并录制，Timeline 显示实际路线'}
+          <Button disabled={startBlocked !== null} tip={startBlocked ?? '按当前场景和输入方案运行一次并录制'}
             onClick={() => void session.startNewRun()}>新建运行</Button>
           {ready && <span className={styles.split}>
             <Button variant="ghost" pressed={orbit} tip="左键拖动旋转 · 右键或 Shift 拖动平移 · 滚轮缩放"

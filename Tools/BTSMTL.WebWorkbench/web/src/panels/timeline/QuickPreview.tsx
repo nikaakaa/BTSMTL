@@ -49,14 +49,14 @@ export function QuickCursor() {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   if (plan === null) return null;
   const bounds = quickBounds(plan);
-  return <label className={styles.cursor}>路线时间
-    <NumberInput value={seconds} min={bounds.first} max={bounds.last} label={`路线时间（${plan.clock.unit}）`}
+  return <label className={styles.cursor}>时间
+    <NumberInput value={seconds} min={bounds.first} max={bounds.last} label={`预览时间（${plan.clock.unit}）`}
       onChange={value => { if (value !== null) quickPreview.seek(value); }} />
     <span>{plan.clock.unit}</span>
   </label>;
 }
 
-// 快档工具条：推导根、输入方案与推导状态；内容或方案变化后自动重读来源并重推，路线和输入都画在下方同一 Timeline 里。
+// 快档工具条：入口、输入方案与生成状态；内容或方案变化后自动重读来源并重新生成，所播 Timeline 按时间摆在输入轨下方。
 export function QuickBar() {
   const { state, stale } = useWorkbench(useShallow(current => ({ state: current.quickPreview, stale: quickPlanStale() })));
   const active = useAuthoring(current => current.target === null ? null : authoringTargetKey(current.target));
@@ -70,7 +70,7 @@ export function QuickBar() {
     : sourceReason ?? (progress === null ? quickPreview.unavailableReason() : null);
   const failure = quickJobFailure(job);
   const status = state.description.kind === 'loading' ? '正在读取来源'
-    : progress ?? (plan === null ? null : `${stale ? '路线已过期 · ' : ''}${plan.status} · ${plan.duration.toFixed(3)} ${plan.clock.unit}`);
+    : progress ?? (plan === null ? null : `${stale ? '内容已变化，正在重新生成 · ' : ''}共 ${plan.duration.toFixed(2)} ${plan.clock.unit}`);
   // 推导根只列当前作者文档的入口；当前文档不在目录里时列全部。
   const roots = useMemo(() => {
     const documents = description?.documents ?? [];
@@ -111,8 +111,8 @@ export function QuickBar() {
       <span className={styles.grow} />
       {quickJobCancellable(job) && job.kind !== 'settled'
         ? <Button variant="ghost" onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消'}</Button>
-        : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新算一遍路线'}
-          onClick={() => quickPreview.rederive()}>重算路线</Button>}
+        : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新生成预览'}
+          onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       <Button variant="ghost" disabled={runBlocked !== null} tip={runBlocked ?? '切到真实运行，按当前场景和输入方案完整运行一次并录制'}
         onClick={() => void session.startNewRun()}>真实运行一次</Button>
@@ -185,9 +185,9 @@ export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   const name = useQuickName();
   if (plan === null) return null;
   const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
-  return <PanelBar wrap><strong>路线{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
-    <Button key={index} variant="ghost" tip={`路线区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
+  return <PanelBar wrap><strong>快速预览{stale ? '（内容已变化）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
+    <Button key={index} variant="ghost" tip={`播放区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) locate(segment.stateSource); }}>
-      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻路线没有走到这张图</span>}
+      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻没有播放这张图</span>}
   </PanelBar>;
 }

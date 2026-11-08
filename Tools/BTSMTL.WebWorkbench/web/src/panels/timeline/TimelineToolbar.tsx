@@ -89,9 +89,9 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
   const notice = useWorkbench(state => {
     if (observationNotice !== null) return observationNotice;
-    if (clock.kind === 'quick') return clock.source.kind === 'input' ? '当前输入方案使用路线全局时间'
-      : clock.source.segment === null ? '当前路线里这个 Timeline 播了不止一次，请选择具体是哪一次'
-        : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds) === null ? '当前路线时刻不在所选这次播放的区间内'
+    if (clock.kind === 'quick') return clock.source.kind === 'input' ? null
+      : clock.source.segment === null ? '这个 Timeline 在预览里播了不止一次，请选择具体是哪一次'
+        : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds) === null ? '当前时刻不在所选这次播放的区间内'
           : '快速预览游标；命中与数值以真预览为准';
     if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
     if (!state.runId) return null;
