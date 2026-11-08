@@ -189,19 +189,24 @@ function loadVisibleCurves(context: OpenArchive) {
   }
 }
 
-async function imageObservations(context: OpenArchive, metadata: PlayerFrameImage, signal: AbortSignal) {
+async function imageObservations(context: OpenArchive, metadata: PlayerFrameImage, frame: ArchiveFrame, signal: AbortSignal) {
   const range = (offset: number) => ({ firstFrame: metadata.sourceHostFrame,
     lastFrame: metadata.sourceHostFrame, offset, limit: 128 });
-  const [poses, cameras] = await Promise.all([
-    channel('presentation', readAll(offset => playerApi.presentation(context.jobId, range(offset), signal))),
-    channel('camera', readAll(offset => playerApi.camera(context.jobId, range(offset), signal))),
-  ]);
+  const [poses, cameras] = metadata.sourceHostFrame === frame.hostFrame
+    ? [{ items: frame.presentations, availability: frame.availability }, { items: frame.cameras, availability: frame.availability }]
+    : await Promise.all([
+      channel('presentation', readAll(offset => playerApi.presentation(context.jobId, range(offset), signal))),
+      channel('camera', readAll(offset => playerApi.camera(context.jobId, range(offset), signal))),
+    ]);
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
   const cameraRecords = cameras.items.filter(item => item.presentationSequence === metadata.presentationSequence &&
     item.cameraInstanceId === metadata.cameraInstanceId);
   const reasons = [
-    presentation === null ? poses.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号的姿态记录' : null,
-    cameraRecords.length === 0 ? cameras.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号与相机实例的记录'
+    presentation === null ? poses.availability.find(item =>
+      (item.channel === 'bones' || item.channel === 'presentation') && (!item.available || !item.complete))?.reason ??
+      '画面没有同一表现序号的姿态记录' : null,
+    cameraRecords.length === 0 ? cameras.availability.find(item => item.channel === 'camera' && (!item.available || !item.complete))?.reason ??
+      '画面没有同一表现序号与相机实例的记录'
       : cameraRecords.length > 1 ? `画面关联 ${cameraRecords.length} 条角色相机记录，叠加来源无法唯一确定；历史身份分别保留` : null,
   ].filter(reason => reason !== null);
   return { presentation, cameras: cameraRecords, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
@@ -212,11 +217,12 @@ function cancelImageRead() {
   imageRead = null;
 }
 
-async function loadImage(context: OpenArchive, hostFrame: string, request: number) {
+async function loadImage(context: OpenArchive, frame: ArchiveFrame, request: number) {
   if (imageRead !== null && (imageRead.cursor === request || getState().reviewing)) return;
   cancelImageRead();
   const read = imageRead = { cursor: request, controller: new AbortController() };
   const signal = AbortSignal.any([context.controller.signal, read.controller.signal]);
+  const hostFrame = frame.hostFrame;
   const id = `${context.jobId}:${hostFrame}`;
   let image = images.get(id);
   try {
@@ -229,7 +235,7 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
         const metadata = records.items.at(-1);
         if (metadata) {
           const [blob, observations] = await Promise.all([
-            playerApi.frameImage(context.jobId, metadata.imageIndex, signal), imageObservations(context, metadata, signal),
+            playerApi.frameImage(context.jobId, metadata.imageIndex, signal), imageObservations(context, metadata, frame, signal),
           ]);
           image = { kind: 'frame', metadata, image: blob, ...observations };
         } else image = { kind: 'unavailable', hostFrame, reason: `档案未记录${context.summary.frameDisplayName} ${hostFrame}的画面` };
@@ -252,7 +258,7 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
       imageRead = null;
       const state = getState();
       if (state.reviewing && request !== frameRequest && state.archiveFrame !== null)
-        void loadImage(context, state.archiveFrame.hostFrame, frameRequest);
+        void loadImage(context, state.archiveFrame, frameRequest);
     }
   }
 }
@@ -268,7 +274,7 @@ useWorkbench.subscribe((state, previous) => {
     const shown = archiveImage?.kind === 'frame' ? archiveImage.metadata.source.clock.position.hostFrame : archiveImage?.hostFrame;
     if (shown === archiveFrame?.hostFrame) return;
     if (archiveImage !== null) runActions.setData(context.generation, { archiveImage: null });
-    if (archiveFrame !== null) void loadImage(context, archiveFrame.hostFrame, request);
+    if (archiveFrame !== null) void loadImage(context, archiveFrame, request);
   });
 });
 
@@ -382,7 +388,7 @@ export const archive = {
       if (request !== frameRequest || !archiveFrame || !isCurrent(generation)) return;
       runActions.setData(generation, { archiveFrame, frameKey });
       loadVisibleCurves(context);
-      void loadImage(context, archiveFrame.hostFrame, request);
+      void loadImage(context, archiveFrame, request);
     };
     (cache.has(frameKey) ? Promise.resolve() : loadPage(context, page)).then(show, failed);
     readFrame(frameIndex, { kind: 'cursor' }).then(frame => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Matrix4 } from 'three';
-import type { CameraCommand, PlayerState, Vec3, VideoFrame } from '../../api/types';
+import type { CameraCommand, PlayerState, VideoFrame } from '../../api/types';
 import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '../../api/playerRecords';
 import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
@@ -305,6 +305,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const [captured, setCaptured] = useState(false);
   const [decodeFailure, setDecodeFailure] = useState<{ image: Blob; reason: string; entryId: number | null } | null>(null);
   const frameSize = useRef({ width: 16, height: 9 });
+  const drawnArchive = useRef<Extract<ArchiveImage, { kind: 'frame' }> | null>(null);
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
   useViewportMeasure(stageRef);
@@ -321,6 +322,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       const canvas = video.current;
       if (!canvas) return;
       if (!frame) {
+        drawnArchive.current = null;
         clearRendered(panelId);
         canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
         const overlayCanvas = layer.current;
@@ -329,29 +331,33 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       }
       if (decoding) { again = true; return; }
       decoding = true;
+      const { width, height, flipY } = 'kind' in frame ? frame.metadata : frame;
       try {
         const image = await panelWindow.createImageBitmap(frame.image);
         try {
-          if (!alive || currentPicture()?.image !== frame.image) return;
-          if (canvas.width !== frame.width || canvas.height !== frame.height) {
-            canvas.width = frame.width; canvas.height = frame.height;
-            if (layer.current) { layer.current.width = frame.width; layer.current.height = frame.height; }
+          if (!alive || currentPicture() !== frame) return;
+          if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width; canvas.height = height;
+            if (layer.current) { layer.current.width = width; layer.current.height = height; }
           }
           const context = canvas.getContext('2d')!;
           context.save();
           try {
-            if (frame.flipY) { context.translate(0, frame.height); context.scale(1, -1); }
-            context.drawImage(image, 0, 0, frame.width, frame.height);
+            if (flipY) { context.translate(0, height); context.scale(1, -1); }
+            context.drawImage(image, 0, 0, width, height);
           } finally { context.restore(); }
         } finally { image.close(); }
         setDecodeFailure(null);
-        frameSize.current = { width: frame.width, height: frame.height };
+        frameSize.current.width = width;
+        frameSize.current.height = height;
+        drawnArchive.current = 'kind' in frame ? frame : null;
         overlayDraw.current(frame);
         const state = getState();
-        if (state.runId && drawnKey && state.frameKey === drawnKey && state.archiveFrame?.hostFrame === frame.hostFrame)
+        if ('kind' in frame && drawnKey && state.frameKey === drawnKey && state.archiveFrame?.hostFrame === frame.metadata.sourceHostFrame)
           reportRendered(panelId, drawnKey);
       } catch (error) {
-        if (!alive || currentPicture()?.image !== frame.image) return;
+        if (!alive || currentPicture() !== frame) return;
+        drawnArchive.current = null;
         clearRendered(panelId);
         canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
         const overlayCanvas = layer.current;
@@ -369,7 +375,13 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       if (state.liveId !== previous.liveId || state.runId !== previous.runId || state.archiveImage !== previous.archiveImage ||
         state.viewerOpen !== previous.viewerOpen) void draw();
     });
-    return () => { alive = false; unsubscribeVideo(); unsubscribeState(); clearRendered(panelId); };
+    return () => {
+      alive = false;
+      unsubscribeVideo();
+      unsubscribeState();
+      drawnArchive.current = null;
+      clearRendered(panelId);
+    };
   }, [visible, panelWindow, panelId]);
 
   const overlayRef = useRef(overlay);
@@ -379,18 +391,20 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     if (!canvas) return;
     const context = canvas.getContext('2d')!;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    if (!overlayRef.current || !frame.worldToClip) return;
+    if (!overlayRef.current || !('kind' in frame) || archiveOverlayReason(frame) !== null) return;
     const color = panelWindow.getComputedStyle(canvas).getPropertyValue('--logic-receiver').trim();
-    const m = frame.worldToClip;
+    const camera = frame.cameras[0];
+    const m = new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).elements;
+    const { width, height } = frame.metadata;
     context.font = '12px Consolas, monospace';
     context.lineWidth = 2;
     context.strokeStyle = context.fillStyle = color;
-    for (const actor of frame.actors) {
-      const [x, y, z] = actor.position;
+    for (const actor of frame.presentation?.actors ?? []) {
+      const [x, y, z] = actor.worldRoot.position;
       const cx = m[0] * x + m[4] * y + m[8] * z + m[12], cy = m[1] * x + m[5] * y + m[9] * z + m[13];
       const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
       if (cw <= 0) continue;
-      const sx = (cx / cw + 1) / 2 * frame.width, sy = (1 - cy / cw) / 2 * frame.height;
+      const sx = (cx / cw + 1) / 2 * width, sy = (1 - cy / cw) / 2 * height;
       context.beginPath();
       context.arc(sx, sy, 8, 0, Math.PI * 2);
       context.stroke();
@@ -399,7 +413,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   }, [panelWindow]);
   overlayDraw.current = drawOverlay;
   useEffect(() => {
-    const frame = currentPicture();
+    const frame = drawnArchive.current;
     if (frame) drawOverlay(frame);
   }, [overlay, drawOverlay]);
 
@@ -553,27 +567,12 @@ function queueCamera(camera: { current: CameraCommand | null }, delta: Partial<R
   camera.current = pending;
 }
 
-type Picture = Omit<VideoFrame, 'worldToClip' | 'source'> & {
-  worldToClip: number[] | null;
-  actors: { actorId: string; position: Vec3 }[];
-};
+type Picture = VideoFrame | Extract<ArchiveImage, { kind: 'frame' }>;
 
 function currentPicture(): Picture | null {
   const state = getState();
-  if (!state.runId) {
-    if (!state.viewerOpen || state.liveId === null) return null;
-    const frame = playerService.latestVideo();
-    return frame ? { ...frame, actors: [] } : null;
-  }
-  const image = state.archiveImage;
-  if (!image || image.kind === 'unavailable') return null;
-  const camera = archiveOverlayReason(image) === null ? image.cameras[0] : null;
-  return {
-    hostFrame: image.metadata.sourceHostFrame, image: image.image, width: image.metadata.width, height: image.metadata.height,
-    mediaType: image.metadata.mediaType, flipY: image.metadata.flipY,
-    worldToClip: camera ? new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).toArray() : null,
-    actors: image.presentation?.actors.map(actor => ({ actorId: actor.actorId, position: actor.worldRoot.position })) ?? [],
-  };
+  if (state.runId === null) return state.viewerOpen && state.liveId !== null ? playerService.latestVideo() : null;
+  return state.archiveImage?.kind === 'frame' ? state.archiveImage : null;
 }
 
 function archiveOverlayReason(image: ArchiveImage | null): string | null {
