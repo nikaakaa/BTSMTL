@@ -246,6 +246,10 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 
 画面通道能力取同一 Summary。明确捕获的图片沿原 `/images/{宿主帧键}/metadata` 查询实际可用性和原因，不解析项目清单的 captures 或 SDK 成员来猜画面是否存在；仅 metadata.available 为 true 时再取字节。Editor 的原画面构建号可以为 null，真实执行身份仍来自 Summary／Source。
 
+封存连播中同时读取一张 JPEG。浏览器保留上一张实际画面及其来源帧，读取完成后再跟进最新游标。停播和手动定位以所选记录为准，档案缺图时显示该帧的实际缺失原因。切换或退出档案时结束图像请求并释放缓存。
+
+JPEG 的来源 SDK 帧与当前分页帧一致时，叠加使用分页中的姿态和相机，并按实际表现序号及相机实例关联。来源 SDK 帧与分页帧不同时，读取 JPEG 指定的来源帧。Gizmos 按已绘制的采样投影。封存回看期间暂停构建与实时会话列表的定时刷新，退出回看后恢复。
+
 档案游标使用通用帧的 `hostFrame/seconds`，总时长使用实际首末帧秒数之差；通过既有 `/frames` 按需读取首末各一条，复用同一时间基准，不从项目清单反算。通用帧的 `source` 可按正式合同为 null，几何接触 `kind` 使用宿主给出的文本分类。截图就绪标记的帧号与可选一致性值也直接取当前通用帧；缺少项目逻辑通道不阻止已完成绘制的面板报告就绪。
 
 档案来源和摘要使用 [PreviewObservationContracts.cs](Contracts/PreviewObservationContracts.cs) 的公共合同，JSON 字段采用 camelCase：
