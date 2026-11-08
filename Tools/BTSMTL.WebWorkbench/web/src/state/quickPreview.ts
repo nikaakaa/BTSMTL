@@ -613,7 +613,7 @@ useWorkbench.subscribe((state, previous) => {
 
 useAuthoring.subscribe((authoring, previous) => {
   if (authoring.target?.documentPath !== previous.target?.documentPath &&
-    getState().previewMode === 'quick' && getState().contentSelection?.kind === 'scene') {
+    getState().contentSelection?.kind === 'scene') {
     quickPreview.clearTarget('作者文档已变化，请重新读取快预览来源');
     return;
   }
