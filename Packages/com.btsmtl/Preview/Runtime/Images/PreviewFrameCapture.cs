@@ -97,7 +97,10 @@ namespace BTSMTL.Preview
             }
         }
 
-        public bool TryCaptureAtFrameEnd(int frame, Camera camera, out int captureSlot)
+        public bool TryCaptureAtFrameEnd(int frame, Camera camera, out int captureSlot) =>
+            TryCaptureAtFrameEnd(frame, camera, out captureSlot, waitForReadback: false);
+
+        internal bool TryCaptureAtFrameEnd(int frame, Camera camera, out int captureSlot, bool waitForReadback)
         {
             for (int index = 0; index < m_Slots.Length; index++)
             {
@@ -112,12 +115,20 @@ namespace BTSMTL.Preview
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
                 Graphics.Blit(m_Screen, m_Target);
                 slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
-                    ref slot.Pixels, m_Target, 0, TextureFormat.RGBA32, slot.OnReadback);
+                    ref slot.Pixels, m_Target, 0, TextureFormat.RGBA32, waitForReadback ? null : slot.OnReadback);
                 captureSlot = index;
                 return true;
             }
             captureSlot = -1;
             return false;
+        }
+
+        internal void WaitForReadback(int captureSlot)
+        {
+            CaptureSlot slot = m_Slots[captureSlot];
+            AsyncGPUReadbackRequest request = slot.Request.Value;
+            request.WaitForCompletion();
+            slot.CompleteReadback(request);
         }
 
         public bool TryTakeCompleted(out PreviewEncodedFrame frame)
@@ -230,7 +241,7 @@ namespace BTSMTL.Preview
                 Release = ReleaseFrame;
             }
 
-            void CompleteReadback(AsyncGPUReadbackRequest request)
+            internal void CompleteReadback(AsyncGPUReadbackRequest request)
             {
                 if (request.hasError)
                 {

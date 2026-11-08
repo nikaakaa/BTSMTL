@@ -35,6 +35,8 @@ namespace BTSMTL.Preview
     // 通用预览代理：命令分派、推进、断开即退出、状态节拍、实时画面节流与独立 PNG 截图。
     public sealed class PreviewAgentRuntime<TCommand> where TCommand : PreviewAgentCommand
     {
+        enum StreamFrameRequest : byte { None, Asynchronous, Explicit }
+
         public const int StreamCapacity = 3;
         const float StatusInterval = 0.25f;
         readonly MonoBehaviour m_Owner;
@@ -44,7 +46,7 @@ namespace BTSMTL.Preview
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
         PreviewFrameCapture m_StreamCapture;
         Coroutine m_StreamLoop;
-        bool m_CaptureRequested;
+        StreamFrameRequest m_StreamFrameRequest;
         Task m_Close;
         float m_NextStatus;
         double m_NextVideo;
@@ -120,7 +122,7 @@ namespace BTSMTL.Preview
             m_Project.WriteStatus();
         }
 
-        public void RequestStreamFrame() => m_CaptureRequested = true;
+        public void RequestStreamFrame() => m_StreamFrameRequest = StreamFrameRequest.Explicit;
 
         public void LateUpdate()
         {
@@ -140,8 +142,8 @@ namespace BTSMTL.Preview
             // 周期边界舍入到当前时刻时，截止点仍需推进一拍。
             if (m_NextVideo <= now)
                 m_NextVideo += period;
-            if (m_StreamCapture.CanCapture)
-                RequestStreamFrame();
+            if (m_StreamFrameRequest == StreamFrameRequest.None && m_StreamCapture.CanCapture)
+                m_StreamFrameRequest = StreamFrameRequest.Asynchronous;
         }
 
         public void Handle(string json)
@@ -237,7 +239,7 @@ namespace BTSMTL.Preview
             if (m_StreamLoop != null)
                 m_Owner.StopCoroutine(m_StreamLoop);
             m_StreamLoop = null;
-            m_CaptureRequested = false;
+            m_StreamFrameRequest = StreamFrameRequest.None;
             while (m_StreamCapture != null && m_StreamCapture.IsBusy)
             {
                 SendCompletedStreamFrames();
@@ -259,26 +261,36 @@ namespace BTSMTL.Preview
                     m_Project.Fail("stream", m_StreamCapture.Failure, null);
                     yield break;
                 }
-                if (!m_CaptureRequested || !m_Project.CanCaptureStreamFrame)
+                if (m_StreamFrameRequest == StreamFrameRequest.None || !m_Project.CanCaptureStreamFrame)
                     continue;
                 Camera camera = m_Project.ActiveCamera();
                 if (!camera)
                     throw new InvalidOperationException("实时画面没有实际输出相机。");
-                if (m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera, out int captureSlot))
+                bool waitForReadback = m_StreamFrameRequest == StreamFrameRequest.Explicit && Connection != null &&
+                    m_Project.Playback.State == PreviewPlaybackState.Paused && !m_StreamCapture.IsBusy;
+                if (!m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera, out int captureSlot,
+                    waitForReadback))
+                    continue;
+                m_Project.FreezeStreamSource(captureSlot);
+                m_StreamFrameRequest = StreamFrameRequest.None;
+                if (waitForReadback)
                 {
-                    m_Project.FreezeStreamSource(captureSlot);
-                    m_CaptureRequested = false;
+                    m_StreamCapture.WaitForReadback(captureSlot);
+                    SendCompletedStreamFrames();
                 }
             }
         }
 
         void SendCompletedStreamFrames()
         {
+            bool hadExplicitRequest = m_StreamFrameRequest == StreamFrameRequest.Explicit;
             while (m_StreamCapture.TryTakeCompleted(out PreviewEncodedFrame encoded))
             {
                 try { m_Project.SendStreamFrame(in encoded); }
                 finally { encoded.Dispose(); }
             }
+            if (!hadExplicitRequest && m_StreamFrameRequest == StreamFrameRequest.Explicit)
+                m_StreamFrameRequest = StreamFrameRequest.Asynchronous;
         }
 
         IEnumerator CaptureStill(TCommand command)
