@@ -124,6 +124,7 @@ namespace BTSMTL.Preview
                 Graphics.Blit(m_Screen, m_Target);
                 slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
                     ref slot.Pixels, m_Target, 0, TextureFormat.RGBA32, slot.OnReadback);
+                slot.Request.Value.WaitForCompletion();
                 captureSlot = index;
                 return true;
             }

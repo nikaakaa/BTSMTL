@@ -289,6 +289,7 @@ namespace BTSMTL.Preview
                 {
                     m_Project.FreezeStreamSource(captureSlot);
                     m_CaptureRequested = false;
+                    SendCompletedStreamFrames();
                 }
             }
         }
