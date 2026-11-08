@@ -12,9 +12,8 @@ import { transport } from './transport';
 
 const source = 'player';
 const pendingStartKey = 'btsmtl.player.pending-start';
-// 常驻播放器在桌面壳里的共享画面区身份；该类画面消息不带图像，像素按采样序号在画面区帧槽里取。
+// 常驻播放器在桌面壳里的共享画面区身份；画面消息不带图像，像素按采样序号在画面区帧槽里取。
 export const liveSurface = 'live';
-export const surfaceMediaType = 'application/x-btsmtl-surface';
 // 已把画面区接给的播放器与进程；进程变化（换代码重启）或换播放器时重新接入。
 let surfaceTarget: { liveId: string; processId: number } | null = null;
 

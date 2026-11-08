@@ -155,7 +155,6 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | `POST /api/preview/live/{id}/swap` | `{playerBuildId}` | 使用正式新版本替换该 Live，返回实际状态 |
 | `POST /api/preview/players/code-updates` | `{requestId,playerBuildId}` | `state=created/unchanged/rejected`、新 `buildId`、父版本及拒绝原因；创建版本不等于已 swap |
 | `GET /api/preview/live/{id}/captures/{name}` | capture ACK 返回的名称 | 明确请求产生的 PNG |
-| `GET /api/preview/live/{id}/frame.jpg` | 无 | JPEG，响应头 `X-Preview-Source` 是本图的完整 JSON 采样身份 |
 | `WS /api/preview/live/{id}/view` | 同源连接 | 文本状态／回执与二进制画面；可发送正式控制命令 |
 
 Load 的 `content` 是二选一：
@@ -181,6 +180,7 @@ Load 的 `content` 是二选一：
 | `camera` | `mode:"orbit"或"game"`，可带 `focusActorId,reset,yaw,pitch,zoom,panX,panY`，沿现有相机控制合同发送 |
 | `input` | 完整 `InputCommand`：`keys,mouseDx,mouseDy,mouseButtons,scroll,x,y,lx,ly,rx,ry,lt,rt,padButtons` |
 | `stream` | `enabled`，可选 `quality,maxFps` |
+| `surface` | `commandId,surfaceHandle,surfaceBytes,width,height`；桌面壳建好共享画面区并把句柄复制进播放器进程后由网页发送，句柄 0 撤下 |
 
 命令阶段为 `sent/submitted/applied/rejected/not-applied`。HTTP 成功及 submitted 只表明已提交；UI 使用实际 ACK 的 `ok/error/content/clock/playerBuildId` 确认结果。状态还区分 Player 的 `idle/loading/paused/playing/stepping/seeking/failed`，不能与进程 `starting/running/exited` 混为一个枚举。
 
@@ -190,11 +190,11 @@ Load 的 `content` 是二选一：
 
 `Live/status.player.transport` 为可空 `PreviewTransportAction[]`，每项 `{action,available,reason,target}`，`target` 可为 null 或 `{hostFrame}`。旧运行端未提供资格时，Host 保留实际状态和来源，返回 `transport=null` 与明确 `transportUnavailableReason`，不能补造数组或阻断其它实例目录；网页显示原原因并禁用控制。数组存在时，`seek` 描述任意位置定位资格，`first/previous/next/last` 的目标由 Host 按原规则提供，`play/pause/step` 同样使用实际状态的资格。网页不从时钟种类推断；上一帧、首末帧只使用正式目标，下一帧仍发原 `step,count:1`。纯 Timeline 不制造角色或 Quantum CRC。
 
-画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON][图像字节]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip,mediaType`。直接复用 `openViewer` 解析，不能在浏览器消费 Native Player 的内部二进制头。
+画面 WS 文本消息为 `status/frames/ack/pick/error/extension`；状态和专用扩展保留 `rawJson`。二进制消息格式为 `[4字节 little-endian 元数据长度][UTF-8 JSON]`，元数据含 `hostFrame,source,width,height,flipY,worldToClip`，不带像素。像素在桌面壳（`BTSMTL.WebWorkbench.Shell`）的共享画面区：64 字节头（宽、高、帧槽数、槽头长）加 3 个帧槽，每槽 256 字节槽头（槽序号、采集与写完时刻）加宽×高×4 RGBA；网页按 `source.sequence` 找槽，读完再核对槽序号未被覆盖。普通浏览器没有共享画面区，不显示实时画面；按请求的截图用 `capture`。直接复用 `openViewer` 与 `shell/sharedSurface.ts`，不能在浏览器消费 Native Player 的内部二进制头。
 
 HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.source/transport`、`latestSample` 与实际内容／绑定身份；Live 顶层没有 `rawJson`，原状态文本位于 `player.rawJson`。HTTP 和 WS 的 ACK 也共用读取器，保留 Host 的 `clock/content/source/hostFrame/rawJson`，允许正式空值，不在客户端重建帧号或原始记录。文本与视频均在原 `openViewer` 边界解码；协议字段缺失会清除当前时钟、目标与画面并进入已有错误记录，不继续显示旧样本为当前成功结果。
 
-新 Load 后清除旧画面；接收图像时核对该图自身的 Load、Player build、内容／绑定修订及对应时钟。图片角标显示图片自身采样，不借另一次状态消息的帧号。只有 `frame.jpg` 的图像与 `X-Preview-Source` 或同一 WS 包里的图像与 source 能组成同次画面。
+新 Load 后清除旧画面；接收图像时核对该图自身的 Load、Player build、内容／绑定修订及对应时钟。图片角标显示图片自身采样，不借另一次状态消息的帧号。只有同一 WS 帧消息的 source 与共享画面区里同 `sequence` 且读后未被覆盖的帧槽能组成同次画面。
 
 状态、画面和命令通过同一来源比较：执行身份、构建／Editor程序集、Load、内容、文档／绑定及场景／输入修订均参与；实际时钟和采样序号各自保留，不把连续采样误作新 Load。来源改变、画面连接关闭或新 Load 开始时清除旧时钟、定位目标、回执和画面；旧来源状态及迟到回执不得关联新目标。既有 HTTP 列表刷新只在 WS 尚未打开时供同一选中执行初始化状态，不增轮询或第二次取图。最后命令保留完整原回执；submitted 后到达的同 commandId WS ACK 更新同一条记录，仍需核对实际内容与来源。
 

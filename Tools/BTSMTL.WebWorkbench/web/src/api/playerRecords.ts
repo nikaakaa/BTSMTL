@@ -157,7 +157,7 @@ export function samePreviewLoad(left: PreviewSampleSource | null, right: Preview
 export const clockPosition = (clock: PreviewClock) => clock.position.hostFrame;
 export const positionValue = (value: PreviewPosition) => value.hostFrame;
 export const readPlayerVideoMetadata = object({ hostFrame: text, source: readPreviewSampleSource,
-  width: number, height: number, flipY: boolean, worldToClip: array(number), mediaType: text });
+  width: number, height: number, flipY: boolean, worldToClip: array(number) });
 // 宿主项目附加的播放器状态（如项目调参通道）只在 rawJson 中，由宿主扩展自行解析。
 const viewerPlayerFields = object({ state: choice('idle', 'loading', 'paused', 'playing', 'stepping', 'seeking', 'failed'),
     error: nullable(text), source: nullable(readPreviewSampleSource), adoptedMode: nullable(text),

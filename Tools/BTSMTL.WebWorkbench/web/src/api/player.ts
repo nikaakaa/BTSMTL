@@ -1,7 +1,7 @@
 import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
-  readPlayerVideoMetadata, readPreviewSampleSource, readViewerMessage,
+  readPlayerVideoMetadata, readViewerMessage,
   readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
   readPlayerCommandResult,
   readPlayerCancellation,
@@ -82,12 +82,6 @@ export const playerApi = {
   readCommand: (id: string, commandId: string, signal?: AbortSignal) =>
     decoded(`${live(id)}/commands/${encodeURIComponent(commandId)}`, readPlayerCommandResult, signal),
   capturePath: (id: string, commandId: string) => `${live(id)}/captures/${commandId.replaceAll('-', '')}.png`,
-  latestImage: async (id: string, signal?: AbortSignal) => {
-    const response = await getBlob(`${live(id)}/frame.jpg`, signal);
-    const source = response.headers.get('X-Preview-Source');
-    if (source === null) throw new Error('实时画面缺少 X-Preview-Source 采样身份');
-    return { source: readPreviewSampleSource(JSON.parse(source)), image: await response.blob() };
-  },
 };
 
 export interface ViewerHandlers {
@@ -98,7 +92,7 @@ export interface ViewerHandlers {
   close(event: CloseEvent): void;
 }
 
-// 画面连接：文本为状态、对照、回执；二进制为 [4 字节元数据长度][元数据 JSON][图像]。
+// 画面连接：文本为状态、对照、回执；二进制为 [4 字节元数据长度][画面帧元数据 JSON]，像素在共享画面区。
 export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${location.host}${live(liveId)}/view`);
@@ -113,8 +107,8 @@ export function openViewer(liveId: string, handlers: ViewerHandlers): WebSocket 
         if (!(event.data instanceof ArrayBuffer)) throw new Error('画面连接需要文本或 ArrayBuffer');
         const buffer = event.data;
         const length = new DataView(buffer, 0, 4).getInt32(0, true);
-        const metadata = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
-        packet = { ...metadata, image: new Blob([new Uint8Array(buffer, 4 + length)], { type: metadata.mediaType }) };
+        packet = readPlayerVideoMetadata(JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))));
+        if (packet.source.sequence === null) throw new Error('实时画面帧缺少采样序号，无法在共享画面区取像素');
       }
     } catch (error) { handlers.error(error); return; }
     if ('type' in packet) handlers.message(packet);

@@ -428,6 +428,7 @@ export interface PlayerPick {
 
 export type ViewerMessage = ReturnType<typeof readViewerMessage>;
 
+// 实时画面帧只带采样身份与尺寸；像素在桌面壳共享画面区里按 source.sequence 取。
 export interface VideoFrame {
   hostFrame: string;
   source: PreviewSampleSource;
@@ -435,8 +436,6 @@ export interface VideoFrame {
   height: number;
   flipY: boolean;
   worldToClip: number[];
-  mediaType: string;
-  image: Blob;
 }
 
 export type { PlayerJob, PlayerJobReceipt, StartPlayerJobRequest } from './playerRecords';

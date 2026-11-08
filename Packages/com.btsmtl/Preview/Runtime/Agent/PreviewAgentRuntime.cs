@@ -28,7 +28,7 @@ namespace BTSMTL.Preview
         Camera ActiveCamera();
         // 实时画面开始采集时冻结来源，读回完成后由 SendStreamFrame 连同画面一起发出。
         void FreezeStreamSource(int captureSlot);
-        // 接了共享画面区时，只有项目需要单帧样本（如快预览定位目标）的采集才编码，其余帧只写画面区。
+        // 只有项目按请求要的单帧样本（如快预览定位目标）才编码成图像；实时画面只写共享画面区。
         bool WantsEncodedStreamFrame(int captureSlot);
         void SendStreamFrame(in PreviewEncodedFrame frame);
         void OnShutdown(string reason);
@@ -70,12 +70,12 @@ namespace BTSMTL.Preview
             m_Project = project;
             Connection = connection;
             m_SendText = sendText;
-            m_EncodeStreamFrame = slot => Surface == null || m_Project.WantsEncodedStreamFrame(slot);
+            m_EncodeStreamFrame = m_Project.WantsEncodedStreamFrame;
             Application.runInBackground = true;
         }
 
         PreviewAgentConnection Connection { get; }
-        // 尺寸与当前实时采集一致的共享画面区；未接入或尺寸不符时为 null，画面照旧逐帧编码推送。
+        // 尺寸与当前实时采集一致的共享画面区；未接入或尺寸不符时为 null，此时只发按请求编码的单帧。
         public PreviewSharedSurface Surface =>
             m_Surface != null && m_StreamCapture != null &&
             m_Surface.Width == m_StreamCapture.Width && m_Surface.Height == m_StreamCapture.Height ? m_Surface : null;
@@ -297,7 +297,11 @@ namespace BTSMTL.Preview
         {
             while (m_StreamCapture.TryTakeCompleted(m_EncodeStreamFrame, out PreviewEncodedFrame encoded))
             {
-                try { m_Project.SendStreamFrame(in encoded); }
+                try
+                {
+                    if (encoded.IsEncoded || Surface != null)
+                        m_Project.SendStreamFrame(in encoded);
+                }
                 finally { encoded.Dispose(); }
             }
         }

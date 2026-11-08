@@ -6,8 +6,8 @@ import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '
 import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
-import { liveSurface, playerService, sceneLoadContent, surfaceMediaType } from '../../state/player';
-import { surfaceFrame } from '../../shell/sharedSurface';
+import { liveSurface, playerService, sceneLoadContent } from '../../state/player';
+import { sharedSurfaceAvailable, surfaceFrame } from '../../shell/sharedSurface';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
 import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
@@ -303,7 +303,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     viewerOpen: state.viewerOpen, player: state.live?.player ?? null, failure: state.failure,
   })));
   const [captured, setCaptured] = useState(false);
-  const [decodeFailure, setDecodeFailure] = useState<{ image: Blob; reason: string; entryId: number | null } | null>(null);
+  const [decodeFailure, setDecodeFailure] = useState<{ key: object; reason: string; entryId: number | null } | null>(null);
   const frameSize = useRef({ width: 16, height: 9 });
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
@@ -328,13 +328,14 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       if (decoding) { again = true; return; }
       decoding = true;
       try {
-        // 共享画面区帧：按采样序号取帧槽像素；帧槽已被后续帧覆盖就跳过，等下一帧。
-        const surface = frame.surfaceSequence === null ? null : surfaceFrame(liveSurface, frame.surfaceSequence);
-        if (frame.surfaceSequence !== null && surface === null) return;
-        const image = await panelWindow.createImageBitmap(surface === null ? frame.image
-          : new ImageData(surface.pixels, surface.width, surface.height));
+        // 实时画面按采样序号取共享画面区帧槽像素；帧槽已被后续帧覆盖就跳过，等下一帧。
+        const pixels = frame.pixels;
+        const surface = pixels.kind === 'surface' ? surfaceFrame(liveSurface, pixels.sequence) : null;
+        if (pixels.kind === 'surface' && surface === null) return;
+        const image = await panelWindow.createImageBitmap(pixels.kind === 'image' ? pixels.image
+          : new ImageData(surface!.pixels, surface!.width, surface!.height));
         try {
-          if (!alive || currentPicture()?.image !== frame.image || surface !== null && !surface.intact()) return;
+          if (!alive || currentPicture()?.key !== frame.key || surface !== null && !surface.intact()) return;
           if (canvas.width !== frame.width || canvas.height !== frame.height) {
             canvas.width = frame.width; canvas.height = frame.height;
             if (layer.current) { layer.current.width = frame.width; layer.current.height = frame.height; }
@@ -354,12 +355,12 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
         if (state.runId && drawnKey && state.frameKey === drawnKey && state.frame?.hostFrame === frame.hostFrame)
           reportRendered(panelId, drawnKey);
       } catch (error) {
-        if (!alive || currentPicture()?.image !== frame.image) return;
+        if (!alive || currentPicture()?.key !== frame.key) return;
         clearRendered(panelId);
         canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
         const overlayCanvas = layer.current;
         if (overlayCanvas) overlayCanvas.getContext('2d')!.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        setDecodeFailure({ image: frame.image, reason: `画面解码或绘制失败：${error instanceof Error ? error.message : String(error)}`,
+        setDecodeFailure({ key: frame.key, reason: `画面解码或绘制失败：${error instanceof Error ? error.message : String(error)}`,
           entryId: consoleActions.error('player', error) });
       } finally {
         decoding = false;
@@ -529,10 +530,11 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
     if (camera.current) { playerService.camera(camera.current); camera.current = null; }
   }, [panelWindow]), ready);
 
-  const currentFailure = decodeFailure !== null && currentPicture()?.image === decodeFailure.image ? decodeFailure : null;
+  const currentFailure = decodeFailure !== null && currentPicture()?.key === decodeFailure.key ? decodeFailure : null;
   const readingFailure = view.runId !== null && view.archiveImage === null ? view.failure : null;
   const emptyReason = currentFailure?.reason ?? readingFailure?.reason ?? (view.runId
     ? view.archiveImage === null ? '正在读取档案画面' : view.archiveImage.kind === 'unavailable' ? view.archiveImage.reason : null
+    : !sharedSurfaceAvailable ? '实时画面只在工作台桌面壳里显示'
     : !view.liveId ? '启动或选择一个播放器' : !view.viewerOpen ? '播放器画面连接尚未建立'
     : livePicture !== null ? null : view.player?.error ?? (view.player?.state === 'loading' ? '正在载入所选内容'
       : view.player?.source ? '等待当前内容的实际画面' : '尚无实际载入内容'));
@@ -556,11 +558,12 @@ function queueCamera(camera: { current: CameraCommand | null }, delta: Partial<R
   camera.current = pending;
 }
 
+// 实时画面像素在共享画面区（按采样序号取帧槽），档案画面像素是档案里的图像；key 标识这一帧，换帧即失效。
 type Picture = Omit<VideoFrame, 'worldToClip' | 'source'> & {
+  key: object;
+  pixels: { kind: 'surface'; sequence: string } | { kind: 'image'; image: Blob };
   worldToClip: number[] | null;
   actors: { actorId: string; position: Vec3 }[];
-  // 像素在共享画面区时为该帧采样序号，否则为 null（像素在 image）。
-  surfaceSequence: string | null;
 };
 
 function currentPicture(): Picture | null {
@@ -568,18 +571,16 @@ function currentPicture(): Picture | null {
   if (!state.runId) {
     if (!state.viewerOpen || state.liveId === null) return null;
     const frame = playerService.latestVideo();
-    return frame ? { ...frame, actors: [],
-      surfaceSequence: frame.mediaType === surfaceMediaType ? frame.source.sequence : null } : null;
+    return frame ? { ...frame, key: frame, pixels: { kind: 'surface', sequence: frame.source.sequence! }, actors: [] } : null;
   }
   const image = state.archiveImage;
   if (!image || image.kind === 'unavailable') return null;
   const camera = archiveOverlayReason(image) === null ? image.cameras[0] : null;
   return {
-    hostFrame: image.metadata.sourceHostFrame, image: image.image, width: image.metadata.width, height: image.metadata.height,
-    mediaType: image.metadata.mediaType, flipY: image.metadata.flipY,
+    hostFrame: image.metadata.sourceHostFrame, key: image.image, pixels: { kind: 'image', image: image.image },
+    width: image.metadata.width, height: image.metadata.height, flipY: image.metadata.flipY,
     worldToClip: camera ? new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).toArray() : null,
     actors: image.presentation?.actors.map(actor => ({ actorId: actor.actorId, position: actor.worldRoot.position })) ?? [],
-    surfaceSequence: null,
   };
 }
 
