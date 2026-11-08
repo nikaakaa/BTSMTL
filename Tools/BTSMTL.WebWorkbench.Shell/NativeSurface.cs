@@ -4,15 +4,27 @@ namespace BTSMTL.WebWorkbench.Shell;
 
 // 画面区：后端渲染窗口以它为父窗口；画面区改大小时把直接子窗口铺满，网页浮层所在处挖空。
 // 子窗口属于另一进程，同步等它（SendMessage、MoveWindow）会与它同步回调父窗口互相等死；对子窗口只投递、只异步改位置。
+// 嵌入约定：子窗口在 GWLP_USERDATA 第 0 位声明图形已就绪、第 1 位声明上次改尺寸已完成，两位都置上才改它的尺寸。
 sealed class NativeSurface : Control
 {
-    const int WmActivate = 0x0006;
+    const int WmActivate = 0x0006, GwlpUserData = -21;
+    const long ChildReady = 0b11;
     const uint SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010, SwpAsyncWindowPos = 0x4000;
+
+    readonly System.Windows.Forms.Timer m_PendingFit = new() { Interval = 100 };
 
     public NativeSurface()
     {
         BackColor = Color.Black;
         SetStyle(ControlStyles.Selectable, false);
+        m_PendingFit.Tick += (_, _) => FitChildren();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            m_PendingFit.Dispose();
+        base.Dispose(disposing);
     }
 
     public void Place(Rectangle bounds, Rectangle[] holes)
@@ -51,11 +63,21 @@ sealed class NativeSurface : Control
     {
         if (!IsHandleCreated)
             return;
+        bool pending = false;
         foreach (IntPtr child in Children())
-            if (GetWindowRect(child, out NativeRect rect) &&
-                (rect.Right - rect.Left != ClientSize.Width || rect.Bottom - rect.Top != ClientSize.Height))
-                SetWindowPos(child, IntPtr.Zero, 0, 0, ClientSize.Width, ClientSize.Height,
-                    SwpNoZOrder | SwpNoActivate | SwpAsyncWindowPos);
+        {
+            if (!GetWindowRect(child, out NativeRect rect) ||
+                (rect.Right - rect.Left == ClientSize.Width && rect.Bottom - rect.Top == ClientSize.Height))
+                continue;
+            if ((GetWindowLongPtr(child, GwlpUserData).ToInt64() & ChildReady) != ChildReady)
+            {
+                pending = true;
+                continue;
+            }
+            SetWindowPos(child, IntPtr.Zero, 0, 0, ClientSize.Width, ClientSize.Height,
+                SwpNoZOrder | SwpNoActivate | SwpAsyncWindowPos);
+        }
+        m_PendingFit.Enabled = pending;
     }
 
     List<IntPtr> Children()
@@ -83,6 +105,9 @@ sealed class NativeSurface : Control
 
     [DllImport("user32.dll")]
     static extern IntPtr GetParent(IntPtr window);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
 
     [DllImport("user32.dll")]
     static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
