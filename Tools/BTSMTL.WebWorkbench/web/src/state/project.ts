@@ -1,5 +1,5 @@
 import { authoringApi, authoringOwner, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
-import { workspaceDocumentsApi, type WorkspaceDocumentElement } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
@@ -156,3 +156,12 @@ export const projectActions = {
     return result;
   },
 };
+
+// 作者直接打开的文档种类；曲线、Profile 与变量文档经引用字段到达，不在 Project 与顶栏平铺上千项。
+export const openableDocumentGroups = [['skill', '技能'], ['timeline', '独立 Timeline'], ['graph', '共享图']] as const;
+
+export function documentLabel(document: WorkspaceDocumentInfo) {
+  if (document.kind === 'skill') return document.documentPath.slice(document.documentPath.lastIndexOf('/') + 1);
+  if (document.kind === 'graph') return document.identity.slice(document.identity.lastIndexOf('.') + 1);
+  return `Timeline ${document.identity.slice(0, 8)}`;
+}

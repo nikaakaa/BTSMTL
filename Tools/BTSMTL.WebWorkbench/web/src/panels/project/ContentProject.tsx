@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { isAbort } from '../../api/http';
 import { useAuthoring, useSkillElements } from '../../state/authoring';
-import { projectActions } from '../../state/project';
+import { documentLabel, openableDocumentGroups, projectActions } from '../../state/project';
 import { projectContents, type ContentNode } from '../../state/projectContents';
 import { referenceValueKey, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions } from '../../state/store';
@@ -14,8 +14,29 @@ import { SkillContentCreation, type SkillContentKind } from './SkillContentCreat
 import styles from './project.module.css';
 
 export function ContentProject() {
-  const { documents, target, author } = useAuthoring(useShallow(state => ({ documents: state.documents, target: state.target, author: state.author })));
+  const { documents, target, author, directory } = useAuthoring(useShallow(state => ({
+    documents: state.documents, target: state.target, author: state.author, directory: state.directory })));
   const contents = useMemo(() => projectContents(documents), [documents]);
+  // 照 Unity Project：打开页面就列出工作区可打开的文档；已打开的文档就地展开为它的内容树。
+  const { tree, unopened } = useMemo(() => {
+    const opened = new Map(contents.tree.map(root => [root.target?.kind === 'item' ? root.target.item.owner : root.key, root]));
+    const unopened = new Map<string, string>();
+    const listed = new Set<string>();
+    const groups = openableDocumentGroups.flatMap(([kind, label]) => {
+      const entries = (directory ?? []).filter(document => document.kind === kind);
+      if (!entries.length) return [];
+      const children = entries.map(document => {
+        listed.add(document.documentPath);
+        const root = opened.get(document.documentPath);
+        if (root) return root;
+        const key = `document:${document.documentPath}`;
+        unopened.set(key, document.documentPath);
+        return { key, label: documentLabel(document), description: '单击打开', target: null, children: [], referrers: [] } satisfies ContentNode;
+      });
+      return [{ key: `group:${kind}`, label, description: `${entries.length} 项`, target: null, children, referrers: [] } satisfies ContentNode];
+    });
+    return { tree: [...groups, ...contents.tree.filter(root => !listed.has(root.target?.kind === 'item' ? root.target.item.owner : root.key))], unopened };
+  }, [contents, directory]);
   const composition = target?.kind === 'skill' || target?.kind === 'timeline';
   const elements = useSkillElements(author && composition);
   const field = useReferenceSelection(state => state.field);
@@ -34,7 +55,7 @@ export function ContentProject() {
     if (visible && (!query || matches(node))) rows.push({ node, depth, open });
     for (const child of node.children) visit(child, depth + 1, visible && (open || query !== ''));
   };
-  for (const root of contents.tree) visit(root, 0, true);
+  for (const root of tree) visit(root, 0, true);
   const node = selected === null ? undefined : all.get(selected);
   const owner = node?.target?.kind === 'item' ? node.target.item : node?.target;
   const perform = async (action: () => Promise<void>) => {
@@ -65,7 +86,7 @@ export function ContentProject() {
       {failure && <ErrorLine {...failure} />}
       {Object.entries(documents).filter(([, document]) => document.documentError !== null).map(([key, document]) =>
         <ErrorLine key={key} text={`${key}：${document.documentError}`} entryId={null} />)}
-      {contents.tree.length === 0 ? <Empty text="从顶部选择技能，或新建技能后查看作者内容" /> : <VirtualList className={styles.contentList}
+      {tree.length === 0 ? <Empty text={directory === null ? '正在读取作者目录' : '工作区没有可打开的作者文档'} /> : <VirtualList className={styles.contentList}
         count={rows.length} rowHeight={38} label="作者内容所有权树" render={index => {
           const { node, depth, open } = rows[index];
           const item = node.target?.kind === 'item' ? node.target.item : null;
@@ -81,7 +102,12 @@ export function ContentProject() {
                 else if (item?.kind === 'graph' || item?.kind === 'timeline') writeReferenceDrag(event.dataTransfer, item.kind,
                   { value: item.identity, source: `${item.owner}/${item.file}`, targets: [], associated: [] });
               }}
-              onClick={() => { setSelected(node.key); setCreating(null); if (node.target !== null) void perform(() => projectActions.inspect(node.target!)); }}
+              onClick={() => {
+                setSelected(node.key); setCreating(null);
+                const documentPath = unopened.get(node.key);
+                if (documentPath !== undefined) void perform(() => projectActions.openDocument(documentPath));
+                else if (node.target !== null) void perform(() => projectActions.inspect(node.target!));
+              }}
               onDoubleClick={() => { if (node.target !== null) void perform(() => projectActions.openContent(node.target!)); }}>
               <span>{node.label}</span><small>{node.description}</small>
             </button>

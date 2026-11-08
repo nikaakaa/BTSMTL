@@ -27,7 +27,15 @@ public static class WorkbenchApplication
             await context.Response.WriteAsJsonAsync(new { Error = exception.Message });
         }));
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        // 页面入口每次向 Host 核对，发布新前端后刷新即用新版；带哈希的 assets 仍按原样缓存。
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = file =>
+            {
+                if (file.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+                    file.Context.Response.Headers.CacheControl = "no-cache";
+            }
+        });
         app.MapAnimationResourceApi(builder.Configuration["AnimationLibrary"]);
         return app;
     }

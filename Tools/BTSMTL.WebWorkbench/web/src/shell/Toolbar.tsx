@@ -2,7 +2,7 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
-import { projectActions } from '../state/project';
+import { documentLabel, openableDocumentGroups, projectActions } from '../state/project';
 import { authoringActions, authoringDocument, scopeDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { consoleActions, contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
@@ -78,8 +78,9 @@ function SkillChoice() {
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
-      <Select variant="ghost" label="作者文档" placeholder="选择作者文档" value={target?.documentPath ?? null} disabled={!directory?.length}
-        options={(directory ?? []).map(item => ({ value: item.documentPath, label: item.documentPath }))}
+      <Select variant="ghost" label="作者文档" placeholder="选择技能" value={target?.documentPath ?? null} disabled={!directory?.length}
+        options={(directory ?? []).filter(item => openableDocumentGroups.some(([kind]) => kind === item.kind) || item.documentPath === target?.documentPath)
+          .map(item => ({ value: item.documentPath, label: openableDocumentGroups.some(([kind]) => kind === item.kind) ? documentLabel(item) : item.documentPath }))}
         onChange={documentPath => void projectActions.openDocument(documentPath).catch(error => consoleActions.error('作者文档', error))} />
     </>
   );
