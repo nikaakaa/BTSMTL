@@ -86,7 +86,7 @@ namespace BTSMTL.Preview
                 while (m_Socket.State == WebSocketState.Open)
                 {
                     WebSocketReceiveResult result = await m_Socket.ReceiveAsync(
-                        new ArraySegment<byte>(buffer), m_Cancel.Token);
+                        new ArraySegment<byte>(buffer), m_Cancel.Token).ConfigureAwait(false);
                     if (result.MessageType == WebSocketMessageType.Close)
                         break;
                     message.Write(buffer, 0, result.Count);
@@ -115,10 +115,10 @@ namespace BTSMTL.Preview
             {
                 while (!m_Cancel.IsCancellationRequested)
                 {
-                    await m_SendSignal.WaitAsync(m_Cancel.Token);
+                    await m_SendSignal.WaitAsync(m_Cancel.Token).ConfigureAwait(false);
                     while (m_Outgoing.TryDequeue(out string message))
                         await m_Socket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(message)),
-                            WebSocketMessageType.Text, true, m_Cancel.Token);
+                            WebSocketMessageType.Text, true, m_Cancel.Token).ConfigureAwait(false);
                     PreviewImagePacket image;
                     lock (m_ImageGate)
                     {
@@ -131,7 +131,7 @@ namespace BTSMTL.Preview
                         try
                         {
                             await m_Socket.SendAsync(new ArraySegment<byte>(image.Buffer, 0, image.Length),
-                                WebSocketMessageType.Binary, true, m_Cancel.Token);
+                                WebSocketMessageType.Binary, true, m_Cancel.Token).ConfigureAwait(false);
                         }
                         finally { image.Release(); }
                     }
