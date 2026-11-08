@@ -24,7 +24,6 @@ namespace BTSMTL.Preview
         Task m_Receive;
         Task m_Send;
         PreviewImagePacket m_Image;
-        bool m_ImageRequested;
         int m_State;
 
         public PreviewConnectionState State => (PreviewConnectionState)Volatile.Read(ref m_State);
@@ -48,18 +47,17 @@ namespace BTSMTL.Preview
             m_SendSignal.Release();
         }
 
-        public bool TrySendStreamImage(PreviewImagePacket packet, bool requested)
+        public bool TrySendStreamImage(PreviewImagePacket packet)
         {
             lock (m_ImageGate)
             {
-                if (State != PreviewConnectionState.Connected || m_ImageRequested)
+                if (State != PreviewConnectionState.Connected)
                 {
                     packet.Release();
                     return false;
                 }
                 PreviewImagePacket previous = m_Image;
                 m_Image = packet;
-                m_ImageRequested = requested;
                 previous?.Release();
                 if (previous == null)
                     m_SendSignal.Release();
@@ -126,7 +124,6 @@ namespace BTSMTL.Preview
                             {
                                 image = m_Image;
                                 m_Image = null;
-                                m_ImageRequested = false;
                                 break;
                             }
                         }
@@ -174,7 +171,6 @@ namespace BTSMTL.Preview
                 }
                 m_Image?.Release();
                 m_Image = null;
-                m_ImageRequested = false;
                 stateAfter = State;
             }
             m_Cancel.Cancel();

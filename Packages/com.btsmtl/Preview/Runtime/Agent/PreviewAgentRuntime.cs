@@ -93,8 +93,8 @@ namespace BTSMTL.Preview
         public void SendText(string json) => m_SendText(json);
 
         // 调用即转移已借用封包的所有权，返回 false 时连接已释放。
-        public bool TrySendStreamImage(PreviewImagePacket packet, bool requested) =>
-            Connection.TrySendStreamImage(packet, requested);
+        public bool TrySendStreamImage(PreviewImagePacket packet) =>
+            Connection.TrySendStreamImage(packet);
 
         // 返回 false 表示连接已结束并开始退出，本帧不再做后续处理。
         public bool Update()
