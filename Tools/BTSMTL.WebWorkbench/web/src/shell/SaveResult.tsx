@@ -21,8 +21,6 @@ function submissionErrors(outcome: SaveOutcome): string[] {
     outcome.previewError === null ? null : `预览提交失败：${outcome.previewError}`,
     outcome.jobError === null ? null : `作业提交失败：${outcome.jobError}`,
   ].filter(error => error !== null);
-  if (outcome.compilationState === 'succeeded' && outcome.jobError !== null)
-    return [`作业提交失败：${outcome.jobError}`];
   return [];
 }
 

@@ -515,7 +515,6 @@ export interface CompiledSkillSaveResult {
   documents: WorkspaceDocumentSnapshot[];
   compilation: SkillCompilation;
   preview: PlayerSkillRefreshReceipt | null;
-  jobError: string | null;
 }
 
 export interface InputRevision { planId: string; path: string; revision: string }
@@ -811,7 +810,7 @@ export const authoringApi = {
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
       case 'succeeded': return { ...object({ ...savedContentFields, compilation: readSkillCompilation,
-        jobError: nullable(text), preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
+        preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
     }
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),

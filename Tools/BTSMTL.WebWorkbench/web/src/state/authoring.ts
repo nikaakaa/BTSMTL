@@ -235,7 +235,7 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
-type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation' | 'jobError'>;
+type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
@@ -271,9 +271,9 @@ const previewMessages = {
 function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
   const detail = preview === null ? noPreviewReason : `${previewMessages[preview.stage]}${preview.error === null ? '' : `：${preview.error}`}`;
   return {
-    saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, jobError: save.jobError, preview,
+    saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, preview,
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
-    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}${save.jobError === null ? '' : `；作业提交失败：${save.jobError}`}`, errors: [],
+    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
   };
 }
 
@@ -349,7 +349,7 @@ async function trackPreview(input: {
       receipt = next;
     }
     input.controller.signal.throwIfAborted();
-    if (receipt.stage !== 'adopted' || input.save.jobError !== null) return;
+    if (receipt.stage !== 'adopted') return;
     const live = await playerApi.live(receipt.liveId, input.controller.signal);
     input.controller.signal.throwIfAborted();
     const target = live.previewTarget;
@@ -1029,7 +1029,7 @@ export const authoringActions = {
           lastSave = { ...outcome, saved: true, compilationState: 'failed' };
         } else {
           lastSave = { ...outcome, saved: true, compilationState: 'succeeded', compilation: rejection.compilation,
-            publicationState: 'failed', jobError: null };
+            publicationState: 'failed' };
         }
         if (rejection.content === null) setDocument({ saving: false, lastSave }, target);
         else accept(rejection.documents, rejection.content, lastSave);

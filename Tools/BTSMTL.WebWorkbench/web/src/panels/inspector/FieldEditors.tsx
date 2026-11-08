@@ -398,7 +398,7 @@ function DescriptionStatus({ description, issues }: { description: Description |
 
 function ComputedFields({ fields }: { fields: ComputedField[] }) {
   return fields.length > 0 && <Fold title="推导">
-    {fields.map(field => <Row key={field.fieldId} label={field.displayName ?? field.fieldId} tip="由配置推出，只读">
+    {fields.map(field => <Row key={field.fieldId} label={field.displayName ?? memberLabel(field.fieldId)} tip="由配置推出，只读">
       <span className={styles.readOnly}>{valueText(field.value)}</span>
     </Row>)}
   </Fold>;
@@ -930,7 +930,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   id: string; field: FieldMetadata; item: StoredField; node: JsonObject; owner: ReferenceOwner;
   values: Map<string, JsonValue | undefined>; outputs: DescribedPort[]; onSet: SetValue; onSetFields: SetFields;
 }): ReactNode {
-  const label = field.displayName ?? field.fieldId;
+  const label = field.displayName ?? memberLabel(field.fieldId);
   const path = field.serializedMemberPath;
   const value = getIn(node, path);
   const shape = shapeAt(item, path);

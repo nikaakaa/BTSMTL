@@ -41,11 +41,13 @@ export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.
   ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null &&
     (!job.reply.data.completed || job.reply.data.stage === 'ready' || job.reply.data.cleanupErrors.length > 0));
 
+const quickStageText: Record<string, string> = { planning: '正在推导路线', loading: '路线已生成，正在加载画面', ready: '画面就绪' };
+
 export function quickJobProgress(job: Job): string | null {
   switch (job.kind) {
     case 'starting': return '正在提交推导';
     case 'starting-cancelled': return '等待作业身份以取消';
-    case 'running': return `${job.reply.data.stage} · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
+    case 'running': return `${quickStageText[job.reply.data.stage] ?? job.reply.data.stage} · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
     case 'cancelling': return `取消与清理中 · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
     case 'idle':
     case 'settled':
