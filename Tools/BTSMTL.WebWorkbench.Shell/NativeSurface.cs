@@ -59,10 +59,20 @@ sealed class NativeSurface : Control
         FitChildren();
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        FitChildren();
+    }
+
+    // 画面区隐藏时不改子窗口尺寸：对方在不可见时改尺寸后不再往窗口呈现，显示时再铺满。
     void FitChildren()
     {
-        if (!IsHandleCreated)
+        if (!IsHandleCreated || !Visible)
+        {
+            m_PendingFit.Enabled = false;
             return;
+        }
         bool pending = false;
         foreach (IntPtr child in Children())
         {

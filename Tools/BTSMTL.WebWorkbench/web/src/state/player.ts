@@ -2,7 +2,7 @@ import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
-import { nativeSurfaceAvailable, nativeSurfaceHandle } from '../shell/nativeSurface';
+import { nativeSurfaceAvailable, nativeSurfaceHandle, nativeSurfaceSize } from '../shell/nativeSurface';
 import { consoleActions, getState, initialPlayerTarget, selectedScene, useWorkbench } from './store';
 import { transport } from './transport';
 
@@ -236,7 +236,10 @@ export const playerService = {
     if (!pending) {
       const evenWidth = Math.max(640, Math.round(width / 16) * 16);
       const parentWindow = nativeSurfaceAvailable ? await nativeSurfaceHandle(liveSurface) : undefined;
-      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, width: evenWidth, height: Math.round(evenWidth * 9 / 16), parentWindow });
+      // 嵌入时按画面区实际尺寸启动：播放器启动后第一次被改尺寸会停止往窗口呈现。
+      const size = (nativeSurfaceAvailable ? nativeSurfaceSize(liveSurface) : undefined)
+        ?? { width: evenWidth, height: Math.round(evenWidth * 9 / 16) };
+      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, ...size, parentWindow });
       sessionStorage.setItem(pendingStartKey, pending);
     }
     try {

@@ -30,14 +30,18 @@ export function nativeSurfaceHandle(id: string): Promise<number> {
   });
 }
 
+// 画面区占位元素最近一次的设备像素尺寸；后端按它启动，渲染窗口一开始就与画面区同样大。
+const sizes = new Map<string, { width: number; height: number }>();
+export const nativeSurfaceSize = (id: string) => sizes.get(id);
+
 const overlaySelector = `.${controlStyles.positioner}`;
 const device = (box: DOMRect, scale: number) =>
   ({ left: box.left * scale, top: box.top * scale, right: box.right * scale, bottom: box.bottom * scale });
 
-// 每帧读占位元素与浮层位置，变化才发给壳；卸载或停用时隐藏画面区。
+// 每帧读占位元素与浮层位置，变化才发给壳；停用时仍报位置与尺寸但隐藏画面区，卸载时隐藏。
 export function useNativeSurface(id: string, element: RefObject<HTMLElement | null>, active: boolean) {
   useEffect(() => {
-    if (bridge === null || !active) return;
+    if (bridge === null) return;
     let last = '', frame = 0;
     const tick = () => {
       frame = requestAnimationFrame(tick);
@@ -45,11 +49,15 @@ export function useNativeSurface(id: string, element: RefObject<HTMLElement | nu
       if (target === null) return;
       const scale = window.devicePixelRatio;
       const box = target.getBoundingClientRect();
-      const holes = [...document.querySelectorAll(overlaySelector)].map(overlay => overlay.getBoundingClientRect())
+      const rect = device(box, scale);
+      const sized = box.width > 0 && box.height > 0;
+      if (sized)
+        sizes.set(id, { width: Math.round(rect.right) - Math.round(rect.left), height: Math.round(rect.bottom) - Math.round(rect.top) });
+      const holes = !active ? [] : [...document.querySelectorAll(overlaySelector)].map(overlay => overlay.getBoundingClientRect())
         .filter(overlay => overlay.width > 0 && overlay.right > box.left && overlay.left < box.right
           && overlay.bottom > box.top && overlay.top < box.bottom)
         .map(overlay => device(overlay, scale));
-      const message = { type: 'surface', id, visible: box.width > 0 && box.height > 0, rect: device(box, scale), holes };
+      const message = { type: 'surface', id, visible: active && sized, rect, holes };
       const text = JSON.stringify(message);
       if (text === last) return;
       last = text;
