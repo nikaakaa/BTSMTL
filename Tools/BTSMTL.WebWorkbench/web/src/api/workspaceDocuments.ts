@@ -54,9 +54,9 @@ export const workspaceDocumentsApi = {
     getJson<unknown>(`/api/authoring/documents${query({ kind })}`, signal).then(value => readList(value).documents),
   open: (documentPath: string, signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/content${query({ documentPath })}`, signal).then(value => readOpen(value).document),
-  // 修订未变时宿主只回执未变化，返回 null；变了才带回完整正文。
-  openIfChanged: (documentPath: string, revision: string, signal?: AbortSignal) =>
-    getJson<unknown>(`/api/authoring/documents/content${query({ documentPath, revision })}`, signal)
+  // 修订未变时宿主只回执未变化，返回 null；变了才带回完整正文。带 waitSeconds 时宿主等到修订变化或到时再答复。
+  openIfChanged: (documentPath: string, revision: string, signal?: AbortSignal, waitSeconds?: number) =>
+    getJson<unknown>(`/api/authoring/documents/content${query({ documentPath, revision, wait: waitSeconds })}`, signal)
       .then(value => readChanged(value).document ?? null),
   elements: (kind?: WorkspaceDocumentElement['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),

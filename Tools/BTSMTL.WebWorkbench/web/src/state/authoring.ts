@@ -1066,14 +1066,19 @@ export const authoringActions = {
   },
 
   // 外部修改检测：无本地修改时直接重读，有修改时标出冲突。
-  async checkExternal() {
+  // waitSeconds：宿主等到磁盘修订不同于 seen（缺省为本页修订）或到时再答复；返回本次看到的磁盘修订，
+  // 失败返回 null，被重读打断或没有打开文档返回 undefined。
+  async checkExternal(waitSeconds?: number, seen?: string): Promise<string | null | undefined> {
     const { target, revision } = get();
-    if (!target || !revision) return;
+    if (!target || !revision) return undefined;
+    const known = seen ?? revision;
     const signal = loadController!.signal;
     try {
-      const snapshot = await workspaceDocumentsApi.openIfChanged(target.documentPath, revision, signal);
+      const snapshot = await workspaceDocumentsApi.openIfChanged(target.documentPath, known, signal, waitSeconds);
       signal.throwIfAborted();
-      if (snapshot === null || snapshot.revision === revision) return;
+      // 等待期间本页保存或切换文档：以答复时的当前文档和修订为准。
+      if (snapshot === null) return known;
+      if (get().target?.documentPath !== target.documentPath || snapshot.revision === get().revision) return snapshot.revision;
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
         setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
@@ -1081,8 +1086,11 @@ export const authoringActions = {
           sourceFiles: snapshot.files,
           ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) }, target);
       }
+      return snapshot.revision;
     } catch (error) {
+      if (signal.aborted) return undefined;
       consoleActions.error('作者', error);
+      return null;
     }
   },
 

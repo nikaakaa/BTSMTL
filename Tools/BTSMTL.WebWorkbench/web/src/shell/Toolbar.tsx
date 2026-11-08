@@ -111,10 +111,23 @@ function DocumentAuthoringStatus() {
       externalChange: document.externalChange, saving: documents.some(owner => owner.saving), lastSave: document.lastSave,
       undoDepth: document.undo.length, redoDepth: document.redo.length };
   }));
+  // 外部修改由宿主等到修订变化再答复，答复后接着等；失败时隔 3 秒重试。
   useEffect(() => {
     if (!state.open) return;
-    const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let seen: string | undefined;
+    const next = (delay: number) => { if (!stopped) timer = setTimeout(() => void check(), delay); };
+    const check = async () => {
+      const result = await authoringActions.checkExternal(20, seen);
+      if (result === null) next(3000);
+      else {
+        seen = result;
+        next(result === undefined ? 500 : 0);
+      }
+    };
+    void check();
+    return () => { stopped = true; if (timer !== null) clearTimeout(timer); };
   }, [state.open]);
   if (!state.open) return null;
   const dirty = state.dirty;
