@@ -79,6 +79,8 @@ export type PreviewQuickJobId = PreviewQuickStatus['jobId'];
 export type PreviewQuickFrame = ReturnType<typeof frame>;
 export type PreviewQuickPlayer = ReturnType<typeof player>;
 export type PreviewQuickSeekRequest = Pick<PreviewQuickFrame, 'requestId' | 'sourceRevision' | 'inputRevision'> & { seconds: number };
+export type PreviewQuickRetimeRequest = PreviewQuickSeekRequest & { timelineId: string;
+  clips: { clipId: string; startRaw: number; endRaw: number; clipInRaw?: number }[] };
 export type PreviewQuickStatusReply = ReturnType<typeof readQuickStatusReply>;
 export type PreviewQuickDescriptionReply = ReturnType<typeof readQuickDescriptionReply>;
 export type PreviewQuickEntry = ReturnType<typeof entry>;

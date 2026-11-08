@@ -17,7 +17,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, currentDocument, graphPath, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
+  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
   useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
@@ -39,7 +39,7 @@ import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationLibrary } from '../../state/resources';
 import { acceptsReferenceDrag } from '../../state/referenceSelection';
 import { useTimelineResourceCatalog } from '../../state/resourceScope';
-import { cloneJson, setIn, type JsonObject } from '../../state/skillJson';
+import { cloneJson, fpRaw, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty } from '../../ui/blocks';
 import { ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, Tip, TipGroup, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } from '../../ui/icons';
@@ -215,6 +215,8 @@ interface DragSession {
   activator: { x: number; y: number };
   // 拖动中的指针位置；尚未移动时按拖动位移推算。
   pointer: { x: number; y: number } | null;
+  // 拖动中已把时间候选交给快预览：放回原处或取消时要把文档原时间再交一次。
+  retimed: boolean;
   release(): void;
 }
 
@@ -232,6 +234,9 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
   const drag = useClipEditing(state => state.drag?.panelId === panelId ? state.drag : null);
   const clipGrid = useContext(ClipGridContext);
   const session = useRef<DragSession | null>(null);
+  const resizeRetimed = useRef<string | null>(null);
+  const quickMode = useWorkbench(state => state.previewMode === 'quick');
+  const quickInputTimeline = useQuickInputTimeline();
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
@@ -291,6 +296,18 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
   };
   const publish = (current: DragSession, { ghosts, shift, issue, tip }: ReturnType<typeof preview>) =>
     useClipEditing.setState({ drag: { panelId, ghosts, markers: current.markers.map(item => item.key), shift, invalid: issue !== null, tip } });
+  // 快预览跟手：技能 Timeline 的片段只改时间时把整条 Timeline 的片段起止交给快预览；输入 Timeline、换轨和带标记的平移不走这里。
+  const followQuick = (documentId: string, clips: ClipTimeRaw[]) => {
+    if (!quickMode || documentId === quickInputTimeline) return false;
+    quickPreview.retime(documentId, clips);
+    return true;
+  };
+  const followDrag = (current: DragSession, result: ReturnType<typeof preview>) => {
+    if (result.issue || current.markers.length || (current.edit && !current.multi && current.target !== current.edit.trackId)) return;
+    if (followQuick(current.documentId, clipTimes(current.documentId,
+      { itemIds: current.moving.map(item => item.clip.clip.id), deltaSeconds: result.shift }))) current.retimed = true;
+  };
+  const restoreQuick = (documentId: string) => { followQuick(documentId, clipTimes(documentId)); };
   // 框选中同一次 Timeline 播放里的片段与标记。
   const boxedIn = (segmentId: string) => {
     const boxed = new Set((getState().timelineSelections[panelId] ?? []).map(item => item.box));
@@ -318,6 +335,7 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
     current.release();
     if (result.issue) {
       consoleActions.log('warn', 'Timeline', `${result.issue}，放回原处`);
+      if (current.retimed) restoreQuick(current.documentId);
       return;
     }
     // 平移只按拖动对象的起点吸附，保持时长与间隔。
@@ -325,6 +343,7 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
     if (result.shift || retarget)
       authoringActions.moveItems(current.documentId, [...current.moving.map(item => item.clip.clip.id), ...current.markers.map(item => item.id)],
         result.shift, retarget ? current.target : null);
+    else if (current.retimed) restoreQuick(current.documentId);
   };
   // 拖动框选中的标记：与拖动框选中的片段同样整体平移，标记由 Marker 转交。
   useLayoutEffect(() => {
@@ -338,7 +357,7 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
           documentId: row.timeline.documentId, segmentId: row.segment.id, edit: null,
           start: marker.seconds - row.segment.origin, snap: local => Math.max(0, snapTo(local, step)),
           moving: group.clips, markers: group.markers, multi: true, target: row.track.id,
-          activator: { x, y }, pointer: null, release: () => {},
+          activator: { x, y }, pointer: null, retimed: false, release: () => {},
         });
       },
       move() { if (session.current) publish(session.current, preview(session.current, { x: 0, y: 0 })); },
@@ -380,14 +399,20 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
         documentId: edit.documentId, segmentId: edit.segmentId, edit,
         start: own.clip.startSeconds, snap: local => snapGrid(local, clipGrid(edit.documentId, own.clip.id)),
         moving: [{ clip: own, track: edit.trackId }, ...group.clips.filter(item => item.clip !== own)], markers: group.markers,
-        multi, target: edit.trackId, activator: { x: activator.clientX, y: activator.clientY }, pointer: null, release: () => {},
+        multi, target: edit.trackId, activator: { x: activator.clientX, y: activator.clientY }, pointer: null, retimed: false, release: () => {},
       });
     },
     onDragMove(event) {
-      if (session.current) publish(session.current, preview(session.current, event.delta));
+      const current = session.current;
+      if (!current) return;
+      const result = preview(current, event.delta);
+      publish(current, result);
+      followDrag(current, result);
     },
     onDragCancel() {
-      session.current?.release();
+      const current = session.current;
+      current?.release();
+      if (current?.retimed) restoreQuick(current.documentId);
     },
     onDragEnd(event) {
       if (session.current) finish(session.current, event.delta);
@@ -397,13 +422,25 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
       const invalid = result?.issue ? { panelId, box: result.box } : null;
       const previous = useClipEditing.getState().resize;
       if (previous?.box !== invalid?.box || previous?.panelId !== invalid?.panelId) useClipEditing.setState({ resize: invalid });
+      if (result && !result.issue) {
+        const { documentId, clipId } = result.edit;
+        if (followQuick(documentId, clipTimes(documentId).map(time => time.clipId !== clipId ? time
+          : { ...time, startRaw: fpRaw(result.start), endRaw: fpRaw(result.end),
+            ...(result.clipIn === undefined ? {} : { clipInRaw: fpRaw(result.clipIn) }) })))
+          resizeRetimed.current = documentId;
+      }
     },
     onResizeEnd(event: ResizeEndEvent) {
       const result = resized(event);
+      const retimed = resizeRetimed.current;
+      resizeRetimed.current = null;
       useClipEditing.setState({ resize: null });
-      if (!result?.changed) return;
-      if (result.issue) consoleActions.log('warn', 'Timeline', `${result.issue}，片段恢复原长`);
-      else authoringActions.setClipTime(result.edit.documentId, result.edit.clipId, result.start, result.end, result.clipIn);
+      if (result?.changed && !result.issue)
+        authoringActions.setClipTime(result.edit.documentId, result.edit.clipId, result.start, result.end, result.clipIn);
+      else {
+        if (result?.issue) consoleActions.log('warn', 'Timeline', `${result.issue}，片段恢复原长`);
+        if (retimed !== null) restoreQuick(retimed);
+      }
     },
   });
   if (!drag) return null;

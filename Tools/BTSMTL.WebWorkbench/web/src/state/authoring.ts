@@ -1251,10 +1251,7 @@ export const authoringActions = {
     const ids = new Set(itemIds);
     const source = currentDocument(timelinePath(documentId));
     if (!source) throw new Error(`没有 Timeline ${documentId}`);
-    const shift = Math.max(fpRaw(deltaSeconds), -Math.min(...tracksOf(source).flatMap(track => [
-      ...(track.m_Clips as JsonObject[]).filter(clip => ids.has(clip.m_AuthoringId as string)).map(clip => numberOf(clip.m_StartTimeFPRawValue)),
-      ...markersOf(track).filter(marker => ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)),
-    ])));
+    const shift = moveShift(source, ids, deltaSeconds);
     if (markersCollide(source, ids, shift)) {
       consoleActions.log('warn', '作者', '标记落到同轨已有标记的时刻，标记不能重叠');
       return;
@@ -1350,6 +1347,31 @@ export function markerTimeTaken(documentId: string, trackId: string, seconds: nu
 }
 
 // 一起平移 shift（定点值）的标记是否落到同轨其它标记的时刻；一起移动的标记之间不算。
+// 平移位移（原始定点值）：最早的片段或标记不早于 0。
+function moveShift(source: JsonValue, ids: ReadonlySet<string>, deltaSeconds: number) {
+  return Math.max(fpRaw(deltaSeconds), -Math.min(...tracksOf(source).flatMap(track => [
+    ...(track.m_Clips as JsonObject[]).filter(clip => ids.has(clip.m_AuthoringId as string)).map(clip => numberOf(clip.m_StartTimeFPRawValue)),
+    ...markersOf(track).filter(marker => ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)),
+  ])));
+}
+
+export interface ClipTimeRaw { clipId: string; startRaw: number; endRaw: number; clipInRaw?: number }
+
+// 当前文档里各片段的起止（原始定点值）；moved 给出时按 moveItems 同样的位移平移其中的片段，用于拖动中的快预览时间候选。
+export function clipTimes(documentId: string, moved?: { itemIds: readonly string[]; deltaSeconds: number }): ClipTimeRaw[] {
+  const source = currentDocument(timelinePath(documentId));
+  if (!source) throw new Error(`没有 Timeline ${documentId}`);
+  const ids = new Set(moved?.itemIds ?? []);
+  const shift = moved === undefined ? 0 : moveShift(source, ids, moved.deltaSeconds);
+  return tracksOf(source).flatMap(track => (track.m_Clips as JsonObject[]).map(clip => {
+    const offset = ids.has(clip.m_AuthoringId as string) ? shift : 0;
+    const time: ClipTimeRaw = { clipId: clip.m_AuthoringId as string, startRaw: numberOf(clip.m_StartTimeFPRawValue) + offset,
+      endRaw: numberOf(clip.m_EndTimeFPRawValue) + offset };
+    if (clip.m_ClipInTimeFPRawValue !== undefined) time.clipInRaw = numberOf(clip.m_ClipInTimeFPRawValue);
+    return time;
+  }));
+}
+
 export function markersCollide(document: JsonValue, ids: ReadonlySet<string>, shift: number): boolean {
   return tracksOf(document).some(track => {
     const fixed = new Set(markersOf(track).filter(marker => !ids.has(marker.m_AuthoringId as string)).map(marker => numberOf(marker.m_TimeFPRawValue)));

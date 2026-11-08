@@ -3,12 +3,12 @@ import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickRequest,
   PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
   PreviewQuickAuthoringTarget, PreviewQuickInputSource,
-  PreviewQuickFrame, PreviewQuickPlayer, PreviewQuickSeekRequest,
+  PreviewQuickFrame, PreviewQuickPlayer, PreviewQuickSeekRequest, PreviewQuickRetimeRequest,
 } from '../api/previewQuickRecords';
 import { playerApi } from '../api/player';
 import { shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
 import { authoringTargetKey } from '../api/authoring';
-import { authoringActions, currentDocument, useAuthoring } from './authoring';
+import { authoringActions, currentDocument, useAuthoring, type ClipTimeRaw } from './authoring';
 import type { JsonObject } from './skillJson';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
@@ -339,6 +339,39 @@ async function readPicture(request: PictureRequest, submit: boolean) {
   }
 }
 
+// 拖动片段时的时间候选：同一时刻只有一个请求在途，在途期间只留最新一次，回来后接着发；
+// 播放器按候选改时间、从进度点续算到游标并写出画面，网页像定位一样显示。
+let retimeLatest: { documentId: string; clips: ClipTimeRaw[]; key: string } | null = null;
+let retimeSent: string | null = null;
+let retimeBusy = false;
+
+async function sendRetime() {
+  retimeBusy = true;
+  try {
+    while (retimeLatest !== null && retimeLatest.key !== retimeSent) {
+      const target = retimeLatest;
+      const state = current();
+      const accepted = state.accepted;
+      if (accepted === null || !quickPictureCurrent()) return;
+      retimeSent = target.key;
+      const request: PreviewQuickRetimeRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.sourceRevision,
+        inputRevision: accepted.plan.inputRevision, seconds: state.seconds, timelineId: target.documentId, clips: target.clips };
+      const reply = await previewApi.retimeQuick(accepted.jobId, request);
+      if (current().accepted !== accepted) return;
+      if (!reply.success) {
+        consoleActions.log('warn', '快预览', reply.message ?? reply.code ?? '片段时间候选未被采用', reply.rawJson);
+        continue;
+      }
+      const frame = receiveFrame(reply.data === null ? null : reply.data.frame, accepted, request.requestId, request.seconds);
+      set({ picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
+    }
+  } catch (error) {
+    consoleActions.error('快预览片段时间', error);
+  } finally {
+    retimeBusy = false;
+  }
+}
+
 function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, cancelling: boolean) {
   if (!ownsRequest(request)) return;
   request = resolveFollow(request, reply);
@@ -630,6 +663,15 @@ export const quickPreview = {
     requestPicture();
   },
   retryPicture() { requestPicture(true); },
+  // 拖动或拉伸技能 Timeline 片段时交给播放器的时间候选：clips 为该 Timeline 全部片段的起止（原始定点值）。
+  retime(documentId: string, clips: ClipTimeRaw[]) {
+    const accepted = current().accepted;
+    if (accepted === null || !quickPictureCurrent()) return;
+    const key = JSON.stringify([accepted.jobId, documentId, clips]);
+    if (retimeLatest?.key === key) return;
+    retimeLatest = { documentId, clips, key };
+    if (!retimeBusy) void sendRetime();
+  },
   invalidate(reason: string) {
     descriptionController?.abort();
     set({ description: { kind: 'stale', reason } });
