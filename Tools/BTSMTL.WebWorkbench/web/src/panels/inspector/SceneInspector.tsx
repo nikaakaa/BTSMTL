@@ -15,10 +15,10 @@ import styles from '../panel.module.css';
 // 场景由 Project 场景页或顶栏选择，内容选择是唯一来源。
 export function SceneDetails() {
   const kind = useWorkbench(state => state.contentSelection?.kind);
-  const startBlocked = useWorkbench(() => session.canStart());
+  const startBlocked = useWorkbench(() => session.canStartNewRun());
   return <>
     <Fold title="运行" defaultOpen>
-      <Button tip={startBlocked} disabled={!!startBlocked} onClick={() => void session.startRun()}>新建运行</Button>
+      <Button tip={startBlocked} disabled={!!startBlocked} onClick={() => void session.startNewRun()}>新建运行</Button>
       {startBlocked && <Empty text={startBlocked} />}
       {kind === 'scene' && <RunSources />}
     </Fold>

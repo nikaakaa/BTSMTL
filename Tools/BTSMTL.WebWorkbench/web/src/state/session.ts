@@ -37,10 +37,10 @@ let heartbeat: ReturnType<typeof setInterval> | null = null;
 let requestedFrame = 0;
 let controller: AbortController | null = null;
 
-function selectedStart() {
+function selectedStart(modeId = getState().previewMode) {
   const state = getState();
   if (!state.hostAvailable) return { kind: 'unavailable', reason: '宿主不可用' } as const;
-  const mode = state.host?.modes.find(item => item.id === state.previewMode);
+  const mode = state.host?.modes.find(item => item.id === modeId);
   if (!mode) return { kind: 'unavailable', reason: '先选择预览档位' } as const;
   if (!mode.available || !mode.createsRun) return { kind: 'unavailable', reason: mode.reason } as const;
   const liveId = state.liveId;
@@ -183,6 +183,20 @@ export const session = {
   canStart(): string | null {
     const selected = selectedStart();
     return selected.kind === 'unavailable' ? selected.reason : null;
+  },
+
+  // “新建运行”按钮：按宿主声明的建运行档位检查，点下时把请求档位切过去，不要求先在顶栏选档。
+  canStartNewRun(): string | null {
+    const mode = getState().host?.modes.find(item => item.createsRun);
+    if (!mode) return '宿主没有可新建运行的档位';
+    const selected = selectedStart(mode.id);
+    return selected.kind === 'unavailable' ? selected.reason : null;
+  },
+
+  async startNewRun() {
+    const mode = getState().host?.modes.find(item => item.createsRun);
+    if (mode && getState().previewMode !== mode.id) contentActions.selectPreviewMode(mode.id);
+    await session.startRun();
   },
 
   async cancelRun(jobId: PlayerJobId) {

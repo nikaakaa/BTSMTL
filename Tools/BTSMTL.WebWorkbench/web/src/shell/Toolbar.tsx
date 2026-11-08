@@ -159,7 +159,7 @@ function RunMenu() {
     jobs: state.archiveJobs, runId: state.runId, receipt: state.receipt, inputSource: state.inputSource,
     replays: state.sources?.replays, localAvailable: state.inputCatalog !== null, roots: state.inputTimeline?.roots, inputRoot: state.inputRoot,
   })));
-  const startBlocked = useWorkbench(() => session.canStart());
+  const startBlocked = useWorkbench(() => session.canStartNewRun());
   const current = jobs.find(job => job.jobId === runId);
   const cancellable = runId !== null && (receipt?.stage === 'queued' || receipt?.stage === 'running');
   const inputs: MenuEntry[] = [
@@ -185,7 +185,7 @@ function RunMenu() {
       onSelect: () => runActions.selectInputRoot(inputRootKey(root)),
     })));
   entries.push({ kind: 'separator' },
-    { label: '新建运行', onSelect: () => void session.startRun(), disabled: !!startBlocked, tip: startBlocked });
+    { label: '新建运行', onSelect: () => void session.startNewRun(), disabled: !!startBlocked, tip: startBlocked });
   if (cancellable)
     entries.push({ label: '取消运行', onSelect: () => void session.cancelRun(runId), tip: '请求取消，最终状态以同一作业回执为准' });
   entries.push({ label: '刷新列表', onSelect: () => void session.refresh() });

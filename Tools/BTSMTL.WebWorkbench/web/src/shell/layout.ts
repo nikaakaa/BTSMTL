@@ -11,6 +11,7 @@ import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, type PanelType }
 const storageKey = 'btsmtl.workbench.layout';
 const source = 'layout';
 const inspectorWidth = 372;
+const projectWidth = 280;
 
 let api: DockviewApi | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -18,6 +19,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 interface Saved {
   layout: SerializedDockview;
   graphSelectionVersion?: 1;
+  // 1：Project 已从画面组移到画面左侧的独立一栏。
+  projectColumnVersion?: 1;
 }
 
 const readRevisionGraphKey = tuple(text, text, text, text);
@@ -68,9 +71,9 @@ function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
     const anchor = instances(companion)[0];
     if (anchor) return { referenceGroup: anchor.group, direction: 'within' };
   }
-  if (type === 'graph') {
+  if (type === 'graph' || type === 'resources') {
     const player = panelInfo.player.companions.map(item => instances(item)[0]).find(Boolean);
-    if (player) return { referenceGroup: player.group, direction: 'right' };
+    if (player) return { referenceGroup: player.group, direction: type === 'graph' ? 'right' : 'left' };
   }
   switch (type) {
     case 'inspector': case 'frames': return { direction: 'right' };
@@ -86,8 +89,9 @@ function buildDefault() {
   dockview.clear();
   const player = addInstance('player', 1, undefined);
   addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
-  addInstance('resources', 1, { referencePanel: player, direction: 'within' }, true);
   const timeline = addInstance('timeline', 1, { referencePanel: player, direction: 'below' });
+  // 照 Unity：Project 单独一栏，选场景、技能时画面仍可见。
+  const project = addInstance('resources', 1, { referencePanel: player, direction: 'left' });
   for (const type of ['query', 'console'] as const)
     addInstance(type, 1, { referencePanel: timeline, direction: 'within' }, true);
   const graph = addInstance('graph', 1, { referencePanel: player, direction: 'right' });
@@ -102,14 +106,25 @@ function buildDefault() {
     const width = dockview.width, height = dockview.height;
     if (!width || !height) return false;
     inspector.group.api.setSize({ width: inspectorWidth });
+    project.group.api.setSize({ width: projectWidth });
     player.group.api.setSize({ height: Math.round(height * 0.43) });
-    player.group.api.setSize({ width: Math.round((width - inspectorWidth) * 0.5) });
+    player.group.api.setSize({ width: Math.round((width - inspectorWidth - projectWidth) * 0.5) });
     return true;
   };
   if (!size()) requestAnimationFrame(() => size());
 }
 
 // ── 保存与恢复 ──
+
+// 旧布局把 Project 放在画面组里，看 Project 时画面被遮住；恢复时移到画面左侧，只迁移一次。
+function separateProject() {
+  const project = instances('resources')[0];
+  const player = instances('player')[0];
+  if (!project || !player || project.group !== player.group) return;
+  project.api.moveTo({ group: dock().addGroup({ referenceGroup: player.group, direction: 'left' }) });
+  project.group.api.setSize({ width: projectWidth });
+  player.api.setActive();
+}
 
 // 已退役的面板：对比面板，以及并入 Project 与检查器的内容面板。
 const retiredPanels = new Set(['compare', 'content']);
@@ -181,7 +196,7 @@ function removeRetiredPanels(layout: SerializedDockview) {
   if (layout.activeGroup && removedGroups.has(layout.activeGroup)) delete layout.activeGroup;
 }
 
-function readSaved(): { layout: SerializedDockview } | { reason: string } | null {
+function readSaved(): { layout: SerializedDockview; projectColumn: boolean } | { reason: string } | null {
   const text = localStorage.getItem(storageKey);
   if (!text) return null;
   let saved: Saved;
@@ -207,13 +222,13 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
   }
   for (const [type, count] of counts)
     if (count > 1 && !panelInfo[type].multi) return { reason: `保存的布局中${panelInfo[type].title}出现了 ${count} 个` };
-  return { layout: saved.layout };
+  return { layout: saved.layout, projectColumn: saved.projectColumnVersion === 1 };
 }
 
 function save() {
   saveTimer = null;
   if (!api) return;
-  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON(), graphSelectionVersion: 1 } satisfies Saved));
+  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON(), graphSelectionVersion: 1, projectColumnVersion: 1 } satisfies Saved));
 }
 
 export function requestLayoutSave() {
@@ -241,6 +256,7 @@ export function attachLayout(dockview: DockviewApi) {
   if (saved && 'layout' in saved) {
     try {
       dockview.fromJSON(saved.layout);
+      if (!saved.projectColumn) separateProject();
     } catch (error) {
       consoleActions.log('warn', source, '保存的布局无法恢复，已使用默认布局', error instanceof Error ? error.message : String(error));
       buildDefault();
