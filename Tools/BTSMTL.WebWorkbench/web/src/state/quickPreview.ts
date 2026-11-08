@@ -3,8 +3,10 @@ import type {
   PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickRequest,
   PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
   PreviewQuickAuthoringTarget, PreviewQuickInputSource,
-  PreviewQuickFrame, PreviewQuickSeekRequest,
+  PreviewQuickFrame, PreviewQuickPlayer, PreviewQuickSeekRequest,
 } from '../api/previewQuickRecords';
+import { playerApi } from '../api/player';
+import { shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
 import { authoringTargetKey } from '../api/authoring';
 import { authoringActions, currentDocument, useAuthoring } from './authoring';
 import type { JsonObject } from './skillJson';
@@ -26,7 +28,7 @@ export interface QuickPreviewState {
   description: Description;
   scheme: PreviewQuickInputSource | null;
   job: Job;
-  accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan } | null;
+  accepted: { request: PreviewQuickRequest; jobId: PreviewQuickJobId; plan: PreviewQuickPlan; player: PreviewQuickPlayer } | null;
   // Host 静态推导的路线：作业状态一带计划就采用，不等播放器画面；画面准备失败时仍显示输入推出的 Timeline。
   route: { request: PreviewQuickRequest; plan: PreviewQuickPlan } | null;
   seconds: number;
@@ -77,10 +79,32 @@ interface PictureRequest {
   timer: ReturnType<typeof setTimeout> | null;
   startedAt: number;
 }
-// 宿主已缓存的时刻十几毫秒就回；超过这个时长仍未回的请求在等播放器烘焙，让位给拖动的最新位置。
+// 播放器已烘焙的时刻十几毫秒就回；超过这个时长仍未回的请求在等播放器烘焙到该时刻，让位给拖动的最新位置。
 const PictureSupersedeMs = 100;
 let pictureRequest: PictureRequest | null = null;
 let supersedeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 快预览画面只经桌面壳共享画面区传递：按快预览播放器的进程与画面尺寸建画面区并接给播放器，接好后才定位取帧；
+// 播放器换进程（空闲释放后重开）时重新接入。
+export const quickSurface = 'quick';
+let surfaceTarget: { liveId: string; processId: number; ready: Promise<void> } | null = null;
+
+function connectSurface(player: PreviewQuickPlayer): Promise<void> {
+  if (!sharedSurfaceAvailable) return Promise.reject(new Error('快预览画面经桌面壳共享画面区显示，请在桌面壳中打开工作台'));
+  const processId = player.processId;
+  if (processId === null) return Promise.reject(new Error('快预览播放器进程尚未就绪，无法接入共享画面区'));
+  if (surfaceTarget?.liveId === player.liveId && surfaceTarget.processId === processId) return surfaceTarget.ready;
+  const { liveId, width, height } = player;
+  const ready = (async () => {
+    const { handle, bytes } = await shareSurface(quickSurface, width, height, processId);
+    const result = await playerApi.command(liveId,
+      { type: 'surface', commandId: crypto.randomUUID(), surfaceHandle: handle, surfaceBytes: bytes, width, height });
+    if (result.stage !== 'applied') throw new Error(`快预览播放器未接入共享画面区：${result.ack?.error ?? result.stage}`);
+  })();
+  const target = surfaceTarget = { liveId, processId, ready };
+  ready.catch(() => { if (surfaceTarget === target) surfaceTarget = null; });
+  return ready;
+}
 const current = () => getState().quickPreview;
 const set = (patch: Partial<QuickPreviewState>) => useWorkbench.setState(state => ({ quickPreview: { ...state.quickPreview, ...patch } }));
 export function quickTargetKey(target: PreviewQuickTarget | null) {
@@ -238,6 +262,10 @@ async function readPicture(request: PictureRequest, submit: boolean) {
   if (pictureRequest !== request) return;
   if (!pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
   try {
+    if (submit) {
+      await connectSurface(request.accepted.player);
+      if (pictureRequest !== request || request.controller.signal.aborted) return;
+    }
     const reply = await (submit ? previewApi.seekQuick(request.accepted.jobId, request.target, request.controller.signal)
       : previewApi.quickStatus(request.accepted.jobId, request.controller.signal));
     if (pictureRequest !== request || request.controller.signal.aborted) return;
@@ -283,17 +311,10 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
     const selected = selectedRequest(request) && !cancelling && !status?.cancellationRequested;
     if (cancelling && status !== null && status.cleanupErrors.length > 0) {
       set({ job: { kind: 'cancel-failed', request, reply: { ...reply, data: status }, reason: status.cleanupErrors.join('\n') } });
-    } else if (selected && reply.success && status?.plan) {
-      const accepted = { request, jobId: status.jobId, plan: status.plan };
-      try {
-        const frame = receiveFrame(status.frame, accepted, status.jobId, 0);
-        set({ job: { kind: 'settled', request, reply }, accepted, seconds: frame.requestedSeconds,
-          picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        set({ job: { kind: 'failed', request, reply: { ...reply, data: status }, reason } });
-        consoleActions.error('快预览画面', error);
-      }
+    } else if (selected && reply.success && status?.plan && status.player) {
+      // 就绪只表示播放器开始烘焙；首帧与之后的画面都按时刻定位，由采用触发的取帧接入画面区后请求。
+      set({ job: { kind: 'settled', request, reply }, accepted: { request, jobId: status.jobId, plan: status.plan, player: status.player },
+        seconds: 0, picture: { frame: null, request: { kind: 'idle' } } });
     } else set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' } });
   }
   if (!reply.success && !(cancelling && status?.stage === 'cancelled' && status.cleanupErrors.length === 0))

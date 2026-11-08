@@ -90,7 +90,10 @@ public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQui
 public sealed record PreviewQuickStatus(string JobId, string Stage, bool Completed, bool CancellationRequested,
     string NativeMode, string? AdoptedMode, PreviewQuickSource? Source, int SamplesDone, int SamplesTotal,
     string? OutputDirectory, string? SummaryPath, PreviewQuickPlan? Plan, string? Error,
-    string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame);
+    string[] CleanupErrors, string[] Notes, string[] LogErrors, PreviewQuickFrame? Frame, PreviewQuickPlayer? Player);
+// 快预览播放器：网页按其进程与画面尺寸建共享画面区并接给播放器，画面像素只经画面区传递。
+public sealed record PreviewQuickPlayer(string LiveId, int? ProcessId, int Width, int Height);
+// 像素在快预览共享画面区序号为 SurfaceSequence 的帧槽里；FlipY 为原始 RGBA 按首行在上绘制时的翻转。
 public sealed record PreviewQuickFrame(string JobId, string RequestId, string SourceRevision, string InputRevision,
-    double RequestedSeconds, double SampledSeconds, string SampledRevision, string MediaType, string ImageBase64,
+    double RequestedSeconds, double SampledSeconds, string SampledRevision, string SurfaceSequence,
     [property: JsonRequired] bool FlipY);

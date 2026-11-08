@@ -10,7 +10,7 @@ import { liveSurface, playerService, sceneLoadContent } from '../../state/player
 import { sharedSurfaceAvailable, surfaceFrame } from '../../shell/sharedSurface';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
-import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
+import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, quickSurface, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
 import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -112,28 +112,32 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
       return active && state.picture.frame === snapshot && quickPictureCurrent() &&
         (state.seconds === frame.requestedSeconds || snapshot.playback !== null && state.playback === snapshot.playback);
     };
-    const image = panelWindow.document.createElement('img');
-    image.src = `data:${frame.mediaType};base64,${frame.imageBase64}`;
-    void image.decode().then(() => {
-      if (!ownsFrame()) return;
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext('2d')!;
-      context.save();
+    // 播放器已把该帧写进快预览共享画面区；按回执的帧槽序号取像素，帧槽已被更新的定位覆盖就等那次的回执重画。
+    const surface = surfaceFrame(quickSurface, frame.surfaceSequence);
+    if (surface === null) return () => { active = false; };
+    void panelWindow.createImageBitmap(new ImageData(surface.pixels, surface.width, surface.height)).then(image => {
       try {
-        if (frame.flipY) {
-          context.translate(0, canvas.height);
-          context.scale(1, -1);
+        if (!ownsFrame() || !surface.intact()) return;
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext('2d')!;
+        context.save();
+        try {
+          if (frame.flipY) {
+            context.translate(0, canvas.height);
+            context.scale(1, -1);
+          }
+          context.drawImage(image, 0, 0);
+        } finally {
+          context.restore();
         }
-        context.drawImage(image, 0, 0);
-      } finally {
-        context.restore();
-      }
+        surface.drawn();
+      } finally { image.close(); }
       setDrawn(frame);
       setFailure(null);
     }).catch((error: unknown) => {
       if (!ownsFrame()) return;
-      setFailure({ reason: `技能预览画面解码失败：${error instanceof Error ? error.message : String(error)}`,
+      setFailure({ reason: `技能预览画面绘制失败：${error instanceof Error ? error.message : String(error)}`,
         entryId: consoleActions.error('快预览画面', error) });
     });
     return () => { active = false; };
