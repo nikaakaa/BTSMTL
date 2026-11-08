@@ -53,6 +53,14 @@ public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
 public sealed record PreviewQuickSeekRequest([property: JsonRequired] string RequestId,
     [property: JsonRequired] string SourceRevision, [property: JsonRequired] string InputRevision,
     [property: JsonRequired] double Seconds);
+// 拖技能 Timeline 片段时的时间候选：列出的片段相对已保存文档的新起止（及 ClipIn），定点原始值；
+// 每次都是完整候选，不累加。Host 在内存里换算路线交播放器，先出 Seconds 这一刻的画面。
+public sealed record PreviewQuickClipTime([property: JsonRequired] string ClipId,
+    [property: JsonRequired] long StartRaw, [property: JsonRequired] long EndRaw, long? ClipInRaw = null);
+public sealed record PreviewQuickRetimeRequest([property: JsonRequired] string RequestId,
+    [property: JsonRequired] string SourceRevision, [property: JsonRequired] string InputRevision,
+    [property: JsonRequired] string TimelineId, [property: JsonRequired] PreviewQuickClipTime[] Clips,
+    [property: JsonRequired] double Seconds);
 
 public sealed record PreviewQuickReply<T>(bool Success, bool Pending, string? Code, string? Message, T? Data, string RawJson);
 public sealed record PreviewQuickDocument(string Kind, string DocumentPath, string Identity, string Revision,

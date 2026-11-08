@@ -9,6 +9,7 @@ public interface IPreviewHost<out TSourceCatalog, out TInputCatalog>
     Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, int localPort, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> QuickStatus(string jobId, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> SeekQuick(string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation);
+    Task<PreviewQuickReply<PreviewQuickStatus>> RetimeQuick(string jobId, PreviewQuickRetimeRequest request, CancellationToken cancellation);
     Task<PreviewQuickReply<PreviewQuickStatus>> CancelQuick(string jobId, CancellationToken cancellation);
 }
 
@@ -33,6 +34,8 @@ public static class PreviewApi
             QuickResult(await host.QuickStatus(jobId, cancellation)));
         routes.MapPost("/quick/plans/{jobId}/seek", async (string jobId, PreviewQuickSeekRequest request, CancellationToken cancellation) =>
             QuickResult(await host.SeekQuick(jobId, request, cancellation)));
+        routes.MapPost("/quick/plans/{jobId}/retime", async (string jobId, PreviewQuickRetimeRequest request, CancellationToken cancellation) =>
+            QuickResult(await host.RetimeQuick(jobId, request, cancellation)));
         routes.MapPost("/quick/plans/{jobId}/cancel", async (string jobId, CancellationToken cancellation) =>
             QuickResult(await host.CancelQuick(jobId, cancellation)));
     }
