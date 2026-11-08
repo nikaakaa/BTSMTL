@@ -15,8 +15,9 @@ namespace BTSMTL.Preview
     {
         public PreviewEncodedFrame(int frame, int width, int height, bool flipY,
             Matrix4x4 viewProjection, PreviewImageEncoding encoding, NativeArray<byte> bytes,
-            int captureSlot, Action release)
+            NativeArray<byte> pixels, int captureSlot, long captureTimestamp, Action release)
         {
+            CaptureTimestamp = captureTimestamp;
             Frame = frame;
             Width = width;
             Height = height;
@@ -24,6 +25,7 @@ namespace BTSMTL.Preview
             ViewProjection = viewProjection;
             Encoding = encoding;
             Bytes = bytes;
+            Pixels = pixels;
             CaptureSlot = captureSlot;
             m_Release = release;
         }
@@ -34,13 +36,19 @@ namespace BTSMTL.Preview
         public bool FlipY { get; }
         public Matrix4x4 ViewProjection { get; }
         public PreviewImageEncoding Encoding { get; }
+        // 未要求编码的帧没有 Bytes，只借出读回的 RGBA（行序同 GPU 读回，FlipY 指示上下翻转），Dispose 后归还。
         public NativeArray<byte> Bytes { get; }
+        public NativeArray<byte> Pixels { get; }
+        public bool IsEncoded => Bytes.IsCreated;
         public int CaptureSlot { get; }
+        // 帧末发起采集时的 Stopwatch 计数。
+        public long CaptureTimestamp { get; }
         readonly Action m_Release;
 
         public void Dispose()
         {
-            Bytes.Dispose();
+            if (Bytes.IsCreated)
+                Bytes.Dispose();
             m_Release();
         }
     }
@@ -73,6 +81,8 @@ namespace BTSMTL.Preview
             m_FlipY = SystemInfo.graphicsUVStartsAtTop;
         }
 
+        public int Width => m_Width;
+        public int Height => m_Height;
         public Exception Failure { get; private set; }
         public int Quality { get; set; }
         public bool IsBusy
@@ -108,6 +118,7 @@ namespace BTSMTL.Preview
                 slot.Order = ++m_CaptureOrder;
                 slot.Quality = Quality;
                 slot.ViewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
+                slot.CaptureTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
                 Volatile.Write(ref slot.State, SlotState.Readback);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
                 Graphics.Blit(m_Screen, m_Target);
@@ -120,7 +131,12 @@ namespace BTSMTL.Preview
             return false;
         }
 
-        public bool TryTakeCompleted(out PreviewEncodedFrame frame)
+        static readonly Func<int, bool> s_EncodeAll = _ => true;
+
+        public bool TryTakeCompleted(out PreviewEncodedFrame frame) => TryTakeCompleted(s_EncodeAll, out frame);
+
+        // encode 按采集槽决定本帧是否编码；不编码的帧只借出读回像素。
+        public bool TryTakeCompleted(Func<int, bool> encode, out PreviewEncodedFrame frame)
         {
             CaptureSlot selected = null;
             for (int index = 0; index < m_Slots.Length; index++)
@@ -140,7 +156,12 @@ namespace BTSMTL.Preview
             {
                 NativeArray<byte> bytes;
                 bool flipY;
-                if (m_Encoding == PreviewImageEncoding.Jpeg)
+                if (!encode(selected.Index))
+                {
+                    bytes = default;
+                    flipY = m_FlipY;
+                }
+                else if (m_Encoding == PreviewImageEncoding.Jpeg)
                 {
                     bytes = ImageConversion.EncodeNativeArrayToJPG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height, 0, selected.Quality);
@@ -156,7 +177,7 @@ namespace BTSMTL.Preview
                 }
                 Volatile.Write(ref selected.State, SlotState.Encoded);
                 frame = new PreviewEncodedFrame(selected.Frame, m_Width, m_Height,
-                    flipY, selected.ViewProjection, m_Encoding, bytes, selected.Index, selected.Release);
+                    flipY, selected.ViewProjection, m_Encoding, bytes, selected.Pixels, selected.Index, selected.CaptureTimestamp, selected.Release);
                 return true;
             }
             catch (Exception failure)
@@ -217,6 +238,7 @@ namespace BTSMTL.Preview
             internal AsyncGPUReadbackRequest? Request;
             internal Matrix4x4 ViewProjection;
             internal long Order;
+            internal long CaptureTimestamp;
             internal int Frame;
             internal int Quality;
             internal int State;

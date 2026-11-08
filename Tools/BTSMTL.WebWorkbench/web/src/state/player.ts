@@ -2,7 +2,7 @@ import { ApiError } from '../api/http';
 import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
-import { nativeSurfaceAvailable, nativeSurfaceHandle, nativeSurfaceSize } from '../shell/nativeSurface';
+import { releaseSurface, shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
 import { consoleActions, getState, initialPlayerTarget, selectedScene, useWorkbench } from './store';
 import { transport } from './transport';
 
@@ -12,8 +12,29 @@ import { transport } from './transport';
 
 const source = 'player';
 const pendingStartKey = 'btsmtl.player.pending-start';
-// 常驻播放器在桌面壳里的画面区身份。
+// 常驻播放器在桌面壳里的共享画面区身份；该类画面消息不带图像，像素按采样序号在画面区帧槽里取。
 export const liveSurface = 'live';
+export const surfaceMediaType = 'application/x-btsmtl-surface';
+// 已把画面区接给的播放器与进程；进程变化（换代码重启）或换播放器时重新接入。
+let surfaceTarget: { liveId: string; processId: number } | null = null;
+
+function syncSurface(live: ViewerLive) {
+  if (!sharedSurfaceAvailable || live.processId === null || live.width === null || live.height === null) return;
+  if (surfaceTarget?.liveId === live.liveId && surfaceTarget.processId === live.processId) return;
+  const target = surfaceTarget = { liveId: live.liveId, processId: live.processId };
+  const { width, height } = live;
+  void (async () => {
+    try {
+      const { handle, bytes } = await shareSurface(liveSurface, width, height, target.processId);
+      if (surfaceTarget !== target) return;
+      await command('surface', liveId => liveId === target.liveId ? playerApi.command(liveId,
+        { type: 'surface', commandId: crypto.randomUUID(), surfaceHandle: handle, surfaceBytes: bytes, width, height }) : Promise.resolve(null));
+    } catch (error) {
+      if (surfaceTarget === target) surfaceTarget = null;
+      consoleActions.error(source, error);
+    }
+  })();
+}
 
 let socket: WebSocket | null = null;
 let latest: VideoFrame | null = null;
@@ -43,6 +64,7 @@ function acceptVideo(frame: VideoFrame) {
 
 function acceptStatus(live: ViewerLive) {
   if (getState().liveId !== live.liveId) return;
+  syncSurface(live);
   const previous = getState().live?.player?.source ?? null;
   const sample = live.player?.source ?? null;
   if (sample !== null && !matchesRequestedLoad(sample)) return;
@@ -93,6 +115,10 @@ function close() {
   current?.close();
   requestedLoad = null;
   setVideo(null);
+  if (surfaceTarget !== null) {
+    surfaceTarget = null;
+    releaseSurface(liveSurface);
+  }
 }
 
 async function command(type: string, send: (liveId: string) => Promise<LiveCommandResult | null>) {
@@ -235,11 +261,7 @@ export const playerService = {
     let pending = sessionStorage.getItem(pendingStartKey);
     if (!pending) {
       const evenWidth = Math.max(640, Math.round(width / 16) * 16);
-      const parentWindow = nativeSurfaceAvailable ? await nativeSurfaceHandle(liveSurface) : undefined;
-      // 嵌入时按画面区实际尺寸启动：播放器启动后第一次被改尺寸会停止往窗口呈现。
-      const size = (nativeSurfaceAvailable ? nativeSurfaceSize(liveSurface) : undefined)
-        ?? { width: evenWidth, height: Math.round(evenWidth * 9 / 16) };
-      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, ...size, parentWindow });
+      pending = JSON.stringify({ requestId: crypto.randomUUID(), playerBuildId, width: evenWidth, height: Math.round(evenWidth * 9 / 16) });
       sessionStorage.setItem(pendingStartKey, pending);
     }
     try {

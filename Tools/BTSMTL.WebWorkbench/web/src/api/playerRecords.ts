@@ -180,7 +180,7 @@ export const readLivePlayer = object({
   liveId, buildId, startedAt: text, state: text, exitCode: nullable(number),
   width: nullable(number), height: nullable(number), hello: opaque, player: nullable(viewerPlayer),
   identity: liveIdentity,
-  previewTarget: nullable(previewTarget), viewers: number, latestSample: nullable(readPreviewSampleSource),
+  previewTarget: nullable(previewTarget), viewers: number, processId: nullable(number), latestSample: nullable(readPreviewSampleSource),
 });
 export const readLivePlayers = array(readLivePlayer);
 export const readViewerStatus = object({ type: choice('status'), live: readLivePlayer });

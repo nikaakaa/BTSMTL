@@ -28,6 +28,8 @@ namespace BTSMTL.Preview
         Camera ActiveCamera();
         // 实时画面开始采集时冻结来源，读回完成后由 SendStreamFrame 连同画面一起发出。
         void FreezeStreamSource(int captureSlot);
+        // 接了共享画面区时，只有项目需要单帧样本（如快预览定位目标）的采集才编码，其余帧只写画面区。
+        bool WantsEncodedStreamFrame(int captureSlot);
         void SendStreamFrame(in PreviewEncodedFrame frame);
         void OnShutdown(string reason);
     }
@@ -43,6 +45,8 @@ namespace BTSMTL.Preview
         readonly CancellationTokenSource m_Cancel = new CancellationTokenSource();
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
         PreviewFrameCapture m_StreamCapture;
+        PreviewSharedSurface m_Surface;
+        readonly Func<int, bool> m_EncodeStreamFrame;
         Coroutine m_StreamLoop;
         bool m_CaptureRequested;
         Task m_Close;
@@ -66,10 +70,15 @@ namespace BTSMTL.Preview
             m_Project = project;
             Connection = connection;
             m_SendText = sendText;
+            m_EncodeStreamFrame = slot => Surface == null || m_Project.WantsEncodedStreamFrame(slot);
             Application.runInBackground = true;
         }
 
         PreviewAgentConnection Connection { get; }
+        // 尺寸与当前实时采集一致的共享画面区；未接入或尺寸不符时为 null，画面照旧逐帧编码推送。
+        public PreviewSharedSurface Surface =>
+            m_Surface != null && m_StreamCapture != null &&
+            m_Surface.Width == m_StreamCapture.Width && m_Surface.Height == m_StreamCapture.Height ? m_Surface : null;
         public CancellationToken Cancellation => m_Cancel.Token;
         public bool StreamEnabled { get; set; } = true;
         public bool IsStreaming => StreamEnabled && m_Project.Playback.CanStream;
@@ -179,6 +188,9 @@ namespace BTSMTL.Preview
                     case "stream":
                         ConfigureStream(command);
                         break;
+                    case "surface":
+                        AttachSurface(command);
+                        break;
                     case "input":
                         m_Project.Adapter.InjectInput(command);
                         return;
@@ -218,6 +230,15 @@ namespace BTSMTL.Preview
             }
             if (command.maxFps > 0)
                 m_MaxFps = Mathf.Clamp(command.maxFps, 1f, 60f);
+        }
+
+        // 句柄为 0 表示撤下画面区；新句柄已由壳复制进本进程，归本进程关闭。
+        void AttachSurface(TCommand command)
+        {
+            m_Surface?.Dispose();
+            m_Surface = null;
+            if (command.surfaceHandle != 0)
+                m_Surface = new PreviewSharedSurface(command.surfaceHandle, command.width, command.height, command.surfaceBytes);
         }
 
         // 载入时按面板尺寸准备实时画面采集；批量模式不推流，不建采集。
@@ -274,7 +295,7 @@ namespace BTSMTL.Preview
 
         void SendCompletedStreamFrames()
         {
-            while (m_StreamCapture.TryTakeCompleted(out PreviewEncodedFrame encoded))
+            while (m_StreamCapture.TryTakeCompleted(m_EncodeStreamFrame, out PreviewEncodedFrame encoded))
             {
                 try { m_Project.SendStreamFrame(in encoded); }
                 finally { encoded.Dispose(); }

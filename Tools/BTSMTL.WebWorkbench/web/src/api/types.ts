@@ -361,8 +361,6 @@ export interface StartLivePlayerRequest {
   playerBuildId: string;
   width: number;
   height: number;
-  // 桌面壳画面区的原生窗口句柄；播放器窗口作为它的子窗口显示。
-  parentWindow?: number;
 }
 
 export type LiveCommandResult = ReturnType<typeof readPlayerCommandResult>;
@@ -406,7 +404,9 @@ export type LiveCommand =
   | { type: 'pick'; commandId: string; x: number; y: number }
   | ({ type: 'camera' } & CameraCommand)
   | ({ type: 'input' } & InputCommand)
-  | { type: 'stream'; enabled: boolean; quality?: number; maxFps?: number };
+  | { type: 'stream'; enabled: boolean; quality?: number; maxFps?: number }
+  // 桌面壳共享画面区：句柄已由壳复制进播放器进程，0 表示撤下。
+  | { type: 'surface'; commandId: string; surfaceHandle: number; surfaceBytes: number; width: number; height: number };
 
 export type PlayerState = 'idle' | 'loading' | 'paused' | 'playing' | 'stepping' | 'seeking' | 'failed';
 

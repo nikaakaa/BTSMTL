@@ -43,6 +43,8 @@ namespace BTSMTL.Preview
         public int quality;
         public float maxFps;
         public string path;
+        public long surfaceHandle;
+        public long surfaceBytes;
     }
 
     [Serializable]

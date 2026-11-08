@@ -6,8 +6,8 @@ import { clockPosition, positionValue, samePreviewLoad, type LivePlayer } from '
 import type { PreviewQuickFrame } from '../../api/previewQuickRecords';
 import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, reportRendered } from '../../shell/readiness';
-import { liveSurface, playerService, sceneLoadContent } from '../../state/player';
-import { useNativeSurface } from '../../shell/nativeSurface';
+import { liveSurface, playerService, sceneLoadContent, surfaceMediaType } from '../../state/player';
+import { surfaceFrame } from '../../shell/sharedSurface';
 import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
 import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, type QuickPreviewState } from '../../state/quickPreview';
@@ -308,8 +308,6 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
   useViewportMeasure(stageRef);
-  // 桌面壳里常驻播放器窗口直接盖在画面区上；回看档案时仍显示档案画面。
-  useNativeSurface(liveSurface, stageRef, visible && panelWindow === window && view.liveId !== null && view.runId === null);
 
   // ── 画面：挂载且可见时解码最新一帧并绘制 ──
   useEffect(() => {
@@ -330,9 +328,13 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
       if (decoding) { again = true; return; }
       decoding = true;
       try {
-        const image = await panelWindow.createImageBitmap(frame.image);
+        // 共享画面区帧：按采样序号取帧槽像素；帧槽已被后续帧覆盖就跳过，等下一帧。
+        const surface = frame.surfaceSequence === null ? null : surfaceFrame(liveSurface, frame.surfaceSequence);
+        if (frame.surfaceSequence !== null && surface === null) return;
+        const image = await panelWindow.createImageBitmap(surface === null ? frame.image
+          : new ImageData(surface.pixels, surface.width, surface.height));
         try {
-          if (!alive || currentPicture()?.image !== frame.image) return;
+          if (!alive || currentPicture()?.image !== frame.image || surface !== null && !surface.intact()) return;
           if (canvas.width !== frame.width || canvas.height !== frame.height) {
             canvas.width = frame.width; canvas.height = frame.height;
             if (layer.current) { layer.current.width = frame.width; layer.current.height = frame.height; }
@@ -343,6 +345,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
             if (frame.flipY) { context.translate(0, frame.height); context.scale(1, -1); }
             context.drawImage(image, 0, 0, frame.width, frame.height);
           } finally { context.restore(); }
+          surface?.drawn();
         } finally { image.close(); }
         setDecodeFailure(null);
         frameSize.current = { width: frame.width, height: frame.height };
@@ -556,6 +559,8 @@ function queueCamera(camera: { current: CameraCommand | null }, delta: Partial<R
 type Picture = Omit<VideoFrame, 'worldToClip' | 'source'> & {
   worldToClip: number[] | null;
   actors: { actorId: string; position: Vec3 }[];
+  // 像素在共享画面区时为该帧采样序号，否则为 null（像素在 image）。
+  surfaceSequence: string | null;
 };
 
 function currentPicture(): Picture | null {
@@ -563,7 +568,8 @@ function currentPicture(): Picture | null {
   if (!state.runId) {
     if (!state.viewerOpen || state.liveId === null) return null;
     const frame = playerService.latestVideo();
-    return frame ? { ...frame, actors: [] } : null;
+    return frame ? { ...frame, actors: [],
+      surfaceSequence: frame.mediaType === surfaceMediaType ? frame.source.sequence : null } : null;
   }
   const image = state.archiveImage;
   if (!image || image.kind === 'unavailable') return null;
@@ -573,6 +579,7 @@ function currentPicture(): Picture | null {
     mediaType: image.metadata.mediaType, flipY: image.metadata.flipY,
     worldToClip: camera ? new Matrix4().fromArray(camera.projection).multiply(new Matrix4().fromArray(camera.worldToCamera)).toArray() : null,
     actors: image.presentation?.actors.map(actor => ({ actorId: actor.actorId, position: actor.worldRoot.position })) ?? [],
+    surfaceSequence: null,
   };
 }
 
