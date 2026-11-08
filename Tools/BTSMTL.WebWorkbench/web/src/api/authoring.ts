@@ -46,7 +46,7 @@ export const authoringDirectory = (target: AuthoringTarget) => target.documentPa
 export type QueryAvailability = AuthoringAvailability;
 
 const readAdapterCatalogDomain = object({ adapter: text, domain: text, items: array(object({
-  value: text, display: text, context: text, revision: text, data: opaque,
+  value: text, display: text, context: text, revision: text,
 })) });
 const readAdapterCatalogResponse = object({ revision: text, changed: boolean, domains: nullable(array(readAdapterCatalogDomain)) });
 export type AdapterCatalogDomain = ReturnType<typeof readAdapterCatalogDomain>;

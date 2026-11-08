@@ -91,7 +91,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | `POST /api/authoring/scenarios/{scenario}/recordings` | `{archive,scene,actorId,planId?}` | `{content,input:{planId,path,revision}}`；实际写入／更新录制方案，`archive` 是归档 `archive.json` 路径 |
 | `POST /api/authoring/input-fragments` | `{scene,sceneRevision,actorId,key,operation,startSeconds,endSeconds}` | `{track,clip,graph,tickRate,sceneRevision,availability}`；返回正式 JSON 对象，尚未保存 |
 
-目录、产品与运行配置另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/abilities/runtime/read|configure`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs` 与宿主同名记录。
+目录、产品与运行配置另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/abilities/runtime/read|configure`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs` 与宿主同名记录。`GET /api/authoring/catalog` 的条目只含 `value/display/context/revision`，条目 `data` 由引用、范围与资源对象等单项查询给出；带上已读 `revision` 且未变化时 `changed:false`、`domains:null`。
 
 `input-fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
 

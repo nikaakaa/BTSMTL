@@ -31,11 +31,13 @@ namespace BTSMTL.Authoring.Workspace
         public string Context { get; }
         public string Revision { get; }
         public JToken Data { get; }
-        public JObject ToJson() => new JObject
+        public JObject ToJson(bool data = true)
         {
-            ["value"] = Value, ["display"] = Display, ["context"] = Context,
-            ["revision"] = Revision, ["data"] = Data?.DeepClone()
-        };
+            var result = new JObject { ["value"] = Value, ["display"] = Display, ["context"] = Context, ["revision"] = Revision };
+            if (data)
+                result["data"] = Data?.DeepClone();
+            return result;
+        }
     }
 
     public sealed class AuthoringCatalogResolution
@@ -94,6 +96,7 @@ namespace BTSMTL.Authoring.Workspace
             return resolution.Available ? resolution.Entry : throw new InvalidDataException($"{file}:{pointer}: {resolution.Reason}");
         }
 
+        // 全量目录只列条目身份；条目 data（资源对象、片段元数据等，3C 约 12 MB）由解析、引用与范围查询按单项给出。
         public JObject ToJson(string knownRevision = null)
         {
             bool changed = knownRevision != Revision;
@@ -103,7 +106,7 @@ namespace BTSMTL.Authoring.Workspace
                 ["domains"] = changed ? new JArray(Entries.GroupBy(item => (item.Adapter, item.Domain)).Select(group => new JObject
                 {
                     ["adapter"] = group.Key.Adapter, ["domain"] = group.Key.Domain,
-                    ["items"] = new JArray(group.Select(item => item.ToJson()))
+                    ["items"] = new JArray(group.Select(item => item.ToJson(data: false)))
                 })) : null
             };
         }
