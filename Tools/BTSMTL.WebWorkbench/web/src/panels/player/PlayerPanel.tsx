@@ -39,7 +39,26 @@ export function PlayerPanel() {
   return <PlayerView />;
 }
 
+// 画面区域尺寸是新建运行的画面尺寸；快速预览时同样量取，从快速预览直接新建真实运行。
+function useViewportMeasure(element: RefObject<HTMLDivElement | null>) {
+  const panelWindow = usePanelWindow();
+  const visible = usePanelVisible();
+  useEffect(() => {
+    if (!visible) return;
+    const Observer = (panelWindow as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
+    const observer = new Observer(entries => {
+      const { width, height } = entries[0].contentRect;
+      useWorkbench.setState({ playerViewport: width > 0 && height > 0
+        ? { width: Math.round(width), height: Math.round(height) } : null });
+    });
+    observer.observe(element.current!);
+    return () => { observer.disconnect(); useWorkbench.setState({ playerViewport: null }); };
+  }, [visible, panelWindow, element]);
+}
+
 function QuickPreviewPicture() {
+  const root = useRef<HTMLDivElement>(null);
+  useViewportMeasure(root);
   const state = useWorkbench(current => current.quickPreview);
   const pictureCurrent = useWorkbench(quickPictureCurrent);
   const job = state.job;
@@ -53,13 +72,15 @@ function QuickPreviewPicture() {
       {quickJobCancellable(job) &&
         <Button onClick={() => void quickPreview.cancel()}>{job.kind === 'settled' ? '结束预览' : '取消预览'}</Button>}
     </PanelBar>
-    {reason !== null && <Empty text={reason} />}
-    {quickJobFailure(job) !== null && <Empty text={quickJobFailure(job)!} />}
-    {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案" />}
-    {progress !== null && <div role="status">{progress}</div>}
-    {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
-      <Empty text="快档按当前技能与输入方案自动推导路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
-      : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
+    <div ref={root} className={styles.root}>
+      {reason !== null && <Empty text={reason} />}
+      {quickJobFailure(job) !== null && <Empty text={quickJobFailure(job)!} />}
+      {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案" />}
+      {progress !== null && <div role="status">{progress}</div>}
+      {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
+        <Empty text="快速预览按当前技能与输入方案自动推导路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
+        : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
+    </div>
   </div>;
 }
 
@@ -285,18 +306,7 @@ function Stage({ stageRef, ready, orbit, overlay, stats, captureEnabled }: {
   const frameSize = useRef({ width: 16, height: 9 });
   const overlayDraw = useRef<(frame: Picture) => void>(() => {});
 
-  useEffect(() => {
-    const element = stageRef.current!;
-    if (!visible) return;
-    const Observer = (panelWindow as Window & { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
-    const observer = new Observer(entries => {
-      const { width, height } = entries[0].contentRect;
-      useWorkbench.setState({ playerViewport: width > 0 && height > 0
-        ? { width: Math.round(width), height: Math.round(height) } : null });
-    });
-    observer.observe(element);
-    return () => { observer.disconnect(); useWorkbench.setState({ playerViewport: null }); };
-  }, [visible, panelWindow, stageRef]);
+  useViewportMeasure(stageRef);
 
   // ── 画面：挂载且可见时解码最新一帧并绘制 ──
   useEffect(() => {
