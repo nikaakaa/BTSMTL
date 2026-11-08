@@ -53,7 +53,10 @@ quick 经项目 Host 调用目标 Editor 的原 Native 资产预览，不在 .NE
 | `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root}`，返回真实根、来源文档修订、机器、方案和输入声明。 |
 | `POST /api/preview/quick/plans` | `PreviewQuickRequest{mode:"quick",target,sourceRevision,input,outputDirectory,rangeEndSeconds?,timeoutSeconds?}`，沿原 Native job 开始推导。 |
 | `GET /api/preview/quick/plans/{jobId}` | 读取同一 job 的状态、真实采用档位及计划。 |
+| `POST /api/preview/quick/plans/{jobId}/seek` | `PreviewQuickSeekRequest{requestId,sourceRevision,inputRevision,seconds}`，返回 `PreviewQuickFrame{jobId,requestId,sourceRevision,inputRevision,requestedSeconds,sampledSeconds,sampledRevision,surfaceSequence,flipY}`。 |
 | `POST /api/preview/quick/plans/{jobId}/cancel` | 取消同一 job；请求已发不等于实际取消完成。 |
+
+画面不随响应返回。作业状态的 `player{liveId,processId,width,height}` 指明快预览播放器；网页经宿主壳接该播放器的 `quick` 共享画面区，按 `surfaceSequence` 取槽，`flipY` 为原始 RGBA 按首行在上绘制时是否翻转。没有共享画面区的普通浏览器只能拿到元数据。
 
 `root` 使用正式三类联合，不混用来源：`nativeDocument{path,machine}` 读取原 Native 文档内存；`webEditingView{skill,editingView,machine}` 接收原 `SkillAuthoringEditingView` 的完整 Files／RemovedFiles；`timelineAsset{path,elementId}` 指定真实独立资产及必需元素身份。网页技能根使用当前 AuthoringTarget.name，describe 捕获当前 editingView，start 复用同一捕获及其 sourceRevision、真实 input.scheme／revision；不因未保存而切回磁盘或 Native 文档。`input.points` 与 `conditions` 同时提供或同时省略，覆盖仅作用于本次副本。
 
