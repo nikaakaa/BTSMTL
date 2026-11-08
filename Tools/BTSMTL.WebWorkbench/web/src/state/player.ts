@@ -355,7 +355,8 @@ function loadDefault(state: ReturnType<typeof getState>) {
       void command('play', liveId => playerApi.command(liveId, { type: 'play', commandId: crypto.randomUUID() }));
     return;
   }
-  if (source?.content?.kind === 'scene' && source.content.revision === scene.revision) return;
+  const adoptedContent = live.previewTarget?.content;
+  if (adoptedContent?.kind === 'scene' && adoptedContent.revision === scene.revision) return;
   const key = JSON.stringify([live.liveId, scene.path, scene.revision]);
   if (autoLoaded.has(key)) return;
   autoLoaded.add(key);
