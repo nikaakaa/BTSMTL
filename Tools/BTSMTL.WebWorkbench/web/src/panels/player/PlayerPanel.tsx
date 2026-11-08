@@ -163,6 +163,7 @@ function PlayerView() {
     runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
   })));
   const startBlocked = useWorkbench(() => session.canStartNewRun());
+  const reviewingArchive = state.runId !== null;
   const stage = useRef<HTMLDivElement>(null);
   const [captureBinding, setCaptureBinding] = useState<string | null>(null);
   const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
@@ -185,11 +186,12 @@ function PlayerView() {
   useEffect(() => { setCaptureBinding(null); }, [binding, ready]);
 
   useEffect(() => {
+    if (reviewingArchive) return;
     void playerService.refresh();
     playerService.resumePendingStart();
     const timer = setInterval(() => void playerService.refresh(), 3000);
     return () => clearInterval(timer);
-  }, []);
+  }, [reviewingArchive]);
 
   const scene = selectedScene(state);
   const contentSelection = state.contentSelection;
