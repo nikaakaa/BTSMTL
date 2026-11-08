@@ -17,8 +17,9 @@ export const liveSurface = 'live';
 // 已把画面区接给的播放器与进程；进程变化（换代码重启）或换播放器时重新接入。
 let surfaceTarget: { liveId: string; processId: number } | null = null;
 
+// 进程起来后播放器还要连回宿主才能收命令：等连上再接；接入未被播放器执行就清掉目标，下一次状态重试。
 function syncSurface(live: ViewerLive) {
-  if (!sharedSurfaceAvailable || live.processId === null || live.width === null || live.height === null) return;
+  if (!sharedSurfaceAvailable || live.state !== 'connected' || live.processId === null || live.width === null || live.height === null) return;
   if (surfaceTarget?.liveId === live.liveId && surfaceTarget.processId === live.processId) return;
   const target = surfaceTarget = { liveId: live.liveId, processId: live.processId };
   const { width, height } = live;
@@ -26,8 +27,9 @@ function syncSurface(live: ViewerLive) {
     try {
       const { handle, bytes } = await shareSurface(liveSurface, width, height, target.processId);
       if (surfaceTarget !== target) return;
-      await command('surface', liveId => liveId === target.liveId ? playerApi.command(liveId,
+      const result = await command('surface', liveId => liveId === target.liveId ? playerApi.command(liveId,
         { type: 'surface', commandId: crypto.randomUUID(), surfaceHandle: handle, surfaceBytes: bytes, width, height }) : Promise.resolve(null));
+      if (result?.stage !== 'applied' && surfaceTarget === target) surfaceTarget = null;
     } catch (error) {
       if (surfaceTarget === target) surfaceTarget = null;
       consoleActions.error(source, error);
