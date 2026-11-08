@@ -546,6 +546,8 @@ export interface SkillSaveRequest {
   editingView: SkillEditingView;
   preview: PlayerSkillRefreshTarget | null;
   job?: StartPlayerJobRequest;
+  // 只保存输入方案闭包；包含其他修改时 Host 以 409 not-input-only 拒绝且不写盘。
+  inputsOnly?: boolean;
 }
 
 const readPreviewInputPlan = object({ id: text, path: text, revision: text, schemes: array(text) });

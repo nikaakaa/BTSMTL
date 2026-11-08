@@ -4,6 +4,7 @@ import './shell/theme.css';
 import { applyStateAddress } from './shell/address';
 import { Workbench } from './shell/Workbench';
 import { session } from './state/session';
+import { startInputAutoSave } from './state/inputAutoSave';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('缺少 #root');
@@ -14,4 +15,5 @@ createRoot(root).render(
   </StrictMode>,
 );
 
+startInputAutoSave();
 void session.connect().then(applyStateAddress);

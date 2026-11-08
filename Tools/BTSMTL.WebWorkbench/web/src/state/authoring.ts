@@ -899,7 +899,7 @@ export const authoringActions = {
     setDocument({ product, version: get().version + 1 });
   },
 
-  async save(operation: 'save' | 'compile' | 'apply' = 'save') {
+  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save') {
     const variableResults = await Promise.allSettled(variableRequests.values());
     const variableFailure = variableResults.find(result => result.status === 'rejected');
     if (variableFailure?.status === 'rejected') {
@@ -980,6 +980,7 @@ export const authoringActions = {
         editingView,
         preview: selection?.kind === 'selected' ? selection.target : null,
         job,
+        ...(operation === 'inputs' ? { inputsOnly: true } : {}),
       });
       if (result.compilationState === 'not-required') {
         const preview = result.preview;
@@ -1036,6 +1037,12 @@ export const authoringActions = {
         if (rejection.compilationState === 'not-required') setDocument({ inputRevision: { kind: 'rejected', reason: message } }, target);
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           detail, error.raw].filter(Boolean).join('\n'));
+        return;
+      }
+      if (operation === 'inputs' && error instanceof ApiError && error.status === 409 &&
+        (JSON.parse(error.raw) as { stage?: string }).stage === 'not-input-only') {
+        setDocument({ saving: false }, target);
+        consoleActions.log('info', '作者', `输入未自动保存：${(JSON.parse(error.raw) as { error: string }).error}`, error.raw);
         return;
       }
       if (operation !== 'save' && error instanceof ApiError && error.status === 409) {
