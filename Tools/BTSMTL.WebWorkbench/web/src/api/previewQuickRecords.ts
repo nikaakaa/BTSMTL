@@ -99,5 +99,6 @@ export interface PreviewQuickRequest {
   sourceRevision: string | null;
   input: PreviewQuickInput;
   outputDirectory: string;
+  initialSeconds: number;
   timeoutSeconds?: number;
 }

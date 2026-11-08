@@ -49,7 +49,7 @@ public sealed record PreviewQuickInput([property: JsonRequired] PreviewQuickInpu
 public sealed record PreviewQuickRequest([property: JsonRequired] string Mode,
     [property: JsonRequired] PreviewQuickTarget Target, string? SourceRevision,
     [property: JsonRequired] PreviewQuickInput Input, [property: JsonRequired] string OutputDirectory,
-    double? RangeEndSeconds = null, int TimeoutSeconds = 180);
+    double? RangeEndSeconds = null, int TimeoutSeconds = 180, double InitialSeconds = 0);
 public sealed record PreviewQuickSeekRequest([property: JsonRequired] string RequestId,
     [property: JsonRequired] string SourceRevision, [property: JsonRequired] string InputRevision,
     [property: JsonRequired] double Seconds);
