@@ -116,15 +116,22 @@ namespace BTSMTL.Preview
                 while (!m_Cancel.IsCancellationRequested)
                 {
                     await m_SendSignal.WaitAsync(m_Cancel.Token).ConfigureAwait(false);
-                    while (m_Outgoing.TryDequeue(out string message))
+                    PreviewImagePacket image;
+                    while (true)
+                    {
+                        string message;
+                        lock (m_ImageGate)
+                        {
+                            if (!m_Outgoing.TryDequeue(out message))
+                            {
+                                image = m_Image;
+                                m_Image = null;
+                                m_ImageRequested = false;
+                                break;
+                            }
+                        }
                         await m_Socket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(message)),
                             WebSocketMessageType.Text, true, m_Cancel.Token).ConfigureAwait(false);
-                    PreviewImagePacket image;
-                    lock (m_ImageGate)
-                    {
-                        image = m_Image;
-                        m_Image = null;
-                        m_ImageRequested = false;
                     }
                     if (image != null)
                     {
