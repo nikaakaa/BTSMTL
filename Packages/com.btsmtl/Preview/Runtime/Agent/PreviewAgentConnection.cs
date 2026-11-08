@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace BTSMTL.Preview
 {
@@ -66,7 +69,7 @@ namespace BTSMTL.Preview
 
         public async Task CloseAsync()
         {
-            EndConnection(null);
+            EndConnection(nameof(CloseAsync), null);
             if (m_Receive != null)
                 await Task.WhenAll(m_Receive, m_Send);
             m_Socket.Dispose();
@@ -94,15 +97,15 @@ namespace BTSMTL.Preview
                     m_Incoming.Enqueue(Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length));
                     message.SetLength(0);
                 }
-                EndConnection(null);
+                EndConnection(nameof(Receive), null);
             }
             catch (OperationCanceledException) when (m_Cancel.IsCancellationRequested)
             {
-                EndConnection(null);
+                EndConnection(nameof(Receive), null);
             }
             catch (Exception failure)
             {
-                EndConnection(failure);
+                EndConnection(nameof(Receive), failure);
             }
         }
 
@@ -133,22 +136,27 @@ namespace BTSMTL.Preview
                         finally { image.Release(); }
                     }
                 }
-                EndConnection(null);
+                EndConnection(nameof(Send), null);
             }
             catch (OperationCanceledException) when (m_Cancel.IsCancellationRequested)
             {
-                EndConnection(null);
+                EndConnection(nameof(Send), null);
             }
             catch (Exception failure)
             {
-                EndConnection(failure);
+                EndConnection(nameof(Send), failure);
             }
         }
 
-        void EndConnection(Exception failure)
+        void EndConnection(string origin, Exception failure)
         {
+            PreviewConnectionState stateBefore;
+            PreviewConnectionState stateAfter;
+            bool cancelRequestedBefore;
             lock (m_ImageGate)
             {
+                stateBefore = State;
+                cancelRequestedBefore = m_Cancel.IsCancellationRequested;
                 if (failure == null)
                     Interlocked.CompareExchange(ref m_State, (int)PreviewConnectionState.Closed,
                         (int)PreviewConnectionState.Connected);
@@ -160,8 +168,21 @@ namespace BTSMTL.Preview
                 m_Image?.Release();
                 m_Image = null;
                 m_ImageRequested = false;
+                stateAfter = State;
             }
             m_Cancel.Cancel();
+            string errorCodes = string.Empty;
+            for (Exception error = failure; error != null; error = error.InnerException)
+            {
+                if (error is WebSocketException webSocket)
+                    errorCodes += $" webSocketError={webSocket.WebSocketErrorCode}";
+                if (error is SocketException socket)
+                    errorCodes += $" socketError={socket.SocketErrorCode}";
+            }
+            int failureId = failure == null ? 0 : RuntimeHelpers.GetHashCode(failure);
+            Debug.Log($"[PreviewAgent.ConnectionEnd] origin={origin} stateBefore={stateBefore} stateAfter={stateAfter} " +
+                $"cancelRequestedBefore={cancelRequestedBefore} failureId={failureId}{errorCodes}" +
+                (failure == null ? string.Empty : $"\n{failure}"));
         }
     }
 }

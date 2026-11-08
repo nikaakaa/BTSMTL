@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -316,7 +317,11 @@ namespace BTSMTL.Preview
             }
             m_Close = Connection.CloseAsync();
             await m_Close;
-            Application.Quit(Connection.Failure == null ? 0 : 1);
+            Exception failure = Connection.Failure;
+            int exitCode = failure == null ? 0 : 1;
+            int failureId = failure == null ? 0 : RuntimeHelpers.GetHashCode(failure);
+            Debug.Log($"[PreviewAgent.Quit] state={Connection.State} exitCode={exitCode} failureId={failureId}");
+            Application.Quit(exitCode);
         }
 
         public void Destroy()
