@@ -2,7 +2,7 @@ import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
-import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
+import { consoleActions, getState, isCurrent, runActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
 import { readFrame } from './frames';
 
