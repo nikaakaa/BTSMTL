@@ -80,22 +80,21 @@ function QuickPreviewPicture() {
       {progress !== null && <div role="status">{progress}</div>}
       {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
         <Empty text="在 Timeline 输入轨编辑按键，快速预览自动出画面；拖动游标查看对应画面。" />
-        : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
+        : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} picture={state.picture} />}
     </div>
   </div>;
 }
 
-function QuickPreviewStage({ result, seconds, playback, picture }: {
-  result: NonNullable<QuickPreviewState['accepted']>; seconds: number; playback: QuickPreviewState['playback']; picture: QuickPreviewState['picture'];
+function QuickPreviewStage({ result, seconds, picture }: {
+  result: NonNullable<QuickPreviewState['accepted']>; seconds: number; picture: QuickPreviewState['picture'];
 }) {
   const video = useRef<HTMLCanvasElement>(null);
   const panelWindow = usePanelWindow();
   const visible = usePanelVisible();
   const [drawn, setDrawn] = useState<PreviewQuickFrame | null>(null);
   const [failure, setFailure] = useState<{ reason: string; entryId: number | null } | null>(null);
+  // 每张属于当前作业的画面都画：拖动或播放中目标已经前移时先显示最近取回的画面，跟手由连续取帧保证。
   const snapshot = picture.frame;
-  const ownsTarget = snapshot !== null && (seconds === snapshot.value.requestedSeconds ||
-    snapshot.playback !== null && playback === snapshot.playback);
   useEffect(() => {
     const canvas = video.current!;
     if (!visible || snapshot === null) {
@@ -104,13 +103,11 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
       setFailure(null);
       return;
     }
-    if (!ownsTarget) return;
     let active = true;
     const frame = snapshot.value;
     const ownsFrame = () => {
       const state = getState().quickPreview;
-      return active && state.picture.frame === snapshot && quickPictureCurrent() &&
-        (state.seconds === frame.requestedSeconds || snapshot.playback !== null && state.playback === snapshot.playback);
+      return active && state.picture.frame === snapshot && quickPictureCurrent();
     };
     // 播放器已把该帧写进快预览共享画面区；按回执的帧槽序号取像素，帧槽已被更新的定位覆盖就等那次的回执重画。
     const surface = surfaceFrame(quickSurface, frame.surfaceSequence);
@@ -141,7 +138,7 @@ function QuickPreviewStage({ result, seconds, playback, picture }: {
         entryId: consoleActions.error('快预览画面', error) });
     });
     return () => { active = false; };
-  }, [snapshot, ownsTarget, visible, panelWindow]);
+  }, [snapshot, visible, panelWindow]);
   const request = picture.request;
   return <div className={styles.stage} data-quick-job-id={result.jobId} data-quick-target-seconds={seconds}
     data-quick-frame-request-id={drawn?.requestId} data-quick-sampled-seconds={drawn?.sampledSeconds}

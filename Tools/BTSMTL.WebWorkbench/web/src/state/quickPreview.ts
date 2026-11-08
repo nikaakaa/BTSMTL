@@ -316,7 +316,9 @@ async function readPicture(request: PictureRequest, submit: boolean) {
     const reply = await (submit ? previewApi.seekQuick(request.accepted.jobId, request.target, request.controller.signal)
       : previewApi.quickStatus(request.accepted.jobId, request.controller.signal));
     if (pictureRequest !== request || request.controller.signal.aborted) return;
-    if (!pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
+    // 拖动中目标已经移走：画面仍属当前作业就先采用画出，再按最新位置继续取帧，画面边拖边跟。
+    if (current().accepted !== request.accepted || !quickPictureCurrent()) { pictureRequest = null; requestPicture(true); return; }
+    if (!reply.success && !pictureRequestCurrent(request)) { pictureRequest = null; requestPicture(true); return; }
     if (!reply.success) throw new Error(reply.message ?? reply.code ?? reply.data?.error ?? '快预览取帧失败');
     if (reply.pending) {
       request.timer = setTimeout(() => { request.timer = null; void readPicture(request, false); }, 500);
