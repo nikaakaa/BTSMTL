@@ -23,6 +23,7 @@ namespace BTSMTL.Preview
         void Ack(TCommand command, bool ok, string error);
         void WriteStatus();
         void Fail(string stage, Exception failure, string commandId);
+        bool CanCaptureStreamFrame { get; }
         Camera ActiveCamera();
         // 实时画面开始采集时冻结来源，读回完成后由 SendStreamFrame 连同画面一起发出。
         void FreezeStreamSource(int captureSlot);
@@ -248,7 +249,7 @@ namespace BTSMTL.Preview
                     m_Project.Fail("stream", m_StreamCapture.Failure, null);
                     yield break;
                 }
-                if (!m_CaptureRequested)
+                if (!m_CaptureRequested || !m_Project.CanCaptureStreamFrame)
                     continue;
                 Camera camera = m_Project.ActiveCamera();
                 if (!camera)
