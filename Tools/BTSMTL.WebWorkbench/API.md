@@ -72,7 +72,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
 | `GET /api/authoring/documents` | `kind?` | 文档目录 |
-| `GET /api/authoring/documents/content` | `documentPath` | 文档原文与修订 |
+| `GET /api/authoring/documents/content` | `documentPath`，可选 `revision` | 文档原文与修订；带上已读 `revision` 且未变化时只回 `{success, changed:false, revision}`，不含正文 |
 | `GET /api/authoring/documents/elements` | `kind?` | 文档种类的正式模板 |
 | `POST /api/authoring/documents/editing-view` | `editingView` | 按编辑视图解析后的文档快照，不写盘 |
 | `PUT /api/authoring/documents` | `editingView` | 只保存作者文档；修订冲突拒绝 |

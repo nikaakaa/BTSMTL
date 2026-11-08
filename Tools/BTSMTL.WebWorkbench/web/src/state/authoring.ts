@@ -1071,9 +1071,9 @@ export const authoringActions = {
     if (!target || !revision) return;
     const signal = loadController!.signal;
     try {
-      const snapshot = await workspaceDocumentsApi.open(target.documentPath, signal);
+      const snapshot = await workspaceDocumentsApi.openIfChanged(target.documentPath, revision, signal);
       signal.throwIfAborted();
-      if (snapshot.revision === revision) return;
+      if (snapshot === null || snapshot.revision === revision) return;
       if (hasChanges(target)) setDocument({ externalChange: true }, target);
       else {
         setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,

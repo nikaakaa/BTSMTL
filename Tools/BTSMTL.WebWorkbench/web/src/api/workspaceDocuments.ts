@@ -35,6 +35,7 @@ export type WorkspaceEditingView = {
 
 const readList = object({ success: boolean, documents: array(readDocument) });
 const readOpen = object({ success: boolean, document: readWorkspaceDocumentSnapshot });
+const readChanged = object({ success: boolean, document: optional(readWorkspaceDocumentSnapshot) });
 const readElements = object({ success: boolean, elements: array(readElement) });
 export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
 const readView = readWorkspaceDocumentView;
@@ -53,6 +54,10 @@ export const workspaceDocumentsApi = {
     getJson<unknown>(`/api/authoring/documents${query({ kind })}`, signal).then(value => readList(value).documents),
   open: (documentPath: string, signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/content${query({ documentPath })}`, signal).then(value => readOpen(value).document),
+  // 修订未变时宿主只回执未变化，返回 null；变了才带回完整正文。
+  openIfChanged: (documentPath: string, revision: string, signal?: AbortSignal) =>
+    getJson<unknown>(`/api/authoring/documents/content${query({ documentPath, revision })}`, signal)
+      .then(value => readChanged(value).document ?? null),
   elements: (kind?: WorkspaceDocumentElement['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents/elements${query({ kind })}`, signal).then(value => readElements(value).elements),
   editingView: (editingView: WorkspaceEditingView, signal?: AbortSignal) =>
