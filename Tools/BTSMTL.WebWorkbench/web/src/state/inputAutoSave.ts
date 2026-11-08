@@ -38,17 +38,26 @@ function touchesInputs(): boolean {
 
 export function startInputAutoSave() {
   useAuthoring.subscribe(state => {
-    if (state.target === null) return;
+    const target = state.target;
+    if (target === null) {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      seen = null;
+      return;
+    }
     const document = authoringDocument(state);
-    const key = `${state.target.documentPath}#${document.version}`;
+    const key = `${target.documentPath}#${document.version}`;
     if (key === seen || document.saving) return;
     seen = key;
-    if (!touchesInputs()) return;
     if (timer !== null) clearTimeout(timer);
+    timer = null;
+    if (!touchesInputs()) return;
     timer = setTimeout(() => {
       timer = null;
-      const current = authoringDocument(useAuthoring.getState());
-      if (!current.saving && Object.keys(current.edited).length + current.removed.length > 0) void authoringActions.save('inputs');
+      const active = useAuthoring.getState();
+      if (active.target !== target) return;
+      const current = authoringDocument(active);
+      if (!current.saving && current.version === document.version) void authoringActions.save('inputs');
     }, delay);
   });
 }

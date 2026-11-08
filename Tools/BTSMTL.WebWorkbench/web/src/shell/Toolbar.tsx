@@ -104,7 +104,7 @@ function DocumentAuthoringStatus() {
   const state = useAuthoring(useShallow(current => {
     const document = authoringDocument(current);
     const documents = Object.values(current.documents);
-    return { open: current.author && current.target !== null,
+    return { open: current.author && current.target !== null, documentPath: current.target?.documentPath, revision: document.revision,
       dirty: documents.reduce((count, owner) => count + Object.keys(owner.edited).length + owner.removed.length, 0),
       removed: documents.reduce((count, owner) => count + owner.removed.length, 0),
       variablesWriting: documents.some(owner => owner.variablesWriting),
@@ -113,22 +113,19 @@ function DocumentAuthoringStatus() {
   }));
   // 外部修改由宿主等到修订变化再答复，答复后接着等；失败时隔 3 秒重试。
   useEffect(() => {
-    if (!state.open) return;
-    let stopped = false;
+    if (!state.open || state.revision === null || state.saving) return;
+    const watch = new AbortController();
     let timer: ReturnType<typeof setTimeout> | null = null;
     let seen: string | undefined;
-    const next = (delay: number) => { if (!stopped) timer = setTimeout(() => void check(), delay); };
     const check = async () => {
-      const result = await authoringActions.checkExternal(20, seen);
-      if (result === null) next(3000);
-      else {
-        seen = result;
-        next(result === undefined ? 500 : 0);
-      }
+      const result = await authoringActions.checkExternal({ waitSeconds: 20, seen, signal: watch.signal });
+      if (watch.signal.aborted) return;
+      if (result !== null) seen = result;
+      timer = setTimeout(() => void check(), result === null ? 3000 : result === undefined ? 500 : 0);
     };
     void check();
-    return () => { stopped = true; if (timer !== null) clearTimeout(timer); };
-  }, [state.open]);
+    return () => { watch.abort(); if (timer !== null) clearTimeout(timer); };
+  }, [state.open, state.documentPath, state.revision, state.saving, state.externalChange]);
   if (!state.open) return null;
   const dirty = state.dirty;
   const lastSave = state.lastSave;
