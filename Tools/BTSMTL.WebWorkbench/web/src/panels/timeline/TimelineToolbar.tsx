@@ -90,9 +90,9 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   const notice = useWorkbench(state => {
     if (observationNotice !== null) return observationNotice;
     if (clock.kind === 'quick') return clock.source.kind === 'input' ? '当前输入方案使用路线全局时间'
-      : clock.source.segment === null ? '当前路线没有唯一的推导播放，请选择具体播放、循环与出现次数'
-        : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds) === null ? '当前路线时刻不在所选推导播放区间内'
-          : '推导游标；实际路线与数值需使用真预览';
+      : clock.source.segment === null ? '当前路线里这个 Timeline 播了不止一次，请选择具体是哪一次'
+        : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds) === null ? '当前路线时刻不在所选这次播放的区间内'
+          : '快速预览游标；命中与数值以真预览为准';
     if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
     if (!state.runId) return null;
     if (documentNotice !== null) return documentNotice;
@@ -122,7 +122,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
       {observations.length > 0 && selectCall !== undefined && <Select variant="ghost" label="固定某次实际播放" placeholder="选择并固定实际播放" onChange={selectCall}
         value={observed === null ? null : observationKey(observed)}
         options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
-      {quickPlayback !== null && <Select variant="ghost" label="推导播放" value={quickPlayback.value}
+      {quickPlayback !== null && <Select variant="ghost" label="第几次播放" value={quickPlayback.value}
         options={quickPlayback.options} onChange={quickPlayback.select} />}
       {navigationOrigin !== null && <Button variant="ghost" tip={`${navigationOrigin.ownerName} · ${navigationOrigin.nodeId}`} onClick={() => {
         void projectActions.openGraph({ owner: navigationOrigin.owner, ownerName: navigationOrigin.ownerName, id: navigationOrigin.graphId }, navigationOrigin.nodeId,

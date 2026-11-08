@@ -85,7 +85,7 @@ export function QuickBar() {
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
       <strong>快速预览</strong>
-      {description && roots.length > 0 && <Select variant="ghost" label="推导根" placeholder="选择推导根"
+      {description && roots.length > 0 && <Select variant="ghost" label="入口" placeholder="选择入口图"
         value={state.target?.root == null ? null : quickAuthoringKey(state.target.root.authoring)} disabled={busy}
         options={roots.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
         onChange={value => {
@@ -110,9 +110,9 @@ export function QuickBar() {
       {(failure ?? reason) && <span role={failure ? 'alert' : 'status'} className={styles.reason} title={failure ?? reason ?? undefined}>{failure ?? reason}</span>}
       <span className={styles.grow} />
       {quickJobCancellable(job) && job.kind !== 'settled'
-        ? <Button variant="ghost" onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消推导'}</Button>
-        : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入方案重新推导路线'}
-          onClick={() => quickPreview.rederive()}>重新推导</Button>}
+        ? <Button variant="ghost" onClick={() => void quickPreview.cancel()}>{job.kind === 'cancel-failed' ? '重试取消' : '取消'}</Button>
+        : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新算一遍路线'}
+          onClick={() => quickPreview.rederive()}>重算路线</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       <Button variant="ghost" disabled={runBlocked !== null} tip={runBlocked ?? '切到真实运行，按当前场景和输入方案完整运行一次并录制'}
         onClick={() => void session.startNewRun()}>真实运行一次</Button>
@@ -139,7 +139,7 @@ function QuickDetails() {
   ], [route, plan, status?.jobId]);
   return <div className={styles.details}>
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
-      { displayName: '推导来源', value: description.source === null ? '尚未选根' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
+      { displayName: '内容来源', value: description.source === null ? '尚未选入口' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
         : description.source.documents.some(document => document.hasUnsavedChanges) ? '包含未保存修改' : '已保存作者内容' },
       { displayName: '输入方案修订', value: scheme?.revision ?? '未选择' }]} />}
     {receipt && <div className={styles.notice} role={receipt.success ? 'status' : 'alert'}>
@@ -147,8 +147,8 @@ function QuickDetails() {
         .filter(value => value !== null && value !== undefined && value !== '').map((value, index) => <p key={index}>{value}</p>)}
     </div>}
     {plan && (plan.stopReason || plan.stopDetail) && <p className={styles.notice}>{[plan.stopReason, plan.stopDetail].filter(Boolean).join(' · ')}</p>}
-    {plan && plan.assumptions.length > 0 && <Fold title={`推导假设（${plan.assumptions.length}）`}>{plan.assumptions.map((assumption, index) => <p key={index}>{assumption}</p>)}</Fold>}
-    {plan && <Fold title={`条件与转移建议（${plan.conditions.length} / ${plan.suggestions.length}）`}>
+    {plan && plan.assumptions.length > 0 && <Fold title={`计算时的假设（${plan.assumptions.length}）`}>{plan.assumptions.map((assumption, index) => <p key={index}>{assumption}</p>)}</Fold>}
+    {plan && <Fold title={`用到的条件 / 缺条件没走成的转移（${plan.conditions.length} / ${plan.suggestions.length}）`}>
       {plan.conditions.map(condition => <p key={condition.key}>{condition.label} · {condition.source}{condition.undeterminable ? ' · 无法确定' : ''}</p>)}
       {plan.suggestions.map((suggestion, index) => <div key={index}>
         {suggestion.fromSource ? <LocationButton source={suggestion.fromSource} label={name(suggestion.fromSource, suggestion.fromState)} /> : suggestion.fromState}
@@ -158,7 +158,7 @@ function QuickDetails() {
         <span>{suggestion.start}–{suggestion.end} {plan.clock.unit} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
       </div>)}
     </Fold>}
-    {status && status.notes.length > 0 && <Fold title="推导说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}
+    {status && status.notes.length > 0 && <Fold title="计算说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}
     <Fold title="来源与输出">
       <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
         onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>
@@ -185,9 +185,9 @@ export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   const name = useQuickName();
   if (plan === null) return null;
   const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
-  return <PanelBar wrap><strong>路线推导{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
+  return <PanelBar wrap><strong>路线{stale ? '（已过期）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
     <Button key={index} variant="ghost" tip={`路线区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) locate(segment.stateSource); }}>
-      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻该图没有推导区间</span>}
+      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻路线没有走到这张图</span>}
   </PanelBar>;
 }

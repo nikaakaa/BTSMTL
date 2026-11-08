@@ -1253,7 +1253,7 @@ svg.clipCurves:focus {
   pointer-events: none;
 }
 
-/* 路线条：快档推导或真档实际的一次 Timeline 播放；游标所在的条高亮，缺条件转移用警示色斜纹。 */
+/* 路线条：快档算出或真档实际的一次 Timeline 播放；游标所在的条高亮。 */
 .routeBar {
   position: absolute;
   top: 4px;
@@ -1275,11 +1275,6 @@ svg.clipCurves:focus {
 .routeBar[data-active] {
   border-color: var(--cursor);
   border-bottom-color: var(--cursor);
-}
-
-.routeBar[data-hint] {
-  border-bottom-color: var(--warn);
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 30%, var(--tl-clip)) 0 4px, var(--tl-clip) 4px 8px);
 }
 
 .routeLabel {

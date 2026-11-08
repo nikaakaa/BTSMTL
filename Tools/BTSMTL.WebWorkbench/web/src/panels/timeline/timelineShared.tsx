@@ -45,7 +45,7 @@ export interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
 export interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
 export interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
 export interface RouteGroupRow { kind: 'routeGroup'; id: string; route: RouteView }
-export interface RouteLaneRow { kind: 'routeLane'; id: string; name: string; bars: RouteBar[]; hint: boolean }
+export interface RouteLaneRow { kind: 'routeLane'; id: string; name: string; bars: RouteBar[] }
 export type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow
   | RouteGroupRow | RouteLaneRow;
 

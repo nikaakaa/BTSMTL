@@ -26,7 +26,7 @@ export function Toolbar() {
         <ContentChoice />
         <SkillChoice />
         <AuthoringStatus />
-        {quick ? <Button variant="ghost" tip="在 Timeline 面板选择根与输入方案并推导路线" onClick={() => openPanel('timeline')}>路线</Button> : <RunMenu />}
+        {quick ? <Button variant="ghost" tip="在 Timeline 面板选择入口与输入方案，按输入算出路线" onClick={() => openPanel('timeline')}>路线</Button> : <RunMenu />}
       </div>
       <div className={styles.center}>
         <Transport />{quick ? <QuickCursor /> : <FrameField />}

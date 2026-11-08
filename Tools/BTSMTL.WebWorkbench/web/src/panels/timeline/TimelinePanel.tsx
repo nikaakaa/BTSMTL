@@ -659,12 +659,11 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
       selectionActions.select(null);
     setParams({ focus: documentId, range: segmentRange(segment), call, pin: null, caller: null, origin: null });
   }, [segments, setParams]);
-  // 路线条：单击定位（缺条件转移同时打开该转移），双击进入所播 Timeline 并选中这次推导播放或实际调用。
+  // 路线条：单击定位，双击进入所播 Timeline 并选中这次播放或实际调用。
   const routeActions = useMemo(() => ({
     seek(bar: RouteBar) {
       if (bar.target.kind === 'quick') quickPreview.seek(bar.target.seconds);
       else transport.seekRecord(bar.target.index);
-      if (bar.hint && bar.source) void locateQuickSource(bar.source).catch(error => consoleActions.error('快预览', error));
     },
     open(bar: RouteBar) {
       if (bar.documentId === null) {
@@ -735,11 +734,9 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
         result.push({ kind: 'routeGroup', id: 'route', route });
         if (!collapsed.has('route')) {
           route.lanes.forEach((bars, index) =>
-            result.push({ kind: 'routeLane', id: `route:lane:${index}`, name: route.lanes.length > 1 ? `播放 ${index + 1}` : '播放', bars, hint: false }));
-          route.hints.forEach((bars, index) =>
-            result.push({ kind: 'routeLane', id: `route:hint:${index}`, name: index === 0 ? '缺条件转移' : `缺条件转移 ${index + 1}`, bars, hint: true }));
+            result.push({ kind: 'routeLane', id: `route:lane:${index}`, name: route.lanes.length > 1 ? `播放 ${index + 1}` : '播放', bars }));
         }
-        // 每次推导播放按全局时间摆出所播 Timeline 的轨道，拖动、改长仍写回该 Timeline 的作者内容。
+        // 路线上的每次播放按全局时间摆出所播 Timeline 的轨道，拖动、改长仍写回该 Timeline 的作者内容。
         for (const segment of route.segments) {
           const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
           const titleMatched = !filter || group.title.toLowerCase().includes(filter);
@@ -792,9 +789,9 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
     const seconds = step && !exact ? Math.min(limit, snapTo(raw, step)) : raw;
     if (quickPlan !== null) {
       if (quickInput) quickPreview.seek(seconds);
-      else if (quickSegment === null) consoleActions.log('warn', 'Timeline', '当前路线没有唯一的推导播放，请选择具体播放、循环与出现次数');
+      else if (quickSegment === null) consoleActions.log('warn', 'Timeline', '当前路线里这个 Timeline 播了不止一次，请选择具体是哪一次');
       else if (seconds < quickSegment.localStart || seconds > quickSegment.localEnd)
-        consoleActions.log('warn', 'Timeline', `所选推导区间只覆盖本地 ${timeText(quickSegment.localStart)}—${timeText(quickSegment.localEnd)} 秒，不能跨圈或外推定位`);
+        consoleActions.log('warn', 'Timeline', `所选这次播放只覆盖本地 ${timeText(quickSegment.localStart)}—${timeText(quickSegment.localEnd)} 秒，不能跨圈或外推定位`);
       else quickPreview.seek(quickSegment.start + seconds - quickSegment.localStart);
       return;
     }
@@ -1882,13 +1879,12 @@ const RouteLaneLine = memo(function RouteLaneLine({ row, nest }: { row: RouteLan
     : bars.filter(bar => bar.start <= seconds && seconds < bar.end).map(bar => bar.key).join('\n'));
   const current = new Set(active.split('\n'));
   return <Line id={row.id} nest={nest} headClass={styles.trackHead} head={
-    <TrackHead kind={row.hint ? 'in' : 'act'} name={row.name}
-      tip={row.hint ? '推导中缺条件而未走成的转移；单击定位并打开该转移' : '单击定位到该次播放 · 双击进入所播 Timeline'} />
+    <TrackHead kind="act" name={row.name} tip="单击定位到该次播放 · 双击进入所播 Timeline" />
   }>
     {bars.map(bar => {
       const left = valueToPixels(bar.start - range.start), width = Math.max(2, valueToPixels(bar.end - bar.start));
       return <Tip key={bar.key} name={bar.label} content={bar.tip}>
-        <button className={styles.routeBar} data-hint={bar.hint || undefined} data-active={current.has(bar.key) || undefined}
+        <button className={styles.routeBar} data-active={current.has(bar.key) || undefined}
           style={{ left, width }} onClick={() => actions.seek(bar)} onDoubleClick={() => actions.open(bar)}>
           {width > clipLabelMinWidth + clipLabelPadding * 2 && <span className={styles.routeLabel} data-name>{bar.label}</span>}
         </button>

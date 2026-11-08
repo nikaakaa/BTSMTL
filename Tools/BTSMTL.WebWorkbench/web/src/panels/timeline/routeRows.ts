@@ -1,4 +1,4 @@
-// 路线视图的动态轨道：输入方案时间即路线全局时间。快档按推导路线、真档按已读档案帧的实际播放记录，
+// 路线视图的动态轨道：输入方案时间即路线全局时间。快档按 Host 算出的路线、真档按已读档案帧的实际播放记录，
 // 拼成路线条（重叠的播放分到多条）；快档的每次播放再按“全局＝起点＋本地－本地起点”摆出所播 Timeline 的轨道，可直接编辑。
 
 import type { PreviewQuickLocation, PreviewQuickPlan } from '../../api/previewQuickRecords';
@@ -17,10 +17,9 @@ export interface RouteBar {
   // 单击定位：快档为路线秒数，真档为该次播放首个已读录制帧。
   target: { kind: 'quick'; seconds: number } | { kind: 'record'; index: number };
   source: PreviewQuickLocation | null;
-  // 双击进入所播 Timeline 时选中的推导播放或实际调用。
+  // 双击进入所播 Timeline 时选中的这次播放或实际调用。
   quickIndex: number | null;
   observation: TimelineObservation | null;
-  hint: boolean;
 }
 
 export interface RouteView {
@@ -30,7 +29,6 @@ export interface RouteView {
   tip: string;
   notice: string | null;
   lanes: RouteBar[][];
-  hints: RouteBar[][];
   segments: TimelineSegment[];
 }
 
@@ -64,24 +62,14 @@ export function quickRoute(plan: PreviewQuickPlan, timelines: AuthorTimeline[], 
         `播放 ${segment.playback} · 循环 ${segment.cycle} · 出现 ${segment.occurrence}${segment.playbackCompleted ? ' · 播放完成' : ''}` +
         `${segment.callerClipId ? `\n调用方播放 ${segment.callerPlayback} · Clip ${segment.callerClipId}` : ''}\n单击定位 · 双击进入 Timeline`,
       documentId: timeline ? timeline.documentId : null, target: { kind: 'quick', seconds: segment.start },
-      source: segment.stateSource, quickIndex: index, observation: null, hint: false,
-    };
-  });
-  const hints = plan.suggestions.map((suggestion, index): RouteBar => {
-    const transition = `${stateName(suggestion.fromSource, suggestion.fromState)} → ${stateName(suggestion.toSource, suggestion.toState)}`;
-    return {
-      key: `hint:${index}`, start: suggestion.start, end: Math.max(suggestion.end, suggestion.start), hint: true, label: transition,
-      tip: `${transition}\n${suggestion.transition}\n${range(suggestion.start, suggestion.end)}\n` +
-        `缺少条件：${suggestion.missing.map(condition => condition.label).join('、') || '无'}\n单击定位并打开该转移`,
-      documentId: null, target: { kind: 'quick', seconds: suggestion.start }, source: suggestion.transitionSource,
-      quickIndex: null, observation: null,
+      source: segment.stateSource, quickIndex: index, observation: null,
     };
   });
   return {
-    kind: 'quick', title: '推导路线', meta: `${plan.status} · ${timeText(plan.duration)} ${plan.clock.unit}`,
-    tip: ['按正式内容与输入方案静态推导；实际数值与命中以真档为准', plan.stopReason, plan.stopDetail, ...plan.assumptions].filter(Boolean).join('\n'),
-    notice: stale ? '内容或输入已变化，正在按当前内容重推；新路线采用前保留上一份' : bars.length === 0 ? '路线没有播放任何 Timeline' : null,
-    lanes: pack(bars), hints: pack(hints), segments,
+    kind: 'quick', title: '路线', meta: `${plan.status} · ${timeText(plan.duration)} ${plan.clock.unit}`,
+    tip: ['按技能内容和输入轨直接算出依次播放哪些 Timeline，不跑物理；命中与数值以真预览为准', plan.stopReason, plan.stopDetail, ...plan.assumptions].filter(Boolean).join('\n'),
+    notice: stale ? '内容或输入已变化，正在重算；新路线出来前保留上一份' : bars.length === 0 ? '路线没有播放任何 Timeline' : null,
+    lanes: pack(bars), segments,
   };
 }
 
@@ -118,7 +106,7 @@ export function realRoute(frames: RouteFrame[], samples: InputSample[], timeline
           key: `real:${key}:${sample.index}`, start: sample.seconds, end: sample.seconds + step,
           label: names.get(playback.documentId) ?? playback.documentId.slice(0, 8), tip: '',
           documentId: names.has(playback.documentId) ? playback.documentId : null, target: { kind: 'record', index: sample.index },
-          source: null, quickIndex: null, observation: { call: playback.call, domain: playback.domain }, hint: false,
+          source: null, quickIndex: null, observation: { call: playback.call, domain: playback.domain },
         },
         last: sample.index, localStart: playback.cursorSeconds, localEnd: playback.cursorSeconds, status: playback.status,
         domains: new Set([playback.domain]),
@@ -135,6 +123,6 @@ export function realRoute(frames: RouteFrame[], samples: InputSample[], timeline
     kind: 'real', title: '实际路线', meta: `已读 ${read} 帧 · ${spans.length} 次播放`,
     tip: '按已读档案帧的实际播放记录拼出，随游标分页读取；未读的帧不外推',
     notice: read === 0 ? '尚未读到带输入时间的档案帧' : spans.length === 0 ? '已读帧内没有 Timeline 播放记录' : null,
-    lanes: pack(spans.map(span => span.bar)), hints: [], segments: [],
+    lanes: pack(spans.map(span => span.bar)), segments: [],
   };
 }

@@ -41,11 +41,11 @@ export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.
   ((job.kind === 'failed' || job.kind === 'cancel-failed') && job.reply !== null &&
     (!job.reply.data.completed || job.reply.data.stage === 'ready' || job.reply.data.cleanupErrors.length > 0));
 
-const quickStageText: Record<string, string> = { planning: '正在推导路线', loading: '路线已生成，正在加载画面', ready: '画面就绪' };
+const quickStageText: Record<string, string> = { planning: '正在计算路线', loading: '路线已生成，正在加载画面', ready: '画面就绪' };
 
 export function quickJobProgress(job: Job): string | null {
   switch (job.kind) {
-    case 'starting': return '正在提交推导';
+    case 'starting': return '正在提交路线计算';
     case 'starting-cancelled': return '等待作业身份以取消';
     case 'running': return `${quickStageText[job.reply.data.stage] ?? job.reply.data.stage} · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
     case 'cancelling': return `取消与清理中 · ${job.reply.data.samplesDone}/${job.reply.data.samplesTotal}`;
@@ -332,7 +332,7 @@ export function quickBounds(plan: PreviewQuickPlan) {
 }
 
 function playbackReason() {
-  return quickPlan() === null ? '先推导路线' : quickPlanStale() ? '路线已过期，请按当前内容与输入重新推导' : null;
+  return quickPlan() === null ? '先计算路线' : quickPlanStale() ? '路线已过期，请按当前内容与输入重新计算' : null;
 }
 
 function advancePlayback(now: number) {
@@ -356,7 +356,7 @@ function preparation() {
   if (state.description.kind !== 'ready') return { kind: 'unavailable', reason: state.description.kind === 'failed' || state.description.kind === 'stale'
     ? state.description.reason : state.description.kind === 'loading' ? '正在读取来源与输入方案' : '先读取快预览来源' } as const;
   const target = state.target;
-  if (target === null || target.root === null) return { kind: 'unavailable', reason: '选择本次推导的作者文档和图或 Timeline 入口' } as const;
+  if (target === null || target.root === null) return { kind: 'unavailable', reason: '选择作者文档和入口图或 Timeline' } as const;
   const data = state.description.reply.data;
   if (data.source === null || data.root === null) return { kind: 'unavailable', reason: '宿主没有返回当前根的来源与输入方案' } as const;
   if (!matchesEditingView(target)) return { kind: 'unavailable', reason: '网页编辑内容已变化，请重新读取来源' } as const;

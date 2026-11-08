@@ -79,7 +79,7 @@ function QuickPreviewPicture() {
       {state.description.kind === 'loading' && <Empty text="正在读取当前作者来源与输入方案" />}
       {progress !== null && <div role="status">{progress}</div>}
       {accepted === null ? reason === null && state.description.kind !== 'loading' && progress === null && quickJobFailure(job) === null &&
-        <Empty text="快速预览按当前技能与输入方案自动推导路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
+        <Empty text="快速预览按当前技能与输入轨自动算出路线；在 Timeline 输入轨编辑输入，拖动游标查看对应画面。" />
         : <QuickPreviewStage key={accepted.jobId} result={accepted} seconds={state.seconds} playback={state.playback} picture={state.picture} />}
     </div>
   </div>;
