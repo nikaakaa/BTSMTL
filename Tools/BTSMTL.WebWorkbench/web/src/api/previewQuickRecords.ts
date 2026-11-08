@@ -77,8 +77,6 @@ export type PreviewQuickFrame = ReturnType<typeof frame>;
 export type PreviewQuickSeekRequest = Pick<PreviewQuickFrame, 'requestId' | 'sourceRevision' | 'inputRevision'> & { seconds: number };
 export type PreviewQuickStatusReply = ReturnType<typeof readQuickStatusReply>;
 export type PreviewQuickDescriptionReply = ReturnType<typeof readQuickDescriptionReply>;
-export type PreviewQuickInputPoint = ReturnType<typeof inputPoint>;
-export type PreviewQuickConditionPoint = ReturnType<typeof conditionPoint>;
 export type PreviewQuickEntry = ReturnType<typeof entry>;
 export type PreviewQuickAuthoringTarget = ReturnType<typeof authoring>;
 export type PreviewQuickInputSource = ReturnType<typeof inputSource>;
@@ -90,18 +88,15 @@ export interface PreviewQuickTarget {
   scenePublication?: SourceFile;
   root: PreviewQuickRoot | null;
 }
-export type PreviewQuickInputOverlay = { points: PreviewQuickInputPoint[]; conditions: PreviewQuickConditionPoint[] }
-  | { points?: never; conditions?: never };
-export type PreviewQuickInput = PreviewQuickInputOverlay & {
+export interface PreviewQuickInput {
   source: PreviewQuickInputSource;
   revision: string;
-};
+}
 export interface PreviewQuickRequest {
   mode: 'quick';
   target: PreviewQuickTarget & { root: PreviewQuickRoot };
   sourceRevision: string;
   input: PreviewQuickInput;
   outputDirectory: string;
-  rangeEndSeconds?: number;
   timeoutSeconds?: number;
 }

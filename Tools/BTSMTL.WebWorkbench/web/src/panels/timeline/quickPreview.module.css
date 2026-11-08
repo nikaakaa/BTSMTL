@@ -1,3 +1,8 @@
+.bar {
+  flex: none;
+  border-bottom: 1px solid var(--line);
+}
+
 .preview {
   flex: none;
   max-height: 55%;
@@ -5,7 +10,11 @@
   border-bottom: 1px solid var(--line);
 }
 
-.cursor, .inputRow, .output {
+.details {
+  padding: 0 var(--gap-2) var(--gap-2);
+}
+
+.cursor, .output {
   display: flex;
   align-items: center;
   gap: var(--gap-2);
@@ -16,9 +25,30 @@
   min-width: 0;
 }
 
-.inputRow {
-  flex-wrap: wrap;
-  margin: var(--gap-1) 0;
+.status {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.status[data-stale] {
+  color: var(--warn);
+}
+
+.reason {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.reason[role='alert'] {
+  color: var(--reject);
+}
+
+.grow {
+  flex: 1;
 }
 
 .notice {
@@ -29,46 +59,4 @@
 
 .notice[role='alert'] {
   color: var(--reject);
-}
-
-.scrub {
-  display: block;
-  width: calc(100% - 16px);
-  margin: 8px;
-  accent-color: var(--accent);
-}
-
-.route {
-  min-width: 400px;
-  padding: 0 var(--gap-2);
-}
-
-.segment {
-  display: grid;
-  grid-template-columns: minmax(100px, 1fr) minmax(100px, 3fr) auto;
-  align-items: center;
-  gap: var(--gap-2);
-}
-
-.interval {
-  position: relative;
-  height: 24px;
-  border: 0;
-  padding: 0;
-  background: var(--bg-0);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.interval > span {
-  position: absolute;
-  inset-block: 2px;
-  min-width: 2px;
-  background: var(--state);
-  opacity: 0.65;
-}
-
-.interval > b {
-  position: relative;
-  font-weight: normal;
 }

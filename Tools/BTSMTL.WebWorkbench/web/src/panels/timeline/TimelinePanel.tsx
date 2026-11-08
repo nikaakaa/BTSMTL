@@ -31,7 +31,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, documentObservationNotice, graphCallsAtFrame, graphKey, matchesDocumentCall, parentCallNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { quickBounds, quickInputSourceKey, quickPreview } from '../../state/quickPreview';
+import { quickBounds, quickInputSourceKey, quickPlanStale, quickPreview } from '../../state/quickPreview';
 import { useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
@@ -45,15 +45,16 @@ import { ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, T
 import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } from '../../ui/icons';
 import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
-import { QuickPreview, useQuickPlan } from './QuickPreview';
+import { QuickBar, locateQuickSource } from './QuickPreview';
+import { quickRoute, realRoute, type RouteBar, type RouteView } from './routeRows';
 import { AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
-  curveInspectHeight, curveListHeight, curveMaxHeight, defaults, fitRange, minSpan, minimumStep, observationKey, overscan, playbackFor, previewSeconds,
+  curveInspectHeight, curveListHeight, curveMaxHeight, defaults, fitRange, groupKinds, minSpan, minimumStep, observationKey, overscan, playbackFor, previewSeconds,
   recordedLocalPosition, rowHeight, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
-  trackHeight, useAuthorCursor, useClipGrid,
+  trackHeight, useAuthorCursor, useClipGrid, usePreviewSelect,
   type CurveClock, type CurveRow, type CurveView, type InputTrackRow, type Nest, type Params, type PreviewClock, type QuickPlaybackChoice, type ReceivedRow,
-  type Row, type TimelineObservation,
+  type Row, type RouteLaneRow, type TimelineObservation,
 } from './timelineShared';
 import styles from './timeline.module.css';
 
@@ -63,8 +64,20 @@ import styles from './timeline.module.css';
 
 // 轨道头宽度，约占窗口三分之一，面板窄时收窄让出时间区；CSS 经 --sidebar 读取。
 export function TimelinePanel() {
-  return <div className={styles.window}><QuickPreview /><DocumentTimeline /></div>;
+  const quick = useWorkbench(state => state.previewMode === 'quick');
+  return <div className={styles.window}>{quick && <QuickBar />}<DocumentTimeline /></div>;
 }
+
+// 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
+function useQuickInputTimeline() {
+  return useWorkbench(state => {
+    const description = state.quickPreview.description;
+    return state.previewMode === 'quick' && description.kind === 'ready' ? description.reply.data.root?.inputSchemes
+      .find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null : null;
+  });
+}
+const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.accepted !== null
+  ? quickBounds(state.quickPreview.accepted.plan).last : 0);
 
 // 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
@@ -92,13 +105,28 @@ function TimelineWindow() {
   const elements = useSkillElements(useAuthoring(state => state.target !== null));
   const schemes = useInputSchemes();
   const authorTimelines = useAuthorTimelines();
+  // 快档与真档默认看路线：输入方案的输入 Timeline；作者档默认看第一个 Timeline。
+  const quickInputTimeline = useQuickInputTimeline();
+  const previewMode = useWorkbench(state => state.previewMode);
+  const realRun = useWorkbench(state => state.previewMode === 'real' && state.runId !== null);
+  const routeTimeline = quickInputTimeline ?? (realRun ? schemes[0]?.documentId ?? null : null);
+  const fallback = routeTimeline !== null && authorTimelines.some(item => item.documentId === routeTimeline) ? routeTimeline
+    : authorTimelines[0]?.documentId ?? null;
   const focusId = params.focus === allTimelines ? null
-    : authorTimelines.some(item => item.documentId === params.focus) ? params.focus : authorTimelines[0]?.documentId ?? null;
+    : authorTimelines.some(item => item.documentId === params.focus) ? params.focus : fallback;
+  const switched = useRef(previewMode);
+  useEffect(() => {
+    if (switched.current === previewMode) return;
+    switched.current = previewMode;
+    if (previewMode === 'quick' || previewMode === 'real') setParams({ focus: null, range: null, call: null, pin: null, caller: null, origin: null });
+  }, [previewMode, setParams]);
+  const quickRouteEnd = useQuickRouteEnd();
   const documentLength = useMemo(() => {
     const selected = authorTimelines.find(item => item.documentId === focusId);
     return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
-      Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
-  }, [authorTimelines, focusId, schemes]);
+      Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0,
+        timeline.documentId === quickInputTimeline ? quickRouteEnd : 0)));
+  }, [authorTimelines, focusId, schemes, quickInputTimeline, quickRouteEnd]);
   const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
@@ -147,7 +175,7 @@ function TimelineWindow() {
         sidebarWidth={sidebarFor(width)} usePanStrategy={panStrategy}>
         <SnapContext.Provider value={step}>
           <ClipGridContext.Provider value={clipGrid}>
-            <TimelineBody elements={elements} params={params} setParams={setParams} bounds={bounds} rate={rate} onRangeChanged={onRangeChanged} />
+            <TimelineBody elements={elements} params={params} setParams={setParams} focusId={focusId} bounds={bounds} rate={rate} onRangeChanged={onRangeChanged} />
           </ClipGridContext.Provider>
         </SnapContext.Provider>
       </TimelineContext>
@@ -454,10 +482,12 @@ const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
   }, [bag.timelineRef, bag.sidebarWidth, onPanEnd]);
 };
 
-function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChanged }: {
+function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRangeChanged }: {
   elements: SkillElements | null;
   params: Params;
   setParams(patch: Partial<Params>): void;
+  // 所看的 Timeline；null 为全部 Timeline。
+  focusId: string | null;
   bounds: Range;
   // 作者时间网格决定刻度数字的小数位；未知时为 null。
   rate: number | null;
@@ -484,10 +514,16 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   const timelines = useAuthorTimelines();
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const references = useReferenceCurves();
+  // 快档保留上一份路线直到新路线采用：过期时照常显示与定位，状态栏注明过期。
+  const quickPlan = useWorkbench(state => state.previewMode === 'quick' ? state.quickPreview.accepted?.plan ?? null : null);
+  const quickStale = useWorkbench(quickPlanStale);
+  const quickInputTimeline = useQuickInputTimeline();
+  const quickRouteEnd = useQuickRouteEnd();
   const segments = useMemo(() => documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
-    return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds) } : segment;
-  }), [timelines, schemes]);
+    return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds,
+      segment.documentId === quickInputTimeline ? quickRouteEnd : 0) } : segment;
+  }), [timelines, schemes, quickInputTimeline, quickRouteEnd]);
   const graphNames = useMemo(() => {
     const names = new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
       .map(graph => [graph.id, graph.displayName!]));
@@ -502,8 +538,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   }, [graphs, timelines, schemes, files, edited]);
 
   // 技能文档看单个 Timeline：所选的那条，否则第一条；选“全部 Timeline”时按组列出。
-  const focused = params.focus === allTimelines ? null : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
-  const quickPlan = useQuickPlan();
+  const focused = focusId === null ? null : segments.find(segment => segment.documentId === focusId) ?? null;
   const quickSegments = useMemo(() => quickPlan?.segments.map((segment, index) => ({ segment, index }))
     .filter(item => item.segment.timelineId === focused?.documentId) ?? [], [quickPlan, focused?.documentId]);
   const quickEnd = useMemo(() => quickPlan === null ? null : quickBounds(quickPlan).last, [quickPlan]);
@@ -517,9 +552,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   });
   const quickSegment = quickSegments.find(item => item.index === (selectedQuick ?? activeQuick))?.segment
     ?? (selectedQuick === null && quickSegments.length === 1 ? quickSegments[0].segment : null);
-  const quickInputTimeline = useWorkbench(state => state.quickPreview.description.kind === 'ready'
-    ? state.quickPreview.description.reply.data.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(quickPlan?.input ?? null))?.timelineId ?? null : null);
-  const quickInput = focused !== null && focused.documentId === quickInputTimeline;
+  const quickInput = quickPlan !== null && focused !== null && focused.documentId === quickInputTimeline;
   const quickPlayback: QuickPlaybackChoice | null = quickPlan === null || focused === null || quickSegments.length === 0 ? null : {
     value: selectedQuick === null ? 'follow' : String(selectedQuick),
     options: [{ value: 'follow', label: '跟随当前路线' }, ...quickSegments.map(({ segment, index }) => ({ value: String(index),
@@ -533,6 +566,20 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   } : null, [quickMode, runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
+  // 路线动态轨：快档取推导路线，真档取已读档案帧中与本方案同一次载入的实际播放。
+  const routeInput = !quickMode && runId !== null && (inputObservation.kind === 'ready' || inputObservation.kind === 'before-start') ? inputObservation : null;
+  const routeSource = useRef(routeInput?.source ?? null);
+  routeSource.current = routeInput?.source ?? null;
+  const routeLoad = routeInput === null ? null : JSON.stringify([routeInput.input.actorId, routeInput.stepSeconds,
+    routeInput.source?.loadCommandId, routeInput.source?.contentRevision, routeInput.source?.inputRevision]);
+  const routeActor = routeInput?.input.actorId ?? null, routeStep = routeInput?.stepSeconds ?? null;
+  const route = useMemo<RouteView | null>(() => {
+    if (focused === null || !schemes.some(scheme => scheme.documentId === focused.documentId)) return null;
+    if (quickMode) return quickPlan !== null && quickInput ? quickRoute(quickPlan, timelines, focused.documentId, quickStale) : null;
+    if (runId === null || routeLoad === null || routeActor === null || routeStep === null) return null;
+    const samples = archive.inputFrames(runId, routeActor).filter(sample => samePreviewLoad(sample.source, routeSource.current));
+    return realRoute(routeFrames, samples, timelines, routeStep);
+  }, [focused?.documentId, schemes, quickMode, quickPlan, quickInput, quickStale, timelines, runId, routeLoad, routeActor, routeStep, routeFrames]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
   const callerNotice = caller !== null && caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例' : null;
@@ -596,14 +643,30 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
     }
   }, [focused?.documentId, authorObservation]);
 
-  const enter = useCallback((documentId: string) => {
+  const enter = useCallback((documentId: string, call: string | null = null) => {
     const segment = segments.find(item => item.documentId === documentId);
     if (!segment) return;
     const selection = getState().selection;
     if ((selection?.kind === 'clip' || selection?.kind === 'track') && !selection.id.startsWith(`${documentId}/`))
       selectionActions.select(null);
-    setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null, caller: null, origin: null });
+    setParams({ focus: documentId, range: segmentRange(segment), call, pin: null, caller: null, origin: null });
   }, [segments, setParams]);
+  // 路线条：单击定位（缺条件转移同时打开该转移），双击进入所播 Timeline 并选中这次推导播放或实际调用。
+  const routeActions = useMemo(() => ({
+    seek(bar: RouteBar) {
+      if (bar.target.kind === 'quick') quickPreview.seek(bar.target.seconds);
+      else transport.seekRecord(bar.target.index);
+      if (bar.hint && bar.source) void locateQuickSource(bar.source).catch(error => consoleActions.error('快预览', error));
+    },
+    open(bar: RouteBar) {
+      if (bar.documentId === null) {
+        if (bar.source) void locateQuickSource(bar.source).catch(error => consoleActions.error('快预览', error));
+        return;
+      }
+      enter(bar.documentId, bar.observation === null ? null : observationKey(bar.observation));
+      if (bar.quickIndex !== null && quickPlan !== null) setQuickSelection({ plan: quickPlan, documentId: bar.documentId, index: bar.quickIndex });
+    },
+  }), [enter, quickPlan]);
   const showAll = useCallback(() => setParams({ focus: allTimelines, range: null, call: null, pin: null, caller: null, origin: null }), [setParams]);
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
@@ -660,6 +723,22 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
               result.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
         }
       }
+      if (input && route) {
+        result.push({ kind: 'routeGroup', id: 'route', route });
+        if (!collapsed.has('route')) {
+          route.lanes.forEach((bars, index) =>
+            result.push({ kind: 'routeLane', id: `route:lane:${index}`, name: route.lanes.length > 1 ? `播放 ${index + 1}` : '播放', bars, hint: false }));
+          if (route.hints.length) result.push({ kind: 'routeLane', id: 'route:hints', name: '缺条件转移', bars: route.hints, hint: true });
+        }
+        // 每次推导播放按全局时间摆出所播 Timeline 的轨道，拖动、改长仍写回该 Timeline 的作者内容。
+        for (const segment of route.segments) {
+          const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
+          const titleMatched = !filter || group.title.toLowerCase().includes(filter);
+          const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
+          const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
+          if (titleMatched || children.length) result.push(group, ...children);
+        }
+      }
       addCurves();
       return result;
     }
@@ -680,7 +759,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
     }
     addCurves();
     return result;
-  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, params.filter, params.collapsed,
+  }, [segments, focused, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, route, params.filter, params.collapsed,
     params.curveTracks, params.curveParam, params.curveHeights, elements, selectedClip, references]);
 
   const toggle = useCallback((id: string) => {
@@ -699,8 +778,9 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
   // 游标跳到时间轴上的一点（运行档案为运行秒数，技能文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
   const seek = useCallback((value: number, exact = false) => {
     if (!focused) return;
-    const raw = Math.max(0, Math.min(focused.length, value));
-    const seconds = step && !exact ? Math.min(focused.length, snapTo(raw, step)) : raw;
+    const limit = quickInput ? Math.max(focused.length, quickRouteEnd) : focused.length;
+    const raw = Math.max(0, Math.min(limit, value));
+    const seconds = step && !exact ? Math.min(limit, snapTo(raw, step)) : raw;
     if (quickPlan !== null) {
       if (quickInput) quickPreview.seek(seconds);
       else if (quickSegment === null) consoleActions.log('warn', 'Timeline', '当前路线没有唯一的推导播放，请选择具体播放、循环与出现次数');
@@ -751,7 +831,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
       frame => playbackFor(frame, focused.documentId, observed)?.cursorSeconds ?? null, anchor);
     if (position.kind === 'record') transport.seekRecord(position.index);
     else consoleActions.log('warn', 'Timeline', position.reason);
-  }, [quickMode, realArchive, quickPlan, quickInput, quickSegment, observed, focused, step, inputScheme, inputObservation,
+  }, [quickMode, realArchive, quickPlan, quickInput, quickRouteEnd, quickSegment, observed, focused, step, inputScheme, inputObservation,
     runId, pin?.recordIndex, pinNotice, callerNotice, playbackNotice]);
   const seekAt = useCallback((clientX: number) => seek(getValueFromScreenX(clientX)), [seek, getValueFromScreenX]);
   const [pickedKeys, setPickedKeys] = useState<number[]>([]);
@@ -783,7 +863,7 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
     {
       label: '折叠全部分组',
-      onSelect: () => setParams({ collapsed: rows.filter(row => row.kind === 'group' || row.kind === 'inputGroup' || row.kind === 'curves').map(row => row.id) }),
+      onSelect: () => setParams({ collapsed: rows.filter(row => groupKinds.has(row.kind)).map(row => row.id) }),
     },
   ];
 
@@ -848,7 +928,9 @@ function TimelineBody({ elements, params, setParams, bounds, rate, onRangeChange
           <Ruler bounds={bounds} origin={origin} rate={rate} seekAt={seekAt} />
         </div>
         <CurveViewContext.Provider value={curveView}>
-          <Rows elements={elements} rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+          <RouteActionsContext.Provider value={routeActions}>
+            <Rows elements={elements} rows={rows} collapsed={params.collapsed} toggle={toggle} toggleCurves={toggleCurves} enter={enter} frameAll={frameAll} inputRoots={inputTimeline?.roots} />
+          </RouteActionsContext.Provider>
         </CurveViewContext.Provider>
         <div className={styles.footer}>
           <div className={styles.footHead} />
@@ -1001,6 +1083,9 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
           case 'receivedGroup':
             return <ReceivedGroupLine key={row.id} nest={nest} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
           case 'received': return <ReceivedLine key={row.id} row={row} nest={nest} />;
+          case 'routeGroup':
+            return <RouteGroupLine key={row.id} nest={nest} route={row.route} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+          case 'routeLane': return <RouteLaneLine key={row.id} row={row} nest={nest} />;
         }
       })}
       <div style={{ height: total - offsets[last] }} />
@@ -1764,6 +1849,43 @@ function ReceivedLine({ row, nest }: { row: ReceivedRow; nest: Nest | undefined 
   </Line>;
 }
 
+// ── 路线动态轨：路线组头与路线条（快档推导、真档已读实际播放） ──
+
+const RouteActionsContext = createContext<{ seek(bar: RouteBar): void; open(bar: RouteBar): void }>({ seek: () => {}, open: () => {} });
+
+function RouteGroupLine({ nest, route, open, toggle }: { nest: Nest | undefined; route: RouteView; open: boolean; toggle(id: string): void }) {
+  return <Line id="route" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={
+    <GroupToggle open={open} name={route.title} meta={route.meta} tip={route.tip} onToggle={() => toggle('route')} />
+  }>
+    {route.notice && <Tip name={route.notice}><span className={styles.curveNotice} data-name>{route.notice}</span></Tip>}
+  </Line>;
+}
+
+const RouteLaneLine = memo(function RouteLaneLine({ row, nest }: { row: RouteLaneRow; nest: Nest | undefined }) {
+  const { range, valueToPixels } = useTimelineContext();
+  const clock = useContext(PreviewClockContext);
+  const actions = useContext(RouteActionsContext);
+  const bars = row.bars.filter(bar => bar.end >= range.start && bar.start <= range.end);
+  // 游标所在的路线条高亮；只比较键串，游标移动不重画整行。
+  const active = usePreviewSelect(clock, seconds => seconds === null ? ''
+    : bars.filter(bar => bar.start <= seconds && seconds < bar.end).map(bar => bar.key).join('\n'));
+  const current = new Set(active.split('\n'));
+  return <Line id={row.id} nest={nest} headClass={styles.trackHead} head={
+    <TrackHead kind={row.hint ? 'in' : 'act'} name={row.name}
+      tip={row.hint ? '推导中缺条件而未走成的转移；单击定位并打开该转移' : '单击定位到该次播放 · 双击进入所播 Timeline'} />
+  }>
+    {bars.map(bar => {
+      const left = valueToPixels(bar.start - range.start), width = Math.max(2, valueToPixels(bar.end - bar.start));
+      return <Tip key={bar.key} name={bar.label} content={bar.tip}>
+        <button className={styles.routeBar} data-hint={bar.hint || undefined} data-active={current.has(bar.key) || undefined}
+          style={{ left, width }} onClick={() => actions.seek(bar)} onDoubleClick={() => actions.open(bar)}>
+          {width > clipLabelMinWidth + clipLabelPadding * 2 && <span className={styles.routeLabel} data-name>{bar.label}</span>}
+        </button>
+      </Tip>;
+    })}
+  </Line>;
+});
+
 function InputGroupLine({ nest, open, toggle, roots }: {
   nest: Nest | undefined; open: boolean; toggle(id: string): void; roots: FrozenInputTimeline[] | undefined;
 }) {
@@ -1874,7 +1996,8 @@ function Overlay({ bounds, origin, follow, onRangeChanged }: {
     apply();
     const stopRun = useWorkbench.subscribe((state, previous) => {
       if (state.seconds !== previous.seconds || state.hostFrame !== previous.hostFrame || state.frameKey !== previous.frameKey ||
-        state.archiveFrame !== previous.archiveFrame || state.selectedCurves !== previous.selectedCurves) apply();
+        state.archiveFrame !== previous.archiveFrame || state.selectedCurves !== previous.selectedCurves ||
+        state.quickPreview.seconds !== previous.quickPreview.seconds) apply();
     });
     const stopAuthor = useAuthorCursor.subscribe(apply);
     return () => {

@@ -1,12 +1,13 @@
 import { previewApi } from '../api/preview';
 import type {
-  PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickInputOverlay, PreviewQuickRequest,
+  PreviewQuickDescription, PreviewQuickDescriptionReply, PreviewQuickRequest,
   PreviewQuickStatusReply, PreviewQuickTarget, PreviewQuickPlan, PreviewQuickJobId,
   PreviewQuickAuthoringTarget, PreviewQuickInputSource,
   PreviewQuickFrame, PreviewQuickSeekRequest,
 } from '../api/previewQuickRecords';
 import { authoringTargetKey } from '../api/authoring';
-import { authoringActions, useAuthoring } from './authoring';
+import { authoringActions, currentDocument, useAuthoring } from './authoring';
+import type { JsonObject } from './skillJson';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
 type Description = { kind: 'idle' } | { kind: 'loading' } | { kind: 'stale'; reason: string }
@@ -75,6 +76,28 @@ export function quickTargetKey(target: PreviewQuickTarget | null) {
 }
 
 export const quickAuthoringKey = (target: PreviewQuickAuthoringTarget) => JSON.stringify([target.documentPath, target.entry]);
+
+// 快档跟随当前内容：来源过期即重读，来源与方案就绪后按同一来源与方案修订推导一次；失败不自动重试同一身份。
+let followTimer: ReturnType<typeof setTimeout> | null = null;
+let autoAttempt: string | null = null;
+const requestKey = (request: Pick<PreviewQuickRequest, 'target' | 'sourceRevision' | 'input'>) =>
+  JSON.stringify([quickTargetKey(request.target), request.sourceRevision, quickInputSourceKey(request.input.source), request.input.revision]);
+
+function followContent() {
+  followTimer = null;
+  if (sourceUnavailableReason() !== null) return;
+  const description = current().description.kind;
+  if (description === 'idle' || description === 'stale') { void quickPreview.readSource(); return; }
+  const prepared = preparation();
+  if (prepared.kind !== 'ready' || requestKey({ target: prepared.target, sourceRevision: prepared.source.revision,
+    input: { source: prepared.scheme.source, revision: prepared.scheme.revision } }) === autoAttempt) return;
+  void quickPreview.start().catch(error => consoleActions.error('快预览', error));
+}
+
+function scheduleFollow() {
+  if (followTimer !== null) clearTimeout(followTimer);
+  followTimer = setTimeout(followContent, 400);
+}
 
 export function quickInputSourceKey(source: PreviewQuickInputSource | null): string {
   return source?.kind === 'documentInput'
@@ -382,9 +405,13 @@ export const quickPreview = {
         }
         const active = useAuthoring.getState().target;
         const choices = catalog.data.documents.flatMap(document => document.entries.map(choice => ({ document, choice })));
-        const matches = source.kind === 'timeline'
+        // 技能文档默认以 skill.json 声明的能力根图为推导根。
+        const ability = (currentDocument('skill.json') as JsonObject | null)?.m_AbilityGraph;
+        const owned = source.kind === 'timeline'
           ? choices.filter(item => item.choice.entry.kind === 'timeline' && item.choice.entry.timelineId === source.timeline.content.timeline)
           : choices.filter(item => active !== null && item.document.documentPath === authoringTargetKey(active));
+        const rooted = owned.filter(item => item.choice.entry.kind === 'graph' && item.choice.entry.graphId === ability);
+        const matches = owned.length === 1 ? owned : rooted.slice(0, 1);
         if (matches.length !== 1) {
           set({ target, description: { kind: 'ready', reply: { ...catalog, data: catalog.data } }, scheme: null });
           return;
@@ -424,17 +451,18 @@ export const quickPreview = {
     set({ scheme, accepted: null, seconds: 0 });
     invalidateJob();
   },
-  cancelSourceRead() {
-    descriptionController?.abort();
-    descriptionController = null;
-    set({ description: { kind: 'stale', reason: '已取消读取来源，可重新读取。' } });
+  // 手动重推：清掉失败记忆，来源可用时直接推导，否则先重读来源。
+  rederive() {
+    autoAttempt = null;
+    if (current().description.kind === 'ready') scheduleFollow();
+    else void quickPreview.readSource();
   },
   outputDirectory(outputDirectory: string) { set({ outputDirectory }); },
   unavailableReason(): string | null {
     const result = preparation();
     return result.kind === 'ready' ? null : result.reason;
   },
-  async start(input: PreviewQuickInputOverlay = {}, rangeEndSeconds?: number) {
+  async start() {
     let prepared = preparation();
     if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
     if (quickJobCancellable(current().job)) {
@@ -444,10 +472,10 @@ export const quickPreview = {
     }
     const request: PreviewQuickRequest = {
       mode: 'quick', target: prepared.target, sourceRevision: prepared.source.revision,
-      input: { source: prepared.scheme.source, revision: prepared.scheme.revision, ...input },
+      input: { source: prepared.scheme.source, revision: prepared.scheme.revision },
       outputDirectory: `${prepared.directory.replace(/[\\/]$/, '')}/quick-preview/${crypto.randomUUID()}`,
-      ...(rangeEndSeconds === undefined ? {} : { rangeEndSeconds }),
     };
+    autoAttempt = requestKey(request);
     stopPoll();
     set({ job: { kind: 'starting', request } });
     try {
@@ -482,7 +510,6 @@ export const quickPreview = {
     requestPicture();
   },
   retryPicture() { requestPicture(true); },
-  inputChanged() { invalidateJob(); },
   invalidate(reason: string) {
     descriptionController?.abort();
     set({ description: { kind: 'stale', reason } });
@@ -506,6 +533,10 @@ useWorkbench.subscribe((state, previous) => {
       else quickPreview.invalidate('预览档位或场景来源已变化，请重新读取');
     }
   }
+  const quick = state.quickPreview, before = previous.quickPreview;
+  if (state.previewMode === 'quick' && (state.previewMode !== previous.previewMode || contentChanged || state.host !== previous.host ||
+    quick.description !== before.description || quick.job !== before.job || quick.scheme !== before.scheme || quick.target !== before.target))
+    scheduleFollow();
 });
 
 useAuthoring.subscribe((authoring, previous) => {
