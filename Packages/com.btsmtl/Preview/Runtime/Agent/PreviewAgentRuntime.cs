@@ -47,7 +47,7 @@ namespace BTSMTL.Preview
         bool m_CaptureRequested;
         Task m_Close;
         float m_NextStatus;
-        float m_NextVideo;
+        double m_NextVideo;
         float m_MaxFps = 30f;
         int m_StreamQuality = 75;
 
@@ -125,14 +125,23 @@ namespace BTSMTL.Preview
         public void LateUpdate()
         {
             PreviewPlaybackState state = m_Project.Playback.State;
-            if (IsStreaming && m_StreamLoop != null && m_StreamCapture.CanCapture &&
-                state is PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
-                    PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking &&
-                Time.unscaledTime >= m_NextVideo)
-            {
-                m_NextVideo = Time.unscaledTime + 1f / Mathf.Max(1f, m_MaxFps);
+            if (!IsStreaming || m_StreamLoop == null ||
+                state is not (PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
+                    PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking))
+                return;
+
+            double now = Time.unscaledTimeAsDouble;
+            if (now < m_NextVideo)
+                return;
+
+            double period = 1d / m_MaxFps;
+            double periodsToAdvance = Math.Floor((now - m_NextVideo) / period) + 1d;
+            m_NextVideo += periodsToAdvance * period;
+            // 周期边界舍入到当前时刻时，截止点仍需推进一拍。
+            if (m_NextVideo <= now)
+                m_NextVideo += period;
+            if (m_StreamCapture.CanCapture)
                 RequestStreamFrame();
-            }
         }
 
         public void Handle(string json)
