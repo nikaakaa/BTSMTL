@@ -776,7 +776,8 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  /* 短片段两端把手各占不超过四分之一，中间留给拖动整段 */
+  width: min(6px, 25%);
   cursor: ew-resize;
 }
 

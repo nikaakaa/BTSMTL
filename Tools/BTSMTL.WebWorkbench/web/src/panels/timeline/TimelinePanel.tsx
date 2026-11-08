@@ -70,12 +70,18 @@ export function TimelinePanel() {
 }
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
+// 保存后重读来源期间方案不变，继续看原输入 Timeline，视图不跳回技能自身的 Timeline。
 function useQuickInputTimeline() {
-  return useWorkbench(state => {
+  const last = useRef<string | null>(null);
+  const value = useWorkbench(state => {
     const description = state.quickPreview.description;
-    return state.previewMode === 'quick' && description.kind === 'ready' ? description.reply.data.root?.inputSchemes
+    if (state.previewMode !== 'quick') return null;
+    if (description.kind === 'loading' || description.kind === 'stale') return undefined;
+    return description.kind === 'ready' ? description.reply.data.root?.inputSchemes
       .find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null : null;
   });
+  if (value !== undefined) last.current = value;
+  return value === undefined ? last.current : value;
 }
 const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.route !== null
   ? quickBounds(state.quickPreview.route.plan).last : 0);
