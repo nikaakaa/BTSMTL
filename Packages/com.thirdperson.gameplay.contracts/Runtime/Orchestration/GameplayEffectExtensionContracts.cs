@@ -134,7 +134,7 @@ namespace ThirdPersonGameplay.Orchestration
         public readonly struct AttributeRead
         {
             public static readonly OrchestrationExtensionInputPort<AttributeRead> ObjectHandle =
-                new OrchestrationExtensionInputPort<AttributeRead>("object-handle", OrchestrationValueKind.ObjectHandle, 0);
+                new OrchestrationExtensionInputPort<AttributeRead>("object-handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> Valid =
                 new OrchestrationExtensionOutputPort<AttributeRead>("valid", OrchestrationValueKind.Boolean, 0);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> BaseValue =

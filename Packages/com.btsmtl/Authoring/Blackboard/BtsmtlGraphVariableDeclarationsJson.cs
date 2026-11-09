@@ -84,12 +84,20 @@ namespace BTSMTL.Graphs
             {
                 "bool" => (bool)value, "int" => (int)value, "uint" => (uint)value, "ulong" => (ulong)value,
                 "float" => (float)value, "double" => (double)value, "string" => (string)value,
-                "object-handle" => new ObjectHandle(ulong.Parse((string)value, NumberStyles.None, CultureInfo.InvariantCulture)),
+                "object-handle" => ReadEmptyObjectHandle(value),
                 "vector2" => new SemanticVector2Value((float)value["x"], (float)value["y"]),
                 "vector3" => new SemanticVector3Value((float)value["x"], (float)value["y"], (float)value["z"]),
                 "quaternion" => new SemanticQuaternionValue((float)value["x"], (float)value["y"], (float)value["z"], (float)value["w"]),
                 _ => throw new InvalidDataException($"图变量值类型 '{type.FullName}' 没有默认值协议。")
             };
+        }
+
+        // 句柄只在运行时由对象世界产生；作者期常量与默认值只能是空句柄。
+        static ObjectHandle ReadEmptyObjectHandle(JToken value)
+        {
+            ulong stored = ulong.Parse((string)value, NumberStyles.None, CultureInfo.InvariantCulture);
+            return stored == 0 ? ObjectHandle.Empty
+                : throw new InvalidDataException($"作者期对象句柄常量只能为空（0），实际为 '{stored}'。");
         }
 
         public static JToken CreateDefault(CompileValueType type) => WriteDefault(type, type.DefaultValue switch

@@ -222,6 +222,10 @@ export interface GraphPort {
   isTrigger: boolean;
   valueType: string;
   invocationPath: string;
+  // 句柄端口的对象种类；输入端口另给出可接受的全部种类，由 Host 按正式兼容关系展开。
+  objectKind?: string | null;
+  objectKindName?: string | null;
+  acceptedObjectKinds?: string[] | null;
 }
 
 export interface GraphEdge {

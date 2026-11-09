@@ -15,10 +15,15 @@ namespace BTSMTL.Authoring.Graph
         public GraphNodePort(GraphAuthoringPortDirection direction, bool isFlow, string id, string displayName,
             string valueTypeId, int order, GraphAuthoringPortCapacity capacity = 0, bool required = false,
             bool hasDefault = false, object defaultValue = null, string defaultFieldId = null,
-            string interfacePortId = null, OrchestrationExtensionPort? contractPort = null, object annotation = null)
+            string interfacePortId = null, OrchestrationExtensionPort? contractPort = null, object annotation = null,
+            OrchestrationObjectKind objectKind = null)
         {
             if (order < 0)
                 throw new ArgumentOutOfRangeException(nameof(order));
+            bool handle = !isFlow && valueTypeId == ObjectHandleTypeId;
+            if (!handle && objectKind != null)
+                throw new ArgumentException($"非句柄端口 '{id}' 不能声明对象种类。", nameof(objectKind));
+            ObjectKind = handle ? objectKind ?? contractPort?.ObjectKind ?? OrchestrationObjectKind.Any : null;
             Direction = direction;
             IsFlow = isFlow;
             Id = GraphAuthoringIdentity.Require(id, nameof(id));
@@ -37,6 +42,7 @@ namespace BTSMTL.Authoring.Graph
         }
 
         public const string Flow = "flow";
+        public const string ObjectHandleTypeId = "object-handle";
 
         public GraphAuthoringPortDirection Direction { get; }
         public bool IsFlow { get; }
@@ -55,11 +61,13 @@ namespace BTSMTL.Authoring.Graph
         public OrchestrationExtensionPort? ContractPort { get; }
         // 领域补充语义（如 Pose 的空间、语义与阶段），共享层不解释。
         public object Annotation { get; }
+        // 句柄端口的对象种类（合同端口取自合同，未声明为任意对象）；非句柄端口为 null。
+        public OrchestrationObjectKind ObjectKind { get; }
         public bool IsInput => Direction == GraphAuthoringPortDirection.Input;
 
         public GraphNodePort WithOrder(int order) => order == Order ? this : new GraphNodePort(Direction, IsFlow, Id,
             DisplayName, ValueTypeId, order, Capacity, Required, HasDefault, DefaultValue, DefaultFieldId,
-            InterfacePortId, ContractPort, Annotation);
+            InterfacePortId, ContractPort, Annotation, ObjectKind);
     }
 
     // 节点固定端口：类级特性按书写顺序产出端口。EnabledBy 指向节点上返回 bool 的成员，为 false 时不产出。

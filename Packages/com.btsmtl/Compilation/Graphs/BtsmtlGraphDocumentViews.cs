@@ -56,11 +56,20 @@ namespace BTSMTL.Compilation
                         node.ValueOutputs.Any(port => port.Id == (string)edge["sourcePortID"]))));
                 foreach (CompileNode node in view.Nodes)
                     foreach (CompileEdge edge in node.OutEdges)
-                        if (edge.IsValue
-                                ? !node.ValueOutputs.Single(port => port.Id == edge.SourcePortId).Type
-                                    .SameType(edge.Target.Input(edge.TargetPortId).Type)
-                                : !node.FlowOutputs.Contains(edge.SourcePortId) || !edge.Target.FlowInputs.Contains(edge.TargetPortId))
-                            throw new InvalidDataException($"连接 '{edge.Id}' 的端口或值类型不匹配。");
+                    {
+                        if (!edge.IsValue)
+                        {
+                            if (!node.FlowOutputs.Contains(edge.SourcePortId) || !edge.Target.FlowInputs.Contains(edge.TargetPortId))
+                                throw new InvalidDataException($"连接 '{edge.Id}' 的执行端口不匹配。");
+                            continue;
+                        }
+                        CompileValueType source = node.ValueOutputs.Single(port => port.Id == edge.SourcePortId).Type;
+                        CompileValueType target = edge.Target.Input(edge.TargetPortId).Type;
+                        if (!source.IsAssignableTo(target))
+                            throw new InvalidDataException(
+                                $"连接 '{edge.Id}' 从节点 '{node.Id}' 输出 '{edge.SourcePortId}'（{source.DisplayName}）" +
+                                $"到节点 '{edge.TargetNodeId}' 输入 '{edge.TargetPortId}'（{target.DisplayName}）的值类型不兼容。");
+                    }
                 m_Graphs.Add((rootId, document.AuthoringId), view);
                 return view;
             }
@@ -106,16 +115,16 @@ namespace BTSMTL.Compilation
                 ports.Where(port => !port.IsInput && port.IsFlow).Select(port => port.Id).ToArray(),
                 ports.Where(port => port.IsInput && !port.IsFlow).Select(port =>
                 {
-                    CompileValueType type = CompileValueTypes.FromId(port.ValueTypeId);
+                    CompileValueType type = CompileValueTypes.FromId(port.ValueTypeId).WithObjectKind(port.ObjectKind);
                     JToken value = values.TryGetValue(port.Id, out JToken stored) ? stored :
                         throw new InvalidDataException($"节点 '{source.Id}' 缺少端口 '{port.Id}' 的正式作者默认值。");
                     return new CompileValuePort(port.Id, native != null ? native.Input(port.Id) : variable ? "m_Value" : port.Id,
                         type, connected.Contains((source.Id, port.Id)), port.Required,
-                        BtsmtlGraphVariableDeclarationsJson.ReadDefault(type, value));
+                        PortDefault(document, source, port.Id, type, value));
                 }).ToArray(),
                 ports.Where(port => !port.IsInput && !port.IsFlow).Select(port => new CompileValuePort(port.Id,
                     native != null ? native.Output(port.Id) : variable || hostOutput ? "m_Output" : port.Id,
-                    CompileValueTypes.FromId(port.ValueTypeId))).ToArray(), () => fields,
+                    CompileValueTypes.FromId(port.ValueTypeId).WithObjectKind(port.ObjectKind))).ToArray(), () => fields,
                 _ => Describe(source, definition, native, fields));
             if (callee != null)
             {
@@ -153,6 +162,19 @@ namespace BTSMTL.Compilation
                 throw new InvalidDataException($"节点 '{source.Id}' 的类型 '{source.TypeName}' 没有编排操作声明。");
             return new SimulationNodeEmission(operation.Code,
                 integer0: ((IBtsmtlGraphOperationSource)definition).OperationVariant);
+        }
+
+        static object PortDefault(BtsmtlGraphDocument document, BtsmtlGraphDocumentNode node, string portId,
+            CompileValueType type, JToken value)
+        {
+            try
+            {
+                return BtsmtlGraphVariableDeclarationsJson.ReadDefault(type, value);
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new InvalidDataException($"图 '{document.AuthoringId}' 节点 '{node.Id}' 输入 '{portId}'：{exception.Message}", exception);
+            }
         }
 
         static CompileGraphParameter Parameter(GraphNodePort port) => new(port.Id, port.DisplayName,
