@@ -68,6 +68,11 @@ namespace BTSMTL.Authoring.Graph
         public GraphNodePort WithOrder(int order) => order == Order ? this : new GraphNodePort(Direction, IsFlow, Id,
             DisplayName, ValueTypeId, order, Capacity, Required, HasDefault, DefaultValue, DefaultFieldId,
             InterfacePortId, ContractPort, Annotation, ObjectKind);
+
+        public GraphNodePort WithObjectKind(OrchestrationObjectKind objectKind) =>
+            ReferenceEquals(objectKind, ObjectKind) ? this : new GraphNodePort(Direction, IsFlow, Id,
+                DisplayName, ValueTypeId, Order, Capacity, Required, HasDefault, DefaultValue, DefaultFieldId,
+                InterfacePortId, ContractPort, Annotation, objectKind);
     }
 
     // 节点固定端口：类级特性按书写顺序产出端口。EnabledBy 指向节点上返回 bool 的成员，为 false 时不产出。
@@ -287,6 +292,19 @@ namespace BTSMTL.Authoring.Graph
         IReadOnlyList<GraphNodePort> Interface(object reference);
     }
 
+    // 读写变量的节点：句柄端口承载所选变量的值，种类取该变量声明。
+    public interface IGraphNodeVariableAccess
+    {
+        string OwnerId { get; }
+        string VariableId { get; }
+    }
+
+    // 变量声明的句柄种类由所属作者上下文解析；未选择或未知的变量返回 null，缺失声明由编译报告。
+    public interface IGraphNodeVariableResolver
+    {
+        OrchestrationObjectKind VariableObjectKind(string ownerId, string variableId);
+    }
+
     // CLR 类型声明自身的作者值类型身份；基础类型由生成器内置。
     [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class | AttributeTargets.Enum, Inherited = false)]
     public sealed class GraphValueTypeAttribute : Attribute
@@ -319,11 +337,16 @@ namespace BTSMTL.Authoring.Graph
 
         public static bool Declares(Type nodeType) => Shape.Of(nodeType).Sources.Length != 0;
 
-        public static IReadOnlyList<GraphNodePort> Of(object node, IGraphNodeInterfaceResolver resolver = null)
+        // variables 为空时变量访问节点的句柄端口保持任意对象。
+        public static IReadOnlyList<GraphNodePort> Of(object node, IGraphNodeInterfaceResolver resolver = null,
+            IGraphNodeVariableResolver variables = null)
         {
             if (node == null)
                 throw new ArgumentNullException(nameof(node));
             Shape shape = Shape.Of(node.GetType());
+            IGraphNodeVariableAccess access = variables != null && node is IGraphNodeVariableAccess candidate &&
+                !string.IsNullOrEmpty(candidate.VariableId) ? candidate : null;
+            OrchestrationObjectKind variableKind = null;
             var ports = new List<GraphNodePort>();
             foreach (Func<object, IGraphNodeInterfaceResolver, IEnumerable<GraphNodePort>> source in shape.Sources)
                 foreach (GraphNodePort port in source(node, resolver))
@@ -332,7 +355,13 @@ namespace BTSMTL.Authoring.Graph
                         if (existing.Id == port.Id && existing.Direction == port.Direction)
                             throw new InvalidOperationException(
                                 $"节点 '{shape.NodeType.FullName}' 产出重复端口 '{port.Id}'（{port.Direction}）。");
-                    ports.Add(port.WithOrder(ports.Count));
+                    GraphNodePort ordered = port.WithOrder(ports.Count);
+                    if (access != null && ordered.ObjectKind != null)
+                    {
+                        variableKind ??= variables.VariableObjectKind(access.OwnerId, access.VariableId) ?? ordered.ObjectKind;
+                        ordered = ordered.WithObjectKind(variableKind);
+                    }
+                    ports.Add(ordered);
                 }
             return ports;
         }

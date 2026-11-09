@@ -79,9 +79,11 @@ namespace BTSMTL.Graphs
                 if (!variable.hasStableIdentity || variable.isDataBound || variable.isPropertyBound || variable is not ISerializedVariableValue)
                     throw new InvalidOperationException("图变量编辑必须提交具有稳定身份的本地字面量声明。");
                 BtsmtlGraphVariableDeclaration stored = m_Source.RequireVariable(variable.ID);
+                string typeId = BtsmtlGraphVariableUnity.TypeId(variable.varType);
                 return new BtsmtlGraphVariableDeclaration(stored.Declaration, variable.name,
-                    BtsmtlGraphVariableUnity.TypeId(variable.varType), BtsmtlGraphVariableUnity.DefaultJson(variable.varType,
-                        ((ISerializedVariableValue)variable).serializedValue), variable.isExposedPublic, stored.DeclarationOrder);
+                    typeId, BtsmtlGraphVariableUnity.DefaultJson(variable.varType,
+                        ((ISerializedVariableValue)variable).serializedValue), variable.isExposedPublic, stored.DeclarationOrder,
+                    BtsmtlGraphVariableDeclaration.ObjectKindFor(typeId, stored.Declaration, stored.ObjectKind));
             }).ToArray());
         }
 

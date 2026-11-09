@@ -5,6 +5,7 @@ using System.Linq;
 using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Compilation;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 using Newtonsoft.Json.Linq;
 
@@ -18,14 +19,21 @@ namespace BTSMTL.Graphs
         readonly JToken m_DefaultValue;
         readonly bool m_IsPublic;
         readonly int m_DeclarationOrder;
+        readonly OrchestrationObjectKind m_ObjectKind;
 
         public BtsmtlGraphVariableDeclaration() { }
 
+        // 句柄变量必须给出对象种类，非句柄变量不能给出。
         public BtsmtlGraphVariableDeclaration(BtsmtlBlackboardDeclaration declaration, string name,
-            string typeId, JToken defaultValue, bool isPublic, int declarationOrder)
+            string typeId, JToken defaultValue, bool isPublic, int declarationOrder, OrchestrationObjectKind objectKind)
         {
+            bool handle = CompileValueTypes.FromId(typeId).Kind == SemanticValueKind.ObjectHandle;
+            if (handle != (objectKind != null))
+                throw new InvalidDataException(handle ? $"对象句柄变量 '{name}' 必须声明对象种类。"
+                    : $"变量 '{name}' 不是对象句柄，不能声明对象种类。");
             m_Declaration = declaration; m_Name = name; m_TypeId = typeId;
             m_DefaultValue = defaultValue.DeepClone(); m_IsPublic = isPublic; m_DeclarationOrder = declarationOrder;
+            m_ObjectKind = objectKind;
         }
 
         [GraphAuthoringField("declaration", GraphAuthoringFieldValueKind.Object, ReadOnly = true)]
@@ -40,9 +48,40 @@ namespace BTSMTL.Graphs
         public bool IsPublic => m_IsPublic;
         [GraphAuthoringField("declarationOrder", GraphAuthoringFieldValueKind.Integer, ReadOnly = true)]
         public int DeclarationOrder => m_DeclarationOrder;
+        public OrchestrationObjectKind ObjectKind => m_ObjectKind;
+        [GraphAuthoringField("objectKind", GraphAuthoringFieldValueKind.String, ReadOnly = true, Optional = true)]
+        public string ObjectKindId => m_ObjectKind?.Id;
 
         public string VariableId => Declaration.VariableId;
-        public CompileValueType ValueType => CompileValueTypes.FromId(TypeId);
+        public CompileValueType ValueType => CompileValueTypes.FromId(TypeId).WithObjectKind(m_ObjectKind);
+
+        // 按值类型重建声明时的种类：投影固定种类优先，其次保留原种类，新句柄为任意对象；非句柄为 null。
+        public static OrchestrationObjectKind ObjectKindFor(string typeId, BtsmtlBlackboardDeclaration declaration,
+            OrchestrationObjectKind current)
+        {
+            if (CompileValueTypes.FromId(typeId).Kind != SemanticValueKind.ObjectHandle)
+                return null;
+            return (declaration.StoredInputBinding is { } binding
+                ? PipelineBlackboardInputProjections.ObjectKind(binding.Projection) : null) ?? current ?? OrchestrationObjectKind.Any;
+        }
+
+        internal BtsmtlGraphVariableDeclaration With(BtsmtlBlackboardDeclaration declaration = null, string name = null,
+            JToken defaultValue = null, bool? isPublic = null, OrchestrationObjectKind objectKind = null) =>
+            new(declaration ?? m_Declaration, name ?? m_Name, m_TypeId, defaultValue ?? m_DefaultValue,
+                isPublic ?? m_IsPublic, m_DeclarationOrder, objectKind ?? m_ObjectKind);
+    }
+
+    // 按所属身份读取变量声明，供端口形状解析变量访问节点的句柄种类。
+    public sealed class BtsmtlGraphVariableKinds : IGraphNodeVariableResolver
+    {
+        readonly Func<string, BtsmtlGraphVariableDeclarations> m_Variables;
+
+        public BtsmtlGraphVariableKinds(Func<string, BtsmtlGraphVariableDeclarations> variables) =>
+            m_Variables = variables ?? throw new ArgumentNullException(nameof(variables));
+
+        public OrchestrationObjectKind VariableObjectKind(string ownerId, string variableId) =>
+            string.IsNullOrEmpty(ownerId) ? null : m_Variables(ownerId).Variables
+                .FirstOrDefault(variable => variable.VariableId == variableId)?.ObjectKind;
     }
 
     public sealed partial class BtsmtlGraphVariableDeclarations
@@ -98,7 +137,8 @@ namespace BTSMTL.Graphs
             m_Revision = Guid.NewGuid().ToString("N");
         }
 
-        public BtsmtlGraphVariableDeclaration Create(string typeId)
+        // 句柄变量未指定种类时取“任意对象”，作者随后可收窄。
+        public BtsmtlGraphVariableDeclaration Create(string typeId, OrchestrationObjectKind objectKind = null)
         {
             CompileValueType type = CompileValueTypes.FromId(typeId);
             string label = "New " + type.FullName.Substring(type.FullName.LastIndexOf('.') + 1);
@@ -106,21 +146,24 @@ namespace BTSMTL.Graphs
             int suffix = 2;
             while (m_Variables.Any(variable => variable.Name == name))
                 name = label + " " + suffix++;
-            return Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(type));
+            return Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(type), objectKind);
         }
 
-        public BtsmtlGraphVariableDeclaration Create(string typeId, string name) =>
-            Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(CompileValueTypes.FromId(typeId)));
+        public BtsmtlGraphVariableDeclaration Create(string typeId, string name, OrchestrationObjectKind objectKind = null) =>
+            Create(typeId, name, BtsmtlGraphVariableDeclarationsJson.CreateDefault(CompileValueTypes.FromId(typeId)), objectKind);
 
-        public BtsmtlGraphVariableDeclaration Create(string typeId, string name, JToken defaultValue)
+        public BtsmtlGraphVariableDeclaration Create(string typeId, string name, JToken defaultValue,
+            OrchestrationObjectKind objectKind = null)
         {
             RequireName(name, null);
-            BtsmtlGraphVariableDeclarationsJson.RequireDefault(CompileValueTypes.FromId(typeId), defaultValue);
+            CompileValueType type = CompileValueTypes.FromId(typeId);
+            BtsmtlGraphVariableDeclarationsJson.RequireDefault(type, defaultValue);
             string id = Guid.NewGuid().ToString("N");
             int order = m_Variables.Count == 0 ? 0 : m_Variables.Max(variable => variable.DeclarationOrder) + 1;
             var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
                 PipelineBlackboardVariableLifetime.GraphInstance);
-            var variable = new BtsmtlGraphVariableDeclaration(declaration, name, typeId, defaultValue, false, order);
+            var variable = new BtsmtlGraphVariableDeclaration(declaration, name, typeId, defaultValue, false, order,
+                type.Kind == SemanticValueKind.ObjectHandle ? objectKind ?? OrchestrationObjectKind.Any : objectKind);
             Commit(m_Variables.Append(variable).ToArray());
             return variable;
         }
@@ -131,8 +174,7 @@ namespace BTSMTL.Graphs
             if (variable.Name == name)
                 return;
             RequireName(name, id);
-            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, name, variable.TypeId,
-                variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder));
+            ReplaceVariable(variable, variable.With(name: name));
         }
 
         public void SetDefaultValue(string id, JToken defaultValue)
@@ -141,8 +183,19 @@ namespace BTSMTL.Graphs
             BtsmtlGraphVariableDeclarationsJson.RequireDefault(variable.ValueType, defaultValue);
             if (BtsmtlGraphVariableDeclarationsJson.SameDefault(variable.ValueType, variable.DefaultValue, defaultValue))
                 return;
-            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name,
-                variable.TypeId, defaultValue, variable.IsPublic, variable.DeclarationOrder));
+            ReplaceVariable(variable, variable.With(defaultValue: defaultValue));
+        }
+
+        public void SetObjectKind(string id, OrchestrationObjectKind objectKind)
+        {
+            BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
+            if (variable.ObjectKind == null)
+                throw new InvalidDataException($"变量 '{variable.Name}' 不是对象句柄，不能声明对象种类。");
+            if (ReferenceEquals(variable.ObjectKind, objectKind ?? throw new ArgumentNullException(nameof(objectKind))))
+                return;
+            BtsmtlGraphVariableDeclaration next = variable.With(objectKind: objectKind);
+            RequireProjectedKind(next);
+            ReplaceVariable(variable, next);
         }
 
         public void Delete(string id)
@@ -165,8 +218,7 @@ namespace BTSMTL.Graphs
             BtsmtlGraphVariableDeclaration variable = RequireVariable(id);
             if (variable.IsPublic == isPublic)
                 return;
-            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(variable.Declaration, variable.Name,
-                variable.TypeId, variable.DefaultValue, isPublic, variable.DeclarationOrder));
+            ReplaceVariable(variable, variable.With(isPublic: isPublic));
         }
 
         public void ConfigureBlackboard(string id, JObject changes)
@@ -181,8 +233,10 @@ namespace BTSMTL.Graphs
                 BtsmtlBlackboardDeclaration.ValidateDefinition(variable.ValueType.Kind,
                     BtsmtlGraphVariableDeclarationsJson.TypeCode(variable.ValueType), declaration.Scope, declaration.Lifetime,
                     bindingChanged ? declaration.StoredInputBinding : declaration.InputBinding);
-            ReplaceVariable(variable, new BtsmtlGraphVariableDeclaration(declaration, variable.Name,
-                variable.TypeId, variable.DefaultValue, variable.IsPublic, variable.DeclarationOrder));
+            // 句柄投影固定变量种类。
+            OrchestrationObjectKind projected = declaration.StoredInputBinding is { } binding
+                ? PipelineBlackboardInputProjections.ObjectKind(binding.Projection) : null;
+            ReplaceVariable(variable, variable.With(declaration: declaration, objectKind: projected));
         }
 
         public void Prune(IEnumerable<string> ids)
@@ -210,7 +264,18 @@ namespace BTSMTL.Graphs
                 BtsmtlBlackboardDeclaration.ValidateDefinition(type.Kind,
                     BtsmtlGraphVariableDeclarationsJson.TypeCode(type),
                     declaration.Scope, declaration.Lifetime, declaration.InputBinding);
+                RequireProjectedKind(variable);
             }
+        }
+
+        static void RequireProjectedKind(BtsmtlGraphVariableDeclaration variable)
+        {
+            if (variable.Declaration.StoredInputBinding is not { } binding ||
+                PipelineBlackboardInputProjections.ObjectKind(binding.Projection) is not { } projected ||
+                ReferenceEquals(projected, variable.ObjectKind))
+                return;
+            throw new InvalidDataException($"变量 '{variable.Name}' 绑定输入投影 {binding.Projection}，" +
+                $"对象种类固定为{projected.DisplayName}，实际为{variable.ObjectKind?.DisplayName ?? "未声明"}。");
         }
     }
 }

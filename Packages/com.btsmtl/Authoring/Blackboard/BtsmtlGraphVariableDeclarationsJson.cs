@@ -25,17 +25,26 @@ namespace BTSMTL.Graphs
                 ((JArray)Required(root, "m_Variables")).Cast<JObject>().Select(value =>
                 new BtsmtlGraphVariableDeclaration(ReadDeclaration((JObject)Required(value, "m_Declaration")),
                     (string)Required(value, "m_Name"), (string)Required(value, "m_TypeId"), Required(value, "m_DefaultValue"),
-                    (bool)Required(value, "m_IsPublic"), (int)Required(value, "m_DeclarationOrder"))).ToArray());
+                    (bool)Required(value, "m_IsPublic"), (int)Required(value, "m_DeclarationOrder"),
+                    value.Property("m_ObjectKind") is { } kind ? OrchestrationObjectKinds.Require((string)kind.Value) : null))
+                .ToArray());
         }
 
+        // 种类只为句柄变量写出；读取时由声明构造校验句柄必填、非句柄禁填。
         public static JObject Write(BtsmtlGraphVariableDeclarations source) => new()
         {
             ["m_ContentDomain"] = ContentDomain, ["m_OwnerId"] = source.OwnerId, ["m_Revision"] = source.Revision,
-            ["m_Variables"] = new JArray(source.Variables.Select(variable => new JObject
+            ["m_Variables"] = new JArray(source.Variables.Select(variable =>
             {
-                ["m_Declaration"] = WriteDeclaration(variable.Declaration), ["m_Name"] = variable.Name,
-                ["m_TypeId"] = variable.TypeId, ["m_DefaultValue"] = variable.DefaultValue.DeepClone(),
-                ["m_IsPublic"] = variable.IsPublic, ["m_DeclarationOrder"] = variable.DeclarationOrder
+                var stored = new JObject
+                {
+                    ["m_Declaration"] = WriteDeclaration(variable.Declaration), ["m_Name"] = variable.Name,
+                    ["m_TypeId"] = variable.TypeId, ["m_DefaultValue"] = variable.DefaultValue.DeepClone(),
+                    ["m_IsPublic"] = variable.IsPublic, ["m_DeclarationOrder"] = variable.DeclarationOrder
+                };
+                if (variable.ObjectKind != null)
+                    stored["m_ObjectKind"] = variable.ObjectKind.Id;
+                return stored;
             }))
         };
 
@@ -184,6 +193,7 @@ namespace BTSMTL.Graphs
 
         public static bool SameVariable(BtsmtlGraphVariableDeclaration left, BtsmtlGraphVariableDeclaration right) =>
             left.Name == right.Name && left.TypeId == right.TypeId && left.IsPublic == right.IsPublic &&
+            ReferenceEquals(left.ObjectKind, right.ObjectKind) &&
             left.DeclarationOrder == right.DeclarationOrder && SameDeclaration(left.Declaration, right.Declaration) &&
             SameDefault(left.ValueType, left.DefaultValue, right.DefaultValue);
 

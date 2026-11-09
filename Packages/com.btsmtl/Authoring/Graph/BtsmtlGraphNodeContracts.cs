@@ -15,10 +15,8 @@ namespace BTSMTL.Graphs
         int OperationVariant { get; }
     }
 
-    public interface IBtsmtlVariableFlowNode
+    public interface IBtsmtlVariableFlowNode : BTSMTL.Authoring.Graph.IGraphNodeVariableAccess
     {
-        string OwnerId { get; }
-        string VariableId { get; }
         Type ValueType { get; }
         bool Writes { get; }
         void ConfigureVariable(string ownerId, string variableId);

@@ -42,14 +42,15 @@ namespace BTSMTL.Graphs.Editor
                 return;
             }
             BtsmtlGraphValidator.Require(root, contract);
+            BtsmtlGraphVariableDeclarations Variables(string owner) =>
+                owner == root.Variables.OwnerId ? root.Variables : editor.Documents
+                    .Where(document => document.IsMacro && document.VariableOwnerId == owner)
+                    .Select(document => ((BtsmtlMacroGraph)editor.Graph(document.AuthoringId)).Variables).Single();
             var views = new BtsmtlGraphDocumentViews(editor.Document, editor.Definition,
                 (source, definition) => new GraphNodeFields(
                     new BtsmtlGraphJsonFields(source.Json(), definition.GetType(), editor.ReadValue), nodes),
-                nodes.Describe);
-            var compiler = new BtsmtlGraphDocumentCompiler<TValue, TScalar>(root.Source, views, owner =>
-                owner == root.Variables.OwnerId ? root.Variables : editor.Documents
-                    .Where(document => document.IsMacro && document.VariableOwnerId == owner)
-                    .Select(document => ((BtsmtlMacroGraph)editor.Graph(document.AuthoringId)).Variables).Single(),
+                nodes.Describe, new BtsmtlGraphVariableKinds(Variables));
+            var compiler = new BtsmtlGraphDocumentCompiler<TValue, TScalar>(root.Source, views, Variables,
                 contract.BlackboardScopes, identity.SourceRevision, new SimulationCompileReport(), domain);
             OrchestrationGraphContent<TValue> content =
                 compiler.Build<TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(identity, lowering);

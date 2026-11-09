@@ -16,18 +16,21 @@ namespace BTSMTL.Compilation
         readonly Func<BtsmtlGraphDocument, BtsmtlGraphDocumentNode, object> m_Definition;
         readonly Func<BtsmtlGraphDocumentNode, object, GraphNodeFields> m_Fields;
         readonly Func<GraphNodeFields, GraphNodeCompileDescription> m_Describe;
+        readonly IGraphNodeVariableResolver m_Variables;
         readonly Dictionary<(string Root, string Graph), CompileGraph> m_Graphs = new();
         readonly HashSet<string> m_Active = new(StringComparer.Ordinal);
 
         public BtsmtlGraphDocumentViews(Func<string, BtsmtlGraphDocument> document,
             Func<BtsmtlGraphDocument, BtsmtlGraphDocumentNode, object> definition,
             Func<BtsmtlGraphDocumentNode, object, GraphNodeFields> fields,
-            Func<GraphNodeFields, GraphNodeCompileDescription> describe)
+            Func<GraphNodeFields, GraphNodeCompileDescription> describe,
+            IGraphNodeVariableResolver variables)
         {
             m_Document = document;
             m_Definition = definition;
             m_Fields = fields;
             m_Describe = describe;
+            m_Variables = variables ?? throw new ArgumentNullException(nameof(variables));
         }
 
         public BtsmtlGraphDocument Document(string id) => m_Document(id);
@@ -102,7 +105,7 @@ namespace BTSMTL.Compilation
                 CompileNodeRole.MacroCall => callee.Inputs.Concat(callee.Outputs).ToArray(),
                 CompileNodeRole.MacroInput => Reverse(document.Inputs),
                 CompileNodeRole.MacroOutput => Reverse(document.Outputs),
-                _ => GraphNodePortShapes.Of(definition)
+                _ => GraphNodePortShapes.Of(definition, null, m_Variables)
             };
             GraphNodeFields fields = definition == null ? null : m_Fields(source, definition);
             JObject values = source.InputValues();
