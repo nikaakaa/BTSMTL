@@ -87,7 +87,7 @@ namespace BTSMTL.Preview
             m_Width = width;
             m_Height = height;
             m_Encoding = encoding;
-            m_FlipY = SystemInfo.graphicsUVStartsAtTop;
+            m_FlipY = !s_OffscreenOutput && SystemInfo.graphicsUVStartsAtTop;
         }
 
         public int Width => m_Width;
