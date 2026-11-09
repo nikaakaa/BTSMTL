@@ -263,13 +263,17 @@ function receiveFrame(frame: PreviewQuickFrame | null, accepted: Accepted, reque
   return frame;
 }
 
-function clearPicture() {
+function abortPictureRequest() {
   const request = pictureRequest;
   pictureRequest = null;
   if (request !== null) {
     if (request.timer !== null) clearTimeout(request.timer);
     request.controller.abort();
   }
+}
+
+function clearPicture() {
+  abortPictureRequest();
   const picture = current().picture;
   if (picture.frame !== null || picture.request.kind !== 'idle') set({ picture: { frame: null, request: { kind: 'idle' } } });
 }
@@ -341,19 +345,22 @@ async function readPicture(request: PictureRequest, submit: boolean) {
 }
 
 // 拖动片段时的时间候选：同一时刻只有一个请求在途，在途期间只留最新一次，回来后接着发；
-// 播放器按候选改时间、从进度点续算到游标并写出画面，网页像定位一样显示。
+// 播放器按候选改时间、追到游标单点取姿态写出临时画面，网页像定位一样显示。
+// 候选发完后再按同一时刻定位一次：播放器补画面存入该时刻的正式画面时回这次定位，临时画面随之换掉；新候选发出前撤下这次定位。
 let retimeLatest: { documentId: string; clips: ClipTimeRaw[]; key: string } | null = null;
 let retimeSent: string | null = null;
 let retimeBusy = false;
 
 async function sendRetime() {
   retimeBusy = true;
+  let shown = false;
   try {
     while (retimeLatest !== null && retimeLatest.key !== retimeSent) {
       const target = retimeLatest;
       const state = current();
       const accepted = state.accepted;
       if (accepted === null || !quickPictureCurrent()) return;
+      abortPictureRequest();
       retimeSent = target.key;
       const request: PreviewQuickRetimeRequest = { requestId: crypto.randomUUID(), sourceRevision: accepted.sourceRevision,
         inputRevision: accepted.plan.inputRevision, seconds: state.seconds, timelineId: target.documentId, clips: target.clips };
@@ -365,7 +372,9 @@ async function sendRetime() {
       }
       const frame = receiveFrame(reply.data === null ? null : reply.data.frame, accepted, request.requestId, request.seconds);
       set({ picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
+      shown = true;
     }
+    if (shown) requestPicture(true);
   } catch (error) {
     consoleActions.error('快预览片段时间', error);
   } finally {
