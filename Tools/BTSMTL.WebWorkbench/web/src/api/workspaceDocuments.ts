@@ -43,11 +43,12 @@ const readView = readWorkspaceDocumentView;
 const readEditingView = object({
   writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles })),
   reads: array(object({ documentPath: text, revision: text })), execution: readExecutionScopeSelection,
-  product: nullable(object({ value: text, revision: text })), scene: optional(object({ path: text, revision: text })),
+  // Host 的 Scene 可空，未选场景时写出 null。
+  product: nullable(object({ value: text, revision: text })), scene: optional(nullable(object({ path: text, revision: text }))),
 });
 export function readWorkspaceEditingView(value: unknown): WorkspaceEditingView {
   const { scene, ...view } = readEditingView(value, 'EditingView');
-  return { ...view, ...(scene === undefined ? {} : { scene }) };
+  return { ...view, ...(scene == null ? {} : { scene }) };
 }
 
 export const workspaceDocumentsApi = {
