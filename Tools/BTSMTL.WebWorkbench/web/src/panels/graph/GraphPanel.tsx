@@ -106,8 +106,8 @@ const objectKindAccepted = (source: GraphPort | undefined, target: GraphPort | u
   || !!source?.objectKind && !!target?.acceptedObjectKinds?.includes(source.objectKind);
 const objectKindRejection = (source: GraphPort | undefined, target: GraphPort | undefined) =>
   objectKindAccepted(source, target) ? null
-    : `${source?.objectKindName ?? source?.valueType ?? '?'} 不能接到 ${target?.objectKindName ?? target?.valueType ?? '?'}`;
-const portKindText = (port: GraphPort) => port.objectKindName ? `${port.valueType} · ${port.objectKindName}` : port.valueType;
+    : `这里要接${target?.objectKindName ?? target?.valueType ?? '?'}，拖来的是${source?.objectKindName ?? source?.valueType ?? '?'}`;
+const portKindText = (port: GraphPort) => port.objectKindName ? `对象引用 · ${port.objectKindName}` : port.valueType;
 const groupNodeId = (group: CanvasGroup) => `group:${group.index}`;
 
 // 分组包含左上角落在矩形内的节点（照 NodeCanvas）。

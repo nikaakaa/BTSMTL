@@ -27,7 +27,7 @@ export interface ReferenceFieldSelection {
 export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));
 
 export function resourceReferenceChoice(item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'display' | 'context'>, conflict: string | null): ReferenceChoice {
-  return { value: item.value, name: item.display, detail: item.context || '公共', source: item.adapter, conflict,
+  return { value: item.value, name: item.display, detail: item.context === '' ? item.value : `${item.value}（${item.context}）`, source: item.adapter, conflict,
     targets: [{ kind: 'Resource', domain: item.domain, value: item.value, context: item.context }], associated: [] };
 }
 

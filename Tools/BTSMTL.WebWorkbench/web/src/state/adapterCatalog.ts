@@ -19,11 +19,11 @@ export function resourceCatalogChoices(snapshot: AdapterCatalogSnapshot, domain:
   const items = [...values.values()].flatMap(entries => {
     const exact = entries.filter(item => item.context === context);
     const selected = exact.length !== 0 ? exact : entries;
-    const conflict = selected.length > 1 ? `领域 ${domain}、引用 ${selected[0].value}、上下文 ${context} 命中多条正式目录。` : null;
+    const conflict = selected.length > 1 ? `资源目录里有 ${selected.length} 条相同的「${selected[0].value}」，无法确定用哪一条。` : null;
     return selected.map(item => resourceReferenceChoice(item, conflict));
   });
   return { kind: 'ready', referenceKind: domain, items,
-    invalidReason: `当前引用不在领域 ${domain}、上下文 ${context} 的正式目录中，原字符串已保留。` };
+    invalidReason: '找不到这个资源，可能已改名、删除或不属于当前角色；原值没有改动。' };
 }
 
 let snapshot: AdapterCatalogSnapshot | null = null;

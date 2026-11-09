@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AdapterCatalogDomain, AdapterCatalogItem } from '../../api/authoring';
 import { matchesReferenceChoice, referenceValueKey, resourceReferenceChoice, writeReferenceDrag, type ReferenceFieldSelection } from '../../state/referenceSelection';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, Select, TextInput } from '../../ui/controls';
+import { Button, Select, TextInput, Tip } from '../../ui/controls';
 import { VirtualList } from '../../ui/VirtualList';
 import styles from './project.module.css';
 
@@ -71,13 +71,13 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
           onChange={value => setDomain(value === '' ? null : value)} />
         <Button variant="ghost" pressed={!all} onClick={() => setAll(false)}>当前载体</Button>
         <Button variant="ghost" pressed={all} onClick={() => setAll(true)}>全部</Button>
-        <Button variant="ghost" pressed={issuesOnly} onClick={() => setIssuesOnly(!issuesOnly)}>只看问题</Button>
+        <Button variant="ghost" pressed={issuesOnly} tip="只列出目录里重复、无法确定用哪一条的资源" onClick={() => setIssuesOnly(!issuesOnly)}>只看重复</Button>
       </PanelBar>
-      <TextInput aria-label="搜索领域资源" placeholder="搜索名称、引用值或上下文" value={search}
+      <TextInput aria-label="搜索领域资源" placeholder="搜索名称或路径" value={search}
         onChange={event => setSearch(event.currentTarget.value)} />
-      {activeField !== null && <div className={styles.note}>当前字段：{activeField.name} · {activeField.domain}
-        {activeField.selection === 'mapped' ? ' · 选择当前载体的已有映射' : activeField.selection === 'asset' ? ' · 选择实际文件或子对象' : ''}</div>}
-      {missing !== null && <div className={styles.issue}>当前字段引用不在所选载体的正式目录中，原值仍保留：{missing.value}</div>}
+      {activeField !== null && <div className={styles.note}>正在为「{activeField.name}」选择{activeField.selection === 'mapped'
+        ? '：只列出当前角色已配置的映射' : '：点一项查看详情，再点“填入”；也可直接拖到字段上'}</div>}
+      {missing !== null && <div className={styles.issue}>找不到当前值，可能已改名、删除或不属于当前角色；原值没有改动：{missing.value}</div>}
       {!all && currentScope === null && activeField?.selection === 'mapped' ? <Empty text="当前字段尚未选择载体上下文；选择载体或切换到全部资源。" />
         : rows.length === 0 ? <Empty text={issuesOnly && missing === null ? '当前筛选范围没有目录冲突' : '当前筛选范围没有资源'} />
           : <VirtualList className={styles.contentList} count={rows.length} rowHeight={40} label="适配者领域资源目录"
@@ -86,31 +86,31 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
               if (row.kind === 'domain') return <div className={styles.heading}>{row.domain}</div>;
               if (row.kind === 'missing') return <button className={styles.row}
                 aria-selected={selected?.kind === 'missing' && selected.domain === row.domain && selected.value === row.value}
-                onClick={() => onSelect(row)}><span>{row.value}<small className={styles.issue}>当前字段引用缺失</small></span>
-                <small>{row.fieldName} · 原值已保留</small></button>;
+                onClick={() => onSelect(row)}><span>{row.value}<small className={styles.issue}>找不到</small></span>
+                <small>「{row.fieldName}」当前的值，原值没有改动</small></button>;
               const item = row.item;
               const conflict = conflicts.has(resolutionKey(item));
               return <button className={styles.row} title={item.value} aria-selected={selectedItem !== null && catalogItemKey(selectedItem) === catalogItemKey(item)}
                 draggable={!conflict} onDragStart={event => writeReferenceDrag(event.dataTransfer, item.domain, resourceReferenceChoice(item, null))}
                 onClick={() => onSelect({ kind: 'catalog', item })}>
-                <span>{item.display}{conflict && <small className={styles.issue}>目录条目冲突</small>}</span>
-                <small>{item.value} · {item.adapter}{all ? ` · ${item.context || '公共'}` : ''}</small>
+                <span>{item.display}{conflict && <small className={styles.issue}>重复</small>}</span>
+                <small>{item.value}{all && item.context !== '' ? `（${item.context}）` : ''}</small>
               </button>;
             }} />}
-      <div className={styles.note}>{shown.length + (shownMissing === null ? 0 : 1)} 项 · 目录修订 {revision}</div>
+      <Tip content={`目录版本 ${revision}`}><div className={styles.note}>共 {shown.length + (shownMissing === null ? 0 : 1)} 项</div></Tip>
     </div>
     <div className={styles.contentDetails}>
-      {selected === null ? <Empty text="选择资源查看引用者及引用替换；聚焦引用字段可定位当前值。" /> : <>
-        {selected.kind === 'missing' ? <div className={styles.facts}><strong className={styles.issue}>当前引用不在正式目录中</strong>
-          <span>{selected.domain}</span><code>{selected.value}</code><span>原作者值仍保留，可查看引用者并替换为同领域的实际目录条目。</span></div>
-          : <div className={styles.facts}><strong>{selected.item.display}</strong><span>{selected.item.adapter} · {selected.item.domain}</span>
-            <code>{selected.item.value}</code><small>上下文：{selected.item.context || '公共'}</small></div>}
+      {selected === null ? <Empty text="点一项资源，查看哪些地方在用它，或批量替换；在检查器里点引用字段会自动定位到它当前的值。" /> : <>
+        {selected.kind === 'missing' ? <div className={styles.facts}><strong className={styles.issue}>找不到这个资源</strong>
+          <code>{selected.value}</code><span>原值没有改动。可以查看哪些地方在用它，并替换成同类的现有资源。</span></div>
+          : <div className={styles.facts}><strong>{selected.item.display}</strong>
+            <code>{selected.item.value}</code><small>{selected.item.context === '' ? '所有角色可用' : `只属于 ${selected.item.context}`}</small></div>}
         {choices.map((choice, index) => <Button key={index} disabled={choice.conflict !== null || conflicts.has(resolutionKey(selectedItem!))}
           tip={choice.conflict ?? undefined} onClick={() => field!.choose(choice)}>
           {matchesReferenceChoice(choice, field!) ? `已设置 ${field!.name}` : `填入 ${field!.name}`}
         </Button>)}
         {activeField !== null && activeField.domain !== (selected.kind === 'catalog' ? selected.item.domain : selected.domain) && <div className={styles.note}>
-          当前字段只接受 {activeField.domain}，所选资源属于 {selected.kind === 'catalog' ? selected.item.domain : selected.domain}。
+          「{activeField.name}」只能选 {activeField.domain} 类资源，这一项是 {selected.kind === 'catalog' ? selected.item.domain : selected.domain}。
         </div>}
         {details}
       </>}

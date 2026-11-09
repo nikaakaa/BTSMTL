@@ -34,11 +34,11 @@ function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoo
   const choices: ReferenceCatalog = !metadata.availability.available
     ? { kind: 'unavailable', reason: metadata.availability.reason }
     : catalog.kind !== 'ready' ? { kind: 'unavailable', reason: catalog.kind === 'unavailable' ? catalog.reason : '正在读取工作区作者元素。' }
-      : { kind: 'ready', referenceKind: metadata.domain, invalidReason: `当前引用不在领域 ${metadata.domain} 的工作区作者元素中，原字符串已保留。`,
+      : { kind: 'ready', referenceKind: metadata.domain, invalidReason: '找不到所引用的内容，可能已改名或删除；原值没有改动。',
         items: elements.map(element => ({ value: element.sourceIdentity, name: element.name,
-          detail: `${element.documentPath} · ${element.jsonPath}`, source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`,
+          detail: element.documentPath, source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`,
           conflict: elements.filter(other => other.sourceIdentity === element.sourceIdentity).length > 1
-            ? `领域 ${metadata.domain} 的引用 ${element.sourceIdentity} 命中多个正式作者元素。` : null,
+            ? `有多处内容使用同一个引用「${element.sourceIdentity}」，无法确定是哪一个。` : null,
           targets: [], associated: [] })) };
   const selected = elements.filter(element => element.sourceIdentity === value);
   return <><ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />

@@ -886,17 +886,17 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
   if (field.objectSelection !== null) {
     const metadata = field.objectSelection;
     return <ReferencePicker id={id} label={label} value={value} configuration={configuration}
-      catalog={{ kind: 'unavailable', reason: metadata.kind === 'available' ? '选择文件后读取实际对象候选。' : metadata.reason }}
+      catalog={{ kind: 'unavailable', reason: metadata.kind === 'available' ? '点“选文件内对象”，在资源面板先选文件，再选其中的对象。' : metadata.reason }}
       onChoose={onChoose} resourceObjects={metadata.kind === 'unavailable' ? metadata : { ...metadata, choose: candidate => {
         onChoose({ value: resourceObjectValue(candidate, metadata.valueMember), name: candidate.name, detail: candidate.type,
           source: candidate.value, conflict: null, targets: [], associated: [] });
       } }} />;
   }
   const catalog: ReferenceCatalog = field.choiceKind === null
-      ? { kind: 'unavailable', reason: '该字段尚未提供正式候选目录' }
+      ? { kind: 'unavailable', reason: '这个字段还没有可选列表' }
       : field.choicesAvailability.available
         ? { kind: 'ready', referenceKind: field.choiceKind, items: field.choices,
-          invalidReason: '引用已失效，当前值不在正式候选中，原值已保留' }
+          invalidReason: '找不到所引用的内容，可能已改名或删除；原值没有改动。' }
         : { kind: 'unavailable', reason: field.choicesAvailability.reason };
   return <ReferencePicker id={id} label={label} value={value}
     configuration={configuration} catalog={catalog} onChoose={onChoose} />;

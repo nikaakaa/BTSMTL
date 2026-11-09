@@ -1,12 +1,22 @@
-.root { position: relative; min-width: 0; }
-.trigger, .invalid { width: 100%; min-width: 0; justify-content: flex-start; text-align: left; }
-.title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.invalid { border-color: var(--warn); }
-.popup { position: absolute; z-index: 20; top: 100%; right: 0; width: max(100%, 300px); max-width: 440px; display: grid; gap: 6px; padding: 8px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 5px; box-shadow: 0 8px 24px #0006; }
-.list { max-height: 300px; }
-.item { display: grid; gap: 3px; width: 100%; padding: 7px; text-align: left; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+.root { min-width: 0; }
+.line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.trigger { flex: 1; width: 100%; }
+.trigger[data-state="unset"] > span { color: var(--text-dim); }
+.trigger[data-state="invalid"] { border-color: var(--warn); }
+.positioner { z-index: 1000; outline: none; }
+.popup { width: min(420px, calc(100vw - 16px)); max-height: var(--available-height); display: grid; gap: 6px; padding: 8px;
+  background: var(--popup-bg); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--popup-shadow); outline: none; }
+.head { display: grid; gap: 2px; }
+.head span { color: var(--text-dim); font-size: 11px; }
+.list { height: min(320px, calc(var(--available-height) - 120px)); }
+.item { display: grid; align-content: center; gap: 1px; width: 100%; height: 100%; padding: 0 7px; text-align: left; color: inherit;
+  background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: default; font: inherit; }
 .item > * { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.item:hover, .item:focus-visible { background: var(--bg-2); border-color: var(--accent); }
+.item strong { font-weight: normal; }
+.item small { color: var(--text-dim); font-size: 11px; direction: rtl; text-align: left; }
+.item:hover, .item:focus-visible { background: var(--bg-2); border-color: var(--accent); outline: none; }
 .item[aria-selected="true"] { background: var(--select); }
-.item span, .item small, .note { color: var(--text-dim); overflow-wrap: anywhere; font-size: 11px; }
+.item:disabled { opacity: .6; }
+.count, .note { color: var(--text-dim); font-size: 11px; overflow-wrap: anywhere; }
 .issue { color: var(--warn); font-size: 11px; overflow-wrap: anywhere; margin-top: 3px; }
+.item small.issue { direction: ltr; margin-top: 0; }
