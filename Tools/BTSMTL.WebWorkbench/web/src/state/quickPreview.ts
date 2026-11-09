@@ -147,7 +147,7 @@ function followContent() {
 
 function scheduleFollow() {
   if (followTimer !== null) clearTimeout(followTimer);
-  followTimer = setTimeout(followContent, 200);
+  followTimer = setTimeout(followContent, contentFollow ? 0 : 200);
 }
 
 export function quickInputSourceKey(source: PreviewQuickInputSource | null): string {

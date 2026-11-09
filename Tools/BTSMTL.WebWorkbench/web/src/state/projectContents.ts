@@ -38,13 +38,16 @@ export function projectContents(documents: AuthoringState['documents']) {
     const ownerName = document.kind === 'skill' ? root.m_DisplayName as string : document.kind === 'timeline' ? root.m_Name as string : owner;
     for (const [file, value] of source) {
       const data = value as JsonObject;
-      const base = { owner, ownerName, file, referenceCount: 0 };
+      const base = { owner, ownerName, file };
       let item: ProjectItem;
       if (file === 'skill.json') item = { ...base, kind: 'skill', identity: data.m_AbilityId as string,
         name: ownerName, ownership: 'Private', asset: data };
       else if (file === document.rootFile && document.kind === 'graph') {
-        if (document.projectRoot === null) continue;
-        item = { ...document.projectRoot };
+        const name = data.name as string;
+        item = { ...base, kind: 'graph', identity: data.AuthoringId as string, name, ownerName: name,
+          ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private',
+          contentDomain: data.m_ContentDomain as string, domains: data.Domains as string[],
+          variableOwnerId: data.VariableOwnerId as string | null };
       }
       else if (file.startsWith('graphs/')) {
         const name = graphNames.get(data.AuthoringId as string);
@@ -115,8 +118,7 @@ export function projectContents(documents: AuthoringState['documents']) {
   }
   for (const [key, item] of items) {
     const independentGraph = documents[item.owner].kind === 'graph';
-    if (!independentGraph) item.referenceCount = uses.get(key)?.length ?? 0;
-    if (!independentGraph && item.referenceCount > 1) item.ownership = 'Shared';
+    if (!independentGraph && (uses.get(key)?.length ?? 0) > 1) item.ownership = 'Shared';
     if (item.kind === 'graph' && 'role' in item && !hostNamed.has(key)) {
       const references = uses.get(key) ?? [];
       const names = [...new Set(references.map(reference => reference.label.split(' / ').slice(1, -1).join(' / ')).filter(Boolean))];

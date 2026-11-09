@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
-  type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type ProjectItem,
+  type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot,
 } from '../api/authoring';
@@ -59,7 +59,6 @@ export interface AuthoringDocument {
   rootFile: WorkspaceDocumentInfo['rootFile'];
   identity: WorkspaceDocumentInfo['identity'] | null;
   authoringType: string | null;
-  projectRoot: Extract<ProjectItem, { kind: 'graph' }> | null;
   variables: VariablesQuery | null;
   variablesWriting: boolean;
   documentSources: string[];
@@ -122,7 +121,7 @@ export interface AddedPort {
 }
 
 export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, identity: null, authoringType: null, projectRoot: null, variables: null, variablesWriting: false, documentSources: [],
+  rootFile: null, identity: null, authoringType: null, variables: null, variablesWriting: false, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -508,24 +507,17 @@ export function captureEditingView() {
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const { editingView, isCurrentRequest } = captureEditingView();
   try {
-    const [document, view, project] = await Promise.all([
-      authoringApi.document(target.documentPath, editingView, signal),
-      workspaceDocumentsApi.editingView(editingView, signal),
-      authoringApi.project(target, editingView, signal),
-    ]);
+    const document = await authoringApi.document(target.documentPath, editingView, signal);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     const documents = { ...useAuthoring.getState().documents };
     for (const source of document.sources) {
       const owner = authoringOwner(source.skill);
       const key = owner.documentPath;
-      const projectRoot = project.items.filter(item => item.owner === key && item.file === authoringRootFiles[owner.kind])
-        .find(item => item.kind === 'graph') ?? null;
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind],
-          projectRoot,
-          identity: view.elements.find(element => element.documentPath === key && element.relativePath === authoringRootFiles[owner.kind] && element.jsonPath === '/')?.identity ?? null,
+          identity: document.elements.find(element => element.documentPath === key && element.relativePath === authoringRootFiles[owner.kind] && element.jsonPath === '/')?.identity ?? null,
           revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
@@ -538,7 +530,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
           if (current.files[path] === undefined) delete files[path];
           else files[path] = current.files[path];
         }
-        documents[key] = { ...current, files, edited, projectRoot };
+        documents[key] = { ...current, files, edited };
       }
     }
     const key = authoringTargetKey(target);
@@ -546,7 +538,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       documentSources: document.sources.map(source => source.skill),
       sourceRevision: document.sourceRevision, documentRevision: document.inputRevision,
       documentError: null, tickRate: document.tickRate, programId: document.programId };
-    set({ documents, elementCatalog: { kind: 'ready', items: view.elements } });
+    set({ documents, elementCatalog: { kind: 'ready', items: document.elements } });
   } catch (error) {
     if (isAbort(error)) throw error;
     if (!isCurrentRequest()) return;

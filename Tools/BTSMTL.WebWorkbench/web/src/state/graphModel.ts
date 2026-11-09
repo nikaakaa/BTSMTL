@@ -53,11 +53,13 @@ export const graphName = (graph: Pick<GraphDefinition, 'id' | 'displayName'>) =>
 const typeNamePattern = /^[A-Z][A-Za-z0-9]*Node$/;
 export const nodeTypeName = (node: GraphNode) =>
   node.displayName !== null && typeNamePattern.test(node.displayName) ? node.displayName : null;
+// 节点类型目录给出的展示名；网页刚添加、尚未经宿主回读的节点按它显示。
+export const nodeTypeDisplayNames = new Map<string, string>();
 export function nodeName(node: GraphNode) {
   const type = nodeTypeName(node);
   if (type === null) return node.displayName ?? '未命名节点';
-  return type.replace(/^Btsmtl/, '').replace(/(Flow)?Node$/, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') || type;
+  return nodeTypeDisplayNames.get(type) ?? (type.replace(/^Btsmtl/, '').replace(/(Flow)?Node$/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') || type);
 }
 export const nodeOccurrenceLabel = (item: NodeOccurrence) => item.kind === 'LoopIterationEntered' || item.kind === 'LoopIterationCompleted'
   ? `${item.kind} · 激活 ${item.generation ?? '未记录'} · 记录迭代号 ${item.loopIteration ?? '未记录'}` : `${item.kind} · 激活 ${item.generation ?? '未记录'}`;

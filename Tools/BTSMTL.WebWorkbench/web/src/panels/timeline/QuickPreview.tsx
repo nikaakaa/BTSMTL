@@ -70,7 +70,8 @@ export function QuickBar() {
     : sourceReason ?? (progress === null ? quickPreview.unavailableReason() : null);
   const failure = quickJobFailure(job);
   const status = state.description.kind === 'loading' ? '正在读取来源'
-    : progress ?? (plan === null ? null : `${stale ? '内容已变化，正在重新生成 · ' : ''}共 ${plan.duration.toFixed(2)} ${plan.clock.unit}`);
+    : progress ?? (plan === null ? null : `${!stale ? '' : state.description.kind === 'failed' ? '内容已变化，未能重新生成 · '
+      : '内容已变化，正在重新生成 · '}共 ${plan.duration.toFixed(2)} ${plan.clock.unit}`);
   // 推导根只列当前作者文档的入口；当前文档不在目录里时列全部。
   const roots = useMemo(() => {
     const documents = description?.documents ?? [];
@@ -138,6 +139,7 @@ function QuickDetails() {
     { displayName: '实际输入', value: JSON.stringify(plan.inputsUsed) }, { displayName: '实际条件覆盖', value: JSON.stringify(plan.conditionsUsed) },
   ], [route, plan, status?.jobId]);
   return <div className={styles.details}>
+    {state.description.kind === 'failed' && <p className={styles.notice} role="alert">{state.description.reason}</p>}
     {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
       { displayName: '内容来源', value: description.source === null ? '尚未选入口' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
         : description.source.documents.some(document => document.hasUnsavedChanges) ? '包含未保存修改' : '已保存作者内容' },

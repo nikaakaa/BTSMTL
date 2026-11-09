@@ -31,6 +31,7 @@ namespace BTSMTL.Preview
         // 只有项目按请求要的单帧样本（如快预览定位目标）才编码成图像；实时画面只写共享画面区。
         bool WantsEncodedStreamFrame(int captureSlot);
         void SendStreamFrame(in PreviewEncodedFrame frame);
+        void ReleaseStreamBuffers();
         void OnShutdown(string reason);
     }
 
@@ -44,6 +45,7 @@ namespace BTSMTL.Preview
         readonly Action<string> m_SendText;
         readonly CancellationTokenSource m_Cancel = new CancellationTokenSource();
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
+        Vector2Int m_StreamSize;
         PreviewFrameCapture m_StreamCapture;
         PreviewSharedSurface m_Surface;
         readonly Func<int, bool> m_EncodeStreamFrame;
@@ -75,10 +77,9 @@ namespace BTSMTL.Preview
         }
 
         PreviewAgentConnection Connection { get; }
-        // 尺寸与当前实时采集一致的共享画面区；未接入或尺寸不符时为 null，此时只发按请求编码的单帧。
+        // 尺寸与当前载入画面一致的共享画面区；未接入或尺寸不符时为 null，此时只发按请求编码的单帧。
         public PreviewSharedSurface Surface =>
-            m_Surface != null && m_StreamCapture != null &&
-            m_Surface.Width == m_StreamCapture.Width && m_Surface.Height == m_StreamCapture.Height ? m_Surface : null;
+            m_Surface != null && m_Surface.Width == m_StreamSize.x && m_Surface.Height == m_StreamSize.y ? m_Surface : null;
         public CancellationToken Cancellation => m_Cancel.Token;
         public bool StreamEnabled { get; set; } = true;
         public bool IsStreaming => StreamEnabled && m_Project.Playback.CanStream;
@@ -134,12 +135,23 @@ namespace BTSMTL.Preview
         public void LateUpdate()
         {
             PreviewPlaybackState state = m_Project.Playback.State;
-            if (!IsStreaming || m_StreamLoop == null ||
+            if (m_StreamSize.x == 0 ||
                 state is not (PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
                     PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking))
                 return;
 
-            double now = Time.unscaledTimeAsDouble;
+            if (IsStreaming)
+                SchedulePeriodicFrame(Time.unscaledTimeAsDouble);
+            if (m_StreamLoop == null && m_CaptureRequested)
+            {
+                m_StreamCapture = new PreviewFrameCapture(Screen.width, Screen.height, m_StreamSize.x, m_StreamSize.y,
+                    PreviewImageEncoding.Jpeg, m_StreamQuality, StreamCapacity);
+                m_StreamLoop = m_Owner.StartCoroutine(CaptureStreamFrames());
+            }
+        }
+
+        void SchedulePeriodicFrame(double now)
+        {
             if (now < m_NextVideo)
                 return;
 
@@ -149,7 +161,7 @@ namespace BTSMTL.Preview
             // 周期边界舍入到当前时刻时，截止点仍需推进一拍。
             if (m_NextVideo <= now)
                 m_NextVideo += period;
-            if (m_StreamCapture.CanCapture)
+            if (m_StreamCapture == null || m_StreamCapture.CanCapture)
                 RequestStreamFrame();
         }
 
@@ -164,7 +176,8 @@ namespace BTSMTL.Preview
             }
             try
             {
-                m_Project.RequireCommandAvailable(command);
+                if (command.type != "stream")
+                    m_Project.RequireCommandAvailable(command);
                 PreviewPlaybackController playback = m_Project.Playback;
                 switch (command.type)
                 {
@@ -219,8 +232,8 @@ namespace BTSMTL.Preview
 
         void ConfigureStream(TCommand command)
         {
-            if (!m_Project.Playback.CanStream && command.enabled)
-                throw new InvalidOperationException("批量预览只写逐帧归档，不推送实时画面。");
+            if (command.enabled && !StreamEnabled)
+                m_NextVideo = Time.unscaledTimeAsDouble;
             StreamEnabled = command.enabled;
             if (command.quality > 0)
             {
@@ -241,20 +254,17 @@ namespace BTSMTL.Preview
                 m_Surface = new PreviewSharedSurface(command.surfaceHandle, command.width, command.height, command.surfaceBytes);
         }
 
-        // 载入时按面板尺寸准备实时画面采集；批量模式不推流，不建采集。
+        // 载入确定画面尺寸，采集资源由实时需求或显式取图创建。
         public void PrepareStreamCapture(int width, int height, int quality)
         {
             m_StreamQuality = quality;
             if (m_Project.Playback.CanStream)
-            {
-                m_StreamCapture = new PreviewFrameCapture(Screen.width, Screen.height, width, height,
-                    PreviewImageEncoding.Jpeg, m_StreamQuality, StreamCapacity);
-                m_StreamLoop = m_Owner.StartCoroutine(CaptureStreamFrames());
-            }
+                m_StreamSize = new Vector2Int(width, height);
         }
 
         public IEnumerator ReleaseStreamCapture()
         {
+            m_StreamSize = default;
             if (m_StreamLoop != null)
                 m_Owner.StopCoroutine(m_StreamLoop);
             m_StreamLoop = null;
@@ -264,8 +274,7 @@ namespace BTSMTL.Preview
                 SendCompletedStreamFrames();
                 yield return null;
             }
-            m_StreamCapture?.Dispose();
-            m_StreamCapture = null;
+            DisposeStreamCapture();
         }
 
         IEnumerator CaptureStreamFrames()
@@ -276,8 +285,14 @@ namespace BTSMTL.Preview
                 SendCompletedStreamFrames();
                 if (m_StreamCapture.Failure != null)
                 {
-                    m_StreamLoop = null;
-                    m_Project.Fail("stream", m_StreamCapture.Failure, null);
+                    Exception failure = m_StreamCapture.Failure;
+                    DisposeStreamCapture();
+                    m_Project.Fail("stream", failure, null);
+                    yield break;
+                }
+                if (!IsStreaming && !m_CaptureRequested && !m_StreamCapture.IsBusy)
+                {
+                    DisposeStreamCapture();
                     yield break;
                 }
                 if (!m_CaptureRequested || !m_Project.CanCaptureStreamFrame)
@@ -305,6 +320,16 @@ namespace BTSMTL.Preview
                 }
                 finally { encoded.Dispose(); }
             }
+        }
+
+        void DisposeStreamCapture()
+        {
+            m_StreamLoop = null;
+            if (m_StreamCapture == null)
+                return;
+            m_StreamCapture.Dispose();
+            m_StreamCapture = null;
+            m_Project.ReleaseStreamBuffers();
         }
 
         IEnumerator CaptureStill(TCommand command)
@@ -362,8 +387,7 @@ namespace BTSMTL.Preview
         public void Destroy()
         {
             m_Cancel.Cancel();
-            m_StreamCapture?.Dispose();
-            m_StreamCapture = null;
+            DisposeStreamCapture();
             if (Connection != null)
                 m_Close ??= Connection.CloseAsync();
         }

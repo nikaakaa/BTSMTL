@@ -25,11 +25,12 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
   const current = { value, configuration };
   const selected = catalog.kind === 'ready'
     ? catalog.items.filter(item => matchesReferenceChoice(item, current)) : [];
-  const invalid = catalog.kind === 'ready' && selected.length === 0 && value !== undefined;
+  const unset = value === undefined || value === null || value === '';
+  const invalid = catalog.kind === 'ready' && selected.length === 0 && !unset;
   const query = search.toLocaleLowerCase();
   const items = catalog.kind === 'ready' ? catalog.items.filter(item =>
     [item.name, item.detail, item.source, referenceValueKey(item.value)].some(text => text?.toLocaleLowerCase().includes(query))) : [];
-  const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : referenceValueKey(value) ?? '未设置';
+  const title = selected.length ? [...new Set(selected.map(item => item.name))].join(' / ') : unset ? '未设置' : referenceValueKey(value) ?? '未设置';
   const focus = () => useReferenceSelection.setState({ field: { id, name: label, domain, selection, resourceContext, catalog, value, configuration, choose: onChoose, resourceObjects } });
   useEffect(() => {
     const current = useReferenceSelection.getState().field;

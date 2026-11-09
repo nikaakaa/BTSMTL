@@ -23,6 +23,7 @@ const readElement = object({ kind: text, identity: text, name: text,
   contentDomain: nullable(text), sourceIdentity: nullable(text), documentPath: text, relativePath: text,
   jsonPath: text, revision: text, authoringType: nullable(text) });
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
+export const readWorkspaceDocumentElements = array(readElement);
 export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
 export type WorkspaceDocumentRead = Pick<WorkspaceDocumentInfo, 'documentPath' | 'revision'>;
 export type WorkspaceEditingView = {
@@ -36,8 +37,8 @@ export type WorkspaceEditingView = {
 const readList = object({ success: boolean, documents: array(readDocument) });
 const readOpen = object({ success: boolean, document: readWorkspaceDocumentSnapshot });
 const readChanged = object({ success: boolean, document: optional(readWorkspaceDocumentSnapshot) });
-const readElements = object({ success: boolean, elements: array(readElement) });
-export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: array(readElement) });
+const readElements = object({ success: boolean, elements: readWorkspaceDocumentElements });
+export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: readWorkspaceDocumentElements });
 const readView = readWorkspaceDocumentView;
 const readEditingView = object({
   writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles })),
