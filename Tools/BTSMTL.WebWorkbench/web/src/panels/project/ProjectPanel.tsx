@@ -168,7 +168,7 @@ export function ProjectPanel() {
     } else if (entry?.kind === 'content' && entry.node.target?.kind === 'item') {
       const item = entry.node.target.item;
       if (item.kind === 'graph' || item.kind === 'timeline')
-        writeReferenceDrag(transfer, item.kind, { value: item.identity, source: `${item.owner}/${item.file}`, targets: [], associated: [] });
+        writeReferenceDrag(transfer, item.kind, { value: item.identity, source: `${item.owner}/${item.file}`, targets: [] });
     }
   };
   const create = (kind: SkillContentKind) => { setFiles(false); setCreating(kind); };

@@ -55,11 +55,12 @@ export function referenceTargetKey(target: ReferenceChoiceTarget): string {
   }
 }
 
-type ReferenceDragChoice = Pick<ReferenceChoice, 'value' | 'source' | 'targets' | 'associated'>;
+type ReferenceDragChoice = Pick<ReferenceChoice, 'value' | 'source' | 'targets'>;
 
+// 拖拽只标明引用的是谁；随引用写入的关联字段（如 Timeline 归属）由接收字段从自己的候选补齐，
+// 同一引用对应多种关联值时由 resolveReferenceDrag 拒绝并要求从列表选择。
 const referenceChoiceKey = (choice: ReferenceDragChoice) => JSON.stringify([
   referenceValueKey(choice.value), choice.source, choice.targets.map(referenceTargetKey).sort(),
-  choice.associated.map(field => [field.fieldId, field.serializedMemberPath, referenceValueKey(field.value)]),
 ]);
 
 const referenceMime = 'application/x-btsmtl-authoring-reference';

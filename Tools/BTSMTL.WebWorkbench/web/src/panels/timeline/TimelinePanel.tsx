@@ -37,11 +37,11 @@ import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSp
 import { archive } from '../../state/archive';
 import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationLibrary } from '../../state/resources';
-import { acceptsReferenceDrag } from '../../state/referenceSelection';
+import { acceptsReferenceDrag, readReferenceDrop } from '../../state/referenceSelection';
 import { useTimelineResourceCatalog } from '../../state/resourceScope';
 import { cloneJson, fpRaw, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty } from '../../ui/blocks';
-import { ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, Tip, TipGroup, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, Tip, TipGroup, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } from '../../ui/icons';
 import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
@@ -537,6 +537,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   rate: number | null;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
+  const [dropIssue, setDropIssue] = useState<string | null>(null);
   const binding = useDocumentObservationBinding();
   const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
@@ -918,6 +919,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   return (
     <PreviewClockContext.Provider value={clock}>
     <CurveClockContext.Provider value={curveClock}>
+    <DropIssueContext.Provider value={setDropIssue}>
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject} origin={origin} seek={seek}
         quickPlayback={quickPlayback}
@@ -925,6 +927,10 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
         observations={choices} selectCall={selectCall} pin={quickMode || pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
         observationNotice={quickMode || realArchive && inputScheme ? null : pinNotice ?? callerNotice
           ?? (realArchive ? playbackNotice ?? timelineNotice : (inputScheme ? null : timelineNotice) ?? playbackNotice)} />
+      {dropIssue !== null && <div className={styles.dropIssue} role="alert">
+        <span>{dropIssue}</span>
+        <Button variant="ghost" onClick={() => setDropIssue(null)}>关闭</Button>
+      </div>}
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>
@@ -948,6 +954,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
         <Overlay bounds={bounds} origin={origin} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
+    </DropIssueContext.Provider>
     </CurveClockContext.Provider>
     </PreviewClockContext.Provider>
   );
@@ -957,6 +964,15 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
 
 // 框选中的片段与标记（data-box 键）；照 Timeline Editor 在轨道空白处左键拖出选框。
 const BoxedContext = createContext<ReadonlySet<string>>(new Set());
+// 本面板拖放的结果：被拒时写原因，显示在 Timeline 顶部；成功时清除。
+const DropIssueContext = createContext<(reason: string | null) => void>(() => {});
+const useDropReport = () => {
+  const report = useContext(DropIssueContext);
+  return (reason: string | null) => {
+    if (reason !== null) consoleActions.log('warn', 'Timeline', reason);
+    report(reason);
+  };
+};
 
 // 框选多个后拖动其中的标记：由 ClipEditing 按拖动片段的同一流程整体平移（指针位置由它在捕获阶段记录）。
 interface GroupMove { start(box: string, x: number, y: number): void; move(): void; end(): void; cancel(): void }
@@ -1377,6 +1393,7 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
   const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
   const animationLibrary = useAnimationLibrary(author && row.trackKind === 'anim');
+  const reportDrop = useDropReport();
   const curves = hasCurves && row.curves ? row.curves : 0;
   const segment = row.segment;
   const select = () => selectTimelineObject(clock, 'track', row.selectId);
@@ -1398,11 +1415,12 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
       if (!author || row.trackKind !== 'anim') return;
       event.preventDefault();
       const result = readAnimationDrop(event.dataTransfer, animationLibrary, animationCatalog);
-      if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
-      if (!elements) { consoleActions.log('warn', 'Timeline', '片段作者合同尚未取得'); return; }
+      if (result.kind === 'rejected') { reportDrop(`没有添加动画片段：${result.reason}`); return; }
+      if (!elements) { reportDrop('没有添加动画片段：片段作者合同尚未取得'); return; }
       const template = clipTemplatesFor(elements, documentId, row.track.id)
         .find(item => item.sourceAsset?.choiceKind === animationReferenceKind);
-      if (!template?.sourceAsset) { consoleActions.log('warn', 'Timeline', '当前轨道没有提供正式动画源片段合同'); return; }
+      if (!template?.sourceAsset) { reportDrop('没有添加动画片段：当前轨道没有提供正式动画源片段合同'); return; }
+      reportDrop(null);
       const value = cloneJson(template.value);
       setIn(value, template.sourceAsset.serializedMemberPath, result.clip.value);
       const start = snapLocal(getValueFromScreenX(event.clientX));
@@ -1501,6 +1519,7 @@ const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segment
     : library.kind === 'loading' ? '动画素材库清单尚未取得' : library.kind === 'unavailable' ? library.reason
       : resource ? null : '作者引用有效，当前素材库尚未提供该资源的预览片段。';
   const label = resource?.name ?? (referenceInvalid ? `失效动画 · ${String(animation?.value)}` : choices[0]?.name ?? clip.label);
+  const reportDrop = useDropReport();
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, segmentId, trackId, clip]);
   // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
@@ -1513,10 +1532,12 @@ const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segment
       enter={clip.enter} exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
       referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
       onAnimationDrop={author && kind === 'anim' ? transfer => {
-        if (!animation) { consoleActions.log('warn', 'Timeline', '当前片段未提供正式动画源资产字段，原值已保留'); return; }
-        const result = readAnimationDrop(transfer, library, catalog);
-        if (result.kind === 'rejected') { consoleActions.log('warn', 'Timeline', result.reason); return; }
-        authoringActions.setClipValues(documentId, clip.clip.id, [{ keys: animation.serializedMemberPath, value: result.clip.value }]);
+        if (!animation) { reportDrop('没有替换动画：当前片段未提供正式动画源资产字段，原值已保留'); return; }
+        // 替换只改引用、不改片段时长，与检查器的 Clip 字段一样按资源目录核对，不需要素材库。
+        const result = readReferenceDrop(transfer, catalog);
+        if (result.kind === 'rejected') { reportDrop(`没有替换动画：${result.reason}`); return; }
+        reportDrop(null);
+        authoringActions.setClipValues(documentId, clip.clip.id, [{ keys: animation.serializedMemberPath, value: result.choice.value }]);
       } : undefined} />
   );
 });
