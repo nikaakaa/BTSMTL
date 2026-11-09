@@ -97,6 +97,7 @@ namespace BTSMTL.Preview
         {
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = frameRate;
+            PreviewProcessPower.DisableThrottling();
             return Connection.ConnectAsync(endpoint);
         }
 
@@ -468,5 +469,45 @@ namespace BTSMTL.Preview
             if (Connection != null)
                 m_Close ??= Connection.CloseAsync();
         }
+    }
+
+    // 预览播放器窗口隐藏、空闲时阻塞等命令，Windows 会把它当后台低活跃进程降频或调到效率核，
+    // 命令到达后整段计算变慢；连接宿主时声明本进程不接受执行速度与计时器精度节流。
+    static class PreviewProcessPower
+    {
+        internal static void DisableThrottling()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            var state = new PowerThrottlingState
+            {
+                Version = 1, ControlMask = ExecutionSpeed | IgnoreTimerResolution, StateMask = 0
+            };
+            if (SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref state,
+                    System.Runtime.InteropServices.Marshal.SizeOf<PowerThrottlingState>()))
+                Debug.Log("[PreviewAgent] 已关闭进程电源节流。");
+            else
+                Debug.LogWarning($"[PreviewAgent] 关闭进程电源节流失败：{System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+#endif
+        }
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        const int ProcessPowerThrottling = 4;
+        const uint ExecutionSpeed = 0x1;
+        const uint IgnoreTimerResolution = 0x4;
+
+        struct PowerThrottlingState
+        {
+            public uint Version;
+            public uint ControlMask;
+            public uint StateMask;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool SetProcessInformation(IntPtr process, int informationClass, ref PowerThrottlingState information,
+            int size);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GetCurrentProcess();
+#endif
     }
 }
