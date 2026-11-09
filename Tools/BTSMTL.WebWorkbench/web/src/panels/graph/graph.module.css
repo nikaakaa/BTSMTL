@@ -563,6 +563,14 @@
   stroke-dasharray: 5 4;
 }
 
+.connectionReason {
+  fill: var(--graph-fail);
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: var(--bg-1);
+  stroke-width: 3px;
+}
+
 /* 拖线中：出发端口实心；接不上的端口连同名字压暗；鼠标停住的可接端口放大实心 */
 .valuePort:global(.connectingfrom), .valuePort:global(.connectingto.valid) {
   background: var(--pc);

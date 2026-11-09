@@ -99,6 +99,15 @@ interface GroupData extends Record<string, unknown> {
 type GroupNode = Node<GroupData, 'canvasGroup'>;
 type CanvasNode = FlowNode | GroupNode;
 const isGroupNode = (node: CanvasNode): node is GroupNode => node.type === 'canvasGroup';
+
+// 句柄连线：两端都必须是句柄，且源种类在目标的可接受种类内；可接受集合由 Host 按正式兼容关系展开。
+const objectKindAccepted = (source: GraphPort | undefined, target: GraphPort | undefined) =>
+  !source?.objectKind && !target?.objectKind
+  || !!source?.objectKind && !!target?.acceptedObjectKinds?.includes(source.objectKind);
+const objectKindRejection = (source: GraphPort | undefined, target: GraphPort | undefined) =>
+  objectKindAccepted(source, target) ? null
+    : `${source?.objectKindName ?? source?.valueType ?? '?'} 不能接到 ${target?.objectKindName ?? target?.valueType ?? '?'}`;
+const portKindText = (port: GraphPort) => port.objectKindName ? `${port.valueType} · ${port.objectKindName}` : port.valueType;
 const groupNodeId = (group: CanvasGroup) => `group:${group.index}`;
 
 // 分组包含左上角落在矩形内的节点（照 NodeCanvas）。
@@ -427,6 +436,7 @@ function useNodeCreator(graphId: string) {
       if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
       const ports = description.ports.items.map(entry => ({
         id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow', valueType: entry.port.type,
+        objectKind: entry.port.objectKind, objectKindName: entry.port.objectKindName, acceptedObjectKinds: entry.port.acceptedObjectKinds,
       }));
       return graphAuthoring.addNode(graphId, type, description.configuration, ports, position);
     } finally { pending.current.delete(controller); }
@@ -772,15 +782,14 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
   }, [graph.id, machine, elements]);
-  // 执行端口只接执行端口，数据端口只接数据端口；对象句柄只接对象句柄；不连自己。其它值类型的转换由编译器判定。
+  // 执行端口只接执行端口，数据端口只接数据端口；不连自己。句柄按 Host 给出的可接受种类判定，其它值类型的转换由编译器判定。
   const isValidConnection = useCallback((connection: Connection | FlowEdge) => {
     const port = (nodeId: string, handle: string | null | undefined) =>
       graph.ports.find(item => item.nodeId === nodeId && item.id === portOf(handle));
     const source = port(connection.source, connection.sourceHandle), target = port(connection.target, connection.targetHandle);
-    const handle = (item: GraphPort | undefined) => item?.valueType === 'ObjectHandle';
     return connection.source !== connection.target
       && (source?.isTrigger ?? true) === (target?.isTrigger ?? true)
-      && (!(handle(source) || handle(target)) || source?.valueType === target?.valueType);
+      && objectKindAccepted(source, target);
   }, [graph]);
   const connecting = useConnection(connection => connection.inProgress);
   const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
@@ -804,7 +813,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   }, [editable, graph.id, layout]);
   const portsOf = useCallback((ids: string[]) => Object.fromEntries(ids.map(id => [id, graph.ports
     .filter(port => port.nodeId === id && port.invocationPath === path)
-    .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger, valueType: port.valueType }))])), [graph, path]);
+    .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger, valueType: port.valueType,
+      objectKind: port.objectKind, objectKindName: port.objectKindName, acceptedObjectKinds: port.acceptedObjectKinds }))])), [graph, path]);
   // 系统锚点（入口、出口、任意状态、状态体与片段图的固定节点）不能删除，与 Unity 一致。
   const anchorIds = useMemo(() => new Set(Object.values(elements?.anchors ?? {}).flat().map(anchor => anchor.uid)), [elements]);
   const deleteSelected = () => {
@@ -1183,10 +1193,10 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
   const inline = input && !linked;
   return (
     <Tip name={port.displayName} content={sample
-      ? `${port.id}\n${sample.valueType} · ${sample.sourceAvailable ? sample.value : 'Unavailable'}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
+      ? `${port.id}\n${portKindText(port)}\n${sample.valueType} ·${sample.sourceAvailable ? sample.value : 'Unavailable'}\n${portSampleLabel(sample)}\nSourceAvailable=${sample.sourceAvailable} · ${sample.reason}\n` +
         (sample.loopScopes === null ? sample.loopScopeAvailability?.reason ?? '循环范围未记录' : sample.loopScopes.map(loopScopeLabel).join('\n')) +
         `\n${sample.activationAvailability?.reason ?? ''}`
-      : `${port.id}\n${port.valueType}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
+      : `${port.id}\n${portKindText(port)}\n${samples.length > 1 ? '本帧有多个样本，请选择具体记录' : 'Unavailable：当前没有对应端口观察'}`}>
       <span className={input ? styles.portIn : styles.portOut} style={{ ['--pc' as string]: color }}>
         <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
           position={input ? Position.Left : Position.Right} isConnectable={!!editable}
@@ -1206,23 +1216,32 @@ function ValuePortCell({ port, state, values }: { port: GraphPort; state: Return
   );
 }
 
-function usePortColor(nodeId: string, handleId: string | null | undefined) {
+function useHandlePort(nodeId: string | undefined, handleId: string | null | undefined) {
   const { graph } = useView();
   const input = handleId?.startsWith('in:') ?? false;
   const portId = handleId?.slice(handleId.indexOf(':') + 1) ?? '';
-  const port = graph.ports.find(item => item.nodeId === nodeId && item.direction === (input ? 'input' : 'output') && item.id === portId);
+  return graph.ports.find(item => item.nodeId === nodeId && item.direction === (input ? 'input' : 'output') && item.id === portId);
+}
+
+function usePortColor(nodeId: string, handleId: string | null | undefined) {
+  const port = useHandlePort(nodeId, handleId);
   return port?.isTrigger ? 'var(--port-exec)' : portColor(port?.valueType);
 }
 
-// 拖线：与出发端口同色，端点随鼠标；吸附到能接的端口时贴上去，停在接不上的端口时变红。
+// 拖线：与出发端口同色，端点随鼠标；吸附到能接的端口时贴上去，停在接不上的端口时变红，句柄种类不符时写出两端种类。
 function ConnectionLineView({ fromNode, fromHandle, fromX, fromY, toX, toY, fromPosition, toPosition, connectionStatus, toHandle }:
   ConnectionLineComponentProps<CanvasNode>) {
   const color = usePortColor(fromNode.id, fromHandle.id);
+  const from = useHandlePort(fromNode.id, fromHandle.id);
+  const to = useHandlePort(toHandle?.nodeId, toHandle?.id);
+  const fromInput = from?.direction === 'input';
+  const rejection = connectionStatus === 'invalid' && to ? objectKindRejection(fromInput ? to : from, fromInput ? from : to) : null;
   const [path] = getBezierPath({ sourceX: fromX, sourceY: fromY, sourcePosition: fromPosition, targetX: toX, targetY: toY, targetPosition: toPosition });
   return (
     <g className={styles.connectionLine} style={{ ['--ec' as string]: color }} data-status={connectionStatus ?? undefined}>
       <path d={path} />
       {!toHandle && <circle cx={toX} cy={toY} r={4} />}
+      {rejection && <text x={toX + 10} y={toY - 10} className={styles.connectionReason}>{rejection}</text>}
     </g>
   );
 }

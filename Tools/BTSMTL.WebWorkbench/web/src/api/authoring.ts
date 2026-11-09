@@ -106,7 +106,8 @@ export interface TypePage {
 
 export interface DescribedPort {
   direction: 'input' | 'output';
-  port: { ID: string; name: string; type: string; serializedValue: unknown };
+  port: { ID: string; name: string; type: string; serializedValue: unknown;
+    objectKind?: string | null; objectKindName?: string | null; acceptedObjectKinds?: string[] | null };
 }
 
 export type DescribedPorts =

@@ -118,6 +118,9 @@ export interface AddedPort {
   direction: 'input' | 'output';
   isTrigger: boolean;
   valueType: string;
+  objectKind?: string | null;
+  objectKindName?: string | null;
+  acceptedObjectKinds?: string[] | null;
 }
 
 export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
@@ -1736,7 +1739,7 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
     if (known.has(id)) continue;
     nodes.push({ id, displayName: nodeLabel(node), invocationPath: path, position: positionOf(id, { x: 0, y: 0 }) });
     for (const port of addedPorts[id] ?? [])
-      ports.push({ nodeId: id, id: port.id, displayName: port.displayName, direction: port.direction, isTrigger: port.isTrigger, valueType: port.valueType, invocationPath: path });
+      ports.push({ ...port, nodeId: id, invocationPath: path });
   }
   let edges = graph.edges;
   if (sourceNodes) {
