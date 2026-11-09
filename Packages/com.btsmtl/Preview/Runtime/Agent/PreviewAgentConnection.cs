@@ -18,6 +18,7 @@ namespace BTSMTL.Preview
         readonly ClientWebSocket m_Socket = new ClientWebSocket();
         readonly CancellationTokenSource m_Cancel = new CancellationTokenSource();
         readonly ConcurrentQueue<string> m_Incoming = new ConcurrentQueue<string>();
+        readonly SemaphoreSlim m_IncomingSignal = new SemaphoreSlim(0);
         readonly ConcurrentQueue<string> m_Outgoing = new ConcurrentQueue<string>();
         readonly SemaphoreSlim m_SendSignal = new SemaphoreSlim(0);
         readonly object m_ImageGate = new object();
@@ -41,6 +42,13 @@ namespace BTSMTL.Preview
 
         public bool TryReadCommand(out string command) => m_Incoming.TryDequeue(out command);
         public bool HasCommand => !m_Incoming.IsEmpty;
+
+        // 队列已有命令立即返回；否则阻塞到下一条命令到达或超时，返回是否有命令。
+        public bool WaitCommand(int milliseconds)
+        {
+            while (m_IncomingSignal.Wait(0)) { }
+            return !m_Incoming.IsEmpty || m_IncomingSignal.Wait(milliseconds);
+        }
 
         public void SendText(string message)
         {
@@ -94,6 +102,7 @@ namespace BTSMTL.Preview
                     if (result.MessageType != WebSocketMessageType.Text)
                         throw new InvalidDataException("预览代理的命令必须为文本消息。");
                     m_Incoming.Enqueue(Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length));
+                    m_IncomingSignal.Release();
                     message.SetLength(0);
                 }
                 EndConnection(nameof(Receive), null);

@@ -116,6 +116,10 @@ namespace BTSMTL.Preview
                     Shutdown(Connection.Failure?.ToString() ?? "播放器与 Host 的连接已结束。");
                     return false;
                 }
+                // 空闲时不让引擎睡到下一帧再取命令：在这里等命令信号，最多约一帧，命令一到当帧处理；
+                // 没有命令仍按帧率上限出帧，阻塞等待不占 CPU。
+                if (IsIdle && Application.targetFrameRate > 0)
+                    Connection.WaitCommand(Math.Max(0, 1000 / Application.targetFrameRate - 1));
                 while (Connection.TryReadCommand(out string json))
                     Handle(json);
             }
@@ -128,10 +132,13 @@ namespace BTSMTL.Preview
             return true;
         }
 
+        // 暂停且没有在途截图、推流或单帧请求：本帧除等命令外无事可做。
+        bool IsIdle => m_Project.Playback.State == PreviewPlaybackState.Paused && !IsStreaming &&
+            !m_CaptureRequested && m_StreamLoop == null && m_StillFrameRequests == 0;
+
         void UpdateRenderCadence()
         {
-            if (IdleRenderInterval > 1 && m_Project.Playback.State == PreviewPlaybackState.Paused && !IsStreaming &&
-                !m_CaptureRequested && m_StreamLoop == null && m_StillFrameRequests == 0)
+            if (IdleRenderInterval > 1 && IsIdle)
             {
                 if (!m_ActiveRenderInterval.HasValue)
                 {
