@@ -23,7 +23,7 @@ namespace BTSMTL.Authoring.Graph
             bool handle = !isFlow && valueTypeId == ObjectHandleTypeId;
             if (!handle && objectKind != null)
                 throw new ArgumentException($"非句柄端口 '{id}' 不能声明对象种类。", nameof(objectKind));
-            ObjectKind = handle ? objectKind ?? contractPort?.ObjectKind ?? OrchestrationObjectKind.Any : null;
+            ObjectKind = handle ? objectKind ?? OrchestrationObjectKind.Any : null;
             Direction = direction;
             IsFlow = isFlow;
             Id = GraphAuthoringIdentity.Require(id, nameof(id));
@@ -238,7 +238,8 @@ namespace BTSMTL.Authoring.Graph
 
         protected internal override Func<object, GraphNodePort> Bind(Type nodeType)
         {
-            OrchestrationExtensionPort contract = GraphNodeContracts.Port(nodeType, Id);
+            IOrchestrationExtensionPort declaration = GraphNodeContracts.Port(nodeType, Id);
+            OrchestrationExtensionPort contract = declaration.Declaration;
             bool input = contract.Direction == OrchestrationExtensionPortDirection.Input;
             if (HasDefault && !input)
                 throw new InvalidOperationException($"合同输出端口 '{Id}' 不能声明未连线默认值。");
@@ -246,7 +247,7 @@ namespace BTSMTL.Authoring.Graph
             var port = new GraphNodePort(input ? GraphAuthoringPortDirection.Input : GraphAuthoringPortDirection.Output,
                 false, contract.Id, DisplayName, valueType, 0, hasDefault: HasDefault,
                 defaultValue: HasDefault ? GraphNodeValueTypes.Convert(Default, GraphNodeValueTypes.Clr(valueType)) : null,
-                contractPort: contract);
+                contractPort: contract, objectKind: declaration.ObjectKind);
             return _ => port;
         }
     }
@@ -470,13 +471,13 @@ namespace BTSMTL.Authoring.Graph
                 : throw new InvalidOperationException($"合同类型 '{contract.FullName}' 必须恰有一个扩展定义静态字段。");
         });
 
-        internal static OrchestrationExtensionPort Port(Type nodeType, string member)
+        internal static IOrchestrationExtensionPort Port(Type nodeType, string member)
         {
             Definition(nodeType);
             Type contract = nodeType.GetCustomAttribute<GraphNodeExtensionAttribute>(true).Contract;
             FieldInfo field = contract.GetField(member, BindingFlags.Public | BindingFlags.Static) ??
                 throw new InvalidOperationException($"合同类型 '{contract.FullName}' 没有端口成员 '{member}'。");
-            return field.GetValue(null) is IOrchestrationExtensionPort port ? port.Declaration
+            return field.GetValue(null) is IOrchestrationExtensionPort port ? port
                 : throw new InvalidOperationException($"合同成员 '{contract.FullName}.{member}' 不是扩展端口。");
         }
     }

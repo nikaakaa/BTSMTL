@@ -156,7 +156,7 @@ namespace ThirdPersonGameplay.Orchestration
         {
             ObjectHandle handle = backend.ObjectHandle(in invocation.ReadInput(in input));
             bool matched = backend.TryReadObjectKind(in context, handle, out OrchestrationObjectKind kind) &&
-                kind.IsAssignableTo(result.Declaration.ObjectKind);
+                kind.IsAssignableTo(result.ObjectKind);
             invocation.WriteOutput(in succeeded, backend.FromBoolean(matched));
             invocation.WriteOutput(in result, backend.FromObjectHandle(matched ? handle : ObjectHandle.Empty));
             return OrchestrationExtensionResult.Success;

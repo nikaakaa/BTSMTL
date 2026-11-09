@@ -137,11 +137,10 @@ namespace BTSMTL.Orchestration
                     throw Failure(in reference, $"端口 {expectedPort.Id} 的句柄索引为 {expectedPort.Index}，合同位置为 {index}");
                 if (!string.Equals(expectedPort.Id, actualPort.Id, StringComparison.Ordinal) ||
                     expectedPort.ValueKind != actualPort.ValueKind ||
-                    expectedPort.Direction != actualPort.Direction || expectedPort.Index != actualPort.Index ||
-                    !ReferenceEquals(expectedPort.ObjectKind, actualPort.ObjectKind))
+                    expectedPort.Direction != actualPort.Direction || expectedPort.Index != actualPort.Index)
                     throw Failure(in reference,
-                        $"端口 {i} 不匹配：引用为 {expectedPort.Id}/{expectedPort.ValueKind}/{expectedPort.ObjectKind?.Id}/{expectedPort.Direction}/{expectedPort.Index}，" +
-                        $"实现为 {actualPort.Id}/{actualPort.ValueKind}/{actualPort.ObjectKind?.Id}/{actualPort.Direction}/{actualPort.Index}");
+                        $"端口 {i} 不匹配：引用为 {expectedPort.Id}/{expectedPort.ValueKind}/{expectedPort.Direction}/{expectedPort.Index}，" +
+                        $"实现为 {actualPort.Id}/{actualPort.ValueKind}/{actualPort.Direction}/{actualPort.Index}");
             }
             ReadOnlySpan<OrchestrationExtensionContentField> expectedFields = reference.Fields.Span;
             ReadOnlySpan<OrchestrationExtensionContentField> actualFields = contract.Fields.Span;

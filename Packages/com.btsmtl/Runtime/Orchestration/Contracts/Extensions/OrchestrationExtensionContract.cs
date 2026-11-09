@@ -47,30 +47,39 @@ namespace BTSMTL.Orchestration
     public readonly struct OrchestrationExtensionPort
     {
         public OrchestrationExtensionPort(string id, OrchestrationValueKind valueKind,
-            OrchestrationExtensionPortDirection direction, int index, OrchestrationObjectKind objectKind = null)
+            OrchestrationExtensionPortDirection direction, int index)
         {
-            if ((valueKind == OrchestrationValueKind.ObjectHandle) != (objectKind != null))
-                throw new ArgumentException(valueKind == OrchestrationValueKind.ObjectHandle
-                    ? $"句柄端口 '{id}' 必须声明对象种类。"
-                    : $"非句柄端口 '{id}' 不能声明对象种类。", nameof(objectKind));
             Id = id;
             ValueKind = valueKind;
             Direction = direction;
             Index = index;
-            ObjectKind = objectKind;
         }
 
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public OrchestrationExtensionPortDirection Direction { get; }
         public int Index { get; }
-        // 句柄端口的对象种类；非句柄端口为 null。
-        public OrchestrationObjectKind ObjectKind { get; }
     }
 
+    // 合同端口声明。ObjectKind 是句柄端口的作者期与编译期种类约束，不进入 OrchestrationExtensionPort，
+    // 因此不随编译内容序列化，也不参与运行时绑定比对。
     public interface IOrchestrationExtensionPort
     {
         OrchestrationExtensionPort Declaration { get; }
+        OrchestrationObjectKind ObjectKind { get; }
+    }
+
+    static class OrchestrationExtensionPortKinds
+    {
+        public static OrchestrationObjectKind Require(string id, OrchestrationValueKind valueKind,
+            OrchestrationObjectKind objectKind)
+        {
+            if ((valueKind == OrchestrationValueKind.ObjectHandle) != (objectKind != null))
+                throw new ArgumentException(valueKind == OrchestrationValueKind.ObjectHandle
+                    ? $"句柄端口 '{id}' 必须声明对象种类。"
+                    : $"非句柄端口 '{id}' 不能声明对象种类。", nameof(objectKind));
+            return objectKind;
+        }
     }
 
     public sealed class OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
@@ -79,8 +88,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index,
             OrchestrationObjectKind objectKind = null)
         {
-            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Input,
-                index, objectKind);
+            ObjectKind = OrchestrationExtensionPortKinds.Require(id, valueKind, objectKind);
+            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Input, index);
             Id = id;
             ValueKind = valueKind;
             Index = index;
@@ -90,6 +99,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
         public OrchestrationExtensionPort Declaration { get; }
+        public OrchestrationObjectKind ObjectKind { get; }
     }
 
     public sealed class OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
@@ -98,8 +108,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index,
             OrchestrationObjectKind objectKind = null)
         {
-            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Output,
-                index, objectKind);
+            ObjectKind = OrchestrationExtensionPortKinds.Require(id, valueKind, objectKind);
+            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Output, index);
             Id = id;
             ValueKind = valueKind;
             Index = index;
@@ -109,6 +119,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
         public OrchestrationExtensionPort Declaration { get; }
+        public OrchestrationObjectKind ObjectKind { get; }
     }
 
     public readonly struct OrchestrationExtensionContract
