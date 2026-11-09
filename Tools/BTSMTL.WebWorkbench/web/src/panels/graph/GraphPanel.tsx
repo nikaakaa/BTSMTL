@@ -27,7 +27,7 @@ import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
-  isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeName, parentCallNotice, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
+  isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeDisplayNames, nodeTypeName, parentCallNotice, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
   documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
@@ -374,6 +374,7 @@ function loadTypes(skill: AuthoringTarget) {
         const page = await authoringApi.types(skill, offset, authoringActions.editingView());
         if (!page.availability.available) throw new Error(page.availability.reason ?? '类型查询不可用');
         result.push(...page.items);
+        for (const item of page.items) if (item.displayName !== null) nodeTypeDisplayNames.set(item.type, item.displayName);
         if (!page.hasMore) return result;
       }
     })();
@@ -771,12 +772,15 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
   }, [graph.id, machine, elements]);
-  // 执行端口只接执行端口，数据端口只接数据端口；不连自己。
+  // 执行端口只接执行端口，数据端口只接数据端口；对象句柄只接对象句柄；不连自己。其它值类型的转换由编译器判定。
   const isValidConnection = useCallback((connection: Connection | FlowEdge) => {
-    const trigger = (nodeId: string, handle: string | null | undefined) =>
-      graph.ports.find(port => port.nodeId === nodeId && port.id === portOf(handle))?.isTrigger ?? true;
+    const port = (nodeId: string, handle: string | null | undefined) =>
+      graph.ports.find(item => item.nodeId === nodeId && item.id === portOf(handle));
+    const source = port(connection.source, connection.sourceHandle), target = port(connection.target, connection.targetHandle);
+    const handle = (item: GraphPort | undefined) => item?.valueType === 'ObjectHandle';
     return connection.source !== connection.target
-      && trigger(connection.source, connection.sourceHandle) === trigger(connection.target, connection.targetHandle);
+      && (source?.isTrigger ?? true) === (target?.isTrigger ?? true)
+      && (!(handle(source) || handle(target)) || source?.valueType === target?.valueType);
   }, [graph]);
   const connecting = useConnection(connection => connection.inProgress);
   const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
