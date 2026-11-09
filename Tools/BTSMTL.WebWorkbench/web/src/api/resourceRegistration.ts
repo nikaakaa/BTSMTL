@@ -26,7 +26,9 @@ export function readResourceReferenceMetadata(value: unknown, path = 'ResourceRe
   }
 }
 export type ResourceReferenceMetadata = ReturnType<typeof readResourceReferenceMetadata>;
-export const readExecutionScopeSelection = object({ previewScope: nullable(text), runtimeScope: nullable(text) });
+// 作者合同（BTSMTL AuthoringCatalog.ExecutionScopeDomain）：适配者目录中列出可选执行范围的领域。
+export const executionScopeDomain = 'execution-scope';
+export const readExecutionScopeSelection =object({ previewScope: nullable(text), runtimeScope: nullable(text) });
 export type ExecutionScopeSelection = ReturnType<typeof readExecutionScopeSelection>;
 export const readResourceDeclaration = object({ domain: text, selection: nullable(choice('asset', 'mapped')), profile: nullable(text), source: readReferenceSource,
   mappingInputType: nullable(text), objectType: nullable(text), availability: readAuthoringAvailability });

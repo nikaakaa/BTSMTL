@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
+import { executionScopeDomain, resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import { authoringApi } from '../api/authoring';
 import { adapterCatalogCache, resourceCatalogChoices, useAdapterCatalog } from './adapterCatalog';
 import { timelinePath, useCurrentDocument } from './authoring';
@@ -29,7 +29,7 @@ function readResourceScope(revision: string, query: ScopeQuery): Promise<Resourc
 export function useResourceScope(value: string | null): ResourceScopeState {
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
-  const items = catalog.kind === 'ready' ? catalog.snapshot.domains.filter(group => group.domain === 'execution-scope')
+  const items = catalog.kind === 'ready' ? catalog.snapshot.domains.filter(group => group.domain === executionScopeDomain)
     .flatMap(group => group.items.filter(item => item.value === value).map(item => ({ adapter: group.adapter, scope: item.value }))) : [];
   const query = items.length === 1 ? items[0] : null;
   const key = JSON.stringify([catalog.kind === 'ready' ? catalog.snapshot.revision : null, query === null ? null : scopeQueryKey(query)]);

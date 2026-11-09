@@ -1,4 +1,5 @@
 import type { AdapterCatalogDomain, AdapterCatalogItem } from '../api/authoring';
+import { executionScopeDomain } from '../api/resourceRegistration';
 import type { WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import type { ContentNode } from './projectContents';
 import type { PreviewContentChoice } from './store';
@@ -90,7 +91,7 @@ function distinctNames(values: readonly { value: string; display: string }[]): M
 
 // 角色（执行范围）的作者可读名字：值 → 名字。
 export const executionScopeNames = (domains: readonly AdapterCatalogDomain[]) =>
-  distinctNames(domains.filter(group => group.domain === 'execution-scope').flatMap(group => group.items));
+  distinctNames(domains.filter(group => group.domain === executionScopeDomain).flatMap(group => group.items));
 
 // Project 列出的目录项；resource-objects 只供“选文件内对象”使用，同一文件已以具体类型出现。
 export const projectCatalogItems = (domains: readonly AdapterCatalogDomain[]): AdapterCatalogItem[] =>

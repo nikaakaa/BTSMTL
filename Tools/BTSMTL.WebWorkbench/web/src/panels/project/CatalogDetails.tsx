@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { authoringApi, authoringTarget, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
+import { executionScopeDomain } from '../../api/resourceRegistration';
 import { useAdapterCatalog } from '../../state/adapterCatalog';
 import { authoringActions, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
 import { executionScopeNames } from '../../state/projectTree';
@@ -45,7 +46,7 @@ function CatalogUse({ item }: { item: AdapterCatalogItem }) {
       ? clips.length === 1 ? <AnimationDetails library={animation.library} clip={clips[0]} />
         : <div className={styles.note}>动画素材库里有 {clips.length} 段对应这个引用，无法确定预览哪一段。</div>
       : <div className={styles.note}>{animation.kind === 'loading' ? '正在读取动画素材库。' : animation.reason}</div>}</Fold>}
-    {item.domain === 'execution-scope' && <Fold title="角色" defaultOpen>
+    {item.domain === executionScopeDomain &&<Fold title="角色" defaultOpen>
       <PanelBar wrap>
         <Button disabled={!skill} tip={skill ? undefined : '先打开一个技能'} onClick={() => authoringActions.selectExecutionScope('previewScope', item.value)}>设为当前技能的预览角色</Button>
         <Button disabled={!skill} tip={skill ? undefined : '先打开一个技能'} onClick={() => authoringActions.selectExecutionScope('runtimeScope', item.value)}>设为实际运行角色</Button>

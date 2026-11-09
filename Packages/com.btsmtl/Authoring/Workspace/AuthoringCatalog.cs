@@ -114,6 +114,9 @@ namespace BTSMTL.Authoring.Workspace
 
     public sealed class AuthoringCatalog
     {
+        // 作者合同：适配者目录中列出可选执行范围（预览与实际运行的执行者）的领域；适配者按此领域名导出执行范围条目。
+        public const string ExecutionScopeDomain = "execution-scope";
+
         // 按文件修改时间与长度判定复用，与作者文档快照一致；戳变化才重新读盘、算修订与解析。
         sealed class Cached
         {
