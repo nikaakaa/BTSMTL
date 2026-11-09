@@ -72,6 +72,8 @@ namespace BTSMTL.Orchestration
         ObjectHandle Initiator(in TContext context, in OrchestrationExecutionOwnerToken execution);
         bool Exists(in TContext context, ObjectHandle handle);
         bool TryReadPose(in TContext context, ObjectHandle handle, out TValue position, out TValue yaw);
+        // 句柄有效时给出它当前格子所属的领域对象种类。
+        bool TryReadObjectKind(in TContext context, ObjectHandle handle, out OrchestrationObjectKind kind);
         TValue ReadStartupInput(in TContext context, in OrchestrationExecutionOwnerToken execution, int inputIndex);
         OrchestrationObjectRequestResult SpawnAndActivate(ref TContext context,
             in OrchestrationObjectSpawnRequest<TValue> request, ReadOnlySpan<TValue> startupInputs);

@@ -47,18 +47,25 @@ namespace BTSMTL.Orchestration
     public readonly struct OrchestrationExtensionPort
     {
         public OrchestrationExtensionPort(string id, OrchestrationValueKind valueKind,
-            OrchestrationExtensionPortDirection direction, int index)
+            OrchestrationExtensionPortDirection direction, int index, OrchestrationObjectKind objectKind = null)
         {
+            if ((valueKind == OrchestrationValueKind.ObjectHandle) != (objectKind != null))
+                throw new ArgumentException(valueKind == OrchestrationValueKind.ObjectHandle
+                    ? $"句柄端口 '{id}' 必须声明对象种类。"
+                    : $"非句柄端口 '{id}' 不能声明对象种类。", nameof(objectKind));
             Id = id;
             ValueKind = valueKind;
             Direction = direction;
             Index = index;
+            ObjectKind = objectKind;
         }
 
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public OrchestrationExtensionPortDirection Direction { get; }
         public int Index { get; }
+        // 句柄端口的对象种类；非句柄端口为 null。
+        public OrchestrationObjectKind ObjectKind { get; }
     }
 
     public interface IOrchestrationExtensionPort
@@ -69,8 +76,11 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
-        public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index)
+        public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index,
+            OrchestrationObjectKind objectKind = null)
         {
+            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Input,
+                index, objectKind);
             Id = id;
             ValueKind = valueKind;
             Index = index;
@@ -79,15 +89,17 @@ namespace BTSMTL.Orchestration
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
-        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(
-            Id, ValueKind, OrchestrationExtensionPortDirection.Input, Index);
+        public OrchestrationExtensionPort Declaration { get; }
     }
 
     public sealed class OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
-        public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index)
+        public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index,
+            OrchestrationObjectKind objectKind = null)
         {
+            Declaration = new OrchestrationExtensionPort(id, valueKind, OrchestrationExtensionPortDirection.Output,
+                index, objectKind);
             Id = id;
             ValueKind = valueKind;
             Index = index;
@@ -96,8 +108,7 @@ namespace BTSMTL.Orchestration
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
-        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(
-            Id, ValueKind, OrchestrationExtensionPortDirection.Output, Index);
+        public OrchestrationExtensionPort Declaration { get; }
     }
 
     public readonly struct OrchestrationExtensionContract
