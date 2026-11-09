@@ -92,10 +92,14 @@ function distinctNames(values: readonly { value: string; display: string }[]): M
 export const executionScopeNames = (domains: readonly AdapterCatalogDomain[]) =>
   distinctNames(domains.filter(group => group.domain === 'execution-scope').flatMap(group => group.items));
 
+// Project 列出的目录项；resource-objects 只供“选文件内对象”使用，同一文件已以具体类型出现。
+export const projectCatalogItems = (domains: readonly AdapterCatalogDomain[]): AdapterCatalogItem[] =>
+  domains.filter(group => group.domain !== 'resource-objects')
+    .flatMap(group => group.items.map(item => ({ ...item, adapter: group.adapter, domain: group.domain })));
+
 // 引擎资源：文件路径按文件夹展开，文件内对象挂在文件下；按角色配置的映射名按“角色 → 类型”分组。
 export function catalogRoots(domains: readonly AdapterCatalogDomain[]): { files: ProjectNode; mappings: ProjectNode; scopes: Map<string, string> } {
-  const items = domains.filter(group => group.domain !== 'resource-objects')
-    .flatMap(group => group.items.map(item => ({ ...item, adapter: group.adapter, domain: group.domain })));
+  const items = projectCatalogItems(domains);
   const scopes = executionScopeNames(domains);
   const scopeName = (context: string) => context === '' ? '通用' : scopes.get(context) ?? context;
   const entries = new Map<string, AdapterCatalogItem[]>();
@@ -133,9 +137,17 @@ export function catalogRoots(domains: readonly AdapterCatalogDomain[]): { files:
     key: `catalog:${catalogEntryKey(group[0])}`, label: group[0].context === '' ? label : `${label}（${scopeName(group[0].context)}）`,
     detail: [...new Set(group.map(item => item.domain))].join(' · '), color: colors.resource,
     entry: { kind: 'catalog', items: group }, children: [], location });
+  // 只有一个子文件夹、没有文件的一串目录合成一行（如 Assets/Configs/Character），免得树缩进过深。
   const build = (node: Folder, path: string): ProjectNode[] => [
-    ...[...node.folders].sort(([a], [b]) => a.localeCompare(b)).map(([name, child]) =>
-      folder(`files:${path}/${name}`, name, path, build(child, `${path}/${name}`))),
+    ...[...node.folders].sort(([a], [b]) => a.localeCompare(b)).map(([name, child]) => {
+      let label = name, at = child;
+      while (at.files.size === 0 && at.folders.size === 1) {
+        const [next, inner] = [...at.folders][0];
+        label = `${label}/${next}`;
+        at = inner;
+      }
+      return folder(`files:${path}/${label}`, label, path, build(at, `${path}/${label}`));
+    }),
     ...[...node.files].sort(([a], [b]) => a.localeCompare(b)).flatMap(([name, file]) => {
       const location = `${path}/${name}`;
       const parts = [...file.parts.values()].map(group => catalogNode(group, group[0].display, location))
@@ -157,9 +169,11 @@ export function catalogRoots(domains: readonly AdapterCatalogDomain[]): { files:
   return { files, mappings, scopes };
 }
 
-export function scenesRoot(choices: readonly PreviewContentChoice[]): ProjectNode {
+// 场景列表未读到或为空时，把原因写在根节点后面。
+export function scenesRoot(choices: readonly PreviewContentChoice[] | null, unavailable: string): ProjectNode {
   const node = (choice: PreviewContentChoice, location: string): ProjectNode => ({ key: `scene:${choice.value}`, label: choice.label,
     detail: choice.current ? '' : '历史发布', color: colors.scene, entry: { kind: 'scene', choice }, children: [], location });
+  if (choices === null || choices.length === 0) return folder('scenes', '场景', '', [], choices === null ? unavailable : '还没有发布的场景');
   const older = choices.filter(choice => !choice.current);
   return folder('scenes', '场景', '', [
     ...choices.filter(choice => choice.current).map(choice => node(choice, '场景')),

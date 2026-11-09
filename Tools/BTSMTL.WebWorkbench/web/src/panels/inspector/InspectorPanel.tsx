@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'r
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi } from '../../api/authoring';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
-import { catalogEntryKey } from '../../state/projectTree';
+import { catalogEntryKey, projectCatalogItems } from '../../state/projectTree';
 import { CatalogDetails } from '../project/CatalogDetails';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { usePanelParams } from '../../shell/panel';
@@ -259,7 +259,8 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 function SkillSummary() {
   const { skill, plans, editable, noProgram, documentError } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
-    return { skill: state.target?.documentPath ?? null, editable: state.author, documentError: document.documentError,
+    const path = state.target?.documentPath ?? null;
+    return { skill: state.directory?.find(item => item.documentPath === path)?.name ?? path, editable: state.author, documentError: document.documentError,
       noProgram: state.target?.kind === 'skill' && document.documentGraphs !== null && document.programId === null && document.documentError === null,
       plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
         .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };
@@ -581,8 +582,7 @@ function CatalogInspector({ id }: { id: string }) {
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
   if (catalog.kind === 'failed') return <div className={styles.missing}>{catalog.failure.text}</div>;
   if (catalog.kind !== 'ready') return <Empty text="正在读取资源目录" />;
-  const items = catalog.snapshot.domains.flatMap(group => group.items.map(item => ({ ...item, adapter: group.adapter, domain: group.domain })))
-    .filter(item => catalogEntryKey(item) === id);
+  const items = projectCatalogItems(catalog.snapshot.domains).filter(item => catalogEntryKey(item) === id);
   if (items.length === 0) return <div className={styles.missing}>资源目录里已经没有这一项，可能被改名或删除</div>;
   const file = items[0].value.slice(items[0].value.lastIndexOf('/') + 1);
   return <>

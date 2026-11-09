@@ -6,6 +6,7 @@ import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatal
 import { authoringActions, useAuthoring, useSkillElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
+import { session } from '../../state/session';
 import { authoringRoot, catalogEntryKey, catalogRoots, flatten, scenesRoot, type ProjectNode } from '../../state/projectTree';
 import { referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, contentActions, previewContentChoices, selectionActions, useWorkbench } from '../../state/store';
@@ -45,14 +46,15 @@ export function ProjectPanel() {
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
-  const sources = useWorkbench(state => state.sources);
+  const { sources, hostAvailable } = useWorkbench(useShallow(state => ({ sources: state.sources, hostAvailable: state.hostAvailable })));
   const { field, browsing } = useReferenceSelection(useShallow(state => ({ field: state.field, browsing: state.browsing })));
   const picking = browsing && field !== null && field.domain !== null ? field : null;
 
   const contents = useMemo(() => projectContents(documents).tree, [documents]);
   const author_ = useMemo(() => authoringRoot(directory ?? [], contents), [directory, contents]);
   const engine = useMemo(() => catalog.kind === 'ready' ? catalogRoots(catalog.snapshot.domains) : null, [catalog]);
-  const scenes = useMemo(() => scenesRoot(sources ? previewContentChoices(sources) : []), [sources]);
+  const scenes = useMemo(() => scenesRoot(sources ? previewContentChoices(sources) : null,
+    hostAvailable === false ? '未接入运行宿主' : '正在读取'), [sources, hostAvailable]);
   const roots = useMemo(() => {
     const all = [author_, ...engine ? [engine.files, engine.mappings] : [], scenes];
     if (picking === null) return all;
@@ -176,7 +178,7 @@ export function ProjectPanel() {
     : wide ? (folder?.children ?? []).map(node => ({ node, depth: 0, open: false })) : treeRows(false);
   const row = (item: Row, list: boolean) => {
     const { node, depth } = item;
-    const expandable = node.children.length > 0 && !(wide && list && query === '');
+    const expandable = node.children.length > 0 && !(list && (wide || query !== ''));
     return <div className={styles.treeRow} style={{ paddingLeft: 4 + depth * 12 }}
       aria-selected={list ? selected === node.key : current === node.key && wide}>
       <button className={styles.arrow} tabIndex={-1} aria-label={`${item.open ? '收起' : '展开'} ${node.label}`} disabled={!expandable}
@@ -207,6 +209,7 @@ export function ProjectPanel() {
       ]}>新建</MenuButton>
       <MenuButton label="Project 更多操作" variant="ghost" iconOnly entries={[
         { label: '刷新资源目录', onSelect: () => void adapterCatalogCache.refresh(authoringApi.catalog) },
+        { label: '刷新场景列表', disabled: !hostAvailable, onSelect: () => void session.refresh() },
         { label: files ? '返回 Project' : '查看工作区文件（排查）', onSelect: () => setFiles(!files) },
       ]}>⋮</MenuButton>
     </PanelBar>
