@@ -1,5 +1,9 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { authoringApi } from '../../api/authoring';
+import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
+import { catalogEntryKey } from '../../state/projectTree';
+import { CatalogDetails } from '../project/CatalogDetails';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { usePanelParams } from '../../shell/panel';
 import {
@@ -52,6 +56,7 @@ export function InspectorPanel() {
   };
   // 动画资源不属于技能，没有打开技能时同样可检查。
   const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
+    : shown?.kind === 'catalog' ? <CatalogInspector key={shown.id} id={shown.id} />
     : shown?.kind === 'scene' ? <SceneInspector />
     : !target ? <Empty text="选择要编辑的内容" />
       : shown ? <Content key={`${target.documentPath}:${shown.kind}:${shown.id}`} shown={shown} locked={!!params.locked} unlock={unlock} />
@@ -83,7 +88,7 @@ function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean;
       : <TrackInspector id={shown.id} call={shown.call} missing={missing} />;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
     case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
-    case 'resource': return null;
+    case 'resource': case 'catalog': return null;
     case 'content': return <ContentInspector id={shown.id} missing={missing} />;
   }
 }
@@ -571,6 +576,21 @@ function TrackInspector({ id, call, missing }: { id: string; call: Selection['ca
 // ── 动画资源 ──
 
 // 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放身份折叠。
+function CatalogInspector({ id }: { id: string }) {
+  const catalog = useAdapterCatalog();
+  useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
+  if (catalog.kind === 'failed') return <div className={styles.missing}>{catalog.failure.text}</div>;
+  if (catalog.kind !== 'ready') return <Empty text="正在读取资源目录" />;
+  const items = catalog.snapshot.domains.flatMap(group => group.items.map(item => ({ ...item, adapter: group.adapter, domain: group.domain })))
+    .filter(item => catalogEntryKey(item) === id);
+  if (items.length === 0) return <div className={styles.missing}>资源目录里已经没有这一项，可能被改名或删除</div>;
+  const file = items[0].value.slice(items[0].value.lastIndexOf('/') + 1);
+  return <>
+    <Head name={items[0].display} sub={file === items[0].display ? items[0].domain : file} />
+    <CatalogDetails items={items} />
+  </>;
+}
+
 function ResourceInspector({ identity }: { identity: string }) {
   const libraryState = useAnimationLibrary(true);
   if (libraryState.kind === 'loading') return <Empty text="读取中" />;

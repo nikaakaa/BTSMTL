@@ -21,6 +21,8 @@ import { graphName } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
+import { executionScopeNames } from '../../state/projectTree';
+import { ProductScope } from '../project/ProductScope';
 import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, ObjectField, Select, TextInput, Tip } from '../../ui/controls';
@@ -510,11 +512,12 @@ export function SkillFields({ editable }: { editable: boolean }) {
   const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
   if (target?.kind !== 'skill' || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
-    <Fold title="执行 Scope" defaultOpen><Facts fields={[
-      { displayName: '预览 Scope', value: execution.previewScope ?? '未显式选择' },
-      { displayName: '实际运行 Scope', value: execution.runtimeScope ?? '未显式选择' },
-    ]} /><Button onClick={() => openPanel('resources')}>从正式资源目录选择 Scope</Button>
-      <div className={styles.note}>保存与导出按所选 Scope 和实际授予关系准备内容；无法唯一确定时会说明缺项。</div>
+    <Fold title="预览设置" defaultOpen>
+      <ScopeSelect label="预览角色" tip="预览、保存和导出时用哪个角色的资源与映射" value={execution.previewScope}
+        onChange={value => authoringActions.selectExecutionScope('previewScope', value)} />
+      <ScopeSelect label="实际运行角色" tip="技能实际授予给哪个角色运行" value={execution.runtimeScope}
+        onChange={value => authoringActions.selectExecutionScope('runtimeScope', value)} />
+      <div className={styles.field}><FieldLabel label="产品范围" tip="编译时从哪个产品内容里找载体等候选" /><ProductScope /></div>
     </Fold>
     <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
       graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />
@@ -1072,18 +1075,22 @@ const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
 export function TimelineScopeFields({ documentId }: { documentId: string }) {
   const { document } = useCurrentDocument(timelinePath(documentId));
+  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined;
+  return <ScopeSelect label="所属角色" tip="这个 Timeline 使用哪个角色的资源与映射" value={scope ?? null}
+    onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />;
+}
+
+// 角色（执行范围）选择：候选来自资源目录，同名角色补上能区分它们的上级目录。
+function ScopeSelect({ label, tip, value, onChange }: { label: string; tip: string; value: string | null; onChange(value: string): void }) {
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
-  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined;
-  const values = new Map<string, string[]>();
-  if (catalog.kind === 'ready') for (const group of catalog.snapshot.domains.filter(group => group.domain === 'execution-scope'))
-    for (const item of group.items) values.set(item.value, [...values.get(item.value) ?? [], `${item.display} · ${group.adapter}`]);
-  return <Row label="Timeline 作者 Scope"><Select label="Timeline 作者 Scope" value={scope ?? null}
-    options={[...values].map(([value, names]) => ({ value, label: `${names.join(' / ')} · ${value}` }))} placeholder="明确选择 Timeline 的执行范围"
-    onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />
+  const names = catalog.kind === 'ready' ? executionScopeNames(catalog.snapshot.domains) : new Map<string, string>();
+  return <div className={styles.field}><FieldLabel label={label} tip={tip} />
+    <Select label={label} value={value} placeholder="未选择" options={[...names].map(([scope, name]) => ({ value: scope, label: name }))}
+      onChange={onChange} />
     {catalog.kind === 'failed' && <span className={styles.issue}>{catalog.failure.text}</span>}
-    {catalog.kind === 'ready' && scope != null && !values.has(scope) && <span className={styles.issue}>原 Scope 不在正式目录中，原字符串已保留：{scope}</span>}
-  </Row>;
+    {catalog.kind === 'ready' && value !== null && !names.has(value) && <span className={styles.issue}>找不到原来选的角色，可能已改名或删除；原值没有改动：{value}</span>}
+  </div>;
 }
 
 // 片段一栏：起止与片段的序列化字段；children 为同栏的引用行（节点图）。

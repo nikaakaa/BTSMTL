@@ -24,7 +24,8 @@ export interface ReferenceFieldSelection {
   resourceObjects?: ResourceObjectFieldSelection;
 }
 
-export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null }>()(() => ({ field: null }));
+// browsing：作者在引用字段点了“浏览”，Project 按该字段筛选并定位当前值，直到填入或取消。
+export const useReferenceSelection = create<{ field: ReferenceFieldSelection | null; browsing: boolean }>()(() => ({ field: null, browsing: false }));
 
 export function resourceReferenceChoice(item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'display' | 'context'>, conflict: string | null): ReferenceChoice {
   return { value: item.value, name: item.display, detail: item.context === '' ? item.value : `${item.value}（${item.context}）`, source: item.adapter, conflict,

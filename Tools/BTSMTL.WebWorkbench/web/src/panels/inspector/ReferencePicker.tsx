@@ -56,13 +56,14 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
   const query = search.trim().toLocaleLowerCase();
   const items = query === '' ? ordered : ordered.filter(item =>
     [item.name, item.detail, referenceText(item.value)].some(text => text?.toLocaleLowerCase().includes(query)));
-  const focus = () => useReferenceSelection.setState({ field: { id, name: label, domain, selection, resourceContext, catalog, value, configuration, choose: onChoose, resourceObjects } });
+  const focus = () => useReferenceSelection.setState(state => ({ browsing: state.browsing && state.field?.id === id,
+    field: { id, name: label, domain, selection, resourceContext, catalog, value, configuration, choose: onChoose, resourceObjects } }));
   useEffect(() => {
     const current = useReferenceSelection.getState().field;
     if (current?.id === id) useReferenceSelection.setState({ field: { id, name: label, domain, selection, resourceContext, catalog, value, configuration, choose: onChoose, resourceObjects } });
   }, [id, label, domain, selection, resourceContext, catalog, value, configuration, onChoose, resourceObjects]);
   useEffect(() => () => {
-    if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null });
+    if (useReferenceSelection.getState().field?.id === id) useReferenceSelection.setState({ field: null, browsing: false });
   }, [id]);
   const choose = (choice: ReferenceChoice) => {
     onChoose(choice);
@@ -72,7 +73,7 @@ export function ReferencePicker({ id, label, value, configuration, catalog, onCh
   };
   const hint = selection === 'mapped' ? '只列出当前角色已配置的映射；新增映射在该角色的 Profile 中添加。'
     : selection === 'asset' ? '可从列表选择，也可从资源面板拖入。' : null;
-  const browse = () => { focus(); openPanel('resources'); };
+  const browse = () => { focus(); useReferenceSelection.setState({ browsing: true }); openPanel('resources'); };
   return <div className={styles.root} onFocusCapture={focus}
     onDragOver={event => {
       if (catalog.kind === 'ready' && acceptsReferenceDrag(event.dataTransfer, catalog.referenceKind)) {

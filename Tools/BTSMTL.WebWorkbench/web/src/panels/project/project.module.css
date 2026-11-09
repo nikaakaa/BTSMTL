@@ -198,6 +198,84 @@
 
 .treeName {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+}
+
+.treeName > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.treeName > small {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.itemIcon, .folderIcon {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--kind);
+}
+
+.folderIcon {
+  height: 9px;
+  border-radius: 1px 3px 2px 2px;
+  opacity: .8;
+}
+
+.columns {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.columns[data-wide] {
+  grid-template-columns: minmax(160px, 2fr) minmax(0, 3fr);
+}
+
+.folders {
+  border-right: 2px solid var(--bg-0);
+}
+
+.folders, .items {
+  min-height: 0;
+  height: 100%;
+}
+
+.picking {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: 2px var(--gap-2);
+  background: var(--select);
+  font-size: 11px;
+}
+
+.picking > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.status {
+  flex: none;
+  padding: 2px var(--gap-2);
+  border-top: 1px solid var(--bg-0);
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }

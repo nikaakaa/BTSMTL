@@ -157,11 +157,7 @@ export const projectActions = {
   },
 };
 
-// 作者直接打开的文档种类；曲线、Profile 与变量文档经引用字段到达，不在 Project 与顶栏平铺上千项。
+// 顶栏可直接切换的文档种类；曲线与 Profile 在 Project 中按用途分组，变量文档属于各自的图，从黑板进入。
 export const openableDocumentGroups = [['skill', '技能'], ['timeline', '独立 Timeline'], ['graph', '共享图']] as const;
 
-export function documentLabel(document: WorkspaceDocumentInfo) {
-  if (document.kind === 'skill') return document.documentPath.slice(document.documentPath.lastIndexOf('/') + 1);
-  if (document.kind === 'graph') return document.identity.slice(document.identity.lastIndexOf('.') + 1);
-  return `Timeline ${document.identity.slice(0, 8)}`;
-}
+export const documentLabel = (document: WorkspaceDocumentInfo) => document.name;

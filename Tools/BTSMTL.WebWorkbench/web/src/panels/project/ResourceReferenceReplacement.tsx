@@ -5,8 +5,10 @@ import { consoleActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
-import { catalogItemKey } from './ResourceCatalogView';
 import styles from './project.module.css';
+
+const catalogItemKey = (item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'context'>) =>
+  JSON.stringify([item.adapter, item.domain, item.value, item.context]);
 
 export type ReferenceReplacementConflict = { owner: string; path: string | null; reason: string };
 type Failure = { text: string; entryId: number | null };
@@ -68,21 +70,21 @@ export function ResourceReferenceReplacement({ source, candidates, currentContex
     catch (error) { fail(error); return; }
     await refresh(result);
   };
-  if (stage.kind === 'closed') return <Button variant="ghost" onClick={edit}>替换此资源的作者引用</Button>;
+  if (stage.kind === 'closed') return <Button variant="ghost" tip="把所有用到这个资源的地方，统一换成另一个同类资源" onClick={edit}>开始替换</Button>;
   const result = stage.kind === 'prepared' ? stage.plan : stage.kind === 'saved' || stage.kind === 'refreshing' ? stage.result : null;
   const saved = stage.kind === 'saved' || stage.kind === 'refreshing';
   return <div className={styles.facts}>
-    <strong>替换 {source.display} 的作者引用</strong><code>{source.domain} · {source.value}</code>
+    <strong>把「{source.display}」的所有引用换成：</strong>
     {!saved && <>
-      <Select<'current' | 'all'> label="引用替换范围" value={scope} disabled={busy} options={[
-        ...(currentContext === null ? [] : [{ value: 'current' as const, label: `当前载体 · ${currentContext}` }]),
-        { value: 'all', label: '全部载体中的引用' },
+      <Select<'current' | 'all'> label="替换范围" value={scope} disabled={busy} options={[
+        ...(currentContext === null ? [] : [{ value: 'current' as const, label: '只替换当前角色里的引用' }]),
+        { value: 'all', label: '替换所有角色里的引用' },
       ]} onChange={value => { setScope(value); setSelectedKey(null); edit(); }} />
-      <Select label="替换为目录资源" value={selected === undefined ? null : selectedKey} placeholder="选择同领域的正式目录条目" disabled={busy}
-        options={choices.map(item => ({ value: catalogItemKey(item), label: `${item.display} · ${item.adapter} · ${item.context || '公共'} · ${item.value}` }))}
+      <Select label="替换为" value={selected === undefined ? null : selectedKey} placeholder="选择同类资源" disabled={busy}
+        options={choices.map(item => ({ value: catalogItemKey(item), label: `${item.display}（${item.value}）` }))}
         onChange={value => { setSelectedKey(value); edit(); }} />
       <PanelBar><Button disabled={busy || selected === undefined || stage.kind === 'preparing'} onClick={selected === undefined ? undefined : () => void prepare(selected)}>
-        {stage.kind === 'preparing' ? '正在准备引用替换' : '准备引用替换'}</Button>
+        {stage.kind === 'preparing' ? '正在检查影响范围' : '检查影响范围'}</Button>
         <Button variant="ghost" disabled={busy} onClick={() => { controller.current?.abort(); setStage({ kind: 'closed' }); }}>取消</Button></PanelBar>
     </>}
     {result !== null && <ReferenceReplacementImpact plan={result} onOpenSkill={onOpenSkill} />}
