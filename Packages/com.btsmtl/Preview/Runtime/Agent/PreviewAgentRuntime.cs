@@ -87,6 +87,8 @@ namespace BTSMTL.Preview
         public PreviewSharedSurface Surface =>
             m_Surface != null && m_Surface.Width == m_StreamSize.x && m_Surface.Height == m_StreamSize.y ? m_Surface : null;
         public CancellationToken Cancellation => m_Cancel.Token;
+        // 宿主已发来、本帧尚未处理的命令：长时间的增量工作见到它就让出，命令在下一次更新开头处理。
+        public bool HasPendingCommand => Connection.HasCommand;
         public bool StreamEnabled { get; set; } = true;
         public bool IsStreaming => StreamEnabled && m_Project.Playback.CanStream;
         public int IdleRenderInterval { get; set; } = 1;

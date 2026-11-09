@@ -40,6 +40,7 @@ namespace BTSMTL.Preview
         }
 
         public bool TryReadCommand(out string command) => m_Incoming.TryDequeue(out command);
+        public bool HasCommand => !m_Incoming.IsEmpty;
 
         public void SendText(string message)
         {
