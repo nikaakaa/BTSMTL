@@ -178,37 +178,32 @@ namespace BTSMTL.Authoring.Workspace
         public (string Domain, string Source)[] Contents { get; }
     }
 
-    // 同一工作区的文档快照，按目录内全部 JSON 的相对路径、修改时间与长度判定复用。
+    // 同一工作区的文档快照，按目录内全部 JSON 的路径、修改时间与长度判定复用。
     sealed class AuthoringDocumentCache
     {
         static readonly ConcurrentDictionary<string, AuthoringDocumentCache> s_Workspaces = new(StringComparer.OrdinalIgnoreCase);
-        readonly Dictionary<string, (string Stamp, Lazy<AuthoringDocumentSnapshot> Snapshot)> m_Documents = new(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, (Dictionary<string, (long Modified, long Length)> Files, Lazy<AuthoringDocumentSnapshot> Snapshot)>
+            m_Documents = new(StringComparer.OrdinalIgnoreCase);
 
         public static AuthoringDocumentCache For(string workspace) => s_Workspaces.GetOrAdd(workspace, _ => new AuthoringDocumentCache());
 
-        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory, IEnumerable<FileInfo> owned)
+        public AuthoringDocumentSnapshot Read(AuthoringDocumentKind kind, string workspace, string directory, IReadOnlyCollection<FileInfo> files)
         {
-            FileInfo[] files = owned.ToArray();
-            var relative = new string[files.Length];
-            for (int i = 0; i < files.Length; i++)
-                relative[i] = Path.GetRelativePath(directory, files[i].FullName).Replace('\\', '/');
-            Array.Sort(relative, files, StringComparer.Ordinal);
-            var stamp = new StringBuilder();
-            for (int i = 0; i < files.Length; i++)
-                stamp.Append(relative[i]).Append('|').Append(files[i].LastWriteTimeUtc.Ticks).Append('|').Append(files[i].Length).Append('\n');
-            string key = stamp.ToString();
             // 同一目录、同一文件戳的并发读取共用一次读盘与解析；失败不缓存，下一次读取重新尝试。
             Lazy<AuthoringDocumentSnapshot> entry;
             lock (m_Documents)
             {
-                if (!m_Documents.TryGetValue(directory, out var cached) || cached.Stamp != key)
+                if (!m_Documents.TryGetValue(directory, out var cached) || !Matches(files, cached.Files))
                 {
+                    var stamps = files.ToDictionary(file => file.FullName, Stamp, StringComparer.Ordinal);
                     AuthoringDocumentSnapshot previous = cached.Snapshot?.IsValueCreated == true ? cached.Snapshot.Value : null;
-                    m_Documents[directory] = cached = (key, new Lazy<AuthoringDocumentSnapshot>(() =>
+                    m_Documents[directory] = cached = (stamps, new Lazy<AuthoringDocumentSnapshot>(() =>
                     {
-                        var contents = new Dictionary<string, string>(files.Length, StringComparer.Ordinal);
-                        for (int i = 0; i < files.Length; i++)
-                            contents.Add(relative[i], File.ReadAllText(files[i].FullName, Encoding.UTF8));
+                        var contents = new Dictionary<string, string>(stamps.Count, StringComparer.Ordinal);
+                        foreach (var file in stamps.Keys.Select(path => (Path: path,
+                                     Relative: Path.GetRelativePath(directory, path).Replace('\\', '/')))
+                                 .OrderBy(file => file.Relative, StringComparer.Ordinal))
+                            contents.Add(file.Relative, File.ReadAllText(file.Path, Encoding.UTF8));
                         return new AuthoringDocumentSnapshot(kind, workspace, directory, contents, previous);
                     }));
                 }
@@ -225,6 +220,18 @@ namespace BTSMTL.Authoring.Workspace
                         m_Documents.Remove(directory);
                 throw;
             }
+        }
+
+        static (long Modified, long Length) Stamp(FileInfo file) => (file.LastWriteTimeUtc.Ticks, file.Length);
+
+        static bool Matches(IReadOnlyCollection<FileInfo> files, Dictionary<string, (long Modified, long Length)> stamps)
+        {
+            if (files.Count != stamps.Count)
+                return false;
+            foreach (FileInfo file in files)
+                if (!stamps.TryGetValue(file.FullName, out var stamp) || stamp != Stamp(file))
+                    return false;
+            return true;
         }
 
         public void Retain(HashSet<string> directories)
