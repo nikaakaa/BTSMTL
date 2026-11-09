@@ -49,7 +49,7 @@ export function ResourceProject() {
     context: item !== null && item.context !== '' ? item.context : currentScope?.context ?? null };
   const sourceKey = target === null ? null : JSON.stringify(target);
   const openSkill = (name: string) => { void authoringActions.open(authoringTarget('skill', name)).catch(error => consoleActions.error('Project', error)); };
-  return <div className={styles.root}>
+  return <div className={`${styles.root} ${styles.resourcePanel}`}>
     <PanelBar wrap><Select label="当前技能预览载体" value={document.execution.previewScope} placeholder="明确选择当前编辑载体"
       disabled={authoring.target?.kind !== 'skill'} options={scopeChoices} onChange={value => authoringActions.selectExecutionScope('previewScope', value)} />
       <Button variant="ghost" onClick={() => void adapterCatalogCache.refresh(authoringApi.catalog)}>刷新资源目录</Button></PanelBar>

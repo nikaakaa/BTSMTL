@@ -1004,9 +1004,15 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
       graphId: owner.graphId, owner: { kind: 'node', nodeId: owner.nodeId }, keys: path, label: field.displayName,
       optional: field.optional, targets: field.graphTargets, value: typeof value === 'string' && value !== '' ? value : null,
     }} />;
-  if (field.resourceReference !== null || field.objectSelection !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null)
-    return <Row label={label}><FieldReferencePicker id={id} label={label} field={field} value={value} configuration={node}
-      onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} /></Row>;
+  if (field.resourceReference !== null || field.objectSelection !== null || field.choiceKind !== null || field.valueKind === 'IdentityReference' || field.valueKind === 'AssetReference' || field.pickerKind !== null) {
+    const optionalResourceKey = field.optional && field.clrType === 'System.String' && field.resourceReference?.source === 'AdapterResource';
+    const empty = value == null || value === '';
+    return <Row label={label}>
+      <FieldReferencePicker id={id} label={label} field={field} value={optionalResourceKey && empty ? undefined : value}
+        configuration={node} onChoose={choice => writeReferenceChoice(choice, path, choice.value, onSetFields)} />
+      {optionalResourceKey && !empty && <Button variant="ghost" onClick={() => set('')}>清除 {label}</Button>}
+    </Row>;
+  }
   switch (field.valueKind) {
     case 'Boolean':
       return <Row label={label}><Checkbox label={label} checked={value === true} onChange={set} /></Row>;

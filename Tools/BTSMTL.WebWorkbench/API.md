@@ -199,6 +199,8 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 
 新 Load 后清除旧画面；接收图像时核对该图自身的 Load、Player build、内容／绑定修订及对应时钟。图片角标显示图片自身采样，不借另一次状态消息的帧号。只有同一 WS 帧消息的 source 与共享画面区里同 `sequence` 且读后未被覆盖的帧槽能组成同次画面。
 
+自动载入按 `LivePlayer.previewTarget.content` 判断是否已经采用所选场景。回跳重建期间 `player.source` 可以暂时为空，场景仍属于原 Load；图像接收仍核对实际采样身份。
+
 状态、画面和命令通过同一来源比较：执行身份、构建／Editor程序集、Load、内容、文档／绑定及场景／输入修订均参与；实际时钟和采样序号各自保留，不把连续采样误作新 Load。来源改变、画面连接关闭或新 Load 开始时清除旧时钟、定位目标、回执和画面；旧来源状态及迟到回执不得关联新目标。既有 HTTP 列表刷新只在 WS 尚未打开时供同一选中执行初始化状态，不增轮询或第二次取图。最后命令保留完整原回执；submitted 后到达的同 commandId WS ACK 更新同一条记录，仍需核对实际内容与来源。
 
 ## 正式作业与档案
@@ -248,6 +250,10 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 观察通道为 `logic,bones,camera,physics,graph,stateMachine,timeline,blackboard,ports,input,images`。`available=false`、`complete=false` 和空数组含义不同；按原 `reason` 展示，不能以静态默认值或其它帧补齐。检查器同时消费摘要与当前帧的 availability，同一缺项原因只列一次。通用 sections 是宿主提供的显示名、字段和来源定位，前端无需为每种内部运行值新增硬编码页签。
 
 画面通道能力取同一 Summary。明确捕获的图片沿原 `/images/{宿主帧键}/metadata` 查询实际可用性和原因，不解析项目清单的 captures 或 SDK 成员来猜画面是否存在；仅 metadata.available 为 true 时再取字节。Editor 的原画面构建号可以为 null，真实执行身份仍来自 Summary／Source。
+
+封存连播中同时读取一张 JPEG。浏览器保留上一张实际画面及其来源帧，读取完成后再跟进最新游标。停播和手动定位以所选记录为准，档案缺图时显示该帧的实际缺失原因。切换或退出档案时结束图像请求并释放缓存。
+
+JPEG 的来源 SDK 帧与当前分页帧一致时，叠加使用分页中的姿态和相机，并按实际表现序号及相机实例关联。来源 SDK 帧与分页帧不同时，读取 JPEG 指定的来源帧。Gizmos 按已绘制的采样投影。封存回看期间暂停构建与实时会话列表的定时刷新，退出回看后恢复。
 
 档案游标使用通用帧的 `hostFrame/seconds`，总时长使用实际首末帧秒数之差；通过既有 `/frames` 按需读取首末各一条，复用同一时间基准，不从项目清单反算。通用帧的 `source` 可按正式合同为 null，几何接触 `kind` 使用宿主给出的文本分类。截图就绪标记的帧号与可选一致性值也直接取当前通用帧；缺少项目逻辑通道不阻止已完成绘制的面板报告就绪。
 

@@ -489,13 +489,17 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 export function captureEditingView() {
-  const capturedOwners = Object.entries(useAuthoring.getState().documents)
+  const { target, documents } = useAuthoring.getState();
+  const capturedOwners = Object.entries(documents)
     .map(([key, document]) => ({ key, revision: document.revision, version: document.version }));
   const editingView = authoringActions.editingView();
   const isCurrentRequest = () => {
-    const current = useAuthoring.getState().documents;
-    return Object.keys(current).length === capturedOwners.length &&
-      capturedOwners.every(owner => current[owner.key].revision === owner.revision && current[owner.key].version === owner.version) &&
+    const current = useAuthoring.getState();
+    return current.target === target && Object.keys(current.documents).length === capturedOwners.length &&
+      capturedOwners.every(owner => {
+        const document = current.documents[owner.key];
+        return document !== undefined && document.revision === owner.revision && document.version === owner.version;
+      }) &&
       JSON.stringify(editingView.scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
   };
   return { editingView, isCurrentRequest };
@@ -528,7 +532,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
         const edited = { ...current.edited };
         const files = { ...source.files };
         for (const [path, content] of Object.entries(source.files)) {
-          if (Object.hasOwn(edited, path)) edited[path] = parseSkillJson(content);
+          if (!isTimelineFile(path) && Object.hasOwn(edited, path)) edited[path] = parseSkillJson(content);
         }
         for (const path of [...Object.keys(edited), ...current.removed]) {
           if (current.files[path] === undefined) delete files[path];
@@ -719,22 +723,20 @@ export const authoringActions = {
     selectionActions.showTimeline(scheme.InputTimeline as string, null, null);
   },
 
-  // 取可编辑的文档：首次编辑时从原文解析。同一轮事件里的多次编辑记为一步撤销。
   edit(path: string, mutate: (document: JsonValue) => void) {
-    const state = get();
-    const document = state.removed.includes(path) ? null
-      : state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
-    if (document === null) {
-      consoleActions.log('error', '作者', `${state.target?.documentPath ?? '—'} 中没有文件 ${path}`);
+    const source = currentDocument(path);
+    if (source === null) {
+      consoleActions.log('error', '作者', `${get().target?.documentPath ?? '—'} 中没有文件 ${path}`);
       return;
     }
-    record();
+    const document = cloneJson(source);
     try {
       mutate(document);
     } catch (error) {
       consoleActions.error('作者', error);
       return;
     }
+    record();
     setDocument({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
   },
 
@@ -900,23 +902,24 @@ export const authoringActions = {
   },
 
   async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save') {
+    const target = get().target;
+    if (target === null) return;
     const variableResults = await Promise.allSettled(variableRequests.values());
+    const current = get();
+    const { documents } = current;
+    if (current.target !== target || current.resourceTarget !== null || Object.values(documents).some(document => document.saving)) return;
     const variableFailure = variableResults.find(result => result.status === 'rejected');
     if (variableFailure?.status === 'rejected') {
       const error: unknown = variableFailure.reason;
       setDocument({ lastSave: { ok: false, saved: false, compilationState: null, preview: null, errors: [],
-        message: `变量修改未完成，作者内容尚未保存：${error instanceof Error ? error.message : String(error)}` } });
+        message: `变量修改未完成，作者内容尚未保存：${error instanceof Error ? error.message : String(error)}` } }, target);
       consoleActions.error('变量保存', error);
       return;
     }
-    const owner = get().resourceTarget;
-    if (owner !== null) return;
-    const { target, documents } = get();
-    if (!target || Object.values(documents).some(document => document.saving)) return;
     const editingView = authoringActions.editingView();
     const apply = operation === 'apply';
     const submittedDocuments = new Map(editingView.writes.map(write => {
-      const document = useAuthoring.getState().documents[write.documentPath];
+      const document = documents[write.documentPath];
       return [write.documentPath, { revision: document.revision,
         files: workingFiles(document.files, document, document.rootFile),
         history: new Set([...document.undo, ...document.redo]) }] as const;
@@ -932,9 +935,11 @@ export const authoringActions = {
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
       const previousDocuments = useAuthoring.getState().documents;
       const documents = { ...previousDocuments };
-      const savedFiles = new Map(receipts.map(receipt => [receipt.documentPath,
-        receipt.documentPath === target.documentPath && content !== null ? content.files :
-          usesGraphModels(receipt.kind) ? submittedDocuments.get(receipt.documentPath)!.files : receipt.files]));
+      const savedFiles = new Map(receipts.map(receipt => {
+        const projected = receipt.documentPath === target.documentPath && content !== null
+          ? content.files : submittedDocuments.get(receipt.documentPath)!.files;
+        return [receipt.documentPath, usesGraphModels(receipt.kind) ? savedTimelineFiles(projected, receipt.files) : receipt.files];
+      }));
       for (const receipt of receipts) {
         const submitted = submittedDocuments.get(receipt.documentPath)!;
         const current = documents[receipt.documentPath];
@@ -958,6 +963,7 @@ export const authoringActions = {
         };
       }
       set({ documents });
+      if (receipts.some(receipt => receipt.documentPath === get().target?.documentPath)) publishDocument();
       if (receipts.some(document => submittedDocuments.get(document.documentPath)!.revision === null))
         void authoringActions.listDocuments();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
@@ -1065,24 +1071,32 @@ export const authoringActions = {
     }
   },
 
-  // 外部修改检测：无本地修改时直接重读，有修改时标出冲突。
-  async checkExternal() {
+  async checkExternal({ waitSeconds, seen, signal }: { waitSeconds: number; seen?: string; signal: AbortSignal }): Promise<string | null | undefined> {
     const { target, revision } = get();
-    if (!target || !revision) return;
-    const signal = loadController!.signal;
+    if (!target || !revision) return undefined;
+    const known = seen ?? revision;
     try {
-      const snapshot = await workspaceDocumentsApi.openIfChanged(target.documentPath, revision, signal);
+      const snapshot = await workspaceDocumentsApi.openIfChanged(target.documentPath, known, signal, waitSeconds);
       signal.throwIfAborted();
-      if (snapshot === null || snapshot.revision === revision) return;
-      if (hasChanges(target)) setDocument({ externalChange: true }, target);
-      else {
+      const current = get();
+      if (current.target !== target || current.revision !== revision || Object.values(current.documents).some(document => document.saving))
+        return undefined;
+      if (snapshot === null) return known;
+      if (snapshot.revision === revision) {
+        if (current.externalChange) setDocument({ externalChange: false }, target);
+      } else if (hasChanges(target)) {
+        if (!current.externalChange) setDocument({ externalChange: true }, target);
+      } else {
         setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
-          version: authoringDocument(useAuthoring.getState(), target).version + 1,
-          sourceFiles: snapshot.files,
-          ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) }, target);
+          version: current.version + 1, externalChange: false, sourceFiles: snapshot.files,
+          files: usesGraphModels(snapshot.kind) ? savedTimelineFiles(current.files, snapshot.files) : snapshot.files }, target);
+        publishDocument();
       }
+      return snapshot.revision;
     } catch (error) {
+      if (signal.aborted) return undefined;
       consoleActions.error('作者', error);
+      return null;
     }
   },
 
@@ -1453,6 +1467,13 @@ function workingFiles(files: Record<string, string>, document: Pick<Snapshot, 'e
   return result;
 }
 
+function savedTimelineFiles(projected: Record<string, string>, saved: Record<string, string>) {
+  return Object.fromEntries([
+    ...Object.entries(projected).filter(([path]) => !isTimelineFile(path)),
+    ...Object.entries(saved).filter(([path]) => isTimelineFile(path)),
+  ]);
+}
+
 function documentWrite(documentPath: string, document: AuthoringDocument): WorkspaceDocumentWrite {
   const files = { ...document.sourceFiles };
   for (const [path, content] of Object.entries(workingFiles(document.files, document, document.rootFile)))
@@ -1607,7 +1628,6 @@ export function currentDocument(path: string): JsonValue | null {
   return document;
 }
 
-// 编辑在原文档对象上原地修改，version 变化即重新读取。
 export function useCurrentDocument(path: string | null): { document: JsonValue | null; version: number } {
   const { edited, text, removed, version } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
@@ -1773,12 +1793,10 @@ export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<s
     const document = edited[timelinePath(timeline.documentId)] as JsonObject | undefined;
     if (!document) return timeline;
     const names = new Map(timeline.tracks.flatMap(track => track.clips.map(clip => [clip.id, clip.displayName])));
-    const tracks = timelineOf(timeline.documentId, document).tracks;
+    const draft = timelineOf(timeline.documentId, document);
     return {
-      ...timeline,
-      contentIdentity: null,
-      contentRevision: null,
-      tracks: tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
+      ...draft,
+      tracks: draft.tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
     };
   });
   for (const [path, document] of Object.entries(edited))

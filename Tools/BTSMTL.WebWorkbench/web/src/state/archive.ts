@@ -2,7 +2,7 @@ import { ApiError } from '../api/http';
 import { playerApi } from '../api/player';
 import type { PlayerFrameImage, PlayerJobId, PlayerSummary } from '../api/playerRecords';
 import type { Availability } from '../api/types';
-import { consoleActions, getState, isCurrent, runActions, type ArchiveFrame, type ArchiveImage } from './store';
+import { consoleActions, getState, isCurrent, runActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from './store';
 import { transport, type ArchiveTimebase } from './transport';
 import { readFrame } from './frames';
 
@@ -25,7 +25,7 @@ interface OpenArchive {
 }
 type OpeningArchive = Pick<OpenArchive, 'jobId' | 'generation' | 'controller'> & { kind: 'opening' };
 let current: OpenArchive | OpeningArchive | null = null;
-let imageController: AbortController | null = null;
+let imageRead: { cursor: number; controller: AbortController } | null = null;
 let frameRequest = 0;
 
 function remember(jobId: PlayerJobId, index: number, frame: ArchiveFrame) {
@@ -189,28 +189,40 @@ function loadVisibleCurves(context: OpenArchive) {
   }
 }
 
-async function imageObservations(context: OpenArchive, metadata: PlayerFrameImage, signal: AbortSignal) {
+async function imageObservations(context: OpenArchive, metadata: PlayerFrameImage, frame: ArchiveFrame, signal: AbortSignal) {
   const range = (offset: number) => ({ firstFrame: metadata.sourceHostFrame,
     lastFrame: metadata.sourceHostFrame, offset, limit: 128 });
-  const [poses, cameras] = await Promise.all([
-    channel('presentation', readAll(offset => playerApi.presentation(context.jobId, range(offset), signal))),
-    channel('camera', readAll(offset => playerApi.camera(context.jobId, range(offset), signal))),
-  ]);
+  const [poses, cameras] = metadata.sourceHostFrame === frame.hostFrame
+    ? [{ items: frame.presentations, availability: frame.availability }, { items: frame.cameras, availability: frame.availability }]
+    : await Promise.all([
+      channel('presentation', readAll(offset => playerApi.presentation(context.jobId, range(offset), signal))),
+      channel('camera', readAll(offset => playerApi.camera(context.jobId, range(offset), signal))),
+    ]);
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
   const cameraRecords = cameras.items.filter(item => item.presentationSequence === metadata.presentationSequence &&
     item.cameraInstanceId === metadata.cameraInstanceId);
   const reasons = [
-    presentation === null ? poses.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号的姿态记录' : null,
-    cameraRecords.length === 0 ? cameras.availability.find(item => !item.available || !item.complete)?.reason ?? '画面没有同一表现序号与相机实例的记录'
+    presentation === null ? poses.availability.find(item =>
+      (item.channel === 'bones' || item.channel === 'presentation') && (!item.available || !item.complete))?.reason ??
+      '画面没有同一表现序号的姿态记录' : null,
+    cameraRecords.length === 0 ? cameras.availability.find(item => item.channel === 'camera' && (!item.available || !item.complete))?.reason ??
+      '画面没有同一表现序号与相机实例的记录'
       : cameraRecords.length > 1 ? `画面关联 ${cameraRecords.length} 条角色相机记录，叠加来源无法唯一确定；历史身份分别保留` : null,
   ].filter(reason => reason !== null);
   return { presentation, cameras: cameraRecords, overlayReason: reasons.length === 0 ? null : reasons.join('；') };
 }
 
-async function loadImage(context: OpenArchive, hostFrame: string, request: number) {
-  imageController?.abort();
-  imageController = new AbortController();
-  const signal = AbortSignal.any([context.controller.signal, imageController.signal]);
+function cancelImageRead() {
+  imageRead?.controller.abort();
+  imageRead = null;
+}
+
+async function loadImage(context: OpenArchive, frame: ArchiveFrame, request: number) {
+  if (imageRead !== null && (imageRead.cursor === request || getState().reviewing)) return;
+  cancelImageRead();
+  const read = imageRead = { cursor: request, controller: new AbortController() };
+  const signal = AbortSignal.any([context.controller.signal, read.controller.signal]);
+  const hostFrame = frame.hostFrame;
   const id = `${context.jobId}:${hostFrame}`;
   let image = images.get(id);
   try {
@@ -223,17 +235,17 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
         const metadata = records.items.at(-1);
         if (metadata) {
           const [blob, observations] = await Promise.all([
-            playerApi.frameImage(context.jobId, metadata.imageIndex, signal), imageObservations(context, metadata, signal),
+            playerApi.frameImage(context.jobId, metadata.imageIndex, signal), imageObservations(context, metadata, frame, signal),
           ]);
           image = { kind: 'frame', metadata, image: blob, ...observations };
         } else image = { kind: 'unavailable', hostFrame, reason: `档案未记录${context.summary.frameDisplayName} ${hostFrame}的画面` };
       } else image = { kind: 'unavailable', hostFrame, reason: imageChannel?.reason ?? '当前档案未声明帧画面通道' };
+      signal.throwIfAborted();
       images.set(id, image);
       while (images.size > imageCacheLimit)
         for (const oldest of images.keys()) { images.delete(oldest); break; }
     }
-    signal.throwIfAborted();
-    if (request === frameRequest && isCurrent(context.generation))
+    if (isCurrent(context.generation) && (request === frameRequest || getState().reviewing && image.kind === 'frame'))
       runActions.setData(context.generation, { archiveImage: image });
   } catch (error) {
     if (signal.aborted || request !== frameRequest || !isCurrent(context.generation)) return;
@@ -241,8 +253,30 @@ async function loadImage(context: OpenArchive, hostFrame: string, request: numbe
     runActions.setData(context.generation, { archiveImage: {
       kind: 'unavailable', hostFrame, reason: error instanceof Error ? error.message : String(error),
     } });
+  } finally {
+    if (imageRead === read) {
+      imageRead = null;
+      const state = getState();
+      if (state.reviewing && request !== frameRequest && state.archiveFrame !== null)
+        void loadImage(context, state.archiveFrame, frameRequest);
+    }
   }
 }
+
+useWorkbench.subscribe((state, previous) => {
+  if (!previous.reviewing || state.reviewing || current?.kind !== 'ready') return;
+  const context = current;
+  const request = frameRequest;
+  queueMicrotask(() => {
+    const { archiveImage, archiveFrame, reviewing } = getState();
+    if (current !== context || request !== frameRequest || reviewing) return;
+    if (imageRead !== null && imageRead.cursor !== request) cancelImageRead();
+    const shown = archiveImage?.kind === 'frame' ? archiveImage.metadata.source.clock.position.hostFrame : archiveImage?.hostFrame;
+    if (shown === archiveFrame?.hostFrame) return;
+    if (archiveImage !== null) runActions.setData(context.generation, { archiveImage: null });
+    if (archiveFrame !== null) void loadImage(context, archiveFrame, request);
+  });
+});
 
 export const archive = {
   inputFrames(jobId: PlayerJobId, actorId: string) {
@@ -283,7 +317,7 @@ export const archive = {
   cancel() {
     current?.controller.abort();
     current = null;
-    imageController?.abort();
+    cancelImageRead();
     for (const request of pages.values()) request.controller.abort();
     pages.clear();
     pending.clear();
@@ -327,14 +361,15 @@ export const archive = {
 
   loadFrame() {
     const context = current;
-    const { runId, frameIndex, summary, generation } = getState();
+    const { runId, frameIndex, summary, generation, reviewing } = getState();
     if (context?.kind !== 'ready' || runId !== context.jobId || !summary?.frameCount) return;
     const frameKey = key(runId, frameIndex);
     if (getState().frameKey === frameKey) return;
     const page = Math.floor(frameIndex / pageFrames);
     const request = ++frameRequest;
-    imageController?.abort();
-    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, archiveImage: null, failure: null });
+    if (!reviewing) cancelImageRead();
+    runActions.setData(generation, { frame: null, routeAvailability: [], archiveFrame: null, failure: null,
+      ...(reviewing ? {} : { archiveImage: null }) });
     const allowed = new Set([page - 1, page, page + 1]);
     for (const [id, request] of pages) if (!allowed.has(request.page)) {
       request.controller.abort();
@@ -353,7 +388,7 @@ export const archive = {
       if (request !== frameRequest || !archiveFrame || !isCurrent(generation)) return;
       runActions.setData(generation, { archiveFrame, frameKey });
       loadVisibleCurves(context);
-      void loadImage(context, archiveFrame.hostFrame, request);
+      void loadImage(context, archiveFrame, request);
     };
     (cache.has(frameKey) ? Promise.resolve() : loadPage(context, page)).then(show, failed);
     readFrame(frameIndex, { kind: 'cursor' }).then(frame => {

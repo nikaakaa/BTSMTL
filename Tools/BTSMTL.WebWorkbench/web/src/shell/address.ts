@@ -21,6 +21,10 @@ function parseSelection(text: string | null): Selection | null {
 
 const initial = new URLSearchParams(location.search);
 
+export function isRestoringRunAddress() {
+  return !restored && Boolean(initial.get('run'));
+}
+
 // 外壳就绪后激活地址指定的面板；没有打开的实例时在默认位置打开。
 export function applyPanelAddress() {
   const panel = initial.get('panel');
@@ -50,10 +54,10 @@ export function applyStateAddress() {
     const time = Number(initial.get('time') ?? '0');
     if (Number.isFinite(time) && time >= 0) resourceActions.setTime(time);
   }
-  writing = true;
+  restored = true;
 }
 
-let writing = false;
+let restored = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function write() {
@@ -79,12 +83,12 @@ function write() {
 }
 
 useWorkbench.subscribe((state, previous) => {
-  if (!writing) return;
+  if (!restored) return;
   if (state.runId === previous.runId && state.frameIndex === previous.frameIndex && state.selection === previous.selection &&
     state.activePanel === previous.activePanel && state.identity === previous.identity && state.time === previous.time) return;
   timer ??= setTimeout(write, writeDelay);
 });
 
 useAuthoring.subscribe((state, previous) => {
-  if (writing && state.target !== previous.target) timer ??= setTimeout(write, writeDelay);
+  if (restored && state.target !== previous.target) timer ??= setTimeout(write, writeDelay);
 });

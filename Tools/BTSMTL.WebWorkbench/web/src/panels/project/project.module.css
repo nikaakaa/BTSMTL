@@ -32,6 +32,30 @@
   min-height: 0;
 }
 
+.resourcePanel {
+  overflow: auto;
+}
+
+.resourceCatalog {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+
+.resourceCatalog .contentTree {
+  flex: 1 0 auto;
+}
+
+.resourceCatalog .contentList {
+  flex-basis: 80px;
+}
+
+.resourceCatalog .contentDetails {
+  flex: 1 1 100px;
+  min-height: 100px;
+}
+
 .contentRow {
   display: flex;
   align-items: center;

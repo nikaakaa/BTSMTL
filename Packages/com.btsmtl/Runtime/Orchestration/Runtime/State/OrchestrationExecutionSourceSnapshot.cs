@@ -7,25 +7,23 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExecutionSourceSnapshot<TValue> where TValue : unmanaged
     {
         readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
-        readonly byte[] m_Memory;
         ulong m_Tick;
         OrchestrationStopContext m_StopContext;
 
         public OrchestrationExecutionSourceSnapshot(OrchestrationPreparedStateLayout<TValue> plan)
         {
             m_Plan = plan;
-            m_Memory = new byte[plan.Layout.SizeBytes];
         }
 
-        public int StorageSizeBytes => m_Memory.Length;
+        public int StorageSizeBytes => m_Plan.Layout.SizeBytes;
 
-        public void Capture(in OrchestrationExecutionSource<TValue> source)
+        public void Capture(Span<byte> memory, in OrchestrationExecutionSource<TValue> source)
         {
             OrchestrationStateLayoutView plan = m_Plan.View;
-            OrchestrationStateBinding.ClearPayloads(m_Plan, m_Memory);
+            OrchestrationStateBinding.ClearPayloads(m_Plan, memory);
             OrchestrationStateSegment frameSegment = plan.Segment(OrchestrationStateSegmentRole.Frames);
-            m_Memory.AsSpan(frameSegment.OffsetBytes, frameSegment.SizeBytes).Clear();
-            var frames = new OrchestrationExecutionFrames<TValue>(plan, m_Memory);
+            memory.Slice(frameSegment.OffsetBytes, frameSegment.SizeBytes).Clear();
+            var frames = new OrchestrationExecutionFrames<TValue>(plan, memory);
             int count = 0;
             for (int sourceSlot = source.FrameSlot; sourceSlot >= 0; count++)
             {
@@ -44,13 +42,13 @@ namespace BTSMTL.Orchestration
                     OrchestrationStateRegion<byte> destinationRegion = plan.PayloadRegion(in segment,
                         count, destinationProgram, header.OwnerOperationIndex);
                     source.Frames.Memory.Slice(sourceRegion.OffsetBytes, sourceRegion.SizeBytes)
-                        .CopyTo(m_Memory.AsSpan(destinationRegion.OffsetBytes, destinationRegion.SizeBytes));
+                        .CopyTo(memory.Slice(destinationRegion.OffsetBytes, destinationRegion.SizeBytes));
                 }
                 sourceSlot = header.ParentFrameIndex;
             }
             OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
             SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(
-                m_Memory.AsSpan(roster.OffsetBytes, roster.SizeBytes))[0].Count = count;
+                memory.Slice(roster.OffsetBytes, roster.SizeBytes))[0].Count = count;
             foreach (OrchestrationStateSegment segment in plan.Segments)
             {
                 if (segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames ||
@@ -58,35 +56,35 @@ namespace BTSMTL.Orchestration
                     continue;
                 OrchestrationStateSegment sourceSegment = source.SharedFrames.Plan.Segment(segment.Role, segment.ValueKind);
                 source.SharedFrames.Memory.Slice(sourceSegment.OffsetBytes, sourceSegment.SizeBytes)
-                    .CopyTo(m_Memory.AsSpan(segment.OffsetBytes, segment.SizeBytes));
+                    .CopyTo(memory.Slice(segment.OffsetBytes, segment.SizeBytes));
             }
             m_Tick = source.Tick;
             source.StopContextStorage.CopyTo(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
         }
 
-        public OrchestrationExecutionSource<TValue> Borrow()
+        public OrchestrationExecutionSource<TValue> Borrow(ReadOnlySpan<byte> memory)
         {
-            var frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan.View, m_Memory);
+            var frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan.View, memory);
             return new OrchestrationExecutionSource<TValue>(frames, 0, m_Tick,
                 MemoryMarshal.CreateSpan(ref m_StopContext, 1));
         }
 
-        public void WriteRecordedState<TWriter>(ref TWriter writer)
+        public void WriteRecordedState<TWriter>(ReadOnlySpan<byte> memory, ref TWriter writer)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(m_Tick);
             writer.WriteSpan<OrchestrationStopContext>(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
-            foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, m_Memory))
-                writer.WriteSpan<byte>(m_Memory.AsSpan(region.OffsetBytes, region.SizeBytes));
+            foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, memory))
+                writer.WriteSpan<byte>(memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
-        public void RestoreRecordedState(ref RecordedRuntimeStateReader reader)
+        public void RestoreRecordedState(Span<byte> memory, ref RecordedRuntimeStateReader reader)
         {
-            OrchestrationStateBinding.ClearPayloads(m_Plan, m_Memory);
+            OrchestrationStateBinding.ClearPayloads(m_Plan, memory);
             m_Tick = reader.Read<ulong>();
             reader.ReadSpan<OrchestrationStopContext>(1).CopyTo(MemoryMarshal.CreateSpan(ref m_StopContext, 1));
-            foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, m_Memory))
-                reader.ReadSpan<byte>(region.SizeBytes).CopyTo(m_Memory.AsSpan(region.OffsetBytes, region.SizeBytes));
+            foreach (OrchestrationStateRegion<byte> region in OrchestrationStateBinding.ValidRanges(m_Plan, memory))
+                reader.ReadSpan<byte>(region.SizeBytes).CopyTo(memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
     }
 }

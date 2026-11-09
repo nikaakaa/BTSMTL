@@ -63,7 +63,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
     referenceValueKey(row.item.value) === referenceValueKey(currentValue));
   const choices = selectedItem !== null && inCurrentScope(selectedItem) && activeField?.domain === selectedItem.domain && activeField.catalog.kind === 'ready'
     ? fieldItems.filter(choice => referenceValueKey(choice.value) === referenceValueKey(selectedItem.value)) : [];
-  return <div className={styles.contentGrid}>
+  return <div className={styles.resourceCatalog}>
     <div className={styles.contentTree}>
       <PanelBar wrap>
         <Select label="资源领域" value={domain ?? ''} options={[{ value: '', label: '全部领域' },
@@ -81,7 +81,7 @@ export function ResourceCatalogView({ domains, revision, currentScope, field, se
       {!all && currentScope === null && activeField?.selection === 'mapped' ? <Empty text="当前字段尚未选择载体上下文；选择载体或切换到全部资源。" />
         : rows.length === 0 ? <Empty text={issuesOnly && missing === null ? '当前筛选范围没有目录冲突' : '当前筛选范围没有资源'} />
           : <VirtualList className={styles.contentList} count={rows.length} rowHeight={40} label="适配者领域资源目录"
-            revealKey={JSON.stringify([field?.id, currentValue, domain])} revealIndex={current < 0 ? undefined : current} render={index => {
+            revealKey={JSON.stringify([field?.id, currentValue, domain, query, all, issuesOnly])} revealIndex={Math.max(0, current)} render={index => {
               const row = rows[index];
               if (row.kind === 'domain') return <div className={styles.heading}>{row.domain}</div>;
               if (row.kind === 'missing') return <button className={styles.row}

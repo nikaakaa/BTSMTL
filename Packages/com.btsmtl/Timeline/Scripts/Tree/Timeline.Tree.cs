@@ -51,14 +51,18 @@ namespace BTSMTL.Timeline
         public ScriptableObject AssetTree => m_AssetTree.Length == 0 ? null : (ScriptableObject)Timeline.AuthoringDocument.ResolveGraph(m_AssetTree);
 #endif
 #if UNITY_EDITOR || BTSMTL_AUTHORING
+#if !UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("assetTree", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.IdentityReference,
+            AuthoringVisible = false)]
+#endif
         public string AssetTreeId => m_AssetTree;
 #endif
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("executionPhase", typeof(TimelineTreeExecutionPhase), AuthoringVisible = false)]
 #endif
         public TimelineTreeExecutionPhase ExecutionPhase => m_ExecutionPhase;
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField("exitSource", typeof(TimelineClipExitSource), AuthoringVisible = false)]
 #endif
         public TimelineClipExitSource ClipExitSource => m_ExitSource;
@@ -153,6 +157,18 @@ namespace BTSMTL.Timeline
         void OnClipChanged()
         {
             OnNameChanged?.Invoke();
+        }
+#elif BTSMTL_AUTHORING
+        // 引擎外作者编译没有图资产对象，图按作者身份引用。
+        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
+        public void ConfigureTree(string assetTree, TimelineTreeExecutionPhase executionPhase,
+            TimelineClipExitSource exitSource)
+        {
+            if (string.IsNullOrEmpty(assetTree))
+                throw new ArgumentException("TreeClip需要正式节点图身份。", nameof(assetTree));
+            m_AssetTree = assetTree;
+            SetExecutionPhase(executionPhase);
+            SetExitSource(TreeTimelineDefinition.ConfiguredExitSource(ExecutionDomain, exitSource));
         }
 #endif
     }

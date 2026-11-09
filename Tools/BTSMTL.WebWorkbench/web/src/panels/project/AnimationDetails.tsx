@@ -71,7 +71,14 @@ function ResourceCanvas({ library }: { library: AnimationLibrary }) {
 
   useEffect(() => {
     if (!visible || !host.current) return;
-    const scene = new ResourceScene(host.current, panelWindow);
+    let scene: ResourceScene;
+    try {
+      scene = new ResourceScene(host.current, panelWindow);
+    } catch (error) {
+      setFailure(consoleActions.error('动画素材预览', error));
+      return;
+    }
+    setFailure(null);
     let alive = true, loaded = false, shown: string | null = null;
     let drawn: { identity: string; time: number } | null = null;
     scene.onRendered = () => {
@@ -122,7 +129,7 @@ function ResourceCanvas({ library }: { library: AnimationLibrary }) {
 
   return (
     <div className={styles.canvasWrap}>
-      {failure !== null && <ErrorLine text="动画资源加载失败" entryId={failure} />}
+      {failure !== null && <ErrorLine text="动画素材预览失败" entryId={failure} />}
       <div ref={host} className={styles.canvas} />
     </div>
   );

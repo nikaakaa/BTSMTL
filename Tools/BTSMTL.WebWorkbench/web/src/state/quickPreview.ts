@@ -147,7 +147,7 @@ function followContent() {
 
 function scheduleFollow() {
   if (followTimer !== null) clearTimeout(followTimer);
-  followTimer = setTimeout(followContent, 400);
+  followTimer = setTimeout(followContent, 200);
 }
 
 export function quickInputSourceKey(source: PreviewQuickInputSource | null): string {
@@ -215,7 +215,7 @@ function selectedRequest(request: PreviewQuickRequest): boolean {
   const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   // 跟随当前内容的请求在宿主交回修订前只核对目标、编辑内容与方案身份。
   const following = request.sourceRevision === null;
-  return JSON.stringify(state.target) === JSON.stringify(request.target) && matchesEditingView(request.target) &&
+  return state.target?.root === request.target.root &&
     (following || source.revision === request.sourceRevision && JSON.stringify(source.authoring) === JSON.stringify(request.target.root.authoring)) &&
     scheme !== undefined && quickInputSourceKey(scheme.source) === quickInputSourceKey(request.input.source) &&
     (following || scheme.revision === request.input.revision) && description.scenePath === request.target.scenePath;
@@ -251,7 +251,8 @@ function stopPoll() {
 }
 
 function schedulePoll(request: PreviewQuickRequest) {
-  pollTimer = setTimeout(() => { pollTimer = null; void readJob(request, false); }, 500);
+  // 状态读取由宿主等到阶段变化再答复，答复后立即接着读。
+  pollTimer = setTimeout(() => { pollTimer = null; void readJob(request, false); }, 0);
 }
 
 function receiveFrame(frame: PreviewQuickFrame | null, accepted: Accepted, requestId: string, seconds: number) {
@@ -374,6 +375,10 @@ async function sendRetime() {
 
 function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, cancelling: boolean) {
   if (!ownsRequest(request)) return;
+  if (contentFollow && !cancelling && current().target?.root !== request.target.root) {
+    set({ job: { kind: 'idle' } });
+    return;
+  }
   request = resolveFollow(request, reply);
   const status = reply.data;
   if (status?.plan && (status.source?.revision !== request.sourceRevision ||
@@ -395,10 +400,10 @@ function accept(request: PreviewQuickRequest, reply: PreviewQuickStatusReply, ca
     if (cancelling && status !== null && status.cleanupErrors.length > 0) {
       set({ job: { kind: 'cancel-failed', request, reply: { ...reply, data: status }, reason: status.cleanupErrors.join('\n') } });
     } else if (selected && reply.success && status?.plan && status.source !== null && status.player !== null) {
-      // 就绪只表示播放器开始烘焙；首帧与之后的画面都按时刻定位，由采用触发的取帧接入画面区后请求。
+      // 就绪只表示播放器开始烘焙；游标保持在原时刻，画面按时刻定位，由采用触发的取帧接入画面区后请求。
       set({ job: { kind: 'settled', request, reply },
         accepted: { request, jobId: status.jobId, plan: status.plan, sourceRevision: status.source.revision, player: status.player },
-        seconds: 0, picture: { frame: null, request: { kind: 'idle' } } });
+        picture: { frame: null, request: { kind: 'idle' } } });
     } else set({ job: selected ? { kind: 'settled', request, reply } : { kind: 'idle' } });
   }
   if (!reply.success && !(cancelling && status?.stage === 'cancelled' && status.cleanupErrors.length === 0))
@@ -420,7 +425,8 @@ async function readJob(request: PreviewQuickRequest, cancel: boolean) {
   const cancelling = cancel || job.kind === 'cancelling' || job.kind === 'cancel-failed';
   if (cancel) set({ job: { kind: 'cancelling', request, reply: receipt } });
   try {
-    const reply = await (cancel ? previewApi.cancelQuick(status.jobId, controller.signal) : previewApi.quickStatus(status.jobId, controller.signal));
+    const reply = await (cancel ? previewApi.cancelQuick(status.jobId, controller.signal)
+      : previewApi.quickStatus(status.jobId, controller.signal, status.stage));
     if (controller.signal.aborted) return;
     accept(request, reply, cancelling);
   } catch (error) {
@@ -446,7 +452,7 @@ export function quickPlan() {
 export function quickPlanStale() {
   const state = current();
   return state.route !== null && (getState().previewMode !== 'quick' || state.description.kind !== 'ready' ||
-    state.job.kind === 'idle' || state.job.request !== state.route.request);
+    state.target?.root !== state.route.request.target.root || state.job.kind === 'idle' || state.job.request !== state.route.request);
 }
 
 // 画面只认与当前路线同一请求、已拿到首帧的作业；路线先到而画面未到或失败时不显示旧画面。
@@ -476,18 +482,8 @@ function advancePlayback(now: number) {
   else playbackFrame = requestAnimationFrame(advancePlayback);
 }
 
-// 目标换成当前网页编辑视图与文档保存修订，与 readSource 建目标的方式相同。
-function followEditingView() {
-  const target = current().target;
-  const root = target?.root;
-  if (target == null || root?.kind !== 'webEditingView') return;
-  const document = useAuthoring.getState().documents[root.authoring.documentPath];
-  if (document === undefined) return;
-  set({ target: { ...target, root: { ...root, authoring: { ...root.authoring, savedRevision: document.revision ?? '' },
-    editingView: authoringActions.editingView() } } });
-}
-
-function preparation() {
+// supersede：发起新作业时由宿主取消并等完原作业，原作业不挡本次准备。
+function preparation(supersede = false) {
   const workbench = getState();
   const mode = workbench.host?.modes.find(item => item.id === 'quick');
   if (workbench.previewMode !== 'quick') return { kind: 'unavailable', reason: '先选择快预览档位' } as const;
@@ -499,11 +495,10 @@ function preparation() {
   if (target === null || target.root === null) return { kind: 'unavailable', reason: '选择作者文档和入口图或 Timeline' } as const;
   const data = state.description.reply.data;
   if (data.source === null || data.root === null) return { kind: 'unavailable', reason: '宿主没有返回当前根的来源与输入方案' } as const;
-  if (!matchesEditingView(target)) return { kind: 'unavailable', reason: '网页编辑内容已变化，请重新读取来源' } as const;
   const scheme = data.root.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.scheme));
   if (scheme === undefined) return { kind: 'unavailable', reason: '选择宿主提供的输入方案' } as const;
-  if (state.job.kind === 'starting' || state.job.kind === 'starting-cancelled' || state.job.kind === 'running' ||
-    state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && quickJobCancellable(state.job)))
+  if (!supersede && (state.job.kind === 'starting' || state.job.kind === 'starting-cancelled' || state.job.kind === 'running' ||
+    state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && quickJobCancellable(state.job))))
     return { kind: 'unavailable', reason: state.job.kind === 'cancelling' || state.job.kind === 'starting-cancelled'
       ? '正在取消原作业，等待清理结束' : '原作业尚未结束，请先完成或取消' } as const;
   const directory = state.outputDirectory || workbench.sources?.runDirectory;
@@ -614,18 +609,17 @@ export const quickPreview = {
   },
   // follow：按当前网页编辑内容直接推导，不先读来源；两个修订留空，由宿主同一次捕获交回。
   async start(follow = false) {
-    if (follow) followEditingView();
-    let prepared = preparation();
+    const prepared = preparation(true);
     if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
+    // 宿主接受新作业时先取消并等完旧作业，网页不再另发取消、等它的回执。
     if (quickJobCancellable(current().job)) {
-      await quickPreview.cancel();
-      if (follow) followEditingView();
-      prepared = preparation();
-      if (prepared.kind === 'unavailable') throw new Error(prepared.reason);
+      quickPreview.pause();
+      clearPicture();
     }
     const request: PreviewQuickRequest = {
       mode: 'quick', target: prepared.target, sourceRevision: follow ? null : prepared.source.revision,
       input: { source: prepared.scheme.source, revision: follow ? null : prepared.scheme.revision },
+      initialSeconds: current().seconds,
       outputDirectory: `${prepared.directory.replace(/[\\/]$/, '')}/quick-preview/${crypto.randomUUID()}`,
     };
     autoAttempt = requestKey(request);
@@ -634,9 +628,10 @@ export const quickPreview = {
     try {
       const reply = await previewApi.planQuick(request);
       if (!ownsRequest(request)) return;
-      const cancelling = current().job.kind === 'starting-cancelled' || !selectedRequest(request);
+      const cancelling = current().job.kind === 'starting-cancelled';
       accept(request, reply, cancelling);
-      if (cancelling && (current().job.kind === 'running' || current().job.kind === 'cancelling')) await readJob(request, true);
+      const job = current().job;
+      if (cancelling && job.kind === 'cancelling') await readJob(job.request, true);
     } catch (error) {
       if (!ownsRequest(request)) return;
       consoleActions.error('快预览', error);
@@ -673,6 +668,8 @@ export const quickPreview = {
     if (!retimeBusy) void sendRetime();
   },
   invalidate(reason: string) {
+    autoAttempt = null;
+    contentFollow = false;
     descriptionController?.abort();
     set({ description: { kind: 'stale', reason } });
     invalidateJob();
@@ -703,7 +700,7 @@ useWorkbench.subscribe((state, previous) => {
 
 useAuthoring.subscribe((authoring, previous) => {
   if (authoring.target?.documentPath !== previous.target?.documentPath &&
-    getState().previewMode === 'quick' && getState().contentSelection?.kind === 'scene') {
+    getState().contentSelection?.kind === 'scene') {
     quickPreview.clearTarget('作者文档已变化，请重新读取快预览来源');
     return;
   }
@@ -713,13 +710,21 @@ useAuthoring.subscribe((authoring, previous) => {
     if (chosen !== null) void quickPreview.readSource(chosen);
     return;
   }
-  if (state.target?.root?.kind !== 'webEditingView' || (state.description.kind !== 'ready' && state.description.kind !== 'loading')) return;
-  // 只认保存修订或网页编辑内容的实际变化；外部修改后文档重读只刷新 files／sourceRevision，编辑视图不变，不再重复生成。
-  const revisionsChanged = Object.keys(authoring.documents).some(key =>
-    previous.documents[key] === undefined || previous.documents[key].revision !== authoring.documents[key].revision);
-  if (!revisionsChanged && matchesEditingView(state.target)) return;
-  if (state.description.kind === 'ready' && state.scheme !== null) {
+  const target = state.target;
+  const root = target?.root;
+  if (target === null || root?.kind !== 'webEditingView' || authoring.documents === previous.documents) return;
+  const owners = Object.entries(authoring.documents);
+  const changed = owners.length !== Object.keys(previous.documents).length || owners.some(([key, owner]) => {
+    const before = previous.documents[key];
+    return before === undefined || before.revision !== owner.revision || before.version !== owner.version;
+  });
+  if (!changed) return;
+  const document = authoring.documents[root.authoring.documentPath];
+  if (document !== undefined && state.description.kind === 'ready' && state.scheme !== null) {
+    const editingView = authoringActions.editingView();
+    const savedRevision = document.revision ?? '';
+    if (root.authoring.savedRevision === savedRevision && JSON.stringify(root.editingView) === JSON.stringify(editingView)) return;
     contentFollow = true;
-    scheduleFollow();
+    set({ target: { ...target, root: { ...root, authoring: { ...root.authoring, savedRevision }, editingView } } });
   } else quickPreview.invalidate('网页编辑内容或作者来源已变化，请重新读取');
 });

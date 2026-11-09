@@ -19,8 +19,10 @@ export const previewApi = {
     postJson<unknown>(`${base}/quick/describe`, target, signal, [409]).then(value => readQuickDescriptionReply(value, 'PreviewQuick.describe')),
   planQuick: (request: PreviewQuickRequest, signal?: AbortSignal) =>
     postJson<unknown>(`${base}/quick/plans`, request, signal, [409]).then(value => readQuickStatusReply(value, 'PreviewQuick.start')),
-  quickStatus: (jobId: PreviewQuickJobId, signal?: AbortSignal) =>
-    getJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}`, signal, [409]).then(value => readQuickStatusReply(value, 'PreviewQuick.status')),
+  // waitWhileStage：宿主等到作业离开该阶段或结束再答复，不必定时轮询。
+  quickStatus: (jobId: PreviewQuickJobId, signal?: AbortSignal, waitWhileStage?: string) =>
+    getJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}${query({ stage: waitWhileStage })}`, signal, [409])
+      .then(value => readQuickStatusReply(value, 'PreviewQuick.status')),
   seekQuick: (jobId: PreviewQuickJobId, request: PreviewQuickSeekRequest, signal?: AbortSignal) =>
     postJson<unknown>(`${base}/quick/plans/${encodeURIComponent(jobId)}/seek`, request, signal, [409])
       .then(value => readQuickStatusReply(value, 'PreviewQuick.seek')),

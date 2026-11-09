@@ -2,12 +2,13 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import styles from './virtual.module.css';
 
 // 定高虚拟滚动列表：只渲染可见行；尺寸按列表所在窗口观察（拆出窗口同样适用）。
-export function VirtualList({ count, rowHeight, render, className, label, revealIndex, revealKey }: {
+export function VirtualList({ count, rowHeight, render, className, label, role = 'list', revealIndex, revealKey }: {
   count: number;
   rowHeight: number;
   render(index: number): ReactNode;
   className?: string;
   label?: string;
+  role?: 'list' | 'listbox';
   revealIndex?: number;
   revealKey?: string;
 }) {
@@ -38,7 +39,7 @@ export function VirtualList({ count, rowHeight, render, className, label, reveal
   for (let index = first; index < last; index++)
     rows.push(<div key={index} className={styles.row} style={{ top: index * rowHeight, height: rowHeight }}>{render(index)}</div>);
   return (
-    <div ref={element} className={`${styles.list} ${className ?? ''}`} role="list" aria-label={label}
+    <div ref={element} className={`${styles.list} ${className ?? ''}`} role={role} aria-label={label}
       onScroll={event => {
         const top = event.currentTarget.scrollTop;
         setView(previous => previous.top === top ? previous : { ...previous, top });
