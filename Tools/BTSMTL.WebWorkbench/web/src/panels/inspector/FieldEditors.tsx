@@ -267,7 +267,7 @@ function ListEditor({ label, value, shape, keys, graphId, scope, fold, onSet }: 
     : () => append(value.length ? cloneJson(value[value.length - 1]) : defaultFor(shape));
   const remove = (index: number) => onSet(keys, value.filter((_, item) => item !== index).map(item => cloneJson(item)));
   return (
-    <Fold nested title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? true} summary={`${value.length} 项`}
+    <Fold nested title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? value.length > 0} summary={`${value.length} 项`}
       actions={<>
         <Button variant="ghost" className={styles.iconButton} disabled={add === null}
           tip={add === null ? '该类型没有正式的创建默认值' : '添加一项'} aria-label="添加一项" onClick={add ?? undefined}><AddIcon /></Button>
@@ -1029,7 +1029,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   if (Array.isArray(value) && descendants.length !== 0) {
     const created = shape?.element?.defaultValue;
     const add = created === undefined ? undefined : () => set([...value.map(element => cloneJson(element)), cloneJson(created)]);
-    return <Fold nested title={label} defaultOpen summary={`${value.length} 项`}
+    return <Fold nested title={label} defaultOpen={value.length > 0} summary={`${value.length} 项`}
       actions={<Button variant="ghost" className={styles.iconButton} aria-label="添加一项" disabled={created === undefined}
         tip={created === undefined ? '该类型没有正式的创建默认值' : '添加一项'} onClick={add}><AddIcon /></Button>}>
       {value.length === 0 && <div className={styles.note}>空列表</div>}
