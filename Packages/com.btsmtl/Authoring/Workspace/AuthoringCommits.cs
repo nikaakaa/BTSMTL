@@ -49,8 +49,12 @@ public sealed class AuthoringCommits
     AuthoringCommits(string root)
     {
         Root = root;
-        m_Lock = new AuthoringReaderWriterLock(Path.Combine(root, LockName));
-        using (AuthoringProcessLock.Acquire(Path.Combine(root, LockName), true))
+        string lockPath = Path.Combine(root, LockName);
+        m_Lock = new AuthoringReaderWriterLock(lockPath);
+        using (AuthoringProcessLock.Acquire(lockPath, false))
+            if (!File.Exists(JournalPath))
+                return;
+        using (AuthoringProcessLock.Acquire(lockPath, true))
             Recover();
     }
 

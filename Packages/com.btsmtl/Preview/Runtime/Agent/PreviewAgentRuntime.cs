@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace BTSMTL.Preview
 {
@@ -56,6 +57,11 @@ namespace BTSMTL.Preview
         double m_NextVideo;
         float m_MaxFps = 30f;
         int m_StreamQuality = 75;
+        int? m_ActiveRenderInterval;
+        int m_StillFrameRequests;
+        bool m_TraceRendering;
+        int m_RenderedFrames;
+        int m_LastRenderedLoop = -1;
 
         public PreviewAgentRuntime(MonoBehaviour owner, IPreviewAgentProject<TCommand> project,
             PreviewAgentConnection connection)
@@ -83,6 +89,7 @@ namespace BTSMTL.Preview
         public CancellationToken Cancellation => m_Cancel.Token;
         public bool StreamEnabled { get; set; } = true;
         public bool IsStreaming => StreamEnabled && m_Project.Playback.CanStream;
+        public int IdleRenderInterval { get; set; } = 1;
 
         public Task ConnectAsync(Uri endpoint, int frameRate)
         {
@@ -115,7 +122,58 @@ namespace BTSMTL.Preview
                 try { m_Project.Adapter.AdvanceFrame(); }
                 catch (Exception failure) { m_Project.Fail("run", failure, null); }
             }
+            UpdateRenderCadence();
             return true;
+        }
+
+        void UpdateRenderCadence()
+        {
+            if (IdleRenderInterval > 1 && m_Project.Playback.State == PreviewPlaybackState.Paused && !IsStreaming &&
+                !m_CaptureRequested && m_StreamLoop == null && m_StillFrameRequests == 0)
+            {
+                if (!m_ActiveRenderInterval.HasValue)
+                {
+                    m_ActiveRenderInterval = OnDemandRendering.renderFrameInterval;
+                    OnDemandRendering.renderFrameInterval = IdleRenderInterval;
+                }
+            }
+            else
+                RestoreRenderCadence();
+        }
+
+        void RestoreRenderCadence()
+        {
+            if (m_ActiveRenderInterval is not int interval)
+                return;
+            OnDemandRendering.renderFrameInterval = interval;
+            m_ActiveRenderInterval = null;
+        }
+
+        public void EnableRenderTrace()
+        {
+            m_TraceRendering = true;
+            RenderPipelineManager.endCameraRendering += CountOutputRender;
+        }
+
+        void CountOutputRender(ScriptableRenderContext context, Camera camera)
+        {
+            int frame = Time.frameCount;
+            if (frame != m_LastRenderedLoop && m_Project.IsReady && camera == m_Project.ActiveCamera())
+            {
+                m_LastRenderedLoop = frame;
+                m_RenderedFrames++;
+            }
+        }
+
+        void TraceRender(string phase, string commandId = null)
+        {
+            if (!m_TraceRendering)
+                return;
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                "[Workbench.PreviewRender] phase={0} epochMs={1} ticks={2} loop={3} rendered={4} lastRender={5} interval={6} frame={7} command={8}",
+                phase, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), System.Diagnostics.Stopwatch.GetTimestamp(),
+                Time.frameCount, m_RenderedFrames, m_LastRenderedLoop, OnDemandRendering.renderFrameInterval,
+                m_Project.Playback.Frame, commandId);
         }
 
         public void UpdateStatus()
@@ -127,6 +185,7 @@ namespace BTSMTL.Preview
         public void SendStatus()
         {
             m_NextStatus = Time.unscaledTime + StatusInterval;
+            TraceRender("status");
             m_Project.WriteStatus();
         }
 
@@ -303,6 +362,7 @@ namespace BTSMTL.Preview
                 if (m_StreamCapture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, camera, out int captureSlot))
                 {
                     m_Project.FreezeStreamSource(captureSlot);
+                    TraceRender("jpeg");
                     m_CaptureRequested = false;
                     SendCompletedStreamFrames();
                 }
@@ -313,6 +373,7 @@ namespace BTSMTL.Preview
         {
             while (m_StreamCapture.TryTakeCompleted(m_EncodeStreamFrame, out PreviewEncodedFrame encoded))
             {
+                TraceRender("jpeg-ready");
                 try
                 {
                     if (encoded.IsEncoded || Surface != null)
@@ -334,10 +395,13 @@ namespace BTSMTL.Preview
 
         IEnumerator CaptureStill(TCommand command)
         {
+            m_StillFrameRequests++;
             yield return m_EndOfFrame;
+            m_StillFrameRequests--;
             using var capture = new PreviewFrameCapture(Screen.width, Screen.height, Screen.width, Screen.height,
                 PreviewImageEncoding.Png, 100);
             capture.TryCaptureAtFrameEnd(m_Project.Playback.Frame, m_Project.ActiveCamera(), out _);
+            TraceRender("png", command.commandId);
             PreviewEncodedFrame png;
             while (!capture.TryTakeCompleted(out png))
             {
@@ -366,6 +430,7 @@ namespace BTSMTL.Preview
         // 宿主断开或收到 stop 后结束：先由项目封存观察并释放会话，再关闭连接并退出进程。
         public async void Shutdown(string reason)
         {
+            RestoreRenderCadence();
             m_Owner.enabled = false;
             m_Owner.StopAllCoroutines();
             m_Project.OnShutdown(reason);
@@ -386,6 +451,9 @@ namespace BTSMTL.Preview
 
         public void Destroy()
         {
+            RestoreRenderCadence();
+            if (m_TraceRendering)
+                RenderPipelineManager.endCameraRendering -= CountOutputRender;
             m_Cancel.Cancel();
             DisposeStreamCapture();
             if (Connection != null)

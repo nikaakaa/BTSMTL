@@ -117,13 +117,14 @@ namespace BTSMTL.Authoring.Workspace
         // 按文件修改时间与长度判定复用，与作者文档快照一致；戳变化才重新读盘、算修订与解析。
         sealed class Cached
         {
-            public string Stamp;
+            public (long Modified, long Length) Stamp;
             public string Text;
             public string Revision;
             public AuthoringCatalogEntry[] Entries;
         }
 
         static readonly ConcurrentDictionary<string, Cached> s_Files = new(StringComparer.Ordinal);
+        static readonly ConcurrentDictionary<(string Workspace, string Adapter), AuthoringCatalogSnapshot> s_Snapshots = new();
         readonly string m_Workspace;
 
         public AuthoringCatalog(string workspace) => m_Workspace = Path.GetFullPath(workspace);
@@ -134,8 +135,7 @@ namespace BTSMTL.Authoring.Workspace
             string[] adapters = adapter == null
                 ? Directory.Exists(adapterRoot) ? Directory.GetDirectories(adapterRoot) : Array.Empty<string>()
                 : new[] { Path.Combine(adapterRoot, adapter) };
-            var entries = new List<AuthoringCatalogEntry>();
-            var inputs = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var files = new List<(string Path, Cached Content)>();
             var revisions = new StringBuilder();
             foreach (string path in adapters.OrderBy(item => item, StringComparer.Ordinal))
             {
@@ -146,18 +146,29 @@ namespace BTSMTL.Authoring.Workspace
                              .OrderBy(item => item.FullName, StringComparer.Ordinal))
                 {
                     string file = info.FullName;
-                    string stamp = info.LastWriteTimeUtc.Ticks + "|" + info.Length;
+                    var stamp = (info.LastWriteTimeUtc.Ticks, info.Length);
                     if (!s_Files.TryGetValue(file, out Cached parsed) || parsed.Stamp != stamp)
                         s_Files[file] = parsed = Parse(file, path, stamp);
-                    entries.AddRange(parsed.Entries);
-                    inputs.Add(file, parsed.Text);
+                    files.Add((file, parsed));
                     revisions.Append(Path.GetRelativePath(m_Workspace, file)).Append(':').Append(parsed.Revision).Append('\n');
                 }
             }
-            return new AuthoringCatalogSnapshot(AuthoringCommits.Revision(revisions.ToString()), entries, inputs);
+            string revision = AuthoringCommits.Revision(revisions.ToString());
+            var key = (m_Workspace, adapter);
+            if (s_Snapshots.TryGetValue(key, out AuthoringCatalogSnapshot snapshot) && snapshot.Revision == revision)
+                return snapshot;
+
+            var entries = new List<AuthoringCatalogEntry>();
+            var inputs = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (file, content) in files)
+            {
+                entries.AddRange(content.Entries);
+                inputs.Add(file, content.Text);
+            }
+            return s_Snapshots[key] = new AuthoringCatalogSnapshot(revision, entries, inputs);
         }
 
-        static Cached Parse(string file, string adapterPath, string stamp)
+        static Cached Parse(string file, string adapterPath, (long Modified, long Length) stamp)
         {
             string text = System.IO.File.ReadAllText(file, Encoding.UTF8);
             string revision = AuthoringCommits.Revision(text);

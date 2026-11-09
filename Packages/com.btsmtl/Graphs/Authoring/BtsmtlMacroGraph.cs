@@ -19,7 +19,7 @@ namespace BTSMTL.Graphs
     public sealed partial class BtsmtlMacroGraph : Macro, IBtsmtlGraphVariableOwner, IBtsmtlGraphVariableSource,
         IBtsmtlGraphCompilationInputs, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
-        , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter, IBtsmtlGraphDocumentCompilationSource
+        , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter, IBtsmtlGraphDocumentCompilationSource, BTSMTL.Authoring.IAuthoringReferenceIdentity
 #endif
     {
         [Serializable]
@@ -129,6 +129,7 @@ namespace BTSMTL.Graphs
         }
 
 #if UNITY_EDITOR
+        string BTSMTL.Authoring.IAuthoringReferenceIdentity.AuthoringReferenceIdentity => AuthoringId;
         bool IBtsmtlGraphDocumentCompilationSource.UsesDocumentSource => m_Host is BtsmtlGraphMacroHost;
         string IBtsmtlGraphDocumentCompilationSource.DocumentCompilationInput => BtsmtlGraphDocumentJson.CompilationInput(Source, Variables);
         ThirdPersonSimulation.GraphExecutionDependency IBtsmtlGraphDocumentCompilationSource.VariableCompilationDependency => Variables.CompilationDependency;

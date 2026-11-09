@@ -323,16 +323,30 @@ namespace BTSMTL
             parts.Add(reference != null ? "1" : "0");
             if (reference == null)
                 return;
-            if (reference is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } document)
+            if (TryGetAsset(reference, out string guid, out long fileId))
             {
-                parts.Add(document.AuthoringId);
+                parts.Add(guid);
+                parts.Add((fileId).ToString(CultureInfo.InvariantCulture));
                 return;
             }
-            if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long fileId))
-                throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。");
-            parts.Add(guid);
-            parts.Add((fileId).ToString(CultureInfo.InvariantCulture));
+            parts.Add(ReferenceIdentity(reference));
         }
+
+        // 文档图用作者 ID，内存投影用自带的作者引用身份，其余引用必须是正式资产。
+        static bool TryGetAsset(UnityEngine.Object reference, out string guid, out long fileId)
+        {
+            guid = null;
+            fileId = 0;
+            return reference is not IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } &&
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out guid, out fileId);
+        }
+
+        static string ReferenceIdentity(UnityEngine.Object reference) => reference switch
+        {
+            IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } document => document.AuthoringId,
+            BTSMTL.Authoring.IAuthoringReferenceIdentity identity => identity.AuthoringReferenceIdentity,
+            _ => throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。")
+        };
         static GraphSource Pack(GraphSource source, Graph graph)
         {
             source.Pack(graph);
@@ -369,13 +383,13 @@ namespace BTSMTL
                 {
                     if (reference == null)
                         continue;
-                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long file);
-                    string id = reference is IBtsmtlGraphDocumentCompilationSource { UsesDocumentSource: true } source
-                        ? source.AuthoringId : guid + ":" + file.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    bool asset = TryGetAsset(reference, out string guid, out long file);
+                    string id = asset ? guid + ":" + file.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : ReferenceIdentity(reference);
                     if (dependencies.ContainsKey(id))
                         continue;
                     dependencies.Add(id, new GraphExecutionDependency(id, reference is Graph child
-                        ? Compute(child) : ComputeDependencies(AssetDatabase.GetAssetPath(reference)),
+                        ? Compute(child) : asset ? ComputeDependencies(AssetDatabase.GetAssetPath(reference)) : id,
                         reference is Graph ? GraphExecutionDependencyKind.GraphSource : GraphExecutionDependencyKind.RuntimeContent));
                     if (reference is Graph nested)
                         Collect(nested);
