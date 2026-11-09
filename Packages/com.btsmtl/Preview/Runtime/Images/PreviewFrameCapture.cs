@@ -58,11 +58,12 @@ namespace BTSMTL.Preview
 
     public sealed class PreviewFrameCapture : IDisposable
     {
-        internal static bool OffscreenOutput { get; } =
+        static readonly bool s_OffscreenOutput =
             Array.IndexOf(Environment.GetCommandLineArgs(), "-btsmtlPreviewOffscreen") >= 0;
 
         readonly RenderTexture m_Screen;
         readonly RenderTexture m_Target;
+        readonly RenderPipeline.StandardRequest m_OffscreenRequest;
         readonly CaptureSlot[] m_Slots;
         readonly int m_Width;
         readonly int m_Height;
@@ -75,9 +76,10 @@ namespace BTSMTL.Preview
         {
             if (screenWidth <= 0 || screenHeight <= 0 || width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "预览画面与面板尺寸必须大于零。");
-            if (!OffscreenOutput)
-                m_Screen = new RenderTexture(screenWidth, screenHeight, 0, RenderTextureFormat.ARGB32);
+            m_Screen = new RenderTexture(screenWidth, screenHeight, s_OffscreenOutput ? 24 : 0, RenderTextureFormat.ARGB32);
             m_Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
+            if (s_OffscreenOutput)
+                m_OffscreenRequest = new RenderPipeline.StandardRequest { destination = m_Screen };
             m_Slots = new CaptureSlot[capacity];
             for (int index = 0; index < capacity; index++)
                 m_Slots[index] = new CaptureSlot(this, index, checked(width * height * 4));
@@ -127,12 +129,11 @@ namespace BTSMTL.Preview
                 slot.ViewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
                 slot.CaptureTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
                 Volatile.Write(ref slot.State, SlotState.Readback);
-                RenderTexture source = m_Screen;
-                if (OffscreenOutput)
-                    source = camera.targetTexture ?? throw new InvalidOperationException("离屏预览相机没有渲染目标。");
+                if (m_OffscreenRequest != null)
+                    RenderPipeline.SubmitRenderRequest(camera, m_OffscreenRequest);
                 else
                     ScreenCapture.CaptureScreenshotIntoRenderTexture(m_Screen);
-                Graphics.Blit(source, m_Target);
+                Graphics.Blit(m_Screen, m_Target);
                 slot.Request = AsyncGPUReadback.RequestIntoNativeArray(
                     ref slot.Pixels, m_Target, 0, TextureFormat.RGBA32, slot.OnReadback);
                 slot.Request.Value.WaitForCompletion();
@@ -222,7 +223,7 @@ namespace BTSMTL.Preview
                     slot.Request.Value.WaitForCompletion();
                 slot.Pixels.Dispose();
             }
-            m_Screen?.Release();
+            m_Screen.Release();
             m_Target.Release();
             UnityEngine.Object.Destroy(m_Screen);
             UnityEngine.Object.Destroy(m_Target);

@@ -48,9 +48,6 @@ namespace BTSMTL.Preview
         readonly WaitForEndOfFrame m_EndOfFrame = new WaitForEndOfFrame();
         Vector2Int m_StreamSize;
         PreviewFrameCapture m_StreamCapture;
-        RenderTexture m_OffscreenTarget;
-        Camera m_OffscreenCamera;
-        RenderTexture m_PreviousCameraTarget;
         PreviewSharedSurface m_Surface;
         readonly Func<int, bool> m_EncodeStreamFrame;
         Coroutine m_StreamLoop;
@@ -207,12 +204,9 @@ namespace BTSMTL.Preview
         public void LateUpdate()
         {
             PreviewPlaybackState state = m_Project.Playback.State;
-            if (state is not (PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
-                PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking))
-                return;
-            if (PreviewFrameCapture.OffscreenOutput && (!m_OffscreenCamera || !m_OffscreenCamera.isActiveAndEnabled))
-                BindOffscreenCamera();
-            if (m_StreamSize.x == 0)
+            if (m_StreamSize.x == 0 ||
+                state is not (PreviewPlaybackState.Paused or PreviewPlaybackState.Playing or
+                    PreviewPlaybackState.Stepping or PreviewPlaybackState.Seeking))
                 return;
 
             if (IsStreaming)
@@ -223,26 +217,6 @@ namespace BTSMTL.Preview
                     PreviewImageEncoding.Jpeg, m_StreamQuality, StreamCapacity);
                 m_StreamLoop = m_Owner.StartCoroutine(CaptureStreamFrames());
             }
-        }
-
-        void BindOffscreenCamera()
-        {
-            ReleaseOffscreenCamera();
-            Camera camera = m_Project.ActiveCamera();
-            if (!camera)
-                throw new InvalidOperationException("离屏预览没有实际输出相机。");
-            m_OffscreenTarget ??= new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.ARGB32);
-            m_OffscreenCamera = camera;
-            m_PreviousCameraTarget = camera.targetTexture;
-            camera.targetTexture = m_OffscreenTarget;
-        }
-
-        void ReleaseOffscreenCamera()
-        {
-            if (m_OffscreenCamera)
-                m_OffscreenCamera.targetTexture = m_PreviousCameraTarget;
-            m_OffscreenCamera = null;
-            m_PreviousCameraTarget = null;
         }
 
         void SchedulePeriodicFrame(double now)
@@ -370,7 +344,6 @@ namespace BTSMTL.Preview
                 yield return null;
             }
             DisposeStreamCapture();
-            ReleaseOffscreenCamera();
         }
 
         IEnumerator CaptureStreamFrames()
@@ -493,8 +466,6 @@ namespace BTSMTL.Preview
                 RenderPipelineManager.endCameraRendering -= CountOutputRender;
             m_Cancel.Cancel();
             DisposeStreamCapture();
-            ReleaseOffscreenCamera();
-            UnityEngine.Object.Destroy(m_OffscreenTarget);
             if (Connection != null)
                 m_Close ??= Connection.CloseAsync();
         }
