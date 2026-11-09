@@ -287,9 +287,10 @@ const routeFrame = object({
 });
 const logicPose = object({ position: vector3, rotation: quaternion });
 const segment = object({ shapeIndex: number, start: logicPose, end: logicPose });
+const actor = object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text });
 const frame = object({
   hostFrame: text, seconds: number, source: nullable(source), availability: array(availability),
-  actors: array(object({ id: text, displayName: text, root: logicPose, fields: array(field), rawJson: text })),
+  actors: array(actor),
   channels: array(text), consistency: nullable(object({ displayName: text, value: text })), fields: array(field),
   sections: array(object({ displayName: text, emptyMessage: text, records: array(record) })),
   geometry: object({ sweeps: array(object({ segments: array(segment), targets: array(segment),
@@ -325,25 +326,16 @@ export const readPlayerPoseLayout = object({
     bones: array(text), parents: array(number), diagnosticsUnavailableReason: text,
   })),
 });
-export const readPlayerLogic = object({
-  page: page(object({ source, checksum: text, bodies: array(object({
-    actorId: text, x: number, y: number, z: number, yaw: number,
-    velocityX: number, velocityY: number, velocityZ: number, grounded: number,
-    fixedPointRaw: nullable(tuple(text, text, text, text, text, text, text)),
-  })) })),
-  availability: array(availability),
-});
+export const readPlayerLogic = observationPage(object({ source, actors: array(actor), fields: array(field) }));
 export const readPlayerPresentation = observationPage(object({
   source, presentationSequence: text,
-  presentationTick: number, elapsedSeconds: number, interpolationFactor: number, actors: array(actorPose),
+  presentationTick: number, elapsedSeconds: number, interpolationFactor: number, actors: array(actorPose), fields: array(field),
 }));
+// identity 与画面图像的 cameraIdentity 指同一台相机；项目专有的相机身份在 fields 里。
 export const readPlayerCamera = observationPage(object({
-  source, presentationSequence: text, cameraInstanceId: number, width: number, height: number,
-  actorRosterIndex: number, bindingAdopted: boolean, rigInstanceId: number,
-  actorId: text, actorInstanceId: text, bindingId: text, requestedSourceId: text, requestedSourceRevision: text,
-  profileId: text, profileRevision: text, compositionId: text, rigBindingId: text, virtualCameraId: text, pipeline: text,
+  source, presentationSequence: text, identity: text, actorId: nullable(text), width: number, height: number,
   presentationTick: number, interpolationFactor: number, worldPosition: vector3, worldRotation: quaternion,
-  worldToCamera: array(number), projection: array(number),
+  worldToCamera: array(number), projection: array(number), fields: array(field), rawJson: text,
 }));
 export const readPlayerUnavailable = observationPage(object({
   source, presentationSequence: text, channel: text, reason: text, actorRosterIndex: number, boneIndex: number,
@@ -386,7 +378,7 @@ export const readPlayerInput = object({
 });
 const dataCurve = object({
   id: text, displayName: text, channel: text, clock: text, actorId: text, targetId: text, component: text,
-  coordinates: text, frameCoordinates: text, unit: text, encoding: choice('FixedPointRaw64', 'Float32', 'Int32'),
+  coordinates: text, frameCoordinates: text, unit: text, encoding: text,
 });
 export const readPlayerCurves = observationPage(dataCurve);
 export const readPlayerCurveSamples = object({
@@ -397,9 +389,9 @@ export const readPlayerCurveSamples = object({
 const frameImage = object({
   jobId, archiveJobId: identity<'archive'>(), imageIndex: number, source,
   sourceHostFrame: text, verifiedHostFrame: text, previousHostFrame: text,
-  presentationSequence: text, unityFrame: number, cameraInstanceId: number, width: number, height: number,
+  presentationSequence: text, cameraIdentity: text, width: number, height: number,
   flipY: boolean, presentationAvailable: boolean, presentationTick: number, elapsedSeconds: number,
-  interpolationFactor: number, mediaType: text, encodedLength: number,
+  interpolationFactor: number, mediaType: text, encodedLength: number, fields: array(field),
 });
 export const readPlayerFrameImages = observationPage(frameImage);
 export const readPlayerArchive = object({

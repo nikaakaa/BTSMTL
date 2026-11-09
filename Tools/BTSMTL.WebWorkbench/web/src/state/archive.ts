@@ -200,7 +200,7 @@ async function imageObservations(context: OpenArchive, metadata: PlayerFrameImag
     ]);
   const presentation = poses.items.find(item => item.presentationSequence === metadata.presentationSequence) ?? null;
   const cameraRecords = cameras.items.filter(item => item.presentationSequence === metadata.presentationSequence &&
-    item.cameraInstanceId === metadata.cameraInstanceId);
+    item.identity === metadata.cameraIdentity);
   const reasons = [
     presentation === null ? poses.availability.find(item =>
       (item.channel === 'bones' || item.channel === 'presentation') && (!item.available || !item.complete))?.reason ??
