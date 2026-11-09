@@ -3,7 +3,7 @@ import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './
 import { deleteJson, getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readVariablesValue, type VariablesValue } from './variables';
-import { readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
+import { readWorkspaceDocumentElements, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -265,7 +265,6 @@ interface ProjectItemBase {
   ownerName: string;
   file: string;
   ownership: 'Private' | 'Shared';
-  referenceCount: number;
 }
 
 export type ProjectItem = ProjectItemBase & (
@@ -276,12 +275,6 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'curve' | 'profile' | 'variables'; asset: JsonObject }
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
-
-export interface AuthoringProject extends Page<ProjectItem> {
-  snapshot: string;
-  catalogRevision: string;
-  resourceCatalogRevision: string;
-}
 
 interface ReferenceLocation {
   owner: string;
@@ -715,6 +708,7 @@ export interface SkillDocument {
   graphs: SkillDocumentGraph[];
   relations: SkillDocumentRelation[];
   sources: SkillSnapshot[];
+  elements: WorkspaceDocumentElement[];
 }
 
 const skillPath = (documentPath: string) => `/api/authoring/skills/${encodeURIComponent(documentPath.slice('Skills/'.length))}`;
@@ -804,8 +798,10 @@ export const authoringApi = {
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
     deleteJson<SkillDeleteResult>(skillPath(documentPath), request, [409]),
   document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
-    postJson<Omit<SkillDocument, 'sources'> & { sources: unknown[] }>(documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
-      .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)) })),
+    postJson<Omit<SkillDocument, 'sources' | 'elements'> & { sources: unknown[]; elements: unknown }>(
+      documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
+      .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)),
+        elements: readWorkspaceDocumentElements(document.elements) })),
   save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
     const result = await postJson<unknown>(documentQueryPath(target.documentPath, 'apply'), request);
     const { compilationState } = object({ compilationState: choice('not-required', 'succeeded') })(result, 'SkillSave');
@@ -852,13 +848,6 @@ export const authoringApi = {
   blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
     allPages<BlackboardItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/blackboards'),
       { editingView, offset, limit: 128 }, signal)).then(page => page.items),
-  // 首页按编辑视图计算并取得快照，后续页凭快照切片，不重复上传编辑视图。
-  project: async (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) => {
-    const path = documentQueryPath(target.documentPath, 'queries/project');
-    const first = await postJson<AuthoringProject>(path, { editingView, offset: 0, limit: 128 }, signal);
-    return allPages<ProjectItem, AuthoringProject>(offset => offset === 0 ? Promise.resolve(first)
-      : postJson(path, { snapshot: first.snapshot, offset, limit: 128 }, signal));
-  },
   referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
