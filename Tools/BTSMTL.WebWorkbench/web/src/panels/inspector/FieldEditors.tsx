@@ -509,6 +509,7 @@ function ProfileDocumentFields({ file, jsonPath }: { file: string; jsonPath: str
 export function SkillFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
   const execution = useAuthoring(state => authoringDocument(state).execution);
+  const rootType = useAuthoring(state => authoringDocument(state).authoringType);
   const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
   if (target?.kind !== 'skill' || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
@@ -519,8 +520,9 @@ export function SkillFields({ editable }: { editable: boolean }) {
         onChange={value => authoringActions.selectExecutionScope('runtimeScope', value)} />
       <div className={styles.field}><FieldLabel label="产品范围" tip="编译时从哪个产品内容里找载体等候选" /><ProductScope /></div>
     </Fold>
-    <AuthoringValueFields label="技能配置" type="ThirdPersonCharacter.ActionSystem.GameplayAbilityDefinition" value={document as JsonObject}
-      graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />
+    {rootType === null ? <div className={styles.issue}>当前技能文档未提供作者字段声明</div>
+      : <AuthoringValueFields label="技能配置" type={rootType} value={document as JsonObject}
+        graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />}
   </fieldset>;
 }
 
