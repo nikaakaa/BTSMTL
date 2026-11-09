@@ -631,9 +631,9 @@ export function TransitionFields({ graphId, connectionId, shape, children }: {
 
 export function BlackboardFields({ ownerId, editable }: { ownerId: string | null; editable: boolean }) {
   const source = useVariables(ownerId);
-  const [draft, setDraft] = useState<{ name: string; typeId: string | null }>({ name: '', typeId: null });
+  const [draft, setDraft] = useState<{ name: string; typeId: string | null; objectKind: string | null }>({ name: '', typeId: null, objectKind: null });
   const [failure, setFailure] = useState<string | null>(null);
-  useEffect(() => { setDraft({ name: '', typeId: null }); setFailure(null); }, [ownerId]);
+  useEffect(() => { setDraft({ name: '', typeId: null, objectKind: null }); setFailure(null); }, [ownerId]);
   if (ownerId === null) return <div className={styles.note}>这张图没有变量所有者</div>;
   if (source.value === null) return <div className={source.failure ? styles.issue : styles.note}>{source.failure ?? '正在读取变量文档'}</div>;
   const query = source.value;
@@ -645,10 +645,12 @@ export function BlackboardFields({ ownerId, editable }: { ownerId: string | null
       consoleActions.error('变量', error);
     });
   };
+  const draftHandle = query.choices.types.find(type => type.typeId === draft.typeId)?.valueKind === 'ObjectHandle';
   const add = () => {
     const typeId = draft.typeId;
     if (typeId === null) return;
-    perform(() => graphAuthoring.addVariable(ownerId, typeId, draft.name.trim() || undefined)
+    perform(() => graphAuthoring.addVariable(ownerId, typeId, draft.name.trim() || undefined,
+      draftHandle ? draft.objectKind ?? undefined : undefined)
       .then(() => setDraft(current => ({ ...current, name: '' }))));
   };
   return <>
@@ -665,6 +667,8 @@ export function BlackboardFields({ ownerId, editable }: { ownerId: string | null
         <Row label="类型"><Select label="类型" value={draft.typeId} placeholder="选择变量类型"
           options={query.choices.types.map(type => ({ value: type.typeId, label: type.typeId }))}
           onChange={typeId => setDraft({ ...draft, typeId })} /></Row>
+        {draftHandle && <Row label="对象种类"><Select label="对象种类" value={draft.objectKind} placeholder="任意对象"
+          options={objectKindOptions(query.choices)} onChange={objectKind => setDraft({ ...draft, objectKind })} /></Row>}
         <Row label=""><Button variant="ghost" disabled={draft.typeId === null} onClick={add}>添加</Button></Row>
       </div>}
     </fieldset>
@@ -680,6 +684,8 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
   const type = choices.types.find(type => type.typeId === variable.m_TypeId)!;
   const scope = choices.scopes.find(scope => scope.value === declaration.m_Scope)!;
   const configure = (changes: VariableDeclarationChanges) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, changes));
+  const projectedKind = declaration.m_InputBinding !== null &&
+    choices.inputProjections.find(item => item.value === declaration.m_InputBinding!.m_Projection)?.objectKind != null;
   return <div className={styles.group}>
     <div className={styles.groupHead}>{variable.m_Name}<span className={styles.count}>{type.typeId}</span>
       {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
@@ -689,6 +695,10 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
       <Row label="名称"><TextValue label="名称" value={variable.m_Name} onSet={next =>
         perform(() => graphAuthoring.renameVariable(ownerId, id, next))} /></Row>
       <VariableDefaultValue type={type} value={variable.m_DefaultValue} onSet={(keys, value) => perform(() => graphAuthoring.setVariableValue(ownerId, id, keys, value))} />
+      {variable.m_ObjectKind !== undefined && <Row label="对象种类">{projectedKind
+        ? <span className={styles.readOnly} title="输入投影固定对象种类">{objectKindName(choices, variable.m_ObjectKind)}</span>
+        : <Select label="对象种类" value={variable.m_ObjectKind} options={objectKindOptions(choices)}
+          onChange={next => perform(() => graphAuthoring.setVariableObjectKind(ownerId, id, next))} />}</Row>}
       <Row label="公开"><Checkbox label="公开变量" checked={variable.m_IsPublic}
         onChange={isPublic => perform(() => graphAuthoring.setVariablePublic(ownerId, id, isPublic))} /></Row>
       <Row label="作用域"><Select label="作用域" value={String(declaration.m_Scope)}
@@ -705,6 +715,7 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
         onSet={m_InputBinding => configure({ m_InputBinding })} />
     </> : <>
       <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.m_DefaultValue, ' ')}</span></Row>
+      {variable.m_ObjectKind !== undefined && <Row label="对象种类"><span className={styles.readOnly}>{objectKindName(choices, variable.m_ObjectKind)}</span></Row>}
       <Row label="公开"><span className={styles.readOnly}>{variable.m_IsPublic ? '是' : '否'}</span></Row>
       <Row label="作用域"><span className={styles.readOnly}>{scope.name}</span></Row>
       <Row label="生命周期"><span className={styles.readOnly}>{choices.lifetimes.find(lifetime => lifetime.value === declaration.m_Lifetime)!.name}</span></Row>
@@ -712,6 +723,14 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
       <Row label="输入绑定"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_InputBinding, ' ')}</span></Row>
     </>}
   </div>;
+}
+
+function objectKindOptions(choices: VariablesQuery['choices']) {
+  return choices.objectKinds.map(kind => ({ value: kind.id, label: kind.displayName }));
+}
+
+function objectKindName(choices: VariablesQuery['choices'], id: string) {
+  return choices.objectKinds.find(kind => kind.id === id)?.displayName ?? id;
 }
 
 function VariableDefaultValue({ type, value, onSet }: { type: VariableType; value: JsonValue; onSet: SetValue }) {

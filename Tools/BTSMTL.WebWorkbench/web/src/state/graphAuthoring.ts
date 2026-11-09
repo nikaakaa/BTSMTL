@@ -288,8 +288,11 @@ export const graphAuthoring = {
     });
   },
 
-  addVariable: (ownerId: string, typeId: string, name?: string) =>
-    editVariable(ownerId, { kind: 'create', typeId, ...(name === undefined ? {} : { name }) }),
+  addVariable: (ownerId: string, typeId: string, name?: string, objectKind?: string) =>
+    editVariable(ownerId, { kind: 'create', typeId, ...(name === undefined ? {} : { name }),
+      ...(objectKind === undefined ? {} : { objectKind }) }),
+  setVariableObjectKind: (ownerId: string, variableId: string, objectKind: string) =>
+    editVariable(ownerId, { kind: 'set-object-kind', variableId, objectKind }),
   renameVariable: (ownerId: string, variableId: string, name: string) => editVariable(ownerId, { kind: 'rename', variableId, name }),
   setVariableValue: (ownerId: string, variableId: string, keys: JsonKey[], next: JsonValue) => editVariable(ownerId, source => {
     const current = source.m_Variables.find(variable => variable.m_Declaration.m_VariableId === variableId)!;
