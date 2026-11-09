@@ -329,7 +329,12 @@ namespace BTSMTL
                 return;
             }
             if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long fileId))
-                throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。");
+            {
+                if (reference is not BTSMTL.Authoring.IAuthoringReferenceIdentity identity)
+                    throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。");
+                parts.Add(identity.AuthoringReferenceIdentity);
+                return;
+            }
             parts.Add(guid);
             parts.Add((fileId).ToString(CultureInfo.InvariantCulture));
         }
