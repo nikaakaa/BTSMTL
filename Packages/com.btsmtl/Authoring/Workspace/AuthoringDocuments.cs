@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -265,8 +266,10 @@ namespace BTSMTL.Authoring.Workspace
         public string DirectoryPath(AuthoringDocumentKind kind, string identity) =>
             Inside(Path.Combine(Workspace, kind.Directory, identity));
 
-        public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Read() =>
-            Commits.Read(() => Task.FromResult(Capture()));
+        public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Read() => Read(CancellationToken.None);
+
+        public Task<IReadOnlyList<AuthoringDocumentSnapshot>> Read(CancellationToken cancellation) =>
+            Commits.Read(() => Task.FromResult(Capture(cancellation)));
 
         public Task<AuthoringDocumentSnapshot> Open(string identityOrPath) => Commits.Read(() =>
             Task.FromResult(Path.IsPathRooted(identityOrPath) || AuthoringDocumentKind.All.Any(kind =>
@@ -438,16 +441,22 @@ namespace BTSMTL.Authoring.Workspace
                         .Select(element => (element.ContentDomain, element.SourceIdentity)).ToArray());
             });
 
-        IReadOnlyList<AuthoringDocumentSnapshot> Capture()
+        IReadOnlyList<AuthoringDocumentSnapshot> Capture(CancellationToken cancellation = default)
         {
             var documents = new List<AuthoringDocumentSnapshot>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (AuthoringDocumentKind kind in AuthoringDocumentKind.All)
             {
+                cancellation.ThrowIfCancellationRequested();
                 string library = Path.Combine(Workspace, kind.Directory);
                 if (!Directory.Exists(library)) continue;
                 // 每个库只遍历一次目录树：全部 JSON 的路径、修改时间与长度按所属文档目录分组，再交缓存判定复用。
-                FileInfo[] files = new DirectoryInfo(library).GetFiles("*.json", SearchOption.AllDirectories);
+                var files = new List<FileInfo>();
+                foreach (FileInfo file in new DirectoryInfo(library).EnumerateFiles("*.json", SearchOption.AllDirectories))
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    files.Add(file);
+                }
                 var owned = new Dictionary<string, List<FileInfo>>(StringComparer.OrdinalIgnoreCase);
                 if (kind.RootFile == null)
                     foreach (string directory in Directory.EnumerateDirectories(library))
@@ -463,6 +472,7 @@ namespace BTSMTL.Authoring.Workspace
                             list.Add(file);
                 foreach (var document in owned.OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     documents.Add(m_Cache.Read(kind, Workspace, document.Key, document.Value));
                     seen.Add(document.Key);
                 }
