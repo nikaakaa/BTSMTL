@@ -29,7 +29,7 @@ namespace BTSMTL.Timeline
         }
 #endif
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         public override void ApplyTimeRange(in TimelineClipTimeRange range)
         {
             base.ApplyTimeRange(in range);

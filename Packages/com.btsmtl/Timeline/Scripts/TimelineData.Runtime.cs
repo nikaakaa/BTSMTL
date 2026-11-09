@@ -202,7 +202,8 @@ namespace BTSMTL.Timeline
             StartTime, EndTime, SelfEaseInTime, SelfEaseOutTime, ClipInTime,
             0f, 0f, OtherEaseInTime, OtherEaseOutTime);
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        // 作者工具（Editor 与 .NET 作者库）按时间候选改片段时间；相邻混合与时长由随后的 TimelineData.Init 重算。
         public virtual void ApplyTimeRange(in TimelineClipTimeRange range)
         {
             m_StartTimeFPRawValue = range.Start.RawValue;
@@ -211,7 +212,9 @@ namespace BTSMTL.Timeline
             m_SelfEaseOutTimeFPRawValue = range.EaseOut.RawValue;
             m_ClipInTimeFPRawValue = range.ClipIn.RawValue;
         }
+#endif
 
+#if UNITY_EDITOR
         public void ConfigureTimeRange(OrchestrationTime startTime, OrchestrationTime endTime)
         {
             if (startTime < OrchestrationTime.Zero || endTime < startTime)
