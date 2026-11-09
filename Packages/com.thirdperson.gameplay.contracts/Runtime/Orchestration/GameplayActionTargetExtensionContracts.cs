@@ -23,7 +23,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionInputPort<Read> YawInput =
                 new OrchestrationExtensionInputPort<Read>("yaw", OrchestrationValueKind.Scalar, 2);
             public static readonly OrchestrationExtensionInputPort<Read> ObjectHandleInput =
-                new OrchestrationExtensionInputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 3);
+                new OrchestrationExtensionInputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<Read> HasTarget =
                 new OrchestrationExtensionOutputPort<Read>("has-target", OrchestrationValueKind.Boolean, 0);
             public static readonly OrchestrationExtensionOutputPort<Read> Position =
@@ -33,7 +33,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionOutputPort<Read> PlanarDistance =
                 new OrchestrationExtensionOutputPort<Read>("planar-distance", OrchestrationValueKind.Scalar, 3);
             public static readonly OrchestrationExtensionOutputPort<Read> ObjectHandle =
-                new OrchestrationExtensionOutputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 4);
+                new OrchestrationExtensionOutputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 4, GameplayObjectKinds.Actor);
 
             public static readonly OrchestrationExtensionDefinition<Read> Definition = new OrchestrationExtensionDefinition<Read>(
                 new OrchestrationExtensionIdentity(DomainId, "action-target"),
@@ -63,7 +63,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionOutputPort<Capture> Yaw =
                 new OrchestrationExtensionOutputPort<Capture>("yaw", OrchestrationValueKind.Scalar, 2);
             public static readonly OrchestrationExtensionOutputPort<Capture> ObjectHandle =
-                new OrchestrationExtensionOutputPort<Capture>("object-handle", OrchestrationValueKind.ObjectHandle, 3);
+                new OrchestrationExtensionOutputPort<Capture>("object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
 
             public static readonly OrchestrationExtensionDefinition<Capture> Definition = new OrchestrationExtensionDefinition<Capture>(
                 new OrchestrationExtensionIdentity(DomainId, "capture-action-target"),

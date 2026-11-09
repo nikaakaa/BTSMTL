@@ -9,7 +9,8 @@ namespace ThirdPersonGameplay.Orchestration
         {
             InputIndex = inputIndex;
             Value = new OrchestrationExtensionOutputPort<GameplayObjectExtensionContracts.StartupInput>(
-                GameplayObjectExtensionContracts.StartupInput.ValuePortId, valueKind, 0);
+                GameplayObjectExtensionContracts.StartupInput.ValuePortId, valueKind, 0,
+                valueKind == OrchestrationValueKind.ObjectHandle ? OrchestrationObjectKind.Any : null);
             Contract = GameplayObjectExtensionContracts.StartupInput.Definition.Declaration
                 .WithAdditionalPorts(new[] { Value.Declaration }).Contract;
         }
@@ -141,6 +142,61 @@ namespace ThirdPersonGameplay.Orchestration
             invocation.WriteOutput(in GameplayObjectExtensionContracts.Pose.Yaw, in yaw);
             return OrchestrationExtensionResult.Success;
         }
+    }
+
+    static class GameplayObjectCast<TValue, TContext, TBackend>
+        where TValue : unmanaged
+        where TContext : struct
+        where TBackend : struct, IOrchestrationObjectBackend<TValue, TContext>
+    {
+        internal static OrchestrationExtensionResult Invoke<TOperation>(in TBackend backend, in TContext context,
+            in OrchestrationExtensionInvocation<TValue, TOperation> invocation,
+            in OrchestrationExtensionInputPort<TOperation> input, in OrchestrationExtensionOutputPort<TOperation> succeeded,
+            in OrchestrationExtensionOutputPort<TOperation> result) where TOperation : struct
+        {
+            ObjectHandle handle = backend.ObjectHandle(in invocation.ReadInput(in input));
+            bool matched = backend.TryReadObjectKind(in context, handle, out OrchestrationObjectKind kind) &&
+                kind.IsAssignableTo(result.Declaration.ObjectKind);
+            invocation.WriteOutput(in succeeded, backend.FromBoolean(matched));
+            invocation.WriteOutput(in result, backend.FromObjectHandle(matched ? handle : ObjectHandle.Empty));
+            return OrchestrationExtensionResult.Success;
+        }
+    }
+
+    public sealed class GameplayObjectCastToActorExtension<TValue, TContext, TBackend> :
+        ReadOnlyOrchestrationExtension<TValue, TContext, GameplayObjectExtensionContracts.CastToActor>
+        where TValue : unmanaged
+        where TContext : struct
+        where TBackend : struct, IOrchestrationObjectBackend<TValue, TContext>
+    {
+        readonly TBackend m_Backend;
+
+        public GameplayObjectCastToActorExtension(in TBackend backend) : base(GameplayObjectExtensionContracts.CastToActor.Definition) =>
+            m_Backend = backend;
+
+        public override OrchestrationExtensionResult Invoke(int contentIndex, in TContext context,
+            in OrchestrationExtensionInvocation<TValue, GameplayObjectExtensionContracts.CastToActor> invocation) =>
+            GameplayObjectCast<TValue, TContext, TBackend>.Invoke(in m_Backend, in context, in invocation,
+                in GameplayObjectExtensionContracts.CastToActor.Handle, in GameplayObjectExtensionContracts.CastToActor.Succeeded,
+                in GameplayObjectExtensionContracts.CastToActor.Result);
+    }
+
+    public sealed class GameplayObjectCastToCarrierExtension<TValue, TContext, TBackend> :
+        ReadOnlyOrchestrationExtension<TValue, TContext, GameplayObjectExtensionContracts.CastToCarrier>
+        where TValue : unmanaged
+        where TContext : struct
+        where TBackend : struct, IOrchestrationObjectBackend<TValue, TContext>
+    {
+        readonly TBackend m_Backend;
+
+        public GameplayObjectCastToCarrierExtension(in TBackend backend) : base(GameplayObjectExtensionContracts.CastToCarrier.Definition) =>
+            m_Backend = backend;
+
+        public override OrchestrationExtensionResult Invoke(int contentIndex, in TContext context,
+            in OrchestrationExtensionInvocation<TValue, GameplayObjectExtensionContracts.CastToCarrier> invocation) =>
+            GameplayObjectCast<TValue, TContext, TBackend>.Invoke(in m_Backend, in context, in invocation,
+                in GameplayObjectExtensionContracts.CastToCarrier.Handle, in GameplayObjectExtensionContracts.CastToCarrier.Succeeded,
+                in GameplayObjectExtensionContracts.CastToCarrier.Result);
     }
 
     public sealed class GameplayObjectStartupInputExtension<TValue, TContext, TBackend> :

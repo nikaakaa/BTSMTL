@@ -167,7 +167,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetYaw =
                 new OrchestrationExtensionInputPort<CanActivateAction>("target-yaw", OrchestrationValueKind.Scalar, 2);
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetObjectHandle =
-                new OrchestrationExtensionInputPort<CanActivateAction>("target-object-handle", OrchestrationValueKind.ObjectHandle, 3);
+                new OrchestrationExtensionInputPort<CanActivateAction>("target-object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<CanActivateAction> Result =
                 new OrchestrationExtensionOutputPort<CanActivateAction>("result", OrchestrationValueKind.Boolean, 0);
 
