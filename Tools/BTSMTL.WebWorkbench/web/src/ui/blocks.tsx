@@ -1,29 +1,53 @@
 import { Collapsible } from '@base-ui/react/collapsible';
 import { Tabs as BaseTabs } from '@base-ui/react/tabs';
-import { Fragment, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useReducer, useState, type ReactNode } from 'react';
 import type { Field } from '../api/types';
 import styles from './blocks.module.css';
-import { OptionsIcon } from './icons';
 
 // 面板空状态：只接受一句话。
 export function Empty({ text }: { text: string }) {
   return <div className={styles.empty}>{text}</div>;
 }
 
-// 折叠按 Unity 组件头画；kind 为类别色变量，如 'var(--node-anim)'。
-export function Fold({ title, defaultOpen = false, children }: {
+// 开合按所在位置记住（外层折叠的名字链 + 自身名字）：换选同类对象后保持上次开合，照 Unity 的 foldout。
+const foldMemory = new Map<string, boolean>();
+const FoldPath = createContext('');
+
+// 折叠：顶层按 Unity 组件头画，nested 为字段里的小三角折叠行（结构体、列表、列表元素、曲线）。
+// summary 写在标题行右侧，收起时也能看出内容；actions 是标题行上的按钮（添加、删除），不随点击开合。
+// name 用于记住开合，缺省取字符串标题；标题不是字符串又没给 name 时只在本次显示内记住。
+export function Fold({ title, name, summary, actions, defaultOpen = false, nested = false, children }: {
   title: ReactNode;
+  name?: string;
+  summary?: ReactNode;
+  actions?: ReactNode;
   defaultOpen?: boolean;
+  nested?: boolean;
   children: ReactNode;
 }) {
+  const parent = useContext(FoldPath);
+  const own = name ?? (typeof title === 'string' ? title : null);
+  const key = own === null ? null : `${parent}/${own}`;
+  const [local, setLocal] = useState(defaultOpen);
+  const [, remembered] = useReducer((count: number) => count + 1, 0);
+  const open = key === null ? local : foldMemory.get(key) ?? defaultOpen;
+  const toggle = (next: boolean) => {
+    if (key === null) setLocal(next);
+    else { foldMemory.set(key, next); remembered(); }
+  };
   return (
-    <Collapsible.Root defaultOpen={defaultOpen} className={styles.fold}>
-      <Collapsible.Trigger className={styles.foldTrigger}>
-        <span className={styles.foldArrow} />
-        {title}
-        <OptionsIcon className={styles.foldMore} />
-      </Collapsible.Trigger>
-      <Collapsible.Panel className={styles.foldPanel}>{children}</Collapsible.Panel>
+    <Collapsible.Root open={open} onOpenChange={toggle} className={nested ? styles.foldout : styles.fold}>
+      <div className={nested ? styles.foldoutHead : styles.foldHead}>
+        <Collapsible.Trigger className={nested ? styles.foldoutTrigger : styles.foldTrigger}>
+          <span className={styles.foldArrow} />
+          <span className={styles.foldTitle}>{title}</span>
+          {summary != null && summary !== '' && <span className={styles.foldSummary}>{summary}</span>}
+        </Collapsible.Trigger>
+        {actions}
+      </div>
+      <Collapsible.Panel className={nested ? styles.foldoutPanel : styles.foldPanel}>
+        <FoldPath.Provider value={key ?? parent}>{children}</FoldPath.Provider>
+      </Collapsible.Panel>
     </Collapsible.Root>
   );
 }

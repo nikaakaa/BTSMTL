@@ -56,6 +56,40 @@ const memberLabel = (member: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
+// 复合值以折叠行显示时的选项：name 用于记住开合（列表元素用序号），actions 放在标题行（如删除这一项）。
+type FoldOptions = { name: string; defaultOpen: boolean; actions?: ReactNode };
+
+// 列表元素标题：序号加元素里前两个可读文本（枚举名、名称、键），收起时也能认出每一项；身份串不算可读文本。
+const identityText = /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+function itemTitle(index: number, value: JsonValue | undefined) {
+  const parts: string[] = [];
+  const visit = (item: JsonValue | undefined, depth: number) => {
+    if (parts.length >= 2 || item == null || item instanceof JsonFloat) return;
+    if (typeof item === 'string') {
+      if (item !== '' && item.length <= 40 && !identityText.test(item)) parts.push(item);
+    } else if (typeof item === 'object' && !Array.isArray(item) && depth < 2)
+      for (const child of Object.values(item)) visit(child, depth + 1);
+  };
+  visit(value, 0);
+  return `${index + 1}${parts.length ? `. ${parts.join(' · ')}` : ''}`;
+}
+
+const structNames = (value: JsonObject, shape: StorageShape | null | undefined) => {
+  const members = shape?.members ?? [];
+  return [...members.map(member => member.member), ...Object.keys(value).filter(key => !members.some(member => member.member === key))];
+};
+
+// 成员恰为 x、y(、z、w) 的结构按向量一行编辑。
+const vectorAxes = (names: string[]) => {
+  const axes = ['x', 'y', 'z', 'w'].slice(0, names.length);
+  return names.length >= 2 && names.length <= 4 && names.every((name, index) => name === axes[index]) ? axes : null;
+};
+
+// 列表元素是复合值（结构、列表、曲线）时整项是一个折叠行，单值与向量仍是一行。
+const foldsAsItem = (value: JsonValue, shape: StorageShape | null | undefined) =>
+  value !== null && typeof value === 'object' && !(value instanceof JsonFloat) &&
+  (Array.isArray(value) || vectorAxes(structNames(value as JsonObject, shape)) === null);
+
 // 复合值中按作者合同编辑的成员：有合同的类型只编辑合同中可见的字段，图引用交给所属子图行；
 // 合同给出的可选值（含所属节点收窄后的结果）替换枚举全集。
 const contractMembers = (shape: StorageShape | null | undefined): MemberShape[] =>
@@ -155,15 +189,15 @@ export function defaultFor(shape: StorageShape | null | undefined): JsonValue {
   return null;
 }
 
-function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', onSet }: {
+function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', fold, onSet }: {
   label: string; value: JsonValue | undefined; shape: StorageShape | null | undefined; keys: JsonKey[];
-  graphId?: string | null; scope?: string; onSet: SetValue;
+  graphId?: string | null; scope?: string; fold?: FoldOptions; onSet: SetValue;
 }): ReactNode {
   const set = (next: JsonValue) => { if (!sameValue(value, next)) onSet(keys, next); };
   if (shape?.clrType === 'BTSMTL.Orchestration.ObjectHandle')
     return <Row label={label} tip="由运行时创建或查询对象后写入"><span className={styles.readOnly}>{valueText(value)}</span></Row>;
   if (isCurve(value, shape?.clrType))
-    return <CurveEditor label={label} value={value ?? null} defaultValue={shape?.defaultValue} onSet={next => onSet(keys, next)} />;
+    return <CurveEditor label={label} value={value ?? null} defaultValue={shape?.defaultValue} fold={fold} onSet={next => onSet(keys, next)} />;
   if (shape?.enumValues?.length)
     return <Row label={label}><Select label={label} value={typeof value === 'string' ? value : null}
       options={shape.enumValues.map(name => ({ value: name, label: name }))} onChange={next => set(next)} /></Row>;
@@ -178,7 +212,7 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
   if (typeof value === 'string' || (value == null && shape?.clrType === 'System.String'))
     return <Row label={label}><TextValue label={label} value={value ?? null} onSet={set} /></Row>;
   if (Array.isArray(value))
-    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} graphId={graphId} scope={scope} onSet={onSet} />;
+    return <ListEditor label={label} value={value} shape={shape?.element} keys={keys} graphId={graphId} scope={scope} fold={fold} onSet={onSet} />;
   if (shape?.hasAuthoringFields) {
     if (value == null) {
       const created = shape.defaultValue;
@@ -186,11 +220,11 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
         ? <span className={styles.issue}>该类型没有正式的创建默认值</span>
         : <Button variant="ghost" onClick={() => onSet(keys, cloneJson(created))}>添加 {label}</Button>}</Row>;
     }
-    return <AuthoringValueFields label={label} type={shape.clrType} value={value as JsonObject} graphId={graphId}
+    return <AuthoringValueFields nested fold={fold} label={label} type={shape.clrType} value={value as JsonObject} graphId={graphId}
       identity={JSON.stringify([scope, keys])} onSet={next => onSet(keys, next)} />;
   }
   if (value && typeof value === 'object')
-    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} graphId={graphId} scope={scope} onSet={onSet} />;
+    return <StructEditor label={label} value={value as JsonObject} shape={shape} keys={keys} graphId={graphId} scope={scope} fold={fold} onSet={onSet} />;
   // 空值：有存储形状时可按默认值创建；没有形状的按身份字符串填写。
   const created = defaultFor(shape);
   return created !== null
@@ -198,29 +232,33 @@ function ValueEditor({ label, value, shape, keys, graphId = null, scope = '', on
     : <Row label={label}><TextValue label={label} value={null} nullable onSet={set} /></Row>;
 }
 
-function StructEditor({ label, value, shape, keys, graphId, scope, onSet }: {
+function StructEditor({ label, value, shape, keys, graphId, scope, fold, onSet }: {
   label: string; value: JsonObject; shape: StorageShape | null | undefined; keys: JsonKey[];
-  graphId: string | null; scope: string; onSet: SetValue;
+  graphId: string | null; scope: string; fold?: FoldOptions; onSet: SetValue;
 }) {
   const members = shape?.members ?? [];
-  const names = [...members.map(member => member.member), ...Object.keys(value).filter(key => !members.some(member => member.member === key))];
-  const axes = ['x', 'y', 'z', 'w'].slice(0, names.length);
-  if (names.length >= 2 && names.length <= 4 && names.every((name, index) => name === axes[index]))
+  const names = structNames(value, shape);
+  const axes = vectorAxes(names);
+  if (axes !== null)
     return <Row label={label}><VectorValue label={label} value={value} axes={axes} onSet={(sub, next) => onSet([...keys, ...sub], next)} /></Row>;
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHead}>{label}</div>
+    <Fold nested title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? true} actions={fold?.actions}>
       {names.map(name => (
         <ValueEditor key={name} label={memberLabel(name)} value={value[name]} shape={members.find(member => member.member === name)}
           keys={[...keys, name]} graphId={graphId} scope={scope} onSet={onSet} />
       ))}
-    </div>
+    </Fold>
   );
 }
 
-function ListEditor({ label, value, shape, keys, graphId, scope, onSet }: {
+// 删除列表中一项的按钮：放在单值行末尾或复合项的折叠标题行上。
+function RemoveItem({ onRemove }: { onRemove(): void }) {
+  return <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项" onClick={onRemove}><CloseIcon /></Button>;
+}
+
+function ListEditor({ label, value, shape, keys, graphId, scope, fold, onSet }: {
   label: string; value: JsonValue[]; shape: StorageShape | null | undefined; keys: JsonKey[];
-  graphId: string | null; scope: string; onSet: SetValue;
+  graphId: string | null; scope: string; fold?: FoldOptions; onSet: SetValue;
 }) {
   const append = (created: JsonValue) => onSet(keys, [...value.map(item => cloneJson(item)), created]);
   const created = shape?.defaultValue;
@@ -229,19 +267,21 @@ function ListEditor({ label, value, shape, keys, graphId, scope, onSet }: {
     : () => append(value.length ? cloneJson(value[value.length - 1]) : defaultFor(shape));
   const remove = (index: number) => onSet(keys, value.filter((_, item) => item !== index).map(item => cloneJson(item)));
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHead}>
-        {label}<span className={styles.count}>{value.length}</span>
+    <Fold nested title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? true} summary={`${value.length} 项`}
+      actions={<>
         <Button variant="ghost" className={styles.iconButton} disabled={add === null}
           tip={add === null ? '该类型没有正式的创建默认值' : '添加一项'} aria-label="添加一项" onClick={add ?? undefined}><AddIcon /></Button>
-      </div>
-      {value.map((item, index) => (
-        <div key={index} className={styles.listItem}>
-          <ValueEditor label={`[${index}]`} value={item} shape={shape} keys={[...keys, index]} graphId={graphId} scope={scope} onSet={onSet} />
-          <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项" onClick={() => remove(index)}><CloseIcon /></Button>
-        </div>
-      ))}
-    </div>
+        {fold?.actions}
+      </>}>
+      {value.length === 0 && <div className={styles.note}>空列表</div>}
+      {value.map((item, index) => foldsAsItem(item, shape)
+        ? <ValueEditor key={index} label={itemTitle(index, item)} value={item} shape={shape} keys={[...keys, index]} graphId={graphId} scope={scope}
+          fold={{ name: String(index), defaultOpen: false, actions: <RemoveItem onRemove={() => remove(index)} /> }} onSet={onSet} />
+        : <div key={index} className={styles.listItem}>
+          <ValueEditor label={String(index + 1)} value={item} shape={shape} keys={[...keys, index]} graphId={graphId} scope={scope} onSet={onSet} />
+          <RemoveItem onRemove={() => remove(index)} />
+        </div>)}
+    </Fold>
   );
 }
 
@@ -262,11 +302,8 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
     write([...value, sortedObject(withOutputPortId(defaultFor(shape?.element) as JsonObject, crypto.randomUUID().replaceAll('-', '')))]);
   };
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHead}>
-        {label}<span className={styles.count}>{value.length}</span>
-        <Button variant="ghost" className={styles.iconButton} tip="添加一个出口" aria-label="添加一个出口" onClick={add}><AddIcon /></Button>
-      </div>
+    <Fold nested title={label} defaultOpen summary={`${value.length} 个出口`}
+      actions={<Button variant="ghost" className={styles.iconButton} tip="添加一个出口" aria-label="添加一个出口" onClick={add}><AddIcon /></Button>}>
       {value.map((item, index) => {
         const id = outputPortId(item)!;
         const linked = connected.has(id);
@@ -285,7 +322,7 @@ function PortListEditor({ label, value, shape, keys, node, outputs, onSet }: {
           </div>
         );
       })}
-    </div>
+    </Fold>
   );
 }
 
@@ -406,13 +443,14 @@ function ComputedFields({ fields }: { fields: ComputedField[] }) {
   </Fold>;
 }
 
-function AuthoringValueFields({ label, type, value, graphId, identity, onSet }: {
-  label: string; type: string; value: JsonObject; graphId: string | null; identity: string; onSet(value: JsonObject): void;
+function AuthoringValueFields({ label, type, value, graphId, identity, nested = false, fold, onSet }: {
+  label: string; type: string; value: JsonObject; graphId: string | null; identity: string; nested?: boolean; fold?: FoldOptions;
+  onSet(value: JsonObject): void;
 }) {
   const skill = useAuthoring(state => state.target);
   const { description, issues } = useDescription(skill, { kind: 'configuration', graphId, type, configuration: value });
   const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.documentPath, identity]) };
-  return <Fold title={label} defaultOpen>
+  return <Fold nested={nested} title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? true} actions={fold?.actions}>
     <DescriptionStatus description={description} issues={issues} />
     <ValueFields value={value} description={description} owner={owner} onSet={onSet} />
   </Fold>;
@@ -664,8 +702,7 @@ export function BlackboardFields({ ownerId, editable }: { ownerId: string | null
       {query.value.m_Variables.map(variable => <BlackboardVariable key={variable.m_Declaration.m_VariableId}
         ownerId={ownerId} variable={variable} choices={query.choices} editable={editable} perform={perform} />)}
       {!query.value.m_Variables.length && <div className={styles.note}>没有变量</div>}
-      {editable && <div className={styles.group}>
-        <div className={styles.groupHead}>添加变量</div>
+      {editable && <Fold nested title="添加变量" defaultOpen>
         <Row label="名称"><TextInput aria-label="变量名称" placeholder="留空使用正式默认名称" value={draft.name}
           onChange={event => setDraft({ ...draft, name: event.currentTarget.value })}
           onKeyDown={event => { if (event.key === 'Enter') add(); }} /></Row>
@@ -675,7 +712,7 @@ export function BlackboardFields({ ownerId, editable }: { ownerId: string | null
         {draftHandle && <Row label="对象种类"><Select label="对象种类" value={draft.objectKind} placeholder="任意对象"
           options={objectKindOptions(query.choices)} onChange={objectKind => setDraft({ ...draft, objectKind })} /></Row>}
         <Row label=""><Button variant="ghost" disabled={draft.typeId === null} onClick={add}>添加</Button></Row>
-      </div>}
+      </Fold>}
     </fieldset>
   </>;
 }
@@ -691,11 +728,9 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
   const configure = (changes: VariableDeclarationChanges) => perform(() => graphAuthoring.setDeclarationValue(ownerId, id, changes));
   const projectedKind = declaration.m_InputBinding !== null &&
     choices.inputProjections.find(item => item.value === declaration.m_InputBinding!.m_Projection)?.objectKind != null;
-  return <div className={styles.group}>
-    <div className={styles.groupHead}>{variable.m_Name}<span className={styles.count}>{type.typeId}</span>
-      {editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
-        onClick={() => perform(() => graphAuthoring.removeVariable(ownerId, id))}><CloseIcon /></Button>}
-    </div>
+  return <Fold nested title={variable.m_Name} name={id} summary={type.typeId}
+    actions={editable && <Button variant="ghost" className={styles.iconButton} tip="删除变量与声明；引用它的节点保存时由编译报告" aria-label="删除变量"
+      onClick={() => perform(() => graphAuthoring.removeVariable(ownerId, id))}><CloseIcon /></Button>}>
     {editable ? <>
       <Row label="名称"><TextValue label="名称" value={variable.m_Name} onSet={next =>
         perform(() => graphAuthoring.renameVariable(ownerId, id, next))} /></Row>
@@ -727,7 +762,7 @@ function BlackboardVariable({ ownerId, variable, choices, editable, perform }: {
       <Row label="分类"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_Category, ' ')}</span></Row>
       <Row label="输入绑定"><span className={styles.readOnly}>{stringifySkillJson(declaration.m_InputBinding, ' ')}</span></Row>
     </>}
-  </div>;
+  </Fold>;
 }
 
 function objectKindOptions(choices: VariablesQuery['choices']) {
@@ -918,17 +953,15 @@ function ReferenceCollection({ id, label, field, value, configuration, onSet, on
   id: string; label: string; field: FieldMetadata; value: JsonValue[]; configuration: JsonObject; onSet: SetValue; onSetFields: SetFields;
 }) {
   const path = field.serializedMemberPath;
-  return <div className={styles.group}>
-    <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
+  return <Fold nested title={label} defaultOpen summary={`${value.length} 项`}>
     {value.map((element, index) => <div key={index} className={styles.listItem}>
-      <FieldReferencePicker id={`${id}/${index}`} label={`${label} [${index}]`} field={field} value={element} configuration={configuration}
+      <FieldReferencePicker id={`${id}/${index}`} label={`${label} ${index + 1}`} field={field} value={element} configuration={configuration}
         onChoose={choice => writeReferenceChoice(choice, [...path, index], choice.value, onSetFields)} />
-      <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
-        onClick={() => onSet(path, value.filter((_, item) => item !== index).map(item => cloneJson(item)))}><CloseIcon /></Button>
+      <RemoveItem onRemove={() => onSet(path, value.filter((_, item) => item !== index).map(item => cloneJson(item)))} />
     </div>)}
     <Row label="添加一项"><FieldReferencePicker id={`${id}/add`} label={`添加${label}`} field={field} value={undefined} configuration={configuration}
       onChoose={choice => writeReferenceChoice(choice, path, [...value.map(item => cloneJson(item)), choice.value], onSetFields)} /></Row>
-  </div>;
+  </Fold>;
 }
 
 function PolymorphicValue({ label, field, value, children, onSet }: {
@@ -936,17 +969,19 @@ function PolymorphicValue({ label, field, value, children, onSet }: {
 }) {
   const selected = field.subtypes.find(subtype => subtype.identity === field.selectedSubtype);
   return <fieldset className={styles.authorFields} disabled={field.readOnly}>
-    <Row label={label}><Select label={`${label} 类型`} value={field.selectedSubtype}
-      options={field.subtypes.map(subtype => ({ value: subtype.identity, label: subtype.identity }))}
-      placeholder="选择类型" onChange={identity => {
-        const index = field.subtypes.findIndex(subtype => subtype.identity === identity);
-        onSet(cloneJson(field.subtypes[index].defaultValue));
-      }} /></Row>
-    {selected && <div className={styles.note}>{selected.comment}</div>}
-    {selected && value !== null && children}
-    {field.optional && value !== null && <Row label="">
-      <Button variant="ghost" onClick={() => onSet(null)}>移除 {label}</Button>
-    </Row>}
+    <Fold nested title={label} defaultOpen summary={selected?.identity ?? '未选择类型'}>
+      <Row label="类型"><Select label={`${label} 类型`} value={field.selectedSubtype}
+        options={field.subtypes.map(subtype => ({ value: subtype.identity, label: subtype.identity }))}
+        placeholder="选择类型" onChange={identity => {
+          const index = field.subtypes.findIndex(subtype => subtype.identity === identity);
+          onSet(cloneJson(field.subtypes[index].defaultValue));
+        }} /></Row>
+      {selected?.comment && <div className={styles.note}>{selected.comment}</div>}
+      {selected && value !== null && children}
+      {field.optional && value !== null && <Row label="">
+        <Button variant="ghost" onClick={() => onSet(null)}>移除 {label}</Button>
+      </Row>}
+    </Fold>
   </fieldset>;
 }
 
@@ -965,20 +1000,15 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
     .map(child => <FieldEditor key={child.serializedMemberPath.join('/')} id={`${id}/${child.serializedMemberPath.join('/')}`}
       field={child} item={item} node={node} owner={owner} values={values} outputs={outputs} onSet={onSet} onSetFields={onSetFields} />);
   const childFields = (prefix: string[]) => renderFields(descendants.filter(child => belowPath(child.serializedMemberPath, prefix)));
+  const removeAt = (index: number) => <RemoveItem onRemove={() => set((value as JsonValue[]).filter((_, item) => item !== index).map(element => cloneJson(element)))} />;
   if (field.valueKind === 'Polymorphic' && Array.isArray(value))
     return <fieldset className={styles.authorFields} disabled={field.readOnly}>
-      <div className={styles.group}>
-        <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span></div>
-        {value.map((_, index) => {
+      <Fold nested title={label} defaultOpen summary={`${value.length} 项`}>
+        {value.map((element, index) => {
           const elementPath = [...path, String(index)];
-          return <div key={index} className={styles.listItem}>
-            <div className={styles.group}>
-              <div className={styles.groupHead}>[{index}]</div>
-              {renderFields(descendants.filter(child => elementPath.every((member, position) => child.serializedMemberPath[position] === member)))}
-            </div>
-            <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
-              onClick={() => set(value.filter((_, item) => item !== index).map(element => cloneJson(element)))}><CloseIcon /></Button>
-          </div>;
+          return <Fold key={index} nested title={itemTitle(index, element)} name={String(index)} actions={removeAt(index)}>
+            {renderFields(descendants.filter(child => elementPath.every((member, position) => child.serializedMemberPath[position] === member)))}
+          </Fold>;
         })}
         <Row label="添加一项"><Select label={`添加 ${label} 类型`} value={null} placeholder="选择类型后添加"
           options={field.subtypes.map(subtype => ({ value: subtype.identity, label: subtype.identity }))}
@@ -986,7 +1016,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
             const index = field.subtypes.findIndex(subtype => subtype.identity === identity);
             set([...value.map(element => cloneJson(element)), cloneJson(field.subtypes[index].defaultValue)]);
           }} /></Row>
-      </div>
+      </Fold>
     </fieldset>;
   if (field.valueKind === 'Polymorphic')
     return <PolymorphicValue label={label} field={field} value={value} onSet={set}>{childFields(path)}</PolymorphicValue>;
@@ -999,28 +1029,22 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
   if (Array.isArray(value) && descendants.length !== 0) {
     const created = shape?.element?.defaultValue;
     const add = created === undefined ? undefined : () => set([...value.map(element => cloneJson(element)), cloneJson(created)]);
-    return <div className={styles.group}>
-      <div className={styles.groupHead}>{label}<span className={styles.count}>{value.length}</span>
-        <Button variant="ghost" className={styles.iconButton} aria-label="添加一项" disabled={created === undefined}
-          tip={created === undefined ? '该类型没有正式的创建默认值' : '添加一项'}
-          onClick={add}><AddIcon /></Button>
-      </div>
-      {value.map((element, index) => <div key={index} className={styles.listItem}>
-        <div className={styles.group}><div className={styles.groupHead}>[{index}]</div>
-          {element === null
-            ? created === undefined ? <div className={styles.issue}>该类型没有正式的创建默认值</div>
-              : <Button variant="ghost" onClick={() => onSet([...path, index], cloneJson(created))}>添加 {label}</Button>
-            : childFields([...path, String(index)])}
-        </div>
-        <Button variant="ghost" className={styles.iconButton} tip="删除这一项" aria-label="删除这一项"
-          onClick={() => set(value.filter((_, item) => item !== index).map(element => cloneJson(element)))}><CloseIcon /></Button>
-      </div>)}
-    </div>;
+    return <Fold nested title={label} defaultOpen summary={`${value.length} 项`}
+      actions={<Button variant="ghost" className={styles.iconButton} aria-label="添加一项" disabled={created === undefined}
+        tip={created === undefined ? '该类型没有正式的创建默认值' : '添加一项'} onClick={add}><AddIcon /></Button>}>
+      {value.length === 0 && <div className={styles.note}>空列表</div>}
+      {value.map((element, index) => <Fold key={index} nested title={itemTitle(index, element)} name={String(index)} actions={removeAt(index)}>
+        {element === null
+          ? created === undefined ? <div className={styles.issue}>该类型没有正式的创建默认值</div>
+            : <Button variant="ghost" onClick={() => onSet([...path, index], cloneJson(created))}>添加 {label}</Button>
+          : childFields([...path, String(index)])}
+      </Fold>)}
+    </Fold>;
   }
   if (field.valueKind === 'Object' && value !== null && !Array.isArray(value) && descendants.length !== 0)
-    return <div className={styles.group}><div className={styles.groupHead}>{label}</div>{childFields(path)}
+    return <Fold nested title={label} defaultOpen>{childFields(path)}
       {field.optional && <Row label=""><Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button></Row>}
-    </div>;
+    </Fold>;
   // 图引用字段没有候选来源时就是专属图槽位：按声明的目标新建、进入或移除。
   if (owner.kind === 'node' && field.graphTargets.length !== 0 && field.choiceKind === null && field.pickerKind === null &&
       field.resourceReference === null && field.objectSelection === null)
@@ -1116,25 +1140,36 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const values = descriptionValues(description, clip);
   const owner: ReferenceOwner = { kind: 'value', graphId: null, identity: JSON.stringify([skill, documentId, clipId]) };
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
+  // 片段按作者要改的事分三栏：引用（所属角色、节点图与资源字段）、时间（起止与其它定点秒字段）、配置（其余成员）。
+  const members = !timeOnly && description !== null && template !== undefined
+    ? Object.keys(clip).filter(key => !template.structureMembers.includes(key) && !resourceMembers.has(key)) : [];
+  const timeMembers = members.filter(key => key.endsWith('FPRawValue'));
+  const otherMembers = members.filter(key => !key.endsWith('FPRawValue'));
   return (
     <ResourceScopeContext.Provider value={(document as JsonObject).m_AuthoringScope as string | null ?? null}>
-    <Fold title="片段" defaultOpen>
+    {!timeOnly && <Fold title="引用" defaultOpen>
       <TimelineScopeFields documentId={documentId} />
       {children}
-      {!timeOnly && <DescriptionStatus description={description} issues={issues} />}
-      {!timeOnly && resourceFields.map(item => <StoredItem key={item.member} item={item} node={clip} values={values} owner={owner}
+      <DescriptionStatus description={description} issues={issues} />
+      {resourceFields.map(item => <StoredItem key={item.member} item={item} node={clip} values={values} owner={owner}
         onSet={set} onSetFields={setFields} />)}
+    </Fold>}
+    <Fold title="时间" defaultOpen>
+      {timeOnly && children}
       <Row label="起点（秒）"><NumberInput wide label="起点" value={shownSeconds(start)} min={0}
         onChange={next => { if (next !== null && next < end) authoringActions.setClipTime(documentId, clipId, next, end); }} /></Row>
       <Row label="终点（秒）"><NumberInput wide label="终点" value={shownSeconds(end)}
         onChange={next => { if (next !== null && next > start) authoringActions.setClipTime(documentId, clipId, start, next); }} /></Row>
-      {!timeOnly && description !== null && template !== undefined && Object.keys(clip).filter(key => !template!.structureMembers.includes(key) && !resourceMembers.has(key)).map(key => key.endsWith('FPRawValue') ? (
+      {timeMembers.map(key => (
         <Row key={key} label={`${memberLabel(key.replace(/FPRawValue$/, ''))}（秒）`}>
           <NumberInput wide label={key} value={shownSeconds(fpSeconds(numberOf(clip[key])))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
-      ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />)}
+      ))}
     </Fold>
+    {otherMembers.length > 0 && <Fold title="配置" defaultOpen>
+      {otherMembers.map(key => <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} />)}
+    </Fold>}
     </ResourceScopeContext.Provider>
   );
 }

@@ -302,25 +302,6 @@
   color: var(--text-dim);
 }
 
-.group {
-  margin: 2px 0 2px 8px;
-  padding-left: 6px;
-  border-left: 1px solid var(--line);
-}
-
-.groupHead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--row);
-  color: var(--text-dim);
-}
-
-.count {
-  font: var(--mono);
-  color: var(--text-disabled);
-}
-
 /* 只有图标的添加、删除按钮 */
 .iconButton {
   min-width: 0;
@@ -364,8 +345,10 @@
   white-space: nowrap;
 }
 
-.curve {
-  margin: 2px 0 4px;
+.curveThumb {
+  width: 48px;
+  height: 14px;
+  flex: none;
 }
 
 .curveView {

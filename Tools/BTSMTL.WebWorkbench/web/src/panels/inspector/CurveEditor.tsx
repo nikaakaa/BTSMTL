@@ -1,6 +1,7 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { JsonFloat, cloneJson, numberOf, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { tangentOf } from '../../state/curveEdit';
+import { Fold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, Select } from '../../ui/controls';
 import { CloseIcon } from '../../ui/icons';
 import styles from './inspector.module.css';
@@ -62,8 +63,20 @@ function boundsOf(samples: [number, number][]): Bounds {
   return { t0, t1, v0: v0 - margin, v1: v1 + margin };
 }
 
-export function CurveEditor({ label, value, defaultValue, onSet }: {
-  label: string; value: JsonValue; defaultValue: JsonValue | undefined; onSet(value: JsonValue): void;
+// 收起时标题行上的缩略曲线。
+function Thumbnail({ samples }: { samples: [number, number][] }) {
+  if (samples.length < 2) return null;
+  const bounds = boundsOf(samples);
+  const points = samples.map(([t, v]) => `${(t - bounds.t0) / (bounds.t1 - bounds.t0) * 48},${14 - (v - bounds.v0) / (bounds.v1 - bounds.v0) * 14}`);
+  return <svg className={styles.curveThumb} viewBox="0 0 48 14" preserveAspectRatio="none" aria-hidden>
+    <polyline points={points.join(' ')} className={styles.curveLine} />
+  </svg>;
+}
+
+// 曲线是一个折叠行，默认收起；fold 来自所在列表（列表元素的名字与删除按钮）。
+export function CurveEditor({ label, value, defaultValue, fold, onSet }: {
+  label: string; value: JsonValue; defaultValue: JsonValue | undefined;
+  fold?: { name: string; defaultOpen: boolean; actions?: ReactNode }; onSet(value: JsonValue): void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ index: number; t: number; v: number; bounds: Bounds } | null>(null);
@@ -110,9 +123,9 @@ export function CurveEditor({ label, value, defaultValue, onSet }: {
     };
   };
 
+  const summary = <>{keys.length > 1 && <Thumbnail samples={sample(pointsOf(keys))} />}{keys.length === 0 ? '空曲线' : `${keys.length} 个关键帧`}</>;
   return (
-    <div className={styles.curve}>
-      <div className={styles.groupHead}>{label}</div>
+    <Fold nested title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? false} summary={summary} actions={fold?.actions}>
       <svg ref={svg} className={styles.curveView} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none"
         onPointerMove={event => { if (drag) setDrag({ ...drag, ...toCurve(event, drag.bounds) }); }}
         onPointerUp={() => {
@@ -145,7 +158,7 @@ export function CurveEditor({ label, value, defaultValue, onSet }: {
         <Select label="后循环" value={String(numberOf(curve.postWrapMode))} options={wrapModes}
           onChange={next => onSet({ ...cloneJson(curve), postWrapMode: Number(next) })} />
       </div>
-    </div>
+    </Fold>
   );
 }
 

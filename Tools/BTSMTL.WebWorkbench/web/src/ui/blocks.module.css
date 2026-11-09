@@ -9,21 +9,29 @@
   text-align: center;
 }
 
-/* 折叠：Unity 组件头，22px，折叠三角 + 类别色小方块 + 标题 */
+/* 折叠：Unity 组件头，22px，折叠三角 + 标题，右侧摘要与标题行按钮 */
 .fold {
   border-top: 1px solid var(--seam);
 }
 
-.foldTrigger {
+.foldHead {
   display: flex;
   align-items: center;
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--header);
+}
+
+.foldTrigger,
+.foldoutTrigger {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 6px;
-  width: 100%;
+  min-width: 0;
   height: var(--row);
   padding: 0 6px;
   border: 0;
-  border-bottom: 1px solid var(--bg-3);
-  background: var(--header);
+  background: none;
   color: var(--text);
   font: var(--font);
   font-weight: 600;
@@ -31,9 +39,56 @@
   cursor: default;
 }
 
-.foldTrigger:focus-visible {
+.foldTrigger:focus-visible,
+.foldoutTrigger:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
+}
+
+.foldTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.foldSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-disabled);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* 字段里的折叠行：小三角 + 字段名，展开内容带左侧缩进线 */
+.foldout {
+  margin: 1px 0;
+}
+
+.foldoutHead {
+  display: flex;
+  align-items: center;
+  min-height: var(--row);
+}
+
+.foldoutTrigger {
+  padding: 0 2px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.foldoutTrigger:hover {
+  color: var(--text);
+}
+
+.foldoutPanel {
+  margin-left: 4px;
+  padding-left: 9px;
+  border-left: 1px solid var(--line);
 }
 
 .foldArrow {
@@ -45,17 +100,11 @@
   flex: none;
 }
 
-.foldTrigger[data-panel-open] .foldArrow {
+[data-panel-open] > .foldArrow {
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
   border-top: 5px solid var(--glyph);
   border-bottom: 0;
-}
-
-.foldMore {
-  margin-left: auto;
-  color: var(--text-disabled);
-  flex: none;
 }
 
 .foldPanel {
