@@ -161,7 +161,7 @@ namespace BTSMTL.Orchestration
             m_Roster[0].Count--;
         }
 
-        void ClearPayloads(int frameSlot, int program)
+        internal void ClearPayloads(int frameSlot, int program)
         {
             foreach (OrchestrationStateSegment segment in Plan.Segments)
             {

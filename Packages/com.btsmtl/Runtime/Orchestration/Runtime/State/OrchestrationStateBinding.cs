@@ -58,18 +58,19 @@ namespace BTSMTL.Orchestration
         public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
-            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, source);
-            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan.View, destination);
-            OrchestrationStateValidRanges<TValue>.Enumerator previous = ValidRanges(plan, destination).GetEnumerator();
-            while (previous.MoveNext())
-                if (previous.IsPayload)
-                {
-                    ref readonly OrchestrationExecutionFrameState oldHeader = ref destinationFrames.Header(previous.FrameSlot);
-                    ref readonly OrchestrationExecutionFrameState newHeader = ref sourceFrames.Header(previous.FrameSlot);
-                    if (oldHeader.SkillContentId != newHeader.SkillContentId ||
-                        oldHeader.OwnerOperationIndex != newHeader.OwnerOperationIndex)
-                        destination.Slice(previous.Current.OffsetBytes, previous.Current.SizeBytes).Clear();
-                }
+            OrchestrationStateLayoutView layout = plan.View;
+            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(layout, source);
+            var destinationFrames = new OrchestrationExecutionFrames<TValue>(layout, destination);
+            for (int slot = 0; slot < destinationFrames.Capacity; slot++)
+            {
+                ref readonly OrchestrationExecutionFrameState previous = ref destinationFrames.Header(slot);
+                if (previous.SkillContentId == 0)
+                    continue;
+                ref readonly OrchestrationExecutionFrameState next = ref sourceFrames.Header(slot);
+                if (previous.SkillContentId != next.SkillContentId ||
+                    previous.OwnerOperationIndex != next.OwnerOperationIndex)
+                    destinationFrames.ClearPayloads(slot, layout.ProgramIndex(previous.SkillContentId));
+            }
             foreach (OrchestrationStateRegion<byte> region in ValidRanges(plan, source))
                 source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
         }
@@ -159,7 +160,6 @@ namespace BTSMTL.Orchestration
 
             public OrchestrationStateRegion<byte> Current { get; private set; }
             internal bool IsPayload => m_FrameSlot >= 0;
-            internal int FrameSlot => m_FrameSlot;
 
             public bool MoveNext()
             {
