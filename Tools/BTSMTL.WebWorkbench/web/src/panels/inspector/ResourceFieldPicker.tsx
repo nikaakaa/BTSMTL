@@ -6,7 +6,7 @@ import { authoringDocument, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions } from '../../state/store';
 import { Button } from '../../ui/controls';
-import { resourceReferenceChoice, type ReferenceCatalog, type ResourceObjectFieldSelection } from '../../state/referenceSelection';
+import { documentElementChoice, resourceReferenceChoice, type ReferenceCatalog, type ResourceObjectFieldSelection } from '../../state/referenceSelection';
 import { useResourceScope } from '../../state/resourceScope';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
 import { ReferencePicker } from './ReferencePicker';
@@ -30,16 +30,15 @@ export function ResourceFieldPicker(props: ResourceFieldPickerProps) {
 function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoose }:
   ResourceFieldPickerProps & { metadata: Extract<ResourceReferenceMetadata, { source: 'AuthoringDocument' }> }) {
   const catalog = useAuthoring(state => state.elementCatalog);
-  const elements = catalog.items.filter(element => element.contentDomain === metadata.domain && element.sourceIdentity !== null);
+  const elements = catalog.items.filter((element): element is typeof element & { sourceIdentity: string } =>
+    element.contentDomain === metadata.domain && element.sourceIdentity !== null);
   const choices: ReferenceCatalog = !metadata.availability.available
     ? { kind: 'unavailable', reason: metadata.availability.reason }
     : catalog.kind !== 'ready' ? { kind: 'unavailable', reason: catalog.kind === 'unavailable' ? catalog.reason : '正在读取工作区作者元素。' }
       : { kind: 'ready', referenceKind: metadata.domain, invalidReason: '找不到所引用的内容，可能已改名或删除；原值没有改动。',
-        items: elements.map(element => ({ value: element.sourceIdentity, name: element.name,
-          detail: element.documentPath, source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`,
-          conflict: elements.filter(other => other.sourceIdentity === element.sourceIdentity).length > 1
-            ? `有多处内容使用同一个引用「${element.sourceIdentity}」，无法确定是哪一个。` : null,
-          targets: [], associated: [] })) };
+        items: elements.map(element => documentElementChoice(element,
+          elements.filter(other => other.sourceIdentity === element.sourceIdentity).length > 1
+            ? `有多处内容使用同一个引用「${element.sourceIdentity}」，无法确定是哪一个。` : null)) };
   const selected = elements.filter(element => element.sourceIdentity === value);
   return <><ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={choices} onChoose={onChoose} />
     {catalog.kind === 'ready' && selected.length === 1 && <Button variant="ghost" onClick={() => void projectActions.openDocumentElement(selected[0])

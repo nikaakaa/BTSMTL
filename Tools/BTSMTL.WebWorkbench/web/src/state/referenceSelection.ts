@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AdapterCatalogItem, ReferenceChoice, ReferenceChoiceTarget } from '../api/authoring';
 import { getIn, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from './skillJson';
 import type { ResourceObjectCapability, ResourceObjectCandidate } from '../api/resourceRegistration';
+import type { WorkspaceDocumentElement } from '../api/workspaceDocuments';
 import { nullable, object, text } from '../api/playerRecords';
 
 export type ReferenceCatalog =
@@ -30,6 +31,12 @@ export const useReferenceSelection = create<{ field: ReferenceFieldSelection | n
 export function resourceReferenceChoice(item: Pick<AdapterCatalogItem, 'adapter' | 'domain' | 'value' | 'display' | 'context'>, conflict: string | null): ReferenceChoice {
   return { value: item.value, name: item.display, detail: item.context === '' ? item.value : `${item.value}（${item.context}）`, source: item.adapter, conflict,
     targets: [{ kind: 'Resource', domain: item.domain, value: item.value, context: item.context }], associated: [] };
+}
+
+// 作者文档元素（Profile、曲线等）作为引用候选；字段候选与 Project 拖拽共用，拖入时才能对上同一项。
+export function documentElementChoice(element: WorkspaceDocumentElement & { sourceIdentity: string }, conflict: string | null): ReferenceChoice {
+  return { value: element.sourceIdentity, name: element.name, detail: element.documentPath,
+    source: `${element.documentPath}/${element.relativePath}#${element.jsonPath}`, conflict, targets: [], associated: [] };
 }
 
 export const referenceValueKey = (value: JsonValue | undefined) =>

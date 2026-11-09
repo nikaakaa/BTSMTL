@@ -8,7 +8,7 @@ import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
 import { session } from '../../state/session';
 import { authoringRoot, catalogEntryKey, catalogRoots, flatten, scenesRoot, type ProjectNode } from '../../state/projectTree';
-import { referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
+import { documentElementChoice, referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
 import { consoleActions, contentActions, previewContentChoices, selectionActions, useWorkbench } from '../../state/store';
 import { usePanelApi } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
@@ -41,8 +41,8 @@ export function ProjectPanel() {
     return () => observer.disconnect();
   }, []);
 
-  const { documents, directory, target, author } = useAuthoring(useShallow(state => ({
-    documents: state.documents, directory: state.directory, target: state.target, author: state.author })));
+  const { documents, directory, target, author, elementCatalog } = useAuthoring(useShallow(state => ({
+    documents: state.documents, directory: state.directory, target: state.target, author: state.author, elementCatalog: state.elementCatalog })));
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
@@ -145,9 +145,24 @@ export function ProjectPanel() {
       (node.entry as Extract<ProjectNode['entry'], { kind: 'content' }>).node.target!));
     else if (node.children.length) { if (wide) setCurrent(node.key); else toggle(node.key); }
   };
+  // 文档根元素：Profile、曲线按内容域拖到收这类作者文档的字段上。独立 Timeline 与共享图暂不拖出：
+  // 画布按拖入类型建播放／子图节点时只填引用、不带 Shared 归属，会建出归属错误的节点。
+  const documentElement = (node: ProjectNode) => {
+    if (node.entry?.kind !== 'document' || node.entry.document.contentDomain === null ||
+      (node.entry.document.kind !== 'profile' && node.entry.document.kind !== 'curve')) return null;
+    const { documentPath, rootFile, contentDomain } = node.entry.document;
+    const found = elementCatalog.items.filter((element): element is typeof element & { sourceIdentity: string } =>
+      element.documentPath === documentPath && element.relativePath === rootFile && element.jsonPath === '/' &&
+      element.contentDomain === contentDomain && element.sourceIdentity !== null);
+    return found.length === 1 ? found[0] : null;
+  };
+  const draggable = (node: ProjectNode) => node.entry?.kind === 'catalog' || documentElement(node) !== null ||
+    node.entry?.kind === 'content' && node.entry.node.target?.kind === 'item' && ['graph', 'timeline'].includes(node.entry.node.target.item.kind);
   const drag = (node: ProjectNode, transfer: DataTransfer) => {
     const entry = node.entry;
-    if (entry?.kind === 'catalog') {
+    const element = documentElement(node);
+    if (element !== null) writeReferenceDrag(transfer, element.contentDomain!, documentElementChoice(element, null));
+    else if (entry?.kind === 'catalog') {
       const item = picking === null ? entry.items[0] : entry.items.find(value => value.domain === picking.domain) ?? entry.items[0];
       writeReferenceDrag(transfer, item.domain, resourceReferenceChoice(item, null));
     } else if (entry?.kind === 'content' && entry.node.target?.kind === 'item') {
@@ -183,7 +198,7 @@ export function ProjectPanel() {
       aria-selected={list ? selected === node.key : current === node.key && wide}>
       <button className={styles.arrow} tabIndex={-1} aria-label={`${item.open ? '收起' : '展开'} ${node.label}`} disabled={!expandable}
         onClick={() => toggle(node.key)}>{expandable ? item.open ? '▾' : '▸' : ''}</button>
-      <button className={styles.treeName} draggable={node.entry?.kind === 'catalog' || node.entry?.kind === 'content'}
+      <button className={styles.treeName} draggable={draggable(node)}
         onDragStart={event => drag(node, event.dataTransfer)}
         onClick={() => { if (!list) { setCurrent(node.key); if (!expanded.has(node.key)) toggle(node.key); } else if (node.entry === null && !wide) toggle(node.key); else select(node); }}
         onDoubleClick={() => list ? open(node) : undefined}>
