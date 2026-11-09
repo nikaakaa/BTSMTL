@@ -1,6 +1,6 @@
 # Web Workbench 前端接口
 
-本文面向 UI worktree 的开发者，按实际界面操作说明现有 HTTP、WebSocket 和数据合同。通用网页层提供资源与画面适配，3C `CharacterWorkbench.Host` 提供技能作者、场景输入、正式 Player 与档案服务。UI 负责布局、样式、手势和本地编辑事务；宿主负责正式作者数据、类型语义、编译、运行及实际结果。
+本文面向 UI worktree 的开发者，按实际界面操作说明现有 HTTP、WebSocket 和数据合同。BTSMTL 工作台提供通用作者文档接口、预览档案查询、资源与画面适配，项目 Host（如 3C `CharacterWorkbench.Host`）通过适配接口接入，并另行提供技能查询、场景输入、正式 Player 等项目接口。UI 负责布局、样式、手势和本地编辑事务；宿主负责正式作者数据、类型语义、编译、运行及实际结果。
 
 本文对应当前源码合同。正在运行的 Host、Player 和静态前端必须采用相应版本；接口说明和源码存在不表示当前端口已采用。部署与实际检查结果见 [3C 作者接口记录](../../../3C/Tools/CharacterWorkbench/Host/Authoring/README.md)。
 
@@ -13,6 +13,19 @@
 - 公共帧键、64 位身份、序号、FP Raw 和修订保持字符串。定位请求只提交 `position:{hostFrame:"目标键"}`，由原 Host 按实际采用内容解释；网页不转换为 SDK 帧或 Timeline tick。
 - 查询分页有两种原合同：作者查询用 `hasMore`，档案分页用 `nextOffset`（终点为 `null`）。按各自回执翻页，不把二者混用。
 - 三维公共几何采用右手坐标、Y 轴向上、米；四元数顺序为 `[x,y,z,w]`。画面使用实际 `flipY` 和列主序 `worldToClip`。
+
+## 分层与适配接口
+
+依赖只能从上往下：项目 Host → 技能适配 → BTSMTL 工作台（Host 库、Contracts、Authoring、网页）→ BTSMTL 核心。工作台源码与网页不出现项目类型名、SDK 名和项目字段名，由 DependencyGuard 规则 `BTSMTL_WORKBENCH_NO_PROJECT_NAMES` 在构建期检查。项目只经以下接口接入：
+
+| 接口 | 所在工程 | 项目提供 | 工作台挂载 |
+| --- | --- | --- | --- |
+| `IAuthoringDocumentAdapter` | `Authoring` | 文档根类型、文档内声明的元素、存储形状、保存前规范化、变量类型候选 | `MapAuthoringApi(new AuthoringDocumentService(workspace, adapter), resources)`：文档目录、正文、编辑视图、保存、变量、适配者目录、引用替换 |
+| `IAuthoringResourceAdapter` | `Authoring` | 作者文档中带领域的资源引用 | 同上，供引用替换使用 |
+| `IPreviewHost` | Host 库 | 宿主描述、来源、输入声明 | `MapPreviewApi(host)` |
+| `IPreviewArchive` | Host 库 | 归档读取，项目专有内容以 `PreviewField` 给出 | `MapPreviewArchiveApi(archive)`：`/api/preview/player-jobs/{id}/` 下的 archive、summary、geometry、source-map、frames、observations、logic、pose-layout、presentation、camera、input、curves、unavailable、frame-images |
+
+规范 JSON 文本（键排序、带符号零、解析）由核心 `BTSMTL.Authoring.Workspace.AuthoringJsonText` 提供。项目专有的作者查询（如技能类型、节点、字段、端口）、引擎资源适配者接口与诊断查询由项目 Host 在同一前缀下另行挂载。
 
 字段的可调用 TypeScript 入口在 [api/authoring.ts](web/src/api/authoring.ts)、[api/preview.ts](web/src/api/preview.ts)、[api/player.ts](web/src/api/player.ts)、[api/resources.ts](web/src/api/resources.ts)。运行数据的解析器及导出类型在 [api/playerRecords.ts](web/src/api/playerRecords.ts)，图、调用、画面和资源类型在 [api/types.ts](web/src/api/types.ts)。这些文件供 UI 直接复用，不另写一套同名 DTO 或协议解析器。
 
@@ -212,7 +225,7 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 | `GET /api/preview/player-jobs` | 作业列表与队列情况 | `capacity,concurrency,queued,archiveCacheCapacity,items` |
 | `GET /api/preview/player-jobs/{id}` | 当前作业及可用档案 | `{receipt,archive}` |
 | `POST /api/preview/player-jobs/{id}/cancel` | `{}` | `{jobId,cancellationRequested,jobStage,reason}`；发出取消不等于已结束 |
-| `GET /api/preview/player-jobs/{id}/archive` | 原正式档案清单 | 原 Host JSON；网页只读取已消费的 `jobId,inputMode`，不要求项目协议名、Player 构建号或私有时钟 |
+| `GET /api/preview/player-jobs/{id}/archive` | 档案摘要（`IPreviewArchive.Archive`） | `PreviewArchiveDigest`：`jobId,inputMode,frameCount,rawJson`；网页只读取前三项，`rawJson` 为项目原清单 |
 | `GET /api/preview/player-jobs/{id}/files/{path}` | 清单内的原文件路径 | 原文件正文 |
 | `GET /api/preview/player-jobs/{id}/summary` | 档案概况 | `PlayerSummary`，含实际帧范围、场景／输入／内容修订及通道可用性 |
 

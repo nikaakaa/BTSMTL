@@ -497,6 +497,42 @@
       ]
     }
   ],
+  "projectNameRules": [
+    {
+      "id": "BTSMTL_WORKBENCH_NO_PROJECT_NAMES",
+      "reason": "BTSMTL 工作台（Host 库、Contracts、Authoring、网页、桌面壳）只按通用骨架与自描述字段工作，项目类型名、SDK 名与项目字段名只能由适配实现以字段值给出。",
+      "roots": [
+        "Tools/BTSMTL.WebWorkbench",
+        "Tools/BTSMTL.WebWorkbench.Shell"
+      ],
+      "extensions": [
+        ".cs",
+        ".ts",
+        ".tsx"
+      ],
+      "excludedDirectories": [
+        "node_modules",
+        "bin",
+        "obj",
+        "artifacts",
+        "wwwroot",
+        "dist"
+      ],
+      "forbiddenNames": [
+        "ThirdPerson",
+        "Quantum",
+        "Photon",
+        "sdkFrame",
+        "unityFrame",
+        "cameraInstanceId",
+        "rigInstanceId",
+        "profileId",
+        "compositionId",
+        "virtualCameraId",
+        "fixedPointRaw"
+      ]
+    }
+  ],
   "retiredDomainOpcodes": [
     "TimelineAnimation",
     "TimelineCameraState",

@@ -4,6 +4,8 @@
 
 ## 输入范围
 
+`BTSMTL_WORKBENCH_NO_PROJECT_NAMES`（`projectNameRules`）按源码文本扫描 `Tools/BTSMTL.WebWorkbench`（Host 库、Contracts、Authoring、`web/src` 的 TS/TSX）与 `Tools/BTSMTL.WebWorkbench.Shell`，排除 `node_modules`、`bin`、`obj`、`artifacts`、`wwwroot`、`dist`，逐行不区分大小写查找 `forbiddenNames`：`ThirdPerson`、`Quantum`、`Photon` 与已迁出通用骨架的项目字段名（`sdkFrame`、`unityFrame`、`cameraInstanceId`、`rigInstanceId`、`profileId`、`compositionId`、`virtualCameraId`、`fixedPointRaw`）。它补足 `BTSMTL_NO_GAMEPLAY_SDK` 只看 C# 引用、看不到 TS 与字符串的缺口，违规按同一格式输出并以退出码 1 结束；扫描文件数记入报告 `ProjectNameSourceCount`。工作台四层归属与适配接口见 `Tools/BTSMTL.WebWorkbench/API.md`。BTSMTL 核心包仍以 `ThirdPersonSimulation` 为部分命名空间，本规则暂不覆盖核心包。
+
 `POSE_RUNTIME_NO_FLOWCANVAS` 禁止 `ThirdPersonCharacter.Animation` 的源码使用及直接程序集引用 FlowCanvas、NodeCanvas。规则使用 `forbiddenDirectAssemblies`，BTSMTL 作者合同带来的间接依赖仍按其自身边界检查；已有 `forbiddenAssemblies` 继续检查完整传递依赖。
 
 默认构建只检查 SDK 自身，不要求同级 3C，也不表示 Quantum 宿主检查已通过：

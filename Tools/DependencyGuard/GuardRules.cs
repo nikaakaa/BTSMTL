@@ -18,6 +18,7 @@ sealed class GuardRules
     public UnityPluginRule[] UnityPluginRules { get; set; } = [];
     public TimelineBoundaryRule[] TimelineBoundaryRules { get; set; } = [];
     public VendorSourceProvenance[] VendorSourceProvenance { get; set; } = [];
+    public ProjectNameRule[] ProjectNameRules { get; set; } = [];
     public UnityActualBoundaryRule UnityActualBoundary { get; set; } = new();
 
     public static bool Matches(IEnumerable<string> patterns, string text) =>
@@ -57,6 +58,17 @@ sealed class UnityPluginRule
 
     public bool Applies(Module module) => (module.Kind == "asmdef" || module.Kind == "project" && module.AssemblyDefinitionPath is not null) &&
         (GuardRules.Matches(SourceAssemblies, module.Name) || GuardRules.Matches(SourcePackages, module.Package));
+}
+
+// 按源码文本检查某一层目录不出现项目名字：覆盖 C# 之外的 TS/TSX，也覆盖字符串里的类型名与字段名。
+sealed class ProjectNameRule
+{
+    public string Id { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public string[] Roots { get; set; } = [];
+    public string[] Extensions { get; set; } = [];
+    public string[] ExcludedDirectories { get; set; } = [];
+    public string[] ForbiddenNames { get; set; } = [];
 }
 
 sealed class VendorSourceProvenance
