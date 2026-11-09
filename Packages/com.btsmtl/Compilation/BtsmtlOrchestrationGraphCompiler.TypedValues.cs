@@ -186,6 +186,9 @@ namespace BTSMTL.Compilation
                     OrchestrationBlackboardSlot slot = m_Blackboards[operation.ValueSlot];
                     if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
                         Error("blackboard_config_write", ProgramSourceTargetKind.Operation, i, "配置黑板只允许读取。");
+                    if (m_InputBoundBlackboards.Contains(operation.ValueSlot))
+                        Error("blackboard_input_write", ProgramSourceTargetKind.Operation, i,
+                            "绑定输入投影的黑板变量只由宿主输入或捕获节点写入，不能用写入节点改写。");
                     if (operation.Assignment == OrchestrationAssignmentKind.Set)
                         continue;
                     if (slot.ValueKind is not (OrchestrationValueKind.Int32 or OrchestrationValueKind.Scalar or OrchestrationValueKind.Vector3))

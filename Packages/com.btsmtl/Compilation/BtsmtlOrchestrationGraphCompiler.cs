@@ -291,6 +291,7 @@ namespace BTSMTL.Compilation
             readonly List<TValue> m_Constants = new();
             readonly List<TValue> m_DefaultValues = new();
             readonly List<OrchestrationBlackboardSlot> m_Blackboards = new();
+            readonly HashSet<int> m_InputBoundBlackboards = new();
             readonly List<OrchestrationValueInputBinding> m_Inputs = new();
             readonly List<OrchestrationExtensionReference> m_Extensions = new();
             readonly List<OrchestrationHookBinding> m_LifecycleHooks = new();
@@ -992,9 +993,15 @@ namespace BTSMTL.Compilation
                     OrchestrationValueKind kind = Kind(source.ValueKind);
                     m_StateValueSlots[i] = m_Blackboards.Count;
                     ProgramScopeLayout scope = Scope(i);
-                    OrchestrationBlackboardLifetime lifetime = m_ParameterSlots.Contains(i)
-                        ? OrchestrationBlackboardLifetime.GraphInstance
-                        : (OrchestrationBlackboardLifetime)CatalogInt(Declaration(i), "Lifetime");
+                    OrchestrationBlackboardLifetime lifetime = OrchestrationBlackboardLifetime.GraphInstance;
+                    if (!m_ParameterSlots.Contains(i))
+                    {
+                        ProgramCatalogEntry declaration = Declaration(i);
+                        lifetime = (OrchestrationBlackboardLifetime)CatalogInt(declaration, "Lifetime");
+                        foreach (ProgramCatalogField field in declaration.Fields)
+                            if (field.Name == "InputValueId")
+                                m_InputBoundBlackboards.Add(m_Blackboards.Count);
+                    }
                     m_Blackboards.Add(new OrchestrationBlackboardSlot((OrchestrationScopeKind)scope.Kind,
                         lifetime, scope.Kind is ProgramScopeKind.Character or ProgramScopeKind.ActionInstance ? 0 : scope.CompiledOwnerIndex,
                         scope.OwnerOperation.Value,
