@@ -153,7 +153,9 @@ public sealed class AuthoringDocumentService
         ["authoringType"] = element.AuthoringType?.FullName
     };
 
-    public JObject Describe(AuthoringDocumentSnapshot document, bool content)
+    public JObject Describe(AuthoringDocumentSnapshot document, bool content) => Describe(document, content, Adapter);
+
+    public static JObject Describe(AuthoringDocumentSnapshot document, bool content, IAuthoringDocumentAdapter adapter)
     {
         var result = new JObject
         {
@@ -164,11 +166,11 @@ public sealed class AuthoringDocumentService
             ["revision"] = document.Revision, ["sourceIdentity"] = document.SourceIdentity,
             ["contentDomain"] = document.ContentDomain, ["scope"] = document.Scope
         };
-        if (Adapter.AuthoringType(document) is { } authoringType)
+        if (adapter.AuthoringType(document) is { } authoringType)
         {
             result["authoringType"] = authoringType.FullName;
             // 存储形状只随正文给出，供读写该文档的调用方使用；目录列表只列身份与修订。
-            if (content && Adapter.StorageShape(authoringType) is { } shape)
+            if (content && adapter.StorageShape(authoringType) is { } shape)
                 result["storageShape"] = shape;
         }
         if (content)
