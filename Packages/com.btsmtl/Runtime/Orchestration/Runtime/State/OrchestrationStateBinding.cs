@@ -141,20 +141,22 @@ namespace BTSMTL.Orchestration
             readonly OrchestrationStateLayoutView m_Plan;
             readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
             readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_Frames;
+            readonly int m_FrameCapacity;
+            OrchestrationStateOwnerRecord m_OwnerStorage;
             int m_SegmentIndex;
             int m_FrameSlot;
-            int m_ProgramIndex;
 
             internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory)
             {
                 m_Plan = plan;
                 m_Segments = plan.Segments;
+                m_FrameCapacity = plan.FrameCapacity;
+                m_OwnerStorage = default;
                 OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
                 m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                     memory.Slice(frames.OffsetBytes, frames.SizeBytes));
                 m_SegmentIndex = -1;
                 m_FrameSlot = -1;
-                m_ProgramIndex = -1;
                 Current = default;
             }
 
@@ -184,14 +186,15 @@ namespace BTSMTL.Orchestration
                     if (header.SkillContentId != 0)
                     {
                         if (m_SegmentIndex < 0)
-                            m_ProgramIndex = m_Plan.ProgramIndex(header.SkillContentId);
+                            m_OwnerStorage = m_Plan.OwnerStorage(m_Plan.ProgramIndex(header.SkillContentId),
+                                header.OwnerOperationIndex);
                         while (++m_SegmentIndex < m_Segments.Length)
                         {
-                            OrchestrationStateSegment segment = m_Segments[m_SegmentIndex];
+                            ref readonly OrchestrationStateSegment segment = ref m_Segments[m_SegmentIndex];
                             if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                                 continue;
                             OrchestrationStateRegion<byte> region = m_Plan.PayloadRegion(in segment,
-                                m_FrameSlot, m_ProgramIndex, header.OwnerOperationIndex);
+                                m_FrameSlot, m_FrameCapacity, in m_OwnerStorage);
                             if (region.SizeBytes > 0)
                             {
                                 Current = region;

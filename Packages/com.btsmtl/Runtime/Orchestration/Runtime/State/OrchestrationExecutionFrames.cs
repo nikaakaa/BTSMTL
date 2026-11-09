@@ -163,12 +163,16 @@ namespace BTSMTL.Orchestration
 
         internal void ClearPayloads(int frameSlot, int program)
         {
-            foreach (OrchestrationStateSegment segment in Plan.Segments)
+            OrchestrationStateLayoutView layout = Plan;
+            int frameCapacity = layout.FrameCapacity;
+            ref readonly OrchestrationStateOwnerRecord storage =
+                ref layout.OwnerStorage(program, m_Frames[frameSlot].OwnerOperationIndex);
+            foreach (ref readonly OrchestrationStateSegment segment in layout.Segments)
             {
                 if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                     continue;
-                OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
-                    program, m_Frames[frameSlot].OwnerOperationIndex);
+                OrchestrationStateRegion<byte> region = layout.PayloadRegion(in segment, frameSlot,
+                    frameCapacity, in storage);
                 m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
             }
         }

@@ -113,10 +113,14 @@ namespace BTSMTL.Orchestration
                 Section<OrchestrationValueStorageSlot>(record.Values));
         }
 
-        public int PayloadCount(in OrchestrationStateSegment segment, int program, int owner)
+        internal ref readonly OrchestrationStateOwnerRecord OwnerStorage(int program, int owner) =>
+            ref Section<OrchestrationStateOwnerRecord>(Program(program).Owners)[owner];
+
+        public int PayloadCount(in OrchestrationStateSegment segment, int program, int owner) =>
+            PayloadCount(in segment, in OwnerStorage(program, owner));
+
+        int PayloadCount(in OrchestrationStateSegment segment, in OrchestrationStateOwnerRecord storage)
         {
-            ref readonly OrchestrationStateOwnerRecord storage =
-                ref Section<OrchestrationStateOwnerRecord>(Program(program).Owners)[owner];
             switch (segment.Role)
             {
                 case OrchestrationStateSegmentRole.Operations: return storage.OperationCount;
@@ -133,7 +137,11 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationStateRegion<byte> PayloadRegion(in OrchestrationStateSegment segment,
             int frame, int program, int owner) =>
-            new OrchestrationStateRegion<byte>(segment.OffsetBytes + frame * (segment.SizeBytes / FrameCapacity),
-                PayloadCount(in segment, program, owner) * segment.ElementSizeBytes);
+            PayloadRegion(in segment, frame, FrameCapacity, in OwnerStorage(program, owner));
+
+        internal OrchestrationStateRegion<byte> PayloadRegion(in OrchestrationStateSegment segment,
+            int frame, int frameCapacity, in OrchestrationStateOwnerRecord storage) =>
+            new OrchestrationStateRegion<byte>(segment.OffsetBytes + frame * (segment.SizeBytes / frameCapacity),
+                PayloadCount(in segment, in storage) * segment.ElementSizeBytes);
     }
 }
