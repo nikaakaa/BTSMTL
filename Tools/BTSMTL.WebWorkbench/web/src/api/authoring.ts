@@ -89,6 +89,9 @@ export function readReferenceReplacement(value: unknown, action: 'prepare' | 'co
 export interface NodeTypeInfo {
   type: string;
   clrType: string | null;
+  displayName: string | null;
+  category: string | null;
+  hidden: boolean;
   family: string;
   kind: string | null;
   nativeType: string | null;

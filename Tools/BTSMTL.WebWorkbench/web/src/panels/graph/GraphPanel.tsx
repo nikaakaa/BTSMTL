@@ -392,6 +392,7 @@ interface ReferenceNodeDrop {
 interface NodeCreationChoice {
   key: string;
   type: string;
+  name: string;
   detail: string;
   clrType: string | null;
   configuration: JsonObject | null;
@@ -450,12 +451,13 @@ function NodeTypePicker({ graph, at, referenceDrop, onCreated, onClose }: {
     return () => controller.abort();
   }, [skill, referenceDrop]);
   const choices: NodeCreationChoice[] | null = referenceDrop
-    ? referenceDrop.templates.map(template => ({ key: `${template.type}/${template.fieldId}`, type: template.type, detail: template.fieldId,
-      clrType: null, configuration: referenceConfiguration(template, referenceDrop.reference) }))
-    : types?.map(item => ({ key: item.type, type: item.type, detail: [item.kind, item.family, item.timelineDomains].filter(Boolean).join(' · '),
+    ? referenceDrop.templates.map(template => ({ key: `${template.type}/${template.fieldId}`, type: template.type, name: template.type,
+      detail: template.fieldId, clrType: null, configuration: referenceConfiguration(template, referenceDrop.reference) }))
+    : types?.filter(item => !item.hidden).map(item => ({ key: item.type, type: item.type, name: item.displayName ?? item.type,
+      detail: [item.category, item.displayName === null ? null : item.type, item.kind, item.timelineDomains].filter(Boolean).join(' · '),
       clrType: item.clrType, configuration: null })) ?? null;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = (choices ?? []).filter(item => words.every(word => `${item.type} ${item.detail}`.toLowerCase().includes(word)));
+  const shown = (choices ?? []).filter(item => words.every(word => `${item.name} ${item.type} ${item.detail}`.toLowerCase().includes(word)));
   const add = async (item: NodeCreationChoice) => {
     setBusy(true);
     try {
@@ -486,7 +488,7 @@ function NodeTypePicker({ graph, at, referenceDrop, onCreated, onClose }: {
               : shown.map(item => (
                 <Tip key={item.key} content={item.clrType ?? undefined}>
                   <button className={styles.pickerItem} disabled={busy} onClick={() => void add(item)}>
-                    <span>{item.type}</span>
+                    <span>{item.name}</span>
                     <em>{item.detail}</em>
                   </button>
                 </Tip>
