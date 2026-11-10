@@ -49,15 +49,21 @@ namespace BTSMTL.Orchestration
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
             m_SourceBinding.HasSource && m_SourceBinding.ContainsSourceState(in m_Program, stateOperationIndex);
 
-        internal void ReadValue(int valueSlot, ref TValue destination) =>
-            m_Reader.ReadValue<TStorage>(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
+        internal void ReadValue(int valueSlot, ref TValue destination)
+        {
+            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            m_Reader.ReadValue<TStorage>(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
-                m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
+                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
+        }
 
-        internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot) =>
-            ref m_Reader.ReadMetadata(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
+        internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot)
+        {
+            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            return ref m_Reader.ReadMetadata(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
-                m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance);
+                slot.ScopeKind == OrchestrationScopeKind.ActionInstance);
+        }
 
         internal void WriteValue(int valueSlot, in TValue value)
         {
@@ -85,15 +91,21 @@ namespace BTSMTL.Orchestration
                 m_Program.ExecutionStorage.Values[valueSlot].ValueIndex];
         }
 
-        int ValueFrame(int valueSlot) =>
-            m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance
+        int ValueFrame(int valueSlot)
+        {
+            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            return slot.ScopeKind == OrchestrationScopeKind.ActionInstance
                 ? m_Frames.ActionFrame(m_FrameSlot)
-                : m_Frames.OwnerFrame(m_FrameSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
+                : m_Frames.OwnerFrame(m_FrameSlot, slot.ExecutionFrameOwnerOperationIndex);
+        }
 
-        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadBlackboardFrame(int valueSlot) =>
-            m_Program.Blackboard(valueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadBlackboardFrame(int valueSlot)
+        {
+            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            return slot.ScopeKind == OrchestrationScopeKind.ActionInstance
                 ? m_Reader.ReadActionExecutionFrame()
-                : m_Reader.ReadExecutionFrame(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
+                : m_Reader.ReadExecutionFrame(slot.ExecutionFrameOwnerOperationIndex);
+        }
 
         internal ref readonly OrchestrationOperationState ReadOperation(int operationIndex) =>
             ref m_Reader.ReadOperation(operationIndex, m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
