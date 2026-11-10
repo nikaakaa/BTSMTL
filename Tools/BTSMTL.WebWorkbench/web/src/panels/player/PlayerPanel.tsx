@@ -168,6 +168,7 @@ function PlayerView() {
   })));
   const startBlocked = useWorkbench(() => session.canStartNewRun());
   const reviewingArchive = state.runId !== null;
+  const visible = usePanelVisible();
   const stage = useRef<HTMLDivElement>(null);
   const [captureBinding, setCaptureBinding] = useState<string | null>(null);
   const [codeUpdate, setCodeUpdate] = useState<{ kind: 'compiling' | 'ready' | 'adopting'; buildId: string } | null>(null);
@@ -190,12 +191,9 @@ function PlayerView() {
   useEffect(() => { setCaptureBinding(null); }, [binding, ready]);
 
   useEffect(() => {
-    if (reviewingArchive) return;
-    void playerService.refresh();
-    playerService.resumePendingStart();
-    const timer = setInterval(() => void playerService.refresh(), 3000);
-    return () => clearInterval(timer);
-  }, [reviewingArchive]);
+    if (!visible || reviewingArchive) return;
+    return playerService.watch();
+  }, [visible, reviewingArchive]);
 
   const scene = selectedScene(state);
   const contentSelection = state.contentSelection;

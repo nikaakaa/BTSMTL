@@ -38,6 +38,7 @@ function syncSurface(live: ViewerLive) {
 }
 
 let socket: WebSocket | null = null;
+let viewing: { count: number; timer: number } | null = null;
 let latest: VideoFrame | null = null;
 let requestedLoad: { commandId: string; content: PlayerPreviewContent } | null = null;
 let deviceInput: InputCommand | null = null;
@@ -64,9 +65,10 @@ function acceptVideo(frame: VideoFrame) {
 }
 
 function acceptStatus(live: ViewerLive) {
-  if (getState().liveId !== live.liveId) return;
-  syncSurface(live);
-  const previous = getState().live?.player?.source ?? null;
+  const state = getState();
+  if (state.liveId !== live.liveId) return;
+  if (state.viewerOpen) syncSurface(live);
+  const previous = state.live?.player?.source ?? null;
   const sample = live.player?.source ?? null;
   if (sample !== null && !matchesRequestedLoad(sample)) return;
   if (sample !== null) requestedLoad = null;
@@ -178,13 +180,35 @@ export const playerService = {
     return () => { pickListeners.delete(listener); };
   },
 
+  watch() {
+    const view = viewing ?? (viewing = {
+      count: 0,
+      timer: window.setInterval(() => void playerService.refresh(), 3000),
+    });
+    if (++view.count === 1) {
+      void playerService.refresh();
+      playerService.resumePendingStart();
+    }
+    return () => {
+      if (--view.count !== 0) return;
+      viewing = null;
+      window.clearInterval(view.timer);
+      close();
+      useWorkbench.setState({ viewerOpen: false });
+    };
+  },
+
   async refresh() {
     try {
       const [builds, lives] = await Promise.all([playerApi.builds(), playerApi.lives()]);
       useWorkbench.setState({ playerBuilds: builds.items, lives });
       const state = getState(), selected = lives.find(live => live.liveId === state.liveId);
       if (!state.viewerOpen && selected) acceptStatus(selected);
-      connectDefault();
+      if (viewing === null || state.runId !== null) return;
+      if (selected?.state === 'starting' || selected?.state === 'connected')
+        playerService.attach(selected.liveId);
+      else
+        connectDefault(state);
     } catch (error) {
       consoleActions.error(source, error);
     }
@@ -227,10 +251,11 @@ export const playerService = {
   },
 
   attach(liveId: string | null) {
-    if (getState().liveId === liveId && socket) return;
-    close();
-    useWorkbench.setState({ liveId, live: null, viewerOpen: false, ...initialPlayerTarget });
-    if (!liveId) return;
+    if (getState().liveId !== liveId) {
+      close();
+      useWorkbench.setState({ liveId, live: null, viewerOpen: false, ...initialPlayerTarget });
+    }
+    if (liveId === null || viewing === null || socket !== null) return;
     const opened = openViewer(liveId, {
       open: () => { if (socket === opened) useWorkbench.setState({ viewerOpen: true }); },
       message: message => { if (socket === opened) onMessage(message); },
@@ -290,8 +315,12 @@ export const playerService = {
       await playerApi.stop(liveId);
     } catch (error) {
       consoleActions.error(source, error);
+      return;
     }
-    if (getState().liveId === liveId) playerService.attach(null);
+    if (getState().liveId === liveId) {
+      autoStart = 'stopped';
+      playerService.attach(null);
+    }
     await playerService.refresh();
   },
 
@@ -341,21 +370,20 @@ export const playerService = {
 
 // 打开工作台即接入播放器：沿用正在运行的一台，没有就按最新构建启动一台（本页只自动启动一次）。
 // 画面连上后自动载入当前所选场景，用实时设备输入试玩；同一播放器与场景修订只自动载入一次，失败留给手动“载入”。
-let autoStarted = false;
+let autoStart: 'available' | 'attempted' | 'stopped' = 'available';
 const autoLoaded = new Set<string>();
 
-function connectDefault() {
-  const state = getState();
-  if (state.liveId !== null || state.runId !== null || sessionStorage.getItem(pendingStartKey)) return;
+function connectDefault(state: ReturnType<typeof getState>) {
+  if (state.liveId !== null || autoStart === 'stopped' || sessionStorage.getItem(pendingStartKey)) return;
   // 快档推导占用的播放器由快档作业持有，不接管。
-  const running = state.lives.find(live => live.state !== 'exited' && live.previewTarget?.content.kind !== 'quick');
+  const running = state.lives.find(live => (live.state === 'starting' || live.state === 'connected') && live.previewTarget?.content.kind !== 'quick');
   if (running) {
     playerService.attach(running.liveId);
     return;
   }
   const build = state.playerBuilds?.[0];
-  if (autoStarted || build === undefined) return;
-  autoStarted = true;
+  if (autoStart === 'attempted' || build === undefined) return;
+  autoStart = 'attempted';
   void playerService.start(build.buildId, 1280);
 }
 
