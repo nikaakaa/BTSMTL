@@ -38,7 +38,7 @@ function contentNode(node: ContentNode, location: string): ProjectNode {
 }
 
 function documentNode(document: WorkspaceDocumentInfo, opened: ContentNode | undefined, location: string, color: string): ProjectNode {
-  return { key: `document:${document.documentPath}`, label: document.name, detail: '', color,
+  return { key: `document:${document.documentPath}`, label: opened?.label ?? document.name, detail: '', color,
     entry: { kind: 'document', document }, location,
     children: opened?.children.map(child => contentNode(child, `${location}/${document.name}`)) ?? [] };
 }

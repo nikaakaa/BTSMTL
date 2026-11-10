@@ -125,22 +125,35 @@ export const projectActions = {
     openPanel('timeline');
   },
 
-  async rename(item: Extract<ProjectItem, { kind: 'skill' | 'timeline' | 'input-plan' }>, name: string, schemeIndex: number | null) {
+  async rename(item: ProjectItem, name: string, schemeIndex: number | null) {
     await openOwner(item);
     authoringActions.edit(item.file, value => {
       const document = value as JsonObject;
       switch (item.kind) {
         case 'skill': document.m_DisplayName = name; break;
-        case 'timeline': document.m_Name = name; break;
+        case 'graph': document.name = name; break;
+        case 'timeline':
+        case 'curve':
+        case 'profile': document.m_Name = name; break;
         case 'input-plan': (document.Schemes as JsonObject[])[schemeIndex!].Name = name; break;
+        case 'variables': throw new Error('变量文档的名称来自其所属图。');
       }
     });
   },
 
+  referrers(item: ProjectItem, signal?: AbortSignal) {
+    const identity = item.kind === 'curve' || item.kind === 'profile' ? item.asset.m_SourceIdentity as string : item.identity;
+    return authoringApi.referrers(ownerOf(item), { identity }, authoringActions.editingView(), signal);
+  },
+
   async remove(item: Exclude<ProjectItem, { kind: 'skill' }>): Promise<ReferrersResult> {
-    const referrers = await authoringApi.referrers(ownerOf(item), { identity: item.identity }, authoringActions.editingView());
+    const referrers = await projectActions.referrers(item);
     if (!referrers.complete || referrers.items.length !== 0) return referrers;
-    await openOwner(item);
+    const document = await openOwner(item);
+    if (document.rootFile === item.file) {
+      authoringActions.remove([item.file]);
+      return referrers;
+    }
     // 与删除节点、片段一致：条目引用的专属图与 Timeline 不再被引用时随之删除。
     const seeds = referencedFiles(currentDocument(item.file) ?? null);
     authoringActions.remove([item.file]);

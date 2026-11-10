@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
 import { documentLabel, openableDocumentGroups, projectActions } from '../state/project';
-import { authoringActions, authoringDocument, scopeDocument, useAuthoring } from '../state/authoring';
+import { authoringActions, authoringDocument, documentDeleted, scopeDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { consoleActions, contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
 import { transport } from '../state/transport';
@@ -105,6 +105,7 @@ function DocumentAuthoringStatus() {
     const document = authoringDocument(current);
     const documents = Object.values(current.documents);
     return { open: current.author && current.target !== null, documentPath: current.target?.documentPath, revision: document.revision,
+      deleting: documentDeleted(document),
       dirty: documents.reduce((count, owner) => count + Object.keys(owner.edited).length + owner.removed.length, 0),
       removed: documents.reduce((count, owner) => count + owner.removed.length, 0),
       variablesWriting: documents.some(owner => owner.variablesWriting),
@@ -152,8 +153,9 @@ function DocumentAuthoringStatus() {
       <Button disabled={state.saving} tip="保存当前作者修改（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>
-      <Button disabled={state.saving} tip="保存编辑文档并执行离线编译" onClick={() => void authoringActions.save('compile')}>保存并编译</Button>
-      {canApply && <Button disabled={state.saving} tip="保存后按当前选择编译、发布并请求 Player 应用"
+      <Button disabled={state.saving || state.deleting} tip={state.deleting ? '当前文档待删除，请使用保存' : '保存编辑文档并执行离线编译'}
+        onClick={() => void authoringActions.save('compile')}>保存并编译</Button>
+      {canApply && <Button disabled={state.saving || state.deleting} tip="保存后按当前选择编译、发布并请求 Player 应用"
         onClick={() => void authoringActions.save('apply')}>保存并应用</Button>}
       {lastSave && (dirty === 0 || !lastSave.ok) && <SaveResult outcome={lastSave} />}
     </div>

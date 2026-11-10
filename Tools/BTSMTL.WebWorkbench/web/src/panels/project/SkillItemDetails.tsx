@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { authoringApi, authoringOwner, authoringTargetKey, type ProjectItem, type ReferrersResult, type SkillDeleteResult } from '../../api/authoring';
+import type { ProjectItem, ReferrersResult, SkillDeleteResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
-import { authoringActions, useAuthoring } from '../../state/authoring';
+import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
@@ -20,16 +20,17 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   const [renaming, setRenaming] = useState(false);
   const [deletion, setDeletion] = useState<Extract<SkillDeleteResult, { code: 'skill-referenced' }> | null>(null);
   const pendingDocument = useAuthoring(state => {
-    const document = state.documents[authoringTargetKey(authoringOwner(item.owner))];
+    const document = state.documents[item.owner];
     return document?.loading === true || document?.saving === true;
   });
   const documentRoot = useAuthoring(state => state.documents[item.owner]?.rootFile === item.file);
+  const canRename = item.kind !== 'variables';
   useEffect(() => {
     const controller = new AbortController();
     setReferrers(null);
     setDeletion(null);
     setFailure(null);
-    authoringApi.referrers(authoringOwner(item.owner), { identity: item.identity }, authoringActions.editingView(), controller.signal).then(setReferrers, error => {
+    projectActions.referrers(item, controller.signal).then(setReferrers, error => {
       if (!isAbort(error)) setFailure({ text: '引用者读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
@@ -44,7 +45,7 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   return <div className={styles.details}>
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
-      {(item.kind === 'skill' || item.kind === 'timeline' || item.kind === 'input-plan') && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
+      {canRename && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
       {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
         tip={pendingDocument ? '等待此技能的读取或保存完成' : '删除整个技能目录；宿主会检查磁盘修订、外部引用、Definition 授予和共享内容'}
         onClick={() => void perform(async () => {
@@ -58,12 +59,12 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
             if (result.code === 'skill-referenced') setDeletion(result);
             setFailure({ text: result.message, entryId: consoleActions.log('error', 'Project', result.message, JSON.stringify(result)) });
           }
-        }, false)}>删除技能目录</Button> : !documentRoot && <Button variant="ghost" disabled={busy || referrers === null || !referrers.complete || referrers.items.length !== 0}
-        tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入所属技能的未保存修改，可撤销'}
-        onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>删除</Button>}
+        }, false)}>删除技能目录</Button> : item.kind !== 'variables' && <Button variant="ghost" disabled={busy || pendingDocument || referrers === null || !referrers.complete || referrers.items.length !== 0}
+        tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入工作区的未保存修改，可撤销'}
+        onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>{documentRoot ? '删除文档' : '删除'}</Button>}
     </PanelBar>
     {failure && <ErrorLine {...failure} />}
-    {renaming && (item.kind === 'skill' || item.kind === 'timeline' || item.kind === 'input-plan') && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
+    {renaming && canRename && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
       await projectActions.rename(item, name, scheme); setRenaming(false);
     })} />}
     {item.kind === 'input-plan' && <div className={styles.facts}>
@@ -112,15 +113,16 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
   </div>;
 }
 
-function RenameItem({ item, busy, onRename }: { item: Extract<ProjectItem, { kind: 'skill' | 'timeline' | 'input-plan' }>; busy: boolean; onRename(name: string, scheme: number | null): void }) {
+function RenameItem({ item, busy, onRename }: { item: ProjectItem; busy: boolean; onRename(name: string, scheme: number | null): void }) {
   const [scheme, setScheme] = useState<number | null>(item.kind === 'input-plan' && item.schemes.length === 1 ? item.schemes[0].index : null);
   const [name, setName] = useState(item.kind === 'input-plan' ? item.schemes.find(value => value.index === scheme)?.name ?? '' : item.name);
-  return <div className={styles.facts}>
+  const ready = !busy && name.trim().length > 0 && (item.kind !== 'input-plan' || scheme !== null);
+  return <form className={styles.facts} onSubmit={event => { event.preventDefault(); if (ready) onRename(name.trim(), scheme); }}>
     {item.kind === 'input-plan' && <Select label="要重命名的输入方案" placeholder="选择方案" value={scheme === null ? null : String(scheme)}
       options={item.schemes.map(value => ({ value: String(value.index), label: value.name }))} onChange={value => {
         const index = Number(value); setScheme(index); setName(item.schemes.find(entry => entry.index === index)!.name);
       }} />}
     <TextInput autoFocus aria-label="内容名称" value={name} onChange={event => setName(event.currentTarget.value)} />
-    <Button disabled={busy || !name.trim() || (item.kind === 'input-plan' && scheme === null)} onClick={() => onRename(name, scheme)}>应用名称</Button>
-  </div>;
+    <Button type="submit" disabled={!ready}>应用名称</Button>
+  </form>;
 }

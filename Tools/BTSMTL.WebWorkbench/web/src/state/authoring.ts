@@ -765,8 +765,12 @@ export const authoringActions = {
   // 删除文件：网页新建的直接丢弃，原有的保存时删除。图的变量文档随图删除：草稿丢弃，已保存的随本次保存删除整个文档。
   remove(paths: string[]) {
     if (!paths.length) return;
-    const graphIds = new Set<string | null>(paths.flatMap(path => /^graphs\/(.+)\.json$/.exec(path)?.slice(1) ?? []));
-    const drafts = Object.entries(get().documents).filter(([, document]) => document.kind === 'variables' &&
+    const before = get();
+    const removesDocument = before.rootFile !== null && paths.includes(before.rootFile);
+    const graphFiles = removesDocument ? livePaths() : paths;
+    const graphIds = new Set<string | null>(graphFiles.flatMap(path => /^graphs\/(.+)\.json$/.exec(path)?.slice(1) ?? []));
+    if (removesDocument && before.target?.kind === 'graph') graphIds.add(before.identity);
+    const drafts = Object.entries(before.documents).filter(([, document]) => document.kind === 'variables' &&
       document.revision === null && graphIds.has(document.identity)).map(([key]) => key);
     const saved = (get().directory ?? []).filter(info => info.kind === 'variables' && graphIds.has(info.identity));
     record([...drafts, ...saved.map(info => info.documentPath)]);
@@ -922,12 +926,16 @@ export const authoringActions = {
   },
 
   async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save') {
-    const target = get().target;
+    const state = get();
+    const active = state.target;
+    const dirtyPath = active === null && operation === 'save'
+      ? Object.keys(state.documents).find(path => isDocumentDirty(state.documents[path])) : undefined;
+    const target = dirtyPath === undefined ? active : authoringOwner(dirtyPath);
     if (target === null) return;
     const variableResults = await Promise.allSettled(variableRequests.values());
     const current = get();
     const { documents } = current;
-    if (current.target !== target || (operation !== 'save' && current.resourceTarget !== null) ||
+    if (current.target !== active || (operation !== 'save' && (current.resourceTarget !== null || documentDeleted(documents[target.documentPath]))) ||
       Object.values(documents).some(document => document.saving)) return;
     const variableFailure = variableResults.find(result => result.status === 'rejected');
     if (variableFailure?.status === 'rejected') {
@@ -951,7 +959,8 @@ export const authoringActions = {
     const scene = editingView.scene;
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
     const accept = (receipts: WorkspaceDocumentSnapshot[], content: SkillSnapshot | null, lastSave: SaveOutcome) => {
-      if (!receipts.some(document => document.documentPath === target.documentPath))
+      const received = new Map(receipts.map(document => [document.documentPath, document]));
+      if (!received.has(target.documentPath) && !editingView.writes.some(write => write.deleted && write.documentPath === target.documentPath))
         throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
       const currentScene = JSON.stringify(scene) === JSON.stringify(selectedScene(useWorkbench.getState()));
       const previousDocuments = useAuthoring.getState().documents;
@@ -987,8 +996,17 @@ export const authoringActions = {
       const deleted = editingView.writes.filter(write => write.deleted && documents[write.documentPath] !== undefined &&
         documentDeleted(documents[write.documentPath])).map(write => write.documentPath);
       for (const path of deleted) delete documents[path];
-      set({ documents });
-      if (receipts.some(receipt => receipt.documentPath === get().target?.documentPath)) publishDocument();
+      const state = useAuthoring.getState();
+      const closed = state.target !== null && deleted.includes(state.target.documentPath);
+      const directory = state.directory?.filter(document => !deleted.includes(document.documentPath))
+        .map(document => received.get(document.documentPath) ?? document) ?? null;
+      set({ documents, directory, ...(closed ? { target: null } : {}) });
+      if (closed) {
+        loadController?.abort();
+        useWorkbench.setState({ graphRequest: null, timelineRequest: null });
+        selectionActions.select(null);
+      }
+      if (closed || (state.target !== null && received.has(state.target.documentPath))) publishDocument();
       if (deleted.length !== 0 || receipts.some(document => submittedDocuments.get(document.documentPath)!.revision === null))
         void authoringActions.listDocuments();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
@@ -1471,7 +1489,8 @@ function savedTimelineFiles(projected: Record<string, string>, saved: Record<str
 }
 
 // 根文件被删除即删除整个文档。
-const documentDeleted = (document: AuthoringDocument) => document.rootFile !== null && document.removed.includes(document.rootFile);
+export const documentDeleted = (document: Pick<AuthoringDocument, 'rootFile' | 'removed'>) =>
+  document.rootFile !== null && document.removed.includes(document.rootFile);
 
 function documentWrite(documentPath: string, document: AuthoringDocument): WorkspaceDocumentWrite {
   if (documentDeleted(document))

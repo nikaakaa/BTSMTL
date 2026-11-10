@@ -60,7 +60,7 @@ export function projectContents(documents: AuthoringState['documents']) {
         name: data.m_Name as string, ownership: 'Private' };
       else if (file === document.rootFile && (document.kind === 'curve' || document.kind === 'profile' || document.kind === 'variables')) {
         if (document.identity === null) continue;
-        item = { ...base, kind: document.kind, identity: document.identity, name: ownerName, ownership: 'Shared', asset: data };
+        item = { ...base, kind: document.kind, identity: document.identity, name: (data.m_Name as string | undefined) ?? ownerName, ownership: 'Shared', asset: data };
       }
       else if (file.startsWith('inputs/')) {
         const schemes = (data.Schemes as JsonObject[]).map((scheme, index) => ({ index, name: scheme.Name as string }));
