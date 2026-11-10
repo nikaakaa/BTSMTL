@@ -105,15 +105,19 @@ public sealed class AuthoringFolders
             .Where(document => written.Contains(document.DirectoryPath)).ToArray();
     }
 
-    public void Delete(string directory)
+    public void Delete(IReadOnlyList<AuthoringDocumentSnapshot> documents)
     {
-        string? other = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+        string? other = documents.SelectMany(document => Directory.EnumerateFiles(document.DirectoryPath, "*", SearchOption.AllDirectories))
             .FirstOrDefault(path => !string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase));
         if (other != null)
             throw new InvalidDataException($"{m_Kind}目录包含非 JSON 作者文件 '{other}'，不能删除整个目录。");
-        m_Commits.Commit(Directory.EnumerateFiles(directory, "*.json", SearchOption.AllDirectories)
-            .Select(path => new AuthoringFileChange(path, null)).ToArray());
-        Directory.Delete(directory, recursive: true);
+        m_Commits.Commit(documents.SelectMany(document => document.Files.Keys.Select(file =>
+            new AuthoringFileChange(Path.Combine(document.DirectoryPath, file), null, document.FileRevision(file)))).ToArray());
+        foreach (AuthoringDocumentSnapshot document in documents)
+            foreach (string directory in Directory.EnumerateDirectories(document.DirectoryPath, "*", SearchOption.AllDirectories)
+                         .OrderByDescending(path => path.Length).Append(document.DirectoryPath))
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                    Directory.Delete(directory);
     }
 
     public (SkillAuthoringSnapshot Content, SkillAuthoringFileRevision[] Files) Snapshot(string name, string directory) =>

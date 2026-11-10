@@ -810,11 +810,12 @@ export const authoringActions = {
   acceptSkillDeletion(receipt: Extract<SkillDeleteResult, { deleted: true }>) {
     const state = get();
     const target = authoringTarget('skill', receipt.skill);
+    const removed = new Set(receipt.removedDocuments);
     const documents = { ...state.documents };
-    delete documents[authoringTargetKey(target)];
+    for (const documentPath of removed) delete documents[documentPath];
     const closing = isActiveTarget(target);
     if (closing) loadController?.abort();
-    set({ documents, directory: state.directory === null ? null : state.directory.filter(document => document.documentPath !== authoringTargetKey(target)),
+    set({ documents, directory: state.directory === null ? null : state.directory.filter(document => !removed.has(document.documentPath)),
       carrierRevision: receipt.authoringRevision, ...(closing ? { target: null } : {}) });
     if (closing) {
       useWorkbench.setState({ graphRequest: null, timelineRequest: null });

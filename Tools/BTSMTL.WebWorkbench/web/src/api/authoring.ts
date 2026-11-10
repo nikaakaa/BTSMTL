@@ -305,7 +305,7 @@ export type SkillDeletionReference = ReferenceLocation & {
 } & ({ kind: 'authoring'; view: 'saved' | 'editing' } | { kind: 'carrier-grant'; view: 'saved' });
 
 export type SkillDeleteResult = {
-  success: true; deleted: true; skill: string; revision: string; authoringRevision: string;
+  success: true; deleted: true; skill: string; revision: string; authoringRevision: string; removedDocuments: string[];
 } | {
   success: false; deleted: false; code: 'skill-referenced'; skill: string; revision: string; authoringRevision: string;
   references: SkillDeletionReference[]; shared: ProjectItem[]; message: string;
