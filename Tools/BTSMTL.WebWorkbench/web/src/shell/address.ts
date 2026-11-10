@@ -1,10 +1,12 @@
 import { authoringActions, useAuthoring } from '../state/authoring';
 import { authoringOwner } from '../api/authoring';
 import { session } from '../state/session';
-import { consoleActions, getState, resourceActions, selectionActions, useWorkbench, type Selection, type SelectionKind } from '../state/store';
+import { consoleActions, contentActions, contentSelectionKey, getState, previewContentChoices, resourceActions, selectionActions,
+  useWorkbench, type Selection, type SelectionKind } from '../state/store';
 import { activePanelType, openPanel } from './layout';
 import { isPanelType } from './panelTypes';
 import { setAddressPanel } from './readiness';
+import { shellBridge } from './shellBridge';
 
 // 地址同步（D8）：/?run=&frame=&select=&panel=，不选运行时为 /?skill=&select=，资源为 /?panel=resources&resource=&time=。
 // 加载时恢复，状态变化时用 replaceState 回写。
@@ -19,7 +21,9 @@ function parseSelection(text: string | null): Selection | null {
   return split > 0 && selectionKinds.includes(kind) ? { kind, id: text.slice(split + 1) } : null;
 }
 
-const initial = new URLSearchParams(location.search);
+const recentAddressKey = 'btsmtl.workbench.recent-address';
+const rememberAddress = shellBridge !== null && location.search === '';
+const initial = new URLSearchParams(rememberAddress ? localStorage.getItem(recentAddressKey) ?? '' : location.search);
 
 export function isRestoringRunAddress() {
   return !restored && Boolean(initial.get('run'));
@@ -35,6 +39,13 @@ export function applyPanelAddress() {
 
 // 宿主连接后恢复运行、帧、选中对象与资源。
 export function applyStateAddress() {
+  const state = getState();
+  const mode = state.host?.modes.find(item => item.available && item.id === initial.get('mode'));
+  if (mode) contentActions.selectPreviewMode(mode.id);
+  if (state.sources && initial.has('content')) {
+    const content = previewContentChoices(state.sources).find(item => item.value === initial.get('content'));
+    if (content) contentActions.selectContent(content.selection);
+  }
   const run = initial.get('run');
   const documentPath = initial.get('document');
   if (run) {
@@ -55,6 +66,7 @@ export function applyStateAddress() {
     if (Number.isFinite(time) && time >= 0) resourceActions.setTime(time);
   }
   restored = true;
+  if (rememberAddress) timer ??= setTimeout(write, writeDelay);
 }
 
 let restored = false;
@@ -70,6 +82,9 @@ function write() {
     params.set('frame', String(state.frameIndex));
   }
   if (target) params.set('document', target.documentPath);
+  if (state.previewMode !== null) params.set('mode', state.previewMode);
+  const content = contentSelectionKey(state.contentSelection);
+  if (content !== null) params.set('content', content);
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);
@@ -80,12 +95,14 @@ function write() {
   }
   const search = params.toString();
   if (`?${search}` !== location.search) history.replaceState(null, '', search ? `?${search}` : location.pathname);
+  if (rememberAddress) localStorage.setItem(recentAddressKey, search);
 }
 
 useWorkbench.subscribe((state, previous) => {
   if (!restored) return;
   if (state.runId === previous.runId && state.frameIndex === previous.frameIndex && state.selection === previous.selection &&
-    state.activePanel === previous.activePanel && state.identity === previous.identity && state.time === previous.time) return;
+    state.activePanel === previous.activePanel && state.identity === previous.identity && state.time === previous.time &&
+    state.previewMode === previous.previewMode && state.contentSelection === previous.contentSelection) return;
   timer ??= setTimeout(write, writeDelay);
 });
 
