@@ -73,7 +73,8 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationExecutionFrameState next = ref sourceFrames.Header(slot);
                 if (previous.SkillContentId != next.SkillContentId ||
                     previous.OwnerOperationIndex != next.OwnerOperationIndex)
-                    destinationFrames.ClearPayloads(slot, layout.ProgramIndex(previous.SkillContentId));
+                    destinationFrames.ClearPayloads(slot,
+                        layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
             }
             var ranges = new OrchestrationStateValidRanges<TValue>.Enumerator(layout, sourceFrames);
             while (ranges.MoveNext())
@@ -196,8 +197,7 @@ namespace BTSMTL.Orchestration
                         ref readonly OrchestrationExecutionFrameState header = ref m_Frames.Header(m_FrameSlot);
                         while (header.SkillContentId == 0)
                             header = ref m_Frames.Header(++m_FrameSlot);
-                        OrchestrationStateLayoutView layout = m_Frames.Plan;
-                        m_PayloadSizes = layout.PayloadSizes(layout.ProgramIndex(header.SkillContentId),
+                        m_PayloadSizes = m_Frames.Plan.PayloadSizesForSkill(header.SkillContentId,
                             header.OwnerOperationIndex);
                     }
                     while (m_SegmentIndex < m_PayloadSizes.Length)

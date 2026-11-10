@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace BTSMTL.Orchestration
 {
@@ -55,6 +56,8 @@ namespace BTSMTL.Orchestration
 
         internal int OffsetBytes { get; }
         internal int StrideBytes { get; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal OrchestrationStateRegion<byte> AtFrame(int frame, int sizeBytes) =>
             new OrchestrationStateRegion<byte>(OffsetBytes + frame * StrideBytes, sizeBytes);
     }
@@ -98,10 +101,12 @@ namespace BTSMTL.Orchestration
         internal ReadOnlySpan<OrchestrationFramePayloadSegment> FramePayloads =>
             Section<OrchestrationFramePayloadSegment>(Header.FramePayloads);
 
-        public int ProgramIndex(int skillContentId)
+        public int ProgramIndex(int skillContentId) =>
+            FindProgramIndex(Section<OrchestrationStateProgramRecord>(Header.Programs), skillContentId);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static int FindProgramIndex(ReadOnlySpan<OrchestrationStateProgramRecord> programs, int skillContentId)
         {
-            ReadOnlySpan<OrchestrationStateProgramRecord> programs =
-                Section<OrchestrationStateProgramRecord>(Header.Programs);
             int index = 0;
             while (programs[index].SkillContentId != skillContentId)
                 index++;
@@ -130,9 +135,23 @@ namespace BTSMTL.Orchestration
 
         internal ReadOnlySpan<int> PayloadSizes(int program, int owner)
         {
-            int count = Header.FramePayloads.Count;
-            return Section<int>(Program(program).PayloadSizes).Slice(owner * count, count);
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            OrchestrationMemorySection sizes =
+                Section<OrchestrationStateProgramRecord>(header.Programs)[program].PayloadSizes;
+            return PayloadSizes(sizes, owner, header.FramePayloads.Count);
         }
+
+        internal ReadOnlySpan<int> PayloadSizesForSkill(int skillContentId, int owner)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            ReadOnlySpan<OrchestrationStateProgramRecord> programs =
+                Section<OrchestrationStateProgramRecord>(header.Programs);
+            int program = FindProgramIndex(programs, skillContentId);
+            return PayloadSizes(programs[program].PayloadSizes, owner, header.FramePayloads.Count);
+        }
+
+        ReadOnlySpan<int> PayloadSizes(OrchestrationMemorySection sizes, int owner, int count) =>
+            Section<int>(sizes).Slice(owner * count, count);
 
         internal OrchestrationStateRegion<byte> PayloadRegion(int frame, int program, int owner,
             OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind = 0)

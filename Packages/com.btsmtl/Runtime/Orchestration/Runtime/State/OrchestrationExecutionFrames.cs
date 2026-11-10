@@ -133,7 +133,7 @@ namespace BTSMTL.Orchestration
                 slot++;
             m_Frames[slot] = frame;
             int programIndex = Plan.ProgramIndex(frame.SkillContentId);
-            ClearPayloads(slot, programIndex);
+            ClearPayloads(slot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             ReadOnlySpan<OrchestrationValueStorageSlot> values = Plan.ProgramStorage(programIndex).Values;
             Span<TValue> outputs = Payload<TValue>(slot, OrchestrationStateSegmentRole.SavedOutputs, programIndex);
             for (int valueSlot = 0; valueSlot < values.Length; valueSlot++)
@@ -155,16 +155,15 @@ namespace BTSMTL.Orchestration
 
         public void RemoveAt(int frameSlot)
         {
-            ClearPayloads(frameSlot, Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
+            ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[frameSlot];
+            ClearPayloads(frameSlot, Plan.PayloadSizesForSkill(frame.SkillContentId, frame.OwnerOperationIndex));
             m_Frames[frameSlot] = default;
             m_Roster[0].Count--;
         }
 
-        internal void ClearPayloads(int frameSlot, int program)
+        internal void ClearPayloads(int frameSlot, ReadOnlySpan<int> sizes)
         {
-            OrchestrationStateLayoutView layout = Plan;
-            ReadOnlySpan<int> sizes = layout.PayloadSizes(program, m_Frames[frameSlot].OwnerOperationIndex);
-            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = layout.FramePayloads;
+            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = Plan.FramePayloads;
             for (int i = 0; i < sizes.Length; i++)
             {
                 int size = sizes[i];
