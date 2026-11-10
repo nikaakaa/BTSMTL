@@ -1201,14 +1201,14 @@ export const authoringActions = {
   copyClip(documentId: string, clipId: string): boolean {
     const document = currentDocument(timelinePath(documentId));
     const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
-    clipClipboard = clip ? cloneJson(clip) : null;
+    useClipClipboard.setState({ clip: clip ? cloneJson(clip) : null });
     return clip !== null;
   },
 
-  canPasteClip: () => clipClipboard !== null,
+  canPasteClip: () => useClipClipboard.getState().clip !== null,
 
   pasteClip(documentId: string, trackId: string, startSeconds: number): string | null {
-    const source = clipClipboard;
+    const source = useClipClipboard.getState().clip;
     if (!source) return null;
     const id = crypto.randomUUID();
     const length = numberOf(source.m_EndTimeFPRawValue) - numberOf(source.m_StartTimeFPRawValue);
@@ -1399,7 +1399,9 @@ export function markersCollide(document: JsonValue, ids: ReadonlySet<string>, sh
 }
 
 
-let clipClipboard: JsonObject | null = null;
+// 片段剪贴板可订阅：复制后已打开过的菜单随之给出粘贴。
+const useClipClipboard = create<{ clip: JsonObject | null }>()(() => ({ clip: null }));
+export const useCanPasteClip = () => useClipClipboard(state => state.clip !== null);
 
 
 export const hasChanges = (target = get().target) => {

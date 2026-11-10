@@ -18,7 +18,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
-  useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
+  useCanPasteClip, useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import {
@@ -1286,6 +1286,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
+  const canPaste = useCanPasteClip();
   const snap = useContext(SnapContext);
   const step = snap ?? 1 / 65536;
   const schemes = useInputSchemes();
@@ -1346,7 +1347,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
         .then(id => { if (id) select(id); }, error => consoleActions.error('Timeline', error));
     } },
     {
-      label: '粘贴片段', disabled: !authoringActions.canPasteClip(), tip: '粘贴复制的片段，起点在此处',
+      label: '粘贴片段', disabled: !canPaste, tip: '粘贴复制的片段，起点在此处',
       onSelect: () => { const id = authoringActions.pasteClip(documentId, row.track.id, local()); if (id) select(id); },
     },
     { kind: 'separator' },
