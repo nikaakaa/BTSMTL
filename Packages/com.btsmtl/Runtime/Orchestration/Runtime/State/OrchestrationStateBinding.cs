@@ -61,11 +61,12 @@ namespace BTSMTL.Orchestration
             OrchestrationStateLayoutView layout = plan.View;
             var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(layout, source);
             var destinationFrames = new OrchestrationExecutionFrames<TValue>(layout, destination);
-            for (int slot = 0; slot < destinationFrames.Capacity; slot++)
+            for (int slot = 0, remaining = destinationFrames.Count; remaining > 0; slot++)
             {
                 ref readonly OrchestrationExecutionFrameState previous = ref destinationFrames.Header(slot);
                 if (previous.SkillContentId == 0)
                     continue;
+                remaining--;
                 ref readonly OrchestrationExecutionFrameState next = ref sourceFrames.Header(slot);
                 if (previous.SkillContentId != next.SkillContentId ||
                     previous.OwnerOperationIndex != next.OwnerOperationIndex)
@@ -138,25 +139,23 @@ namespace BTSMTL.Orchestration
 
         public ref struct Enumerator
         {
-            readonly OrchestrationStateLayoutView m_Plan;
             readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
-            readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_Frames;
-            readonly int m_FrameCapacity;
-            OrchestrationStateOwnerRecord m_OwnerStorage;
+            readonly ReadOnlyOrchestrationExecutionFrames<TValue> m_Frames;
+            readonly ReadOnlySpan<OrchestrationFramePayloadSegment> m_FramePayloads;
+            ReadOnlySpan<int> m_PayloadSizes;
             int m_SegmentIndex;
             int m_FrameSlot;
+            int m_RemainingFrames;
 
             internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory)
             {
-                m_Plan = plan;
                 m_Segments = plan.Segments;
-                m_FrameCapacity = plan.FrameCapacity;
-                m_OwnerStorage = default;
-                OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
-                m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
-                    memory.Slice(frames.OffsetBytes, frames.SizeBytes));
+                m_Frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory);
+                m_FramePayloads = plan.FramePayloads;
+                m_PayloadSizes = default;
                 m_SegmentIndex = -1;
                 m_FrameSlot = -1;
+                m_RemainingFrames = 0;
                 Current = default;
             }
 
@@ -178,32 +177,34 @@ namespace BTSMTL.Orchestration
                         }
                     }
                     m_FrameSlot = 0;
-                    m_SegmentIndex = -1;
+                    m_SegmentIndex = 0;
+                    // 读回时固定区段先恢复帧头和在用帧数量。
+                    m_RemainingFrames = m_Frames.Count;
                 }
-                while (m_FrameSlot < m_Frames.Length)
+                while (m_RemainingFrames > 0)
                 {
-                    ref readonly OrchestrationExecutionFrameState header = ref m_Frames[m_FrameSlot];
-                    if (header.SkillContentId != 0)
+                    if (m_SegmentIndex == 0)
                     {
-                        if (m_SegmentIndex < 0)
-                            m_OwnerStorage = m_Plan.OwnerStorage(m_Plan.ProgramIndex(header.SkillContentId),
-                                header.OwnerOperationIndex);
-                        while (++m_SegmentIndex < m_Segments.Length)
+                        ref readonly OrchestrationExecutionFrameState header = ref m_Frames.Header(m_FrameSlot);
+                        while (header.SkillContentId == 0)
+                            header = ref m_Frames.Header(++m_FrameSlot);
+                        OrchestrationStateLayoutView layout = m_Frames.Plan;
+                        m_PayloadSizes = layout.PayloadSizes(layout.ProgramIndex(header.SkillContentId),
+                            header.OwnerOperationIndex);
+                    }
+                    while (m_SegmentIndex < m_PayloadSizes.Length)
+                    {
+                        int index = m_SegmentIndex++;
+                        int size = m_PayloadSizes[index];
+                        if (size > 0)
                         {
-                            ref readonly OrchestrationStateSegment segment = ref m_Segments[m_SegmentIndex];
-                            if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
-                                continue;
-                            OrchestrationStateRegion<byte> region = m_Plan.PayloadRegion(in segment,
-                                m_FrameSlot, m_FrameCapacity, in m_OwnerStorage);
-                            if (region.SizeBytes > 0)
-                            {
-                                Current = region;
-                                return true;
-                            }
+                            Current = m_FramePayloads[index].AtFrame(m_FrameSlot, size);
+                            return true;
                         }
                     }
                     m_FrameSlot++;
-                    m_SegmentIndex = -1;
+                    m_RemainingFrames--;
+                    m_SegmentIndex = 0;
                 }
                 return false;
             }

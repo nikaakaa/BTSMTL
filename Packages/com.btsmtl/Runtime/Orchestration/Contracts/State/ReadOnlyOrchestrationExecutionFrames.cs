@@ -57,9 +57,8 @@ namespace BTSMTL.Orchestration
         internal ReadOnlySpan<T> Payload<T>(int frameSlot, OrchestrationStateSegmentRole role,
             int programIndex) where T : unmanaged
         {
-            OrchestrationStateSegment segment = Plan.Segment(role);
-            OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
-                programIndex, m_Frames[frameSlot].OwnerOperationIndex);
+            OrchestrationStateRegion<byte> region = Plan.PayloadRegion(frameSlot, programIndex,
+                m_Frames[frameSlot].OwnerOperationIndex, role);
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 

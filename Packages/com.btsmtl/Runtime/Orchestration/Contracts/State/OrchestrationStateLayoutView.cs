@@ -8,45 +8,55 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<byte> TimelineRegion;
         public OrchestrationMemorySection Segments;
         public OrchestrationMemorySection Indices;
+        public OrchestrationMemorySection FramePayloads;
         public OrchestrationMemorySection CharacterAddresses;
         public OrchestrationMemorySection Programs;
+    }
+
+    internal readonly struct OrchestrationStateSegmentIndex
+    {
+        internal OrchestrationStateSegmentIndex(int segment, int framePayload)
+        {
+            Segment = segment;
+            FramePayload = framePayload;
+        }
+
+        internal int Segment { get; }
+        internal int FramePayload { get; }
     }
 
     internal readonly struct OrchestrationStateProgramRecord
     {
         internal OrchestrationStateProgramRecord(int skillContentId, OrchestrationMemorySection operationIndices,
-            OrchestrationMemorySection values, OrchestrationMemorySection owners,
+            OrchestrationMemorySection values, OrchestrationMemorySection payloadSizes,
             OrchestrationMemorySection privateAddresses)
         {
             SkillContentId = skillContentId;
             OperationIndices = operationIndices;
             Values = values;
-            Owners = owners;
+            PayloadSizes = payloadSizes;
             PrivateAddresses = privateAddresses;
         }
 
         internal int SkillContentId { get; }
         internal OrchestrationMemorySection OperationIndices { get; }
         internal OrchestrationMemorySection Values { get; }
-        internal OrchestrationMemorySection Owners { get; }
+        internal OrchestrationMemorySection PayloadSizes { get; }
         internal OrchestrationMemorySection PrivateAddresses { get; }
     }
 
-    internal readonly struct OrchestrationStateOwnerRecord
+    internal readonly struct OrchestrationFramePayloadSegment
     {
-        internal OrchestrationStateOwnerRecord(int operationCount, int savedOutputCount,
-            int blackboardCount, OrchestrationMemorySection valueKindCounts)
+        internal OrchestrationFramePayloadSegment(int offsetBytes, int strideBytes)
         {
-            OperationCount = operationCount;
-            SavedOutputCount = savedOutputCount;
-            BlackboardCount = blackboardCount;
-            ValueKindCounts = valueKindCounts;
+            OffsetBytes = offsetBytes;
+            StrideBytes = strideBytes;
         }
 
-        internal int OperationCount { get; }
-        internal int SavedOutputCount { get; }
-        internal int BlackboardCount { get; }
-        internal OrchestrationMemorySection ValueKindCounts { get; }
+        internal int OffsetBytes { get; }
+        internal int StrideBytes { get; }
+        internal OrchestrationStateRegion<byte> AtFrame(int frame, int sizeBytes) =>
+            new OrchestrationStateRegion<byte>(OffsetBytes + frame * StrideBytes, sizeBytes);
     }
 
     internal readonly struct OrchestrationFrameValueAddress
@@ -85,6 +95,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<byte> TimelineRegion => Header.TimelineRegion;
         public ReadOnlySpan<OrchestrationStateSegment> Segments =>
             Section<OrchestrationStateSegment>(Header.Segments);
+        internal ReadOnlySpan<OrchestrationFramePayloadSegment> FramePayloads =>
+            Section<OrchestrationFramePayloadSegment>(Header.FramePayloads);
 
         public int ProgramIndex(int skillContentId)
         {
@@ -98,7 +110,10 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationStateSegment Segment(OrchestrationStateSegmentRole role,
             OrchestrationValueKind valueKind = 0) =>
-            Segments[Section<int>(Header.Indices)[(int)role * KindCount + (int)valueKind]];
+            Segments[Index(role, valueKind).Segment];
+
+        OrchestrationStateSegmentIndex Index(OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
+            Section<OrchestrationStateSegmentIndex>(Header.Indices)[(int)role * KindCount + (int)valueKind];
 
         public OrchestrationValueAddress CharacterAddress(int slot) =>
             Section<OrchestrationValueAddress>(Header.CharacterAddresses)[slot];
@@ -113,35 +128,17 @@ namespace BTSMTL.Orchestration
                 Section<OrchestrationValueStorageSlot>(record.Values));
         }
 
-        internal ref readonly OrchestrationStateOwnerRecord OwnerStorage(int program, int owner) =>
-            ref Section<OrchestrationStateOwnerRecord>(Program(program).Owners)[owner];
-
-        public int PayloadCount(in OrchestrationStateSegment segment, int program, int owner) =>
-            PayloadCount(in segment, in OwnerStorage(program, owner));
-
-        int PayloadCount(in OrchestrationStateSegment segment, in OrchestrationStateOwnerRecord storage)
+        internal ReadOnlySpan<int> PayloadSizes(int program, int owner)
         {
-            switch (segment.Role)
-            {
-                case OrchestrationStateSegmentRole.Operations: return storage.OperationCount;
-                case OrchestrationStateSegmentRole.SavedOutputs: return storage.SavedOutputCount;
-                case OrchestrationStateSegmentRole.PrivateMetadata: return storage.BlackboardCount;
-                case OrchestrationStateSegmentRole.PrivateValues:
-                    if (segment.ValueKind == 0)
-                        return storage.BlackboardCount;
-                    int count = Section<int>(storage.ValueKindCounts)[(int)segment.ValueKind];
-                    return segment.ValueKind == OrchestrationValueKind.Boolean ? (count + 63) / 64 : count;
-                default: throw new InvalidOperationException("区段不是执行帧载荷。");
-            }
+            int count = Header.FramePayloads.Count;
+            return Section<int>(Program(program).PayloadSizes).Slice(owner * count, count);
         }
 
-        public OrchestrationStateRegion<byte> PayloadRegion(in OrchestrationStateSegment segment,
-            int frame, int program, int owner) =>
-            PayloadRegion(in segment, frame, FrameCapacity, in OwnerStorage(program, owner));
-
-        internal OrchestrationStateRegion<byte> PayloadRegion(in OrchestrationStateSegment segment,
-            int frame, int frameCapacity, in OrchestrationStateOwnerRecord storage) =>
-            new OrchestrationStateRegion<byte>(segment.OffsetBytes + frame * (segment.SizeBytes / frameCapacity),
-                PayloadCount(in segment, in storage) * segment.ElementSizeBytes);
+        internal OrchestrationStateRegion<byte> PayloadRegion(int frame, int program, int owner,
+            OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind = 0)
+        {
+            int index = Index(role, valueKind).FramePayload;
+            return FramePayloads[index].AtFrame(frame, PayloadSizes(program, owner)[index]);
+        }
     }
 }

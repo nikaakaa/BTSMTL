@@ -74,9 +74,8 @@ namespace BTSMTL.Orchestration
         internal Span<T> Payload<T>(int frameSlot, OrchestrationStateSegmentRole role,
             int programIndex) where T : unmanaged
         {
-            OrchestrationStateSegment segment = Plan.Segment(role);
-            OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
-                programIndex, m_Frames[frameSlot].OwnerOperationIndex);
+            OrchestrationStateRegion<byte> region = Plan.PayloadRegion(frameSlot, programIndex,
+                m_Frames[frameSlot].OwnerOperationIndex, role);
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
@@ -164,16 +163,16 @@ namespace BTSMTL.Orchestration
         internal void ClearPayloads(int frameSlot, int program)
         {
             OrchestrationStateLayoutView layout = Plan;
-            int frameCapacity = layout.FrameCapacity;
-            ref readonly OrchestrationStateOwnerRecord storage =
-                ref layout.OwnerStorage(program, m_Frames[frameSlot].OwnerOperationIndex);
-            foreach (ref readonly OrchestrationStateSegment segment in layout.Segments)
+            ReadOnlySpan<int> sizes = layout.PayloadSizes(program, m_Frames[frameSlot].OwnerOperationIndex);
+            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = layout.FramePayloads;
+            for (int i = 0; i < sizes.Length; i++)
             {
-                if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
-                    continue;
-                OrchestrationStateRegion<byte> region = layout.PayloadRegion(in segment, frameSlot,
-                    frameCapacity, in storage);
-                m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
+                int size = sizes[i];
+                if (size > 0)
+                {
+                    OrchestrationStateRegion<byte> region = payloads[i].AtFrame(frameSlot, size);
+                    m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
+                }
             }
         }
     }

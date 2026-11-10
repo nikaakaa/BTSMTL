@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -38,17 +39,33 @@ namespace BTSMTL.Orchestration
             TimelineRegion = timelineRegion;
             TimelineLayout = timelineLayout;
             m_Segments = segments.ToArray();
-            var indices = new int[Enum.GetValues(typeof(OrchestrationStateSegmentRole)).Length * KindCount];
-            Array.Fill(indices, -1);
+            var indices = new OrchestrationStateSegmentIndex[
+                Enum.GetValues(typeof(OrchestrationStateSegmentRole)).Length * KindCount];
+            Array.Fill(indices, new OrchestrationStateSegmentIndex(-1, -1));
+            var payloadSegments = new List<OrchestrationStateSegment>();
             for (int i = 0; i < m_Segments.Length; i++)
             {
                 OrchestrationStateSegment segment = m_Segments[i];
+                int payloadIndex = -1;
+                if (segment.PerFrame && segment.Role != OrchestrationStateSegmentRole.Frames)
+                {
+                    payloadIndex = payloadSegments.Count;
+                    payloadSegments.Add(segment);
+                }
+                var index = new OrchestrationStateSegmentIndex(i, payloadIndex);
                 int start = (int)segment.Role * KindCount;
                 if ((segment.Role == OrchestrationStateSegmentRole.CharacterValues ||
                     segment.Role == OrchestrationStateSegmentRole.PrivateValues) && segment.ValueKind == 0)
                     for (int kind = 1; kind < KindCount; kind++)
-                        indices[start + kind] = i;
-                indices[start + (int)segment.ValueKind] = i;
+                        indices[start + kind] = index;
+                indices[start + (int)segment.ValueKind] = index;
+            }
+            var framePayloads = new OrchestrationFramePayloadSegment[payloadSegments.Count];
+            for (int i = 0; i < framePayloads.Length; i++)
+            {
+                OrchestrationStateSegment segment = payloadSegments[i];
+                framePayloads[i] = new OrchestrationFramePayloadSegment(segment.OffsetBytes,
+                    frameCapacity == 0 ? 0 : segment.SizeBytes / frameCapacity);
             }
             var characterAddresses = new OrchestrationValueAddress[characterTypes.Length];
             for (int slot = 0; slot < characterAddresses.Length; slot++)
@@ -66,19 +83,27 @@ namespace BTSMTL.Orchestration
                 TimelineRegion = timelineRegion
             };
             header.Segments = writer.Add<OrchestrationStateSegment>(m_Segments);
-            header.Indices = writer.Add<int>(indices);
+            header.Indices = writer.Add<OrchestrationStateSegmentIndex>(indices);
+            header.FramePayloads = writer.Add<OrchestrationFramePayloadSegment>(framePayloads);
             header.CharacterAddresses = writer.Add<OrchestrationValueAddress>(characterAddresses);
             var records = new OrchestrationStateProgramRecord[programs.Length];
             for (int program = 0; program < programs.Length; program++)
             {
                 OrchestrationPreparedProgramStorage<TValue> prepared = programs.Span[program];
                 OrchestrationProgramStorageLayout storage = prepared.Storage;
-                var owners = new OrchestrationStateOwnerRecord[storage.Owners.Length];
-                for (int owner = 0; owner < owners.Length; owner++)
+                var payloadSizes = new int[checked(storage.Owners.Length * payloadSegments.Count)];
+                for (int owner = 0; owner < storage.Owners.Length; owner++)
                 {
-                    OrchestrationExecutionOwnerStorage source = storage.Owners.Span[owner];
-                    owners[owner] = new OrchestrationStateOwnerRecord(source.OperationCount,
-                        source.SavedOutputCount, source.BlackboardCount, writer.Add(source.ValueKindCounts.Span));
+                    ref readonly OrchestrationExecutionOwnerStorage source = ref storage.Owners.Span[owner];
+                    if (source.ValueKindCounts.IsEmpty)
+                        continue;
+                    int start = owner * payloadSegments.Count;
+                    for (int i = 0; i < payloadSegments.Count; i++)
+                    {
+                        OrchestrationStateSegment segment = payloadSegments[i];
+                        payloadSizes[start + i] = checked(PayloadElementCount(in segment, in source) *
+                            segment.ElementSizeBytes);
+                    }
                 }
                 var addresses = new OrchestrationFrameValueAddress[frameCapacity == 0 ? 0 : storage.Values.Length];
                 for (int slot = 0; slot < addresses.Length; slot++)
@@ -93,7 +118,7 @@ namespace BTSMTL.Orchestration
                 }
                 records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
                     writer.Add(storage.OperationIndices.Span), writer.Add(storage.Values.Span),
-                    writer.Add<OrchestrationStateOwnerRecord>(owners),
+                    writer.Add<int>(payloadSizes),
                     writer.Add<OrchestrationFrameValueAddress>(addresses));
             }
             header.Programs = writer.Add<OrchestrationStateProgramRecord>(records);
@@ -112,7 +137,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationPreparedStateLayout<TValue> PrepareSource(int frameCapacity)
         {
-            var segments = new System.Collections.Generic.List<OrchestrationStateSegment>();
+            var segments = new List<OrchestrationStateSegment>();
             int offset = 0;
             int alignment = 1;
             foreach (OrchestrationStateSegment segment in m_Segments)
@@ -133,8 +158,26 @@ namespace BTSMTL.Orchestration
                 Programs, CharacterTypes, new OrchestrationStateRegion<byte>(size, 0), default);
         }
 
-        OrchestrationStateSegment Segment(int[] indices, OrchestrationStateSegmentRole role,
-            OrchestrationValueKind valueKind) => m_Segments[indices[(int)role * KindCount + (int)valueKind]];
+        OrchestrationStateSegment Segment(OrchestrationStateSegmentIndex[] indices,
+            OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
+            m_Segments[indices[(int)role * KindCount + (int)valueKind].Segment];
+
+        static int PayloadElementCount(in OrchestrationStateSegment segment,
+            in OrchestrationExecutionOwnerStorage storage)
+        {
+            switch (segment.Role)
+            {
+                case OrchestrationStateSegmentRole.Operations: return storage.OperationCount;
+                case OrchestrationStateSegmentRole.SavedOutputs: return storage.SavedOutputCount;
+                case OrchestrationStateSegmentRole.PrivateMetadata: return storage.BlackboardCount;
+                case OrchestrationStateSegmentRole.PrivateValues:
+                    if (segment.ValueKind == 0)
+                        return storage.BlackboardCount;
+                    int count = storage.ValueKindCounts.Span[(int)segment.ValueKind];
+                    return segment.ValueKind == OrchestrationValueKind.Boolean ? (count + 63) / 64 : count;
+                default: throw new InvalidOperationException("区段不是执行帧载荷。");
+            }
+        }
 
         static OrchestrationValueAddress Address(in OrchestrationStateSegment segment,
             OrchestrationValueKind kind, int index) =>

@@ -21,8 +21,6 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationStateLayoutView plan = m_Plan.View;
             OrchestrationStateLayoutView sourcePlan = source.Frames.Plan;
-            int frameCapacity = plan.FrameCapacity;
-            int sourceFrameCapacity = sourcePlan.FrameCapacity;
             OrchestrationStateBinding.ClearPayloads(m_Plan, memory);
             OrchestrationStateSegment frameSegment = plan.Segment(OrchestrationStateSegmentRole.Frames);
             memory.Slice(frameSegment.OffsetBytes, frameSegment.SizeBytes).Clear();
@@ -33,19 +31,16 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationExecutionFrameState header = ref source.Frames.Header(sourceSlot);
                 frames.Header(count) = header;
                 frames.Header(count).ParentFrameIndex = header.ParentFrameIndex < 0 ? -1 : count + 1;
-                ref readonly OrchestrationStateOwnerRecord sourceStorage = ref sourcePlan.OwnerStorage(
-                    sourcePlan.ProgramIndex(header.SkillContentId), header.OwnerOperationIndex);
-                ref readonly OrchestrationStateOwnerRecord destinationStorage = ref plan.OwnerStorage(
-                    plan.ProgramIndex(header.SkillContentId), header.OwnerOperationIndex);
+                int sourceProgram = sourcePlan.ProgramIndex(header.SkillContentId);
+                int destinationProgram = plan.ProgramIndex(header.SkillContentId);
                 foreach (ref readonly OrchestrationStateSegment segment in plan.Segments)
                 {
                     if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                         continue;
-                    OrchestrationStateSegment sourceSegment = sourcePlan.Segment(segment.Role, segment.ValueKind);
-                    OrchestrationStateRegion<byte> sourceRegion = sourcePlan.PayloadRegion(in sourceSegment,
-                        sourceSlot, sourceFrameCapacity, in sourceStorage);
-                    OrchestrationStateRegion<byte> destinationRegion = plan.PayloadRegion(in segment,
-                        count, frameCapacity, in destinationStorage);
+                    OrchestrationStateRegion<byte> sourceRegion = sourcePlan.PayloadRegion(sourceSlot,
+                        sourceProgram, header.OwnerOperationIndex, segment.Role, segment.ValueKind);
+                    OrchestrationStateRegion<byte> destinationRegion = plan.PayloadRegion(count,
+                        destinationProgram, header.OwnerOperationIndex, segment.Role, segment.ValueKind);
                     source.Frames.Memory.Slice(sourceRegion.OffsetBytes, sourceRegion.SizeBytes)
                         .CopyTo(memory.Slice(destinationRegion.OffsetBytes, destinationRegion.SizeBytes));
                 }
