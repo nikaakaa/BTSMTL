@@ -12,36 +12,82 @@ sealed class ShellForm : Form
 {
     const uint DuplicateSameAccess = 2;
 
-    readonly Uri m_Address;
-    readonly WebView2 m_View = new() { Dock = DockStyle.Fill };
+    readonly WebView2 m_View = new() { Dock = DockStyle.Fill, Visible = false };
+    readonly Label m_Status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "正在启动角色工作台…" };
     readonly Dictionary<string, CoreWebView2SharedBuffer> m_Surfaces = new(StringComparer.Ordinal);
     readonly SurfaceTiming? m_Timing;
+    readonly CancellationTokenSource m_Closing = new();
     CoreWebView2Environment? m_Environment;
 
-    public ShellForm(Uri address, SurfaceTiming? timing)
+    public ShellForm(Func<CancellationToken, Task<Uri>> connect, SurfaceTiming? timing, DesktopLaunch? desktop = null)
     {
-        m_Address = address;
         m_Timing = timing;
         Text = "BTSMTL 工作台";
         ClientSize = new Size(1600, 960);
         StartPosition = FormStartPosition.CenterScreen;
         Controls.Add(m_View);
-        Load += async (_, _) => await Open();
+        Controls.Add(m_Status);
+        RegisteredWaitHandle? activation = null;
+        Shown += async (_, _) =>
+        {
+            var ui = SynchronizationContext.Current!;
+            activation = desktop?.OnActivate(() => ui.Post(_ =>
+            {
+                if (IsDisposed) return;
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                Activate();
+            }, null));
+            try
+            {
+                Uri address = await connect(m_Closing.Token);
+                m_Closing.Token.ThrowIfCancellationRequested();
+                await Open(address);
+            }
+            catch (OperationCanceledException) when (m_Closing.IsCancellationRequested)
+            {
+            }
+            catch (Exception error)
+            {
+                if (IsDisposed) return;
+                m_Status.Text = $"工作台启动失败。\n\n{error.Message}";
+                Environment.ExitCode = 1;
+            }
+        };
         FormClosed += (_, _) =>
         {
+            activation?.Unregister(null);
+            m_Closing.Cancel();
             foreach (CoreWebView2SharedBuffer buffer in m_Surfaces.Values)
                 buffer.Dispose();
             m_Timing?.Write();
         };
     }
 
-    async Task Open()
+    async Task Open(Uri address)
     {
         m_Environment = await CoreWebView2Environment.CreateAsync(null,
             Path.Combine(AppContext.BaseDirectory, "WebView2"));
+        m_Closing.Token.ThrowIfCancellationRequested();
         await m_View.EnsureCoreWebView2Async(m_Environment);
-        m_View.CoreWebView2.WebMessageReceived += (_, message) => Receive(JsonNode.Parse(message.WebMessageAsJson)!);
-        m_View.CoreWebView2.Navigate(m_Address.ToString());
+        m_Closing.Token.ThrowIfCancellationRequested();
+        string origin = address.GetLeftPart(UriPartial.Authority);
+        bool InWorkbench(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+            uri.GetLeftPart(UriPartial.Authority) == origin;
+        var web = m_View.CoreWebView2;
+        web.NavigationStarting += (_, navigation) => navigation.Cancel = !InWorkbench(navigation.Uri);
+        web.NavigationCompleted += (_, navigation) =>
+        {
+            m_View.Visible = navigation.IsSuccess;
+            m_Status.Visible = !navigation.IsSuccess;
+            if (!navigation.IsSuccess)
+                m_Status.Text = $"无法载入工作台页面（{navigation.WebErrorStatus}）。";
+        };
+        web.WebMessageReceived += (_, message) =>
+        {
+            if (InWorkbench(message.Source)) Receive(JsonNode.Parse(message.WebMessageAsJson)!);
+        };
+        m_Status.Text = "正在打开工作台界面…";
+        web.Navigate(address.ToString());
     }
 
     // { type: "surface", id, bytes }：建（或沿用同大小的）画面区并交给网页；

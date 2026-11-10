@@ -5,16 +5,29 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        bool timed = args.Length == 3 && args[1] == "--surface-timing" && Path.IsPathFullyQualified(args[2]);
-        if (args.Length != 1 && !timed || !Uri.TryCreate(args[0], UriKind.Absolute, out Uri? address))
-        {
-            MessageBox.Show("用法：BTSMTL.WebWorkbench.Shell <工作台网址> [--surface-timing <计时汇总 JSON 绝对路径>]，" +
-                "例如 http://127.0.0.1:5411/", "BTSMTL 工作台");
-            return;
-        }
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new ShellForm(address, timed ? new SurfaceTiming(args[2]) : null));
+        try
+        {
+            bool timed = args.Length >= 2 && args[^2] == "--surface-timing" && Path.IsPathFullyQualified(args[^1]);
+            SurfaceTiming? timing = timed ? new SurfaceTiming(args[^1]) : null;
+            string[] command = timed ? args[..^2] : args;
+            if (command.Length == 0)
+            {
+                using DesktopLaunch? desktop = DesktopLaunch.Claim();
+                if (desktop is not null)
+                    Application.Run(new ShellForm(desktop.Connect, timing, desktop));
+                return;
+            }
+            if (command.Length != 1 || !Uri.TryCreate(command[0], UriKind.Absolute, out var address))
+                throw new ArgumentException("请直接打开已发布的工作台，或传入现有工作台网址。计时需提供 --surface-timing 与 JSON 绝对路径。");
+            Application.Run(new ShellForm(_ => Task.FromResult(address), timing));
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show(error.Message, "无法打开 BTSMTL 工作台", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Environment.ExitCode = 1;
+        }
     }
 }
