@@ -293,7 +293,13 @@ export function NumberInput({ value, onChange, min, max, step, disabled, label, 
     <NumberField.Root value={value} onValueCommitted={next => onChange(next)} min={min} max={max} step={step}
       disabled={disabled} format={exactNumber}>
       <NumberField.Group className={join(styles.numberGroup, wide && styles.numberWide)}>
-        <NumberField.Input className={styles.field} aria-label={label} />
+        {/* Base UI 只在失焦或方向键时提交；回车与文本框一致，经失焦提交后留在原框继续编辑。 */}
+        <NumberField.Input className={styles.field} aria-label={label} onKeyDown={event => {
+          if (event.key !== 'Enter') return;
+          const input = event.currentTarget;
+          input.blur();
+          input.focus();
+        }} />
       </NumberField.Group>
     </NumberField.Root>
   );
