@@ -5,7 +5,7 @@ import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
   type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot,
+  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type WorkspaceCreationKind,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
@@ -657,6 +657,17 @@ export const authoringActions = {
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
   },
 
+  async createWorkspaceDocument(kind: WorkspaceCreationKind, name: string) {
+    const draft = await authoringApi.createWorkspaceDraft(kind, name);
+    const target = authoringOwner(draft.documentPath);
+    await workspaceDocumentsApi.save({ writes: [{ kind: target.kind, documentPath: target.documentPath, expectedRevision: '',
+      files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) },
+    ...Object.entries(variablesDrafts(draft.variables === null ? [] : [draft.variables])).map(([path, document]) => documentWrite(path, document))],
+    reads: [] });
+    void authoringActions.listDocuments();
+    return target;
+  },
+
   async listDocuments() {
     const { editingView, isCurrentRequest } = captureEditingView();
     try {
@@ -707,13 +718,14 @@ export const authoringActions = {
     publishDocument();
     if (!opened || opened.documentGraphs === null) setDocument({ loading: true }, target);
     try {
-      const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
-      controller.signal.throwIfAborted();
-      setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
-        ...(!opened || (opened.revision === null && !hasChanges(target))
-          ? { revision: snapshot.revision, sourceFiles: snapshot.files,
+      if (!opened || opened.revision !== null || !isDocumentDirty(opened)) {
+        const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
+        controller.signal.throwIfAborted();
+        setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
+          ...(!opened || opened.revision === null ? { revision: snapshot.revision, sourceFiles: snapshot.files,
             ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) } : {}),
-      }, target);
+        }, target);
+      }
       await reloadDocument(target, controller.signal);
       controller.signal.throwIfAborted();
       setDocument({ loading: false }, target);

@@ -775,6 +775,8 @@ interface SkillCreationDraft {
   availability: QueryAvailability;
 }
 
+export type WorkspaceCreationKind = 'timeline' | 'macro' | 'camera-curve' | 'camera-shake';
+
 export const authoringApi = {
   catalog: async (revision: string | null, signal?: AbortSignal) =>
     readAdapterCatalog(await getJson<unknown>(`/api/authoring/catalog${revision === null ? '' : query({ revision })}`, signal)),
@@ -791,6 +793,9 @@ export const authoringApi = {
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request)
     .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'SkillCreationDraft.variables') })),
+  createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string) =>
+    postJson<SkillCreationDraft & { documentPath: string }>('/api/authoring/documents/draft-create', { kind, name })
+      .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request)
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),

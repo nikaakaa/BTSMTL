@@ -441,7 +441,8 @@ function useNodeCreator(graphId: string) {
         const field = description.fields.items.flatMap(item => item.computed ? [item] : item.fields)
           .find(item => item.fieldId === input.template.fieldId);
         if (!field?.choicesAvailability?.available || field.choices === null)
-          throw new Error(field?.choicesAvailability?.reason ?? '当前图没有可用的 Timeline 引用合同。');
+          throw new Error(field?.choicesAvailability?.available === false
+            ? field.choicesAvailability.reason : '当前图没有可用的 Timeline 引用合同。');
         const selected = resolveReferenceDrag(input.reference, { kind: 'ready', referenceKind: 'timeline',
           items: field.choices, invalidReason: '这个 Timeline 无法用于当前图。' });
         if (selected.kind === 'rejected') throw new Error(selected.reason);
