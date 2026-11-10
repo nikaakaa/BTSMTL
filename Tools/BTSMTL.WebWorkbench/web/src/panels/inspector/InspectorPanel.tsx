@@ -186,9 +186,12 @@ function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNo
   return <div className={styles.field}><FieldLabel label={label} /><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
 }
 
-function openGraph(graph: Pick<GraphDefinition, 'id'>, caller: NonNullable<SelectionSlice['graphRequest']>['caller'] = null) {
-  const target = authoringDocument(useAuthoring.getState()).documentGraphs!.find(item => item.id === graph.id)!;
-  void projectActions.openGraph(target, undefined, { origin: null, observation: null, caller, panelId: null })
+function openGraph(id: string, caller: NonNullable<SelectionSlice['graphRequest']>['caller'] = null) {
+  const state = useAuthoring.getState();
+  const graph = authoringDocument(state).documentGraphs?.find(item => item.id === id);
+  const owner = graph?.owner ?? state.target!.documentPath;
+  void projectActions.openGraph({ id, owner, ownerName: graph?.ownerName ?? owner }, undefined,
+    { origin: null, observation: null, caller, panelId: null })
     .catch(reason => consoleActions.error('作者', reason));
 }
 
@@ -465,10 +468,8 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
   const notice = runId === null ? null : documentObservationNotice(route, binding, observedCall)
     ?? timelineObservationNotice(timelineBinding, frameSource, timeline.documentId, observedCall)
     ?? (observation.kind === 'unavailable' ? observation.reason : null);
-  const graphRow = input || !clip.graphId ? null : graph
-    ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开"
-      onOpen={() => openGraph(graph, route === null || observedCall === null || runId === null ? null : { runId, call: observedCall })} />
-    : <Value label="节点图" mono={false} value="当前文档没有这张图" />;
+  const graphRow = input || !clip.graphId ? null : <TimelineGraphReference label="节点图" id={clip.graphId} graph={graph}
+    caller={route === null || observedCall === null || runId === null ? null : { runId, call: observedCall }} />;
   return (
     <>
       <Head icon={<TrackIcon kind={input ? 'in' : clipKind(clip)} />} sub={`${timeline.displayName} · ${track.displayName}`}
@@ -515,6 +516,15 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
 }
 
 // 标记：时刻与触发图；作者模式可改时刻。输入标记与输入片段一样直接读触发图文件，编辑写入的按键与值。
+function TimelineGraphReference({ label, id, graph, caller = null }: {
+  label: string; id: string; graph: GraphDefinition | null; caller?: NonNullable<SelectionSlice['graphRequest']>['caller'];
+}) {
+  const { document } = useCurrentDocument(graphPath(graph?.id ?? id));
+  if (graph === null && document === null) return <Value label={label} mono={false} value="当前文档没有这张图" />;
+  const name = graph === null ? (document as JsonObject).name as string : graphName(graph);
+  return <Link label={label} text={name} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph?.id ?? id, caller)} />;
+}
+
 function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<typeof findTimelineMarker>>; editable: boolean }) {
   const { timeline, track, marker } = found;
   const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
@@ -525,9 +535,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
     <>
       <Head icon={<TrackIcon kind={input ? 'in' : trackKind(track)} />} name={`${track.displayName} 标记`} sub={timeline.displayName} />
       <Fold title="标记" defaultOpen>
-        {input ? null : graph
-          ? <Link label="触发图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
-          : <Value label="触发图" mono={false} value="未保存，保存后可进入" />}
+        {!input && marker.graphId && <TimelineGraphReference label="触发图" id={marker.graphId} graph={graph} />}
         {editable ? (
           <div className={styles.field}>
             <label>时刻（秒）</label>
@@ -716,7 +724,7 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
         sub={`${found.root.displayName} · ${found.track.displayName}`} />
       <Fold title={clip ? '按住段' : '输入标记'} defaultOpen>
         {graph
-          ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+          ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph.id)} />
           : <Value label="节点图" mono={false} value="当前文档没有这张图" />}
         {clip ? (
           <>

@@ -579,20 +579,29 @@ async function reloadDocument(target: AuthoringTarget, signal: AbortSignal) {
 
 let documentTimer: ReturnType<typeof setTimeout> | null = null;
 let documentController: AbortController | null = null;
+function cancelDocumentReload() {
+  if (documentTimer !== null) clearTimeout(documentTimer);
+  documentTimer = null;
+  documentController?.abort();
+}
+
+function reloadEditedDocument(target: AuthoringTarget) {
+  const controller = documentController = new AbortController();
+  return reloadDocument(target, controller.signal);
+}
+
 function scheduleDocumentReload(target: AuthoringTarget | null) {
   if (target === null) return;
   setDocument({ sourceRevision: null }, target);
-  if (documentTimer !== null) clearTimeout(documentTimer);
-  documentController?.abort();
-  const controller = documentController = new AbortController();
+  cancelDocumentReload();
   documentTimer = setTimeout(() => {
-    void reloadDocument(target, controller.signal).catch(error => consoleActions.error('作者', error));
+    documentTimer = null;
+    void reloadEditedDocument(target).catch(error => { if (!isAbort(error)) consoleActions.error('作者', error); });
   }, 150);
 }
 useAuthoring.subscribe((state, previous) => {
   if (state.target !== previous.target) {
-    if (documentTimer !== null) clearTimeout(documentTimer);
-    documentController?.abort();
+    cancelDocumentReload();
     return;
   }
   const target = state.target;
@@ -607,6 +616,16 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 export const authoringActions = {
+  async resolveGraph(target: AuthoringTarget, id: string) {
+    if (!isActiveTarget(target)) throw new DOMException('作者文档打开已取消', 'AbortError');
+    const { documentGraphs } = authoringDocument(useAuthoring.getState(), target);
+    const graph = documentGraphs?.find(item => item.id === id);
+    if (graph !== undefined || currentDocument(graphPath(id)) === null) return graph;
+    cancelDocumentReload();
+    await reloadEditedDocument(target);
+    return authoringDocument(useAuthoring.getState(), target).documentGraphs?.find(item => item.id === id);
+  },
+
   async createSkill(request: SkillCreationRequest) {
     const target = authoringTarget('skill', request.parameters.name);
     const key = authoringTargetKey(target);

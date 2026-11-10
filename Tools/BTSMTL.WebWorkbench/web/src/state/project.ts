@@ -29,9 +29,10 @@ export const documentElementKey = (element: WorkspaceDocumentElement) =>
 
 async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'ownerName'>, nodeId?: string,
   navigation: GraphNavigation | null = null): Promise<void> {
-  const document = await openOwner(target);
-  const graph = document.documentGraphs?.find(value => value.id === target.id);
-  if (!graph) throw new Error(document.documentError ?? `${target.ownerName} 的当前作者文档中不存在图 ${target.id}`);
+  await openOwner(target);
+  const owner = ownerOf(target);
+  const graph = await authoringActions.resolveGraph(owner, target.id);
+  if (!graph) throw new Error(authoringDocument(useAuthoring.getState(), owner).documentError ?? `${target.ownerName} 的当前作者文档中不存在图 ${target.id}`);
   const node = nodeId === undefined ? null : graph.nodes.find(node => node.id === nodeId);
   if (node === undefined) throw new Error(`${target.ownerName} 的图 ${target.id} 中不存在引用节点 ${nodeId}`);
   const panel = openPanel('graph', navigation?.panelId ?? undefined);
