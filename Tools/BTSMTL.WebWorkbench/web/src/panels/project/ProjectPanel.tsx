@@ -8,13 +8,13 @@ import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
 import { session } from '../../state/session';
 import { authoringRoot, catalogEntryKey, catalogRoots, flatten, scenesRoot, type ProjectNode } from '../../state/projectTree';
-import { documentElementChoice, referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag } from '../../state/referenceSelection';
+import { documentElementChoice, referenceChoiceKey, referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag, type ReferenceDragChoice } from '../../state/referenceSelection';
 import { consoleActions, contentActions, previewContentChoices, selectionActions, useWorkbench } from '../../state/store';
 import { usePanelApi } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
 import { openPanel } from '../../shell/layout';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, MenuButton, TextInput, Tip } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, TextInput, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AssetObjectPicker } from './AssetObjectPicker';
@@ -52,6 +52,34 @@ export function ProjectPanel() {
 
   const contents = useMemo(() => projectContents(documents).tree, [documents]);
   const author_ = useMemo(() => authoringRoot(directory ?? [], contents), [directory, contents]);
+  const documentReferences = useMemo(() => {
+    const references = new Map<string, { kind: string; choice: ReferenceDragChoice }>();
+    for (const element of elementCatalog.items) {
+      if (element.jsonPath !== '/' || element.contentDomain === null || element.sourceIdentity === null) continue;
+      if (element.kind === 'curve' || element.kind === 'profile') {
+        references.set(element.documentPath, { kind: element.contentDomain,
+          choice: documentElementChoice({ ...element, sourceIdentity: element.sourceIdentity }, null) });
+      }
+    }
+    return references;
+  }, [elementCatalog.items]);
+  const referenceOf = (node: ProjectNode, domain?: string | null): { kind: string; choice: ReferenceDragChoice } | null => {
+    const entry = node.entry;
+    if (entry?.kind === 'catalog') {
+      const item = domain == null ? entry.items[0] : entry.items.find(value => value.domain === domain);
+      return item ? { kind: item.domain, choice: resourceReferenceChoice(item, null) } : null;
+    }
+    if (entry?.kind === 'document') {
+      const document = entry.document;
+      if (document.kind === 'timeline' || (document.kind === 'graph' && document.contentDomain === 'macro')) {
+        return { kind: document.kind, choice: { value: document.identity, source: `${document.documentPath}/${document.rootFile}`, targets: [] } };
+      }
+      return documentReferences.get(document.documentPath) ?? null;
+    }
+    const item = entry?.kind === 'content' && entry.node.target?.kind === 'item' ? entry.node.target.item : null;
+    return item && (item.kind === 'graph' || item.kind === 'timeline')
+      ? { kind: item.kind, choice: { value: item.identity, source: `${item.owner}/${item.file}`, targets: [] } } : null;
+  };
   const engine = useMemo(() => catalog.kind === 'ready' ? catalogRoots(catalog.snapshot.domains) : null, [catalog]);
   const scenes = useMemo(() => scenesRoot(sources ? previewContentChoices(sources) : null,
     hostAvailable === false ? '未接入运行宿主' : '正在读取'), [sources, hostAvailable]);
@@ -59,12 +87,13 @@ export function ProjectPanel() {
     const all = [author_, ...engine ? [engine.files, engine.mappings] : [], scenes];
     if (picking === null) return all;
     const keep = (node: ProjectNode): ProjectNode | null => {
-      if (node.entry?.kind === 'catalog') return node.entry.items.some(item => item.domain === picking.domain) ? { ...node, children: [] } : null;
+      const reference = referenceOf(node, picking.domain);
+      if (reference?.kind === picking.domain) return { ...node, children: [] };
       const children = node.children.map(keep).filter((child): child is ProjectNode => child !== null);
-      return node.entry === null && children.length ? { ...node, children } : null;
+      return children.length ? { ...node, entry: null, children } : null;
     };
     return all.map(keep).filter((node): node is ProjectNode => node !== null);
-  }, [author_, engine, scenes, picking?.domain]);
+  }, [author_, engine, scenes, picking?.domain, documentReferences]);
   const nodes = useMemo(() => flatten(roots), [roots]);
   const parents = useMemo(() => {
     const map = new Map<string, string>();
@@ -89,8 +118,10 @@ export function ProjectPanel() {
   useEffect(() => {
     if (picking === null) return;
     setSearch('');
-    const hit = nodes.find(node => node.entry?.kind === 'catalog' && node.entry.items.some(item =>
-      item.domain === picking.domain && referenceValueKey(item.value) === pickingValue));
+    const hit = nodes.find(node => {
+      const reference = referenceOf(node, picking.domain);
+      return reference !== null && referenceValueKey(reference.choice.value) === pickingValue;
+    });
     const ancestors: string[] = [];
     for (let key = hit ? parents.get(hit.key) : undefined; key !== undefined; key = parents.get(key)) ancestors.push(key);
     setExpanded(previous => new Set([...previous, ...ancestors]));
@@ -109,9 +140,11 @@ export function ProjectPanel() {
     return next;
   });
   const choose = (node: ProjectNode) => {
-    if (picking === null || node.entry?.kind !== 'catalog' || picking.catalog.kind !== 'ready') return false;
-    const value = node.entry.items.find(item => item.domain === picking.domain)?.value;
-    const choices = picking.catalog.items.filter(choice => referenceValueKey(choice.value) === referenceValueKey(value));
+    if (picking === null || picking.catalog.kind !== 'ready') return false;
+    const reference = referenceOf(node, picking.domain);
+    if (reference?.kind !== picking.domain) return false;
+    const key = referenceChoiceKey(reference.choice);
+    const choices = picking.catalog.items.filter(choice => referenceChoiceKey(choice) === key);
     if (choices.length !== 1 || choices[0].conflict !== null) {
       setFailure({ text: choices.length === 0 ? '这一项不能填入当前字段。' : choices[0]?.conflict ?? '这一项对应多条目录，无法确定用哪一条。', entryId: null });
       return true;
@@ -126,7 +159,7 @@ export function ProjectPanel() {
     const entry = node.entry;
     if (entry === null) return;
     switch (entry.kind) {
-      case 'document': void perform(() => projectActions.openDocument(entry.document.documentPath)); return;
+      case 'document': void perform(() => projectActions.openDocument(entry.document.documentPath, 'inspect')); return;
       case 'content': if (entry.node.target !== null) void perform(() => projectActions.inspect(entry.node.target!)); return;
       case 'catalog':
         selectionActions.select({ kind: 'catalog', id: catalogEntryKey(entry.items[0]) });
@@ -141,35 +174,10 @@ export function ProjectPanel() {
   };
   const open = (node: ProjectNode) => {
     if (choose(node)) return;
-    if (node.entry?.kind === 'content' && node.entry.node.target !== null) void perform(() => projectActions.openContent(
-      (node.entry as Extract<ProjectNode['entry'], { kind: 'content' }>).node.target!));
-    else if (node.children.length) { if (wide) setCurrent(node.key); else toggle(node.key); }
-  };
-  // 文档根元素：Profile、曲线按内容域拖到收这类作者文档的字段上。独立 Timeline 与共享图暂不拖出：
-  // 画布按拖入类型建播放／子图节点时只填引用、不带 Shared 归属，会建出归属错误的节点。
-  const documentElement = (node: ProjectNode) => {
-    if (node.entry?.kind !== 'document' || node.entry.document.contentDomain === null ||
-      (node.entry.document.kind !== 'profile' && node.entry.document.kind !== 'curve')) return null;
-    const { documentPath, rootFile, contentDomain } = node.entry.document;
-    const found = elementCatalog.items.filter((element): element is typeof element & { sourceIdentity: string } =>
-      element.documentPath === documentPath && element.relativePath === rootFile && element.jsonPath === '/' &&
-      element.contentDomain === contentDomain && element.sourceIdentity !== null);
-    return found.length === 1 ? found[0] : null;
-  };
-  const draggable = (node: ProjectNode) => node.entry?.kind === 'catalog' || documentElement(node) !== null ||
-    node.entry?.kind === 'content' && node.entry.node.target?.kind === 'item' && ['graph', 'timeline'].includes(node.entry.node.target.item.kind);
-  const drag = (node: ProjectNode, transfer: DataTransfer) => {
     const entry = node.entry;
-    const element = documentElement(node);
-    if (element !== null) writeReferenceDrag(transfer, element.contentDomain!, documentElementChoice(element, null));
-    else if (entry?.kind === 'catalog') {
-      const item = picking === null ? entry.items[0] : entry.items.find(value => value.domain === picking.domain) ?? entry.items[0];
-      writeReferenceDrag(transfer, item.domain, resourceReferenceChoice(item, null));
-    } else if (entry?.kind === 'content' && entry.node.target?.kind === 'item') {
-      const item = entry.node.target.item;
-      if (item.kind === 'graph' || item.kind === 'timeline')
-        writeReferenceDrag(transfer, item.kind, { value: item.identity, source: `${item.owner}/${item.file}`, targets: [] });
-    }
+    if (entry?.kind === 'document') void perform(() => projectActions.openDocument(entry.document.documentPath));
+    else if (entry?.kind === 'content' && entry.node.target !== null) void perform(() => projectActions.openContent(entry.node.target!));
+    else if (node.children.length) { if (wide) setCurrent(node.key); else toggle(node.key); }
   };
   const create = (kind: SkillContentKind) => { setFiles(false); setCreating(kind); };
 
@@ -194,18 +202,29 @@ export function ProjectPanel() {
   const row = (item: Row, list: boolean) => {
     const { node, depth } = item;
     const expandable = node.children.length > 0 && !(list && (wide || query !== ''));
+    const reference = referenceOf(node, picking?.domain);
+    const canManage = picking === null && (node.entry?.kind === 'document' || node.entry?.kind === 'content');
+    const name = <button className={styles.treeName} draggable={reference !== null}
+      onDragStart={event => { if (reference !== null) writeReferenceDrag(event.dataTransfer, reference.kind, reference.choice); }}
+      onClick={() => {
+        if (!list) { setCurrent(node.key); if (!expanded.has(node.key)) toggle(node.key); }
+        else if (node.entry === null && !wide) toggle(node.key);
+        else if (picking === null) select(node);
+        else setSelected(node.key);
+      }}
+      onDoubleClick={() => list ? open(node) : undefined}>
+      <i className={node.entry === null ? styles.folderIcon : styles.itemIcon} style={{ ['--kind' as string]: node.color }} />
+      <span>{node.label}</span>
+      {query !== '' ? <small>{node.location}</small> : node.detail && <small>{node.detail}</small>}
+    </button>;
     return <div className={styles.treeRow} style={{ paddingLeft: 4 + depth * 12 }}
       aria-selected={list ? selected === node.key : current === node.key && wide}>
       <button className={styles.arrow} tabIndex={-1} aria-label={`${item.open ? '收起' : '展开'} ${node.label}`} disabled={!expandable}
         onClick={() => toggle(node.key)}>{expandable ? item.open ? '▾' : '▸' : ''}</button>
-      <button className={styles.treeName} draggable={draggable(node)}
-        onDragStart={event => drag(node, event.dataTransfer)}
-        onClick={() => { if (!list) { setCurrent(node.key); if (!expanded.has(node.key)) toggle(node.key); } else if (node.entry === null && !wide) toggle(node.key); else select(node); }}
-        onDoubleClick={() => list ? open(node) : undefined}>
-        <i className={node.entry === null ? styles.folderIcon : styles.itemIcon} style={{ ['--kind' as string]: node.color }} />
-        <span>{node.label}</span>
-        {query !== '' ? <small>{node.location}</small> : node.detail && <small>{node.detail}</small>}
-      </button>
+      {canManage ? <ContextMenu entries={[
+        { label: '打开', onSelect: () => open(node) },
+        { label: '在检查器中管理', onSelect: () => select(node) },
+      ]}>{name}</ContextMenu> : name}
     </div>;
   };
   const selectedNode = selected === null ? undefined : byKey.get(selected);

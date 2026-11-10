@@ -399,13 +399,15 @@ interface ReferenceNodeDrop {
   templates: ReferenceNodeTemplate[];
 }
 
+type NodeReference = { template: ReferenceNodeTemplate; reference: ReferenceNodeDrop['reference'] };
+
 interface NodeCreationChoice {
   key: string;
   type: string;
   name: string;
   detail: string;
   clrType: string | null;
-  configuration: JsonObject | null;
+  reference: NodeReference | null;
 }
 
 function referenceConfiguration(template: ReferenceNodeTemplate, reference: ReferenceNodeDrop['reference']): JsonObject {
@@ -424,16 +426,27 @@ function useNodeCreator(graphId: string) {
     });
     return () => { unsubscribe(); abort(); };
   }, []);
-  return async (type: string, configuration: JsonObject | null, position: { x: number; y: number }) => {
+  return async (type: string, input: NodeReference | null, position: { x: number; y: number }) => {
     const controller = new AbortController();
     pending.current.add(controller);
     try {
-      const description = configuration === null
+      const description = input === null
         ? await authoringApi.describeType(skill, type, graphId, authoringActions.editingView(), controller.signal)
-        : await authoringApi.describeConfiguration(skill, type, configuration, graphId, authoringActions.editingView(), controller.signal);
+        : await authoringApi.describeConfiguration(skill, type, referenceConfiguration(input.template, input.reference), graphId,
+          authoringActions.editingView(), controller.signal);
       controller.signal.throwIfAborted();
       if (!description.availability.available) throw new Error(description.availability.reason ?? `${type} 不可创建`);
       if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
+      if (input?.reference.referenceKind === 'timeline') {
+        const field = description.fields.items.flatMap(item => item.computed ? [item] : item.fields)
+          .find(item => item.fieldId === input.template.fieldId);
+        if (!field?.choicesAvailability?.available || field.choices === null)
+          throw new Error(field?.choicesAvailability?.reason ?? '当前图没有可用的 Timeline 引用合同。');
+        const selected = resolveReferenceDrag(input.reference, { kind: 'ready', referenceKind: 'timeline',
+          items: field.choices, invalidReason: '这个 Timeline 无法用于当前图。' });
+        if (selected.kind === 'rejected') throw new Error(selected.reason);
+        for (const field of selected.choice.associated) setIn(description.configuration, field.serializedMemberPath, field.value);
+      }
       const ports = description.ports.items.map(entry => ({
         id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow', valueType: entry.port.type,
         objectKind: entry.port.objectKind, objectKindName: entry.port.objectKindName, acceptedObjectKinds: entry.port.acceptedObjectKinds,
@@ -463,16 +476,16 @@ function NodeTypePicker({ graph, at, referenceDrop, onCreated, onClose }: {
   }, [skill, referenceDrop]);
   const choices: NodeCreationChoice[] | null = referenceDrop
     ? referenceDrop.templates.map(template => ({ key: `${template.type}/${template.fieldId}`, type: template.type, name: template.type,
-      detail: template.fieldId, clrType: null, configuration: referenceConfiguration(template, referenceDrop.reference) }))
+      detail: template.fieldId, clrType: null, reference: { template, reference: referenceDrop.reference } }))
     : types?.filter(item => !item.hidden).map(item => ({ key: item.type, type: item.type, name: item.displayName ?? item.type,
       detail: [item.category, item.displayName === null ? null : item.type, item.kind, item.timelineDomains].filter(Boolean).join(' · '),
-      clrType: item.clrType, configuration: null })) ?? null;
+      clrType: item.clrType, reference: null })) ?? null;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const shown = (choices ?? []).filter(item => words.every(word => `${item.name} ${item.type} ${item.detail}`.toLowerCase().includes(word)));
   const add = async (item: NodeCreationChoice) => {
     setBusy(true);
     try {
-      const id = await createNode(item.type, item.configuration, at.flow);
+      const id = await createNode(item.type, item.reference, at.flow);
       onCreated(id);
       onClose();
     } catch (reason) {
@@ -864,7 +877,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     if (offered.length > 1) { setPicker({ ...at, referenceDrop: { reference, templates: offered } }); return; }
     setPicker(null);
     const template = offered[0];
-    void createNode(template.type, referenceConfiguration(template, reference), at.flow).then(selectCreated, reason => {
+    void createNode(template.type, { template, reference }, at.flow).then(selectCreated, reason => {
       if (!isAbort(reason)) consoleActions.error('作者', reason);
     });
   };

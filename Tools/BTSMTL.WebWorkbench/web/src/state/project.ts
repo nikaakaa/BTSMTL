@@ -50,7 +50,7 @@ export const projectActions = {
     selectionActions.select({ kind: 'content', id: documentElementKey(element) });
     openPanel('inspector');
   },
-  async openDocument(documentPath: string): Promise<void> {
+  async openDocument(documentPath: string, action: 'open' | 'inspect' = 'open'): Promise<void> {
     const document = await openOwner({ owner: documentPath, ownerName: documentPath });
     if (document.rootFile === null) {
       selectionActions.select({ kind: 'scene', id: contentSelectionKey(getState().contentSelection) ?? '' });
@@ -59,6 +59,11 @@ export const projectActions = {
     }
     const item = projectContents(useAuthoring.getState().documents).items.find(item => item.owner === documentPath && item.file === document.rootFile);
     if (item === undefined) throw new Error(`当前文档没有可打开的根文件：${documentPath}`);
+    if (action === 'inspect') {
+      selectionActions.select({ kind: 'content', id: JSON.stringify([item.owner, item.file]) });
+      openPanel('inspector');
+      return;
+    }
     await projectActions.open(item);
   },
   async inspect(target: ContentTarget): Promise<void> {
