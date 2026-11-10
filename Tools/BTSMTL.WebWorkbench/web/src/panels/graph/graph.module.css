@@ -380,11 +380,13 @@
   height: 12px;
 }
 
+/* 落点按指针下的元素认句柄；图标不接指针，才不会落到同位的隐藏锚点 in:@node 上。 */
 .flowPort svg {
   display: block;
   width: 10px;
   height: 12px;
   overflow: visible;
+  pointer-events: none;
 }
 
 .flowPort path {
