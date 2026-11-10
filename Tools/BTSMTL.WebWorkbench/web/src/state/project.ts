@@ -1,6 +1,6 @@
 import { authoringApi, authoringOwner, authoringTargetKey, type ProjectItem, type ReferrersResult } from '../api/authoring';
 import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo } from '../api/workspaceDocuments';
-import { authoringActions, authoringDocument, currentDocument, layoutPath, useAuthoring } from './authoring';
+import { authoringActions, authoringDocument, currentDocument, dropOrphans, layoutPath, referencedFiles, useAuthoring } from './authoring';
 import { graphKey, nodeSelectId, type GraphNavigationTarget, type NodeNavigationTarget } from './graphModel';
 import type { JsonObject } from './skillJson';
 import { numberOf } from './skillJson';
@@ -140,9 +140,12 @@ export const projectActions = {
     const referrers = await authoringApi.referrers(ownerOf(item), { identity: item.identity }, authoringActions.editingView());
     if (!referrers.complete || referrers.items.length !== 0) return referrers;
     await openOwner(item);
+    // 与删除节点、片段一致：条目引用的专属图与 Timeline 不再被引用时随之删除。
+    const seeds = referencedFiles(currentDocument(item.file) ?? null);
     authoringActions.remove([item.file]);
     if (item.kind === 'graph' && currentDocument(layoutPath))
       authoringActions.edit(layoutPath, value => { delete (value as JsonObject)[item.identity]; });
+    dropOrphans(seeds);
     return referrers;
   },
 
