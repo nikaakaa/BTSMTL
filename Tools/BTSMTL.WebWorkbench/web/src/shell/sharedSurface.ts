@@ -3,8 +3,9 @@
 // 布局与播放器 BTSMTL.Preview.PreviewSharedSurface 相同：64 字节头 + 3 个帧槽；帧槽 = 256 字节槽头 + 宽×高×4，
 // 槽头 0 为槽序号，8／16 为采集与写完时刻（QueryPerformanceCounter）。壳以计时方式启动时，本页画完一帧把两个时刻回报给壳。
 
-import { shellBridge as bridge } from './shellBridge';
+import { shellBridge } from './shellBridge';
 
+const bridge = shellBridge;
 export const sharedSurfaceAvailable = bridge !== null;
 
 const HeaderBytes = 64, SlotCount = 3, SlotHeaderBytes = 256;

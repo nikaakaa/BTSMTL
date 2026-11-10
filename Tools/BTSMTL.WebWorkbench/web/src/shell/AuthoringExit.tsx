@@ -25,7 +25,8 @@ export function AuthoringExit() {
   const busy = useAuthoring(saving);
 
   useEffect(() => {
-    if (shellBridge === null) {
+    const bridge = shellBridge;
+    if (bridge === null) {
       const beforeUnload = (event: BeforeUnloadEvent) => {
         const state = useAuthoring.getState();
         if (!saving(state) && unsaved(state).length === 0 && variableRequests.size === 0) return;
@@ -44,9 +45,9 @@ export function AuthoringExit() {
       setFailure(null);
       setRequested(true);
     };
-    shellBridge.addEventListener('message', request);
-    shellBridge.postMessage({ type: 'author-close-ready' });
-    return () => shellBridge.removeEventListener('message', request);
+    bridge.addEventListener('message', request);
+    bridge.postMessage({ type: 'author-close-ready' });
+    return () => bridge.removeEventListener('message', request);
   }, []);
 
   useEffect(() => {
