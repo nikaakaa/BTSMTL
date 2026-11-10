@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace BTSMTL.WebWorkbench.Shell;
 
 // 诊断开关 --surface-timing <JSON 路径>：网页每画完一帧共享画面区回报该帧的采集与写完时刻（QueryPerformanceCounter），
-// 壳按收到回报的时刻统计 采集→画完、写完→画完 的延迟与按序号算的丢帧，每 120 帧覆盖写一次汇总。
+// 壳在首帧、每 120 帧和退出时写汇总，单步的快预览也可确认实际画到了画布。
 sealed class SurfaceTiming(string path)
 {
     readonly List<double> m_FromCapture = [];
@@ -24,7 +24,7 @@ sealed class SurfaceTiming(string path)
         if (m_FirstSequence < 0)
             m_FirstSequence = sequence;
         m_LastSequence = sequence;
-        if (m_FromCapture.Count % 120 == 0)
+        if (m_FromCapture.Count == 1 || m_FromCapture.Count % 120 == 0)
             Write();
     }
 
