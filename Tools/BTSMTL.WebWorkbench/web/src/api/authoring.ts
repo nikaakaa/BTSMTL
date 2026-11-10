@@ -793,8 +793,8 @@ export const authoringApi = {
   skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
   createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request)
     .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'SkillCreationDraft.variables') })),
-  createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string) =>
-    postJson<SkillCreationDraft & { documentPath: string }>('/api/authoring/documents/draft-create', { kind, name })
+  createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string, curve: string | null) =>
+    postJson<SkillCreationDraft & { documentPath: string; reads: SkillEditingView['reads'] }>('/api/authoring/documents/draft-create', { kind, name, curve })
       .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request)

@@ -662,13 +662,13 @@ export const authoringActions = {
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
   },
 
-  async createWorkspaceDocument(kind: WorkspaceCreationKind, name: string) {
-    const draft = await authoringApi.createWorkspaceDraft(kind, name);
+  async createWorkspaceDocument(kind: WorkspaceCreationKind, name: string, curve: string | null) {
+    const draft = await authoringApi.createWorkspaceDraft(kind, name, curve);
     const target = authoringOwner(draft.documentPath);
     await workspaceDocumentsApi.save({ writes: [{ kind: target.kind, documentPath: target.documentPath, expectedRevision: '',
       files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) },
     ...Object.entries(variablesDrafts(draft.variables === null ? [] : [draft.variables])).map(([path, document]) => documentWrite(path, document))],
-    reads: [] });
+    reads: draft.reads });
     void authoringActions.listDocuments();
     return target;
   },
