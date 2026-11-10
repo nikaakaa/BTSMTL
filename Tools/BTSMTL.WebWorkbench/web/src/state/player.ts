@@ -198,6 +198,12 @@ export const playerService = {
     };
   },
 
+  hostRestarted() {
+    playerService.attach(null);
+    if (autoStart !== 'stopped') autoStart = 'available';
+    if (viewing !== null) void playerService.refresh();
+  },
+
   async refresh() {
     try {
       const [builds, lives] = await Promise.all([playerApi.builds(), playerApi.lives()]);

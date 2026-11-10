@@ -21,6 +21,7 @@ sealed class ShellForm : Form
     bool m_PageControlsClose;
     bool m_ClosePending;
     bool m_CloseApproved;
+    TaskCompletionSource? m_RetryHost;
 
     public ShellForm(Func<CancellationToken, Task<Uri>> connect, SurfaceTiming? timing, DesktopLaunch? desktop = null)
     {
@@ -45,6 +46,7 @@ sealed class ShellForm : Form
                 Uri address = await connect(m_Closing.Token);
                 m_Closing.Token.ThrowIfCancellationRequested();
                 await Open(address);
+                if (desktop is not null) await WatchHost(desktop, m_Closing.Token);
             }
             catch (OperationCanceledException) when (m_Closing.IsCancellationRequested)
             {
@@ -106,8 +108,66 @@ sealed class ShellForm : Form
         {
             if (InWorkbench(message.Source)) Receive(JsonNode.Parse(message.WebMessageAsJson)!);
         };
+        web.NewWindowRequested += async (_, request) =>
+        {
+            request.Handled = true;
+            if (!InWorkbench(request.Uri) || new Uri(request.Uri).AbsolutePath != "/popout.html") return;
+            using var deferral = request.GetDeferral();
+            var features = request.WindowFeatures;
+            var popout = new Form { Text = "BTSMTL 工作台", StartPosition = FormStartPosition.CenterParent,
+                ClientSize = features.HasSize ? new Size((int)features.Width, (int)features.Height) : new Size(1000, 700) };
+            var view = new WebView2 { Dock = DockStyle.Fill };
+            popout.Controls.Add(view);
+            try
+            {
+                popout.Show(this);
+                await view.EnsureCoreWebView2Async(m_Environment);
+                view.CoreWebView2.NavigationStarting += (_, navigation) => navigation.Cancel = !InWorkbench(navigation.Uri);
+                view.CoreWebView2.WindowCloseRequested += (_, _) => popout.Close();
+                request.NewWindow = view.CoreWebView2;
+            }
+            catch (Exception error)
+            {
+                popout.Dispose();
+                if (!IsDisposed) MessageBox.Show(this, error.Message, "无法拆出工作台面板", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        };
         m_Status.Text = "正在打开工作台界面…";
         web.Navigate(address.ToString());
+    }
+
+    async Task WatchHost(DesktopLaunch desktop, CancellationToken cancellation)
+    {
+        while (true)
+        {
+            await desktop.WaitForDisconnect(cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            while (true)
+            {
+                HostStatus("reconnecting", "工作台 Host 已断开，正在恢复连接。");
+                try
+                {
+                    Uri address = await desktop.Connect(cancellation);
+                    cancellation.ThrowIfCancellationRequested();
+                    if (!m_View.Visible) m_View.CoreWebView2.Navigate(address.ToString());
+                    HostStatus("ready", "");
+                    break;
+                }
+                catch (Exception error) when (!cancellation.IsCancellationRequested)
+                {
+                    m_RetryHost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    HostStatus("failed", error.Message);
+                    await m_RetryHost.Task.WaitAsync(cancellation);
+                    m_RetryHost = null;
+                }
+            }
+        }
+    }
+
+    void HostStatus(string state, string message)
+    {
+        if (!m_View.Visible && state != "ready") m_Status.Text = message;
+        Post(new JsonObject { ["type"] = "desktop-host", ["state"] = state, ["message"] = message });
     }
 
     // { type: "surface", id, bytes }：建（或沿用同大小的）画面区并交给网页；
@@ -117,6 +177,11 @@ sealed class ShellForm : Form
     void Receive(JsonNode message)
     {
         string? type = (string?)message["type"];
+        if (type == "desktop-host-retry")
+        {
+            m_RetryHost?.TrySetResult();
+            return;
+        }
         if (type == "author-close-ready")
         {
             m_PageControlsClose = true;

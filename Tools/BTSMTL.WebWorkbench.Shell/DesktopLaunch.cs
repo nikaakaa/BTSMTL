@@ -79,8 +79,8 @@ sealed class DesktopLaunch : IDisposable
             "--contentRoot", AppContext.BaseDirectory }.Concat(m_Profile.HostArguments))
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动工作台 Host。");
-        var error = process.StandardError.ReadToEndAsync(cancellation);
         using var starting = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        var error = process.StandardError.ReadToEndAsync(starting.Token);
         var connecting = Attach(35_000, starting.Token);
         var exited = process.WaitForExitAsync(starting.Token);
         try
@@ -114,6 +114,14 @@ sealed class DesktopLaunch : IDisposable
             pipe.Dispose();
             throw;
         }
+    }
+
+    public async Task WaitForDisconnect(CancellationToken cancellation)
+    {
+        using NamedPipeClientStream lease = m_Lease!;
+        try { await lease.ReadAsync(new byte[1], cancellation); }
+        catch (IOException) { }
+        finally { m_Lease = null; }
     }
 
     public void Dispose()

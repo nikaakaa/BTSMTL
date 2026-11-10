@@ -10,6 +10,15 @@
 .exitDialog::backdrop { background: rgb(0 0 0 / 55%); }
 .exitDialog ul { max-height: 12rem; overflow: auto; overflow-wrap: anywhere; }
 
+.hostNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  white-space: pre-wrap;
+}
+
 .workbench {
   display: flex;
   flex-direction: column;
