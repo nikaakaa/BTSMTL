@@ -39,6 +39,7 @@ export function PlayerPanel() {
   const runId = useWorkbench(state => state.runId);
   if (hostAvailable === false) return <Empty text="未接入运行宿主" />;
   if (runId === null && isRestoringRunAddress()) return <Empty text="正在打开运行档案" />;
+  if (mode === null) return <Empty text="正在读取预览档位" />;
   if (mode === 'quick') return <QuickPreviewPicture />;
   return <PlayerView />;
 }

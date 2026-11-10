@@ -390,7 +390,7 @@ function connectDefault(state: ReturnType<typeof getState>) {
     return;
   }
   const build = state.playerBuilds?.[0];
-  if (autoStart === 'attempted' || build === undefined) return;
+  if (state.previewMode !== 'real' || autoStart === 'attempted' || build === undefined) return;
   autoStart = 'attempted';
   void playerService.start(build.buildId, 1280);
 }
@@ -404,7 +404,7 @@ let autoPlay: string | null = null;
 
 function loadDefault(state: ReturnType<typeof getState>) {
   const live = state.live, scene = selectedScene(state);
-  if (state.runId !== null || state.previewMode === 'quick' || !state.viewerOpen || live === null || scene === undefined ||
+  if (state.runId !== null || state.previewMode !== 'real' || !state.viewerOpen || live === null || scene === undefined ||
     live.hello === null || live.identity.liveProtocol !== 'btsmtl.preview-live/1' || requestedLoad !== null) return;
   const source = live.player?.source;
   if (autoPlay !== null && source?.loadCommandId === autoPlay) {
