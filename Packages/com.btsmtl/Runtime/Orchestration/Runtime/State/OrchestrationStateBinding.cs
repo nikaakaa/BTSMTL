@@ -56,9 +56,12 @@ namespace BTSMTL.Orchestration
             new OrchestrationStateValidRanges<TValue>(plan, memory);
 
         public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged =>
+            CopyMemory<TValue>(plan.View, source, destination);
+
+        public static void CopyMemory<TValue>(OrchestrationStateLayoutView layout,
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
-            OrchestrationStateLayoutView layout = plan.View;
             var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(layout, source);
             var destinationFrames = new OrchestrationExecutionFrames<TValue>(layout, destination);
             for (int slot = 0, remaining = destinationFrames.Count; remaining > 0; slot++)
@@ -72,8 +75,12 @@ namespace BTSMTL.Orchestration
                     previous.OwnerOperationIndex != next.OwnerOperationIndex)
                     destinationFrames.ClearPayloads(slot, layout.ProgramIndex(previous.SkillContentId));
             }
-            foreach (OrchestrationStateRegion<byte> region in ValidRanges(plan, source))
+            var ranges = new OrchestrationStateValidRanges<TValue>.Enumerator(layout, sourceFrames);
+            while (ranges.MoveNext())
+            {
+                OrchestrationStateRegion<byte> region = ranges.Current;
                 source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
+            }
         }
         public static int WriteBlitState<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> output, bool countOnly = false) where TValue : unmanaged
@@ -135,7 +142,8 @@ namespace BTSMTL.Orchestration
             m_Memory = memory;
         }
 
-        public Enumerator GetEnumerator() => new Enumerator(m_Plan, m_Memory);
+        public Enumerator GetEnumerator() =>
+            new Enumerator(m_Plan, new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Plan, m_Memory));
 
         public ref struct Enumerator
         {
@@ -147,10 +155,10 @@ namespace BTSMTL.Orchestration
             int m_FrameSlot;
             int m_RemainingFrames;
 
-            internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory)
+            internal Enumerator(OrchestrationStateLayoutView plan, ReadOnlyOrchestrationExecutionFrames<TValue> frames)
             {
                 m_Segments = plan.Segments;
-                m_Frames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory);
+                m_Frames = frames;
                 m_FramePayloads = plan.FramePayloads;
                 m_PayloadSizes = default;
                 m_SegmentIndex = -1;
