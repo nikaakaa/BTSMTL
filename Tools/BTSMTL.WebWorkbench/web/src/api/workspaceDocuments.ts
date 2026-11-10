@@ -24,7 +24,7 @@ const readElement = object({ kind: text, identity: text, name: text,
   jsonPath: text, revision: text, authoringType: nullable(text) });
 export type WorkspaceDocumentElement = ReturnType<typeof readElement>;
 export const readWorkspaceDocumentElements = array(readElement);
-export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string };
+export type WorkspaceDocumentWrite = Pick<WorkspaceDocumentSnapshot, 'kind' | 'documentPath' | 'files'> & { expectedRevision: string; deleted?: boolean };
 export type WorkspaceDocumentRead = Pick<WorkspaceDocumentInfo, 'documentPath' | 'revision'>;
 export type WorkspaceEditingView = {
   writes: WorkspaceDocumentWrite[];
@@ -41,7 +41,8 @@ const readElements = object({ success: boolean, elements: readWorkspaceDocumentE
 export const readWorkspaceDocumentView = object({ success: boolean, documents: array(readWorkspaceDocumentSnapshot), elements: readWorkspaceDocumentElements });
 const readView = readWorkspaceDocumentView;
 const readEditingView = object({
-  writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles })),
+  writes: array(object({ kind: choice(...workspaceDocumentKinds), documentPath: text, expectedRevision: text, files: readFiles,
+    deleted: optional(boolean) })),
   reads: array(object({ documentPath: text, revision: text })), execution: readExecutionScopeSelection,
   // Host 的 Scene 可空，未选场景时写出 null。
   product: nullable(object({ value: text, revision: text })), scene: optional(nullable(object({ path: text, revision: text }))),

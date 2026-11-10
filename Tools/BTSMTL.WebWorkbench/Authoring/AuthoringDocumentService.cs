@@ -124,9 +124,13 @@ public sealed class AuthoringDocumentService
         new AuthoringDocumentRead(DirectoryPath(read.DocumentPath), read.Revision)).ToArray();
 
     public AuthoringDocumentWrite[] Writes(AuthoringDocumentEditingView request) => request.Writes
-        .Select(write => new AuthoringDocumentWrite(
-            AuthoringDocumentKind.All.Single(kind => kind.Id == write.Kind),
-            DirectoryPath(write.DocumentPath), write.ExpectedRevision, write.Files)).ToArray();
+        .Select(write =>
+        {
+            AuthoringDocumentKind kind = AuthoringDocumentKind.All.Single(kind => kind.Id == write.Kind);
+            string directory = DirectoryPath(write.DocumentPath);
+            return write.Deleted ? AuthoringDocumentWrite.Delete(kind, directory, write.ExpectedRevision)
+                : new AuthoringDocumentWrite(kind, directory, write.ExpectedRevision, write.Files);
+        }).ToArray();
 
     public string DirectoryPath(string documentPath) => Path.GetFullPath(Path.Combine(m_Documents.Workspace, documentPath));
 

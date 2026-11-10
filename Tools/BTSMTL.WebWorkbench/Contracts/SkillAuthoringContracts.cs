@@ -18,7 +18,8 @@ public sealed record SkillAuthoringProductScope([property: JsonRequired] string 
 public sealed record AuthoringDocumentEdit([property: JsonRequired, JsonPropertyName("kind")] string Kind,
     [property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
     [property: JsonRequired, JsonPropertyName("expectedRevision")] string ExpectedRevision,
-    [property: JsonRequired, JsonPropertyName("files")] IReadOnlyDictionary<string, string> Files);
+    [property: JsonRequired, JsonPropertyName("files")] IReadOnlyDictionary<string, string> Files,
+    [property: JsonPropertyName("deleted")] bool Deleted = false);
 public sealed record AuthoringDocumentReadRevision([property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
     [property: JsonRequired, JsonPropertyName("revision")] string Revision);
 public sealed record AuthoringDocumentEditingView([property: JsonRequired, JsonPropertyName("writes")] AuthoringDocumentEdit[] Writes,

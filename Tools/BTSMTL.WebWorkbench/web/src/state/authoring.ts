@@ -743,13 +743,14 @@ export const authoringActions = {
       edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 } } });
   },
 
-  // 删除文件：网页新建的直接丢弃，原有的保存时删除。
+  // 删除文件：网页新建的直接丢弃，原有的保存时删除。图的变量文档随图删除：草稿丢弃，已保存的随本次保存删除整个文档。
   remove(paths: string[]) {
     if (!paths.length) return;
     const graphIds = new Set<string | null>(paths.flatMap(path => /^graphs\/(.+)\.json$/.exec(path)?.slice(1) ?? []));
-    const related = Object.entries(get().documents).filter(([, document]) => document.kind === 'variables' &&
+    const drafts = Object.entries(get().documents).filter(([, document]) => document.kind === 'variables' &&
       document.revision === null && graphIds.has(document.identity)).map(([key]) => key);
-    record(related);
+    const saved = (get().directory ?? []).filter(info => info.kind === 'variables' && graphIds.has(info.identity));
+    record([...drafts, ...saved.map(info => info.documentPath)]);
     const state = get();
     const edited = { ...state.edited };
     for (const path of paths) delete edited[path];
@@ -757,7 +758,12 @@ export const authoringActions = {
     const documents = { ...state.documents, [key]: { ...state.documents[key],
       edited, removed: [...new Set([...state.removed, ...paths.filter(path => state.files[path] !== undefined)])], version: state.version + 1,
     } };
-    for (const path of related) delete documents[path];
+    for (const path of drafts) delete documents[path];
+    for (const info of saved) {
+      const loaded = documents[info.documentPath];
+      documents[info.documentPath] = { ...(loaded ?? { ...newDocument(), kind: 'variables', rootFile: authoringRootFiles.variables,
+        identity: info.identity, revision: info.revision }), edited: {}, removed: [authoringRootFiles.variables], version: (loaded?.version ?? 0) + 1 };
+    }
     set({ documents });
   },
 
@@ -957,9 +963,13 @@ export const authoringActions = {
             message: `${lastSave.message}；此回执对应保存时场景 ${scene?.path ?? '未选择'}，当前场景选择已改变` } } : { lastSave: null }),
         };
       }
+      // 已删除的文档没有回执；保存后仍处于删除状态的从网页移除。
+      const deleted = editingView.writes.filter(write => write.deleted && documents[write.documentPath] !== undefined &&
+        documentDeleted(documents[write.documentPath])).map(write => write.documentPath);
+      for (const path of deleted) delete documents[path];
       set({ documents });
       if (receipts.some(receipt => receipt.documentPath === get().target?.documentPath)) publishDocument();
-      if (receipts.some(document => submittedDocuments.get(document.documentPath)!.revision === null))
+      if (deleted.length !== 0 || receipts.some(document => submittedDocuments.get(document.documentPath)!.revision === null))
         void authoringActions.listDocuments();
       return isActiveTarget(target) && currentScene && !controller.signal.aborted;
     };
@@ -1469,7 +1479,12 @@ function savedTimelineFiles(projected: Record<string, string>, saved: Record<str
   ]);
 }
 
+// 根文件被删除即删除整个文档。
+const documentDeleted = (document: AuthoringDocument) => document.rootFile !== null && document.removed.includes(document.rootFile);
+
 function documentWrite(documentPath: string, document: AuthoringDocument): WorkspaceDocumentWrite {
+  if (documentDeleted(document))
+    return { kind: document.kind, documentPath, expectedRevision: document.revision ?? '', files: {}, deleted: true };
   const files = { ...document.sourceFiles };
   for (const [path, content] of Object.entries(workingFiles(document.files, document, document.rootFile)))
     if (content !== document.files[path]) files[path] = content;

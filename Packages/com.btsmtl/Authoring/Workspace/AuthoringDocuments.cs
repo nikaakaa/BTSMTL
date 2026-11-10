@@ -417,6 +417,9 @@ namespace BTSMTL.Authoring.Workspace
                     changes.Add(new AuthoringFileChange(DocumentFile(directory, removed), null));
             }
             Commits.Commit(changes);
+            foreach (AuthoringDocumentWrite write in writes)
+                if (write.IsDeletion && Directory.Exists(write.DirectoryPath) && !Directory.EnumerateFileSystemEntries(write.DirectoryPath).Any())
+                    Directory.Delete(write.DirectoryPath);
             return Task.FromResult(edited);
         });
 
