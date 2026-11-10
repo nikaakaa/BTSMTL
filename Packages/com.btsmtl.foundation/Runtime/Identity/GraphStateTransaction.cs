@@ -29,10 +29,12 @@ namespace BTSMTL.Graphs
         public Span<byte> BindCandidate(Span<byte> first, Span<byte> second) =>
             CommittedBank == 0 ? second : first;
 
+        public void Begin() => HasCandidate = true;
+
         public void Begin(Span<byte> first, Span<byte> second)
         {
             BindCommitted(first, second).CopyTo(BindCandidate(first, second));
-            HasCandidate = true;
+            Begin();
         }
 
         public void Commit()
@@ -67,7 +69,7 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException("录制状态的布局身份或字节数与当前实例不匹配。");
             reader.ReadSpan<byte>(length).CopyTo(BindCandidate(first, second));
             CandidateTexts.RestoreRecordedState(ref reader);
-            HasCandidate = true;
+            Begin();
         }
     }
 }
