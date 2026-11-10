@@ -5,6 +5,7 @@ import { applyPanelAddress } from './address';
 import { panelComponents } from '../panels/registry';
 import { TipProvider } from '../ui/controls';
 import './dockview.css';
+import { AuthoringExit } from './AuthoringExit';
 import { GroupActions, Watermark } from './GroupActions';
 import { attachLayout } from './layout';
 import { PanelTab } from './PanelTab';
@@ -26,6 +27,7 @@ export function Workbench() {
     <TipProvider>
       <div className={styles.workbench}>
         <Toolbar />
+        <AuthoringExit />
         <DockviewReact
           className={styles.dock}
           theme={theme}

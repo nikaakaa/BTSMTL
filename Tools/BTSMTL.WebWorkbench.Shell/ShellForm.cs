@@ -18,6 +18,9 @@ sealed class ShellForm : Form
     readonly SurfaceTiming? m_Timing;
     readonly CancellationTokenSource m_Closing = new();
     CoreWebView2Environment? m_Environment;
+    bool m_PageControlsClose;
+    bool m_ClosePending;
+    bool m_CloseApproved;
 
     public ShellForm(Func<CancellationToken, Task<Uri>> connect, SurfaceTiming? timing, DesktopLaunch? desktop = null)
     {
@@ -53,6 +56,14 @@ sealed class ShellForm : Form
                 Environment.ExitCode = 1;
             }
         };
+        FormClosing += (_, closing) =>
+        {
+            if (!m_PageControlsClose || m_CloseApproved || closing.CloseReason != CloseReason.UserClosing) return;
+            closing.Cancel = true;
+            if (m_ClosePending) return;
+            m_ClosePending = true;
+            Post(new JsonObject { ["type"] = "author-close-request" });
+        };
         FormClosed += (_, _) =>
         {
             activation?.Unregister(null);
@@ -74,7 +85,16 @@ sealed class ShellForm : Form
         bool InWorkbench(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
             uri.GetLeftPart(UriPartial.Authority) == origin;
         var web = m_View.CoreWebView2;
-        web.NavigationStarting += (_, navigation) => navigation.Cancel = !InWorkbench(navigation.Uri);
+        web.NavigationStarting += (_, navigation) =>
+        {
+            navigation.Cancel = !InWorkbench(navigation.Uri);
+            if (!navigation.Cancel) m_PageControlsClose = m_ClosePending = false;
+        };
+        web.ProcessFailed += (_, failed) =>
+        {
+            if (failed.ProcessFailedKind is CoreWebView2ProcessFailedKind.BrowserProcessExited or CoreWebView2ProcessFailedKind.RenderProcessExited)
+                m_PageControlsClose = m_ClosePending = false;
+        };
         web.NavigationCompleted += (_, navigation) =>
         {
             m_View.Visible = navigation.IsSuccess;
@@ -97,6 +117,22 @@ sealed class ShellForm : Form
     void Receive(JsonNode message)
     {
         string? type = (string?)message["type"];
+        if (type == "author-close-ready")
+        {
+            m_PageControlsClose = true;
+            return;
+        }
+        if (type == "author-close-resolved")
+        {
+            if (!m_ClosePending) return;
+            m_ClosePending = false;
+            if ((bool)message["close"]!)
+            {
+                m_CloseApproved = true;
+                Close();
+            }
+            return;
+        }
         if (type == "surface-drawn")
         {
             m_Timing?.Record(long.Parse((string)message["sequence"]!), long.Parse((string)message["captured"]!),

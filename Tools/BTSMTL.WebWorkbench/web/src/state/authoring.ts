@@ -927,7 +927,8 @@ export const authoringActions = {
     const variableResults = await Promise.allSettled(variableRequests.values());
     const current = get();
     const { documents } = current;
-    if (current.target !== target || current.resourceTarget !== null || Object.values(documents).some(document => document.saving)) return;
+    if (current.target !== target || (operation !== 'save' && current.resourceTarget !== null) ||
+      Object.values(documents).some(document => document.saving)) return;
     const variableFailure = variableResults.find(result => result.status === 'rejected');
     if (variableFailure?.status === 'rejected') {
       const error: unknown = variableFailure.reason;
@@ -1392,10 +1393,10 @@ export function markersCollide(document: JsonValue, ids: ReadonlySet<string>, sh
 }
 
 
-export const hasChanges = (target = get().target) => {
-  const document = authoringDocument(useAuthoring.getState(), target);
-  return Object.keys(document.edited).length + document.removed.length > 0;
-};
+export const isDocumentDirty = (document: Pick<AuthoringDocument, 'edited' | 'removed'>) =>
+  Object.keys(document.edited).length > 0 || document.removed.length > 0;
+
+export const hasChanges = (target = get().target) => isDocumentDirty(authoringDocument(useAuthoring.getState(), target));
 
 function referenceReplacementOwners(plan: ReferenceReplacementResult) {
   return plan.affectedSkills.map(name => {

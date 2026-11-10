@@ -1,3 +1,15 @@
+.exitDialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  color: var(--text);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.25rem;
+}
+.exitDialog::backdrop { background: rgb(0 0 0 / 55%); }
+.exitDialog ul { max-height: 12rem; overflow: auto; overflow-wrap: anywhere; }
+
 .workbench {
   display: flex;
   flex-direction: column;

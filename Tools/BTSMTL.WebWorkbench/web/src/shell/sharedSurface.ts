@@ -3,19 +3,8 @@
 // 布局与播放器 BTSMTL.Preview.PreviewSharedSurface 相同：64 字节头 + 3 个帧槽；帧槽 = 256 字节槽头 + 宽×高×4，
 // 槽头 0 为槽序号，8／16 为采集与写完时刻（QueryPerformanceCounter）。壳以计时方式启动时，本页画完一帧把两个时刻回报给壳。
 
-interface SharedBufferEvent extends Event {
-  additionalData: { type?: string; id?: string; bytes?: number; timing?: boolean };
-  getBuffer(): ArrayBuffer;
-}
+import { shellBridge as bridge } from './shellBridge';
 
-interface ShellBridge {
-  postMessage(message: unknown): void;
-  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  addEventListener(type: 'sharedbufferreceived', listener: (event: SharedBufferEvent) => void): void;
-  releaseBuffer(buffer: ArrayBuffer): void;
-}
-
-const bridge = (window as Window & { chrome?: { webview?: ShellBridge } }).chrome?.webview ?? null;
 export const sharedSurfaceAvailable = bridge !== null;
 
 const HeaderBytes = 64, SlotCount = 3, SlotHeaderBytes = 256;
