@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringActions, authoringDocument, isDocumentDirty, useAuthoring, variableRequests } from '../state/authoring';
 import { PanelBar } from '../ui/blocks';
 import { Button } from '../ui/controls';
+import { finishAuthoringInputs } from './layout';
 import { shellBridge } from './shellBridge';
 import styles from './shell.module.css';
 
@@ -38,7 +39,7 @@ export function AuthoringExit() {
     }
     const request = async (event: MessageEvent) => {
       if (event.data?.type !== 'author-close-request') return;
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      finishAuthoringInputs();
       await Promise.allSettled(variableRequests.values());
       const state = useAuthoring.getState();
       if (!saving(state) && unsaved(state).length === 0) { resolveExit(true); return; }

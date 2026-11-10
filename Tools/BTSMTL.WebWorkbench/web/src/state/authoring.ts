@@ -463,10 +463,11 @@ export function timelineOf(documentId: string, document: JsonObject): AuthorTime
 
 // 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
-  const { documentGraphs, files, target } = get();
+  const state = get();
+  const closed = state.target === null || documentDeleted(state);
   useWorkbench.setState({
-    graphs: target === null ? null : documentGraphs, graphAvailability: [],
-    timelines: target ? documentTimelines(files) : [],
+    graphs: closed ? null : state.documentGraphs, graphAvailability: [],
+    timelines: closed ? [] : documentTimelines(state.files),
   });
   reconcileSelection();
 }
@@ -592,8 +593,12 @@ function reloadEditedDocument(target: AuthoringTarget) {
 
 function scheduleDocumentReload(target: AuthoringTarget | null) {
   if (target === null) return;
-  setDocument({ sourceRevision: null }, target);
   cancelDocumentReload();
+  if (documentDeleted(authoringDocument(useAuthoring.getState(), target))) {
+    publishDocument();
+    return;
+  }
+  setDocument({ sourceRevision: null }, target);
   documentTimer = setTimeout(() => {
     documentTimer = null;
     void reloadEditedDocument(target).catch(error => { if (!isAbort(error)) consoleActions.error('作者', error); });
@@ -880,21 +885,22 @@ export const authoringActions = {
 
   revert() {
     const state = get();
-    if (state.revision === null) {
+    const close = state.target !== null && state.revision === null && isDocumentDirty(state);
+    if (close) {
       loadController?.abort();
-      documentController?.abort();
-      if (documentTimer !== null) clearTimeout(documentTimer);
-      const documents = { ...state.documents };
-      delete documents[authoringTargetKey(state.target!)];
-      set({ target: null, documents });
-      publishDocument();
-      return;
+      cancelDocumentReload();
     }
-    set({ documents: Object.fromEntries(Object.entries(state.documents).map(([key, document]) => [key, {
+    const documents = Object.fromEntries(Object.entries(state.documents).filter(([, document]) =>
+      document.revision !== null || !isDocumentDirty(document)).map(([key, document]) => [key, {
       ...document, edited: {}, removed: [], version: document.version + 1, externalChange: false,
       addedPorts: {}, undo: [], redo: [], variables: null,
-    }])) });
-    reconcileSelection();
+    }]));
+    set({ documents, ...(close ? { target: null } : {}) });
+    if (close) {
+      useWorkbench.setState({ graphRequest: null, timelineRequest: null });
+      selectionActions.select(null);
+      publishDocument();
+    } else reconcileSelection();
   },
 
   undo() { void step('undo', 'redo'); },

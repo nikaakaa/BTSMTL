@@ -317,6 +317,12 @@ export function visiblePanels(): string[] {
   return api ? api.panels.filter(panel => panel.api.isVisible).map(panel => panel.id) : [];
 }
 
+export function finishAuthoringInputs() {
+  const windows = new Set([window, ...api?.groups.map(group => group.api.getWindow()) ?? []]);
+  for (const view of windows)
+    view.document.querySelector<HTMLElement>('input:focus, textarea:focus, [contenteditable="true"]:focus')?.blur();
+}
+
 export function activePanelType(): PanelType | null {
   return api?.activePanel ? panelTypeOf(api.activePanel.id) : null;
 }
