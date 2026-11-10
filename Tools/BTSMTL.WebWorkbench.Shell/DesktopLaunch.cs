@@ -39,14 +39,16 @@ sealed class DesktopLaunch : IDisposable
         string workspace = Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Workspace));
         if (!Directory.Exists(workspace))
             throw new DirectoryNotFoundException($"作者工作区不存在：{workspace}");
-        string key = "BTSMTL.Workbench." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(workspace.ToUpperInvariant())));
+        static string Fingerprint(string path) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path.ToUpperInvariant())));
+        string key = "BTSMTL.Workbench." + Fingerprint(workspace);
+        string pipe = key + "." + Fingerprint(AppContext.BaseDirectory);
         var activate = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\" + key + ".activate");
         var owner = new Mutex(false, "Local\\" + key + ".window");
         bool claimed;
         try { claimed = owner.WaitOne(0); }
         catch (AbandonedMutexException) { claimed = true; }
         if (claimed)
-            return new DesktopLaunch(profile, key, owner, activate);
+            return new DesktopLaunch(profile, pipe, owner, activate);
         activate.Set();
         activate.Dispose();
         owner.Dispose();
@@ -104,7 +106,8 @@ sealed class DesktopLaunch : IDisposable
             await pipe.ConnectAsync(timeout, cancellation);
             using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
             string? address = await reader.ReadLineAsync(cancellation);
-            if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp || uri.Host != "127.0.0.1")
+            if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+                uri.Host != "127.0.0.1" || uri.Port != m_Profile.Port)
                 throw new InvalidDataException("工作台 Host 没有返回就绪的本机地址。");
             m_Lease = pipe;
             return uri;
