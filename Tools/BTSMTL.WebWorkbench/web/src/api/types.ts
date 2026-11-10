@@ -365,6 +365,7 @@ export interface StartLivePlayerRequest {
   playerBuildId: string;
   width: number;
   height: number;
+  hideWindow?: boolean;
 }
 
 export type LiveCommandResult = ReturnType<typeof readPlayerCommandResult>;
