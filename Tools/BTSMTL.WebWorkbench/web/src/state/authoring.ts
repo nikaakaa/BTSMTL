@@ -1197,32 +1197,6 @@ export const authoringActions = {
     });
   },
 
-  // 复制粘贴片段（照 Unity CopyClip／PasteClip）：新身份、保留时长，tree 片段与原片段共用同一张图。
-  copyClip(documentId: string, clipId: string): boolean {
-    const document = currentDocument(timelinePath(documentId));
-    const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
-    useClipClipboard.setState({ clip: clip ? cloneJson(clip) : null });
-    return clip !== null;
-  },
-
-  canPasteClip: () => useClipClipboard.getState().clip !== null,
-
-  pasteClip(documentId: string, trackId: string, startSeconds: number): string | null {
-    const source = useClipClipboard.getState().clip;
-    if (!source) return null;
-    const id = crypto.randomUUID();
-    const length = numberOf(source.m_EndTimeFPRawValue) - numberOf(source.m_StartTimeFPRawValue);
-    authoringActions.edit(timelinePath(documentId), document => {
-      const track = tracksOf(document).find(item => item.m_AuthoringId === trackId);
-      if (!track) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
-      const start = fpRaw(startSeconds);
-      (track.m_Clips as JsonObject[]).push(sortedObject({
-        ...cloneJson(source), m_AuthoringId: id, m_StartTimeFPRawValue: start, m_EndTimeFPRawValue: start + length,
-      }));
-    });
-    return id;
-  },
-
   // 切分（照 Unity SplitClip）：原片段止于切点、去掉淡出，副本从切点开始、去掉淡入，权重与淡入淡出曲线按切点拆分；
   // 动画片段副本的起始偏移后移，位移曲线片段的素材区间在切点分开。tree 等片段没有正式切分。
   splitClip(documentId: string, clipId: string, seconds: number): string | null {
@@ -1397,11 +1371,6 @@ export function markersCollide(document: JsonValue, ids: ReadonlySet<string>, sh
     return markersOf(track).some(marker => ids.has(marker.m_AuthoringId as string) && fixed.has(numberOf(marker.m_TimeFPRawValue) + shift));
   });
 }
-
-
-// 片段剪贴板可订阅：复制后已打开过的菜单随之给出粘贴。
-const useClipClipboard = create<{ clip: JsonObject | null }>()(() => ({ clip: null }));
-export const useCanPasteClip = () => useClipClipboard(state => state.clip !== null);
 
 
 export const hasChanges = (target = get().target) => {

@@ -18,11 +18,12 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
-  useCanPasteClip, useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
+  useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import {
-  clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, markersTaken, trackHasCurves, trackOverlap, useReferenceCurves,
+  clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, copyTimelineClip, markersTaken, pasteTimelineClip,
+  trackHasCurves, trackOverlap, useClipPasteIssue, useReferenceCurves,
 } from '../../state/authoringTimeline';
 import { consoleActions, getState, inputRootKey, isRealArchive, runActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import {
@@ -1075,7 +1076,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
         }
         if (!useAuthoring.getState().author) return;
         if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'v')) {
-          if (event.key === 'c' ? copySelection() : pasteAfterSelection()) event.preventDefault();
+          if (event.key === 'c' ? copySelection() : elements !== null && pasteAfterSelection(elements)) event.preventDefault();
           return;
         }
         // 作者模式 Delete：删除框选的片段与标记，否则删除选中的片段、标记或轨道。
@@ -1259,13 +1260,12 @@ const currentClip = (documentId: string, clipId: string) =>
 // Ctrl+C 复制选中片段；Ctrl+V 粘贴到选中片段所在轨道、紧接其后（选中轨道时接在轨道末尾）。
 function copySelection() {
   const picked = selectedClip();
-  if (picked) authoringActions.copyClip(picked.documentId, picked.clipId);
-  return !!picked;
+  return picked !== null && copyTimelineClip(picked.documentId, picked.clipId);
 }
 
-function pasteAfterSelection() {
+function pasteAfterSelection(elements: SkillElements) {
   const selection = getState().selection;
-  if (!selection || selection.id.startsWith('input/') || !authoringActions.canPasteClip()) return false;
+  if (!selection || selection.id.startsWith('input/')) return false;
   const [documentId, itemId] = selection.id.split('/');
   const document = authoringDocument(useAuthoring.getState());
   const timeline = applyTimelineEdits(getState().timelines, document.edited, document.removed).find(item => item.documentId === documentId);
@@ -1274,8 +1274,9 @@ function pasteAfterSelection() {
   if (!track) return false;
   const after = selection.kind === 'clip' ? track.clips.find(clip => clip.id === itemId)!.endSeconds
     : Math.max(0, ...track.clips.map(clip => clip.endSeconds));
-  const id = authoringActions.pasteClip(documentId, track.id, after);
-  if (id) selectionActions.select({ kind: 'clip', id: clipSelectId(documentId, id) });
+  const id = pasteTimelineClip(elements, documentId, track.id, after);
+  if (id === null) return false;
+  selectionActions.select({ kind: 'clip', id: clipSelectId(documentId, id) });
   return true;
 }
 
@@ -1286,7 +1287,6 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
-  const canPaste = useCanPasteClip();
   const snap = useContext(SnapContext);
   const step = snap ?? 1 / 65536;
   const schemes = useInputSchemes();
@@ -1295,6 +1295,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   const templates = useMemo(() => elements ? clipTemplatesFor(elements, documentId, row.track.id) : [],
     // version：轨道与片段的配对随编辑变化。
     [elements, documentId, row.track.id, version]);
+  const pasteIssue = useClipPasteIssue(templates);
   if (!author) return [{ label: '进入作者模式后可编辑', disabled: true, onSelect: () => {} }];
   if (!elements) return [{ label: '读取中', disabled: true, onSelect: () => {} }];
   const local = () => Math.max(0, snapTo(at.current - row.segment.origin, step));
@@ -1347,8 +1348,8 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
         .then(id => { if (id) select(id); }, error => consoleActions.error('Timeline', error));
     } },
     {
-      label: '粘贴片段', disabled: !canPaste, tip: '粘贴复制的片段，起点在此处',
-      onSelect: () => { const id = authoringActions.pasteClip(documentId, row.track.id, local()); if (id) select(id); },
+      label: '粘贴片段', disabled: pasteIssue !== null, tip: pasteIssue ?? '粘贴复制的片段，起点在此处',
+      onSelect: () => { const id = pasteTimelineClip(elements!, documentId, row.track.id, local()); if (id) select(id); },
     },
     { kind: 'separator' },
     {

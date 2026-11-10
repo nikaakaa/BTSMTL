@@ -1,8 +1,8 @@
-// Timeline 作者查询：轨道可放片段、曲线通道、吸附与参考曲线、换轨与标记占用；只读当前（可能未保存的）文档。
+// Timeline 作者操作与查询使用当前文档，包括还没保存的改动。
 import { create } from 'zustand';
 import { authoringApi, type ClipCurveChannel, type ClipTemplate, type ReferenceCurves, type SkillElements, type TrackOverlap } from '../api/authoring';
-import { authoringActions, currentDocument, findTimelineClip, get, markersCollide, timelinePath, tracksOf } from './authoring';
-import { JsonFloat, fpRaw, fpSeconds, getIn, numberOf, type JsonObject } from './skillJson';
+import { authoringActions, currentDocument, findTimelineClip, get, markersCollide, referencedFiles, timelinePath, tracksOf } from './authoring';
+import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, sortedObject, type JsonObject } from './skillJson';
 import { consoleActions } from './store';
 
 export function markersTaken(documentId: string, markerIds: ReadonlySet<string>, deltaSeconds: number): boolean {
@@ -29,6 +29,44 @@ export function clipTemplatesFor(elements: SkillElements, documentId: string, tr
   const { template, domain } = placement;
   return elements.clips.filter(clip => template.contract.clipKinds.includes(clip.kind) && clip.contract.trackKind === template.kind &&
     template.contract.domains.includes(domain) && clip.contract.domains.includes(domain));
+}
+
+type CopiedClip = { clip: JsonObject; documentPath: string; hasLocalReferences: boolean };
+const useClipClipboard = create<{ source: CopiedClip | null }>()(() => ({ source: null }));
+
+export function copyTimelineClip(documentId: string, clipId: string) {
+  const { target } = get();
+  const document = currentDocument(timelinePath(documentId));
+  const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
+  if (!target || !clip) return false;
+  useClipClipboard.setState({ source: { clip: cloneJson(clip), documentPath: target.documentPath,
+    hasLocalReferences: referencedFiles(clip).length > 0 } });
+  return true;
+}
+
+function pasteIssue(source: CopiedClip, templates: readonly ClipTemplate[]): string | null {
+  if (source.hasLocalReferences && source.documentPath !== get().target?.documentPath) return '片段引用了原文档的内容，只能粘贴到原文档';
+  return templates.some(template => template.kind === source.clip.ContractKind) ? null : '此轨道或执行域不接受该片段类型';
+}
+
+export const useClipPasteIssue = (templates: readonly ClipTemplate[]) =>
+  useClipClipboard(state => state.source ? pasteIssue(state.source, templates) : '先复制一个片段');
+
+export function pasteTimelineClip(elements: SkillElements, documentId: string, trackId: string, startSeconds: number) {
+  const { source } = useClipClipboard.getState();
+  if (!source) return null;
+  const issue = pasteIssue(source, clipTemplatesFor(elements, documentId, trackId));
+  if (issue) { consoleActions.error('Timeline', issue); return null; }
+  const id = crypto.randomUUID();
+  const length = numberOf(source.clip.m_EndTimeFPRawValue) - numberOf(source.clip.m_StartTimeFPRawValue);
+  authoringActions.edit(timelinePath(documentId), document => {
+    const track = tracksOf(document).find(item => item.m_AuthoringId === trackId)!;
+    const start = fpRaw(startSeconds);
+    (track.m_Clips as JsonObject[]).push(sortedObject({
+      ...cloneJson(source.clip), m_AuthoringId: id, m_StartTimeFPRawValue: start, m_EndTimeFPRawValue: start + length,
+    }));
+  });
+  return id;
 }
 
 // 轨道能放带曲线通道或参考曲线的片段时可展开曲线。
