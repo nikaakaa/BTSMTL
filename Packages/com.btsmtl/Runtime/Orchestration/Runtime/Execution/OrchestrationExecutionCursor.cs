@@ -260,7 +260,7 @@ namespace BTSMTL.Orchestration
                 if (operation.Code == OrchestrationOperationCode.Sequence &&
                     m_Contract == OrchestrationExecutionContract.Complete)
                     ResetOperation(operationIndex);
-                return Execute(operationIndex, inputPortId);
+                return Execute(operationIndex, inputPortId, in operation);
             }
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.Status == OrchestrationOperationStatus.Stopping)
@@ -277,7 +277,7 @@ namespace BTSMTL.Orchestration
             }
             else
                 TraceOperation(OrchestrationTraceKind.Running, operationIndex);
-            OrchestrationOperationResult result = Execute(operationIndex, inputPortId);
+            OrchestrationOperationResult result = Execute(operationIndex, inputPortId, in operation);
             if (result != OrchestrationOperationResult.Running)
             {
                 state.Status = result == OrchestrationOperationResult.Success
@@ -520,9 +520,8 @@ namespace BTSMTL.Orchestration
 
         void ClearStopContext(int operationIndex) => OperationState(operationIndex).StopContext = default;
 
-        OrchestrationOperationResult Execute(int operationIndex, int inputPortId)
+        OrchestrationOperationResult Execute(int operationIndex, int inputPortId, in OrchestrationOperation operation)
         {
-            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Root:
@@ -550,9 +549,9 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.Branch:
                     return TickBranch(operationIndex);
                 case OrchestrationOperationCode.Cycle:
-                    return TickCycle(operationIndex, inputPortId);
+                    return TickCycle(operationIndex, inputPortId, in operation);
                 default:
-                    OrchestrationOperationResult result = ExecuteCoreLeaf(operationIndex);
+                    OrchestrationOperationResult result = ExecuteCoreLeaf(operationIndex, in operation);
                     return result == OrchestrationOperationResult.Success && m_Contract == OrchestrationExecutionContract.Complete
                         ? TickChildren(operationIndex) : result;
             }
@@ -608,7 +607,7 @@ namespace BTSMTL.Orchestration
                 ? TickOutput(operationIndex, m_Program.Ports.BranchThen) : result;
         }
 
-        OrchestrationOperationResult TickCycle(int operationIndex, int inputPortId)
+        OrchestrationOperationResult TickCycle(int operationIndex, int inputPortId, in OrchestrationOperation operation)
         {
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (inputPortId == m_Program.Ports.CycleReset)
@@ -616,7 +615,7 @@ namespace BTSMTL.Orchestration
                 state.ChildCursor = 0;
                 return OrchestrationOperationResult.Success;
             }
-            OrchestrationCyclePayload cycle = m_Program.Payload<OrchestrationCyclePayload>(operationIndex);
+            OrchestrationCyclePayload cycle = m_Program.Payload<OrchestrationCyclePayload>(in operation);
             int selected = (cycle.Start + state.ChildCursor) % cycle.Count;
             foreach (int edgeIndex in m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child))
             {

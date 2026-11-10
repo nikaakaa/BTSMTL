@@ -74,7 +74,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationValueOpcode.Extension:
                 {
                     ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
+                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
                     RequireRowDepth(operationIndex, depth + 1);
                     int count = CopyScheduledArguments(arguments, depth, operationIndex);
                     ReadOnlySpan<TValue> inputs = InputRow(depth).Slice(0, count);
@@ -176,9 +176,10 @@ namespace BTSMTL.Orchestration
 
         void ReadGraphCallOutput(int operationIndex, int outputPortIndex, ref TValue destination)
         {
-            OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
+            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+            OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(in operation).CallIndex);
             int slot = call.Outputs[outputPortIndex].ValueSlot;
-            OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
+            OrchestrationOperationStatus status = operation.IsRunnable
                 ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
             if (status == OrchestrationOperationStatus.Success)
                 m_Blackboards.ReadValue(slot, ref destination);
@@ -186,9 +187,9 @@ namespace BTSMTL.Orchestration
                 destination = m_Program.DefaultValue(slot);
         }
 
-        OrchestrationOperationResult ExecuteCoreLeaf(int operationIndex)
+        OrchestrationOperationResult ExecuteCoreLeaf(int operationIndex, in OrchestrationOperation operation)
         {
-            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+            ushort extensionBinding = 0;
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.StateRootCompleted:
@@ -212,8 +213,8 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.TimelineTime:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
-                    if (m_Host.ExecutionContract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Kind !=
-                        OrchestrationExtensionKind.Action)
+                    extensionBinding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
+                    if (m_Host.ExecutionContract(extensionBinding).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
                     break;
             }
@@ -228,7 +229,7 @@ namespace BTSMTL.Orchestration
                         return OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.BlackboardSet:
                     {
-                        OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(operationIndex);
+                        OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(in operation);
                         WriteBlackboard(operationIndex, set.Slot,
                             in InputRow(depth)[0], set.Assignment);
                         return OrchestrationOperationResult.Success;
@@ -240,7 +241,6 @@ namespace BTSMTL.Orchestration
                             ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
-                        ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? SavedOutputs(in operation)
                             : BorrowOutputs(operationIndex, depth, operation.OutputCount);
@@ -250,7 +250,7 @@ namespace BTSMTL.Orchestration
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
-                            binding, in invocation);
+                            extensionBinding, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,
                                 in outputs[assignment.SourceOutputPortIndex]);
