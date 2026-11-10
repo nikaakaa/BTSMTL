@@ -15,7 +15,6 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
   const [profile, setProfile] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [abilityId, setAbilityId] = useState('');
-  const [authorPackage, setAuthorPackage] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [candidateOrder, setCandidateOrder] = useState('');
   const [sourceOrder, setSourceOrder] = useState('');
@@ -29,14 +28,13 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
     return () => controller.abort();
   }, []);
   if (catalog === null) return <div className={styles.facts}>
-    {failure ? <ErrorLine {...failure} /> : <Empty text="正在读取作者包与准入键" />}
+    {failure ? <ErrorLine {...failure} /> : <Empty text="正在读取准入配置" />}
     <Button variant="ghost" onClick={onCancel}>取消</Button>
   </div>;
   if (!catalog.availability.available) return <div className={styles.facts}>
     <Empty text={catalog.availability.reason} />
     <Button variant="ghost" onClick={onCancel}>取消</Button>
   </div>;
-  const admissionProfiles = catalog.authorPackages.find(value => value.name === authorPackage)?.admissionProfiles ?? [];
   return <form className={styles.facts} onSubmit={event => {
     event.preventDefault();
     void (async () => {
@@ -45,7 +43,7 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
       try {
         const target = await authoringActions.createSkill({
           parameters: {
-            name, abilityId, authorPackage: authorPackage!, displayName, admissionProfile: profile!,
+            name, abilityId, displayName, admissionProfile: profile!,
             candidateOrder: Number(candidateOrder), sourceOrder: Number(sourceOrder),
             entryGraph: withGraph ? { name: graphName } : null, startupInputs: [], trajectory: null,
           },
@@ -59,14 +57,10 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
     <strong>新建技能</strong>
     <label>目录与技能名称<TextInput aria-label="目录与技能名称" required value={name} disabled={busy} onChange={event => setName(event.currentTarget.value)} /></label>
     <label>技能 ID<TextInput aria-label="技能 ID" required value={abilityId} disabled={busy} onChange={event => setAbilityId(event.currentTarget.value)} /></label>
-    <Select label="作者包" placeholder="选择业务键所属的作者包" value={authorPackage} disabled={busy}
-      options={catalog.authorPackages.map(value => ({ value: value.name, label: value.name }))}
-      onChange={value => { setAuthorPackage(value); setProfile(null); }} />
     <label>显示名称<TextInput aria-label="显示名称" required value={displayName} disabled={busy} onChange={event => setDisplayName(event.currentTarget.value)} /></label>
-    <Select label="准入配置" placeholder={authorPackage === null ? '先选择作者包' : '选择准入键'} value={profile}
-      disabled={busy || authorPackage === null}
-      options={admissionProfiles.map(value => ({ value, label: value }))} onChange={setProfile} />
-    {authorPackage !== null && admissionProfiles.length === 0 && <small>该作者包没有声明准入键。</small>}
+    <Select label="准入配置" placeholder="选择准入配置" value={profile} disabled={busy}
+      options={catalog.admissionProfiles.map(value => ({ value: value.value, label: value.name ?? value.value }))} onChange={setProfile} />
+    {catalog.admissionProfiles.length === 0 && <small>工作区没有准入配置文档。</small>}
     <label>候选排序<TextInput aria-label="候选排序" type="number" step="1" required value={candidateOrder} disabled={busy} onChange={event => setCandidateOrder(event.currentTarget.value)} /></label>
     <label>来源排序<TextInput aria-label="来源排序" type="number" step="1" required value={sourceOrder} disabled={busy} onChange={event => setSourceOrder(event.currentTarget.value)} /></label>
     <label><Checkbox label="创建入口图" checked={withGraph} disabled={busy} onChange={setWithGraph} />创建入口图</label>
@@ -74,7 +68,7 @@ export function SkillCreationForm({ onCreated, onCancel }: { onCreated(target: A
     <small>先创建未保存草稿；启动输入为 0 项，轨迹模块未声明。</small>
     {failure && <ErrorLine {...failure} />}
     <PanelBar>
-      <Button type="submit" disabled={busy || profile === null || authorPackage === null}>{busy ? '正在创建草稿' : '创建草稿'}</Button>
+      <Button type="submit" disabled={busy || profile === null}>{busy ? '正在创建草稿' : '创建草稿'}</Button>
       <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>取消</Button>
     </PanelBar>
   </form>;

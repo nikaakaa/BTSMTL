@@ -748,8 +748,8 @@ export interface ScenarioDraftRequest {
 
 export interface SkillCreationCatalog {
   stage: 'creation-catalog';
-  // 作者包与其声明的准入键；技能的适配者容器在首次保存时登记绑定。
-  authorPackages: { name: string; admissionProfiles: string[]; revision: string }[];
+  // 工作区中的准入作者文档；value 是技能引用它的来源身份。
+  admissionProfiles: { value: string; name: string | null }[];
   skillCreation: { parameters: { name: string; shape: StorageShape }[] };
   availability: QueryAvailability;
 }
@@ -758,7 +758,6 @@ export interface SkillCreationRequest {
   parameters: {
     name: string;
     abilityId: string;
-    authorPackage: string;
     displayName: string;
     admissionProfile: string;
     candidateOrder: number;
