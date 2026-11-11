@@ -33,7 +33,7 @@ namespace BTSMTL.Authoring.Graph
             PickerKind = Kind, CompilationImpact = GraphAuthoringFieldCompilationImpact.Editor)]
         public string Condition => m_Condition;
         [GraphAuthoringField(GraphAuthoringFieldValueKind.String, DisplayName = "显示名", CompilationImpact = GraphAuthoringFieldCompilationImpact.Editor)]
-        public string Label => string.IsNullOrEmpty(m_Label) ? Condition : m_Label;
+        public string Label => m_Label;
         [GraphAuthoringField(GraphAuthoringFieldValueKind.Boolean, DisplayName = "成立", CompilationImpact = GraphAuthoringFieldCompilationImpact.Editor)]
         public bool Satisfied => m_Satisfied;
         [GraphAuthoringField(GraphAuthoringFieldValueKind.Boolean, DisplayName = "恢复默认值", CompilationImpact = GraphAuthoringFieldCompilationImpact.Editor)]
