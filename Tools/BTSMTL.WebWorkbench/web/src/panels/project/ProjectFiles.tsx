@@ -12,7 +12,7 @@ import { VirtualList } from '../../ui/VirtualList';
 import styles from './project.module.css';
 
 export function ProjectFiles() {
-  const [folder, setFolder] = useState('Skills');
+  const [folder, setFolder] = useState('');
   const [listing, setListing] = useState<ProjectFolderListing | null>(null);
   const [selected, setSelected] = useState<ProjectFileEntry | null>(null);
   const [search, setSearch] = useState('');
@@ -31,7 +31,7 @@ export function ProjectFiles() {
   const query = search.toLocaleLowerCase();
   const folders = listing?.folders.filter(item => item.name.toLocaleLowerCase().includes(query)) ?? [];
   const files = listing?.files.filter(item => item.name.toLocaleLowerCase().includes(query)) ?? [];
-  const itemOf = (file: string) => items.find(item => file === `Skills/${item.owner}/${item.file}`);
+  const itemOf = (file: string) => items.find(item => file === `${item.owner}/${item.file}`);
   const open = (file: ProjectFileEntry) => {
     const item = itemOf(file.path);
     if (item !== undefined) void projectActions.open(item).catch(error => {
