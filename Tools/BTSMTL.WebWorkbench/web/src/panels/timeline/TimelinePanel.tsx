@@ -1326,6 +1326,7 @@ function pasteAfterSelection(elements: AuthoringElements) {
 // 作者模式右键轨道（照 Timeline Editor 轨道与片段菜单）：在点击处添加片段、标记或粘贴，
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
 function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: AuthoringElements | null, author: boolean): MenuEntry[] {
+  const owner = useAuthoring(state => state.target?.documentPath);
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
@@ -1338,6 +1339,9 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
     // version：轨道与片段的配对随编辑变化。
     [elements, documentId, row.track.id, version]);
   const pasteIssue = useClipPasteIssue(templates);
+  if (row.segment.owner !== undefined && row.segment.owner !== owner)
+    return [{ label: '打开所属 Timeline 编辑', onSelect: () => void projectActions.openContent({ kind: 'track', owner: row.segment.owner!,
+      ownerName: row.segment.owner!, timelineId: row.timeline.documentId, id: row.track.id }).catch(error => consoleActions.error('Timeline', error)) }];
   if (!author) return [{ label: '进入作者模式后可编辑', disabled: true, onSelect: () => {} }];
   if (!elements) return [{ label: '读取中', disabled: true, onSelect: () => {} }];
   const local = () => Math.max(0, snapTo(at.current - row.segment.origin, step));
