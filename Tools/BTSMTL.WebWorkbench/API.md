@@ -1,6 +1,6 @@
 # Web Workbench 前端接口
 
-本文按实际界面操作说明 HTTP、WebSocket 和数据合同。BTSMTL 工作台挂载作者文档、合同查询、资源、编译发布、输入方案和播放器接口，持有播放器队列、常驻进程池、实时会话、内容刷新、画面传输及代码更新。项目适配解释作者合同、资源、输入、运行包和原生播放器值；快速路线迁移仍在推进。UI 负责布局、手势和同一正式文档的本地编辑事务。
+本文按实际界面操作说明 HTTP、WebSocket 和数据合同。BTSMTL 工作台挂载作者文档、合同查询、资源、编译发布、输入方案和播放器接口，持有播放器队列、常驻进程池、实时会话、内容刷新、画面传输及代码更新。BTSMTL 同时持有快速路线的输入日程、静态查询、路线推导、投影及快档播放器调度；项目适配解释作者合同、资源、输入、运行包和原生播放器值。UI 负责布局、手势和同一正式文档的本地编辑事务。
 
 本文对应当前源码合同。正在运行的 Host、Player 和静态前端必须采用相应版本；接口说明和源码存在不表示当前端口已采用。部署与实际检查结果见 [3C 作者接口记录](../../../3C/Tools/CharacterWorkbench/Host/Authoring/README.md)。
 
@@ -16,7 +16,7 @@
 
 ## 分层与适配接口
 
-依赖只能从上往下：项目 Host → 技能适配 → BTSMTL 工作台（Host 库、Contracts、Authoring、网页）→ BTSMTL 核心。工作台源码与网页不出现项目类型名、SDK 名和项目字段名，由 DependencyGuard 规则 `BTSMTL_WORKBENCH_NO_PROJECT_NAMES` 在构建期检查。项目只经以下接口接入：
+依赖只能从上往下：项目 Host → 项目适配 → BTSMTL 工作台（Host 库、Contracts、Authoring、网页）→ BTSMTL 核心。工作台源码与网页不出现项目类型名、SDK 名和项目字段名，由 DependencyGuard 在构建期检查项目名称、通用网页路由和作者字段归属。项目只经以下接口接入：
 
 | 接口 | 所在工程 | 项目提供 | 工作台挂载 |
 | --- | --- | --- | --- |
@@ -26,10 +26,11 @@
 | `IAuthoringPublicationAdapter` | `Authoring` | 文档创建、删除、导出、发布范围与实际编译发布 | `MapPublicationApi(publication)` |
 | `IPreviewInputAdapter` | `Authoring` | 输入片段、新建方案与录制导入 | `MapPreviewInputApi(inputs)` |
 | `IPlayerAdapter` | `Authoring` | 包体、启动参数、配方、项目参数、原生位置与时钟解释、归档合同和消息投影 | `MapPlayerApi(adapter, options)`：作业、Live、代码更新与内容刷新；返回 `Jobs/Live/Refreshes` 供组合 |
-| `IPreviewHost` | Host 库 | 宿主描述、来源、输入声明 | `MapPreviewApi(host)` |
+| `IPreviewQuickAdapter` | `Authoring` | 文档入口的语义 IR、声明默认值、Timeline、状态键、按键换算和快档运行包 | `MapPreviewQuickApi(adapter, players?)`：推导、作业、定位、改时、条件发布与播放器调度 |
+| `IPreviewHost` | Host 库 | 宿主描述、来源、输入声明 | `MapPreviewApi(host, players?)`；不承担 quick 流程，并回报播放器实际可用性 |
 | `IPreviewArchive` | Host 库 | 归档读取，项目专有内容以 `PreviewField` 给出 | `MapPreviewArchiveApi(archive)`：`/api/preview/player-jobs/{id}/` 下的 archive、summary、geometry、source-map、frames、observations、logic、pose-layout、presentation、camera、input、curves、unavailable、frame-images |
 
-上述接口按文档、合同查询、资源、编译发布、预览五组职责接入。规范 JSON 文本由 `BTSMTL.Authoring.Workspace.AuthoringJsonText` 提供，播放器的项目参数、内容身份与请求据此判等和存档。3C 专有的能力运行配置、扶墙和 MCP 诊断接口仍由项目 Host 挂载。
+上述接口按文档、合同查询、资源、编译发布、预览五组职责接入。规范 JSON 文本由 `BTSMTL.Authoring.Workspace.AuthoringJsonText` 提供，播放器的项目参数、内容身份与请求据此判等和存档。Project 文件浏览由 `MapProjectFolderApi(roots)` 挂载，项目仅提供正式根目录、挂载和文件身份。3C 专有的能力运行配置、扶墙和 MCP 诊断接口仍由项目 Host 挂载，网页专有界面由项目扩展入口登记。
 
 字段的可调用 TypeScript 入口在 [api/authoring.ts](web/src/api/authoring.ts)、[api/preview.ts](web/src/api/preview.ts)、[api/player.ts](web/src/api/player.ts)、[api/resources.ts](web/src/api/resources.ts)。运行数据的解析器及导出类型在 [api/playerRecords.ts](web/src/api/playerRecords.ts)，图、调用、画面和资源类型在 [api/types.ts](web/src/api/types.ts)。这些文件供 UI 直接复用，不另写一套同名 DTO 或协议解析器。
 
@@ -37,11 +38,11 @@
 
 | 界面操作 | 宿主提供的输入或处理 | UI 处理及输出 |
 | --- | --- | --- |
-| 打开技能、FSM、子图或私有 Timeline | 文件快照、`document` 展开结果、图及元素稳定身份 | 维护当前文档、图实例路径和选择，渲染画布 |
+| 打开根文档、FSM、子图或私有 Timeline | 文件快照、`document` 展开结果、图及元素稳定身份 | 维护当前文档、图实例路径和选择，渲染画布 |
 | 添加节点、状态、转移、轨道或片段 | `queries/types`、`queries/type`、`queries/elements` 的正式类型、默认值、字段和端口 | 使用返回模板构造本地草稿；新增节点和状态自动选中交给检查器，不复制 C# 默认值或维护节点白名单 |
 | Inspector 改字段、动态端口或引用 | 按当前未保存 `configuration` 描述字段、条件显示和端口；引用与黑板查询 | 显示对应控件，将结果写回原作者成员路径，并重查受影响的端口 |
 | 拖节点、拉片段、框选、连线、复制删除、撤销重做 | 正式身份、作者文件与保存入口 | 手势及本地事务；节点位置和内容改回对应 JSON，统一保存。流图连线换接端点保留原连线 UID，换源时迁到新源节点的 outConnections，沿原事务撤销。每次鼠标移动无需 HTTP 请求 |
-| 新建场景输入方案、添加按住或单按输入 | 场景角色及按键声明、`draft`、`input-fragments` | 选择实际角色和按键，编辑返回的方案／轨道／片段／图，保存整个变更闭包 |
+| 新建场景输入方案、添加按住或单按输入 | 场景角色及按键声明、`inputs/plans`、`inputs/fragments` | 选择实际角色和按键，编辑返回的方案／轨道／片段／图，保存整个变更闭包 |
 | 保存并采用 | 文件写入、编译状态、输入修订、Player 刷新或作业回执 | 分别显示保存、编译、采用和作业阶段，按原状态地址继续读取 |
 | 播放、暂停、逐帧、跳转、相机和试玩输入 | Live、内容载入、命令及真实 ACK、画面 WS | 管理控件状态；按实际内容时钟显示，按采样身份接收画面 |
 | 回看结果、检查调用、端口与曲线 | 同一作业的分页档案、完整实际调用身份、可用性和原始值 | 按同一来源关联面板，保留缺失或不完整原因 |
@@ -51,7 +52,7 @@
 
 | 方法与路径 | 参数 | 响应及用途 |
 | --- | --- | --- |
-| `GET /api/preview/host` | 无 | `{available,description}`；description 提供 `filters`、`inputLimit` 和 `modes`，各模式含 `available/reason/createsRun/defaultChannels` |
+| `GET /api/preview/host` | 无 | `{available,description}`；description 提供 `filters`、`inputLimit`、`player{available,reason}` 和 `modes`，各模式含 `available/reason/createsRun/defaultChannels` |
 | `GET /api/preview/sources` | 无 | `Sources`：`scenes[{path,revision}]`、`quickScenes[{publication:{path,revision},scenePath,sceneGuid,sceneRevision}]`、`timelines`、`replays` 及正式目录 |
 | `GET /api/preview/inputs` | `scene,revision` | `InputCatalog`：`revision,tickRate,actorTargets,localPlanRangeBasis,players`；各角色含 `localPlans,keys,values,requests` |
 | `GET /api/preview/images` | 无 | `{available,description}`；图片适配能力 |
@@ -59,63 +60,62 @@
 
 `scenes` 的 `path` 与 `revision` 成对传递。`timelines` 每项含可直接用于 Load 的 `content`，以及 `contentIdentity/contentRevision/bindingRevision/tickRate/scene/bindings`；不能把它改装成场景输入来源。
 
-输入选项使用宿主实际返回的 `actorId`、`inputPlanRoot`、`inputPlanRevision` 和 `schemeIndex`。按键类型为 `Button/Scalar/Vector2`，值与请求映射来自声明；按键不能由 UI 按角色名或技能名写死。方案 `rangeEndSeconds` 是日程内的相对秒数，SDK 起点由实际载入决定，不能据此伪造绝对 SDK 帧。
+输入选项使用宿主实际返回的 `actorId`、本地方案的 `documentPath`、`inputPlanRoot`、`inputPlanRevision` 和 `schemeIndex`。按键类型为 `Button/Scalar/Vector2`，值与请求映射来自声明；按键不能由 UI 按角色名或技能名写死。方案 `rangeEndSeconds` 是日程内的相对秒数，SDK 起点由实际载入决定，不能据此伪造绝对 SDK 帧。
 
-## 快速预览第二版
+## 快速路线与快档画面
 
-quick 经项目 Host 调用目标 Editor 的原 Native 资产预览，不在 .NET 执行 Gameplay，也不创建 Player 真实运行。能力 `quick_protocol` 与 Native 协议均为 `btsmtl.native-timeline-preview/2`；Host 核对协议和项目，旧 Editor `/1` 不表示本批已采用。
+快速路线由 BTSMTL `QuickPreviewService` 执行，当前协议为 `btsmtl.native-timeline-preview/4`。项目适配捕获选定作者入口，并提供同一内容的语义 IR、声明默认值、子图、Timeline 内容与状态键。BTSMTL 建立静态查询、读取输入日程、推导路线并发布通用条件操作；项目适配把结果写成其正式运行包。存在播放器时，公共服务随后复用或启动隐藏的快档 Player、载入该包并定位，不经 Editor Native 预览作业。未注册播放器或目录缺包时，作业仍以 ready 交付计划，player/frame/adoptedMode 保持 null，notes 说明画面不可用；不会为纯路线写画面包。
 
 | 方法与路径 | 输入与输出 |
 | --- | --- |
-| `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root}`，返回真实根、来源文档修订、机器、方案和输入声明。 |
-| `POST /api/preview/quick/plans` | `PreviewQuickRequest{mode:"quick",target,sourceRevision,input,outputDirectory,rangeEndSeconds?,timeoutSeconds?}`，沿原 Native job 开始推导。 |
-| `GET /api/preview/quick/plans/{jobId}` | 读取同一 job 的状态、真实采用档位及计划。 |
-| `POST /api/preview/quick/plans/{jobId}/seek` | `PreviewQuickSeekRequest{requestId,sourceRevision,inputRevision,seconds}`，返回 `PreviewQuickFrame{jobId,requestId,sourceRevision,inputRevision,requestedSeconds,sampledSeconds,sampledRevision,surfaceSequence,flipY}`。 |
-| `POST /api/preview/quick/plans/{jobId}/cancel` | 取消同一 job；请求已发不等于实际取消完成。 |
+| `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root?,scenePublication?}`；无 root 时列出文档及入口，带 root 时返回本次捕获的来源、机器、输入方案与声明。 |
+| `POST /api/preview/quick/plans` | `PreviewQuickRequest{mode:"quick",target,sourceRevision?,input,outputDirectory,rangeEndSeconds?,timeoutSeconds?,initialSeconds?}`；创建同一公共作业，推导并准备快档 Player。 |
+| `GET /api/preview/quick/plans/{jobId}` | 读取作业、来源修订、计划、实际采用档位和播放器；可带 `stage` 等待阶段变化，最长 10 秒。 |
+| `POST /api/preview/quick/plans/{jobId}/seek` | `{requestId,sourceRevision,inputRevision,seconds}`；返回同一作业的新采样和实际画面槽序号。 |
+| `POST /api/preview/quick/plans/{jobId}/retime` | `{requestId,sourceRevision,inputRevision,timelineId,clips:[{clipId,startRaw,endRaw,clipInRaw?}],seconds}`；用完整时间候选在内存改时并返回更新后的 plan；有播放器时同时定位，不保存作者文档。 |
+| `POST /api/preview/quick/plans/{jobId}/cancel` | 取消该作业并报告释放结果；请求已发不表示取消已完成。 |
 
-画面不随响应返回。作业状态的 `player{liveId,processId,width,height}` 指明快预览播放器；网页经宿主壳接该播放器的 `quick` 共享画面区，按 `surfaceSequence` 取槽，`flipY` 为原始 RGBA 按首行在上绘制时是否翻转。没有共享画面区的普通浏览器只能拿到元数据。
+`root` 分为 `nativeDocument`、`webEditingView`、`authoringDocument`，均携带 `authoring{documentPath,savedRevision,entry}`；网页来源另带同一正式文档的 `editingView`。入口是 `graph{graphId,machine}` 或 `timeline{timelineId}`。目录条目使用 `isDefault` 声明默认入口，网页不读取项目根字段来猜入口。场景选择以 publication.path＋revision 精确关联 quickScenes，quick 使用其 SceneAsset 身份，真实档继续使用原正式场景包。
 
-`root` 使用 `nativeDocument`、`webEditingView` 与 `authoringDocument` 三类来源，各自携带 `authoring{documentPath,savedRevision,entry}`。入口为 `graph{graphId,machine}` 或 `timeline{timelineId}`，网页编辑视图来源另带 `editingView`。来源目录的每个入口回报 `isDefault`，网页按文档适配的标记选择默认入口。describe 捕获当前编辑视图，start 复用同次来源与输入修订。`input.points` 与 `conditions` 同时提供或同时省略，覆盖仅作用于本次请求。
+`input.source` 为 `rootDefaults` 或 `documentInput{documentPath,savedRevision,inputId,schemeId}`，`input.revision` 与 `sourceRevision` 为 null 时按本次捕获的正式来源推导，非 null 时须匹配本次修订。输入 Timeline 的回调时刻、同刻冲突与非法节点由公共读取器处理；条件写入在 BTSMTL 处理，预览按键经项目的 `IPreviewInputKeyAdapter` 换成输入值和动作请求。API 的显式 `points/conditions` 覆盖须成对提供；网页只提交方案来源，不另造覆盖日程。
 
-原 `scenes` 和 Timeline 包语义保留。顶栏同一次场景选择按 publication.path＋revision 精确关联 quickScenes，quick 使用真实 SceneAsset，Real 仍使用原包。独立 Timeline 使用所选来源已有的 scene.path／guid／dependencyHash 和 content.timeline AuthoringId，唯一匹配 describe.timelines.elementId 后提交实际 path＋elementId，不取首元素或推测路径。
+结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份。`segments[].conditionDependencies` 回报该段实际推导所读取的条件，每项为 `{key,label,written}`；`written=true` 表示本次路线依赖输入方案中的条件写入，默认读取也保留并标为 false。未知谓词键使用所在图与节点的稳定身份；过期条件写入会报出输入 Timeline 的元素位置。
 
-Source.documents 中每份文档有实际 revision；网页捕获的 savedRevision／hasUnsavedChanges 为 null，decoder 保留未知状态，不补成 false 或伪造 dirty。结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份，segments／conditions／suggestions 只供原 Timeline／Graph 静态计划定位，不写 Real RouteStore 或实际端口帧。`adoptedMode` 只在原 Fast Host 实际 Ready 后为 quick，否则保留 null／实际值，不从请求 mode 回填。
+切到真实档时，网页保留同一来源和输入方案的快速路线，按正式程序绑定关联已缓存真实帧中的状态进入、退出事件，并并排显示条件依赖。该对比只使用当前帧缓存，明确显示已读范围；没有读到的历史不当作状态没有发生。内容、场景或输入方案变化后显示过期原因，不把静态计划写进真实运行记录。
 
-响应保留 success／pending、Data、code／message／rawJson 与 cleanupErrors；成功完成为 200、在途为 202、失败为 409。job_lost、preview_mode_mismatch、editor_busy、preview_job_busy、preview_request_invalid、preview_failed 和 preview_cancelled 按原回执显示。网页只持当前根和一个当前 job；编辑、Undo、作者回读、切根或场景发布修订隔离在途和迟到结果，旧路线标过期但保留显示，匹配的新结果才采用；来源过期自动重读，来源与方案修订就绪后自动推导一次，同一身份失败不自动重试。网页不发送 `input.points／conditions` 与 `rangeEndSeconds`，输入只来自方案的输入 Timeline。取消失败保留取消意图和回执并允许手动重试，后续 status 不恢复旧计划；仅轮询真实当前未完 job，不闲时扫描作业。
+作业 `player{liveId,processId,width,height}` 指明实际快档 Player。网页按 host.description.player 隐藏不可用的画面面板、真实运行及代码更新入口，并停止相关请求；纯路线仍可定位游标。像素只经桌面壳的 `quick` 共享画面区传递，网页按 `surfaceSequence` 读取槽并采用实际 `flipY`。普通浏览器只得到采样元数据。`adoptedMode` 只在运行端实际 Ready 后报告；success/pending、原 code/message/rawJson 以及 cleanupErrors 分别保留。成功、在途、失败分别使用 HTTP 200、202、409。部署与实际检查范围由项目接入记录持有。
 
-以上合同的生产者和网页消费者源码已接通，项目原 CLI／Host 全 ProjectReference 类型检查也已通过；Main Editor／Native 完整类型、目标 Editor 加载 v2 及真实预览仍未证明。网页 tsc、正式 .NET 根类型通过都不证明部署、实际服务版本或现场 UI 行为，原阶段见[项目接入检查](../../../3C/docs/测试/WorkbenchGameplay接入.md#2026-11-02-网页-quick-v2-源码接续)。
-
-## 作者文档、技能与场景
+## 作者文档与输入方案
 
 作者内容以工作区文档为单位读写：`documentPath` 为工作区相对路径，`kind` 为文档种类（如技能、Timeline）。读写都带修订：编辑视图 `editingView` 为 `{writes:[{kind,documentPath,expectedRevision,files:{<相对路径>:<完整 JSON 原文>}}],reads:[{documentPath,revision}],execution?,scene?,product?}`，`writes` 是本次未保存内容，`reads` 是查询所依据的已读修订；任一修订与磁盘不符时拒绝，不覆盖外部修改。查询都可带同一 `editingView`，按未保存内容回答，不需要先保存。
 
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
-| `GET /api/authoring/documents` | `kind?` | 文档目录 |
+| `GET /api/authoring/documents/types` | 无 | 文档类型身份、显示名、根类型、发现规则与语义角色 |
+| `GET /api/authoring/documents` | `kind?` | 文档目录及适配提供的元数据 |
 | `GET /api/authoring/documents/content` | `documentPath`，可选 `revision` | 文档原文与修订；带上已读 `revision` 且未变化时只回 `{success, changed:false, revision}`，不含正文 |
 | `GET /api/authoring/documents/elements` | `kind?` | 文档种类的正式模板 |
 | `POST /api/authoring/documents/editing-view` | `editingView` | 按编辑视图解析后的文档快照，不写盘 |
 | `PUT /api/authoring/documents` | `editingView` | 只保存作者文档；修订冲突拒绝 |
-| `POST /api/authoring/documents/apply?documentPath=` | `{editingView,preview?,job?}` | 保存并编译技能，按需刷新 Live 或提交作业，见下文 |
-| `POST /api/authoring/documents/document?documentPath=` | `{offset?,limit?,graphId?,editingView?}` | 技能文档的图与引用关系，不要求先创建运行 |
-| `GET /api/authoring/skills` | 无 | 技能目录名 `string[]` |
-| `GET /api/authoring/skills/creation-options` | 无 | 新建技能的宿主参数表 |
-| `POST /api/authoring/skills/draft-create` | `{parameters}` | 新技能草稿文档，尚未保存 |
-| `DELETE /api/authoring/skills/{skill}` | `{expectedRevision,editingView}` | 删除技能目录及其引用改动 |
-| `POST /api/authoring/references/replace` | `{action,domain,oldValue,newValue,context?,expectedRevision?}` | 引用批量替换回执 |
-| `GET /api/authoring/scenarios` | 无 | 场景方案目录名 `string[]` |
-| `GET /api/authoring/scenarios/{scenario}` | 无 | `{skill,revision,files:[{path,content}]}` 文件快照 |
-| `GET /api/authoring/scenarios/{scenario}/changes` | `revision` | `{skill,revision,changed,files:[{path,revision}]}` |
-| `PUT /api/authoring/scenarios/{scenario}` | `{editingView,preview?,job?}` | 输入保存回执，`compilationState="not-required"` |
-| `POST /api/authoring/scenarios/{scenario}/draft` | `{scene,sceneRevision,actorId,schemeName,rangeEndSeconds}` | `{files:[{path,content}]}`；只生成草稿，随后用 PUT 保存 |
-| `POST /api/authoring/scenarios/{scenario}/recordings` | `{archive,scene,actorId,planId?}` | `{content,input:{planId,path,revision}}`；实际写入／更新录制方案，`archive` 是归档 `archive.json` 路径 |
-| `POST /api/authoring/input-fragments` | `{scene,sceneRevision,actorId,key,operation,startSeconds,endSeconds}` | `{track,clip,graph,tickRate,sceneRevision,availability}`；返回正式 JSON 对象，尚未保存 |
+| `POST /api/authoring/documents/apply?documentPath=` | `{editingView,preview?,job?}` | 保存并调用对应内容的编译，按需刷新 Live 或提交作业，见下文 |
+| `POST /api/authoring/documents/document?documentPath=` | `{offset?,limit?,graphId?,editingView?}` | 文档的图与引用关系，不要求先创建运行 |
+| `GET /api/authoring/documents/creation-options` | 无 | 创建类型、根类型、正式初始 configuration 与语义角色 |
+| `POST /api/authoring/documents/create` | `{type,parameters:{configuration,entryGraph}}` | 未保存草稿，含 documentPath/rootFile/identity/name/files；名称取根合同的 displayName 字段 |
+| `POST /api/authoring/documents/delete?documentPath=` | `{expectedRevision,editingView}` | 删除回执；仍有外部引用或共享内容时明确拒绝 |
+| `POST /api/authoring/documents/exports/{kind}?documentPath=` | 对应导出请求 | `CompilationReport` 或导出产物回执 |
+| `GET /api/authoring/documents/exports/files/{kind}/{key}/{path}?documentPath=` | 可选下载名 | 原导出文件 |
+| `GET /api/authoring/publication/scopes` | 无 | 适配提供的发布范围目录，包含所需产品和载体 |
+| `POST /api/authoring/references/replace` | `{action,domain,oldValue,newValue,context?,expectedRevision?}` | 文件差量、读修订及 affectedDocuments 完整文档路径 |
+| `POST /api/preview/inputs/plans?documentPath=` | `{scene,sceneRevision,actorId,schemeName,rangeEndSeconds}` | 新方案、Timeline 与布局草稿，随后经通用文档保存 |
+| `POST /api/preview/inputs/recordings?documentPath=` | `{archive,scene,actorId,planId?}` | 从已封存归档导入方案并返回内容、输入修订及文档回执 |
+| `POST /api/preview/inputs/fragments` | `{scene,sceneRevision,actorId,key,operation,startSeconds,endSeconds}` | 正式轨道、片段、图和变量草稿 |
+| `GET /api/project/folder` | `path?`，空值列正式根 | 文件夹、文件与适配提供的文件身份 |
 
-目录与查询另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs`。合同查询由 BTSMTL 挂载并交 `IAuthoringContractAdapter`，作用域与对象候选交 `IAuthoringResourceAdapter`。`GET /api/authoring/catalog` 的条目只含 `value/display/context/revision`，条目 `data` 由引用、范围与资源对象等单项查询给出；带上已读 `revision` 且未变化时 `changed:false`、`domains:null`。
+目录与查询另有 `GET /api/authoring/catalog` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs`。合同查询由 BTSMTL 挂载并交 `IAuthoringContractAdapter`，作用域与对象候选交 `IAuthoringResourceAdapter`。`GET /api/authoring/catalog` 的条目只含 `value/display/context/revision`，条目 `data` 由引用、范围与资源对象等单项查询给出；带上已读 `revision` 且未变化时 `changed:false`、`domains:null`。
 
 3C 的 `/api/authoring/abilities/runtime/read` 与 `/configure` 由项目 Host 挂载，供 Unity 原生发布绑定读取、回写运行资产目标。
 
-`input-fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
+`inputs/fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
 
 文档修订是文件内容的修订；技能文档的 `sourceRevision` 是正式作者内容闭包修订，两者职责不同。运行图是否可叠加还需对应 `programId/programRevision` 及实际调用。未保存内容不能继续显示旧运行值为当前结果。
 
@@ -140,7 +140,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | `/api/authoring/documents/queries/blackboards` | `{offset?,limit?}` | `identity,graphId,id,key,type,category` |
 | `/api/authoring/documents/queries/elements` | 查询串 `timelineId?` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状；图模板带 `role/seed/ownership`，`value` 与已读入图同为展开模型；`state` 为状态机新状态模板，`flowOutputs` 列出带执行出口列表的节点成员及其元素形状 |
 
-场景方案沿用 `GET /api/authoring/scenarios/{scenario}/queries/types`（`search?,offset?,limit?`）、`POST .../queries/type`（与上表 type 相同）与 `GET .../queries/elements`（`scene?,actor?`）。
+场景方案使用同一组文档查询，documentPath 为其 Scenarios 相对路径；类型和元素由输入方案来源读取，不要求能力根。
 
 新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。存储形状成员带 `authoring`（`fieldId,displayName,authoringVisible,readOnly,allowedValues,optional,graphTargets`），`graphTargets` 非空的成员是专属图槽位（目标 `role/ownership/ownerBinding/seed`），检查器按槽位提供打开、新建与可选时的移除，其余只显示作者可见的成员；组合节点步骤的中断策略可选值随所属组合节点给出。
 
@@ -150,7 +150,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 
 ### 保存、编译与采用
 
-`documents/apply` 与场景 `PUT` 的请求为 `{editingView,preview?,job?}`：`editingView.writes` 只需包含本次修改的文档，每份带读取时的 `expectedRevision`；可选 `preview` 为 `{requestId,liveId,scene,sceneRevision,source,channels}`；可选 `job` 是下文完整 `StartPlayerJobRequest`。
+`documents/apply` 的请求为 `{editingView,preview?,job?}`：`editingView.writes` 只需包含本次修改的文档，每份带读取时的 `expectedRevision`；可选 `preview` 为 `{requestId,liveId,projectParameters,channels}`；`projectParameters` 由适配解释；可选 `job` 是下文完整 `StartPlayerJobRequest`。
 
 | 保存结果 | 必须处理的回执 |
 | --- | --- |
@@ -159,7 +159,7 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | 作者格式或编译拒绝 | HTTP 422，`saved:true,content,stage,compilationState`，附 `diagnostic` 或原 `error/output/exitCode`；文件已经落盘，不能展示为“没有保存” |
 | 修订冲突 | HTTP 409；没有写盘，需重读后再编辑 |
 
-技能刷新回执单独使用 `stage=accepted/adopted/failed/unavailable`，并提供 `statusPath`；通过 `GET /api/preview/refreshes/{id}` 继续读取原请求。只有实际载入 ACK 为 applied 才为 adopted。只改输入时，宿主更新引用本目录方案的实际输入修订后载入或提交作业；包含技能内容的保存不能直接以旧场景包自动启动新档案，回执会给出 `jobError`。
+内容刷新回执单独使用 `stage=accepted/adopted/failed/unavailable`，并提供 `statusPath`；通过 `GET /api/preview/refreshes/{id}` 继续读取原请求。只有实际载入 ACK 为 applied 才为 adopted。只改输入时，宿主更新引用本目录方案的实际输入修订后载入或提交作业；包含技能内容的保存不能直接以旧场景包自动启动新档案，回执会给出 `jobError`。
 
 作者库写入由跨进程文件锁串行（工作区根 `.transaction.lock`），Unity Editor 与 Host 同时保存时后到者等待，持锁超过 30 秒报错；引用、私有图与 Timeline 的新增删除应放在同一次 `editingView` 中提交。
 
@@ -316,3 +316,7 @@ JPEG 的来源 SDK 帧与当前分页帧一致时，叠加使用分页中的姿�
 目前没有单独的技能目录复制／重命名／删除协议，也没有独立 Timeline 作者目录的 CRUD 协议。技能私有 Timeline 随技能 JSON 保存；已发布独立 Timeline 的目录、Load、时钟和画面由上文接口提供。场景方案只开放表中三种 `queries`，没有技能专属 `document/references/blackboards` 路由。UI 有新增业务操作时，应先补对应正式接口及类型，不在本地硬编码另一套作者规则。
 
 当前项目预览使用 Player 作业、档案 HTTP 读取和 Live WebSocket；没有供本前端调用的旧 `/api/preview/runs/*` 控制或 SSE 流。运行控制不由网页自行解释技能节点实现。
+
+## 通用网页依赖检查
+
+构建守护的 `BTSMTL_WORKBENCH_REGISTERED_ROUTE` 从工作台 C# 的 `Map*` 与 `MapGroup` 收集正式路径，检查网页 `/api/` 字面量和模板前缀；`BTSMTL_WORKBENCH_DECLARED_FIELD` 从两个核心包的声明收集 `m_` 成员，再检查去除注释后的 TS/TSX 语法节点。项目扩展目录不在通用网页扫描范围，通用源码不能用专有接口或字段绕开适配。解析器、输入身份与退出规则见 [DependencyGuard](../DependencyGuard/README.md)。

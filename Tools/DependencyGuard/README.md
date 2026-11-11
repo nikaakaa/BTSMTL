@@ -1,6 +1,19 @@
 # 依赖守护
 
-`DependencyGuard` 是普通 .NET 工具，只依赖 .NET 和所用 SDK 自带的 Roslyn，目标框架与 SDK 主版本一致，不加载 Unity 或 BTSMTL 运行程序集。正式 `dotnet build BTSMTL.sln` 通过仓库根目录 `Directory.Solution.targets` 在解决方案 Build 前执行守护；失败会停止构建。Restore 不重复执行源码守护。解决方案目标导入采用 [MSBuild 正式机制](https://learn.microsoft.com/en-us/visualstudio/msbuild/customize-solution-build)。
+`DependencyGuard` 是普通 .NET 工具，C# 检查使用所用 SDK 自带的 Roslyn，目标框架与 SDK 主版本一致，不加载 Unity 或 BTSMTL 运行程序集。工作台 TS/TSX 检查调用 Node.js 和网页锁文件中的 `@babel/parser`；首次执行前在 `Tools/BTSMTL.WebWorkbench/web/` 运行 `npm ci --ignore-scripts`。缺少这些输入时检查失败，不切换文本扫描器。正式 `dotnet build BTSMTL.sln` 通过仓库根目录 `Directory.Solution.targets` 在解决方案 Build 前执行守护；失败会停止构建。Restore 不重复执行源码守护。解决方案目标导入采用 [MSBuild 正式机制](https://learn.microsoft.com/en-us/visualstudio/msbuild/customize-solution-build)。
+
+## 工作台路由与字段规则
+
+规则版本 8 增加 `workbenchSourceRules`，由同一正式入口执行并影响退出码：
+
+| 规则 | 生产者与检查对象 |
+| --- | --- |
+| `BTSMTL_WORKBENCH_REGISTERED_ROUTE` | Roslyn 收集工作台 C# 的 `Map*` 与 `MapGroup` 注册，解析组前缀与参数路径；Babel 读取通用网页的 `/api/` 字符串及模板前缀，缺少对应注册即违规。 |
+| `BTSMTL_WORKBENCH_DECLARED_FIELD` | Roslyn 从 `com.btsmtl`、`com.btsmtl.foundation` 的全部条件分支收集 `m_` 字段与属性；Babel 在 TS/TSX 的标识符、字符串和模板节点中查找集合外成员。注释不参与。 |
+
+正式路径来自 `hostRoot`，网页来自 `webRoot`；生成目录、构建目录与 node_modules 排除。项目扩展不属于通用网页根，不扩大核心字段集合。C# 路由只接受实际端点注册，不把其它同名 Map 方法当作 HTTP 接口。模板按已注册路径前缀匹配；固定字符串按完整路由形状匹配。
+
+扫描使用 `WorkbenchSourceGuard` 和随工具部署的 Node 解析入口，不启动网页或 Unity。工具、规则、Node 二进制、解析脚本、Babel 模块及实际读取的源文件均记录输入身份并在结束时复核。报告新增 `WorkbenchSourceCount`；解析失败属于扫描未完成，不以空集合报告通过。运行示例与其它阶段共用下文命令。
 
 ## 输入范围
 
@@ -18,7 +31,7 @@ try {
 }
 ```
 
-完整工作区明确提供实际 Unity Client 根目录，另外检查该 Client 的 Quantum.Simulation、真实 GUID 归属与角色／技能作者身份。版本 7 要求该 Client 的本批正式编译证据，默认位置为 `Library/DependencyGuard/unity-boundary.json`。工具读取完整实际 rsp、源码、生成回执与当前程序集元数据，不启动 Unity，不删减实际编译输入；只有扫描完成且报告 `QuantumChecked=true`，才表示本次确实执行了 Quantum 规则：
+完整工作区明确提供实际 Unity Client 根目录，另外检查该 Client 的 Quantum.Simulation、真实 GUID 归属与角色／技能作者身份。当前版本 8 沿用版本 7 的 Client 要求，必须提供该 Client 的本批正式编译证据，默认位置为 `Library/DependencyGuard/unity-boundary.json`。工具读取完整实际 rsp、源码、生成回执与当前程序集元数据，不启动 Unity，不删减实际编译输入；只有扫描完成且报告 `QuantumChecked=true`，才表示本次确实执行了 Quantum 规则：
 
 ```powershell
 try {
@@ -113,7 +126,7 @@ Catalog 已接收且有实际源码 owner 的每个程序集都执行退役类�
 
 `unityActualBoundary` 是同一规则表中的正式证据入口，不新增另一套守护。完整 Client 默认读取 `Library/DependencyGuard/unity-boundary.json`；直接运行同一工具时可用 `--unity-evidence <绝对路径>` 指定同一协议的文件。SDK-only 不读取该文件。共享编译与 QTN 由清理唯一队列串行执行，证据来自同批正式过程，守护只读其真实产物。
 
-外层对象的字段为 `Version=3`、`RulesSHA256`、`BatchId`、`ClientRoot`、`Files`、`Compilations`、`Installations`、`Generations`，均为必需字段。`RulesSHA256` 必须是本次执行工具读取的版本 7 规则字节身份。编译输入使用完整 `CompilerArguments`，原始政策快照仍使用下述 Version2；旧证据、旧 `ResponseFile`／`AutomaticReferences` 字段与旧工具不能冒充本版本。所有路径使用真实绝对路径，所有文件先按同批快照 SHA 接收，并在扫描结束再次比较当前字节。文件清单必须覆盖守护实际读取的声明、源码、作者身份、链接包、全部 rsp／嵌套 rsp、编译器及生成器输入、回执、原始政策快照、参考程序集、当前输出与完整实际传递依赖；工具自身、规则文件与外层证据文件由守护独立记录身份。
+外层对象的字段为 `Version=3`、`RulesSHA256`、`BatchId`、`ClientRoot`、`Files`、`Compilations`、`Installations`、`Generations`，均为必需字段。`RulesSHA256` 必须是本次执行工具读取的当前版本规则字节身份。编译输入使用完整 `CompilerArguments`，原始政策快照仍使用下述 Version2；旧证据、旧 `ResponseFile`／`AutomaticReferences` 字段与旧工具不能冒充本版本。所有路径使用真实绝对路径，所有文件先按同批快照 SHA 接收，并在扫描结束再次比较当前字节。文件清单必须覆盖守护实际读取的声明、源码、作者身份、链接包、全部 rsp／嵌套 rsp、编译器及生成器输入、回执、原始政策快照、参考程序集、当前输出与完整实际传递依赖；工具自身、规则文件与外层证据文件由守护独立记录身份。
 
 - `Files` 每项为 `{ Path, SHA256, Kind }`。`Kind="assembly"` 只登记当前实际产物和完整运行依赖闭包的 PE 原件，同一完整程序集身份只能对应同一字节；编译参考程序集同样完整捕获，但使用 `Kind="compiler-reference"`，不能拿不同字节的 ref DLL 替换实现 DLL 的闭包。其它种类按真实输入职责记录。
 - `Compilations` 每项为 `{ AssemblyDefinition, Project, CompilerArguments, WorkingDirectory, Output, Receipt, CompilerTrace, GeneratorOutputs }`。`Project` 是 Client 根目录中对应唯一 asmdef 的真实 Unity 生成工程。`CompilerArguments` 是原 Csc 调用按顺序排列的实参数组，不含 dotnet／exec／csc.dll 启动前缀，包含全部 `@rsp`、`@rsp2` 与直接选项。守护经唯一解析器展开每份实际文件，保留源、元数据引用、别名、编译选项、analyzer 及附加输入；不得删掉 UI、测试、平台或其它候选引用。`GeneratorOutputs` 保存同一成功编译调用实际生成的源码，不能重跑另一生成器拼接。全部受控及项目模拟依赖的 Unity 工程均须覆盖，缺少一个就检查未完成。

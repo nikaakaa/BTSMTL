@@ -5,7 +5,7 @@
 ## 环境
 
 - .NET 8 SDK 与运行时。
-- Node.js 22 及以上（附带 npm），仅构建期需要；`web/package-lock.json` 锁定全部依赖版本。
+- Node.js 22 及以上（附带 npm），网页构建和 DependencyGuard 的 TS/TSX 解析需要；`web/package-lock.json` 锁定全部依赖版本。
 
 ## 启动
 
@@ -19,7 +19,13 @@
 
 独立服务没有登记预览宿主与画面来源，预览接口返回 `available=false`；运行、帧与播放器画面需要项目宿主（3C 见 `Tools/CharacterWorkbench/README.md`）。
 
-组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档、目录、变量、引用替换和资源查询，另以 `MapAuthoringApi(contracts)`、`MapPublicationApi(publication)` 与 `MapPreviewInputApi(inputs)` 挂载合同、发布和输入操作。`MapPlayerApi(adapter, options)` 创建唯一的播放器队列、常驻池、Live、内容刷新和代码更新服务，返回 `Jobs/Live/Refreshes` 供组合；配方、启动参数、输入与原生位置解释来自项目适配。公共服务保存规范 JSON，不解释项目参数。适配接口位于不依赖 ASP.NET 的 `Authoring/`，公共请求位于 `Contracts/`，执行位于 Host 库的 `Player/`。快速路线迁移仍在推进。
+组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档、目录、变量、引用替换和资源查询，另以 `MapAuthoringApi(contracts)`、`MapPublicationApi(publication)` 与 `MapPreviewInputApi(inputs)` 挂载合同、发布和输入操作。`MapPlayerApi(adapter, options)` 创建唯一的播放器队列、常驻池、Live、内容刷新和代码更新服务，返回 `Jobs/Live/Refreshes` 供组合；配方、启动参数、输入与原生位置解释来自项目适配。公共服务保存规范 JSON，不解释项目参数。适配接口位于不依赖 ASP.NET 的 `Authoring/`，公共请求位于 `Contracts/`，执行位于 Host 库的 `Player/`。`MapPreviewQuickApi(adapter, players?)` 另装配公共快速路线服务：输入日程、静态查询、推导、投影、定位、改时、条件发布与快档播放器调度位于 `Quick/`。`IPreviewQuickAdapter` 只提供语义编译结果、领域状态与输入换算、项目运行包。`IPreviewHost` 只提供宿主能力、来源及输入声明，`MapPreviewApi(host, players?)` 回报播放器能力。没有播放器适配或包体时，纯路线正常完成，画面、真实运行与代码更新入口隐藏；网页不向缺失的播放器路由轮询。
+
+## 文档与入口
+
+项目树从 `documents/types` 读取类型和发现规则，以“文档 → 图／Timeline”展开。入口目录的 `isDefault` 决定默认入口；`entryGraph`、`transitionOrder`、`timelineOwnership` 与 `displayName` 由项目适配映射到正式存储成员。通用网页不按项目字段或根文件名推断职责。新建文档从创建目录获取根类型与初始配置，直接使用通用字段检查器编辑，返回的草稿仍经同一文档保存入口落盘。
+
+快档的路线段携带 `conditionDependencies`，区分输入方案写入和默认读取。真实档对比复用已有帧缓存，显示读取范围、实际状态进出与该段条件依据；来源或输入修订变化时标明过期。静态路线与真实运行记录分别保持原来源。
 
 ## 前端开发
 
@@ -48,7 +54,7 @@
 | --- | --- | --- |
 | `player` | 画面 | 播放器推流画面，Game 视图式工具条、点选、输入转发与 Statistics 小窗 |
 | `viewport` | 逻辑视图 | 当前帧的角色根、碰撞几何、扫掠与接触 |
-| `resources` | Project | 内容（当前技能的图、Timeline 与文档）、场景（各 Unity 场景的当前发布按名字列出，旧修订与临时包收进历史）、动画资源；选中对象的详情与运行设置在检查器 |
+| `resources` | Project | 内容（按类型列出的根文档及其图／Timeline）、场景（各 Unity 场景的当前发布按名字列出，旧修订与临时包收进历史）、动画资源；选中对象的详情与运行设置在检查器 |
 | `graph` | 节点图 | 当前帧的实际路线、已发生节点、经过连线与端口值 |
 | `inspector` | 检查器 | 选中对象的字段，身份信息统一在底部折叠 |
 | `frames` | 帧记录 | 当前帧或固定帧的分区记录 |
@@ -85,12 +91,16 @@
 
 ## 接口与职责
 
-`WorkbenchApplication.Create` 提供默认文件、静态文件与动画资源接口，不做未知路径回退。`PreviewApi` 消费项目实现的 `IPreviewHost`，提供 `/api/preview/host`、`/sources` 和 `/inputs`；运行、控制、作业和档案读取由项目 Host 沿正式 Player 链提供。`GET /api/preview/host` 返回可用状态与各预览档位声明。逐功能路由、请求、返回类型、保存阶段、调用身份、时钟和错误处理统一见[前端接口](API.md)。
+`WorkbenchApplication.Create` 提供默认文件、静态文件与动画资源接口。作者文档、合同查询、资源、编译发布和预览通过对应适配接入；公共 `Player/` 持有作业、Live、代码更新与内容刷新，`Quick/` 持有静态路线、输入读取和快档调度。项目提供实际领域编译、输入换算、资源及不透明的运行值。逐操作请求、阶段与错误处理见[前端接口](API.md)。
 
-quick v2 的生产者与网页消费者源码已接通：复用顶栏场景选择及当前技能 editingView，独立 Timeline 使用真实元素身份，原 store 只持当前根与一个 job。静态计划定位与 Player 真实路线分别消费，未知修订状态、取消意图及原错误回执保留；完整合同见[快速预览第二版](API.md#快速预览第二版)。网页 tsc、公共 Web 工程及项目原 CLI／Host 全 ProjectReference 类型检查已通过，Main Editor／Native 完整类型、Editor 加载 v2 及实际预览仍未证明；没有 Vite／wwwroot 发布或现场 UI 检查，不能据源码或 .NET 类型宣称服务已更新。
+快速路线按当前根文档和同一编辑视图捕获来源。入口为图或独立 Timeline，默认入口由适配标记。路线段显示条件写入和默认读取依据，内容与输入变化使旧结果过期；实际记录使用原输入日程并与静态计划并排比较。完整合同见[快速路线与快档画面](API.md#快速路线与快档画面)，源码、构建、HTTP 回读及实际运行范围见项目接入记录。
 
 `Contracts/PreviewObservationContracts.cs` 定义宿主无关的帧：无损文本帧号、运行相对秒数、Actor 根变换、通道及可选一致性值。根与几何采用右手坐标、Y 轴向上、米，旋转为 `[x,y,z,w]`；项目负责正式数值和坐标换算。`RawJson` 保留正式读取模型的无损 JSON 文本，页面不重新解析其中的大整数。
 
-可选 `IPreviewImageSource` 提供画面来源、构建显示字段，以及按正式作业和实际图像索引读取的图片。`PreviewImageApi` 持有 `/api/preview/players`、`/api/preview/player-jobs/{jobId}/frame-images/{imageIndex}` 与常驻 `/api/preview/live/{id}/view`。视频正文为 4 字节小端元数据长度、UTF-8 JSON 和图像字节；元数据提供实际采样来源与时钟、尺寸、方向、媒体类型及适配公共坐标的列主序 `worldToClip`。
+可选 `IPreviewImageSource` 提供画面来源、构建显示字段，以及按正式作业和实际图像索引读取的图片。`PreviewImageApi` 持有 `/api/preview/players`、`/api/preview/player-jobs/{jobId}/frame-images/{imageIndex}` 与常驻 `/api/preview/live/{id}/view`。网页视频消息为 4 字节小端元数据长度和 UTF-8 JSON，像素经桌面壳共享画面区传递；元数据提供实际采样来源与时钟、尺寸、方向、媒体类型及适配公共坐标的列主序 `worldToClip`。
 
 `AnimationResourceApi` 按清单哈希核对 glb 后按内容版本提供 `/api/resources/animations` 与分段文件读取。
+
+## 构建守护
+
+正式解决方案构建先执行 DependencyGuard。除项目类型名检查，还检查通用网页使用的 API 是否在工作台注册，以及 `m_` 字段是否由核心包正式声明。首次构建 SDK 前在 `web/` 执行 `npm ci --ignore-scripts`，安装锁定的 Babel 解析器；不读取注释中的示例，也不扫描项目扩展目录。缺少解析器会明确失败。规则及报告见 [依赖守护](../DependencyGuard/README.md)。
