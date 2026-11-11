@@ -19,11 +19,12 @@ import {
 } from '../../state/graphDocument';
 import { graphName } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
+import { quickPreview } from '../../state/quickPreview';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { executionScopeNames } from '../../state/projectTree';
 import { ProductScope } from '../project/ProductScope';
-import { consoleActions, selectedScene, useWorkbench } from '../../state/store';
+import { consoleActions, contentActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, ObjectField, Select, TextInput, Tip } from '../../ui/controls';
 import { AddIcon, CloseIcon, MoveIcon } from '../../ui/icons';
@@ -927,6 +928,8 @@ const rootFields = (fields: FieldMetadata[]) => fields.filter(field =>
 function FieldReferencePicker({ id, label, field, value, configuration, onChoose }: {
   id: string; label: string; field: FieldMetadata; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
 }) {
+  if (field.pickerKind === 'preview-condition') return <PreviewConditionPicker id={id} label={label} value={value}
+    configuration={configuration} onChoose={onChoose} />;
   if (field.resourceReference !== null) return <ResourceFieldPicker id={id} label={label} metadata={field.resourceReference}
     value={value} configuration={configuration} onChoose={onChoose} />;
   if (field.objectSelection !== null) {
@@ -946,6 +949,30 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
         : { kind: 'unavailable', reason: field.choicesAvailability.reason };
   return <ReferencePicker id={id} label={label} value={value}
     configuration={configuration} catalog={catalog} onChoose={onChoose} />;
+}
+
+function PreviewConditionPicker({ id, label, value, configuration, onChoose }: {
+  id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
+}) {
+  const preview = useWorkbench(state => state.quickPreview);
+  const description = preview.description;
+  const root = description.kind === 'ready' && description.target.root === preview.target?.root
+    ? description.reply.data.root : null;
+  const catalog: ReferenceCatalog = root === null
+    ? { kind: 'unavailable', reason: description.kind === 'failed' || description.kind === 'stale' ? description.reason
+      : description.kind === 'loading' ? '正在读取当前入口的运行条件' : '先选择快预览场景和文档入口，读取当前入口的运行条件' }
+    : { kind: 'ready', referenceKind: 'preview-condition', invalidReason: '此条件不在当前入口的运行数据读取中；原值已保留。',
+      items: root.conditions.map(condition => ({ value: condition.key, name: condition.label, detail: condition.key,
+        source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) };
+  return <div className={styles.facts}>
+    <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
+    {root === null && <Button variant="ghost" disabled={description.kind === 'loading'} onClick={() => {
+      contentActions.selectPreviewMode('quick');
+      openPanel('timeline');
+      void quickPreview.readSource();
+    }}>读取快预览条件</Button>}
+    {root !== null && <small>条件来自 {root.label}。Timeline 已提供的状态仍按片段实际区间计算。</small>}
+  </div>;
 }
 
 function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {

@@ -3,12 +3,12 @@ using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.WebWorkbench;
 
-sealed record QuickPreviewProgramPublication(JArray Programs, IReadOnlySet<string> RuntimeConditions)
+sealed record QuickPreviewProgramPublication(JArray Programs, IReadOnlyDictionary<string, PreviewQuickCondition> RuntimeConditions)
 {
     public static QuickPreviewProgramPublication Build(IPreviewQuickCompiledContent content,
         IReadOnlyDictionary<string, OrchestrationStaticQuery> queries)
     {
-        var conditions = new HashSet<string>(StringComparer.Ordinal);
+        var conditions = new Dictionary<string, PreviewQuickCondition>(StringComparer.Ordinal);
         var programs = new JArray();
         foreach (PreviewQuickProgramInput input in content.Programs)
         {
@@ -36,7 +36,7 @@ sealed record QuickPreviewProgramPublication(JArray Programs, IReadOnlySet<strin
         return new(programs, conditions);
     }
 
-    static JObject Condition(OrchestrationStaticCondition condition, HashSet<string> conditions)
+    static JObject Condition(OrchestrationStaticCondition condition, Dictionary<string, PreviewQuickCondition> conditions)
     {
         var value = new JObject { ["kind"] = condition.Kind.ToString() };
         switch (condition.Kind)
@@ -49,7 +49,10 @@ sealed record QuickPreviewProgramPublication(JArray Programs, IReadOnlySet<strin
                 break;
             case OrchestrationStaticConditionKind.Read:
                 var read = condition.Read;
-                if (read.Source == OrchestrationStaticReadSource.RuntimeData) conditions.Add(read.Key);
+                var runtime = OrchestrationStaticReads.EffectiveRead(null, in read);
+                if (runtime.Source == OrchestrationStaticReadSource.RuntimeData)
+                    conditions.TryAdd(runtime.Key, new(runtime.Key, runtime.Label, runtime.Source.ToString(),
+                        runtime.OperationIndex, runtime.Undeterminable));
                 value["read"] = new JObject { ["operationIndex"] = read.OperationIndex, ["source"] = read.Source.ToString(),
                     ["key"] = read.Key, ["undeterminable"] = read.Undeterminable, ["label"] = read.Label };
                 break;

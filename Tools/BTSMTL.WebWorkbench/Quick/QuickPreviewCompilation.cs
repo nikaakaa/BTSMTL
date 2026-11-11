@@ -35,7 +35,7 @@ sealed record QuickPreviewCompilation(IPreviewQuickCompiledContent Content,
 
     public TimelineStaticRoute Route(QuickPreviewInputSchedule input)
     {
-        string[] missing = input.Conditions.Where(point => !Publication.RuntimeConditions.Contains(point.Key))
+        string[] missing = input.Conditions.Where(point => !Publication.RuntimeConditions.ContainsKey(point.Key))
             .Select(point => $"{point.Element ?? "试用条件"}：条件 '{point.Key}' 不属于本次入口编译的运行数据读取。").ToArray();
         if (missing.Length != 0) throw new InvalidDataException(string.Join("\n", missing));
         var end = OrchestrationTime.FromSeconds((float)input.RangeEnd);

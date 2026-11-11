@@ -12,7 +12,7 @@ import { authoringActions, useAuthoring, type ClipTimeRaw } from './authoring';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
 type Description = { kind: 'idle' } | { kind: 'loading' } | { kind: 'stale'; reason: string }
-  | { kind: 'ready'; reply: PreviewQuickDescriptionReply & { data: PreviewQuickDescription } }
+  | { kind: 'ready'; target: PreviewQuickTarget; reply: PreviewQuickDescriptionReply & { data: PreviewQuickDescription } }
   | { kind: 'failed'; reason: string; reply: PreviewQuickDescriptionReply | null };
 type ActiveReply = PreviewQuickStatusReply & { data: NonNullable<PreviewQuickStatusReply['data']> };
 type Job = { kind: 'idle' }
@@ -228,7 +228,7 @@ function resolveFollow(request: PreviewQuickRequest, reply: PreviewQuickStatusRe
   if (job.kind !== 'idle') set({ job: { ...job, request: resolved } as Job });
   if (selected) {
     autoAttempt = requestKey(resolved);
-    set({ description: { kind: 'ready', reply: { success: true, pending: false, code: null, message: null, data: status.description, rawJson: reply.rawJson } },
+    set({ description: { kind: 'ready', target: request.target, reply: { success: true, pending: false, code: null, message: null, data: status.description, rawJson: reply.rawJson } },
       scheme: status.plan.input });
   }
   return resolved;
@@ -570,7 +570,7 @@ export const quickPreview = {
         }
         chosen = defaultRoot(catalog.data);
         if (chosen === null) {
-          set({ target, description: { kind: 'ready', reply: { ...catalog, data: catalog.data } }, scheme: null });
+          set({ target, description: { kind: 'ready', target, reply: { ...catalog, data: catalog.data } }, scheme: null });
           return;
         }
       }
@@ -593,7 +593,7 @@ export const quickPreview = {
       const previous = current().scheme;
       const selected = previous ?? data.root?.currentInputScheme ?? null;
       const offered = data.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(selected));
-      set({ description: { kind: 'ready', reply: { ...reply, data } }, scheme: offered?.source ?? selected });
+      set({ description: { kind: 'ready', target, reply: { ...reply, data } }, scheme: offered?.source ?? selected });
       const job = current().job;
       if (job.kind !== 'idle' && !selectedRequest(job.request)) invalidateJob();
     } catch (error) {

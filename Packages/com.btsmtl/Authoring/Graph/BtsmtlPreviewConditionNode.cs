@@ -7,13 +7,15 @@ using UnityEngine;
 namespace BTSMTL.Authoring.Graph
 {
 #if UNITY_EDITOR
-    [Name("预览条件"), Category("BTSMTL/预览输入")]
+    [Name(BtsmtlPreviewConditionNode.DisplayName), Category(BtsmtlPreviewConditionNode.CategoryName)]
 #endif
     [FlowInput("Input", "执行"), FlowOutput("Output", "然后")]
     public sealed partial class BtsmtlPreviewConditionNode
     {
         public const string StoredType = "CharacterTimelinePreviewConditionNode";
         public const string Kind = "preview-condition";
+        public const string DisplayName = "预览条件";
+        public const string CategoryName = "BTSMTL/预览输入";
 #if UNITY_EDITOR
         [SerializeField]
 #endif

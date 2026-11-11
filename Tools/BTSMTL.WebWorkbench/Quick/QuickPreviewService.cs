@@ -67,7 +67,8 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
         PreviewQuickMachine[] machines = compiled.Machines.Select(machine =>
             machine with { Authoring = identity.Authoring with { Entry = machine.Authoring.Entry } }).ToArray();
         return Describe(actor, capture.Documents(),
-            new(identity.Authoring, QuickLabel(capture, compiled), machines, inputs.Schemes(), new PreviewQuickRootInputs()), identity);
+            new(identity.Authoring, QuickLabel(capture, compiled), machines, inputs.Schemes(), new PreviewQuickRootInputs(),
+                compiled.Publication.RuntimeConditions.Values.OrderBy(condition => condition.Key, StringComparer.Ordinal).ToArray()), identity);
     }
 
     static PreviewQuickDescription Describe(IPreviewQuickEnvironment actor, PreviewQuickDocumentChoice[] documents,

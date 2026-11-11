@@ -24,6 +24,7 @@ const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
 const inputDeclaration = object({ inputId: text, kind: text, type: nullable(text) });
 const inputPoint = object({ inputId: text, time: number, value: opaque });
 const conditionPoint = object({ key: text, time: number, satisfied: boolean, restoreDefault: boolean });
+const condition = object({ key: text, label: text, source: text, operationIndex: number, undeterminable: boolean });
 const location = object({ documentPath: text, graphId: text, nodeId: text, edgeId: text, displayPath: text });
 const scheme = object({ source: inputSource, name: text, revision: text, timelineId: nullable(text) });
 const description = object({
@@ -33,7 +34,7 @@ const description = object({
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
     authoring, label: text, machines: array(object({ authoring, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
-    inputSchemes: array(scheme), currentInputScheme: inputSource,
+    inputSchemes: array(scheme), currentInputScheme: inputSource, conditions: array(condition),
   })),
   source: nullable(source), note: text,
 });
@@ -47,7 +48,7 @@ const plan = object({
     occurrence: number, playbackCompleted: boolean, callerPlayback: number, callerClipId: text,
     conditionDependencies: array(object({ key: text, label: text, written: boolean })),
   })),
-  conditions: array(object({ key: text, label: text, source: text, operationIndex: number, undeterminable: boolean })),
+  conditions: array(condition),
   suggestions: array(object({
     fromState: text, toState: text, transition: text, fromSource: nullable(location), toSource: nullable(location), transitionSource: location,
     start: number, end: number, missing: array(object({ key: text, label: text })),
