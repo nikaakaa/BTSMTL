@@ -97,7 +97,7 @@ function DocumentSummary() {
   const { target, documents } = useAuthoring(useShallow(state => ({ target: state.target, documents: state.documents })));
   if (target === null) return <Empty text="选择要编辑的文档" />;
   const document = documents[target.documentPath];
-  if (document.roles.entryGraph !== undefined) return <DocumentSummary />;
+  if (document.roles.entryGraph !== undefined) return <EntryDocumentSummary />;
   if (document.loading) return <Empty text="正在读取文档" />;
   if (target.kind === 'scenario') return <SceneInspector />;
   const root = projectContents(documents).items.find(item => item.owner === target.documentPath && item.file === document.rootFile);
@@ -123,7 +123,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
       { displayName: '所属文档修订', value: element.revision }]} />
   </>;
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
-  if (item.kind === 'document') return <DocumentSummary />;
+  if (item.kind === 'document') return <EntryDocumentSummary />;
   return <>
     <Head name={item.name} sub={`${item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} · ${item.ownerName} · ${item.ownership === 'Shared' ? '共享' : '私有'}`} />
     {item.kind === 'timeline' && <Fold title="设置" defaultOpen><TimelineScopeFields documentId={item.identity} /></Fold>}
@@ -259,7 +259,7 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
 // ── 文档 ──
 
 // 打开文档、没有选中对象时（照 Unity 选中资产本身）：文档名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
-function DocumentSummary() {
+function EntryDocumentSummary() {
   const { skill, typeName, plans, editable, noProgram, documentError } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
     const path = state.target?.documentPath ?? null;
