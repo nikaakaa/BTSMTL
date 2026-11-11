@@ -60,7 +60,7 @@
 
 `scenes` 的 `path` 与 `revision` 成对传递。`timelines` 每项含可直接用于 Load 的 `content`，以及 `contentIdentity/contentRevision/bindingRevision/tickRate/scene/bindings`；不能把它改装成场景输入来源。
 
-输入选项使用宿主实际返回的 `actorId`、本地方案的 `documentPath`、`inputPlanRoot`、`inputPlanRevision` 和 `schemeIndex`。按键类型为 `Button/Scalar/Vector2`，值与请求映射来自声明；按键不能由 UI 按角色名或技能名写死。方案 `rangeEndSeconds` 是日程内的相对秒数，SDK 起点由实际载入决定，不能据此伪造绝对 SDK 帧。
+输入选项使用宿主实际返回的 `actorId`、本地方案的 `id/documentPath/path/revision` 与各 `schemes[].id/index`。快速栏按 `documentPath/inputId/schemeId` 匹配实际目录，再把 `path/revision/index` 交给播放器的 `inputPlanRoot/inputPlanRevision/schemeIndex`，不按名称或旧下标代选。按键类型为 `Button/Scalar/Vector2`，值与请求映射来自声明；按键不能由 UI 按角色名或技能名写死。方案 `rangeEndSeconds` 是日程内的相对秒数，SDK 起点由实际载入决定，不能据此伪造绝对 SDK 帧。
 
 ## 快速路线与快档画面
 
@@ -68,7 +68,7 @@
 
 | 方法与路径 | 输入与输出 |
 | --- | --- |
-| `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root?,scenePublication?}`；无 root 时列出文档及入口，带 root 时返回本次捕获的来源、机器、输入方案、声明和 `root.conditions` 运行条件候选。 |
+| `POST /api/preview/quick/describe` | `PreviewQuickTarget{scenePath,root?,scenePublication?}`；返回正式 `actorId`；无 root 时列出文档及入口，带 root 时返回本次捕获的来源、机器、输入方案、声明、`root.defaultInput` 和 `root.conditions` 运行条件候选。 |
 | `POST /api/preview/quick/plans` | `PreviewQuickRequest{mode:"quick",target,sourceRevision?,input,outputDirectory,rangeEndSeconds?,timeoutSeconds?,initialSeconds?}`；创建同一公共作业，推导并准备快档 Player。 |
 | `GET /api/preview/quick/plans/{jobId}` | 读取作业、来源修订、计划、实际采用档位和播放器；可带 `stage` 等待阶段变化，最长 10 秒。 |
 | `POST /api/preview/quick/plans/{jobId}/seek` | `{requestId,sourceRevision,inputRevision,seconds}`；返回同一作业的新采样和实际画面槽序号。 |
@@ -78,6 +78,10 @@
 `root` 分为 `nativeDocument`、`webEditingView`、`authoringDocument`，均携带 `authoring{documentPath,savedRevision,entry}`；网页来源另带同一正式文档的 `editingView`。入口是 `graph{graphId,machine}` 或 `timeline{timelineId}`。目录条目使用 `isDefault` 声明默认入口，网页不读取项目根字段来猜入口。场景选择以 publication.path＋revision 精确关联 quickScenes，quick 使用其 SceneAsset 身份，真实档继续使用原正式场景包。
 
 `input.source` 为 `rootDefaults` 或 `documentInput{documentPath,savedRevision,inputId,schemeId}`，`input.revision` 与 `sourceRevision` 为 null 时按本次捕获的正式来源推导，非 null 时须匹配本次修订。输入 Timeline 的回调时刻、同刻冲突与非法节点由公共读取器处理；条件写入在 BTSMTL 处理，预览按键经项目的 `IPreviewInputKeyAdapter` 换成输入值和动作请求。API 的显式 `points/conditions` 覆盖须成对提供；网页只提交方案来源，不另造覆盖日程。
+
+`root.defaultInput` 为根默认输入实际对应的 `documentInput`，没有唯一作者默认方案时为 null；它让“编辑所选输入”和真实运行沿同一方案往返，不改变根默认选择规则。切换检查对象保留已选预览根，作者可用“预览此图／此 Timeline”明确更换根。路线视图按全局时间摆放输入 Timeline 与各次播放；同一 Timeline 的重复播放保留各自区段索引，跨文档区段先打开其正式 owner 再编辑。
+
+快速栏“真实运行一次”先提交聚焦字段、保存完整编辑并刷新输入目录，再按稳定身份准备所选日程；回到预览根所属文档，沿既有 `documents/apply` 编译、发布和所选 Player 采用流程封存。新作业消费采用后的场景包，采用失败、场景不匹配或输入方案缺失时报告实际阶段；快速路线的条件假设仍由真实记录确认。
 
 `root.inputSchemes` 同时包含当前入口的根方案和适配声明属于当前场景、角色的场景方案。根方案只有一份时提供默认选择；同一入口存在多份根方案时，`root.currentInputScheme=null`，网页要求作者明确选择，不按目录顺序代选。场景方案仍只允许原正式按键写入。网页编辑图进入输入目录前，必须沿所属文档适配收集为同次捕获的正式图形状。
 
@@ -142,9 +146,11 @@
 | `/api/authoring/documents/queries/reference-curves` | 与 referrers 相同 | 引用目标的曲线 |
 | `/api/authoring/documents/queries/project` | 首页 `{offset?,limit?,editingView?}`；后续页 `{snapshot,offset,limit?}` | 文档所属工程条目；回执带 `snapshot`，后续页只带它、不再带 `editingView`，宿主从同一份快照切片。宿主只留最近 8 份快照，失效时报错，需从首页重读 |
 | `/api/authoring/documents/queries/blackboards` | `{offset?,limit?}` | `identity,graphId,id,key,type,category` |
-| `/api/authoring/documents/queries/elements` | 查询串 `timelineId?` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状；图模板带 `role/seed/ownership`，`value` 与已读入图同为展开模型；`state` 为状态机新状态模板，`flowOutputs` 列出带执行出口列表的节点成员及其元素形状 |
+| `/api/authoring/documents/queries/elements` | `{inputContext?,editingView?}` | 图锚点、状态转移、轨道、片段、标记、输入节点和黑板的正式模板及存储形状；图模板带 `role/seed/ownership`，`value` 与已读入图同为展开模型；`state` 为状态机新状态模板，`flowOutputs` 列出带执行出口列表的节点成员及其元素形状 |
 
 场景方案使用同一组文档查询，documentPath 为其 Scenarios 相对路径；类型和元素由输入方案来源读取，不要求能力根。
+
+`inputContext` 为 `{kind:"document"}`、`{kind:"timeline",timelineId}` 或 `{kind:"scene",scene:{path,revision},actor}`。场景上下文携带已发布包的相对路径与修订，不能以 Unity 场景资产路径代替。能力文档、独立图、独立 Timeline 与场景方案均沿同一元素模板创建输入；场景内新增第二份方案也必须提交该上下文。
 
 新节点先按实际 `type` 请求默认配置；编辑后将当前未保存配置传回同一个 `queries/type`，不能为了查询字段而先保存。字段包含正式 `serializedMemberPath`、存储 `shape`、`readOnly`、`optional`、`allowedValues`、`pickerKind/pickerOwnerField/objectType`、`visibleWhenField/visibleWhenValue`、`choices` 和 `references`；计算字段为 `computed:true`，不写回。存储形状成员带 `authoring`（`fieldId,displayName,authoringVisible,readOnly,allowedValues,optional,graphTargets`），`graphTargets` 非空的成员是专属图槽位（目标 `role/ownership/ownerBinding/seed`），检查器按槽位提供打开、新建与可选时的移除，其余只显示作者可见的成员；组合节点步骤的中断策略可选值随所属组合节点给出。
 
