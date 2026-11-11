@@ -113,9 +113,7 @@ public sealed class AuthoringDocumentService
                     : previous.ExpectedRevision, files);
             edited = request with
             {
-                Writes = request.Writes.Where(write => write.DocumentPath != owner.DocumentPath).Append(replacement).ToArray(),
-                Reads = request.Reads.Any(read => read.DocumentPath == owner.DocumentPath) ? request.Reads :
-                    request.Reads.Append(new AuthoringDocumentReadRevision(owner.DocumentPath, saved.Revision)).ToArray()
+                Writes = request.Writes.Where(write => write.DocumentPath != owner.DocumentPath).Append(replacement).ToArray()
             };
         }
         AuthoringDocumentWrite[] writes = Writes(edited);
