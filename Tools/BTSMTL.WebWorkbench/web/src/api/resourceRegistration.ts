@@ -61,7 +61,7 @@ const readPublishedResource = object({ path: text, assetToken: text, revision: t
 type PublishedResourceBinding = ReturnType<typeof readPublishedBindingIdentity> & (
   | { kind: 'bound'; resource: ReturnType<typeof readPublishedResource> }
   | { kind: 'unavailable'; reason: string });
-function readPublishedBinding(value: unknown, path: string): PublishedResourceBinding {
+function readPublishedBinding(value: unknown, path = 'PublishedResourceBinding'): PublishedResourceBinding {
   const identity = readPublishedBindingIdentity(value, path);
   const { availability } = object({ availability: readAuthoringAvailability })(value, path);
   return availability.available
