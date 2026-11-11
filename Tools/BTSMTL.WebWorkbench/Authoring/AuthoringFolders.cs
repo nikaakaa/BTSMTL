@@ -85,8 +85,8 @@ public sealed class AuthoringFolders
     public IReadOnlyList<AuthoringDocumentSnapshot> WriteRecording(string directory, SkillAuthoringWrite content,
         IReadOnlyList<BtsmtlGraphVariableDeclarations> variables)
     {
-        AuthoringDocumentSnapshot? current = m_Documents.Read().GetAwaiter().GetResult()
-            .SingleOrDefault(document => document.DirectoryPath == directory);
+        IReadOnlyList<AuthoringDocumentSnapshot> documents = m_Documents.Read().GetAwaiter().GetResult();
+        AuthoringDocumentSnapshot? current = documents.SingleOrDefault(document => document.DirectoryPath == directory);
         var files = current == null ? new Dictionary<string, string>(StringComparer.Ordinal)
             : current.Files.ToDictionary(file => file.Key, file => file.Value, StringComparer.Ordinal);
         string Relative(string path) => Path.GetRelativePath(directory, FilePath(directory, path)).Replace('\\', '/');
@@ -102,6 +102,12 @@ public sealed class AuthoringFolders
                 {
                     [AuthoringDocumentKind.Variables.RootFile] = AuthoringJsonText.Text(BtsmtlGraphVariableDeclarationsJson.Write(declarations))
                 }));
+        HashSet<string> removedGraphs = content.RemovedFiles.Select(Relative)
+            .Where(path => Path.GetDirectoryName(path) == "graphs")
+            .Select(path => (string)current!.Read(path)["AuthoringId"]!).ToHashSet(StringComparer.Ordinal);
+        writes.AddRange(documents.Where(document => document.Kind == AuthoringDocumentKind.Variables &&
+            removedGraphs.Contains(document.Identity)).Select(document => AuthoringDocumentWrite.Delete(
+                document.Kind, document.DirectoryPath, document.Revision)));
         HashSet<string> written = writes.Select(write => write.DirectoryPath).ToHashSet(StringComparer.Ordinal);
         return m_Documents.Save(writes, []).GetAwaiter().GetResult()
             .Where(document => written.Contains(document.DirectoryPath)).ToArray();
