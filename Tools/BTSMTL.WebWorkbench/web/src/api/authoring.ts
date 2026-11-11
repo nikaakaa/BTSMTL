@@ -802,7 +802,8 @@ export const authoringApi = {
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   creationOptions: async (signal?: AbortSignal) => readCreationOptions(await getText('/api/authoring/documents/creation-options', signal)),
   createDocumentDraft: async (request: DocumentCreationRequest) => {
-    return readDocumentCreationDraft(JSON.parse(await postText('/api/authoring/documents/create', stringifySkillJson(request, '\n'))));
+    return readDocumentCreationDraft(JSON.parse(await postText('/api/authoring/documents/create',
+      stringifySkillJson({ type: request.type, parameters: { ...request.parameters } }, '\n'))));
   },
   createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string, curve: string | null) =>
     postJson<Pick<DocumentCreationDraft, 'stage' | 'files' | 'variables' | 'availability' | 'documentPath'> & { reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
