@@ -306,13 +306,16 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
             job.Retiming = new QuickRetimeSource(capture, actor, compiled, input, graph?.GraphId);
             job.Update(status => status with { Source = capture.Identity, Plan = plan, Description = description });
             string? playerReason = players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
+            string? selectedBuild = playerReason == null ? actor.SelectPlayerBuild(players!.Jobs.PublishedBuilds()) : null;
+            if (playerReason == null && selectedBuild == null)
+                playerReason = $"没有匹配场景 '{actor.ScenePath}' 与角色 '{actor.ActorId}' 的播放器构建。";
             if (playerReason != null)
             {
                 job.Update(status => status with { Stage = "ready", Completed = true,
                     Notes = [.. status.Notes, playerReason + " 路线已推导，画面不可用。", string.Join(" · ", timings)] });
                 return;
             }
-            string build = actor.SelectPlayerBuild(players!.Jobs.PublishedBuilds());
+            string build = selectedBuild!;
             Mark("选播放器构建");
             string output = PlayerInputPreparation.OutputDirectory(request.OutputDirectory);
             var motionPrograms = compiled.Publication.Programs;

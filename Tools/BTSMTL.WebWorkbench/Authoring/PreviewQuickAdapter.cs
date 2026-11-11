@@ -25,7 +25,7 @@ public interface IPreviewQuickEnvironment
     IReadOnlyDictionary<string, OrchestrationValueKind> InputKinds { get; }
     Task<PreviewQuickDocumentChoice[]> Documents();
     Task<IPreviewQuickCapture> Capture(PreviewQuickRoot root, Action<string>? mark, CancellationToken cancellation);
-    string SelectPlayerBuild(IEnumerable<JsonNode> builds);
+    string? SelectPlayerBuild(IEnumerable<JsonNode> builds);
     IPreviewInputKeyAdapter Keys { get; }
 }
 
