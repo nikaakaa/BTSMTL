@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
@@ -954,18 +954,18 @@ function FieldReferencePicker({ id, label, field, value, configuration, onChoose
 function PreviewConditionPicker({ id, label, value, configuration, onChoose }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
 }) {
-  const preview = useWorkbench(state => state.quickPreview);
+  const description = useWorkbench(state => state.quickPreview.description);
+  const target = useWorkbench(state => state.quickPreview.target?.root);
   const mode = useWorkbench(state => state.host?.modes.find(item => item.id === 'quick'));
-  const description = preview.description;
-  const root = description.kind === 'ready' && description.target.root === preview.target?.root
+  const root = description.kind === 'ready' && description.target.root === target
     ? description.reply.data.root : null;
+  const items = useMemo(() => root?.conditions.map(condition => ({ value: condition.key, name: condition.label, detail: condition.key,
+    source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) ?? [], [root]);
   const catalog: ReferenceCatalog = root === null
     ? { kind: 'unavailable', reason: mode === undefined ? '宿主尚未声明快预览能力' : !mode.available ? mode.reason!
       : description.kind === 'failed' || description.kind === 'stale' ? description.reason
       : description.kind === 'loading' ? '正在读取当前入口的运行条件' : '先选择快预览场景和文档入口，读取当前入口的运行条件' }
-    : { kind: 'ready', referenceKind: 'preview-condition', invalidReason: '此条件不在当前入口的运行数据读取中；原值已保留。',
-      items: root.conditions.map(condition => ({ value: condition.key, name: condition.label, detail: condition.key,
-        source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) };
+    : { kind: 'ready', referenceKind: 'preview-condition', invalidReason: '此条件不在当前入口的运行数据读取中；原值已保留。', items };
   return <div>
     <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
     {root === null && <Button variant="ghost" disabled={mode?.available !== true || description.kind === 'loading'} onClick={() => {
