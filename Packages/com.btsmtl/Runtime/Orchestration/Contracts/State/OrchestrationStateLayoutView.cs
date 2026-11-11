@@ -114,11 +114,15 @@ namespace BTSMTL.Orchestration
         }
 
         public OrchestrationStateSegment Segment(OrchestrationStateSegmentRole role,
-            OrchestrationValueKind valueKind = 0) =>
-            Segments[Index(role, valueKind).Segment];
+            OrchestrationValueKind valueKind = 0)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            return Section<OrchestrationStateSegment>(header.Segments)[Index(in header, role, valueKind).Segment];
+        }
 
-        OrchestrationStateSegmentIndex Index(OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
-            Section<OrchestrationStateSegmentIndex>(Header.Indices)[(int)role * KindCount + (int)valueKind];
+        OrchestrationStateSegmentIndex Index(in OrchestrationStateLayoutImageHeader header,
+            OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
+            Section<OrchestrationStateSegmentIndex>(header.Indices)[(int)role * KindCount + (int)valueKind];
 
         public OrchestrationValueAddress CharacterAddress(int slot) =>
             Section<OrchestrationValueAddress>(Header.CharacterAddresses)[slot];
@@ -156,8 +160,13 @@ namespace BTSMTL.Orchestration
         internal OrchestrationStateRegion<byte> PayloadRegion(int frame, int program, int owner,
             OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind = 0)
         {
-            int index = Index(role, valueKind).FramePayload;
-            return FramePayloads[index].AtFrame(frame, PayloadSizes(program, owner)[index]);
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            int index = Index(in header, role, valueKind).FramePayload;
+            ref readonly OrchestrationFramePayloadSegment payload =
+                ref Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[index];
+            OrchestrationMemorySection sizes =
+                Section<OrchestrationStateProgramRecord>(header.Programs)[program].PayloadSizes;
+            return payload.AtFrame(frame, PayloadSizes(sizes, owner, header.FramePayloads.Count)[index]);
         }
     }
 }
