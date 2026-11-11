@@ -45,6 +45,7 @@ export const trackColors: Record<TrackKind, string> = {
 export interface TimelineSegment {
   id: string;
   documentId: string;
+  quickIndex?: number;
   origin: number;
   start: number;
   end: number;

@@ -105,7 +105,7 @@ export type QuickPlaybackChoice = { value: string; options: { value: string; lab
 export type PreviewClock = { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'archive'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'input'; documentId: string; source: 'archive' | 'author' | 'unavailable' }
-  | { kind: 'quick'; documentId: string | null; source: { kind: 'input' } | { kind: 'timeline'; segment: QuickSegment | null } };
+  | { kind: 'quick'; documentId: string | null; source: { kind: 'input' | 'route' } | { kind: 'timeline'; segment: QuickSegment | null } };
 export const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
 export type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number }
   | { kind: 'unavailable'; reason: string };
@@ -165,8 +165,9 @@ export const authorCursorOf = (cursor: { documentId: string | null; seconds: num
 export const quickLocalSeconds = (segment: QuickSegment, seconds: number) => seconds < segment.start || seconds > segment.end ? null
   : seconds === segment.end ? segment.localEnd : segment.localStart + seconds - segment.start;
 export function previewSeconds(state: WorkbenchState, clock: PreviewClock, author: number | null): number | null {
-  if (clock.kind === 'quick') return clock.source.kind === 'input' ? state.quickPreview.seconds
-    : clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds);
+  if (clock.kind === 'quick') return clock.source.kind === 'timeline'
+    ? clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds)
+    : state.quickPreview.seconds;
   if (clock.kind === 'input') return clock.source === 'archive' && state.archiveFrame?.hostFrame === state.hostFrame
     ? state.archiveFrame?.input?.inputTimeSeconds ?? null : author;
   return author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
