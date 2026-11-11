@@ -44,7 +44,9 @@ namespace ThirdPersonSimulation
         void ApplyResponse(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state);
         void EvaluateStep(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state,
             out TVector3 position, out TYaw yaw);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
         void Trace(in TRequest request, string code);
+#endif
     }
 
     public static class MotionWarpWindowRuntime<TScalar, TVector2, TVector3, TYaw, TAction, TMath>
@@ -73,9 +75,11 @@ namespace ThirdPersonSimulation
                 default, default, default, default, default, default, default, default, default, default, default,
                 request.SourceOperation, decision, request.HasTarget, position, yaw);
             target.WriteState(in request, in state);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
             target.Trace(in request, decision == MotionWarpWindowDecision.Disabled ? MotionModifierDiagnosticCode.Disabled :
                 decision == MotionWarpWindowDecision.NoTarget ? MotionModifierDiagnosticCode.NoTargetByOptionalPolicy :
                 MotionModifierDiagnosticCode.WindowEntered);
+#endif
         }
 
         public static void Apply<TRequest, TTarget>(in TRequest request, TTarget target)
@@ -89,7 +93,9 @@ namespace ThirdPersonSimulation
             if (request.RotationMethod == ProgramMotionWarpRotationMethod.TargetResponse)
             {
                 target.ApplyResponse(in request, in parameters, in state);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
                 target.Trace(in request, MotionModifierDiagnosticCode.Applied);
+#endif
                 return;
             }
             TMath math = default;
@@ -119,7 +125,9 @@ namespace ThirdPersonSimulation
                 {
                     state = state.WithDecision(MotionWarpWindowDecision.PreservedByLimitPolicy);
                     target.WriteState(in request, in state);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
                     target.Trace(in request, MotionModifierDiagnosticCode.PreservedByLimitPolicy);
+#endif
                     target.ApplyMotionWarp(rawDelta, sourceYawDelta, rawDelta, sourceYawDelta);
                     return;
                 }
@@ -170,8 +178,10 @@ namespace ThirdPersonSimulation
                 math.DeltaYaw(previousYaw, currentYaw));
             state = state.WithProgress(currentPosition, currentYaw, positionProgress, yawProgress);
             target.WriteState(in request, in state);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
             target.Trace(in request, limit == ProgramMotionWarpLimitResult.AppliedClamped
                 ? MotionModifierDiagnosticCode.AppliedClamped : MotionModifierDiagnosticCode.Applied);
+#endif
         }
     }
 }

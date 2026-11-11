@@ -25,7 +25,9 @@ namespace ThirdPersonSimulation
         where TChannel : struct
     {
         void CaptureWindowEntry(in TRequest request);
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
         void TraceSourceNotResolved(in TRequest request);
+#endif
         void ApplyTimelineMotionWarp(in TRequest request, ref TChannel channel);
         void FailAmbiguousModifier(in TRequest previous, in TRequest current);
     }
@@ -54,7 +56,9 @@ namespace ThirdPersonSimulation
                     warp.SourceExecutionPathIdentityId != resolvedSourceExecutionPathIdentityId ||
                     warp.SourceMotionClipIdentityId != resolvedMotionClipIdentityId)
                 {
+#if !UNITY_5_3_OR_NEWER || UNITY_EDITOR || DEVELOPMENT_BUILD || KK_DIAGNOSTIC_SAMPLING
                     target.TraceSourceNotResolved(in warp);
+#endif
                     continue;
                 }
                 if (selected >= 0)
