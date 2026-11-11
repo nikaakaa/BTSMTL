@@ -46,6 +46,7 @@ export interface TimelineSegment {
   id: string;
   documentId: string;
   quickIndex?: number;
+  owner?: string;
   origin: number;
   start: number;
   end: number;

@@ -17,7 +17,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
+  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, isTimelineFile, timelineOf, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
   useAuthoringElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
@@ -121,7 +121,8 @@ function TimelineWindow() {
   const routeKey = useWorkbench(state => state.previewMode === 'quick' ? 'quick' : state.runId !== null ? `run:${state.runId}` : null);
   const routeTimeline = routeKey === 'quick' ? quickInputTimeline : routeKey !== null ? schemes[0]?.documentId ?? null : null;
   const hasQuickRoute = useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.route !== null);
-  const routeView = hasQuickRoute && (params.focus === routeTimelines || params.focus === null && routeTimeline === null);
+  const routeView = hasQuickRoute && (params.focus === routeTimelines || params.focus === null &&
+    !authorTimelines.some(timeline => timeline.documentId === routeTimeline));
   const fallback = routeTimeline !== null && authorTimelines.some(item => item.documentId === routeTimeline) ? routeTimeline
     : authorTimelines[0]?.documentId ?? null;
   const focusId = routeView || params.focus === allTimelines ? null
@@ -564,6 +565,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   const edited = useAuthoring(state => authoringDocument(state).edited);
   const files = useAuthoring(state => authoringDocument(state).files);
   const timelines = useAuthorTimelines();
+  const documents = useAuthoring(state => state.documents);
   const selectedClip = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const references = useReferenceCurves();
   // 快档保留上一份路线直到新路线采用：过期时照常显示与定位，状态栏注明过期。
@@ -618,8 +620,20 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
   // 快档在输入轨下按全局时间摆出 Host 算出的每次播放；不另画路线条。
-  const played = useMemo(() => quickMode && quickPlan !== null && (routeView || quickInput)
-    ? quickPlayedSegments(quickPlan, timelines, quickInputTimeline) : [], [quickMode, quickPlan, routeView, quickInput, quickInputTimeline, timelines]);
+  const played = useMemo(() => {
+    if (!quickMode || quickPlan === null || !routeView && !quickInput) return [];
+    const owners = new Set(quickPlan.segments.map(segment => segment.documentPath).filter(owner => owner !== null));
+    const sources = [...owners].flatMap(owner => {
+      const source = documents[owner];
+      if (source === undefined) return [];
+      return [...new Set([...Object.keys(source.files), ...Object.keys(source.edited)])]
+        .filter(path => isTimelineFile(path) && !source.removed.includes(path)).map(path => {
+          const value = (source.edited[path] ?? parseSkillJson(source.files[path])) as JsonObject;
+          return timelineOf(value.m_AuthoringId as string, value);
+        });
+    });
+    return quickPlayedSegments(quickPlan, [...sources, ...timelines], quickInputTimeline);
+  }, [quickMode, quickPlan, routeView, quickInput, quickInputTimeline, timelines, documents]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
   const callerNotice = caller !== null && caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例' : null;
@@ -683,7 +697,15 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
   }, [focused?.documentId, authorObservation]);
 
-  const enter = useCallback((documentId: string, quickIndex: number | null = null) => {
+  const enter = useCallback((documentId: string, quickIndex: number | null = null, owner?: string) => {
+    if (owner !== undefined && owner !== useAuthoring.getState().target?.documentPath) {
+      void projectActions.openOwner({ owner, ownerName: owner }).then(() => {
+        selectionActions.select(null);
+        setParams({ focus: documentId, range: null, call: null, pin: null, caller: null, origin: null });
+        if (quickPlan !== null && quickIndex !== null) setQuickSelection({ plan: quickPlan, documentId, index: quickIndex });
+      }).catch(error => consoleActions.error('Timeline', error));
+      return;
+    }
     const segment = segments.find(item => item.documentId === documentId);
     if (!segment) return;
     const selection = getState().selection;
@@ -1005,7 +1027,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
   collapsed: string[];
   toggle(id: string): void;
   toggleCurves(id: string): void;
-  enter(documentId: string, quickIndex?: number | null): void;
+  enter(documentId: string, quickIndex?: number | null, owner?: string): void;
   frameAll(): void;
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
@@ -1050,6 +1072,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
       return;
     }
     const hits = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-box]')].filter(element => {
+      if (element.dataset.owner !== undefined && element.dataset.owner !== useAuthoring.getState().target?.documentPath) return false;
       const rect = element.getBoundingClientRect();
       return rect.right >= left && rect.left <= right && rect.bottom >= top && rect.top <= bottom;
     });
@@ -1212,9 +1235,10 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
 
 const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
   elements: AuthoringElements | null;
-  row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string, quickIndex?: number | null): void;
+  row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string, quickIndex?: number | null, owner?: string): void;
 }) {
   const segment = row.segment;
+  const owner = useAuthoring(state => state.target?.documentPath);
   const { range } = useTimelineContext();
   return (
     <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
@@ -1223,8 +1247,8 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           name={segment.timeline.displayName ?? segment.documentId.slice(0, 8)}
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
-          onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex)} />
-        {!row.focused && <AddTrack elements={elements} documentId={segment.documentId} />}
+          onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
+        {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
@@ -1301,8 +1325,7 @@ function pasteAfterSelection(elements: AuthoringElements) {
 
 // 作者模式右键轨道（照 Timeline Editor 轨道与片段菜单）：在点击处添加片段、标记或粘贴，
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
-function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: AuthoringElements | null): MenuEntry[] {
-  const author = useAuthoring(state => state.author && state.target !== null);
+function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: AuthoringElements | null, author: boolean): MenuEntry[] {
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
   useWorkbench(state => state.selection);
@@ -1399,8 +1422,9 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const { range, getValueFromScreenX } = useTimelineContext();
   const at = useRef(0);
   const [naming, setNaming] = useState(false);
-  const author = useAuthoring(state => state.author && state.target !== null);
-  const menu = useTrackMenu(row, at, () => setNaming(true), elements);
+  const owned = useAuthoring(state => row.segment.owner === undefined || row.segment.owner === state.target?.documentPath);
+  const author = useAuthoring(state => state.author && state.target !== null) && owned;
+  const menu = useTrackMenu(row, at, () => setNaming(true), elements, author);
   const documentId = row.timeline.documentId;
   const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const step = useContext(SnapContext) ?? 1 / 60;
@@ -1409,15 +1433,15 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const markers = row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end);
   // 照 Clip.UpdateMix 只给可混合的片段算混合：轨道合同为 Blend 的动画与位移曲线轨。
-  const blend = elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
+  const blend = owned && elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
-  const hasCurves = elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
+  const hasCurves = owned && elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
   const animationLibrary = useAnimationLibrary(author && row.trackKind === 'anim');
   const reportDrop = useDropReport();
   const curves = hasCurves && row.curves ? row.curves : 0;
   const segment = row.segment;
-  const select = () => selectTimelineObject(clock, 'track', row.selectId);
+  const select = () => selectTimelineObject(clock, 'track', row.selectId, row.segment.owner);
   const muted = row.track.muted;
   // 轨道头的选项按钮（⋮）与右键菜单相同，在游标处添加；打开前选中这条轨道。
   const openOptions = () => {
@@ -1451,7 +1475,7 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。
       const item = (event.target as HTMLElement).closest<HTMLElement>('[data-select]');
-      if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select);
+      if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select, row.segment.owner);
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) select();
     }}>
     <Line id={row.id} nest={nest} selected={selected} muted={muted} headClass={styles.trackHead}
@@ -1491,13 +1515,13 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
       </TrackHead>
     }>
       {visible.map(clip => <Clip key={clip.key} elements={elements} clip={clip} kind={row.trackKind} mix={mixes.get(clip.key)!}
-        documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} />)}
+        documentId={row.timeline.documentId} segmentId={segment.id} trackId={row.track.id} owner={segment.owner} author={author} />)}
       {curves > 0 && elements && <ClipCurves row={row} elements={elements} mixes={mixes} author={author} height={curves} />}
       {markers.map(marker => {
         const markerId = marker.selectId.split('/')[1];
         return (
           <Marker key={marker.key} boxKey={marker.key} seconds={marker.seconds} kind={row.trackKind} label={`${row.track.displayName} 标记`} text={marker.label} graphId={marker.graphId}
-            selectId={marker.selectId}
+            selectId={marker.selectId} owner={segment.owner}
             move={author ? seconds => authoringActions.setMarkerTime(documentId, markerId, snapLocal(seconds)) : undefined}
             snap={author ? seconds => segment.origin + snapLocal(seconds) : undefined}
             taken={author ? seconds => markerTimeTaken(documentId, row.track.id, snapLocal(seconds), markerId) : undefined} />
@@ -1522,11 +1546,11 @@ function Positioned({ start, end, className, children, style, tip }: {
   );
 }
 
-const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segmentId, trackId }: {
+const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segmentId, trackId, owner, author }: {
   elements: AuthoringElements | null;
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
+  owner?: string; author: boolean;
 }) {
-  const author = useAuthoring(state => state.author && state.target !== null);
   useAuthoring(state => authoringDocument(state).version);
   const source = author && elements ? clipSnapSource(elements, documentId, clip.clip.id)?.source : null;
   const animation = source?.choiceKind === animationReferenceKind ? source : null;
@@ -1549,7 +1573,7 @@ const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segment
     set: (easeIn: number | null, easeOut: number | null) => authoringActions.setClipEase(documentId, clip.clip.id, easeIn, easeOut),
   } : undefined, [author, clip, documentId]);
   return (
-    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={label} start={clip.start} end={clip.end}
+    <ClipBox boxKey={clip.key} selectId={clip.selectId} owner={owner} kind={kind} label={label} start={clip.start} end={clip.end}
       enter={clip.enter} exit={clip.exit} graphId={clip.clip.graphId} edit={author ? edit : undefined} ease={ease} mix={mix}
       referenceInvalid={referenceInvalid} referenceIssue={referenceIssue}
       onAnimationDrop={author && kind === 'anim' ? transfer => {
@@ -1641,9 +1665,10 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；enter 之前与 exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
-function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
+function ClipBox({ boxKey, selectId, owner, kind, label, start, end, enter = -Infinity, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; enter?: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
+  owner?: string;
   referenceInvalid?: boolean; referenceIssue?: string | null; onAnimationDrop?(transfer: DataTransfer): void;
 }) {
   const { setNodeRef, itemStyle, listeners, attributes } = useItem({
@@ -1680,7 +1705,7 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity,
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div className={styles.itemContent}>
         <Tip name={label} content={referenceIssue || undefined}>
-        <button className={styles.clip} data-box={boxKey} data-select={selectId} data-selected={selected || undefined}
+        <button className={styles.clip} data-box={boxKey} data-select={selectId} data-owner={owner} data-selected={selected || undefined}
           data-dim={dimmed || undefined} data-editable={edit ? true : undefined} data-invalid={invalid || undefined}
           data-reference-invalid={referenceInvalid || undefined} aria-invalid={referenceInvalid || undefined}
           style={{ ['--tc' as string]: trackColors[kind], ['--in' as string]: `${inWidth}px`, ['--out' as string]: `${outWidth}px`,
@@ -1698,8 +1723,8 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity,
             event.stopPropagation();
             onAnimationDrop(event.dataTransfer);
           }}
-          onClick={() => selectTimelineObject(clock, 'clip', selectId)}
-          onDoubleClick={() => openClipGraph(graphId, label, clock)}>
+          onClick={() => selectTimelineObject(clock, 'clip', selectId, owner)}
+          onDoubleClick={() => openClipGraph(graphId, label, clock, owner)}>
           <ClipShape width={width} blendIn={blendIn} blendOut={blendOut} />
           {labelWidth > clipLabelMinWidth && <span className={styles.clipLabel} data-name>{label}</span>}
           {ease && <EaseHandles ease={{ ...ease, in: mixIn > 0 ? mixIn : selfIn, out: mixOut > 0 ? mixOut : selfOut }}
@@ -1716,20 +1741,17 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity,
 }
 
 // 照 Timeline Editor：双击片段或标记打开它的节点图。
-function openClipGraph(graphId: string | null, label: string, clock: PreviewClock) {
+function openClipGraph(graphId: string | null, label: string, clock: PreviewClock, owner?: string) {
   if (graphId === null) {
     consoleActions.log('warn', 'Timeline', `${label} 没有节点图`);
     return;
   }
   const state = getState();
-  const target = useAuthoring.getState().target!;
+  const documentPath = owner ?? useAuthoring.getState().target!.documentPath;
   const caller = state.runId === null || clock.kind !== 'document' || clock.observation === null ? null
     : { runId: state.runId, call: clock.observation.call };
-  void authoringActions.resolveGraph(target, graphId).then(graph => {
-    if (graph === undefined)
-      throw new Error(authoringDocument(useAuthoring.getState(), target).documentError ?? `${label} 的节点图不在当前作者文档中`);
-    return projectActions.openGraph(graph, undefined, { observation: null, caller, origin: null, panelId: null });
-  }).catch(error => consoleActions.error('Timeline', error));
+  void projectActions.openGraph({ id: graphId, owner: documentPath, ownerName: documentPath }, undefined,
+    { observation: null, caller, origin: null, panelId: null }).catch(error => consoleActions.error('Timeline', error));
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
@@ -1738,9 +1760,10 @@ function openClipGraph(graphId: string | null, label: string, clock: PreviewCloc
 // 作者模式给出 move 时可左右拖动（MoveMarker），拖动中按 snap 取整显示，松开写回；标记不许重叠，
 // 拖到同轨已有标记的时刻（taken）时细线变红，松开不写回。框选中的标记与片段同样显示选中；
 // 框选了多个时拖动它与框选中的片段、标记整体平移（GroupMove），平移中按 shift 原地显示。
-function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, move, snap, taken }: {
+function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, owner, move, snap, taken }: {
   boxKey: string; seconds: number; kind: TrackKind; label: string; text: string | null; graphId: string; selectId?: string;
   move?(seconds: number): void; snap?(seconds: number): number; taken?(seconds: number): boolean;
+  owner?: string;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const panelId = usePanelId();
@@ -1759,7 +1782,7 @@ function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, 
   return (
     <Tip name={text ?? '未绑定节点图'}>
     <button className={styles.marker} data-box={boxKey} data-selected={selected || undefined} data-unbound={!text || undefined}
-      data-invalid={blocked || undefined} data-select={selectId} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
+      data-invalid={blocked || undefined} data-select={selectId} data-owner={owner} style={{ left, height: trackHeight, ['--tc' as string]: trackColors[kind] }}
       onPointerDown={event => {
         dragged.current = false;
         if (!move || event.button !== 0) return;
@@ -1788,8 +1811,8 @@ function Marker({ boxKey, seconds: shown, kind, label, text, graphId, selectId, 
         setDragging(null);
       }}
       // 整体平移后保留框选，不改成单选这个标记。
-      onClick={() => { if (selectId && !dragged.current) selectTimelineObject(clock, 'clip', selectId); }}
-      onDoubleClick={() => openClipGraph(graphId, label, clock)}>
+      onClick={() => { if (selectId && !dragged.current) selectTimelineObject(clock, 'clip', selectId, owner); }}
+      onDoubleClick={() => openClipGraph(graphId, label, clock, owner)}>
       <MarkerTriangle className={styles.markerHead} />
     </button>
     </Tip>

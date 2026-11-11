@@ -7,7 +7,7 @@ import type {
 } from '../api/previewQuickRecords';
 import { playerApi } from '../api/player';
 import { shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
-import { authoringTargetKey } from '../api/authoring';
+import { authoringOwner, authoringTargetKey } from '../api/authoring';
 import { authoringActions, useAuthoring, type ClipTimeRaw } from './authoring';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
@@ -573,6 +573,11 @@ export const quickPreview = {
           set({ target, description: { kind: 'ready', target, reply: { ...catalog, data: catalog.data } }, scheme: null });
           return;
         }
+      }
+      if (useAuthoring.getState().documents[chosen.documentPath] === undefined) {
+        if (await authoringActions.open(authoringOwner(chosen.documentPath)) !== 'opened')
+          throw new Error('未能打开所选预览入口的作者文档，具体原因见作者读取记录');
+        if (controller.signal.aborted || scope !== selectionKey()) return;
       }
       const document = useAuthoring.getState().documents[chosen.documentPath];
       target = { ...target, root: document === undefined

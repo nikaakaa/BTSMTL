@@ -12,6 +12,7 @@ import { clipSnapSource } from '../../state/authoringTimeline';
 import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin, type WorkbenchState } from '../../state/store';
 import type { GroupRow, TimelineSegment, TrackRow } from '../../state/timelineModel';
 import { callKey } from '../../state/graphModel';
+import { projectActions } from '../../state/project';
 import { transport } from '../../state/transport';
 import type { ReceivedInput, ReceivedSpan } from '../../state/inputReceipts';
 import { cachedFrame } from '../../state/frames';
@@ -177,8 +178,15 @@ export function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number 
   const author = useAuthorCursor(cursor => authorCursorOf(cursor, clock));
   return useWorkbench(state => pick(previewSeconds(state, clock, author), state));
 }
-export const selectTimelineObject = (clock: PreviewClock, kind: 'clip' | 'track', id: string) =>
+export function selectTimelineObject(clock: PreviewClock, kind: 'clip' | 'track', id: string, owner?: string) {
+  if (owner !== undefined && owner !== useAuthoring.getState().target?.documentPath) {
+    const [timelineId, objectId] = id.split('/');
+    void projectActions.inspect({ kind, owner, ownerName: owner, timelineId, id: objectId })
+      .catch(error => consoleActions.error('Timeline', error));
+    return;
+  }
   selectionActions.select({ kind, id, call: clock.kind === 'document' ? clock.observation?.call : undefined });
+}
 export const snapTo = (seconds: number, step: number) => Math.round(seconds / step) * step;
 
 export const segmentRange = (segment: TimelineSegment) => fitRange({ start: segment.origin, end: segment.origin + segment.length });
