@@ -35,7 +35,8 @@ const description = object({
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
     authoring, label: text, machines: array(object({ authoring, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
-    inputSchemes: array(scheme), currentInputScheme: nullable(inputSource), defaultInput: nullable(documentInput), conditions: array(condition),
+    inputSchemes: array(scheme), currentInputScheme: nullable(inputSource), defaultInput: nullable(documentInput),
+    sceneApplyUnavailableReason: nullable(text), conditions: array(condition),
   })),
   source: nullable(source), note: text,
 });

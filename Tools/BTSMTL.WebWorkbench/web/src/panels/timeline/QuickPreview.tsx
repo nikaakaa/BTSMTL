@@ -140,7 +140,8 @@ export function QuickBar() {
   const playerAvailable = useWorkbench(current => current.host?.player.available === true);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
-  const editableInput = input?.kind === 'documentInput' ? input : description?.root?.defaultInput;
+  const editableInput = input?.kind === 'documentInput' ? input : input?.kind === 'rootDefaults' ? description?.root?.defaultInput : null;
+  const sceneApplyReason = description?.root?.sceneApplyUnavailableReason ?? null;
   const job = state.job;
   const progress = quickJobProgress(job);
   const plan = state.route?.plan ?? null;
@@ -198,18 +199,18 @@ export function QuickBar() {
         : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新生成预览'}
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
-      {playerAvailable && <Button variant="ghost" disabled={busy || editableInput?.kind !== 'documentInput' || description === null}
-        tip={editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前默认输入没有作者方案，请先创建输入方案'}
+      {playerAvailable && <Button variant="ghost" disabled={busy || sceneApplyReason !== null || editableInput?.kind !== 'documentInput' || description === null}
+        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前默认输入没有作者方案，请先创建输入方案')}
         onClick={() => {
-          if (input === undefined) return;
           setRunning(true);
           setRunError(null);
-          void runInput(input).catch(error => {
+          void runInput(input!).catch(error => {
             consoleActions.error('真实运行', error);
             setRunError(error instanceof Error ? error.message : String(error));
           }).finally(() => setRunning(false));
         }}>{running ? '正在准备真实运行' : '真实运行一次'}</Button>}
     </PanelBar>
+    {playerAvailable && sceneApplyReason !== null && <p role="status" className={styles.reason}>{sceneApplyReason}</p>}
     {runError !== null && <p role="alert" className={styles.reason}>{runError}</p>}
     {open && <QuickDetails />}
   </section>;

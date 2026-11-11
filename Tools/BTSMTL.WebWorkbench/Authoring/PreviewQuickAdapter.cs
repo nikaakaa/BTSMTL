@@ -42,6 +42,7 @@ public interface IPreviewQuickCapture
     string ExecutionContextIdentity { get; }
     string ContentKey { get; }
     string ScopeKey { get; }
+    string? SceneApplyUnavailableReason { get; }
     PreviewQuickDocumentChoice[] Documents();
     IPreviewQuickCompiledContent Compile();
     PreviewQuickInputPlan[] InputPlans();
