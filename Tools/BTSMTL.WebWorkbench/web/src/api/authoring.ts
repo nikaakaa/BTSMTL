@@ -1,6 +1,6 @@
 import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
-import { deleteJson, getJson, postJson, postText, query } from './http';
+import { getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readVariablesValue, type VariablesValue } from './variables';
 import { readWorkspaceDocumentElements, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
@@ -716,7 +716,6 @@ export interface SkillDocument {
   elements: WorkspaceDocumentElement[];
 }
 
-const skillPath = (documentPath: string) => `/api/authoring/skills/${encodeURIComponent(documentPath.slice('Skills/'.length))}`;
 const documentQueryPath = (documentPath: string, operation: string, parameters: Record<string, string | undefined> = {}) =>
   `/api/authoring/documents/${operation}${query({ documentPath, ...parameters })}`;
 
@@ -787,15 +786,18 @@ export const authoringApi = {
     readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
   export: async (documentPath: string, kind: SkillExportKind, editingView: SkillEditingView) =>
-    readSkillExport(await postJson<unknown>(`${skillPath(documentPath)}/exports/${kind}`, { editingView })),
-  products: async (signal?: AbortSignal) => readAuthoringProducts(await getJson<unknown>('/api/authoring/products', signal)),
-  carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/carriers', signal)
+    readSkillExport(await postJson<unknown>(documentQueryPath(documentPath, `exports/${kind}`), { editingView })),
+  products: async (signal?: AbortSignal) => {
+    const scopes = object({ products: opaque })(await getJson<unknown>('/api/authoring/publication/scopes', signal));
+    return readAuthoringProducts({ items: scopes.products });
+  },
+  carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/publication/scopes', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
-  skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/skills/creation-options', signal),
-  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/skills/draft-create', request)
+  skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/documents/creation-options', signal),
+  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/documents/create', { type: 'skill', parameters: request.parameters })
     .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'SkillCreationDraft.variables') })),
   createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string, curve: string | null) =>
-    postJson<SkillCreationDraft & { documentPath: string; reads: SkillEditingView['reads'] }>('/api/authoring/documents/draft-create', { kind, name, curve })
+    postJson<SkillCreationDraft & { documentPath: string; reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
       .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request)
@@ -805,7 +807,7 @@ export const authoringApi = {
     return { ...fragment, variables: readVariablesValue(fragment.variables, 'InputFragment.variables') };
   },
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
-    deleteJson<SkillDeleteResult>(skillPath(documentPath), request, [409]),
+    postJson<SkillDeleteResult>(documentQueryPath(documentPath, 'delete'), request, undefined, [409]),
   document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
     postJson<Omit<SkillDocument, 'sources' | 'elements'> & { sources: unknown[]; elements: unknown }>(
       documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
