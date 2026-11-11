@@ -21,13 +21,14 @@ import {
   useAuthoringElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
+import { projectActions } from '../../state/project';
 import {
   clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, copyTimelineClip, markersTaken, pasteTimelineClip,
   trackHasCurves, trackOverlap, useClipPasteIssue, useReferenceCurves,
 } from '../../state/authoringTimeline';
 import { consoleActions, getState, inputRootKey, isRealArchive, runActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import {
-  clipGraph, clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   timelineObservationNotice, trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, documentObservationNotice, graphCallsAtFrame, graphKey, matchesDocumentCall, parentCallNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
@@ -692,9 +693,9 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   const handled = useRef<typeof request>(null);
   useEffect(() => {
     if (!request || request === handled.current) return;
-    handled.current = request;
     const owner = segments.find(segment => segment.documentId === request.documentId);
     if (!owner) return;
+    handled.current = request;
     enter(request.documentId);
     setParams({ caller: request.observation, origin: request.origin });
   }, [request, segments, setParams, enter]);
@@ -1698,15 +1699,19 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, enter = -Infinity,
 
 // 照 Timeline Editor：双击片段或标记打开它的节点图。
 function openClipGraph(graphId: string | null, label: string, clock: PreviewClock) {
-  const state = getState();
-  const graph = clipGraph(state.graphs, graphId);
-  if (!graph) {
-    consoleActions.log('warn', 'Timeline', graphId ? `${label} 的节点图不在本次运行中` : `${label} 没有节点图`);
+  if (graphId === null) {
+    consoleActions.log('warn', 'Timeline', `${label} 没有节点图`);
     return;
   }
+  const state = getState();
+  const target = useAuthoring.getState().target!;
   const caller = state.runId === null || clock.kind !== 'document' || clock.observation === null ? null
     : { runId: state.runId, call: clock.observation.call };
-  selectionActions.showGraph({ key: graphKey(graph), panelId: openPanel('graph').id, observation: null, caller, origin: null });
+  void authoringActions.resolveGraph(target, graphId).then(graph => {
+    if (graph === undefined)
+      throw new Error(authoringDocument(useAuthoring.getState(), target).documentError ?? `${label} 的节点图不在当前作者文档中`);
+    return projectActions.openGraph(graph, undefined, { observation: null, caller, origin: null, panelId: null });
+  }).catch(error => consoleActions.error('Timeline', error));
 }
 
 // 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
