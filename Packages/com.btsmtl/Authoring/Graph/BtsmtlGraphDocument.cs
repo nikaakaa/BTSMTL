@@ -8,7 +8,7 @@ using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.Authoring.Graph
 {
-    public sealed class BtsmtlGraphDocument
+    public sealed partial class BtsmtlGraphDocument
     {
         JObject m_Root;
 

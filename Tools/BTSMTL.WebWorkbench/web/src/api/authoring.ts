@@ -683,12 +683,16 @@ export interface ScenarioDraftRequest {
 
 export interface DocumentCreationCatalog {
   stage: 'creation-catalog';
+  types: DocumentCreationType[];
+  availability: QueryAvailability;
+}
+
+export interface DocumentCreationType {
   type: string;
   displayName: string;
   rootType: string;
   configuration: JsonObject;
   roles: StorageRoles;
-  availability: QueryAvailability;
 }
 
 export interface DocumentCreationRequest {
@@ -708,16 +712,16 @@ function authoringObject(value: JsonValue, path: string): JsonObject {
 
 function readCreationOptions(sourceText: string): DocumentCreationCatalog {
   const body = authoringObject(parseSkillJson(sourceText), 'CreationOptions');
-  return { ...object({ stage: choice('creation-catalog'), type: text, displayName: text, rootType: text,
-    roles: readStorageRoles, availability: readAuthoringAvailability })(body),
-    configuration: authoringObject(body.configuration, 'CreationOptions.configuration') };
+  return { ...object({ stage: choice('creation-catalog'), availability: readAuthoringAvailability })(body),
+    types: array((value, path) => {
+      const item = authoringObject(value as JsonValue, path!);
+      return { ...object({ type: text, displayName: text, rootType: text, roles: readStorageRoles })(item, path),
+        configuration: authoringObject(item.configuration, `${path}.configuration`) };
+    })(body.types, 'CreationOptions.types') };
 }
 
 const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text,
   files: array(readSkillFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
-type DocumentCreationDraft = ReturnType<typeof readDocumentCreationDraft>;
-
-export type WorkspaceCreationKind = 'timeline' | 'macro' | 'camera-curve' | 'camera-shake';
 
 export const authoringApi = {
   catalog: async (revision: string | null, signal?: AbortSignal) =>
@@ -740,9 +744,6 @@ export const authoringApi = {
     return readDocumentCreationDraft(JSON.parse(await postText('/api/authoring/documents/create',
       stringifySkillJson({ type: request.type, parameters: { ...request.parameters } }, '\n'))));
   },
-  createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string, curve: string | null) =>
-    postJson<Pick<DocumentCreationDraft, 'stage' | 'files' | 'variables' | 'availability' | 'documentPath'> & { reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
-      .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),

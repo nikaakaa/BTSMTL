@@ -5,7 +5,7 @@ import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerContentRefreshReceipt, type PlayerContentRefreshTarget,
   type ScenarioDraftRequest, type DocumentCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type WorkspaceCreationKind,
+  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
@@ -664,17 +664,6 @@ export const authoringActions = {
     await authoringActions.open(target);
     setDocument({ inputActorId: request.actorId }, target);
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
-  },
-
-  async createWorkspaceDocument(kind: WorkspaceCreationKind, name: string, curve: string | null) {
-    const draft = await authoringApi.createWorkspaceDraft(kind, name, curve);
-    const target = authoringOwner(draft.documentPath);
-    await workspaceDocumentsApi.save({ writes: [{ kind: target.kind, documentPath: target.documentPath, expectedRevision: '',
-      files: Object.fromEntries(draft.files.map(file => [file.path, file.content])) },
-    ...Object.entries(variablesDrafts(draft.variables === null ? [] : [draft.variables])).map(([path, document]) => documentWrite(path, document))],
-    reads: draft.reads });
-    void authoringActions.listDocuments();
-    return target;
   },
 
   async listDocuments() {

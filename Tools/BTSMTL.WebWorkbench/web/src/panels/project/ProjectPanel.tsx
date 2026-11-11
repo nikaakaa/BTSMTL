@@ -19,7 +19,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AssetObjectPicker } from './AssetObjectPicker';
 import { ProjectFiles } from './ProjectFiles';
-import { DocumentCreation, workspaceCreations, type DocumentContentKind } from './DocumentCreation';
+import { DocumentCreation, type DocumentContentKind } from './DocumentCreation';
 import styles from './project.module.css';
 
 type Failure = { text: string; entryId: number | null };
@@ -102,9 +102,9 @@ export function ProjectPanel() {
     return map;
   }, [roots]);
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['作者内容', '作者内容/技能']));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['作者内容']));
   const [selected, setSelected] = useState<string | null>(null);
-  const [current, setCurrent] = useState('作者内容/技能');
+  const [current, setCurrent] = useState('作者内容');
   const [search, setSearch] = useState('');
   const [files, setFiles] = useState(false);
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
@@ -237,7 +237,6 @@ export function ProjectPanel() {
       <TextInput aria-label="搜索 Project" placeholder="搜索文档、图、Timeline、资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
       <MenuButton label="新建" caret entries={[
         { label: '作者文档', onSelect: () => create('document') },
-        ...Object.entries(workspaceCreations).map(([kind, option]) => ({ label: option.title, onSelect: () => create(kind as keyof typeof workspaceCreations) })),
         { kind: 'separator' },
         { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
         { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
