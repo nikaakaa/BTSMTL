@@ -3,12 +3,14 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="10.0.14" />
     <!-- 只取本目录源文件；Contracts、Authoring 是独立工程，web/ 是前端。 -->
     <Compile Include="*.cs" />
+    <Compile Include="Player/**/*.cs" />
     <ProjectReference Include="Contracts/BTSMTL.WebWorkbench.Contracts.csproj" />
     <ProjectReference Include="Authoring/BTSMTL.WebWorkbench.Authoring.csproj" />
   </ItemGroup>
