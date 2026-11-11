@@ -23,7 +23,7 @@ export interface ProjectNode {
 }
 
 const colors = {
-  folder: 'var(--text-disabled)', skill: 'var(--node-skill)', timeline: 'var(--track-anim)', graph: 'var(--node-flow)',
+  folder: 'var(--text-disabled)', timeline: 'var(--track-anim)', graph: 'var(--node-flow)',
   curve: 'var(--track-motion)', profile: 'var(--node-cmp)', resource: 'var(--node-anim)', mapping: 'var(--node-cam)', scene: 'var(--track-act)',
 };
 
@@ -63,7 +63,7 @@ export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], conte
       : documents.map(document => documentNode(document, opened.get(document.documentPath), location, color)), `${documents.length}`);
   };
   return folder('作者内容', '作者内容', '', types.filter(type => type.id !== 'variables' && type.id !== 'scenario')
-    .map(type => group(type.id, type.displayName, type.id === 'skill' ? colors.skill : type.id === 'timeline' ? colors.timeline
+    .map(type => group(type.id, type.displayName, type.id === 'timeline' ? colors.timeline
       : type.id === 'curve' ? colors.curve : type.id === 'profile' ? colors.profile : colors.graph,
       type.id === 'curve' || type.id === 'profile')));
 }

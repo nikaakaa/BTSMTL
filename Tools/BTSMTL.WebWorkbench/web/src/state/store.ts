@@ -294,7 +294,7 @@ export const connectionActions = {
     // 本地输入上限默认取宿主声明的初始值，作者改过后保留。
     const limit = getState().localInputLimit ?? (host ? Number(host.inputLimit.initialValue) : null);
     // 打开即预览：未选过档位时默认快速预览，宿主未提供时取第一个可用档位。
-    const modes = host?.modes.filter(mode => mode.available) ?? [];
+    const modes = host?.modes.filter(mode => mode.available && (mode.id !== 'real' || host?.player.available)) ?? [];
     const selected = getState().previewMode;
     const previewMode = (modes.find(mode => mode.id === selected)
       ?? modes.find(mode => mode.id === 'quick') ?? modes[0])?.id ?? null;
