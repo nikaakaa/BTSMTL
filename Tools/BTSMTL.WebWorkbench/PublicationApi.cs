@@ -4,14 +4,14 @@ public static class PublicationApi
 {
     public static void MapPublicationApi(this WebApplication app, IAuthoringPublicationAdapter adapter)
     {
-        app.MapGet("/api/authoring/documents/creation-options", (HttpContext context) =>
-            AuthoringQueryResults.ReadAsync(context, null, adapter.CreationOptions));
+        app.MapGet("/api/authoring/documents/creation-options", (Delegate)((HttpContext context) =>
+            AuthoringQueryResults.ReadAsync(context, null, adapter.CreationOptions)));
         app.MapPost("/api/authoring/documents/create", (AuthoringDocumentCreationRequest input, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { input.Type }, () => adapter.Create(input)));
         app.MapPost("/api/authoring/documents/delete", (string documentPath, AuthoringDocumentDeleteRequest input, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { documentPath }, () => adapter.Delete(documentPath, input)));
-        app.MapGet("/api/authoring/publication/scopes", (HttpContext context) =>
-            AuthoringQueryResults.ReadAsync(context, null, adapter.Scopes));
+        app.MapGet("/api/authoring/publication/scopes", (Delegate)((HttpContext context) =>
+            AuthoringQueryResults.ReadAsync(context, null, adapter.Scopes)));
         app.MapPost("/api/authoring/documents/exports/{kind}", (string documentPath, string kind, AuthoringDocumentExportRequest input,
             HttpContext context, CancellationToken cancellation) =>
             AuthoringQueryResults.ReadAsync(context, new { documentPath, kind }, () => adapter.Export(documentPath, kind, input, cancellation)));
