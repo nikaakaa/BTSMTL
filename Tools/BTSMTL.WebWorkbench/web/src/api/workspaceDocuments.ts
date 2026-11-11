@@ -1,12 +1,12 @@
 import { getJson, postJson, putJson, query } from './http';
-import { array, boolean, choice, hosted, nullable, object, optional, text } from './playerRecords';
+import { array, boolean, choice, hosted, nullable, object, optional, text, type Decoder } from './playerRecords';
 import type { AuthoringProduct } from './authoring';
 import { readExecutionScopeSelection, type ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
 
 export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables', 'graph'] as const;
-const readStorageRoles = object({ transitionOrder: optional(text), timelineOwnership: optional(text), entryGraph: optional(text) });
-export type StorageRoles = ReturnType<typeof readStorageRoles>;
+export type StorageRoles = Partial<Record<'transitionOrder' | 'timelineOwnership' | 'entryGraph', string>>;
+const readStorageRoles: Decoder<StorageRoles> = object({ transitionOrder: optional(text), timelineOwnership: optional(text), entryGraph: optional(text) });
 const documentFields = {
   kind: choice(...workspaceDocumentKinds), identity: text, name: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
