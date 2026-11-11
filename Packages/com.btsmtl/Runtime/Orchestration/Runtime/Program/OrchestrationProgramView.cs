@@ -137,6 +137,8 @@ namespace BTSMTL.Orchestration
         public ref readonly TValue DefaultValue(int valueSlot) =>
             ref Section<TValue>(in Header.DefaultValues)[valueSlot];
         public ReadOnlySpan<TValue> DefaultValues => Section<TValue>(in Header.DefaultValues);
+        internal ReadOnlySpan<OrchestrationBlackboardSlot> BlackboardSlots =>
+            Section<OrchestrationBlackboardSlot>(in Header.BlackboardSlots);
         public ref readonly OrchestrationBlackboardSlot Blackboard(int valueSlot) =>
             ref Section<OrchestrationBlackboardSlot>(in Header.BlackboardSlots)[valueSlot];
 

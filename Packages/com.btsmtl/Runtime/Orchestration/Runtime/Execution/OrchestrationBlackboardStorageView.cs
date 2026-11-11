@@ -7,6 +7,7 @@ namespace BTSMTL.Orchestration
         where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         readonly OrchestrationProgramView<TValue> m_Program;
+        readonly ReadOnlySpan<OrchestrationBlackboardSlot> m_BlackboardSlots;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         readonly int m_ProgramIndex;
         int m_FrameSlot;
@@ -19,6 +20,7 @@ namespace BTSMTL.Orchestration
             OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source)
         {
             m_Program = program;
+            m_BlackboardSlots = program.BlackboardSlots;
             m_Frames = frames;
             m_ProgramIndex = frames.Plan.ProgramIndex(frames.Header(frameSlot).SkillContentId);
             m_FrameSlot = frameSlot;
@@ -51,7 +53,7 @@ namespace BTSMTL.Orchestration
 
         internal void ReadValue(int valueSlot, ref TValue destination)
         {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             m_Reader.ReadValue<TStorage>(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
                 slot.ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
@@ -59,7 +61,7 @@ namespace BTSMTL.Orchestration
 
         internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot)
         {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             return ref m_Reader.ReadMetadata(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
                 slot.ScopeKind == OrchestrationScopeKind.ActionInstance);
@@ -93,7 +95,7 @@ namespace BTSMTL.Orchestration
 
         int ValueFrame(int valueSlot)
         {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             return slot.ScopeKind == OrchestrationScopeKind.ActionInstance
                 ? m_Frames.ActionFrame(m_FrameSlot)
                 : m_Frames.OwnerFrame(m_FrameSlot, slot.ExecutionFrameOwnerOperationIndex);
@@ -101,7 +103,7 @@ namespace BTSMTL.Orchestration
 
         internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadBlackboardFrame(int valueSlot)
         {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
+            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             return slot.ScopeKind == OrchestrationScopeKind.ActionInstance
                 ? m_Reader.ReadActionExecutionFrame()
                 : m_Reader.ReadExecutionFrame(slot.ExecutionFrameOwnerOperationIndex);
@@ -139,9 +141,9 @@ namespace BTSMTL.Orchestration
         }
 
         internal ulong OwnerGeneration(int valueSlot) =>
-            m_Reader.OwnerGeneration(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
+            m_Reader.OwnerGeneration(m_BlackboardSlots[valueSlot].ExecutionFrameOwnerOperationIndex);
 
         internal ulong FrameTick(int valueSlot, ulong candidateTick) =>
-            m_Reader.FrameTick(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex, candidateTick);
+            m_Reader.FrameTick(m_BlackboardSlots[valueSlot].ExecutionFrameOwnerOperationIndex, candidateTick);
     }
 }
