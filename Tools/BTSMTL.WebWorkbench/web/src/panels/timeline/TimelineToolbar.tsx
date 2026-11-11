@@ -49,7 +49,6 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   const context = useInputContext(documentId);
   const [pending, setPending] = useState(false);
   const clock = useContext(PreviewClockContext);
-  const owner = useAuthoring(state => state.target?.documentPath ?? null);
   const cursor = usePreviewSelect(clock, seconds => seconds);
   if (context.kind !== 'ready') {
     return <Button variant="ghost" className={styles.addButton} disabled tip={`添加输入：${context.reason}`} aria-label="添加输入"><AddIcon /></Button>;
@@ -81,6 +80,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   navigationOrigin: GraphNavigationOrigin | null;
 }) {
   const clock = useContext(PreviewClockContext);
+  const owner = useAuthoring(state => state.target?.documentPath ?? null);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
   const structureNotice = useAuthoring(state => authoringDocument(state).documentError);
   const documentNotice = useDocumentObservationNotice(clock.kind === 'document' ? clock.observation?.call ?? null : null);

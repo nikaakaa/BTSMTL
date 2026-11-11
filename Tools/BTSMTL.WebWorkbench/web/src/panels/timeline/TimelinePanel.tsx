@@ -41,7 +41,7 @@ import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationLibrary } from '../../state/resources';
 import { acceptsReferenceDrag, readReferenceDrop } from '../../state/referenceSelection';
 import { useTimelineResourceCatalog } from '../../state/resourceScope';
-import { cloneJson, fpRaw, setIn, type JsonObject } from '../../state/skillJson';
+import { cloneJson, fpRaw, parseSkillJson, setIn, type JsonObject } from '../../state/skillJson';
 import { Empty } from '../../ui/blocks';
 import { Button, ContextMenu, createTipGroup, GroupTip, MenuButton, Select, TextInput, Tip, TipGroup, type MenuEntry } from '../../ui/controls';
 import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } from '../../ui/icons';

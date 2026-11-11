@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
+  authoringApi, describedPortsAvailable, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
@@ -395,7 +395,7 @@ function useDescription(skill: AuthoringTarget | null, source: DescriptionSource
           computed: items.filter((item): item is ComputedField => item.computed === true),
           ports: result.ports.items ?? [],
         });
-        setIssues([]);
+        setIssues('availability' in result.ports && !describedPortsAvailable(result.ports) ? result.ports.errors : []);
       }, error => {
         if (controller.signal.aborted || isAbort(error)) return;
         if (error instanceof ApiError && error.status === 422) {
