@@ -4,9 +4,9 @@ import { resourceRegistrationApi, scopeQueryKey, type ScopeQuery } from '../../a
 import { playerApi } from '../../api/player';
 import { previewApi } from '../../api/preview';
 import type { PlayerPreviewContent } from '../../api/playerRecords';
-import type { Sources, TimelineSource } from '../../api/types';
+import type { SourceFile, Sources, TimelineSource } from '../../api/types';
 import { authoringActions, scopeDocument, useAuthoring } from '../../state/authoring';
-import { consoleActions, contentActions, getState, selectedScene, useWorkbench } from '../../state/store';
+import { consoleActions, contentActions, getState, previewContentChoices, useWorkbench } from '../../state/store';
 import { projectActions } from '../../state/project';
 import { playerService } from '../../state/player';
 import { quickJobFailure, quickPreview } from '../../state/quickPreview';
@@ -90,6 +90,14 @@ function timelineScene(sources: Sources, timeline: TimelineSource) {
   return scenes[0].publication;
 }
 
+function currentScene(sources: Sources, path: string): SourceFile {
+  const original = sources.quickScenes.find(scene => scene.publication.path === path);
+  if (original === undefined) throw new Error('原场景已不在正式发布目录中。');
+  const current = previewContentChoices(sources).find(choice => choice.current && choice.sceneGuid === original.sceneGuid);
+  if (current?.selection.kind !== 'scene') throw new Error('此 Unity 场景没有当前正式发布，请先通过正式场景导出入口发布。');
+  return { path: current.selection.path, revision: current.revision };
+}
+
 async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
   const before = getState();
   const sources = await previewApi.sources();
@@ -98,10 +106,9 @@ async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
     if (selection === null) throw new Error('先选择正式场景或 Timeline，并读取快速预览。');
     const description = before.quickPreview.description;
     if (description.kind !== 'ready') throw new Error('先读取当前快速预览入口，再刷新它使用的原生资源。');
-    let scene;
+    let scene: SourceFile;
     if (selection.kind === 'scene') {
-      scene = selectedScene({ sources, contentSelection: selection });
-      if (scene === undefined) throw new Error('所选场景已不在正式发布目录中。');
+      scene = currentScene(sources, selection.path);
     } else {
       const timeline = sources.timelines.find(item => item.content.package === selection.package);
       if (timeline === undefined) throw new Error('所选 Timeline 已不在正式发布目录中。');
@@ -111,10 +118,12 @@ async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
     if (!reply.available) throw new Error(reply.reason);
     if (!reply.actors.includes(description.reply.data.actorId))
       throw new Error('当前快速预览角色没有使用此 Profile，不刷新无关预览。');
-    if (getState().previewMode !== before.previewMode || getState().contentSelection !== selection)
+    if (getState().previewMode !== before.previewMode || getState().contentSelection !== selection ||
+      getState().quickPreview.target !== before.quickPreview.target)
       throw new Error('预览选择已经变化，请按当前入口重新刷新。');
     contentActions.setSources(sources);
-    await quickPreview.readSource();
+    if (selection.kind === 'scene') contentActions.selectContent({ kind: 'scene', path: reply.scene.path });
+    await quickPreview.readSource(description.target.root?.authoring);
     return `已通知现有快速预览重新准备；受影响角色：${reply.actors.join('、')}。准备结果见快速预览状态。`;
   }
   if (before.previewMode !== 'real' || before.liveId === null)
@@ -124,9 +133,9 @@ async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
   if (target === null) throw new Error('所选 Player 尚无已确认载入的内容，请先载入正式场景或 Timeline。');
   const content = target.content;
   let next: PlayerPreviewContent;
-  let scene;
+  let scene: SourceFile;
   if (content.kind === 'scene') {
-    scene = { path: content.scene, revision: content.revision };
+    scene = currentScene(sources, content.scene);
     next = content;
   } else if (content.kind === 'timeline') {
     const timeline = sources.timelines.find(item => item.content.timeline === content.timeline);
@@ -136,9 +145,10 @@ async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
   } else throw new Error('所选 Player 当前载入快速预览内容，请使用快速预览档位刷新。');
   const reply = await resourceRegistrationApi.preview(query, scene.path);
   if (!reply.available) throw new Error(reply.reason);
-  if (getState().liveId !== target.liveId || getState().live?.player?.source?.loadCommandId !== target.loadCommandId)
+  if (getState().previewMode !== before.previewMode || getState().liveId !== target.liveId ||
+    getState().live?.player?.source?.loadCommandId !== target.loadCommandId)
     throw new Error('所选 Player 或载入内容已经变化，请重新核对后刷新。');
-  if (next.kind === 'scene') next = { ...next, revision: reply.scene.revision };
+  if (next.kind === 'scene') next = { ...next, scene: reply.scene.path, revision: reply.scene.revision };
   contentActions.setSources(sources);
   const receipt = await playerService.loadContent(next);
   if (receipt === null) throw new Error('Player 未完成本次刷新请求，具体原因见 Player 记录。');

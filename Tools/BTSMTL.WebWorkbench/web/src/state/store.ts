@@ -55,14 +55,14 @@ export function previewContentChoices(sources: Sources) {
     if (current) seen.add(scene.sceneGuid);
     const label = current ? name : official ? `${name} · 修订 ${parts[1].slice(0, 8)}`
       : parts[0] === 'skill-refreshes' ? `${name} · 文档刷新 ${parts[1].slice(0, 8)}` : parts.length === 2 && parts[0] !== scene.sceneGuid && parts[0] !== name ? parts[0] : `${name} · 旧发布`;
-    return { value: `scene:${scene.publication.path}`, label, current, scenePath: scene.scenePath, revision: scene.publication.revision,
+    return { value: `scene:${scene.publication.path}`, label, current, sceneGuid: scene.sceneGuid, scenePath: scene.scenePath, revision: scene.publication.revision,
       selection: { kind: 'scene', path: scene.publication.path } as const };
   });
   return [
     ...scenes,
     ...sources.timelines.map(item => ({ value: `timeline:${item.content.package}`,
       label: `Timeline 预览包 · ${item.content.package.split('/').slice(-2, -1)[0] ?? item.content.package}`, current: false,
-      scenePath: null, revision: item.content.revision, selection: { kind: 'timeline', package: item.content.package } as const })),
+      sceneGuid: null, scenePath: null, revision: item.content.revision, selection: { kind: 'timeline', package: item.content.package } as const })),
   ];
 }
 export type PreviewContentChoice = ReturnType<typeof previewContentChoices>[number];
