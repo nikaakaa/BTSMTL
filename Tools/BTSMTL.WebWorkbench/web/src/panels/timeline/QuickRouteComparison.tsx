@@ -18,7 +18,7 @@ export function QuickRouteComparison() {
         quickInputSourceKey(item.source) === quickInputSourceKey(plan?.input ?? null)) ?? null : null };
   }));
   const observation = useWorkbench(useShallow(routeObservation));
-  const input = useInputObservation(scheme?.inputTimeline ?? null);
+  const input = useInputObservation(scheme?.timelineId ?? null);
   const binding = useDocumentObservationBinding();
   const name = useQuickName();
   const history = useMemo(() => {
