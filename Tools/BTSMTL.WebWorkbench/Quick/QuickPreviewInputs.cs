@@ -18,12 +18,14 @@ sealed class QuickPreviewInputs
     sealed record Selection(PreviewQuickScheme Scheme, PreviewQuickInputPlan? Plan, int Index);
     readonly Selection[] m_Selections;
     readonly IPreviewQuickEnvironment m_Actor;
+    public PreviewQuickInputSource? CurrentInputScheme { get; }
 
     public QuickPreviewInputs(IPreviewQuickCapture capture, IPreviewQuickEnvironment actor)
     {
         m_Actor = actor;
         var plans = capture.InputPlans();
-        PreviewQuickInputPlan? defaultPlan = plans.SingleOrDefault(plan => plan.IsRootDefault);
+        PreviewQuickInputPlan[] rootPlans = plans.Where(plan => plan.IsRootDefault).Take(2).ToArray();
+        PreviewQuickInputPlan? defaultPlan = rootPlans.Length == 1 ? rootPlans[0] : null;
         int index = 0;
         if (defaultPlan != null)
         {
@@ -37,14 +39,16 @@ sealed class QuickPreviewInputs
         var rootDefault = new Selection(new(defaultInput, "根默认输入",
             Hash(capture.Identity.Revision, "rootDefaults", defaultPlan?.Revision ?? ""),
             (string?)defaultPlan?.Value["Schemes"]![index]!["InputTimeline"]), defaultPlan, index);
-        m_Selections = [rootDefault, .. plans.SelectMany(plan => plan.Value["Schemes"]!.Select((scheme, ordinal) =>
+        var selections = plans.SelectMany(plan => plan.Value["Schemes"]!.Select((scheme, ordinal) =>
         {
             string schemeId = (string)scheme["AuthoringId"]!;
             var selection = new PreviewQuickDocumentInput(plan.DocumentPath,
                 plan.SavedRevision, plan.Id, schemeId);
             string revision = Hash(capture.Identity.Revision, plan.DocumentPath, plan.Id, schemeId, plan.Revision);
             return new Selection(new(selection, (string)scheme["Name"]!, revision, (string?)scheme["InputTimeline"]), plan, ordinal);
-        }))];
+        })).ToArray();
+        m_Selections = rootPlans.Length <= 1 ? [rootDefault, .. selections] : selections;
+        CurrentInputScheme = rootPlans.Length <= 1 ? defaultInput : null;
     }
 
     public PreviewQuickScheme[] Schemes() => m_Selections.Select(selection => selection.Scheme).ToArray();

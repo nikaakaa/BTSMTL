@@ -77,7 +77,7 @@ public sealed record PreviewQuickScheme(PreviewQuickInputSource Source, string N
 public sealed record PreviewQuickInputDeclaration(string InputId, string Kind, string? Type);
 public sealed record PreviewQuickInputRequest(string InputId, double BufferSeconds);
 public sealed record PreviewQuickRootDescription(PreviewQuickAuthoringTarget Authoring, string Label,
-    PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource CurrentInputScheme,
+    PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource? CurrentInputScheme,
     PreviewQuickCondition[] Conditions);
 public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
     int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
