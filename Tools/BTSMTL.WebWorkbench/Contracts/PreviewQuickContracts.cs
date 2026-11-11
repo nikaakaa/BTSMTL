@@ -78,7 +78,7 @@ public sealed record PreviewQuickInputDeclaration(string InputId, string Kind, s
 public sealed record PreviewQuickInputRequest(string InputId, double BufferSeconds);
 public sealed record PreviewQuickRootDescription(PreviewQuickAuthoringTarget Authoring, string Label,
     PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource? CurrentInputScheme,
-    PreviewQuickDocumentInput? DefaultInput, string? SceneApplyUnavailableReason, PreviewQuickCondition[] Conditions);
+    PreviewQuickInputSource? DefaultInput, string? SceneApplyUnavailableReason, PreviewQuickCondition[] Conditions);
 public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
     string ActorId, int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
