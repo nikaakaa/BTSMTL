@@ -91,7 +91,7 @@ public sealed class PlayerContentRefreshes(PlayerLiveSessions live, string outpu
             receipt = receipt with { Phases = [.. receipt.Phases, new("player-command", milliseconds)] };
         return command.Stage switch
         {
-            "applied" when PlayerInputPreparation.Same(JsonSerializer.SerializeToElement(command.Content, WorkbenchArtifacts.JsonOptions), receipt.Package!.AdoptedIdentity) =>
+            "applied" when PlayerInputPreparation.Same(PlayerInputPreparation.Value(command.Content), receipt.Package!.AdoptedIdentity) =>
                 receipt with { Stage = "adopted", Command = command },
             "submitted" => receipt with { Stage = "accepted", Command = command },
             _ => receipt with { Stage = "failed", Command = command, Error = (string?)command.Ack?["error"] ?? "Player未确认采用本次发布的内容修订。" }

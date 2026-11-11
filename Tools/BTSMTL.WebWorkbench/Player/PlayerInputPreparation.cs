@@ -8,6 +8,9 @@ public sealed class PlayerInputUnavailableException(string message) : InvalidOpe
 
 public static class PlayerInputPreparation
 {
+    static readonly JsonSerializerOptions s_Json = new(JsonSerializerDefaults.Web) { IncludeFields = true, AllowOutOfOrderMetadataProperties = true };
+    public static JsonElement Value<T>(T value) => JsonSerializer.SerializeToElement(value, s_Json);
+
     public static string OutputDirectory(string directory)
     {
         string output = Path.GetFullPath(directory);

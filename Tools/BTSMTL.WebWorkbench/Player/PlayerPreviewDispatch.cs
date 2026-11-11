@@ -144,7 +144,9 @@ public sealed partial class PlayerPreviewJobs
     public string ArchiveFile(Guid id, string relative)
     {
         string directory = Path.GetDirectoryName(SealedArchive(id))!;
-        string path = WorkbenchArtifactPaths.SourcePath(directory, relative);
+        string path = Path.GetFullPath(Path.Combine(directory, relative));
+        if (Path.IsPathRooted(relative) || !path.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("归档文件必须属于本次封存的正式目录。");
         return File.Exists(path) ? path : throw new FileNotFoundException($"Player归档没有文件'{relative}'。");
     }
 
