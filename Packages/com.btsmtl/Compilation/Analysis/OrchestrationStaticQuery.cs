@@ -1144,7 +1144,7 @@ namespace BTSMTL.Compilation.Analysis
             SemanticOperation operation = Operations[index];
             string label = m_Locations[index].DisplayPath.Length != 0 ? m_Locations[index].DisplayPath : operation.Code.ToString();
             var read = new OrchestrationStaticRead(index, OrchestrationStaticReadSource.RuntimeData,
-                $"Predicate:{operation.TemplateIdentity}", true, $"谓词假设：{label}");
+                $"Predicate:{m_Locations[index].GraphId}:{m_Locations[index].NodeId}", true, $"谓词假设：{label}");
             return ReadCondition(in read);
         }
 

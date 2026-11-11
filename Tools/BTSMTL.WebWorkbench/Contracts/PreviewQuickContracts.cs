@@ -31,7 +31,7 @@ public sealed record PreviewQuickDocumentRoot(PreviewQuickAuthoringTarget Author
 public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null,
     PreviewSourceFile? ScenePublication = null);
 public sealed record PreviewQuickInputPoint(string InputId, double Time, JsonElement Value);
-public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault);
+public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault, string? Element = null);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(PreviewQuickDocumentInput), "documentInput")]
