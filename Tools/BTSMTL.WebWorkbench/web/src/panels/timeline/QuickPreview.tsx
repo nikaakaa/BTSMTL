@@ -115,7 +115,18 @@ async function runInput(selection: PreviewQuickInputSource) {
   const choice = quickRunInputChoice(current.inputCatalog!, reply.data.actorId, source);
   contentActions.selectInputSource({ kind: 'local' });
   contentActions.selectInputPlan(choice);
-  await session.startNewRun();
+  const blocked = session.canStartNewRun();
+  if (blocked !== null) throw new Error(blocked);
+  const root = state.quickPreview.target!.root!;
+  const owner = authoringOwner(root.authoring.documentPath);
+  if (await authoringActions.open(owner) !== 'opened') throw new Error('预览入口文档尚未打开，未提交真实运行');
+  const mode = current.host!.modes.find(item => item.createsRun)!;
+  contentActions.selectPreviewMode(mode.id);
+  const request = await session.prepareRun({ kind: 'selection' });
+  await authoringActions.save('apply', request.projectParameters.source);
+  const outcome = authoringDocument(useAuthoring.getState(), owner).lastSave;
+  if (outcome?.preview === null || outcome?.preview === undefined || !outcome.ok)
+    throw new Error(outcome?.message ?? '入口内容尚未应用，未提交真实运行');
 }
 
 // 快档工具条：入口、输入方案与生成状态；内容或方案变化后自动重读来源并重新生成，所播 Timeline 按时间摆在输入轨下方。
@@ -187,7 +198,7 @@ export function QuickBar() {
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       {playerAvailable && <Button variant="ghost" disabled={busy || editableInput?.kind !== 'documentInput' || description === null}
-        tip={editableInput?.kind === 'documentInput' ? '保存当前编辑，使用所选方案的按键日程真实运行一次并录制' : '当前默认输入没有作者方案，请先创建输入方案'}
+        tip={editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前默认输入没有作者方案，请先创建输入方案'}
         onClick={() => {
           if (input === undefined) return;
           setRunning(true);

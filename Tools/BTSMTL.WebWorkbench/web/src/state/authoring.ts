@@ -13,7 +13,7 @@ import type { VariablesQuery, VariablesValue } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import type { PlayerJobReceipt } from '../api/playerRecords';
-import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort } from '../api/types';
+import type { AuthorTimeline, ExecutionCall, GraphNode, GraphPort, RunSource } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, setIn, shapeOf, sortedObject, stringifySkillJson, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
@@ -244,7 +244,7 @@ useAuthoring.subscribe((state, previous) => {
 type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget } | { kind: 'unavailable'; reason: string };
 type SavedCompilation = Pick<Extract<DocumentSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
-async function selectedPreview(): Promise<PreviewSelection> {
+async function selectedPreview(inputSource?: RunSource): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
   const mode = state.host?.modes.find(item => item.id === state.previewMode);
   if (!mode) return { kind: 'unavailable', reason: '未选择预览档位，运行未应用' };
@@ -261,7 +261,7 @@ async function selectedPreview(): Promise<PreviewSelection> {
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
     return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
-      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: content.source }, channels } };
+      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: inputSource ?? content.source }, channels } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -947,7 +947,7 @@ export const authoringActions = {
     setDocument({ product, version: get().version + 1 });
   },
 
-  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save') {
+  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource) {
     const state = get();
     const active = state.target;
     const dirtyPath = active === null && operation === 'save'
@@ -1045,7 +1045,7 @@ export const authoringActions = {
       }
       const jobBlocked = apply ? session.canStart() : null;
       const [selection, job] = apply ? await Promise.all([
-        selectedPreview(),
+        selectedPreview(inputSource),
         jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]) : [null, undefined] as const;
       const result = await authoringApi.save(target, {
