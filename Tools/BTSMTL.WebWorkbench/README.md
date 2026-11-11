@@ -1,6 +1,6 @@
 # BTSMTL 网页工作台
 
-本地 .NET 服务提供预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页通过项目宿主直接编辑技能 JSON，覆盖 Inspector、节点图、FSM、Timeline、黑板与输入方案；作者数据、动态类型与字段、保存编译和运行由正式宿主处理。UI worktree 对接见[前端接口](API.md)，3C 实际部署与检查见 `Tools/CharacterWorkbench/Host/Authoring/README.md`。
+本地 .NET 服务提供作者文档、预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页通过同一工作区文档编辑 Inspector、节点图、FSM、Timeline、黑板与输入方案，项目适配提供根类型、字段语义与资源解释。前端接入见[接口说明](API.md)，3C 实际部署与检查见 `Tools/CharacterWorkbench/Host/Authoring/README.md`。
 
 ## 环境
 
@@ -18,6 +18,8 @@
 脚本依次在 `web/` 执行 `npm ci`、`npm run typecheck`、`npm run build`，再编译并启动服务；任一步失败即停止，不用旧产物启动。浏览器打开 <http://127.0.0.1:5367>，`Ctrl+C` 停止。`-Port` 指定端口，服务只监听本机；`-AnimationLibrary` 指定正式网页动画清单。npm 缓存位于本仓库 `.codex/tmp/web-workbench/npm-cache`，构建位于 `.codex/tmp/web-workbench/build`，进程临时目录为 `.codex/tmp/system-temp/`。
 
 独立服务没有登记预览宿主与画面来源，预览接口返回 `available=false`；运行、帧与播放器画面需要项目宿主（3C 见 `Tools/CharacterWorkbench/README.md`）。
+
+组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档读写、变量、目录、引用替换和资源查询，`MapAuthoringApi(contracts)` 挂载合同查询。文档、资源与合同适配位于不依赖 ASP.NET 的 `Authoring/` 工程。`Player/` 目前持有离线 C#、ILPP、Burst 编译、结果复用、序列化布局比较和代码更新，原 Player 配方与目录由项目组合入口提供。播放器排队、实时会话和快速路线仍在迁移。
 
 ## 前端开发
 

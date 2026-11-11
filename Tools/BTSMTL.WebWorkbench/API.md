@@ -1,6 +1,6 @@
 # Web Workbench 前端接口
 
-本文面向 UI worktree 的开发者，按实际界面操作说明现有 HTTP、WebSocket 和数据合同。BTSMTL 工作台提供通用作者文档接口、预览档案查询、资源与画面适配，项目 Host（如 3C `CharacterWorkbench.Host`）通过适配接口接入，并另行提供技能查询、场景输入、正式 Player 等项目接口。UI 负责布局、样式、手势和本地编辑事务；宿主负责正式作者数据、类型语义、编译、运行及实际结果。
+本文按实际界面操作说明 HTTP、WebSocket 和数据合同。BTSMTL 工作台挂载通用作者文档、合同查询、资源作用域与文件子对象候选接口，并持有预览档案查询、画面适配和播放器代码更新。项目 Host 通过适配提供作者类型与资源解释，当前保存编译、场景输入、播放器任务和实时会话的迁移继续按所属模块推进。UI 负责布局、手势和本地编辑事务，所属宿主负责正式作者数据、编译、运行及实际结果。
 
 本文对应当前源码合同。正在运行的 Host、Player 和静态前端必须采用相应版本；接口说明和源码存在不表示当前端口已采用。部署与实际检查结果见 [3C 作者接口记录](../../../3C/Tools/CharacterWorkbench/Host/Authoring/README.md)。
 
@@ -71,7 +71,7 @@ quick 经项目 Host 调用目标 Editor 的原 Native 资产预览，不在 .NE
 
 画面不随响应返回。作业状态的 `player{liveId,processId,width,height}` 指明快预览播放器；网页经宿主壳接该播放器的 `quick` 共享画面区，按 `surfaceSequence` 取槽，`flipY` 为原始 RGBA 按首行在上绘制时是否翻转。没有共享画面区的普通浏览器只能拿到元数据。
 
-`root` 使用正式三类联合，不混用来源：`nativeDocument{path,machine}` 读取原 Native 文档内存；`webEditingView{skill,editingView,machine}` 接收原 `SkillAuthoringEditingView` 的完整 Files／RemovedFiles；`timelineAsset{path,elementId}` 指定真实独立资产及必需元素身份。网页技能根使用当前 AuthoringTarget.name，describe 捕获当前 editingView，start 复用同一捕获及其 sourceRevision、真实 input.scheme／revision；不因未保存而切回磁盘或 Native 文档。`input.points` 与 `conditions` 同时提供或同时省略，覆盖仅作用于本次副本。
+`root` 使用 `nativeDocument`、`webEditingView` 与 `authoringDocument` 三类来源，各自携带 `authoring{documentPath,savedRevision,entry}`。入口为 `graph{graphId,machine}` 或 `timeline{timelineId}`，网页编辑视图来源另带 `editingView`。来源目录的每个入口回报 `isDefault`，网页按文档适配的标记选择默认入口。describe 捕获当前编辑视图，start 复用同次来源与输入修订。`input.points` 与 `conditions` 同时提供或同时省略，覆盖仅作用于本次请求。
 
 原 `scenes` 和 Timeline 包语义保留。顶栏同一次场景选择按 publication.path＋revision 精确关联 quickScenes，quick 使用真实 SceneAsset，Real 仍使用原包。独立 Timeline 使用所选来源已有的 scene.path／guid／dependencyHash 和 content.timeline AuthoringId，唯一匹配 describe.timelines.elementId 后提交实际 path＋elementId，不取首元素或推测路径。
 
@@ -107,7 +107,9 @@ Source.documents 中每份文档有实际 revision；网页捕获的 savedRevisi
 | `POST /api/authoring/scenarios/{scenario}/recordings` | `{archive,scene,actorId,planId?}` | `{content,input:{planId,path,revision}}`；实际写入／更新录制方案，`archive` 是归档 `archive.json` 路径 |
 | `POST /api/authoring/input-fragments` | `{scene,sceneRevision,actorId,key,operation,startSeconds,endSeconds}` | `{track,clip,graph,tickRate,sceneRevision,availability}`；返回正式 JSON 对象，尚未保存 |
 
-目录、产品与运行配置另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/abilities/runtime/read|configure`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs` 与宿主同名记录。`GET /api/authoring/catalog` 的条目只含 `value/display/context/revision`，条目 `data` 由引用、范围与资源对象等单项查询给出；带上已读 `revision` 且未变化时 `changed:false`、`domains:null`。
+目录与查询另有 `GET /api/authoring/catalog`、`/carriers`、`/products` 及 `POST /api/authoring/types/describe`、`/scopes/read`、`/resources/objects`、`/documents/queries/variables`、`/documents/variables/edit`，请求合同见 `Contracts/SkillAuthoringContracts.cs`。合同查询由 BTSMTL 挂载并交 `IAuthoringContractAdapter`，作用域与对象候选交 `IAuthoringResourceAdapter`。`GET /api/authoring/catalog` 的条目只含 `value/display/context/revision`，条目 `data` 由引用、范围与资源对象等单项查询给出；带上已读 `revision` 且未变化时 `changed:false`、`domains:null`。
+
+3C 的 `/api/authoring/abilities/runtime/read` 与 `/configure` 由项目 Host 挂载，供 Unity 原生发布绑定读取、回写运行资产目标。
 
 `input-fragments.operation` 仅为 `hold` 或 `press`。`hold` 使用给定起止秒数，`press` 的终点由宿主取起点加一个正式 tick。前端沿返回的身份、节点类型和完整片段写入，不另造按键位映射。
 
