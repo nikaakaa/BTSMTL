@@ -22,7 +22,8 @@ export function ScopeEditor({ query }: { query: ScopeQuery }) {
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [refresh, setRefresh] = useState<PreviewRefresh>({ kind: 'idle' });
   const player = useWorkbench(state => state.live?.player ?? null);
-  const quickFailure = useWorkbench(state => quickJobFailure(state.quickPreview.job));
+  const quickFailure = useWorkbench(state => state.quickPreview.description.kind === 'failed'
+    ? state.quickPreview.description.reason : quickJobFailure(state.quickPreview.job));
   const key = scopeQueryKey(query);
   useEffect(() => {
     const controller = new AbortController();
