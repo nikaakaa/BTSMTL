@@ -800,10 +800,10 @@ export const authoringApi = {
     postJson<SkillCreationDraft & { documentPath: string; reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
       .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
-    postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/authoring/scenarios/${encodeURIComponent(name)}/draft`, request)
+    postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),
   inputFragment: async (request: InputFragmentRequest) => {
-    const fragment = parseSkillJson(await postText('/api/authoring/input-fragments', request)) as unknown as InputFragment;
+    const fragment = parseSkillJson(await postText('/api/preview/inputs/fragments', request)) as unknown as InputFragment;
     return { ...fragment, variables: readVariablesValue(fragment.variables, 'InputFragment.variables') };
   },
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
