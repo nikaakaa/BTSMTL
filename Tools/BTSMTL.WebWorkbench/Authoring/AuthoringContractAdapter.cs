@@ -19,6 +19,6 @@ public interface IAuthoringContractAdapter
     Task<JObject> Project(string documentPath, SkillAuthoringProjectQuery input);
     Task<AuthoringQueryResult> ReferenceCurves(string documentPath, SkillAuthoringReferenceQuery input);
     Task<AuthoringQueryResult> Blackboards(string documentPath, SkillAuthoringPageQuery input);
-    Task<AuthoringQueryResult> Elements(string documentPath, string? timelineId, SkillAuthoringPageQuery input);
+    Task<AuthoringQueryResult> Elements(string documentPath, AuthoringElementsQuery input);
     Task<AuthoringQueryResult> Configuration(SkillAuthoringConfigurationQuery input);
 }

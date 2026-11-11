@@ -26,7 +26,7 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
   const availableTimelines = timelines.filter(item => !inputs.some(input => input.documentId === item.documentId));
   const context: InputPlanContext | null = kind === 'document' ? { kind }
     : kind === 'timeline' ? timeline === null ? null : { kind, timeline }
-    : scene && players.some(player => player.actorId === actor) ? { kind, scene: scene.path, actor: actor! } : null;
+    : scene && players.some(player => player.actorId === actor) ? { kind, scene: { path: scene.path, revision: scene.revision }, actor: actor! } : null;
   return <div className={styles.facts}>
     <TextInput autoFocus aria-label="输入方案名称" placeholder="输入方案名称" value={name} disabled={busy}
       onChange={event => setName(event.currentTarget.value)} />

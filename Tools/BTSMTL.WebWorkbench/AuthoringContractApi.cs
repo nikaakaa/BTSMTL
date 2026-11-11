@@ -30,8 +30,8 @@ public static partial class AuthoringApi
             AuthoringQueryResults.ReadAsync(context, new { input.Identity }, () => adapter.ReferenceCurves(documentPath, input)));
         app.MapPost("/api/authoring/documents/queries/blackboards", (string documentPath, SkillAuthoringPageQuery input, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { input.GraphId, input.Offset, input.Limit }, () => adapter.Blackboards(documentPath, input)));
-        app.MapPost("/api/authoring/documents/queries/elements", (string documentPath, string? timelineId, SkillAuthoringPageQuery input, HttpContext context) =>
-            AuthoringQueryResults.ReadAsync(context, new { timelineId }, () => adapter.Elements(documentPath, timelineId, input)));
+        app.MapPost("/api/authoring/documents/queries/elements", (string documentPath, AuthoringElementsQuery input, HttpContext context) =>
+            AuthoringQueryResults.ReadAsync(context, new { input.InputContext }, () => adapter.Elements(documentPath, input)));
         app.MapPost("/api/authoring/types/describe", (SkillAuthoringConfigurationQuery input, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { input.Type, input.Domain }, () => adapter.Configuration(input)));
     }

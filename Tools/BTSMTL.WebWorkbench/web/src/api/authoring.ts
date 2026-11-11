@@ -393,7 +393,7 @@ export interface ReferenceCurves {
 }
 
 export type InputPlanContext = { kind: 'document' } | { kind: 'timeline'; timeline: string }
-  | { kind: 'scene'; scene: string; actor: string };
+  | { kind: 'scene'; scene: { path: string; revision: string }; actor: string };
 
 export interface AuthoringElements {
   graphs: GraphTemplate[];
@@ -822,9 +822,8 @@ export const authoringApi = {
     postJson<ReferenceCurves>(documentQueryPath(target.documentPath, 'queries/reference-curves'), { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
   elements: async (target: AuthoringTarget, editingView: AuthoringEditingView, signal?: AbortSignal, context?: InputPlanContext) => {
-    const parameters = context?.kind === 'timeline' ? { timelineId: context.timeline } : {};
-    const elements = parseSkillJson(await postText(documentQueryPath(target.documentPath, 'queries/elements', parameters),
-      { offset: 0, limit: 128, editingView }, signal)) as unknown as AuthoringElements;
+    const elements = parseSkillJson(await postText(documentQueryPath(target.documentPath, 'queries/elements'),
+      { inputContext: context ?? null, editingView }, signal)) as unknown as AuthoringElements;
     elements.graphs = elements.graphs.map((graph, index) => ({ ...graph,
       variables: readCreatedVariables(graph.variables, `Elements.graphs[${index}].variables`) }));
     for (const clip of elements.clips)
