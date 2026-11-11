@@ -1,6 +1,6 @@
 # Web Workbench 前端接口
 
-本文按实际界面操作说明 HTTP、WebSocket 和数据合同。BTSMTL 工作台挂载通用作者文档、合同查询、资源作用域与文件子对象候选接口，并持有预览档案查询、画面适配和播放器代码更新。项目 Host 通过适配提供作者类型与资源解释，当前保存编译、场景输入、播放器任务和实时会话的迁移继续按所属模块推进。UI 负责布局、手势和本地编辑事务，所属宿主负责正式作者数据、编译、运行及实际结果。
+本文按实际界面操作说明 HTTP、WebSocket 和数据合同。BTSMTL 工作台挂载作者文档、合同查询、资源、编译发布、输入方案和播放器接口，持有播放器队列、常驻进程池、实时会话、内容刷新、画面传输及代码更新。项目适配解释作者合同、资源、输入、运行包和原生播放器值；快速路线迁移仍在推进。UI 负责布局、手势和同一正式文档的本地编辑事务。
 
 本文对应当前源码合同。正在运行的 Host、Player 和静态前端必须采用相应版本；接口说明和源码存在不表示当前端口已采用。部署与实际检查结果见 [3C 作者接口记录](../../../3C/Tools/CharacterWorkbench/Host/Authoring/README.md)。
 
@@ -8,7 +8,7 @@
 
 - HTTP 使用相对路径 `/api/...`，JSON 请求使用 `Content-Type: application/json`，文本使用 UTF-8。HTTP 外层属性名为 camelCase，作者原文及节点成员保持正式存储命名（如 `AuthoringId`、`ID`、`m_...`）。本文路径参数用 `{name}` 表示，实际拼入时编码。
 - WebSocket 使用同源的 `ws://` 或 `wss://`。Vite 当前把 `/api`（含 WebSocket）代理到 `http://127.0.0.1:5367`；联调其它端口时，UI 开发配置应指向该实际 Host。
-- 独立启动通用网页服务只装配静态页面、动画资源及不可用的 `/api/preview/host`；完整编辑与运行使用项目 Host。技能和场景作者接口需 Host 启用 `SkillAuthoring`。
+- 独立启动通用网页服务只装配静态页面、动画资源及不可用的 `/api/preview/host`；完整编辑与运行由项目 Host 注册适配，不再使用 `SkillAuthoring` 开关。
 - 作者文件的 `content` 是完整 JSON 原文字符串。读取、编辑和写出沿用 [skillJson.ts](web/src/state/skillJson.ts)，保留大整数及 `1.0` 等正式浮点写法；不能经过普通 `JSON.parse`／`JSON.stringify` 整体往返。
 - 公共帧键、64 位身份、序号、FP Raw 和修订保持字符串。定位请求只提交 `position:{hostFrame:"目标键"}`，由原 Host 按实际采用内容解释；网页不转换为 SDK 帧或 Timeline tick。
 - 查询分页有两种原合同：作者查询用 `hasMore`，档案分页用 `nextOffset`（终点为 `null`）。按各自回执翻页，不把二者混用。
@@ -20,12 +20,16 @@
 
 | 接口 | 所在工程 | 项目提供 | 工作台挂载 |
 | --- | --- | --- | --- |
-| `IAuthoringDocumentAdapter` | `Authoring` | 文档根类型、文档内声明的元素、存储形状、保存前规范化、变量类型候选 | `MapAuthoringApi(new AuthoringDocumentService(workspace, adapter), resources)`：文档目录、正文、编辑视图、保存、变量、适配者目录、引用替换 |
-| `IAuthoringResourceAdapter` | `Authoring` | 作者文档中带领域的资源引用 | 同上，供引用替换使用 |
+| `IAuthoringDocumentAdapter` | `Authoring` | 文档类型与发现规则、根类型、默认入口、语义角色、文档内元素、存储形状、保存前规范化、变量类型候选 | `MapAuthoringApi(documents, resources)`：文档类型与目录、正文、编辑视图、保存、变量、适配者目录、引用替换 |
+| `IAuthoringContractAdapter` | `Authoring` | 类型、节点、字段、端口、Profile、引用、黑板、元素、曲线、工程、文档和应用查询 | `MapAuthoringApi(contracts)` |
+| `IAuthoringResourceAdapter` | `Authoring` | 带领域的资源引用、资源作用域与文件子对象候选 | `MapAuthoringApi(documents, resources)` |
+| `IAuthoringPublicationAdapter` | `Authoring` | 文档创建、删除、导出、发布范围与实际编译发布 | `MapPublicationApi(publication)` |
+| `IPreviewInputAdapter` | `Authoring` | 输入片段、新建方案与录制导入 | `MapPreviewInputApi(inputs)` |
+| `IPlayerAdapter` | `Authoring` | 包体、启动参数、配方、项目参数、原生位置与时钟解释、归档合同和消息投影 | `MapPlayerApi(adapter, options)`：作业、Live、代码更新与内容刷新；返回 `Jobs/Live/Refreshes` 供组合 |
 | `IPreviewHost` | Host 库 | 宿主描述、来源、输入声明 | `MapPreviewApi(host)` |
 | `IPreviewArchive` | Host 库 | 归档读取，项目专有内容以 `PreviewField` 给出 | `MapPreviewArchiveApi(archive)`：`/api/preview/player-jobs/{id}/` 下的 archive、summary、geometry、source-map、frames、observations、logic、pose-layout、presentation、camera、input、curves、unavailable、frame-images |
 
-规范 JSON 文本（键排序、带符号零、解析）由核心 `BTSMTL.Authoring.Workspace.AuthoringJsonText` 提供。项目专有的作者查询（如技能类型、节点、字段、端口）、引擎资源适配者接口与诊断查询由项目 Host 在同一前缀下另行挂载。
+上述接口按文档、合同查询、资源、编译发布、预览五组职责接入。规范 JSON 文本由 `BTSMTL.Authoring.Workspace.AuthoringJsonText` 提供，播放器的项目参数、内容身份与请求据此判等和存档。3C 专有的能力运行配置、扶墙和 MCP 诊断接口仍由项目 Host 挂载。
 
 字段的可调用 TypeScript 入口在 [api/authoring.ts](web/src/api/authoring.ts)、[api/preview.ts](web/src/api/preview.ts)、[api/player.ts](web/src/api/player.ts)、[api/resources.ts](web/src/api/resources.ts)。运行数据的解析器及导出类型在 [api/playerRecords.ts](web/src/api/playerRecords.ts)，图、调用、画面和资源类型在 [api/types.ts](web/src/api/types.ts)。这些文件供 UI 直接复用，不另写一套同名 DTO 或协议解析器。
 
@@ -222,7 +226,7 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 
 | 方法与路径 | 请求／用途 | 响应合同 |
 | --- | --- | --- |
-| `POST /api/preview/player-jobs/creation-options` | `{requestId,source,width,height}`；先取得正式默认范围及输出目录 | `requestId,firstSdkFrame,lastSdkFrame,captureFrames,outputDirectory,width,height,quality,channels,mode,frameRangeBasis` |
+| `POST /api/preview/player-jobs/creation-options` | `{requestId,projectParameters,width,height}`；先取得项目正式默认范围及输出目录 | `requestId,projectParameters,outputDirectory,width,height,quality,channels,mode,frameRangeBasis` |
 | `POST /api/preview/player-jobs` | 完整 `StartPlayerJobRequest` | `PlayerJobReceipt`，包含原请求、job/build 身份、stage 和 `statusPath` |
 | `GET /api/preview/player-jobs` | 作业列表与队列情况 | `capacity,concurrency,queued,archiveCacheCapacity,items` |
 | `GET /api/preview/player-jobs/{id}` | 当前作业及可用档案 | `{receipt,archive}` |
@@ -231,7 +235,7 @@ HTTP Live 与 WS `status.live` 共用同一完整读取器，均解码 `player.s
 | `GET /api/preview/player-jobs/{id}/files/{path}` | 清单内的原文件路径 | 原文件正文 |
 | `GET /api/preview/player-jobs/{id}/summary` | 档案概况 | `PlayerSummary`，含实际帧范围、场景／输入／内容修订及通道可用性 |
 
-作业请求包含 `requestId,playerBuildId,scene,sceneRevision,source,firstSdkFrame,lastSdkFrame,captureFrames,outputDirectory,width,height,quality,channels,mode`；新作业 `mode` 为 `real`，输出目录使用 creation-options 返回的 D 盘路径。`source` 与实际场景输入选项一致。请求身份、Live 身份、构建身份和档案身份各自保存，不能把 Live ID 当作 job ID。
+作业请求包含 `requestId,playerBuildId,projectParameters,outputDirectory,width,height,quality,channels,mode`；新作业 `mode` 为 `real`。`projectParameters` 是适配接收并产出的不透明 JSON，网页把 creation-options 返回的值原样送回；3C 在其中提供场景、输入来源、帧段与截图帧，公共服务不解释这些字段。输出目录使用返回的 D 盘路径。请求、Live、构建和档案身份分别保存。
 
 作业 stage 为 `queued/running/completed/failed/cancelled/rejected/unavailable`。按原 `statusPath` 读取，直到实际终态；失败是否有可读档案取原清单／回执，不用 stage 名字捏造空档案。
 

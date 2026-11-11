@@ -19,7 +19,7 @@
 
 独立服务没有登记预览宿主与画面来源，预览接口返回 `available=false`；运行、帧与播放器画面需要项目宿主（3C 见 `Tools/CharacterWorkbench/README.md`）。
 
-组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档读写、变量、目录、引用替换和资源查询，`MapAuthoringApi(contracts)` 挂载合同查询。文档、资源与合同适配位于不依赖 ASP.NET 的 `Authoring/` 工程。`Player/` 目前持有离线 C#、ILPP、Burst 编译、结果复用、序列化布局比较和代码更新，原 Player 配方与目录由项目组合入口提供。播放器排队、实时会话和快速路线仍在迁移。
+组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档、目录、变量、引用替换和资源查询，另以 `MapAuthoringApi(contracts)`、`MapPublicationApi(publication)` 与 `MapPreviewInputApi(inputs)` 挂载合同、发布和输入操作。`MapPlayerApi(adapter, options)` 创建唯一的播放器队列、常驻池、Live、内容刷新和代码更新服务，返回 `Jobs/Live/Refreshes` 供组合；配方、启动参数、输入与原生位置解释来自项目适配。公共服务保存规范 JSON，不解释项目参数。适配接口位于不依赖 ASP.NET 的 `Authoring/`，公共请求位于 `Contracts/`，执行位于 Host 库的 `Player/`。快速路线迁移仍在推进。
 
 ## 前端开发
 
