@@ -1,5 +1,14 @@
 {
-  "version": 7,
+  "version": 8,
+  "workbenchSourceRules": {
+    "routeRule": "BTSMTL_WORKBENCH_REGISTERED_ROUTE",
+    "fieldRule": "BTSMTL_WORKBENCH_DECLARED_FIELD",
+    "hostRoot": "Tools/BTSMTL.WebWorkbench",
+    "webRoot": "Tools/BTSMTL.WebWorkbench/web/src",
+    "fieldDeclarationRoots": ["Packages/com.btsmtl", "Packages/com.btsmtl.foundation"],
+    "excludedDirectories": ["bin", "obj", "node_modules", "wwwroot", "web"],
+    "typeScriptModule": "Tools/BTSMTL.WebWorkbench/web/node_modules/typescript/lib/typescript.js"
+  },
   "unityActualBoundary": {
     "evidenceRelativePath": "Library/DependencyGuard/unity-boundary.json",
     "policyCaptureSourceSHA256": "7AD6240272CC2183420BF73E63A5EBD17F254D58DF17503A766294B7754F5E01",

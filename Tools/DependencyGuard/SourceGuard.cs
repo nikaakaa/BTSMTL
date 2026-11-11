@@ -20,6 +20,10 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
 
     public int PrepareInputs() => ReadInputs().Count();
 
+    public static CompilationUnitSyntax ParseAllBranches(string source, string path) =>
+        (CompilationUnitSyntax)CSharpSyntaxTree.ParseText(Regex.Replace(source,
+            @"(?m)^[ \t]*#(?:if|elif|else|endif)\b[^\r\n]*", match => new string(' ', match.Length)), path: path).GetRoot();
+
     bool ContainsRole(string text) => roles.Any(role => Regex.IsMatch(text,
         $@"(?<![A-Za-z])(?i:{Regex.Escape(role)})(?![a-z])|(?<=[a-z0-9])(?=[A-Z])(?i:{Regex.Escape(role)})(?![a-z])"));
 
@@ -34,8 +38,7 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
     {
         foreach ((string path, Module owner, string source) in ReadInputs())
         {
-            string text = Regex.Replace(source, @"(?m)^[ \t]*#(?:if|elif|else|endif)\b[^\r\n]*", match => new string(' ', match.Length));
-            var root = (CompilationUnitSyntax)CSharpSyntaxTree.ParseText(text, path: path).GetRoot();
+            CompilationUnitSyntax root = ParseAllBranches(source, path);
             documents.Add((path, owner, root));
             foreach (BaseTypeDeclarationSyntax declaration in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
             {

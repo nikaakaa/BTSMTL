@@ -19,6 +19,7 @@ sealed class GuardRules
     public TimelineBoundaryRule[] TimelineBoundaryRules { get; set; } = [];
     public VendorSourceProvenance[] VendorSourceProvenance { get; set; } = [];
     public ProjectNameRule[] ProjectNameRules { get; set; } = [];
+    public WorkbenchSourceRules WorkbenchSourceRules { get; set; } = new();
     public UnityActualBoundaryRule UnityActualBoundary { get; set; } = new();
 
     public static bool Matches(IEnumerable<string> patterns, string text) =>
@@ -69,6 +70,17 @@ sealed class ProjectNameRule
     public string[] Extensions { get; set; } = [];
     public string[] ExcludedDirectories { get; set; } = [];
     public string[] ForbiddenNames { get; set; } = [];
+}
+
+sealed class WorkbenchSourceRules
+{
+    public string RouteRule { get; set; } = "";
+    public string FieldRule { get; set; } = "";
+    public string HostRoot { get; set; } = "";
+    public string WebRoot { get; set; } = "";
+    public string[] FieldDeclarationRoots { get; set; } = [];
+    public string[] ExcludedDirectories { get; set; } = [];
+    public string TypeScriptModule { get; set; } = "";
 }
 
 sealed class VendorSourceProvenance

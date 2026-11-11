@@ -25,7 +25,7 @@ static class Program
         byte[] ruleBytes = File.ReadAllBytes(rulePath);
         var rules = JsonSerializer.Deserialize<GuardRules>(ruleBytes,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        if (rules.Version != 7)
+        if (rules.Version != 8)
             throw new InvalidDataException($"不支持依赖规则版本 {rules.Version}。");
         var catalog = new DependencyCatalog(sdkRoot, clientRoot, rules);
         catalog.RecordInput(rulePath, ruleBytes);
@@ -145,6 +145,8 @@ static class Program
             sourceGuard.Check, "源码归属未完成，不能声称全部源已扫描。");
         var projectNames = new ProjectNameGuard(catalog, rules, sdkRoot);
         RunStage("ProjectNameScan", true, true, projectNames.Check, "");
+        var workbench = new WorkbenchSourceGuard(catalog, rules, sdkRoot);
+        RunStage("WorkbenchSourceScan", true, true, workbench.Check, "");
         bool coverage = RunStage("ActualCompilationCoverage", clientRoot is not null, sources && actualInputs,
             catalog.CheckActualCompilationCoverage, "本批实际编译证据或源码范围未完成。");
         bool actualDependencies = RunStage("ActualDependencies", clientRoot is not null, coverage,
@@ -153,7 +155,7 @@ static class Program
             catalog.CheckActualSourceBindings, "本批完整引用、生成源或结构源码扫描未完成，不能以词法猜测声称语义绑定完成。");
         Violation[] violations = ReadViolations(catalog);
         string scope = clientRoot is null ? "SDK-only（未检查 Quantum 宿主与实际作者身份）" : "完整工作区（SDK + 显式 Client）";
-        Console.WriteLine($"DependencyGuard：{scope}；{catalog.Modules.Count} 份依赖声明，{sourceGuard.SourceCount} 份源码，{projectNames.SourceCount} 份项目名字扫描文件。");
+        Console.WriteLine($"DependencyGuard：{scope}；{catalog.Modules.Count} 份依赖声明，{sourceGuard.SourceCount} 份源码，{projectNames.SourceCount} 份项目名字扫描文件，{workbench.SourceCount} 份工作台路由／字段扫描文件。");
         foreach (Violation violation in violations)
             Console.WriteLine($"{violation.File}({violation.Line}): error {violation.Rule}: [{violation.Module}] {violation.Detail}");
         var inputs = ReadFinalInputs(catalog);
@@ -172,6 +174,7 @@ static class Program
                 SourceScanCompleted = sourceScanCompleted, ActualSourceBindingsCompleted = actualSourceBindingsCompleted,
                 Stages = stages, sourceGuard.ScannedSources,
                 ModuleCount = catalog.Modules.Count, sourceGuard.SourceCount, ProjectNameSourceCount = projectNames.SourceCount,
+                WorkbenchSourceCount = workbench.SourceCount,
                 sourceGuard.RoleNames, sourceGuard.SkillNames,
                 catalog.VerifiedVendorSources, catalog.ProjectBinaryReferences,
                 catalog.ActualCompilations, catalog.AutomaticCompilationCandidates, catalog.VerifiedOfficialMetadata,

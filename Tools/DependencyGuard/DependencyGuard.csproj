@@ -10,5 +10,6 @@
     <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
     <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
     <None Update="rules.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="workbench-source-parser.cjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
