@@ -10,6 +10,7 @@ static class QuickPreviewPlanProjection
         QuickPreviewCompilation compiled, QuickPreviewInputSchedule input, TimelineStaticRoute route)
     {
         var (conditions, suggestions) = route.Conditions(input.Intervals);
+        var dependencies = new QuickPreviewConditionDependencies(route, input.Conditions);
         PreviewQuickSegment[] segments = route.OrderedSpans().Select(item =>
         {
             TimelineStaticRouteSpan span = item.Span;
@@ -17,7 +18,10 @@ static class QuickPreviewPlanProjection
             return new PreviewQuickSegment(timeline.Name, timeline.AuthoringId, capture.TimelineOwner(timeline.AuthoringId),
                 State(span.State), span.State == null ? null : Location(span.State.Location), Seconds(span.Start), Seconds(span.End),
                 Seconds(span.LocalStart), Seconds(span.LocalEnd), span.Playback, span.Cycle, item.Occurrence,
-                span.PlaybackCompleted, span.CallerPlayback, span.Call?.CallerElementId ?? "");
+                span.PlaybackCompleted, span.CallerPlayback, span.Call?.CallerElementId ?? "")
+            {
+                ConditionDependencies = dependencies.Segment(span)
+            };
         }).ToArray();
         return new(compiled.Standalone?.Name ?? capture.Label, "staticInference", new("seconds", 0, "Player", actor.TickRate),
             input.Scheme.Source, input.Scheme.Revision, input.Revision, input.Conditions,

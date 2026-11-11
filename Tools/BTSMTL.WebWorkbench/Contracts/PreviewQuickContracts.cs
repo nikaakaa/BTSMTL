@@ -85,7 +85,11 @@ public sealed record PreviewQuickDescription(string ScenePath, string CarrierPat
 public sealed record PreviewQuickLocation(string DocumentPath, string GraphId, string NodeId, string EdgeId, string DisplayPath);
 public sealed record PreviewQuickSegment(string? Timeline, string? TimelineId, string? DocumentPath, string State,
     PreviewQuickLocation? StateSource, double Start, double End, double LocalStart, double LocalEnd,
-    int Playback, int Cycle, int Occurrence, bool PlaybackCompleted, int CallerPlayback, string CallerClipId);
+    int Playback, int Cycle, int Occurrence, bool PlaybackCompleted, int CallerPlayback, string CallerClipId)
+{
+    public PreviewQuickConditionDependency[] ConditionDependencies { get; init; } = [];
+}
+public sealed record PreviewQuickConditionDependency(string Key, string Label, bool Written);
 public sealed record PreviewQuickCondition(string Key, string Label, string Source, int OperationIndex, bool Undeterminable);
 public sealed record PreviewQuickMissingCondition(string Key, string Label);
 public sealed record PreviewQuickSuggestion(string FromState, string ToState, string Transition,

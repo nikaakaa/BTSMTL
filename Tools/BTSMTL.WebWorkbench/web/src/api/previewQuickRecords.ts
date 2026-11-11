@@ -45,6 +45,7 @@ const plan = object({
     timeline: nullable(text), timelineId: nullable(text), documentPath: nullable(text), state: text, stateSource: nullable(location),
     start: number, end: number, localStart: number, localEnd: number, playback: number, cycle: number,
     occurrence: number, playbackCompleted: boolean, callerPlayback: number, callerClipId: text,
+    conditionDependencies: array(object({ key: text, label: text, written: boolean })),
   })),
   conditions: array(object({ key: text, label: text, source: text, operationIndex: number, undeterminable: boolean })),
   suggestions: array(object({

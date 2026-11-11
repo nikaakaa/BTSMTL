@@ -19,7 +19,7 @@ namespace BTSMTL.Compilation.Analysis
     {
         internal TimelineStaticChainSpan(OrchestrationStaticState state,
             OrchestrationTime start, OrchestrationTime end, OrchestrationTime localStart,
-            OrchestrationTime localEnd, int cycle, bool playbackCompleted)
+            OrchestrationTime localEnd, int cycle, bool playbackCompleted, IReadOnlyList<OrchestrationStaticRead> runtimeReads)
         {
             State = state;
             Start = start;
@@ -28,6 +28,7 @@ namespace BTSMTL.Compilation.Analysis
             LocalEnd = localEnd;
             Cycle = cycle;
             PlaybackCompleted = playbackCompleted;
+            RuntimeReads = runtimeReads;
         }
 
         public OrchestrationStaticState State { get; }
@@ -38,6 +39,7 @@ namespace BTSMTL.Compilation.Analysis
         public int Cycle { get; }
         // 本段播到 Timeline 终点（Once）；后续沿"完成"转移继续。
         public bool PlaybackCompleted { get; }
+        public IReadOnlyList<OrchestrationStaticRead> RuntimeReads { get; }
         // 被转移打断：本段没播到终点，[LocalEnd, Duration) 为未播部分。
         public bool Interrupted => !PlaybackCompleted && State.Timeline != null && LocalEnd < State.Timeline.Duration;
     }
@@ -95,6 +97,7 @@ namespace BTSMTL.Compilation.Analysis
         public TimelineStaticChainStopReason StopReason { get; private set; }
         public string Reason { get; private set; }
         public OrchestrationStaticState LastState { get; private set; }
+        public IReadOnlyList<OrchestrationStaticRead> InitialReads { get; private set; } = Array.Empty<OrchestrationStaticRead>();
 
         // 状态 Root 中并行运行的状态机：每台各推导一条分支，从所属状态进入时起，到所属状态退出时止。
         public IReadOnlyList<TimelineStaticChainBranch> Branches => m_Branches;
@@ -114,9 +117,10 @@ namespace BTSMTL.Compilation.Analysis
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
             HashSet<int> activeMachines)
         {
+            var trace = new ReadTrace(inputs);
             foreach (OrchestrationStaticTransition initial in query.InitialTransitions(machineOperationIndex))
                 if (TimelineStaticConditionEvaluator.Earliest(initial.Condition, new ConditionTime(null, start,
-                    OrchestrationTime.Zero, start, true, false), inputs,
+                    OrchestrationTime.Zero, start, true, false), trace,
                     out OrchestrationTime time, out _, out _) && time == start)
                 {
                     if (initial.Target == null)
@@ -127,6 +131,7 @@ namespace BTSMTL.Compilation.Analysis
                         };
                     activeMachines.Add(machineOperationIndex);
                     TimelineStaticChain chain = Build(query, initial.Target, start, previewEnd, inputs, activeMachines);
+                    chain.InitialReads = trace.Reads;
                     activeMachines.Remove(machineOperationIndex);
                     return chain;
                 }
@@ -195,7 +200,8 @@ namespace BTSMTL.Compilation.Analysis
                 OrchestrationTime end = OrchestrationTime.Min(previewEnd, time + endLocal - local);
                 bool completed = state.PlaybackMode == OrchestrationTimelinePlaybackMode.Once &&
                     end == time + endLocal - local;
-                Candidate selected = Select(state, time, local, end, completed, inputs,
+                var trace = new ReadTrace(inputs);
+                Candidate selected = Select(state, time, local, end, completed, trace,
                     out string unavailableReason, out bool needsSession);
                 if (needsSession)
                     return result.Stop(TimelineStaticChainStopReason.NeedsSession, unavailableReason);
@@ -203,7 +209,7 @@ namespace BTSMTL.Compilation.Analysis
                 OrchestrationTime spanEndLocal = local + spanEnd - time;
                 bool playbackCompleted = completed && spanEnd == end && selected.Transition?.FromAnyState != true;
                 result.m_Spans.Add(new TimelineStaticChainSpan(state, time, spanEnd, local,
-                    spanEndLocal, cycle, playbackCompleted));
+                    spanEndLocal, cycle, playbackCompleted, trace.Reads));
                 foreach (OrchestrationStaticClip clip in timeline.Clips)
                     if (clip.Start >= local && clip.Start < spanEndLocal)
                         foreach ((string variable, double value) in clip.StartWrites)
@@ -269,6 +275,21 @@ namespace BTSMTL.Compilation.Analysis
                     continue;
                 TimelineStaticChain chain = BuildMachine(m_Query, machine, m_Entered, m_Now, m_Inputs, m_ActiveMachines);
                 m_Branches.Add(new TimelineStaticChainBranch(state, machine, m_Entered, m_Now, chain));
+            }
+        }
+
+        sealed class ReadTrace : ITimelineStaticReadIntervals
+        {
+            readonly ITimelineStaticReadIntervals m_Inputs;
+            readonly Dictionary<string, OrchestrationStaticRead> m_Reads = new(StringComparer.Ordinal);
+
+            public ReadTrace(ITimelineStaticReadIntervals inputs) => m_Inputs = inputs;
+            public IReadOnlyList<OrchestrationStaticRead> Reads => new List<OrchestrationStaticRead>(m_Reads.Values);
+            public IReadOnlyList<TimelineStaticInterval> HostInput(string inputId) => m_Inputs.HostInput(inputId);
+            public IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read)
+            {
+                m_Reads[read.Key] = read;
+                return m_Inputs.RuntimeData(in read);
             }
         }
 

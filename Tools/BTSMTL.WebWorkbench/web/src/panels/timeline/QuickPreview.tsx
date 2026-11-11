@@ -150,6 +150,13 @@ function QuickDetails() {
     </div>}
     {plan && (plan.stopReason || plan.stopDetail) && <p className={styles.notice}>{[plan.stopReason, plan.stopDetail].filter(Boolean).join(' · ')}</p>}
     {plan && plan.assumptions.length > 0 && <Fold title={`计算时的假设（${plan.assumptions.length}）`}>{plan.assumptions.map((assumption, index) => <p key={index}>{assumption}</p>)}</Fold>}
+    {plan && plan.segments.some(segment => segment.conditionDependencies.length > 0) && <Fold title="依赖条件的路线区段">
+      <p>真实运行只使用相同的按键日程。以下区段的条件写入和默认假设以真实记录为准，状态进入或退出时间不同时，即为路线分歧。</p>
+      {plan.segments.filter(segment => segment.conditionDependencies.length > 0).map((segment, index) => <p key={index}>
+        {name(segment.stateSource, segment.state)} · {segment.start.toFixed(3)}–{segment.end.toFixed(3)} {plan.clock.unit} ·
+        {segment.conditionDependencies.map(item => `${item.label}（${item.written ? '依赖条件写入' : '未写入，按默认值'}）`).join('、')}
+      </p>)}
+    </Fold>}
     {plan && <Fold title={`用到的条件 / 缺条件没走成的转移（${plan.conditions.length} / ${plan.suggestions.length}）`}>
       {plan.conditions.map(condition => <p key={condition.key}>{condition.label} · {condition.source}{condition.undeterminable ? ' · 无法确定' : ''}</p>)}
       {plan.suggestions.map((suggestion, index) => <div key={index}>
@@ -188,8 +195,8 @@ export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
   if (plan === null) return null;
   const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
   return <PanelBar wrap><strong>快速预览{stale ? '（内容已变化）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
-    <Button key={index} variant="ghost" tip={`播放区间 ${segment.start}–${segment.end} ${plan.clock.unit}；不提供端口采值`}
+    <Button key={index} variant="ghost" tip={`播放区间 ${segment.start}–${segment.end} ${plan.clock.unit}；${segment.conditionDependencies.map(item => `${item.label}：${item.written ? '依赖条件写入' : '未写入，按默认值'}`).join('；')}`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) locate(segment.stateSource); }}>
-      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}</Button>) : <span>当前时刻没有播放这张图</span>}
+      {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}{segment.conditionDependencies.some(item => item.written) ? ' · 条件写入' : ''}</Button>) : <span>当前时刻没有播放这张图</span>}
   </PanelBar>;
 }
