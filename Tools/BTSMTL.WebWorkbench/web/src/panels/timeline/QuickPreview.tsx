@@ -122,8 +122,9 @@ async function runInput(selection: PreviewQuickInputSource) {
   if (await authoringActions.open(owner) !== 'opened') throw new Error('预览入口文档尚未打开，未提交真实运行');
   const mode = current.host!.modes.find(item => item.createsRun)!;
   contentActions.selectPreviewMode(mode.id);
-  const request = await session.prepareRun({ kind: 'selection' });
-  await authoringActions.save('apply', request.projectParameters.source);
+  const prepared = useWorkbench.getState();
+  await authoringActions.save('apply', { kind: 'local', [prepared.host!.inputLimit.name]: prepared.localInputLimit,
+    players: prepared.inputChoices });
   const outcome = authoringDocument(useAuthoring.getState(), owner).lastSave;
   if (outcome?.preview === null || outcome?.preview === undefined || !outcome.ok)
     throw new Error(outcome?.message ?? '入口内容尚未应用，未提交真实运行');
