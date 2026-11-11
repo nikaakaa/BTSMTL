@@ -441,46 +441,10 @@ interface Page<T> {
 
 // 保存：宿主写入文件后用正式编译器编译本技能。成功为 200 与编译回执；
 // 严格读取或编译拒绝为 422，文件仍已保存（saved=true），附原诊断。
-const graphCompilationWork = choice('Unchanged', 'Sources', 'Parameters', 'Structure');
-const graphCompilation = object({ work: nullable(graphCompilationWork), milliseconds: object({ frontend: number, fpAndHash: number }) });
-const graphIdentities = { structureIdentity: text, parameterIdentity: text, targetParameterIdentity: text,
-  sourceIdentity: text, stateLayoutIdentity: text, executionIdentity: text, contentIdentity: text };
 const preparationPhases = array(object({ stage: text, milliseconds: number }));
-const graphPublication = (value: unknown, path = 'Publication.graph') => typeof value === 'object' && value !== null && 'stage' in value
-  ? object({ stage: choice('prepared-by-earlier-skill') })(value, path)
-  : object({ work: graphCompilationWork, milliseconds: object({ encoding: number, total: number }) })(value, path);
-const publicationResult = object({
-  stage: text, root: text, ability: text, sourceRevision: text, entryGraphId: text,
-  graphs: array(object({
-    graphId: text, dependencies: array(opaque), operations: number, sources: number, encodingContract: text, nodeContract: text,
-    numericTarget: text, numericProfile: opaque, ...graphIdentities, compilation: graphCompilation,
-    publication: graphPublication,
-  })),
-  output: text, publicationOutput: text, publicationHash: text, publicationEncoding: text,
-  files: array(object({ graphId: nullable(text), kind: text, path: text, stage: text })),
-  spawns: array(opaque), carrierDefinitions: array(opaque), timelineIds: array(text), scalarConversions: array(opaque),
-  scalarRoundingMessage: nullable(text), diagnostics: array(opaque), editorInstallation: text, contentLoad: text, sessionAdoption: text,
-  milliseconds: object({ read: number, compile: number, prepare: number }), success: optional(boolean),
-  receiptFile: optional(object({ path: text, stage: text })),
-  transaction: optional(object({ scope: text, requestCount: number, writtenFileCount: number,
-    milliseconds: object({ prepare: number, commit: number }) })),
-});
-const unityPublication = hosted({
-  stage: choice('unity-assets-committed'), success: boolean, projectPath: text, requests: array(opaque), graphCount: number,
-  graphs: array(hosted({ graphId: text, assetPath: text, assetGuid: text, sourceRevision: text, numericTarget: text,
-    ...graphIdentities, previousContentIdentity: nullable(text), compilation: graphCompilation,
-    publication: object({ work: graphCompilationWork,
-      files: array(object({ kind: text, identity: text, assetReference: text, path: nullable(text), stage: choice('written', 'unchanged') })),
-      milliseconds: object({ read: number, encodingAndHash: number, prepare: number, total: number }),
-    }),
-  })),
-  preparedFiles: array(text), writtenFiles: array(text), receiptFile: text,
-  editorImport: choice('not-performed'), sessionAdoption: choice('not-performed'),
-  milliseconds: object({ prepare: number, commit: number, total: number, encodingAndHash: number }),
-});
 const readCompilationReport = object({
   compilationKey: text, sourceRevision: text, artifactReceiptPath: text, artifactReused: boolean,
-  publicationResult: nullable(publicationResult), unityPublication: nullable(unityPublication), phases: preparationPhases,
+  publicationResult: opaque, unityPublication: opaque, phases: preparationPhases,
 });
 export type CompilationReport = ReturnType<typeof readCompilationReport>;
 
