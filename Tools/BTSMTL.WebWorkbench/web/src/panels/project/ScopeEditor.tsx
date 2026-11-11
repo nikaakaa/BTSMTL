@@ -139,7 +139,7 @@ async function refreshPublishedPreview(query: ScopeQuery): Promise<string> {
     scene = currentScene(sources, content.scene);
     next = content;
   } else if (content.kind === 'timeline') {
-    const timeline = sources.timelines.find(item => item.content.timeline === content.timeline);
+    const timeline = sources.timelines.find(item => item.content.package === content.package);
     if (timeline === undefined) throw new Error('Player 当前 Timeline 已不在正式发布目录中。');
     scene = timelineScene(sources, timeline);
     next = timeline.content;
