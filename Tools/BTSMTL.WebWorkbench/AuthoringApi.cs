@@ -101,8 +101,7 @@ public sealed record AuthoringReferenceReplacementInput([property: JsonRequired]
     [property: JsonRequired] string NewValue, string? Context = null, string? ExpectedRevision = null);
 
 // 与项目无关的作者文档接口：文档目录、正文、编辑视图与保存、变量声明、适配者目录与资源引用替换。
-// 项目专有的类型、节点与引用查询由项目在同一 /api/authoring 前缀下另行挂载。
-public static class AuthoringApi
+public static partial class AuthoringApi
 {
     static readonly JsonSerializerOptions s_Json = new(JsonSerializerDefaults.Web) { IncludeFields = true };
 

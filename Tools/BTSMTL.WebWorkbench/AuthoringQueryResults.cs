@@ -12,7 +12,7 @@ public static class AuthoringQueryResults
         .Select(document => JsonSerializer.Deserialize<JsonElement>(AuthoringJsonText.Text(service.Describe(document, true))))
         .ToArray();
 
-    public static IResult Read(HttpContext context, object? selector, Func<JObject> query)
+    public static IResult Read<T>(HttpContext context, object? selector, Func<T> query)
     {
         try
         {
@@ -24,7 +24,7 @@ public static class AuthoringQueryResults
         }
     }
 
-    public static async Task<IResult> ReadAsync(HttpContext context, object? selector, Func<Task<JObject>> query)
+    public static async Task<IResult> ReadAsync<T>(HttpContext context, object? selector, Func<Task<T>> query)
     {
         try
         {
@@ -59,14 +59,21 @@ public static class AuthoringQueryResults
         return Result(new JObject { ["success"] = false, ["code"] = code, ["message"] = exception.Message }, status);
     }
 
-    static IResult Result(JObject result, int statusCode)
+    static IResult Result(object? result, int statusCode)
     {
-        if (result.Property("availability") == null)
-            result["availability"] = new JObject
+        if (result is AuthoringQueryResult reply)
+        {
+            result = reply.Value;
+            statusCode = reply.StatusCode;
+        }
+        if (result is not JObject json)
+            return Results.Json(result, statusCode: statusCode);
+        if (json.Property("availability") == null)
+            json["availability"] = new JObject
             {
                 ["available"] = statusCode == 200,
-                ["reason"] = statusCode == 200 ? null : result["message"]
+                ["reason"] = statusCode == 200 ? null : json["message"]
             };
-        return Results.Content(AuthoringJsonText.Compact(result), "application/json", Encoding.UTF8, statusCode);
+        return Results.Content(AuthoringJsonText.Compact(json), "application/json", Encoding.UTF8, statusCode);
     }
 }
