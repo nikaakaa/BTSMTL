@@ -53,7 +53,8 @@ public interface IPreviewQuickCapture
 }
 
 public sealed record PreviewQuickInputPlan(string DocumentPath, string SavedRevision, string Id,
-    string Revision, JObject Value, Func<string, JObject> Timeline, Func<string, JObject> Graph, bool AllowsConditions);
+    string Revision, JObject Value, Func<string, JObject> Timeline, Func<string, JObject> Graph, bool AllowsConditions,
+    bool IsRootDefault);
 public sealed record PreviewQuickKeyWrite(float Time, string Key, JsonElement State, string Element);
 public sealed record PreviewQuickInvocation(int EntryOperation, int TargetOperation);
 public sealed record PreviewQuickProgramInput(string GraphId, JObject Parameters, int[] ConditionOperations,

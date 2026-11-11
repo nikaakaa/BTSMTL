@@ -23,7 +23,7 @@ sealed class QuickPreviewInputs
     {
         m_Actor = actor;
         var plans = capture.InputPlans();
-        PreviewQuickInputPlan? defaultPlan = plans.SingleOrDefault();
+        PreviewQuickInputPlan? defaultPlan = plans.SingleOrDefault(plan => plan.IsRootDefault);
         int index = 0;
         if (defaultPlan != null)
         {
