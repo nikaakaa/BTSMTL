@@ -6,6 +6,7 @@ public sealed record AuthoringQueryResult(object Value, int StatusCode = 200);
 
 public interface IAuthoringContractAdapter
 {
+    Task<AuthoringQueryResult> Apply(string documentPath, AuthoringDocumentApplyRequest input, int localPort);
     Task<AuthoringQueryResult> Document(string documentPath, SkillAuthoringPageQuery input);
     Task<AuthoringQueryResult> Types(string documentPath, string? search, SkillAuthoringPageQuery input);
     Task<AuthoringQueryResult> Type(string documentPath, SkillAuthoringTypeQuery input);

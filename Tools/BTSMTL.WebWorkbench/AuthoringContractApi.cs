@@ -4,6 +4,8 @@ public static partial class AuthoringApi
 {
     public static void MapAuthoringApi(this WebApplication app, IAuthoringContractAdapter adapter)
     {
+        app.MapPost("/api/authoring/documents/apply", (string documentPath, AuthoringDocumentApplyRequest input, HttpContext context) =>
+            AuthoringQueryResults.ReadAsync(context, new { documentPath }, () => adapter.Apply(documentPath, input, context.Connection.LocalPort)));
         app.MapPost("/api/authoring/documents/document", (string documentPath, SkillAuthoringPageQuery input, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { documentPath, input.GraphId }, () => adapter.Document(documentPath, input)));
         app.MapPost("/api/authoring/documents/queries/types", (string documentPath, string? search, SkillAuthoringPageQuery input, HttpContext context) =>
