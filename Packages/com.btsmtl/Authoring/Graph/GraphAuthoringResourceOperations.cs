@@ -122,6 +122,17 @@ namespace BTSMTL.Authoring.Graph
         public string Context { get; set; }
         public string Revision { get; set; }
         public GraphAuthoringResourceDeclaration[] ResourceDeclarations { get; set; }
+        public GraphAuthoringPublishedResourceBinding[] PublishedResources { get; set; }
+    }
+
+    public sealed class GraphAuthoringPublishedResourceBinding
+    {
+        public string Id { get; set; }
+        public string DisplayName { get; set; }
+        public string Path { get; set; }
+        public string AssetToken { get; set; }
+        public string Revision { get; set; }
+        public GraphAuthoringResourceAvailability Availability { get; set; }
     }
 
     public sealed class GraphAuthoringProfileTarget
