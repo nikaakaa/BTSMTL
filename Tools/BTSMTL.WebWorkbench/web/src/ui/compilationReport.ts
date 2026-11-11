@@ -1,6 +1,6 @@
-import type { SkillCompilation } from '../api/authoring';
+import type { CompilationReport } from '../api/authoring';
 
-type Publication = NonNullable<SkillCompilation['publicationResult']>;
+type Publication = NonNullable<CompilationReport['publicationResult']>;
 type GraphWork = NonNullable<Publication['graphs'][number]['compilation']['work']>;
 type GraphVersions = Pick<Publication['graphs'][number], 'structureIdentity' | 'parameterIdentity' | 'targetParameterIdentity'
   | 'sourceIdentity' | 'stateLayoutIdentity' | 'executionIdentity' | 'contentIdentity'>;
@@ -17,7 +17,7 @@ const phaseNames: Readonly<Partial<Record<string, string>>> = {
   'package-prepare': '准备场景包', 'player-command': 'Player 命令发送至实际 ACK',
 };
 
-export function preparationPhaseDetails(phases: SkillCompilation['phases'], owner: string): string[] {
+export function preparationPhaseDetails(phases: CompilationReport['phases'], owner: string): string[] {
   return phases.length === 0 ? [`${owner}：尚无阶段回执`]
     : phases.map(phase => `${owner} · ${phaseNames[phase.stage] ?? phase.stage}：${phase.milliseconds} 毫秒`);
 }
@@ -28,7 +28,7 @@ function graphVersionDetails(graph: GraphVersions): string[] {
     `状态布局版本：${graph.stateLayoutIdentity}`, `执行版本：${graph.executionIdentity}`, `内容版本：${graph.contentIdentity}`];
 }
 
-export function compilationDetails(compilation: SkillCompilation): string[] {
+export function compilationDetails(compilation: CompilationReport): string[] {
   const lines = [`本次编译：${compilation.artifactReused ? '复用已编译产物' : '执行编译'}`,
     `本次来源修订：${compilation.sourceRevision}`, `编译键：${compilation.compilationKey}`,
     `产物回执路径：${compilation.artifactReceiptPath}`,

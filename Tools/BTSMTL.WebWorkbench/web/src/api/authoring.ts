@@ -478,40 +478,40 @@ const unityPublication = hosted({
   editorImport: choice('not-performed'), sessionAdoption: choice('not-performed'),
   milliseconds: object({ prepare: number, commit: number, total: number, encodingAndHash: number }),
 });
-const readSkillCompilation = object({
+const readCompilationReport = object({
   compilationKey: text, sourceRevision: text, artifactReceiptPath: text, artifactReused: boolean,
   publicationResult: nullable(publicationResult), unityPublication: nullable(unityPublication), phases: preparationPhases,
 });
-export type SkillCompilation = ReturnType<typeof readSkillCompilation>;
+export type CompilationReport = ReturnType<typeof readCompilationReport>;
 
-const readSkillExportHeader = object({
+const readDocumentExportHeader = object({
   stage: choice('export-ready'), kind: choice('authoring', 'runtime'), sourceRevision: text,
   product: nullable(object({ value: text, revision: text })), execution: nullable(readExecutionScopeSelection),
   tickRate: number, effectProfileGuid: text, fileName: text, downloadUrl: text,
   files: array(object({ path: text, downloadUrl: text })),
 });
-const readNoExportCompilation = (value: unknown, path = 'SkillExport.compilation'): null => {
+const readNoExportCompilation = (value: unknown, path = 'DocumentExport.compilation'): null => {
   if (value !== null) throw new Error(`${path}：作者内容导出不包含运行编译结果`);
   return null;
 };
-function readSkillExport(value: unknown) {
-  const header = readSkillExportHeader(value, 'SkillExport');
+function readDocumentExport(value: unknown) {
+  const header = readDocumentExportHeader(value, 'DocumentExport');
   switch (header.kind) {
     case 'authoring': return { ...header, kind: header.kind,
-      ...object({ compilation: readNoExportCompilation })(value, 'SkillExport') };
+      ...object({ compilation: readNoExportCompilation })(value, 'DocumentExport') };
     case 'runtime': return { ...header, kind: header.kind,
-      ...object({ compilation: readSkillCompilation })(value, 'SkillExport') };
+      ...object({ compilation: readCompilationReport })(value, 'DocumentExport') };
   }
 }
-export type SkillExport = ReturnType<typeof readSkillExport>;
-export type SkillExportKind = SkillExport['kind'];
+export type DocumentExport = ReturnType<typeof readDocumentExport>;
+export type DocumentExportKind = DocumentExport['kind'];
 
 export interface CompiledSkillSaveResult {
   saved: true;
   compilationState: 'succeeded';
   content: SkillSnapshot;
   documents: WorkspaceDocumentSnapshot[];
-  compilation: SkillCompilation;
+  compilation: CompilationReport;
   preview: PlayerSkillRefreshReceipt | null;
 }
 
@@ -675,9 +675,9 @@ export function readSkillSaveRejection(value: unknown) {
     case 'compilation-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
       ...object({ compilationState: choice('failed') })(value) };
     case 'unity-publication-failed': return { ...readSavedContent(value), ...readCompilerFailure(value), stage,
-      ...object({ compilationState: choice('succeeded'), compilation: readSkillCompilation, publicationState: choice('failed') })(value) };
+      ...object({ compilationState: choice('succeeded'), compilation: readCompilationReport, publicationState: choice('failed') })(value) };
     case 'unity-publication-rejected': return { ...readSavedContent(value), stage,
-      ...object({ compilationState: choice('succeeded'), compilation: readSkillCompilation, publicationState: choice('failed'), error: text })(value) };
+      ...object({ compilationState: choice('succeeded'), compilation: readCompilationReport, publicationState: choice('failed'), error: text })(value) };
   }
 }
 
@@ -785,8 +785,8 @@ export const authoringApi = {
   commitReferenceReplacement: async (plan: ReferenceReplacementPrepared) =>
     readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
-  export: async (documentPath: string, kind: SkillExportKind, editingView: SkillEditingView) =>
-    readSkillExport(await postJson<unknown>(documentQueryPath(documentPath, `exports/${kind}`), { editingView })),
+  export: async (documentPath: string, kind: DocumentExportKind, editingView: SkillEditingView) =>
+    readDocumentExport(await postJson<unknown>(documentQueryPath(documentPath, `exports/${kind}`), { editingView })),
   products: async (signal?: AbortSignal) => {
     const scopes = object({ products: opaque })(await getJson<unknown>('/api/authoring/publication/scopes', signal));
     return readAuthoringProducts({ items: scopes.products });
@@ -818,7 +818,7 @@ export const authoringApi = {
     const { compilationState } = object({ compilationState: choice('not-required', 'succeeded') })(result, 'SkillSave');
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
-      case 'succeeded': return { ...object({ ...savedContentFields, compilation: readSkillCompilation,
+      case 'succeeded': return { ...object({ ...savedContentFields, compilation: readCompilationReport,
         preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
     }
   },

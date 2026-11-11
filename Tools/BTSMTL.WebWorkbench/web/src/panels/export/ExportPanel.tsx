@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { SkillEditingView, SkillExportKind } from '../../api/authoring';
+import type { SkillEditingView, DocumentExportKind } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { exportActions, useExports, type ExportOperation } from '../../state/exports';
 import { consoleActions } from '../../state/store';
@@ -11,32 +11,32 @@ import { Button, Select } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './export.module.css';
 
-const purposeNames = { authoring: '作者内容', runtime: '运行数据' } satisfies Record<SkillExportKind, string>;
+const purposeNames = { authoring: '作者内容', runtime: '运行数据' } satisfies Record<DocumentExportKind, string>;
 
 export function ExportPanel() {
-  const [purpose, setPurpose] = useState<SkillExportKind>('authoring');
+  const [purpose, setPurpose] = useState<DocumentExportKind>('authoring');
   const { target, product, loading, documentRevision, sourceRevision } = useAuthoring(useShallow(state => ({
     target: state.target, product: authoringDocument(state).product, loading: authoringDocument(state).loading,
     documentRevision: authoringDocument(state).documentRevision, sourceRevision: authoringDocument(state).sourceRevision,
   })));
   const operations = useExports(state => state.operations);
-  const skill = target?.kind === 'skill' ? target.documentPath : null;
-  const pending = operations.some(operation => operation.kind === 'preparing' && operation.skill === skill && operation.purpose === purpose);
+  const documentPath = target?.kind === 'scenario' || target?.kind === 'variables' ? null : target?.documentPath ?? null;
+  const pending = operations.some(operation => operation.kind === 'preparing' && operation.documentPath === documentPath && operation.purpose === purpose);
   return <div className={styles.root}>
     <PanelBar wrap>
-      <Select<SkillExportKind> label="导出用途" value={purpose} onChange={setPurpose} options={[
+      <Select<DocumentExportKind> label="导出用途" value={purpose} onChange={setPurpose} options={[
         { value: 'authoring', label: purposeNames.authoring }, { value: 'runtime', label: purposeNames.runtime },
       ]} />
-      {skill !== null && <Button disabled={loading || pending} onClick={() => void exportActions.prepare({
-        skill, purpose, editingView: authoringActions.editingView(),
+      {documentPath !== null && <Button disabled={loading || pending} onClick={() => void exportActions.prepare({
+        documentPath, purpose, editingView: authoringActions.editingView(),
       })}>{pending ? '准备中' : `导出${purposeNames[purpose]}`}</Button>}
     </PanelBar>
-    {skill === null ? <Empty text="选择技能以导出当前作者内容或运行数据" /> : <section className={styles.source}>
-      <strong>{skill}</strong>
+    {documentPath === null ? <Empty text="选择作者文档以导出当前内容或运行数据" /> : <section className={styles.source}>
+      <strong>{documentPath}</strong>
       <ProductScope product={product} />
       <IdentityFold fields={[
         ...(documentRevision === null ? [] : [{ displayName: '作者输入上下文修订', value: documentRevision }]),
-        ...(sourceRevision === null ? [] : [{ displayName: '技能编译来源闭包修订', value: sourceRevision }]),
+        ...(sourceRevision === null ? [] : [{ displayName: '编译来源闭包修订', value: sourceRevision }]),
       ]} />
       <p>{purpose === 'authoring'
         ? '保留作者树、UID、布局、Timeline 和输入方案，供继续编辑。包含本次编辑视图，不保存文档。'
@@ -55,7 +55,7 @@ function ProductScope({ product }: { product: SkillEditingView['product'] }) {
 
 function ExportResult({ operation }: { operation: ExportOperation }) {
   const compilation = operation.kind === 'ready' && operation.result.kind === 'runtime' ? operation.result.compilation : null;
-  return <Fold title={`${operation.skill} · ${purposeNames[operation.purpose]} · ${new Date(operation.startedAt).toLocaleTimeString()}`} defaultOpen>
+  return <Fold title={`${operation.documentPath} · ${purposeNames[operation.purpose]} · ${new Date(operation.startedAt).toLocaleTimeString()}`} defaultOpen>
     {operation.kind === 'preparing' ? <><div role="status" className={styles.note}>准备中，等待宿主返回本次导出结果。</div>
       <ProductScope product={operation.product} /></>
       : operation.kind === 'failed' ? <ErrorLine text={`导出失败：${operation.reason}`} entryId={operation.entryId} />
