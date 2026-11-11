@@ -955,24 +955,26 @@ function PreviewConditionPicker({ id, label, value, configuration, onChoose }: {
   id: string; label: string; value: JsonValue | undefined; configuration: JsonObject; onChoose(choice: ReferenceChoice): void;
 }) {
   const preview = useWorkbench(state => state.quickPreview);
+  const mode = useWorkbench(state => state.host?.modes.find(item => item.id === 'quick'));
   const description = preview.description;
   const root = description.kind === 'ready' && description.target.root === preview.target?.root
     ? description.reply.data.root : null;
   const catalog: ReferenceCatalog = root === null
-    ? { kind: 'unavailable', reason: description.kind === 'failed' || description.kind === 'stale' ? description.reason
+    ? { kind: 'unavailable', reason: mode === undefined ? '宿主尚未声明快预览能力' : !mode.available ? mode.reason!
+      : description.kind === 'failed' || description.kind === 'stale' ? description.reason
       : description.kind === 'loading' ? '正在读取当前入口的运行条件' : '先选择快预览场景和文档入口，读取当前入口的运行条件' }
     : { kind: 'ready', referenceKind: 'preview-condition', invalidReason: '此条件不在当前入口的运行数据读取中；原值已保留。',
       items: root.conditions.map(condition => ({ value: condition.key, name: condition.label, detail: condition.key,
         source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) };
-  return <div className={styles.facts}>
+  return <Facts>
     <ReferencePicker id={id} label={label} value={value} configuration={configuration} catalog={catalog} onChoose={onChoose} />
-    {root === null && <Button variant="ghost" disabled={description.kind === 'loading'} onClick={() => {
+    {root === null && <Button variant="ghost" disabled={mode?.available !== true || description.kind === 'loading'} onClick={() => {
       contentActions.selectPreviewMode('quick');
       openPanel('timeline');
       void quickPreview.readSource();
     }}>读取快预览条件</Button>}
     {root !== null && <small>条件来自 {root.label}。Timeline 已提供的状态仍按片段实际区间计算。</small>}
-  </div>;
+  </Facts>;
 }
 
 function writeReferenceChoice(choice: ReferenceChoice, keys: JsonKey[], value: JsonValue, onSetFields: SetFields) {
