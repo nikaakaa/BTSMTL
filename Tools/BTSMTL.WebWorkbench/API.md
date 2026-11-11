@@ -91,7 +91,7 @@
 
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
-| `GET /api/authoring/documents/types` | 无 | 文档类型身份、显示名、根类型、发现规则与语义角色 |
+| `GET /api/authoring/documents/types` | 无 | 文档类型身份、显示名、根类型、发现目录与根文件；语义角色随单份文档返回 |
 | `GET /api/authoring/documents` | `kind?` | 文档目录及适配提供的元数据 |
 | `GET /api/authoring/documents/content` | `documentPath`，可选 `revision` | 文档原文与修订；带上已读 `revision` 且未变化时只回 `{success, changed:false, revision}`，不含正文 |
 | `GET /api/authoring/documents/elements` | `kind?` | 文档种类的正式模板 |
@@ -313,7 +313,7 @@ JPEG 的来源 SDK 帧与当前分页帧一致时，叠加使用分页中的姿�
 
 字段／端口部分不可用可能仍是 HTTP 200；运行、刷新和作业也有各自业务拒绝阶段。UI 不能只看 HTTP 2xx。客户端 [http.ts](web/src/api/http.ts) 保留 `ApiError.status/reason/raw/path`；切换文档和查询上下文时取消旧只读请求，原命令结果未确认则按原 commandId 重查。
 
-目前没有单独的技能目录复制／重命名／删除协议，也没有独立 Timeline 作者目录的 CRUD 协议。技能私有 Timeline 随技能 JSON 保存；已发布独立 Timeline 的目录、Load、时钟和画面由上文接口提供。场景方案只开放表中三种 `queries`，没有技能专属 `document/references/blackboards` 路由。UI 有新增业务操作时，应先补对应正式接口及类型，不在本地硬编码另一套作者规则。
+文档新建走 `creation-options/create`，显示名及内容修改走同一编辑视图和文档保存；独立 Timeline、图、曲线与 Profile 的根文件删除也走该事务，并随所属图删除变量文档。带入口图的文档目录删除走 `documents/delete`，由所属适配检查外部引用、运行授予与共享内容。修改显示名不会移动目录，当前没有目录移动或复制协议。场景输入方案使用同一文档读写与输入方案接口，其可查询内容由实际合同提供。新增操作先补对应正式接口及类型，网页不维护另一套作者规则。
 
 当前项目预览使用 Player 作业、档案 HTTP 读取和 Live WebSocket；没有供本前端调用的旧 `/api/preview/runs/*` 控制或 SSE 流。运行控制不由网页自行解释技能节点实现。
 
