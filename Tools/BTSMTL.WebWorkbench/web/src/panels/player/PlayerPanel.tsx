@@ -9,7 +9,7 @@ import { usePanelAnimationFrame, usePanelId, usePanelParams, usePanelVisible, us
 import { clearRendered, reportRendered } from '../../shell/readiness';
 import { liveSurface, playerService, sceneLoadContent } from '../../state/player';
 import { sharedSurfaceAvailable, surfaceFrame } from '../../shell/sharedSurface';
-import { useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
+import { authoringDocument, useAuthoring, useDocumentObservationNotice } from '../../state/authoring';
 import { session } from '../../state/session';
 import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, quickSurface, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
@@ -161,7 +161,7 @@ function QuickPreviewStage({ result, seconds, picture }: {
 
 function PlayerView() {
   const [params, setParams] = usePanelParams<Params>({ overlay: false, stats: false, tools: [] });
-  const authoringSkill = useAuthoring(state => state.target?.kind === 'skill');
+  const authoringGraph = useAuthoring(state => state.target !== null && authoringDocument(state).documentGraphs !== null);
   const documentNotice = useDocumentObservationNotice();
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
@@ -207,7 +207,7 @@ function PlayerView() {
     : selectedLive.identity.liveProtocol !== 'btsmtl.preview-live/1' ? '所选播放器需要更新到支持当前预览协议的构建'
     : !content ? '先选择内容' : loading ? '正在载入' : null;
   const focusActor = state.selection?.kind === 'actor' ? state.selection.id : null;
-  const authoringNotice = authoringSkill ? documentNotice : null;
+  const authoringNotice = authoringGraph ? documentNotice : null;
   const overlayReason = authoringNotice ?? archiveOverlayReason(state.archiveImage);
 
   // 照 Game 视图的 Display 下拉：在用的播放器、启动与停止合成一个菜单。

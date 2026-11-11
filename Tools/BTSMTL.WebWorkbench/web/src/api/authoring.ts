@@ -62,7 +62,7 @@ export function readAdapterCatalog(value: unknown): AdapterCatalogResponse {
 const readReferenceReplacementPlan = object({
   revision: text, domain: text, oldValue: text, newValue: text, context: nullable(text),
   files: array(object({ path: text, members: array(text), readRevision: text, writeRevision: text })),
-  readFiles: array(object({ path: text, revision: text })), affectedSkills: array(text),
+  readFiles: array(object({ path: text, revision: text })), affectedDocuments: array(text),
   runtimeState: choice('pending', 'not-required'),
 });
 export type ReferenceReplacementResult = ReturnType<typeof readReferenceReplacementPlan> & { success: true } & (
@@ -392,7 +392,7 @@ export interface ReferenceCurves {
   curves: { id: string; name: string; keys: { time: number; value: number; inTangent: number | string; outTangent: number | string }[] }[];
 }
 
-export type InputPlanContext = { kind: 'skill' } | { kind: 'timeline'; timeline: string }
+export type InputPlanContext = { kind: 'document' } | { kind: 'timeline'; timeline: string }
   | { kind: 'scene'; scene: string; actor: string };
 
 export interface AuthoringElements {
@@ -698,7 +698,6 @@ export interface DocumentCreationType {
 export interface DocumentCreationRequest {
   type: string;
   parameters: {
-    name: string;
     configuration: JsonObject;
     entryGraph: { name: string } | null;
   };
@@ -720,7 +719,7 @@ function readCreationOptions(sourceText: string): DocumentCreationCatalog {
     })(body.types, 'CreationOptions.types') };
 }
 
-const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text,
+const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text, name: text,
   files: array(readAuthoringFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
 
 export const authoringApi = {

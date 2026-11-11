@@ -16,7 +16,6 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
   const [type, setType] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState('');
   const [withGraph, setWithGraph] = useState(false);
   const [graphName, setGraphName] = useState('');
   useEffect(() => {
@@ -45,7 +44,7 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
       setFailure(null);
       try {
         onCreated(await authoringActions.createDocument({ type: selected.type,
-          parameters: { name, configuration, entryGraph: withGraph ? { name: graphName } : null } }));
+          parameters: { configuration, entryGraph: withGraph ? { name: graphName } : null } }));
       } catch (error) {
         setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('新建文档', error) });
       } finally { setBusy(false); }
@@ -55,7 +54,6 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
     <Select label="文档类型" value={type} disabled={busy} options={catalog.types.map(item => ({ value: item.type, label: item.displayName }))}
       onChange={value => { const item = catalog.types.find(item => item.type === value)!;
         setType(item.type); setConfiguration(item.configuration); setWithGraph(false); setGraphName(''); }} />
-    <label>文档名称<TextInput aria-label="文档名称" required value={name} disabled={busy} onChange={event => setName(event.currentTarget.value)} /></label>
     <fieldset disabled={busy}>
       <AuthoringValueContext.Provider value={null}>
         <AuthoringValueFields label={selected.displayName} type={selected.rootType} value={configuration} graphId={null}

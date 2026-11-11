@@ -122,8 +122,8 @@ export function ReferenceReplacementImpact({ plan, onOpenSkill }: { plan: Refere
     <details><summary>计划读取的文件 · {plan.readFiles.length}</summary>
       {plan.readFiles.map(file => <div className={styles.facts} key={file.path}><code>{file.path}</code><small>{file.revision}</small></div>)}
     </details>
-    <details open><summary>受影响文档 · {plan.affectedSkills.length}</summary>
-      {plan.affectedSkills.map(skill => <Button key={skill} variant="ghost" onClick={() => onOpenSkill(skill)}>{skill}</Button>)}
+    <details open><summary>受影响文档 · {plan.affectedDocuments.length}</summary>
+      {plan.affectedDocuments.map(documentPath => <Button key={documentPath} variant="ghost" onClick={() => onOpenSkill(documentPath)}>{documentPath}</Button>)}
     </details>
   </div>;
 }

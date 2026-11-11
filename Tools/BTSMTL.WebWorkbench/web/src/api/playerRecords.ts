@@ -101,7 +101,7 @@ export const readPlayerInputCatalog = object({
   revision: text, tickRate: number, actorTargets: array(text), localPlanRangeBasis: text,
   players: array(object({
     actorId: text,
-    localPlans: array(object({ id: text, name: text, kind: choice('skill', 'timeline', 'scene'),
+    localPlans: array(object({ id: text, name: text, kind: text, documentPath: text,
       owner: nullable(text), timeline: nullable(text), path: text, revision: text,
       schemes: array(object({ index: number, name: text, rangeEndSeconds: number })),
     })),

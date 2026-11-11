@@ -69,7 +69,7 @@ namespace BTSMTL.Authoring.Workspace
             ["domain"] = Request.Domain, ["oldValue"] = Request.OldValue, ["newValue"] = Request.NewValue,
             ["context"] = Request.Context, ["files"] = new JArray(Files),
             ["readFiles"] = new JArray(Reads.Select(read => new JObject { ["path"] = read.Path, ["revision"] = read.Revision })),
-            ["affectedSkills"] = new JArray(AffectedOwners),
+            ["affectedDocuments"] = new JArray(AffectedOwners),
             ["authorReferenceState"] = saved ? "replaced" : "prepared",
             ["runtimeState"] = AffectedOwners.Count == 0 ? "not-required" : "pending"
         };

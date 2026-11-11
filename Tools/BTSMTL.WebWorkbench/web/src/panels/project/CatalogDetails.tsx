@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { authoringApi, authoringTarget, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
+import { authoringApi, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
 import { executionScopeDomain } from '../../api/resourceRegistration';
 import { useAdapterCatalog } from '../../state/adapterCatalog';
-import { authoringActions, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
+import { authoringActions, authoringDocument, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
+import { projectActions } from '../../state/project';
 import { executionScopeNames } from '../../state/projectTree';
 import { animationReferenceKind, useAnimationLibrary } from '../../state/resources';
 import { consoleActions } from '../../state/store';
@@ -39,8 +40,8 @@ function CatalogUse({ item }: { item: AdapterCatalogItem }) {
   const candidates = useMemo(() => catalog.kind === 'ready'
     ? catalog.snapshot.domains.flatMap(group => group.items.map(entry => ({ ...entry, adapter: group.adapter, domain: group.domain }))) : [], [catalog]);
   const target: ResourceTarget = { kind: 'Resource', domain: item.domain, value: item.value, context: item.context === '' ? null : item.context };
-  const skill = authoring.target?.kind === 'skill';
-  const openSkill = (name: string) => { void authoringActions.open(authoringTarget('skill', name)).catch(error => consoleActions.error('检查器', error)); };
+  const skill = authoring.target !== null && authoringDocument(authoring).documentGraphs !== null;
+  const openSkill = (documentPath: string) => { void projectActions.openDocument(documentPath).catch(error => consoleActions.error('检查器', error)); };
   return <>
     {item.domain === animationReferenceKind && <Fold title="动画" defaultOpen>{animation.kind === 'ready'
       ? clips.length === 1 ? <AnimationDetails library={animation.library} clip={clips[0]} />

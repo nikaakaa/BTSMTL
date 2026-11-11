@@ -225,8 +225,8 @@ export function useDocumentGraphHierarchy() {
 }
 
 export const isTimelineFile = (path: string) => path === 'timeline.json' || path.startsWith('timelines/') && path.endsWith('.json');
-const usesGraphModels = (kind: AuthoringTarget['kind']) =>
-  kind === 'skill' || kind === 'timeline' || kind === 'graph' || kind === 'scenario';
+const usesGraphModels = (document: Pick<WorkspaceDocumentInfo, 'kind' | 'roles'>) =>
+  document.roles.entryGraph !== undefined || document.kind === 'timeline' || document.kind === 'graph' || document.kind === 'scenario';
 
 export function timelinePath(documentId: string) {
   const root = currentDocument('timeline.json') as JsonObject | null;
@@ -653,7 +653,7 @@ export const authoringActions = {
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
     set({ documents: { ...useAuthoring.getState().documents, ...variablesDrafts(draft.variables === null ? [] : [draft.variables]),
       [key]: { ...newDocument(), kind: target.kind, rootFile: draft.rootFile, identity: draft.identity,
-      name: request.parameters.name, edited, version: 1,
+      name: draft.name, edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
@@ -729,7 +729,7 @@ export const authoringActions = {
           sourceIdentity: snapshot.sourceIdentity, contentDomain: snapshot.contentDomain, authoringType: snapshot.authoringType ?? null,
           name: snapshot.name, roles: snapshot.roles,
           ...(!opened || opened.revision === null ? { revision: snapshot.revision, sourceFiles: snapshot.files,
-            ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) } : {}),
+            ...(usesGraphModels(snapshot) ? {} : { files: snapshot.files }) } : {}),
         }, target);
       }
       await reloadDocument(target, controller.signal);
@@ -810,7 +810,7 @@ export const authoringActions = {
 
   acceptSkillDeletion(receipt: Extract<DocumentDeleteResult, { deleted: true }>) {
     const state = get();
-    const target = authoringTarget('skill', receipt.skill);
+    const target = authoringOwner(receipt.skill);
     const removed = new Set(receipt.removedDocuments);
     const documents = { ...state.documents };
     for (const documentPath of removed) delete documents[documentPath];
@@ -874,8 +874,9 @@ export const authoringActions = {
           removed: item.removed.filter(path => !paths.has(path)),
         }));
         documents[key] = { ...document, kind: snapshot.value.kind, rootFile: snapshot.value.rootFile, identity: snapshot.value.identity, authoringType: snapshot.value.authoringType ?? null, revision: snapshot.value.revision,
+          sourceIdentity: snapshot.value.sourceIdentity, contentDomain: snapshot.value.contentDomain, roles: snapshot.value.roles, name: snapshot.value.name,
           sourceFiles: snapshot.value.files,
-          files: usesGraphModels(snapshot.value.kind) ? document.files : savedFiles,
+          files: usesGraphModels(snapshot.value) ? document.files : savedFiles,
           sourceRevision: null, externalChange: false,
           undo: history(document.undo), redo: history(document.redo), version: document.version + 1,
         };
@@ -988,7 +989,7 @@ export const authoringActions = {
       const savedFiles = new Map(receipts.map(receipt => {
         const projected = receipt.documentPath === target.documentPath && content !== null
           ? content.files : submittedDocuments.get(receipt.documentPath)!.files;
-        return [receipt.documentPath, usesGraphModels(receipt.kind) ? savedTimelineFiles(projected, receipt.files) : receipt.files];
+        return [receipt.documentPath, usesGraphModels(receipt) ? savedTimelineFiles(projected, receipt.files) : receipt.files];
       }));
       for (const receipt of receipts) {
         const submitted = submittedDocuments.get(receipt.documentPath)!;
@@ -1005,6 +1006,7 @@ export const authoringActions = {
         });
         documents[receipt.documentPath] = {
           ...current, kind: receipt.kind, rootFile: receipt.rootFile, identity: receipt.identity, authoringType: receipt.authoringType ?? null, revision: receipt.revision,
+          sourceIdentity: receipt.sourceIdentity, contentDomain: receipt.contentDomain, roles: receipt.roles, name: receipt.name,
           sourceRevision: null, documentRevision: null, files, sourceFiles: receipt.files, variables: null,
           ...rebase(current), externalChange: false,
           undo: history(current.undo), redo: history(current.redo), version: current.version + 1,
@@ -1151,8 +1153,9 @@ export const authoringActions = {
         if (!current.externalChange) setDocument({ externalChange: true }, target);
       } else {
         setDocument({ identity: snapshot.identity, authoringType: snapshot.authoringType ?? null, revision: snapshot.revision, sourceRevision: null,
+          sourceIdentity: snapshot.sourceIdentity, contentDomain: snapshot.contentDomain, roles: snapshot.roles, name: snapshot.name,
           version: current.version + 1, externalChange: false, sourceFiles: snapshot.files,
-          files: usesGraphModels(snapshot.kind) ? savedTimelineFiles(current.files, snapshot.files) : snapshot.files }, target);
+          files: usesGraphModels(snapshot) ? savedTimelineFiles(current.files, snapshot.files) : snapshot.files }, target);
         publishDocument();
       }
       return snapshot.revision;
@@ -1437,12 +1440,14 @@ export const isDocumentDirty = (document: Pick<AuthoringDocument, 'edited' | 're
 export const hasChanges = (target = get().target) => isDocumentDirty(authoringDocument(useAuthoring.getState(), target));
 
 function referenceReplacementOwners(plan: ReferenceReplacementResult) {
-  const type = useAuthoring.getState().documentTypes.find(type => type.id === 'skill')!;
-  return plan.affectedSkills.map(name => {
-    const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').endsWith(`/${type.directory}/${name}/${type.rootFile}`))!;
-    const prefix = root.path.slice(0, -type.rootFile!.length);
-    return { target: authoringTarget('skill', name),
-      paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length).replaceAll('\\', '/'))) };
+  return plan.affectedDocuments.map(documentPath => {
+    const marker = `/${documentPath}/`;
+    const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').includes(marker))!;
+    const path = root.path.replaceAll('\\', '/');
+    const prefix = path.slice(0, path.lastIndexOf(marker) + marker.length);
+    return { target: authoringOwner(documentPath),
+      paths: new Set(plan.files.map(file => file.path.replaceAll('\\', '/')).filter(path => path.startsWith(prefix))
+        .map(path => path.slice(prefix.length))) };
   });
 }
 

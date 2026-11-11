@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringDirectory } from '../api/authoring';
 import { authoringDocument, currentDocument, timelinePath, useAuthoring, useInputSchemes } from './authoring';
 import type { JsonObject } from './skillJson';
 import { isRealArchive, useWorkbench } from './store';
@@ -44,11 +43,10 @@ export function useInputObservation(documentId: string | null) {
   if (catalog === null) return { kind: 'unavailable', reason: '正在读取场景输入声明' } as const;
   if (state.realArchive && catalog.revision !== frame.logic?.source.sceneRevision)
     return { kind: 'stale', reason: '当前场景声明与录制采用的场景修订不一致' } as const;
-  const target = author.target, directory = authoringDirectory(target);
+  const target = author.target;
   const savedRevision = author.revision.kind === 'catalog' ? null : author.revision.items.find(item => item.planId === scheme.planId);
   const candidates = catalog.players.filter(actor => !actorId || actor.actorId === actorId).map(actor => {
-    const plan = actor.localPlans.find(item => item.id === scheme.planId && item.name === directory &&
-      (target.kind === 'scenario' ? item.kind === 'scene' : item.kind !== 'scene'));
+    const plan = actor.localPlans.find(item => item.id === scheme.planId && item.documentPath === target.documentPath);
     const revision = savedRevision === null ? plan : savedRevision;
     const recorded = context.plans.find(item => item.actorId === actor.actorId && item.plan === revision?.path &&
       item.schemeIndex === scheme.schemeIndex);

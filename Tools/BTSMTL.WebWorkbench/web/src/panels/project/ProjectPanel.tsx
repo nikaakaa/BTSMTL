@@ -109,7 +109,7 @@ export function ProjectPanel() {
   const [files, setFiles] = useState(false);
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const composition = target !== null && (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'timeline');
+  const composition = target !== null && documents[target.documentPath].rootFile !== null && documents[target.documentPath].documentGraphs !== null;
   const elements = useAuthoringElements(author && composition);
   const byKey = useMemo(() => new Map(nodes.map(node => [node.key, node])), [nodes]);
 

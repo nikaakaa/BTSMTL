@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringTarget } from '../../api/authoring';
+import { authoringOwner } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { session } from '../../state/session';
 import { contentActions, selectedScene, useWorkbench } from '../../state/store';
@@ -123,10 +123,10 @@ function LocalInputChoices() {
         <Select label={`${player.actorId} 输入方案`} placeholder={`${player.actorId} 输入方案`}
           value={current?.value ?? null} options={options} disabled={!options.length}
           onChange={value => contentActions.selectInputPlan(options.find(option => option.value === value)!.choice)} />
-        <Button disabled={!current || current.plan.kind === 'timeline'}
+        <Button disabled={!current}
           onClick={() => {
             const { plan, choice } = current!;
-            void authoringActions.openInput(authoringTarget(plan.kind === 'scene' ? 'scenario' : 'skill', plan.name),
+            void authoringActions.openInput(authoringOwner(plan.documentPath),
               `inputs/${plan.id}.json`, choice.schemeIndex, choice.actorId).then(() => openPanel('timeline'));
           }}>编辑所选方案</Button>
       </div>;
