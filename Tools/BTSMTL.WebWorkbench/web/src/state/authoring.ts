@@ -278,7 +278,7 @@ function savedOutcome(save: SavedCompilation, preview: PlayerContentRefreshRecei
   return {
     saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, preview,
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
-    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}${preview?.package?.program === null ? '；本技能没有执行图' : ''}`, errors: [],
+    message: `已保存，${save.compilation.artifactReused ? '本次复用已编译产物' : '本次编译完成'}；${detail}`, errors: [],
   };
 }
 

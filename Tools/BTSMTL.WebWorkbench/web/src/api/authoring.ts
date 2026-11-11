@@ -547,10 +547,14 @@ function readContentRefreshReceipt(value: unknown, path = 'ContentRefresh') {
   const stage = object({ stage: choice('accepted', 'adopted', 'failed', 'unavailable') })(value, path).stage;
   if (stage === 'adopted') return {
     ...object({ ...refreshFields, adoptedContent: readPreviewContentIdentity,
-      package: readContentPackage, command: readPlayerCommandResult })(value, path), stage,
+      package: readContentPackage, command: readPlayerCommandResult, error: readNull, statusPath: text })(value, path), stage,
+  };
+  if (stage === 'accepted') return {
+    ...object({ ...refreshFields, package: readContentPackage, command: readPlayerCommandResult,
+      error: readNull, statusPath: text })(value, path), stage,
   };
   return {
-    ...object({ ...refreshFields, package: nullable(readContentPackage), command: nullable(readPlayerCommandResult) })(value, path), stage,
+    ...object({ ...refreshFields, error: text, package: nullable(readContentPackage), command: nullable(readPlayerCommandResult) })(value, path), stage,
   };
 }
 export type PlayerContentRefreshReceipt = ReturnType<typeof readContentRefreshReceipt>;

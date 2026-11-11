@@ -55,9 +55,8 @@ function resultDetails(outcome: SaveOutcome): string {
     `实际采用内容版本：${preview.adoptedContent?.revision ?? '尚未确认采用'}`);
   if (preview.package === null) lines.push('本次准备包：未提供');
   else {
-    lines.push(`本次准备包阶段：${preview.package.stage}`, `本次准备的场景版本：${preview.package.sceneRevision}`);
-    if (preview.package.program !== null)
-      lines.push(`本次准备的执行图版本：${preview.package.program.programRevision}`);
+    lines.push(`本次准备的内容版本：${preview.package.adoptedIdentity.revision}`,
+      `运行程序数：${preview.package.observation.programs.length}`, JSON.stringify(preview.package.receipt, null, 2));
   }
   lines.push(...commandDetails(preview.command));
   return lines.join('\n');
