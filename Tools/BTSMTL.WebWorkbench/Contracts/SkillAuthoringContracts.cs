@@ -8,6 +8,9 @@ public sealed record SkillAuthoringFile([property: JsonRequired] string Path,
     [property: JsonRequired] string Content);
 public sealed record SkillAuthoringFileRevision(string Path, string Revision);
 public sealed record PreviewSourceFile(string Path, string Revision);
+public sealed record PublishedScopePreviewQuery([property: JsonRequired] GraphAuthoringScopeQuery Scope,
+    [property: JsonRequired] string Scene);
+public sealed record PublishedScopePreviewReply(bool Available, string? Reason, PreviewSourceFile? Scene, string[] Actors);
 public sealed record SkillAuthoringSnapshot(string Skill, string Revision, SkillAuthoringFile[] Files,
     SkillAuthoringFile[] SourceFiles, JsonElement Document);
 public sealed record SkillAuthoringChanges(string Skill, string Revision, bool Changed,
