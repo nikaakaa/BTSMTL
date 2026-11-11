@@ -83,7 +83,7 @@ function ExportResult({ operation }: { operation: ExportOperation }) {
             ...(operation.result.kind === 'runtime' ? [{ displayName: '编译身份', value: operation.result.compilation.compilationKey }] : []),
           ]} />
           {compilation !== null && <Button variant="ghost" onClick={() => {
-            const entryId = consoleActions.log('info', '导出', `${operation.skill} 运行数据编译结果`,
+            const entryId = consoleActions.log('info', '导出', `${operation.documentPath} 运行数据编译结果`,
               `${compilationDetails(compilation).join('\n')}\n\n${JSON.stringify(compilation, null, 2)}`);
             consoleActions.focus(entryId);
             openPanel('console');
