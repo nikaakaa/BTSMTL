@@ -1,9 +1,9 @@
-import { numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
+import { JsonFloat, numberOf, parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './types';
-import { getJson, postJson, postText, query } from './http';
+import { getJson, getText, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readVariablesValue, type VariablesValue } from './variables';
-import { readWorkspaceDocumentElements, readWorkspaceDocumentInfo, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
+import { readStorageRoles, readWorkspaceDocumentElements, readWorkspaceDocumentInfo, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -746,35 +746,41 @@ export interface ScenarioDraftRequest {
   rangeEndSeconds: number;
 }
 
-export interface SkillCreationCatalog {
+export interface DocumentCreationCatalog {
   stage: 'creation-catalog';
-  // 工作区中的准入作者文档；value 是技能引用它的来源身份。
-  admissionProfiles: { value: string; name: string | null }[];
-  skillCreation: { parameters: { name: string; shape: StorageShape }[] };
+  type: string;
+  displayName: string;
+  rootType: string;
+  configuration: JsonObject;
+  roles: StorageRoles;
   availability: QueryAvailability;
 }
 
-export interface SkillCreationRequest {
+export interface DocumentCreationRequest {
+  type: string;
   parameters: {
     name: string;
-    abilityId: string;
-    displayName: string;
-    admissionProfile: string;
-    candidateOrder: number;
-    sourceOrder: number;
+    configuration: JsonObject;
     entryGraph: { name: string } | null;
-    startupInputs: JsonObject[];
-    trajectory: JsonObject | null;
   };
 }
 
-interface SkillCreationDraft {
-  stage: 'draft';
-  rootFile: string;
-  files: SkillFile[];
-  variables: VariablesValue | null;
-  availability: QueryAvailability;
+function authoringObject(value: JsonValue, path: string): JsonObject {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof JsonFloat)
+    throw new Error(`${path} 需要作者对象`);
+  return value;
 }
+
+function readCreationOptions(sourceText: string): DocumentCreationCatalog {
+  const body = authoringObject(parseSkillJson(sourceText), 'CreationOptions');
+  return { ...object({ stage: choice('creation-catalog'), type: text, displayName: text, rootType: text,
+    roles: readStorageRoles, availability: readAuthoringAvailability })(body),
+    configuration: authoringObject(body.configuration, 'CreationOptions.configuration') };
+}
+
+const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text,
+  files: array(readSkillFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
+type DocumentCreationDraft = ReturnType<typeof readDocumentCreationDraft>;
 
 export type WorkspaceCreationKind = 'timeline' | 'macro' | 'camera-curve' | 'camera-shake';
 
@@ -794,11 +800,12 @@ export const authoringApi = {
   },
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/publication/scopes', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
-  skillCreationCatalog: (signal?: AbortSignal) => getJson<SkillCreationCatalog>('/api/authoring/documents/creation-options', signal),
-  createSkillDraft: (request: SkillCreationRequest) => postJson<SkillCreationDraft>('/api/authoring/documents/create', { type: 'skill', parameters: request.parameters })
-    .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'SkillCreationDraft.variables') })),
+  creationOptions: async (signal?: AbortSignal) => readCreationOptions(await getText('/api/authoring/documents/creation-options', signal)),
+  createDocumentDraft: async (request: DocumentCreationRequest) => {
+    return readDocumentCreationDraft(JSON.parse(await postText('/api/authoring/documents/create', stringifySkillJson(request, '\n'))));
+  },
   createWorkspaceDraft: (kind: WorkspaceCreationKind, name: string, curve: string | null) =>
-    postJson<SkillCreationDraft & { documentPath: string; reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
+    postJson<Pick<DocumentCreationDraft, 'stage' | 'files' | 'variables' | 'availability' | 'documentPath'> & { reads: SkillEditingView['reads'] }>('/api/authoring/documents/create', { type: kind, parameters: { name, curve } })
       .then(draft => ({ ...draft, variables: readCreatedVariables(draft.variables, 'WorkspaceCreationDraft.variables') })),
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
@@ -830,6 +837,8 @@ export const authoringApi = {
   describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'), { type, graphId, offset: 0, limit: 128, editingView }, signal)),
   // 按当前未保存配置描述节点或普通作者值，保留技能 JSON 的数值格式。
+  describeAuthoringValue: async (type: string, configuration: JsonObject, signal?: AbortSignal) =>
+    readTypeDescription(await postText('/api/authoring/types/describe', stringifySkillJson({ type, configuration, offset: 0, limit: 128 }, '\n'), signal)),
   describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'),
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),

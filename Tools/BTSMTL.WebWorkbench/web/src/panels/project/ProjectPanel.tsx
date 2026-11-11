@@ -19,7 +19,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import { AssetObjectPicker } from './AssetObjectPicker';
 import { ProjectFiles } from './ProjectFiles';
-import { SkillContentCreation, workspaceCreations, type SkillContentKind } from './SkillContentCreation';
+import { DocumentCreation, workspaceCreations, type DocumentContentKind } from './DocumentCreation';
 import styles from './project.module.css';
 
 type Failure = { text: string; entryId: number | null };
@@ -107,7 +107,7 @@ export function ProjectPanel() {
   const [current, setCurrent] = useState('作者内容/技能');
   const [search, setSearch] = useState('');
   const [files, setFiles] = useState(false);
-  const [creating, setCreating] = useState<SkillContentKind | null>(null);
+  const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const composition = target?.kind === 'skill' || target?.kind === 'timeline';
   const elements = useSkillElements(author && composition);
@@ -179,7 +179,7 @@ export function ProjectPanel() {
     else if (entry?.kind === 'content' && entry.node.target !== null) void perform(() => projectActions.openContent(entry.node.target!));
     else if (node.children.length) { if (wide) setCurrent(node.key); else toggle(node.key); }
   };
-  const create = (kind: SkillContentKind) => { setFiles(false); setCreating(kind); };
+  const create = (kind: DocumentContentKind) => { setFiles(false); setCreating(kind); };
 
   const query = search.trim().toLocaleLowerCase();
   const found = useMemo(() => query === '' ? [] : nodes.filter(node => node.entry !== null &&
@@ -234,14 +234,14 @@ export function ProjectPanel() {
 
   return <div ref={root} className={styles.root}>
     <PanelBar>
-      <TextInput aria-label="搜索 Project" placeholder="搜索技能、Timeline、资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
+      <TextInput aria-label="搜索 Project" placeholder="搜索文档、图、Timeline、资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
       <MenuButton label="新建" caret entries={[
-        { label: '技能', onSelect: () => create('skill') },
+        { label: '作者文档', onSelect: () => create('document') },
         ...Object.entries(workspaceCreations).map(([kind, option]) => ({ label: option.title, onSelect: () => create(kind as keyof typeof workspaceCreations) })),
         { kind: 'separator' },
-        { label: '在当前技能中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
-        { label: '在当前技能中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
-        { label: '在当前技能中新建输入方案', disabled: !composition, onSelect: () => create('input') },
+        { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
+        { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
+        { label: '在当前文档中新建输入方案', disabled: !composition, onSelect: () => create('input') },
       ]}>新建</MenuButton>
       <MenuButton label="Project 更多操作" variant="ghost" iconOnly entries={[
         { label: '刷新资源目录', onSelect: () => void adapterCatalogCache.refresh(authoringApi.catalog) },
@@ -259,7 +259,7 @@ export function ProjectPanel() {
     {Object.entries(documents).filter(([, document]) => document.documentError !== null).map(([key, document]) =>
       <ErrorLine key={key} text={`${key}：${document.documentError}`} entryId={null} />)}
     {creating !== null ? <div className={styles.contentDetails}>
-      <SkillContentCreation key={creating} kind={creating} skill={composition && target !== null ? target.documentPath : null}
+      <DocumentCreation key={creating} kind={creating} skill={composition && target !== null ? target.documentPath : null}
         elements={elements} onDone={() => setCreating(null)} />
     </div> : files ? <div className={styles.body}><ProjectFiles /></div>
       : <div className={styles.columns} data-wide={wide || undefined}>

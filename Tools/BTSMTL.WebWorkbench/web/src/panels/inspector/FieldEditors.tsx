@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   authoringApi, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
@@ -40,6 +40,8 @@ import styles from './inspector.module.css';
 
 type SetValue = (keys: JsonKey[], value: JsonValue) => void;
 type SetFields = (changes: readonly JsonMutation[]) => void;
+
+export const AuthoringValueContext = createContext<AuthoringTarget | null | undefined>(undefined);
 type ReferenceOwner = { kind: 'node'; graphId: string; nodeId: string }
   | { kind: 'value'; graphId: string | null; identity: string };
 
@@ -375,14 +377,15 @@ function useDescription(skill: AuthoringTarget | null, source: DescriptionSource
   useEffect(() => {
     setDescription(null);
     setIssues([]);
-    if (!skill || key === null) return;
+    if (key === null || (latest.current?.kind === 'node' && skill === null)) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       const current = latest.current!;
       const editingView = authoringActions.editingView();
       const request = current.kind === 'node'
-        ? authoringApi.describeNode(skill, current.graphId, current.nodeId, editingView, controller.signal)
-        : authoringApi.describeConfiguration(skill, current.type, current.configuration, current.graphId, editingView, controller.signal);
+        ? authoringApi.describeNode(skill!, current.graphId, current.nodeId, editingView, controller.signal)
+        : skill === null ? authoringApi.describeAuthoringValue(current.type, current.configuration, controller.signal)
+          : authoringApi.describeConfiguration(skill, current.type, current.configuration, current.graphId, editingView, controller.signal);
       request.then(result => {
         if (controller.signal.aborted) return;
         const items = result.fields.items;
@@ -443,11 +446,13 @@ function ComputedFields({ fields }: { fields: ComputedField[] }) {
   </Fold>;
 }
 
-function AuthoringValueFields({ label, type, value, graphId, identity, nested = false, fold, onSet }: {
+export function AuthoringValueFields({ label, type, value, graphId, identity, nested = false, fold, onSet }: {
   label: string; type: string; value: JsonObject; graphId: string | null; identity: string; nested?: boolean; fold?: FoldOptions;
   onSet(value: JsonObject): void;
 }) {
-  const skill = useAuthoring(state => state.target);
+  const selected = useAuthoring(state => state.target);
+  const context = useContext(AuthoringValueContext);
+  const skill = context === undefined ? selected : context;
   const { description, issues } = useDescription(skill, { kind: 'configuration', graphId, type, configuration: value });
   const owner: ReferenceOwner = { kind: 'value', graphId, identity: JSON.stringify([skill?.documentPath, identity]) };
   return <Fold nested={nested} title={label} name={fold?.name} defaultOpen={fold?.defaultOpen ?? true} actions={fold?.actions}>

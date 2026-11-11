@@ -30,7 +30,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
 import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
-import { SkillItemDetails } from '../project/SkillItemDetails';
+import { DocumentDetails } from '../project/DocumentDetails';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -129,7 +129,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     {item.kind === 'timeline' && <Fold title="设置" defaultOpen><TimelineScopeFields documentId={item.identity} /></Fold>}
     {item.kind === 'variables' && <Fold title="变量" defaultOpen><BlackboardFields ownerId={item.identity} editable={editable} /></Fold>}
     {(item.kind === 'curve' || item.kind === 'profile') && <DocumentFields editable={editable} location={{ kind: 'root' }} />}
-    <SkillItemDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />
+    <DocumentDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;
 }

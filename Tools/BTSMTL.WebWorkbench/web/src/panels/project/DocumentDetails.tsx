@@ -9,11 +9,13 @@ import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
 
-export const kindNames: Record<ProjectItem['kind'], string> = { skill: '技能', graph: '节点图', timeline: 'Timeline', 'input-plan': '输入方案', curve: '曲线文档', profile: 'Profile 文档', variables: '变量文档' };
 export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kind, item.identity]);
 
 // 检查器中所选作者内容的操作：打开、重命名、带引用检查的删除与引用者。
-export function SkillItemDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
+export function DocumentDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
+  const documentTypes = useAuthoring(state => state.documentTypes);
+  const kindName = (kind: ProjectItem['kind']) => kind === 'input-plan' ? '输入方案' : documentTypes.find(type => type.id === kind)!.displayName;
+  const typeName = kindName(item.kind);
   const [referrers, setReferrers] = useState<ReferrersResult | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,19 +49,19 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
       <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
       {canRename && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
       {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
-        tip={pendingDocument ? '等待此技能的读取或保存完成' : '删除整个技能目录；宿主会检查磁盘修订、外部引用、Definition 授予和共享内容'}
+        tip={pendingDocument ? `等待此${typeName}的读取或保存完成` : '删除整个文档目录；宿主会检查磁盘修订、外部引用、运行授予和共享内容'}
         onClick={() => void perform(async () => {
           setDeletion(null);
           const result = await projectActions.removeSkill(item);
           if (result.deleted) {
-            consoleActions.log('info', 'Project', `${item.name} 技能目录已删除`, JSON.stringify(result));
+            consoleActions.log('info', 'Project', `${item.name} 文档目录已删除`, JSON.stringify(result));
             onChanged();
           }
           else {
             if (result.code === 'skill-referenced') setDeletion(result);
             setFailure({ text: result.message, entryId: consoleActions.log('error', 'Project', result.message, JSON.stringify(result)) });
           }
-        }, false)}>删除技能目录</Button> : item.kind !== 'variables' && <Button variant="ghost" disabled={busy || pendingDocument || referrers === null || !referrers.complete || referrers.items.length !== 0}
+        }, false)}>删除{typeName}目录</Button> : item.kind !== 'variables' && <Button variant="ghost" disabled={busy || pendingDocument || referrers === null || !referrers.complete || referrers.items.length !== 0}
         tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入工作区的未保存修改，可撤销'}
         onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>{documentRoot ? '删除文档' : '删除'}</Button>}
     </PanelBar>
@@ -83,9 +85,9 @@ export function SkillItemDetails({ item, items, stamp, onChanged }: { item: Proj
               onClick={() => void perform(() => projectActions.open(source))}>打开引用者</Button>}
         </div>;
       })}
-      {deletion.shared.length > 0 && <div className={styles.heading}>技能拥有的共享内容 · {deletion.shared.length} 项</div>}
+      {deletion.shared.length > 0 && <div className={styles.heading}>文档拥有的共享内容 · {deletion.shared.length} 项</div>}
       {deletion.shared.map(shared => <div key={keyOf(shared)} className={styles.facts}>
-        <strong>{shared.name}</strong><span>{kindNames[shared.kind]} · {shared.ownerName}</span><code>{shared.file}</code>
+        <strong>{shared.name}</strong><span>{kindName(shared.kind)} · {shared.ownerName}</span><code>{shared.file}</code>
         <Button variant="ghost" disabled={busy}
           onClick={() => void perform(() => projectActions.open(shared))}>打开共享内容</Button>
       </div>)}

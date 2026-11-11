@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
-  type ScenarioDraftRequest, type SkillCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
+  type ScenarioDraftRequest, type DocumentCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type WorkspaceCreationKind,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
@@ -634,21 +634,21 @@ export const authoringActions = {
     return authoringDocument(useAuthoring.getState(), target).documentGraphs?.find(item => item.id === id);
   },
 
-  async createSkill(request: SkillCreationRequest) {
-    const target = authoringTarget('skill', request.parameters.name);
+  async createDocument(request: DocumentCreationRequest) {
+    const draft = await authoringApi.createDocumentDraft(request);
+    const target = authoringOwner(draft.documentPath);
     const key = authoringTargetKey(target);
     const state = useAuthoring.getState();
     if (state.directory?.some(document => document.documentPath === key) || state.documents[key] !== undefined)
-      throw new Error(`技能目录 ${target.documentPath} 已存在或已经打开，请使用其他名称`);
+      throw new Error(`文档目录 ${target.documentPath} 已存在或已经打开，请使用其他名称`);
     const identityOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
-      document.identity === request.parameters.abilityId);
+      document.identity === draft.identity);
     if (identityOwner !== undefined)
-      throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
-    const draft = await authoringApi.createSkillDraft(request);
+      throw new Error(`文档身份 ${draft.identity} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他身份`);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
     set({ documents: { ...useAuthoring.getState().documents, ...variablesDrafts(draft.variables === null ? [] : [draft.variables]),
-      [key]: { ...newDocument(), kind: target.kind, rootFile: draft.rootFile, identity: request.parameters.abilityId,
-      name: request.parameters.displayName, edited, version: 1,
+      [key]: { ...newDocument(), kind: target.kind, rootFile: draft.rootFile, identity: draft.identity,
+      name: request.parameters.name, edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);

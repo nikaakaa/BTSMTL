@@ -9,7 +9,7 @@ import { consoleActions, selectionActions } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
-import { SkillCreationForm } from './SkillCreationForm';
+import { DocumentCreationForm } from './DocumentCreationForm';
 import { InputPlanCreationForm } from './InputPlanCreationForm';
 import styles from './project.module.css';
 
@@ -20,11 +20,11 @@ export const workspaceCreations = {
   'camera-shake': { kind: 'camera-shake', title: '相机震动 Profile' },
 } as const satisfies Record<string, { kind: WorkspaceCreationKind; title: string }>;
 
-export type SkillContentKind = 'skill' | 'timeline' | 'macro' | 'input' | keyof typeof workspaceCreations;
+export type DocumentContentKind = 'document' | 'timeline' | 'macro' | 'input' | keyof typeof workspaceCreations;
 
 // Project 新建技能及当前技能内的 Timeline、共享子图、输入方案；完成后打开对应编辑器。
-export function SkillContentCreation({ kind, skill, elements, onDone }: {
-  kind: SkillContentKind; skill: string | null; elements: ReturnType<typeof useSkillElements>; onDone(): void;
+export function DocumentCreation({ kind, skill, elements, onDone }: {
+  kind: DocumentContentKind; skill: string | null; elements: ReturnType<typeof useSkillElements>; onDone(): void;
 }) {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
@@ -34,7 +34,7 @@ export function SkillContentCreation({ kind, skill, elements, onDone }: {
   const directory = useAuthoring(state => kind === 'camera-shake' ? state.directory : null);
   const curves = useMemo(() => (directory ?? []).filter(document => document.kind === 'curve' && document.contentDomain === 'camera-curve')
     .map(document => ({ value: document.sourceIdentity, label: document.name })).sort((a, b) => a.label.localeCompare(b.label)), [directory]);
-  if (kind === 'skill') return <SkillCreationForm onCancel={onDone} onCreated={() => { onDone(); openPanel('inspector'); }} />;
+  if (kind === 'document') return <DocumentCreationForm onCancel={onDone} onCreated={() => { onDone(); openPanel('inspector'); }} />;
   if (kind === 'input') return <InputPlanCreationForm key={skill} onCancel={onDone} onCreated={() => { onDone(); openPanel('timeline'); }} />;
   const workspace = kind === 'timeline' || kind === 'macro' ? null : workspaceCreations[kind];
   const title = name.trim();
