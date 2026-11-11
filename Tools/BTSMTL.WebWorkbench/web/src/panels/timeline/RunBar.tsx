@@ -3,6 +3,7 @@ import { session, stageNames } from '../../state/session';
 import { contentActions, useWorkbench } from '../../state/store';
 import { PanelBar } from '../../ui/blocks';
 import { Button } from '../../ui/controls';
+import { QuickRouteComparison } from './QuickRouteComparison';
 import styles from './quickPreview.module.css';
 
 // 非快速预览时 Timeline 顶部的入口：说明当前看的是什么，并给出新建运行或改用快速预览。
@@ -30,5 +31,6 @@ export function RunBar() {
       {quick !== null && <Button variant="ghost" disabled={!quick.available} tip={quick.reason}
         onClick={() => contentActions.selectPreviewMode(quick.id)}>改用{quick.displayName}</Button>}
     </PanelBar>
+    <QuickRouteComparison />
   </section>;
 }

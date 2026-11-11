@@ -454,10 +454,15 @@ export function quickPlan() {
   return current().route?.plan ?? null;
 }
 
+export function quickRouteStale() {
+  const state = current();
+  return state.route !== null && (state.description.kind !== 'ready' || state.target?.root !== state.route.request.target.root);
+}
+
 export function quickPlanStale() {
   const state = current();
-  return state.route !== null && (getState().previewMode !== 'quick' || state.description.kind !== 'ready' ||
-    state.target?.root !== state.route.request.target.root || state.job.kind === 'idle' || state.job.request !== state.route.request);
+  return state.route !== null && (quickRouteStale() || getState().previewMode !== 'quick' ||
+    state.job.kind === 'idle' || state.job.request !== state.route.request);
 }
 
 // 画面只认与当前路线同一请求、已拿到首帧的作业；路线先到而画面未到或失败时不显示旧画面。
@@ -693,7 +698,8 @@ useWorkbench.subscribe((state, previous) => {
   if (state.previewMode !== previous.previewMode || contentChanged) {
     if (state.quickPreview.target !== null) {
       if (contentChanged) quickPreview.clearTarget('场景来源已变化，请重新读取');
-      else quickPreview.invalidate('预览档位或场景来源已变化，请重新读取');
+      else if (state.previewMode === 'quick') quickPreview.invalidate('预览档位已变化，请重新读取');
+      else invalidateJob();
     }
   }
   const quick = state.quickPreview, before = previous.quickPreview;
