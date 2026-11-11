@@ -37,7 +37,7 @@ import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry
 import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
 import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
-import { QuickGraphRoute, useQuickPlan } from '../timeline/QuickPreview';
+import { QuickEntryButton, QuickGraphRoute, useQuickPlan } from '../timeline/QuickPreview';
 import { ObservationRecords } from '../records/records';
 import styles from './graph.module.css';
 
@@ -302,6 +302,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
               void projectActions.openGraph(hierarchy.graphs.get(value)!, undefined, { origin: null, observation: null, caller: null, panelId })
                 .catch(reason => consoleActions.error('作者', reason));
             }} />}
+          <QuickEntryButton documentPath={graph.owner} entry={{ kind: 'graph', graphId: graph.id, machine: 0 }} />
           <span className={styles.crumbs}>
             {callCrumbs !== null ? <>
               {callCrumbs.parent && <span className={styles.crumb}>

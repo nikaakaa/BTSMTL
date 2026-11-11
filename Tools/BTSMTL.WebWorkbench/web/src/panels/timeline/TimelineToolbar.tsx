@@ -17,6 +17,7 @@ import {
   type QuickPlaybackChoice, type TimelineObservation,
 } from './timelineShared';
 import styles from './timeline.module.css';
+import { QuickEntryButton } from './QuickPreview';
 
 // ── 窗口工具条（照 Timeline 窗口顶行）：时间框、Timeline 选择器与面包屑、本次实际调用，右侧齿轮设置；播放与保存在顶栏 ──
 
@@ -48,6 +49,7 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
   const context = useInputContext(documentId);
   const [pending, setPending] = useState(false);
   const clock = useContext(PreviewClockContext);
+  const owner = useAuthoring(state => state.target?.documentPath ?? null);
   const cursor = usePreviewSelect(clock, seconds => seconds);
   if (context.kind !== 'ready') {
     return <Button variant="ghost" className={styles.addButton} disabled tip={`添加输入：${context.reason}`} aria-label="添加输入"><AddIcon /></Button>;
@@ -102,6 +104,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
   return (
     <PanelBar>
       <TimeField origin={origin} seek={seek} seekWithoutCursor={seekWithoutCursor} />
+      {owner !== null && clock.documentId !== null && <QuickEntryButton documentPath={owner} entry={{ kind: 'timeline', timelineId: clock.documentId }} />}
       {structureNotice !== null && <span role="alert" className={styles.hint}>{structureNotice}；保留上次完整作者结构</span>}
       {subject.selector && (
         <MenuButton label={subject.selector.label} variant="ghost" className={styles.selector} iconOnly caret entries={subject.selector.entries}>

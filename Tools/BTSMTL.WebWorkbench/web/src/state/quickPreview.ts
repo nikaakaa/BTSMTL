@@ -578,7 +578,7 @@ export const quickPreview = {
       target = { ...target, root: document === undefined
         ? { kind: 'authoringDocument', authoring: chosen }
         : { kind: 'webEditingView', authoring: { ...chosen, savedRevision: document.revision ?? '' }, editingView: authoringActions.editingView() } };
-      if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ scheme: null, accepted: null, route: null, seconds: 0 });
+      if (quickTargetKey(target) !== quickTargetKey(current().target)) set({ accepted: null, route: null, seconds: 0 });
       set({ target });
       const reply = await previewApi.describeQuick(target, controller.signal);
       if (controller.signal.aborted) return;
@@ -711,11 +711,6 @@ useWorkbench.subscribe((state, previous) => {
 });
 
 useAuthoring.subscribe((authoring, previous) => {
-  if (authoring.target?.documentPath !== previous.target?.documentPath &&
-    getState().contentSelection?.kind === 'scene') {
-    quickPreview.clearTarget('作者文档已变化，请重新读取快预览来源');
-    return;
-  }
   const state = current();
   if (state.target !== null && state.target.root === null && state.description.kind === 'ready' && authoring.documents !== previous.documents) {
     const chosen = defaultRoot(state.description.reply.data);

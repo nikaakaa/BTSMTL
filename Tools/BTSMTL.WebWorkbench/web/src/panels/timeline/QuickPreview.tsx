@@ -1,17 +1,19 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { PreviewQuickLocation } from '../../api/previewQuickRecords';
-import { authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
+import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
+import { authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview,
 } from '../../state/quickPreview';
-import { useAuthoring } from '../../state/authoring';
+import { authoringActions, currentDocument, useAuthoring } from '../../state/authoring';
+import type { JsonObject } from '../../state/skillJson';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
 import { consoleActions, selectionActions, useWorkbench } from '../../state/store';
 import { session } from '../../state/session';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
+import { openPanel } from '../../shell/layout';
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
@@ -56,12 +58,39 @@ export function QuickCursor() {
   </label>;
 }
 
+export function QuickEntryButton({ documentPath, entry }: { documentPath: string; entry: PreviewQuickEntry }) {
+  const state = useWorkbench(current => current.quickPreview);
+  const quick = useWorkbench(current => current.previewMode === 'quick');
+  if (!quick) return null;
+  const description = state.description.kind === 'ready' ? state.description.reply.data : null;
+  const document = description?.documents.find(item => item.documentPath === documentPath);
+  const choice = document?.entries.find(item => JSON.stringify(item.entry) === JSON.stringify(entry));
+  const busy = state.description.kind === 'loading' || quickJobProgress(state.job) !== null;
+  return <Button variant="ghost" disabled={choice === undefined || busy}
+    tip={choice === undefined ? '当前来源目录尚未提供这个预览入口' : '以当前内容为入口，使用所选场景和输入方案生成预览'}
+    onClick={() => void quickPreview.readSource({ documentPath, savedRevision: document!.savedRevision, entry: choice!.entry })}>
+    {entry.kind === 'graph' ? '预览此图' : '预览此 Timeline'}
+  </Button>;
+}
+
+async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'documentInput' }>) {
+  const owner = authoringOwner(source.documentPath);
+  if (await authoringActions.open(owner) !== 'opened') return;
+  const path = `inputs/${source.inputId}.json`;
+  const plan = currentDocument(path) as JsonObject;
+  const index = (plan.Schemes as JsonObject[]).findIndex(scheme => scheme.AuthoringId === source.schemeId);
+  if (index === -1) throw new Error('所选输入方案已不在当前作者文档中，请重新选择输入方案');
+  await authoringActions.openInput(owner, path, index, plan.Actor as string);
+  openPanel('timeline');
+}
+
 // 快档工具条：入口、输入方案与生成状态；内容或方案变化后自动重读来源并重新生成，所播 Timeline 按时间摆在输入轨下方。
 export function QuickBar() {
   const { state, stale } = useWorkbench(useShallow(current => ({ state: current.quickPreview, stale: quickPlanStale() })));
   const active = useAuthoring(current => current.target === null ? null : authoringTargetKey(current.target));
   const [open, setOpen] = useState(false);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
+  const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
   const job = state.job;
   const progress = quickJobProgress(job);
   const plan = state.route?.plan ?? null;
@@ -107,6 +136,11 @@ export function QuickBar() {
           const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === value);
           if (scheme !== undefined) quickPreview.selectScheme(scheme.source);
         }} />}
+      {description?.root && <Button variant="ghost" disabled={input?.kind !== 'documentInput' || busy}
+        tip={input?.kind === 'documentInput' ? '打开所选方案的输入 Timeline，继续编辑输入轨' : '先明确选择一份作者输入方案'}
+        onClick={() => {
+          if (input?.kind === 'documentInput') void editInput(input).catch(error => consoleActions.error('输入方案', error));
+        }}>编辑所选输入</Button>}
       {status && <span role="status" className={styles.status} data-stale={stale || undefined}>{status}</span>}
       {(failure ?? reason) && <span role={failure ? 'alert' : 'status'} className={styles.reason} title={failure ?? reason ?? undefined}>{failure ?? reason}</span>}
       <span className={styles.grow} />
