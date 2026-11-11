@@ -143,7 +143,6 @@ export function GraphPanel() {
       caller: request.caller, origin: request.origin, viewport: null });
   }, [request, panelId, setParams]);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
-  if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有文档节点图" />;
   if (opened.loading && opened.graphs === null) return <Empty text="读取中" />;
   if (opened.graphs === null) return <ReportEmpty text={opened.error ?? '正在读取作者图'} />;
   if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此文档没有节点图'} />;
