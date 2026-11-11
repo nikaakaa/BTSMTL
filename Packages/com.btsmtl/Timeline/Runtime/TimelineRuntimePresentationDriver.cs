@@ -138,7 +138,7 @@ namespace BTSMTL.Timeline.Runtime
         readonly int m_RecordedStateHeaderBytes;
         readonly List<PresentationBufferPool> m_BufferPools = new();
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
-        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), (Stack<PresentationPlaybackState> States, PresentationPlaybackState Template, PresentationBufferPool Buffers)> m_RecycledPlaybacks = new();
+        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), (Stack<PresentationPlaybackState> States, PresentationPlaybackState Template, PresentationBufferPool Buffers)> m_RecycledPlaybacks = new(new PlaybackPoolComparer());
         TimelineSchedulingBoundary<OrchestrationTime>[] m_Boundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_SyntheticBoundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineScheduledInvocation<OrchestrationTime>[] m_Scheduled = Array.Empty<TimelineScheduledInvocation<OrchestrationTime>>();
@@ -152,6 +152,19 @@ namespace BTSMTL.Timeline.Runtime
         public PlaybackCollection Playbacks => new PlaybackCollection(this);
         public int MaximumRecordedStateBytes { get; private set; }
         public int MaximumRecordedTextReferences { get; private set; }
+
+        sealed class PlaybackPoolComparer : IEqualityComparer<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource)>
+        {
+            public bool Equals(
+                (TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource) left,
+                (TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource) right) =>
+                ReferenceEquals(left.Timeline, right.Timeline) && left.SourceIdentityId == right.SourceIdentityId &&
+                left.Mode == right.Mode && left.GraphSource == right.GraphSource;
+
+            public int GetHashCode(
+                (TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource) value) =>
+                HashCode.Combine(value.Timeline.GetHashCode(), value.SourceIdentityId, (int)value.Mode, (int)value.GraphSource);
+        }
 
         static OrchestrationTimelineStart<OrchestrationTime> CurrentStart(
             OrchestrationTimelineStart<OrchestrationTime> key, PresentationPlaybackState state) =>
