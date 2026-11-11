@@ -2,7 +2,6 @@ using System.Net.WebSockets;
 
 namespace BTSMTL.WebWorkbench;
 
-public sealed record PreviewImageSourceDescription(string DisplayName, string FrameDisplayName);
 public sealed record PreviewImageMetadata(string JobId, string HostFrame, string? ContentRevision,
     PreviewField[] Fields, string RawJson);
 public abstract record PreviewImageContent(string MediaType, PreviewImageMetadata Metadata)
@@ -19,7 +18,6 @@ public sealed record PreviewImageBytes(ReadOnlyMemory<byte> Data, string MediaTy
 {
     public override IResult Response() => Results.Bytes(Data, MediaType);
 }
-public sealed record PreviewImageBuild(string BuildId, string DisplayName, PreviewField[] Fields, string RawJson);
 
 public interface IPreviewImageSource
 {

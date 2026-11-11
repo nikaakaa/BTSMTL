@@ -87,11 +87,11 @@ const executionIdentity = object({ kind: nullable(text), identity: nullable(text
 const position = object({ hostFrame: text });
 export const readPreviewClock = object({ position, seconds: number, positionDisplayName: text,
   requestedPosition: nullable(position), fields: array(field) });
-const contentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
+export const readPreviewContentIdentity = object({ kind: text, revision: text, documentId: nullable(text),
   contentIdentity: nullable(text), contentRevision: nullable(text), bindingRevision: nullable(text) });
 const source = object({
   execution: executionIdentity, contentRevision: text, sceneRevision: nullable(text), inputSource: nullable(text), inputRevision: nullable(text),
-  clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(contentIdentity),
+  clock: readPreviewClock, loadCommandId: nullable(text), sequence: nullable(text), content: nullable(readPreviewContentIdentity),
   adoptedMode: nullable(text),
 });
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
@@ -186,14 +186,13 @@ export const readLivePlayers = array(readLivePlayer);
 export const readViewerStatus = object({ type: choice('status'), live: readLivePlayer });
 // 帧段等项目参数由宿主在创建选项中给出，页面原样送回作业请求。
 export const readPlayerCreationOptions = hosted({
-  requestId: jobId, captureFrames: array(number),
+  requestId: jobId, projectParameters: opaque,
   outputDirectory: text, width: number, height: number, frameRangeBasis: text,
   quality: number, channels: array(observationChannel), mode: previewMode,
 });
 
 const playerJobRequest = {
-  requestId: jobId, playerBuildId: buildId, scene: text, sceneRevision: text, source: runSource,
-  captureFrames: array(number), outputDirectory: text,
+  requestId: jobId, playerBuildId: buildId, projectParameters: opaque, outputDirectory: text,
   width: number, height: number, quality: number,
 };
 export const readPlayerJobRequest = hosted({ ...playerJobRequest, channels: array(observationChannel), mode: previewMode });
@@ -208,13 +207,13 @@ export const readPlayerJobReceipt = object({
 });
 export const readPlayerCommandReceipt = object({
   stage: choice('sent', 'submitted', 'applied', 'rejected', 'not-applied'), commandId: nullable(text), ack: opaque,
-  adoptedMode: nullable(text), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
+  adoptedMode: nullable(text), content: nullable(readPreviewContentIdentity), clock: nullable(readPreviewClock),
   milliseconds: nullable(number),
 });
 // 宿主命令的附加回执字段原样保留，由发出该命令的宿主扩展解析。
 export const readPlayerAck = hosted({
   type: choice('ack'), commandId: text, ok: boolean,
-  playerBuildId: optional(nullable(text)), content: nullable(contentIdentity), clock: nullable(readPreviewClock),
+  playerBuildId: optional(nullable(text)), content: nullable(readPreviewContentIdentity), clock: nullable(readPreviewClock),
   source: nullable(source), hostFrame: nullable(text), adoptedMode: nullable(text),
   error: optional(nullable(text)), path: optional(nullable(text)), rawJson: text,
 });
@@ -408,7 +407,7 @@ export type PlayerPreviewContent = ReturnType<typeof previewContent>;
 export type PreviewClock = ReturnType<typeof readPreviewClock>;
 export type PreviewPosition = ReturnType<typeof position>;
 export type PreviewSampleSource = ReturnType<typeof readPreviewSampleSource>;
-export type PreviewContentIdentity = ReturnType<typeof contentIdentity>;
+export type PreviewContentIdentity = ReturnType<typeof readPreviewContentIdentity>;
 export type PlayerPreviewTarget = ReturnType<typeof previewTarget>;
 export type PlayerLoadRequest = {
   commandId: string;
@@ -418,7 +417,7 @@ export type PlayerLoadRequest = {
 };
 export type PlayerBuildId = ReturnType<typeof buildId>;
 export type StartPlayerJobRequest = ReturnType<typeof readPlayerJobRequest>;
-export type PlayerCreationRequest = Pick<StartPlayerJobRequest, 'requestId' | 'source' | 'width' | 'height'>;
+export type PlayerCreationRequest = Pick<StartPlayerJobRequest, 'requestId' | 'projectParameters' | 'width' | 'height'>;
 export type PlayerJobReceipt = ReturnType<typeof readPlayerJobReceipt>;
 export type PlayerCommandReceipt = ReturnType<typeof readPlayerCommandReceipt>;
 export type PlayerJobStage = PlayerJobReceipt['stage'];

@@ -133,7 +133,8 @@ export const session = {
     };
     if (selected.kind === 'unavailable') throw new Error(selected.reason);
     const [options, playerBuildId] = await Promise.all([
-      playerApi.creationOptions({ requestId: newPlayerJobId(), source: selected.source, ...selected.viewport }, signal),
+      playerApi.creationOptions({ requestId: newPlayerJobId(), projectParameters: {
+        scene: selected.scene.path, sceneRevision: selected.scene.revision, source: selected.source }, ...selected.viewport }, signal),
       input.kind === 'adopted' ? Promise.resolve(input.target.playerBuildId)
         : playerApi.live(selected.liveId, signal).then(live => live.buildId),
     ]);
@@ -141,8 +142,7 @@ export const session = {
     consoleActions.log('info', source, frameRangeBasis);
     return readPlayerJobRequest({ ...parameters, playerBuildId,
       mode: selected.kind === 'selected' ? selected.mode : parameters.mode,
-      channels: input.kind === 'adopted' ? input.target.channels : parameters.channels,
-      scene: selected.scene.path, sceneRevision: selected.scene.revision, source: selected.source });
+      channels: input.kind === 'adopted' ? input.target.channels : parameters.channels });
   },
 
   async connect() {

@@ -6,10 +6,10 @@ import { readVariablesValue, type VariablesValue } from './variables';
 import { readStorageRoles, readWorkspaceDocumentElements, readWorkspaceDocumentInfo, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
-import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
+import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPreviewContentIdentity, text,
   type StartPlayerJobRequest } from './playerRecords';
 
-// 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
+// 作者文档 HTTP 接口：文档文件原文、作者合同、编辑视图、编译发布与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
 
 export type SkillFile = {
@@ -476,7 +476,7 @@ export interface CompiledSkillSaveResult {
   content: SkillSnapshot;
   documents: WorkspaceDocumentSnapshot[];
   compilation: CompilationReport;
-  preview: PlayerSkillRefreshReceipt | null;
+  preview: PlayerContentRefreshReceipt | null;
 }
 
 export interface InputRevision { planId: string; path: string; revision: string }
@@ -499,14 +499,14 @@ const readNull = (value: unknown, path = 'Authoring'): null => {
 };
 export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
 
-export type PlayerSkillRefreshTarget = Pick<StartPlayerJobRequest, 'scene' | 'sceneRevision' | 'source' | 'channels'> & {
+export type PlayerContentRefreshTarget = Pick<StartPlayerJobRequest, 'projectParameters' | 'channels'> & {
   requestId: string;
   liveId: PlayerPreviewTarget['liveId'];
 };
 
 export interface SkillSaveRequest {
   editingView: SkillEditingView;
-  preview: PlayerSkillRefreshTarget | null;
+  preview: PlayerContentRefreshTarget | null;
   job?: StartPlayerJobRequest;
   // 只保存输入方案闭包；包含其他修改时 Host 以 409 not-input-only 拒绝且不写盘。
   inputsOnly?: boolean;
@@ -532,61 +532,28 @@ const readPreviewAuthorProgram = object({
   })),
   timelines: array(readPreviewAuthorTimeline), inputPlans: array(readPreviewInputPlan),
 });
-const readSkillRefreshPackage = object({
-  stage: choice('offline-scene-written'), scenePath: text, sceneRevision: text, skillIdentity: text,
-  program: nullable(object({ programAssetId: text, graphId: text, programRevision: text, contentHash: text })),
-  inputPlans: array(readPreviewInputPlan), programs: array(readPreviewAuthorProgram),
-});
-type SkillRefreshPackage = ReturnType<typeof readSkillRefreshPackage>;
 export type PreviewAuthorProgram = ReturnType<typeof readPreviewAuthorProgram>;
 
-type SkillRefreshCommand = LiveCommandResult;
-
-interface SkillRefreshIdentity {
-  requestId: string;
-  liveId: string;
-  playerBuildId: string | null;
-  sourceRevision: string;
-  baseSceneRevision: string;
-  source: PlayerSkillRefreshTarget['source'];
-  phases: ReturnType<typeof preparationPhases>;
+const readContentPackage = object({
+  content: opaque, receipt: opaque, adoptedIdentity: readPreviewContentIdentity,
+  observation: object({ programs: array(readPreviewAuthorProgram) }), phases: preparationPhases,
+});
+const refreshFields = {
+  requestId: text, liveId: text, playerBuildId: nullable(text), sourceRevision: text,
+  projectParameters: opaque, phases: preparationPhases, adoptedContent: nullable(readPreviewContentIdentity),
+  error: nullable(text), statusPath: nullable(text),
+};
+function readContentRefreshReceipt(value: unknown, path = 'ContentRefresh') {
+  const stage = object({ stage: choice('accepted', 'adopted', 'failed', 'unavailable') })(value, path).stage;
+  if (stage === 'adopted') return {
+    ...object({ ...refreshFields, adoptedContent: readPreviewContentIdentity,
+      package: readContentPackage, command: readPlayerCommandResult })(value, path), stage,
+  };
+  return {
+    ...object({ ...refreshFields, package: nullable(readContentPackage), command: nullable(readPlayerCommandResult) })(value, path), stage,
+  };
 }
-
-export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
-  | { stage: 'accepted'; adoptedSceneRevision: null; package: SkillRefreshPackage; command: SkillRefreshCommand & { stage: 'submitted' }; error: null; statusPath: string }
-  | { stage: 'adopted'; adoptedSceneRevision: string; package: SkillRefreshPackage; command: SkillRefreshCommand & { stage: 'applied' }; error: null; statusPath: string }
-  | { stage: 'failed' | 'unavailable'; adoptedSceneRevision: null; package: SkillRefreshPackage | null; command: SkillRefreshCommand | null; error: string; statusPath: string | null }
-);
-
-function readSkillRefreshReceipt(value: unknown, path = 'SkillRefresh'): PlayerSkillRefreshReceipt {
-  const receipt = object({ requestId: text, liveId: text, playerBuildId: nullable(text), sourceRevision: text,
-    baseSceneRevision: text, source: readPlayerRunSource, phases: preparationPhases, adoptedSceneRevision: nullable(text),
-    stage: choice('accepted', 'adopted', 'failed', 'unavailable'), package: opaque, command: nullable(readPlayerCommandResult) })(value, path);
-  if (receipt.stage !== 'adopted' && receipt.adoptedSceneRevision !== null)
-    throw new Error('SkillRefresh 尚未采用时不能提供已采用场景修订');
-  const command = receipt.command;
-  switch (receipt.stage) {
-    case 'accepted':
-      if (command?.stage !== 'submitted') throw new Error('SkillRefresh.accepted.command.stage 需要 submitted');
-      return { ...receipt, ...object({ error: readNull, statusPath: text })(value, path), stage: receipt.stage, adoptedSceneRevision: null,
-        package: readSkillRefreshPackage(receipt.package, `${path}.package`),
-        command: { ...command, stage: command.stage } };
-    case 'adopted': {
-      if (receipt.adoptedSceneRevision === null) throw new Error('SkillRefresh.adopted 缺少实际采用场景修订');
-      if (command?.stage !== 'applied') throw new Error('SkillRefresh.adopted.command.stage 需要 applied');
-      const prepared = readSkillRefreshPackage(receipt.package, `${path}.package`);
-      if (command.content?.revision !== prepared.sceneRevision)
-        throw new Error('SkillRefresh.adopted.command.content.revision 与 package.sceneRevision 不一致');
-      return { ...receipt, ...object({ error: readNull, statusPath: text })(value, path), stage: receipt.stage,
-        adoptedSceneRevision: receipt.adoptedSceneRevision, package: prepared,
-        command: { ...command, stage: command.stage } };
-    }
-    case 'failed':
-    case 'unavailable': return { ...receipt, ...object({ error: text, statusPath: nullable(text) })(value, path),
-      stage: receipt.stage, adoptedSceneRevision: null, command,
-      package: receipt.package === null ? null : readSkillRefreshPackage(receipt.package, `${path}.package`) };
-  }
-}
+export type PlayerContentRefreshReceipt = ReturnType<typeof readContentRefreshReceipt>;
 
 export interface SkillFormatError {
   code: string;
@@ -792,10 +759,10 @@ export const authoringApi = {
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
       case 'succeeded': return { ...object({ ...savedContentFields, compilation: readCompilationReport,
-        preview: nullable(readSkillRefreshReceipt) })(result, 'SkillSave'), compilationState };
+        preview: nullable(readContentRefreshReceipt) })(result, 'SkillSave'), compilationState };
     }
   },
-  refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal).then(readSkillRefreshReceipt),
+  refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerContentRefreshReceipt>(statusPath, signal).then(readContentRefreshReceipt),
   types: (target: AuthoringTarget, offset: number, editingView: SkillEditingView, signal?: AbortSignal) =>
     postJson<TypePage>(documentQueryPath(target.documentPath, 'queries/types'), { offset, limit: 128, editingView }, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。

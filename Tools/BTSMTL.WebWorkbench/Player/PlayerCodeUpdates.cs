@@ -16,14 +16,17 @@ public sealed class PlayerCodeUpdates
     readonly string m_Players;
     readonly PlayerScriptCompiler m_Compiler;
     readonly PlayerBurstCompiler m_Burst;
+    readonly Func<string, string> m_RecipeDirectory;
     static readonly JsonSerializerOptions s_Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly SemaphoreSlim m_Gate = new(1);
 
-    public PlayerCodeUpdates(string players, PlayerScriptCompiler compiler, PlayerBurstCompiler burst)
+    public PlayerCodeUpdates(string players, PlayerScriptCompiler compiler, PlayerBurstCompiler burst,
+        Func<string, string> recipeDirectory)
     {
         m_Players = Path.TrimEndingDirectorySeparator(Path.GetFullPath(players));
         m_Compiler = compiler;
         m_Burst = burst;
+        m_RecipeDirectory = recipeDirectory;
     }
 
     public async Task<object> Update(UpdatePlayerCodeRequest request)
@@ -59,7 +62,7 @@ public sealed class PlayerCodeUpdates
         string sourceDirectory = Path.Combine(m_Players, sourceId);
         string managed = Path.Combine(sourceDirectory,
             Path.GetFileNameWithoutExtension((string)source["executable"]!) + "_Data", "Managed");
-        string recipeDirectory = Path.Combine(m_Players, baseId, "recipe");
+        string recipeDirectory = m_RecipeDirectory(baseId);
         JsonObject recipe = JsonNode.Parse(File.ReadAllBytes(Path.Combine(recipeDirectory, "recipe.json")))!.AsObject();
         var refusals = new List<string>();
         Dictionary<string, RecipeAssembly> assemblies = recipe["assemblies"]!.AsArray()

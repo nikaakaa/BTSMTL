@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
-  type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget,
+  type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerContentRefreshReceipt, type PlayerContentRefreshTarget,
   type ScenarioDraftRequest, type DocumentCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type WorkspaceCreationKind,
 } from '../api/authoring';
@@ -106,7 +106,7 @@ interface SaveOutcomeMessage {
 }
 
 export type SaveOutcome = SaveOutcomeMessage & (
-  | (SavedCompilation & { preview: PlayerSkillRefreshReceipt | null })
+  | (SavedCompilation & { preview: PlayerContentRefreshReceipt | null })
   | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
   | { saved: true; compilationState: 'not-requested'; runtimeState: 'pending'; preview: null }
   | { saved: boolean; compilationState: 'not-started'; preview: null }
@@ -210,7 +210,7 @@ export function useTimelineObservationBinding(dirty: boolean): TimelineObservati
       case 'accepted': return { kind: 'unavailable', reason: '当前 Timeline 已准备，Player 尚未确认采用，运行叠加不可用。' };
       case 'failed':
       case 'unavailable': return { kind: 'unavailable', reason: receipt.error };
-      case 'adopted': return { kind: 'ready', sceneRevision: receipt.adoptedSceneRevision, programs: receipt.package.programs };
+      case 'adopted': return { kind: 'ready', sceneRevision: receipt.adoptedContent.revision, programs: receipt.package.observation.programs };
     }
   }, [dirty, lastSave, sourceRevision]);
 }
@@ -239,7 +239,7 @@ useAuthoring.subscribe((state, previous) => {
   if (state.target !== previous.target) previewController?.abort();
 });
 
-type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
+type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget } | { kind: 'unavailable'; reason: string };
 type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
@@ -259,7 +259,7 @@ async function selectedPreview(): Promise<PreviewSelection> {
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
     return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
-      scene: content.scene, sceneRevision: content.revision, source: content.source, channels } };
+      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: content.source }, channels } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -271,9 +271,9 @@ const previewMessages = {
   adopted: 'Player 已采用本次内容',
   failed: 'Player 采用失败',
   unavailable: '预览不可用',
-} satisfies Record<PlayerSkillRefreshReceipt['stage'], string>;
+} satisfies Record<PlayerContentRefreshReceipt['stage'], string>;
 
-function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
+function savedOutcome(save: SavedCompilation, preview: PlayerContentRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
   const detail = preview === null ? noPreviewReason : `${previewMessages[preview.stage]}${preview.error === null ? '' : `：${preview.error}`}`;
   return {
     saved: save.saved, compilationState: save.compilationState, compilation: save.compilation, preview,
@@ -336,7 +336,7 @@ async function trackInputPreview(target: AuthoringTarget, preview: NonNullable<I
 }
 
 async function trackPreview(input: {
-  save: SavedCompilation; receipt: PlayerSkillRefreshReceipt; controller: AbortController;
+  save: SavedCompilation; receipt: PlayerContentRefreshReceipt; controller: AbortController;
   viewport: { width: number; height: number } | null;
 }) {
   let receipt = input.receipt;
@@ -358,7 +358,7 @@ async function trackPreview(input: {
     const live = await playerApi.live(receipt.liveId, input.controller.signal);
     input.controller.signal.throwIfAborted();
     const target = live.previewTarget;
-    if (target === null || target.content.kind !== 'scene' || target.content.revision !== receipt.package.sceneRevision)
+    if (target === null || target.content.kind !== 'scene' || target.content.revision !== receipt.adoptedContent.revision)
       throw new Error('Player 当前确认内容与本次采用回执不一致，未提交封存作业');
     const content = target.content;
     if (input.viewport === null || target.channels === null || content.source.kind === 'device') {
