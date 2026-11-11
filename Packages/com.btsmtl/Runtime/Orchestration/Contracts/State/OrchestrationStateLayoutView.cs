@@ -130,6 +130,9 @@ namespace BTSMTL.Orchestration
         public OrchestrationValueAddress PrivateAddress(int program, int frame, int valueSlot) =>
             Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses)[valueSlot].AtFrame(frame);
 
+        internal ReadOnlySpan<OrchestrationFrameValueAddress> PrivateAddresses(int program) =>
+            Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses);
+
         public OrchestrationProgramStorageView ProgramStorage(int program)
         {
             ref readonly OrchestrationStateProgramRecord record = ref Program(program);

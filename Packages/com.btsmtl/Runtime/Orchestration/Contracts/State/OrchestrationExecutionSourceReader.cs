@@ -13,6 +13,8 @@ namespace BTSMTL.Orchestration
         readonly int m_SourceProgramIndex;
         readonly OrchestrationProgramStorageView m_CandidateStorage;
         readonly OrchestrationProgramStorageView m_SourceStorage;
+        readonly ReadOnlySpan<OrchestrationFrameValueAddress> m_CandidatePrivateAddresses;
+        readonly ReadOnlySpan<OrchestrationFrameValueAddress> m_SourcePrivateAddresses;
 
         internal OrchestrationExecutionSourceReader(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
             int frameSlot, int programIndex, bool hasSource, OrchestrationExecutionSource<TValue> source)
@@ -24,13 +26,25 @@ namespace BTSMTL.Orchestration
             m_CandidateRootFrameSlot = frameSlot;
             m_CandidateProgramIndex = programIndex;
             m_CandidateStorage = frames.Plan.ProgramStorage(programIndex);
-            m_SourceProgramIndex = hasSource
-                ? source.Frames.Plan.ProgramIndex(source.Header.SkillContentId) : -1;
-            m_SourceStorage = hasSource
-                ? source.Frames.Plan.ProgramStorage(m_SourceProgramIndex) : default;
+            m_CandidatePrivateAddresses = frames.Plan.PrivateAddresses(programIndex);
+            if (hasSource)
+            {
+                m_SourceProgramIndex = source.Frames.Plan.ProgramIndex(source.Header.SkillContentId);
+                m_SourceStorage = source.Frames.Plan.ProgramStorage(m_SourceProgramIndex);
+                m_SourcePrivateAddresses = source.Frames.Plan.PrivateAddresses(m_SourceProgramIndex);
+            }
+            else
+            {
+                m_SourceProgramIndex = -1;
+                m_SourceStorage = default;
+                m_SourcePrivateAddresses = default;
+            }
         }
 
         internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
+
+        internal OrchestrationValueAddress CandidateAddress(int frameSlot, int valueSlot) =>
+            m_CandidatePrivateAddresses[valueSlot].AtFrame(frameSlot);
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
             int characterSlot, bool actionInstance, ref TValue destination)
@@ -53,8 +67,9 @@ namespace BTSMTL.Orchestration
             {
                 FrameAddress owner = Owner(ownerOperationIndex);
                 ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
-                OrchestrationValueAddress address = frames.Plan.PrivateAddress(
-                    ProgramIndex(owner), owner.Index, valueSlot);
+                OrchestrationValueAddress address = owner.Source
+                    ? m_SourcePrivateAddresses[valueSlot].AtFrame(owner.Index)
+                    : CandidateAddress(owner.Index, valueSlot);
                 default(TStorage).Read(frames.Memory, in address, ref destination);
             }
         }

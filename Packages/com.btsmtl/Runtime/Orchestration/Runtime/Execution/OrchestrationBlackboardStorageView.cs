@@ -78,7 +78,7 @@ namespace BTSMTL.Orchestration
             else
             {
                 int frameSlot = ValueFrame(valueSlot);
-                OrchestrationValueAddress address = m_Frames.Plan.PrivateAddress(m_ProgramIndex, frameSlot, valueSlot);
+                OrchestrationValueAddress address = m_Reader.CandidateAddress(frameSlot, valueSlot);
                 default(TStorage).Write(m_Frames.Memory, in address, in value);
             }
         }
