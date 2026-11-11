@@ -332,7 +332,7 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
 
 function PreviewModeChoice() {
   const { modes, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
-    modes: state.host?.modes.filter(mode => mode.id !== 'real' || state.host.player.available), selected: state.previewMode, observing: state.previewMode === 'quick'
+    modes: state.host?.modes.filter(mode => mode.id !== 'real' || state.host?.player.available), selected: state.previewMode, observing: state.previewMode === 'quick'
       ? state.quickPreview.job.kind !== 'idle' : state.runId !== null || state.live?.player?.source != null,
     adoptedMode: state.previewMode === 'quick'
       ? 'reply' in state.quickPreview.job ? state.quickPreview.job.reply?.data?.adoptedMode ?? null : null
