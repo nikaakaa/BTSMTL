@@ -359,7 +359,7 @@ interface Description {
 }
 
 interface DescribeIssue {
-  path: string;
+  path?: string | null;
   message: string;
 }
 
