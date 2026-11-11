@@ -3,17 +3,18 @@ import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
 import { authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
-  quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview,
+  quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey,
 } from '../../state/quickPreview';
-import { authoringActions, currentDocument, useAuthoring } from '../../state/authoring';
+import { authoringActions, authoringDocument, currentDocument, isDocumentDirty, useAuthoring } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
-import { consoleActions, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, contentActions, selectionActions, useWorkbench } from '../../state/store';
+import { quickRunInputChoice } from '../../state/quickInput';
 import { session } from '../../state/session';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
-import { openPanel } from '../../shell/layout';
+import { finishAuthoringInputs, openPanel } from '../../shell/layout';
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
@@ -87,11 +88,34 @@ async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'docum
   openPanel('timeline');
 }
 
+async function runInput(source: Extract<PreviewQuickInputSource, { kind: 'documentInput' }>, actorId: string) {
+  const targetKey = quickTargetKey(useWorkbench.getState().quickPreview.target);
+  finishAuthoringInputs();
+  if (Object.values(useAuthoring.getState().documents).some(isDocumentDirty)) {
+    await authoringActions.save();
+    const state = useAuthoring.getState();
+    if (Object.values(state.documents).some(isDocumentDirty))
+      throw new Error(authoringDocument(state).lastSave?.message ?? '作者修改尚未保存，请处理后再真实运行');
+  }
+  if (await session.loadInputs() !== null) throw new Error('读取当前场景的输入方案失败，具体原因见控制台');
+  const state = useWorkbench.getState();
+  if (state.previewMode !== 'quick' || quickTargetKey(state.quickPreview.target) !== targetKey ||
+    quickInputSourceKey(state.quickPreview.scheme) !== quickInputSourceKey(source))
+    throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
+  const choice = quickRunInputChoice(state.inputCatalog!, actorId, source);
+  contentActions.selectInputSource({ kind: 'local' });
+  contentActions.selectInputPlan(choice);
+  await session.startNewRun();
+}
+
 // 快档工具条：入口、输入方案与生成状态；内容或方案变化后自动重读来源并重新生成，所播 Timeline 按时间摆在输入轨下方。
 export function QuickBar() {
   const { state, stale } = useWorkbench(useShallow(current => ({ state: current.quickPreview, stale: quickPlanStale() })));
   const active = useAuthoring(current => current.target === null ? null : authoringTargetKey(current.target));
   const [open, setOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const playerAvailable = useWorkbench(current => current.host?.player.available === true);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
   const job = state.job;
@@ -113,8 +137,7 @@ export function QuickBar() {
       name: owned.length ? choice.displayName : `${document.displayName} / ${choice.displayName}`,
     })));
   }, [description, active]);
-  const busy = progress !== null || state.description.kind === 'loading';
-  const runBlocked = useWorkbench(() => session.canStartNewRun());
+  const busy = running || progress !== null || state.description.kind === 'loading';
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
       <strong>快速预览</strong>
@@ -152,9 +175,19 @@ export function QuickBar() {
         : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新生成预览'}
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
-      <Button variant="ghost" disabled={runBlocked !== null} tip={runBlocked ?? '切到真实运行，按当前场景和输入方案完整运行一次并录制'}
-        onClick={() => void session.startNewRun()}>真实运行一次</Button>
+      {playerAvailable && <Button variant="ghost" disabled={busy || input?.kind !== 'documentInput' || description === null}
+        tip={input?.kind === 'documentInput' ? '保存当前编辑，使用所选方案的按键日程真实运行一次并录制' : '先明确选择一份作者输入方案'}
+        onClick={() => {
+          if (input?.kind !== 'documentInput' || description === null) return;
+          setRunning(true);
+          setRunError(null);
+          void runInput(input, description.actorId).catch(error => {
+            consoleActions.error('真实运行', error);
+            setRunError(error instanceof Error ? error.message : String(error));
+          }).finally(() => setRunning(false));
+        }}>{running ? '正在准备真实运行' : '真实运行一次'}</Button>}
     </PanelBar>
+    {runError !== null && <p role="alert" className={styles.reason}>{runError}</p>}
     {open && <QuickDetails />}
   </section>;
 }

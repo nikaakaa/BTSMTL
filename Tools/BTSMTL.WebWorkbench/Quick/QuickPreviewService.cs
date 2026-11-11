@@ -73,7 +73,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
 
     static PreviewQuickDescription Describe(IPreviewQuickEnvironment actor, PreviewQuickDocumentChoice[] documents,
         PreviewQuickRootDescription? root, PreviewQuickSource? identity) =>
-        new(actor.ScenePath, actor.CarrierPath, actor.CarrierIdentity, actor.TickRate,
+        new(actor.ScenePath, actor.CarrierPath, actor.CarrierIdentity, actor.ActorId, actor.TickRate,
             documents, Declarations(actor), actor.Requests.Select(request => new PreviewQuickInputRequest(request.InputId, request.DurationSeconds)).ToArray(),
             root, identity, "从选定场景的正式角色和作者文档准备独立播放器快预览。");
 

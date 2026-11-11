@@ -28,7 +28,7 @@ const condition = object({ key: text, label: text, source: text, operationIndex:
 const location = object({ documentPath: text, graphId: text, nodeId: text, edgeId: text, displayPath: text });
 const scheme = object({ source: inputSource, name: text, revision: text, timelineId: nullable(text) });
 const description = object({
-  scenePath: text, carrierPath: text, carrierIdentity: text, tickRate: number,
+  scenePath: text, carrierPath: text, carrierIdentity: text, actorId: text, tickRate: number,
   documents: array(object({ kind: text, documentPath: text, identity: text, displayName: text, savedRevision: text,
     entries: array(object({ entry, displayName: text, isDefault: boolean })) })),
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),

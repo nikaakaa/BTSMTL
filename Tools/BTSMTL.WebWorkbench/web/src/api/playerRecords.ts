@@ -103,7 +103,7 @@ export const readPlayerInputCatalog = object({
     actorId: text,
     localPlans: array(object({ id: text, name: text, kind: text, documentPath: text,
       owner: nullable(text), timeline: nullable(text), path: text, revision: text,
-      schemes: array(object({ index: number, name: text, rangeEndSeconds: number })),
+      schemes: array(object({ id: text, index: number, name: text, rangeEndSeconds: number })),
     })),
     keys: array(object({ name: text, kind: choice('Button', 'Scalar', 'Vector2'), valueIds: array(text), requestIds: array(text) })),
     values: array(object({ inputId: text, kind: text, encoding: text })),
