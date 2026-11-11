@@ -70,10 +70,17 @@ function readPublishedBinding(value: unknown, path: string): PublishedResourceBi
 }
 const readScope = object({ scope: text, adapter: text, context: text, revision: text,
   resourceDeclarations: array(readResourceDeclaration), publishedResources: array(readPublishedBinding) });
+const readPublishedScopePreviewData = object({ scene: object({ path: text, revision: text }), actors: array(text) });
+function readPublishedScopePreview(value: unknown) {
+  const availability = readAuthoringAvailability(value, 'Scope.preview');
+  return availability.available ? { ...availability, ...readPublishedScopePreviewData(value, 'Scope.preview') } : availability;
+}
 export type AuthoringScope = ReturnType<typeof readScope>;
 export type ScopeQuery = Pick<AuthoringScope, 'scope' | 'adapter'>;
 export const scopeQueryKey = (query: ScopeQuery) => JSON.stringify([query.scope, query.adapter]);
 export const resourceRegistrationApi = {
+  preview: (scope: ScopeQuery, scene: string) =>
+    postJson<unknown>('/api/authoring/scopes/preview', { scope, scene }).then(readPublishedScopePreview),
   readScope: (query: ScopeQuery, signal?: AbortSignal) =>
     postJson<unknown>('/api/authoring/scopes/read', query, signal).then(value => readScope(value)),
   objects: (query: ResourceObjectQuery, signal?: AbortSignal) =>
