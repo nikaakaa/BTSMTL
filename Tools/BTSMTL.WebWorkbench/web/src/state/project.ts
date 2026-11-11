@@ -107,9 +107,9 @@ export const projectActions = {
   async open(item: ProjectItem, schemeIndex?: number): Promise<void> {
     const document = await openOwner(item);
     selectionActions.select(null);
-    if (item.kind === 'skill' || item.kind === 'graph') {
-      const id = item.kind === 'skill' ? document.programId : item.identity;
-      if (item.kind === 'skill' && id === null && document.documentError === null) {
+    if (item.kind === 'document' || item.kind === 'graph') {
+      const id = item.kind === 'document' ? document.programId : item.identity;
+      if (item.kind === 'document' && id === null && document.documentError === null) {
         openPanel('inspector');
         return;
       }
@@ -131,11 +131,11 @@ export const projectActions = {
   },
 
   async rename(item: ProjectItem, name: string, schemeIndex: number | null) {
-    await openOwner(item);
+    const owner = await openOwner(item);
     authoringActions.edit(item.file, value => {
       const document = value as JsonObject;
       switch (item.kind) {
-        case 'skill': document.m_DisplayName = name; break;
+        case 'document': document[owner.roles.displayName!] = name; break;
         case 'graph': document.name = name; break;
         case 'timeline':
         case 'curve':
@@ -147,11 +147,12 @@ export const projectActions = {
   },
 
   referrers(item: ProjectItem, signal?: AbortSignal) {
-    const identity = item.kind === 'curve' || item.kind === 'profile' ? item.asset.m_SourceIdentity as string : item.identity;
+    const identity = item.kind === 'curve' || item.kind === 'profile'
+      ? useAuthoring.getState().documents[item.owner].sourceIdentity! : item.identity;
     return authoringApi.referrers(ownerOf(item), { identity }, authoringActions.editingView(), signal);
   },
 
-  async remove(item: Exclude<ProjectItem, { kind: 'skill' }>): Promise<ReferrersResult> {
+  async remove(item: Exclude<ProjectItem, { kind: 'document' }>): Promise<ReferrersResult> {
     const referrers = await projectActions.referrers(item);
     if (!referrers.complete || referrers.items.length !== 0) return referrers;
     const document = await openOwner(item);
@@ -168,11 +169,11 @@ export const projectActions = {
     return referrers;
   },
 
-  async removeSkill(item: Extract<ProjectItem, { kind: 'skill' }>) {
+  async removeDocument(item: Extract<ProjectItem, { kind: 'document' }>) {
     const target = ownerOf(item);
     const document = useAuthoring.getState().documents[authoringTargetKey(target)];
     const expectedRevision = document === undefined ? (await workspaceDocumentsApi.open(target.documentPath)).revision : document.revision;
-    if (expectedRevision === null) throw new Error('此技能尚未保存，请使用丢弃修改移除草稿。');
+    if (expectedRevision === null) throw new Error('此文档尚未保存，请使用丢弃修改移除草稿。');
     const result = await authoringApi.deleteSkill(target.documentPath, { expectedRevision, editingView: authoringActions.editingView() });
     if (result.deleted) authoringActions.acceptSkillDeletion(result);
     return result;
@@ -180,6 +181,4 @@ export const projectActions = {
 };
 
 // 顶栏可直接切换的文档种类；曲线与 Profile 在 Project 中按用途分组，变量文档属于各自的图，从黑板进入。
-export const openableDocumentGroups = [['skill', '技能'], ['timeline', '独立 Timeline'], ['graph', '共享图']] as const;
-
 export const documentLabel = (document: WorkspaceDocumentInfo) => document.name;

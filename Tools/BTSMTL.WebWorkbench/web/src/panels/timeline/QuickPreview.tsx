@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickLocation } from '../../api/previewQuickRecords';
-import { authoringTargetKey, type SkillDocumentGraph } from '../../api/authoring';
+import { authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview,
 } from '../../state/quickPreview';
@@ -187,7 +187,7 @@ function QuickDetails() {
   </div>;
 }
 
-export function QuickGraphRoute({ graph }: { graph: SkillDocumentGraph }) {
+export function QuickGraphRoute({ graph }: { graph: AuthoringGraph }) {
   const plan = useQuickPlan();
   const stale = useWorkbench(quickPlanStale);
   const seconds = useWorkbench(state => state.quickPreview.seconds);

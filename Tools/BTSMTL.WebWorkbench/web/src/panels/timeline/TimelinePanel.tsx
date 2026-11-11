@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import type { SkillElements } from '../../api/authoring';
+import type { AuthoringElements } from '../../api/authoring';
 import type { Frame, FrozenInputTimeline, InputWrite } from '../../api/types';
 import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
 import { samePreviewLoad } from '../../api/playerRecords';
@@ -18,7 +18,7 @@ import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../s
 import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
-  useSkillElements, useDocumentObservationBinding, useTimelineObservationBinding,
+  useAuthoringElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import {
@@ -60,7 +60,7 @@ import {
 } from './timelineShared';
 import styles from './timeline.module.css';
 
-// Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），技能里的 Timeline 按组列出，每组可折叠。
+// Timeline 面板（D5）：照 Unity Timeline 窗口（com.unity.timeline 1.7.7 Dark 皮肤），文档里的 Timeline 按组列出，每组可折叠。
 // dnd-timeline 管时间与像素换算、缩放、平移；刻度、片段、输入标记、游标自绘。
 // 游标是独立覆盖线，订阅 cursor 后直接改 transform，片段不随游标重绘。
 
@@ -71,7 +71,7 @@ export function TimelinePanel() {
 }
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
-// 保存后重读来源期间方案不变，继续看原输入 Timeline，视图不跳回技能自身的 Timeline。
+// 保存后重读来源期间方案不变，继续看原输入 Timeline，视图不跳回文档自身的 Timeline。
 function useQuickInputTimeline() {
   const last = useRef<string | null>(null);
   const value = useWorkbench(state => {
@@ -87,7 +87,7 @@ function useQuickInputTimeline() {
 const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.route !== null
   ? quickBounds(state.quickPreview.route.plan).last : 0);
 
-// 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
+// 文档在顶栏选择；打开后固定看文档里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
   const { target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
     target: state.target, loading: authoringDocument(state).loading, available: state.available,
@@ -96,7 +96,7 @@ function DocumentTimeline() {
   const count = useAuthorTimelines().length;
   if (available === false && count === 0) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
   if (loading && count === 0) return <Empty text="正在读取内容" />;
-  if (!target || !count) return <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '在顶栏选择技能')} />;
+  if (!target || !count) return <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '在顶栏选择文档')} />;
   return <TimelineWindow />;
 }
 
@@ -110,7 +110,7 @@ const allTimelines = '*';
 
 function TimelineWindow() {
   const [params, setParams] = usePanelParams<Params>(defaults);
-  const elements = useSkillElements(useAuthoring(state => state.target !== null));
+  const elements = useAuthoringElements(useAuthoring(state => state.target !== null));
   const schemes = useInputSchemes();
   const authorTimelines = useAuthorTimelines();
   // 快档与真档默认看路线：输入方案的输入 Timeline；作者档默认看第一个 Timeline。
@@ -226,7 +226,7 @@ interface DragSession {
 // 指到不能放的轨道时留在上一条能放的轨道；框选的多个片段与标记整体平移、不换轨，拖其中的片段或标记都一样。
 // 放下后的同轨重叠按轨道合同判断：树轨不许重叠，动画与位移曲线轨只许两两部分重叠形成混合；标记不许落到同轨其它标记的时刻。
 function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
   rows: Row[]; offsets: number[]; scroller: RefObject<HTMLDivElement | null>; step: number; mover: RefObject<GroupMove | null>;
 }) {
   const panelId = usePanelId();
@@ -297,7 +297,7 @@ function ClipEditing({ elements, rows, offsets, scroller, step, mover }: {
   };
   const publish = (current: DragSession, { ghosts, shift, issue, tip }: ReturnType<typeof preview>) =>
     useClipEditing.setState({ drag: { panelId, ghosts, markers: current.markers.map(item => item.key), shift, invalid: issue !== null, tip } });
-  // 快预览跟手：技能 Timeline 的片段只改时间时把整条 Timeline 的片段起止交给快预览；输入 Timeline、换轨和带标记的平移不走这里。
+  // 快预览跟手：文档 Timeline 的片段只改时间时把整条 Timeline 的片段起止交给快预览；输入 Timeline、换轨和带标记的平移不走这里。
   const followQuick = (documentId: string, clips: ClipTimeRaw[]) => {
     if (!quickMode || documentId === quickInputTimeline) return false;
     quickPreview.retime(documentId, clips);
@@ -528,7 +528,7 @@ const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
 };
 
 function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRangeChanged }: {
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
   params: Params;
   setParams(patch: Partial<Params>): void;
   // 所看的 Timeline；null 为全部 Timeline。
@@ -582,7 +582,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
     return names;
   }, [graphs, timelines, schemes, files, edited]);
 
-  // 技能文档看单个 Timeline：所选的那条，否则第一条；选“全部 Timeline”时按组列出。
+  // 文档文档看单个 Timeline：所选的那条，否则第一条；选“全部 Timeline”时按组列出。
   const focused = focusId === null ? null : segments.find(segment => segment.documentId === focusId) ?? null;
   const quickSegments = useMemo(() => quickPlan?.segments.map((segment, index) => ({ segment, index }))
     .filter(item => item.segment.timelineId === focused?.documentId) ?? [], [quickPlan, focused?.documentId]);
@@ -787,7 +787,7 @@ function TimelineBody({ elements, params, setParams, focusId, bounds, rate, onRa
   }, [params.curveTracks, params.curveParam, setParams]);
 
   const step = useContext(SnapContext);
-  // 游标跳到时间轴上的一点（运行档案为运行秒数，技能文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
+  // 游标跳到时间轴上的一点（运行档案为运行秒数，文档文档为 Timeline 本地秒数）：刻度点击拖动与时间框共用。
   const seek = useCallback((value: number, exact = false) => {
     if (!focused) return;
     const limit = quickInput ? Math.max(focused.length, quickRouteEnd) : focused.length;
@@ -981,7 +981,7 @@ const GroupMoveContext = createContext<RefObject<GroupMove | null>>({ current: n
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
 function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll, inputRoots }: {
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
   rows: Row[];
   collapsed: string[];
   toggle(id: string): void;
@@ -1192,7 +1192,7 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
 }
 
 const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
   row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string): void;
 }) {
   const segment = row.segment;
@@ -1263,7 +1263,7 @@ function copySelection() {
   return picked !== null && copyTimelineClip(picked.documentId, picked.clipId);
 }
 
-function pasteAfterSelection(elements: SkillElements) {
+function pasteAfterSelection(elements: AuthoringElements) {
   const selection = getState().selection;
   if (!selection || selection.id.startsWith('input/')) return false;
   const [documentId, itemId] = selection.id.split('/');
@@ -1282,7 +1282,7 @@ function pasteAfterSelection(elements: SkillElements) {
 
 // 作者模式右键轨道（照 Timeline Editor 轨道与片段菜单）：在点击处添加片段、标记或粘贴，
 // 复制与删除所选，轨道改名、静音、排序与删除。时间按帧步长取整。
-function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: SkillElements | null): MenuEntry[] {
+function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void, elements: AuthoringElements | null): MenuEntry[] {
   const author = useAuthoring(state => state.author && state.target !== null);
   const version = useAuthoring(state => authoringDocument(state).version);
   // 右键片段时先选中它，菜单随选中重新给出复制与切分。
@@ -1373,7 +1373,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
 }
 
 const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }: {
-  elements: SkillElements | null; row: TrackRow; nest: Nest | undefined; toggleCurves(id: string): void;
+  elements: AuthoringElements | null; row: TrackRow; nest: Nest | undefined; toggleCurves(id: string): void;
 }) {
   const clock = useContext(PreviewClockContext);
   const selected = useSelected(row.selectId, 'track');
@@ -1504,7 +1504,7 @@ function Positioned({ start, end, className, children, style, tip }: {
 }
 
 const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segmentId, trackId }: {
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
   clip: ClipInstance; kind: TrackKind; mix: ClipMix; documentId: string; segmentId: string; trackId: string;
 }) {
   const author = useAuthoring(state => state.author && state.target !== null);
@@ -1524,7 +1524,7 @@ const Clip = memo(function Clip({ elements, clip, kind, mix, documentId, segment
   const reportDrop = useDropReport();
   const edit = useMemo<ClipEdit>(() => ({ documentId, segmentId, trackId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
     [documentId, segmentId, trackId, clip]);
-  // 淡入淡出只在打开的技能 JSON 中有值（运行回执不带）。
+  // 淡入淡出只在打开的文档 JSON 中有值（运行回执不带）。
   const ease = useMemo(() => author && clip.clip.easeInSeconds !== undefined ? {
     in: clip.clip.easeInSeconds, out: clip.clip.easeOutSeconds ?? 0,
     set: (easeIn: number | null, easeOut: number | null) => authoringActions.setClipEase(documentId, clip.clip.id, easeIn, easeOut),

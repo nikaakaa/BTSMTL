@@ -9,12 +9,12 @@ import {
   type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type SkillDocumentGraph, type SkillElements } from '../../api/authoring';
+import { authoringApi, authoringTargetKey, describedPortsAvailable, type AuthoringTarget, type NodeTypeInfo, type ReferenceNodeTemplate, type AuthoringGraph, type AuthoringElements } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import type { PlayerJobId } from '../../api/playerRecords';
 import type { ExecutionCall, GraphDefinition, GraphEdge, GraphPort, RouteFrame } from '../../api/types';
 import {
-  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphLayoutPath, graphPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useSkillElements,
+  applyGraphEdits, authoringActions, authoringDocument, currentDocument, graphLayoutPath, graphPath, ownsAuthoringGraph, useAuthoring, useCurrentDocument, useAuthoringElements,
   useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { graphVariableOwner } from '../../state/authoringVariables';
@@ -143,10 +143,10 @@ export function GraphPanel() {
       caller: request.caller, origin: request.origin, viewport: null });
   }, [request, panelId, setParams]);
   if (!opened.target) return <ReportEmpty text="选择要编辑的内容" />;
-  if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有技能节点图" />;
+  if (opened.target.kind === 'scenario') return <ReportEmpty text="此场景方案没有文档节点图" />;
   if (opened.loading && opened.graphs === null) return <Empty text="读取中" />;
   if (opened.graphs === null) return <ReportEmpty text={opened.error ?? '正在读取作者图'} />;
-  if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
+  if (!opened.graphs.length) return <ReportEmpty text={opened.error ?? '此文档没有节点图'} />;
   const graphs = opened.graphs;
   const selected = params.graph === null ? graphs.find(graph => graph.id === opened.programId)
     : graphs.find(graph => graphKey(graph) === params.graph);
@@ -158,7 +158,7 @@ export function GraphPanel() {
         void projectActions.openGraph(graph, undefined, { origin: null, observation: null, caller: null, panelId })
           .catch(reason => consoleActions.error('作者', reason));
       }} /></PanelBar>
-    <ReportEmpty text={params.graph === null ? '当前技能没有声明根执行图，请选择要查看的作者图。'
+    <ReportEmpty text={params.graph === null ? '当前文档没有声明根执行图，请选择要查看的作者图。'
       : '原先选择的图已不在当前作者文档中；原选择已保留，请明确选择要查看的作者图。'} />
   </div>;
   return <GraphView graphs={graphs} defaultGraph={selected} params={params} setParams={setParams} />;
@@ -172,7 +172,7 @@ function ReportEmpty({ text }: { text: string }) {
 const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([graphKey(graph), callKey(call)]);
 
 function GraphView({ graphs, defaultGraph, params, setParams }: {
-  graphs: SkillDocumentGraph[]; defaultGraph: SkillDocumentGraph; params: Params; setParams(patch: Partial<Params>): void;
+  graphs: AuthoringGraph[]; defaultGraph: AuthoringGraph; params: Params; setParams(patch: Partial<Params>): void;
 }) {
   const binding = useDocumentObservationBinding();
   const documentNotice = useAuthoring(state => authoringDocument(state).documentError);
@@ -554,7 +554,7 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
   return !nodeReferences(hierarchy, graph, laid.node.id).length;
 }
 
-// 作者模式：当前技能的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
+// 作者模式：当前文档的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
   const { graph } = props;
   const author = useAuthoring(useShallow(state => ({
@@ -569,12 +569,12 @@ function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'e
   const groupsText = JSON.stringify(graphGroups(layout, graph.id));
   const groups = useMemo(() => JSON.parse(groupsText) as CanvasGroup[], [groupsText]);
   // 新建状态、转移与图的锚点和默认值；连线上的专属图（条件）也按其中的形状识别，只读时同样用于连线标签。
-  const elements = useSkillElements(author.own);
+  const elements = useAuthoringElements(author.own);
   return <GraphCanvas {...props} graph={shown} editable={editable} groups={groups} elements={elements} />;
 }
 
 interface GraphCanvasProps {
-  graph: SkillDocumentGraph;
+  graph: AuthoringGraph;
   call: ExecutionCall | null;
   route: RouteFrame | null;
   hierarchy: GraphHierarchy;
@@ -583,7 +583,7 @@ interface GraphCanvasProps {
   setParams(patch: Partial<Params>): void;
   editable: boolean;
   groups: CanvasGroup[];
-  elements: SkillElements | null;
+  elements: AuthoringElements | null;
 }
 
 function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
@@ -921,7 +921,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     })() : { x: at.x, y: at.y, width: 400, height: 260 };
     graphAuthoring.addGroup(graph.id, rect, '新分组');
   };
-  const blocked = '只能编辑顶栏所选技能的图';
+  const blocked = '只能编辑顶栏所选文档的图';
   // 右键连线（线或线上的图名）：打开或新建专属图（条件）、移除、删除连线，排在画布菜单前面。
   const [menuEdgeId, setMenuEdgeId] = useState<string | null>(null);
   const menuEdge = menuEdgeId === null ? null : edges.find(edge => edge.id === menuEdgeId) ?? null;

@@ -78,8 +78,8 @@ export async function deleteJson<T>(path: string, body: unknown, acceptedStatuse
   return response.json();
 }
 
-// 回执原文：作者 JSON 需要保留浮点写法，由调用方按技能 JSON 规则解析。
-// 请求体为字符串时原样发送（调用方已按技能 JSON 规则写出 1.0 这类浮点）。
+// 回执原文：作者 JSON 需要保留浮点写法，由调用方按文档 JSON 规则解析。
+// 请求体为字符串时原样发送（调用方已按文档 JSON 规则写出 1.0 这类浮点）。
 export async function postText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
   const response = await send(path, {
     method: 'POST',

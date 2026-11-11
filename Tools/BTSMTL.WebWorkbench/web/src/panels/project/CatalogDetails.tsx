@@ -48,8 +48,8 @@ function CatalogUse({ item }: { item: AdapterCatalogItem }) {
       : <div className={styles.note}>{animation.kind === 'loading' ? '正在读取动画素材库。' : animation.reason}</div>}</Fold>}
     {item.domain === executionScopeDomain &&<Fold title="角色" defaultOpen>
       <PanelBar wrap>
-        <Button disabled={!skill} tip={skill ? undefined : '先打开一个技能'} onClick={() => authoringActions.selectExecutionScope('previewScope', item.value)}>设为当前技能的预览角色</Button>
-        <Button disabled={!skill} tip={skill ? undefined : '先打开一个技能'} onClick={() => authoringActions.selectExecutionScope('runtimeScope', item.value)}>设为实际运行角色</Button>
+        <Button disabled={!skill} tip={skill ? undefined : '先打开一个文档'} onClick={() => authoringActions.selectExecutionScope('previewScope', item.value)}>设为当前文档的预览角色</Button>
+        <Button disabled={!skill} tip={skill ? undefined : '先打开一个文档'} onClick={() => authoringActions.selectExecutionScope('runtimeScope', item.value)}>设为实际运行角色</Button>
       </PanelBar>
       <ScopeEditor query={{ adapter: item.adapter, scope: item.value }} />
     </Fold>}

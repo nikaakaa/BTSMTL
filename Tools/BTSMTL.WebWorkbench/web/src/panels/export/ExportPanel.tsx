@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { SkillEditingView, DocumentExportKind } from '../../api/authoring';
+import type { AuthoringEditingView, DocumentExportKind } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { exportActions, useExports, type ExportOperation } from '../../state/exports';
 import { consoleActions } from '../../state/store';
@@ -48,7 +48,7 @@ export function ExportPanel() {
   </div>;
 }
 
-function ProductScope({ product }: { product: SkillEditingView['product'] }) {
+function ProductScope({ product }: { product: AuthoringEditingView['product'] }) {
   return product === null ? <div className={styles.note}>未选择 Product 作者范围</div>
     : <dl className={styles.scope}><dt>Product</dt><dd>{product.value}</dd><dt>版本</dt><dd>{product.revision}</dd></dl>;
 }

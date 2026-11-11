@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ProjectItem, ReferrersResult, SkillDeleteResult } from '../../api/authoring';
+import type { ProjectItem, ReferrersResult, DocumentDeleteResult } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
@@ -14,13 +14,15 @@ export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kin
 // 检查器中所选作者内容的操作：打开、重命名、带引用检查的删除与引用者。
 export function DocumentDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
   const documentTypes = useAuthoring(state => state.documentTypes);
-  const kindName = (kind: ProjectItem['kind']) => kind === 'input-plan' ? '输入方案' : documentTypes.find(type => type.id === kind)!.displayName;
-  const typeName = kindName(item.kind);
+  const documents = useAuthoring(state => state.documents);
+  const kindName = (value: ProjectItem) => value.kind === 'input-plan' ? '输入方案'
+    : documentTypes.find(type => type.id === (value.kind === 'document' ? documents[value.owner].kind : value.kind))!.displayName;
+  const typeName = kindName(item);
   const [referrers, setReferrers] = useState<ReferrersResult | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [deletion, setDeletion] = useState<Extract<SkillDeleteResult, { code: 'skill-referenced' }> | null>(null);
+  const [deletion, setDeletion] = useState<Extract<DocumentDeleteResult, { code: 'skill-referenced' }> | null>(null);
   const pendingDocument = useAuthoring(state => {
     const document = state.documents[item.owner];
     return document?.loading === true || document?.saving === true;
@@ -48,11 +50,11 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
       {canRename && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
-      {item.kind === 'skill' ? <Button variant="ghost" disabled={busy || pendingDocument}
+      {item.kind === 'document' ? <Button variant="ghost" disabled={busy || pendingDocument}
         tip={pendingDocument ? `等待此${typeName}的读取或保存完成` : '删除整个文档目录；宿主会检查磁盘修订、外部引用、运行授予和共享内容'}
         onClick={() => void perform(async () => {
           setDeletion(null);
-          const result = await projectActions.removeSkill(item);
+          const result = await projectActions.removeDocument(item);
           if (result.deleted) {
             consoleActions.log('info', 'Project', `${item.name} 文档目录已删除`, JSON.stringify(result));
             onChanged();
@@ -79,7 +81,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
         const source = items.find(value => value.owner === reference.owner && value.file === reference.file);
         return <div key={index} className={styles.facts}>
           <strong>{reference.ownerName}</strong>
-          <span>{reference.kind === 'carrier-grant' ? 'Definition 技能授予' : '作者内容引用'} · {reference.view === 'saved' ? '已保存' : '未保存编辑'}</span>
+          <span>{reference.kind === 'carrier-grant' ? 'Definition 运行授予' : '作者内容引用'} · {reference.view === 'saved' ? '已保存' : '未保存编辑'}</span>
           <code>{reference.file} · {reference.path}</code>
           {reference.kind !== 'carrier-grant' && source && <Button variant="ghost" disabled={busy}
               onClick={() => void perform(() => projectActions.open(source))}>打开引用者</Button>}
@@ -87,7 +89,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
       })}
       {deletion.shared.length > 0 && <div className={styles.heading}>文档拥有的共享内容 · {deletion.shared.length} 项</div>}
       {deletion.shared.map(shared => <div key={keyOf(shared)} className={styles.facts}>
-        <strong>{shared.name}</strong><span>{kindName(shared.kind)} · {shared.ownerName}</span><code>{shared.file}</code>
+        <strong>{shared.name}</strong><span>{kindName(shared)} · {shared.ownerName}</span><code>{shared.file}</code>
         <Button variant="ghost" disabled={busy}
           onClick={() => void perform(() => projectActions.open(shared))}>打开共享内容</Button>
       </div>)}

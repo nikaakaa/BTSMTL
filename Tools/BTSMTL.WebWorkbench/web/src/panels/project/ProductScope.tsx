@@ -7,7 +7,7 @@ import { MenuButton } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
 
-// 当前技能编译时使用的产品内容；产品有新修订时需要重新选择。
+// 当前文档编译时使用的产品内容；产品有新修订时需要重新选择。
 export function ProductScope() {
   const [products, setProducts] = useState<AuthoringProduct[] | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);

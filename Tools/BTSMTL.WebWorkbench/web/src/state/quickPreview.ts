@@ -662,7 +662,7 @@ export const quickPreview = {
     requestPicture();
   },
   retryPicture() { requestPicture(true); },
-  // 拖动或拉伸技能 Timeline 片段时交给播放器的时间候选：clips 为该 Timeline 全部片段的起止（原始定点值）。
+  // 拖动或拉伸文档 Timeline 片段时交给播放器的时间候选：clips 为该 Timeline 全部片段的起止（原始定点值）。
   retime(documentId: string, clips: ClipTimeRaw[]) {
     const accepted = current().accepted;
     if (accepted === null || !quickPictureCurrent()) return;

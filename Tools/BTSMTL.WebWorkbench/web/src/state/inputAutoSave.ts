@@ -1,4 +1,4 @@
-// 输入方案是编辑器侧数据：输入方案、其输入 Timeline 或这些 Timeline 引用的图改动后自动保存，不编译技能。
+// 输入方案是编辑器侧数据：输入方案、其输入 Timeline 或这些 Timeline 引用的图改动后自动保存，不编译文档。
 // 是否只含输入修改由 Host 按输入闭包判定；混有其他修改时 Host 拒绝且不写盘，留给作者手动保存。
 import { authoringActions, authoringDocument, timelinePath, useAuthoring } from './authoring';
 import { parseSkillJson, type JsonObject, type JsonValue } from './skillJson';

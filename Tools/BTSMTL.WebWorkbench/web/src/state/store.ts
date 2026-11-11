@@ -5,7 +5,7 @@ import type {
   InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
-import type { SkillDocumentGraph } from '../api/authoring';
+import type { AuthoringGraph } from '../api/authoring';
 import type { QuickPreviewState } from './quickPreview';
 import type {
   PlayerArchive, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
@@ -44,7 +44,7 @@ export const contentSelectionKey = (selection: ContentSelection | null) => selec
   : selection.kind === 'scene' ? `scene:${selection.path}` : `timeline:${selection.package}`;
 
 // 场景发布按生成时间倒序。正式发布目录为“场景 GUID/修订/scene.json”，每个 Unity 场景最新一份是当前场景，按场景名显示；
-// 同场景的旧修订、旧命名发布包和技能刷新临时包都归历史。
+// 同场景的旧修订、旧命名发布包和文档刷新临时包都归历史。
 export function previewContentChoices(sources: Sources) {
   const seen = new Set<string>();
   const scenes = sources.quickScenes.map(scene => {
@@ -54,7 +54,7 @@ export function previewContentChoices(sources: Sources) {
     const current = official && !seen.has(scene.sceneGuid);
     if (current) seen.add(scene.sceneGuid);
     const label = current ? name : official ? `${name} · 修订 ${parts[1].slice(0, 8)}`
-      : parts[0] === 'skill-refreshes' ? `${name} · 技能刷新 ${parts[1].slice(0, 8)}` : parts.length === 2 && parts[0] !== scene.sceneGuid && parts[0] !== name ? parts[0] : `${name} · 旧发布`;
+      : parts[0] === 'skill-refreshes' ? `${name} · 文档刷新 ${parts[1].slice(0, 8)}` : parts.length === 2 && parts[0] !== scene.sceneGuid && parts[0] !== name ? parts[0] : `${name} · 旧发布`;
     return { value: `scene:${scene.publication.path}`, label, current, scenePath: scene.scenePath, revision: scene.publication.revision,
       selection: { kind: 'scene', path: scene.publication.path } as const };
   });
@@ -78,7 +78,7 @@ export interface RunData {
   routeFrames: RouteFrame[];
   routeProtocol: string | null;
   routeAvailability: Availability[];
-  graphs: SkillDocumentGraph[] | null;
+  graphs: AuthoringGraph[] | null;
   graphAvailability: Availability[];
   inputTimeline: InputTimeline | null;
   // Timeline 输入组与工具栏共同显示的已采用输入方案（inputRootKey）。

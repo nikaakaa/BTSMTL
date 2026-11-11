@@ -1,6 +1,6 @@
 import { useTimelineContext, type Range } from 'dnd-timeline';
 import { Fragment, useContext, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import type { SkillElements } from '../../api/authoring';
+import type { AuthoringElements } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring, useDocumentObservationNotice, useInputContext, useInputSchemes } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
@@ -21,14 +21,14 @@ import styles from './timeline.module.css';
 // ── 窗口工具条（照 Timeline 窗口顶行）：时间框、Timeline 选择器与面包屑、本次实际调用，右侧齿轮设置；播放与保存在顶栏 ──
 
 export interface Subject {
-  // 选择器（照 Sequence Selector）：技能里的 Timeline 或路线所属的技能根；只有一项可选时为 null。
+  // 选择器（照 Sequence Selector）：文档里的 Timeline 或路线所属的文档根；只有一项可选时为 null。
   selector: { label: string; entries: MenuEntry[] } | null;
   // 面包屑：前面的层级可点击返回，最后一项是所看的内容。
   crumbs: { label: ReactNode; onSelect?(): void }[];
 }
 
 // 在 Timeline 上添加轨道（编辑行带下拉三角的＋，分组头的＋）：种类与默认值取原 C# 轨道类型。
-export function AddTrack({ elements, documentId, caret }: { elements: SkillElements | null; documentId: string | null; caret?: boolean }) {
+export function AddTrack({ elements, documentId, caret }: { elements: AuthoringElements | null; documentId: string | null; caret?: boolean }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const schemes = useInputSchemes();
   if (!author || !documentId) return null;

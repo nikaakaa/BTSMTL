@@ -7,7 +7,7 @@ import { ApiError, isAbort } from '../../api/http';
 import type { WorkspaceDocumentElement } from '../../api/workspaceDocuments';
 import type { VariableDeclarationChanges, VariableEntry, VariableType, VariablesQuery } from '../../api/variables';
 import {
-  authoringActions, authoringDocument, graphPath, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useSkillElements,
+  authoringActions, authoringDocument, graphPath, timelinePath, useAuthoring, useCurrentDocument, useInputContext, useAuthoringElements,
   type JsonKey, type JsonMutation,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
@@ -549,23 +549,23 @@ function ProfileDocumentFields({ file, jsonPath }: { file: string; jsonPath: str
   </Fold>;
 }
 
-export function SkillFields({ editable }: { editable: boolean }) {
+export function DocumentRootFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
   const execution = useAuthoring(state => authoringDocument(state).execution);
   const rootType = useAuthoring(state => authoringDocument(state).authoringType);
   const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
-  const { document } = useCurrentDocument(target?.kind === 'skill' ? rootFile : null);
-  if (target?.kind !== 'skill' || document === null) return null;
+  const { document } = useCurrentDocument(rootFile);
+  if (target === null || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
     <Fold title="预览设置" defaultOpen>
       <ScopeSelect label="预览角色" tip="预览、保存和导出时用哪个角色的资源与映射" value={execution.previewScope}
         onChange={value => authoringActions.selectExecutionScope('previewScope', value)} />
-      <ScopeSelect label="实际运行角色" tip="技能实际授予给哪个角色运行" value={execution.runtimeScope}
+      <ScopeSelect label="实际运行角色" tip="文档实际授予给哪个角色运行" value={execution.runtimeScope}
         onChange={value => authoringActions.selectExecutionScope('runtimeScope', value)} />
       <div className={styles.field}><FieldLabel label="产品范围" tip="编译时从哪个产品内容里找载体等候选" /><ProductScope /></div>
     </Fold>
-    {rootType === null ? <div className={styles.issue}>当前技能文档未提供作者字段声明</div>
-      : <AuthoringValueFields label="技能配置" type={rootType} value={document as JsonObject}
+    {rootType === null ? <div className={styles.issue}>当前文档未提供作者字段声明</div>
+      : <AuthoringValueFields label="文档配置" type={rootType} value={document as JsonObject}
         graphId={null} identity={rootFile!} onSet={next => authoringActions.edit(rootFile!, value => { Object.assign(value as JsonObject, next); })} />}
   </fieldset>;
 }
@@ -575,7 +575,7 @@ export function SkillFields({ editable }: { editable: boolean }) {
 export function NodeFields({ graphId, nodeId: id, children }: { graphId: string; nodeId: string; children?: ReactNode }) {
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
-  const elements = useSkillElements(skill !== null);
+  const elements = useAuthoringElements(skill !== null);
   const node = findNode(document, id);
   const { description, issues } = useDescription(skill, node === null ? null : { kind: 'node', graphId, nodeId: id });
   if (!node) return null;
@@ -616,7 +616,7 @@ export function NodeFields({ graphId, nodeId: id, children }: { graphId: string;
 
 // 输入片段与输入标记共用：两种图都在 @timelineEnable 锚点下写按键。
 export function InputClipFields({ documentId, graphId }: { documentId: string; graphId: string }) {
-  const elements = useSkillElements(true);
+  const elements = useAuthoringElements(true);
   const context = useInputContext(documentId);
   const { document } = useCurrentDocument(graphPath(graphId));
   if (!elements || !document) return <div className={styles.note}>正在读取输入字段</div>;
@@ -633,7 +633,7 @@ export function InputClipFields({ documentId, graphId }: { documentId: string; g
 }
 
 function InputWriterFields({ graphId, node, contract, keys }: {
-  graphId: string; node: JsonObject; contract: import('../../api/authoring').SkillElements['previewInput'];
+  graphId: string; node: JsonObject; contract: import('../../api/authoring').AuthoringElements['previewInput'];
   keys: import('../../api/types').InputCatalog['players'][number]['keys'];
 }) {
   const target = useAuthoring(state => state.target);
@@ -852,7 +852,7 @@ export function TrackFields({ documentId, trackId, children }: { documentId: str
   const skill = useAuthoring(state => state.target);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
-  const elements = useSkillElements(true);
+  const elements = useAuthoringElements(true);
   const template = elements?.tracks.find(item => item.kind === track?.ContractKind) ?? null;
   if (!track) return null;
   const shape = template?.shape ?? null;
@@ -1133,7 +1133,7 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
-  const elements = useSkillElements(skill !== null);
+  const elements = useAuthoringElements(skill !== null);
   const template = elements?.clips.find(template => template.kind === clip?.ContractKind);
   const shape = template?.shape ?? null;
   const { description, issues } = useDescription(skill, template === undefined || clip === null ? null

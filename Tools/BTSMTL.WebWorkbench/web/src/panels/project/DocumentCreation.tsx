@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { isAbort } from '../../api/http';
 import { openPanel } from '../../shell/layout';
-import { authoringActions, type useSkillElements } from '../../state/authoring';
+import { authoringActions, type useAuthoringElements } from '../../state/authoring';
 import { graphAuthoring } from '../../state/graphAuthoring';
 import { projectActions } from '../../state/project';
 import { consoleActions, selectionActions } from '../../state/store';
@@ -15,7 +15,7 @@ import styles from './project.module.css';
 export type DocumentContentKind = 'document' | 'timeline' | 'macro' | 'input';
 
 export function DocumentCreation({ kind, skill, elements, onDone }: {
-  kind: DocumentContentKind; skill: string | null; elements: ReturnType<typeof useSkillElements>; onDone(): void;
+  kind: DocumentContentKind; skill: string | null; elements: ReturnType<typeof useAuthoringElements>; onDone(): void;
 }) {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');

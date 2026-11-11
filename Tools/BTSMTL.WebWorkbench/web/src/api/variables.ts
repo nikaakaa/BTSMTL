@@ -1,8 +1,8 @@
 import { postText } from './http';
-import { array, boolean, nullable, number, object, optional, text, type Decoder } from './playerRecords';
+import { array, boolean, hosted, nullable, number, object, optional, text, type Decoder } from './playerRecords';
 import { readAuthoringAvailability } from './authoringAvailability';
 import { readWorkspaceDocumentInfo, readWorkspaceDocumentView, readWorkspaceEditingView, type WorkspaceEditingView } from './workspaceDocuments';
-import { parseSkillJson, stringifySkillJson, type JsonValue } from '../state/skillJson';
+import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 
 const parsedJson: Decoder<JsonValue> = (value, path) => {
   if (value === undefined) throw new Error(`${path} 缺少正式 JSON 值`);
@@ -20,7 +20,9 @@ const variable = (value: unknown, path = 'Variable'): ReturnType<typeof declared
   const kind = optional(text)((value as Record<string, unknown>).m_ObjectKind, `${path}.m_ObjectKind`);
   return kind === undefined ? declared : { ...declared, m_ObjectKind: kind };
 };
-export const readVariablesValue = object({ m_ContentDomain: text, m_OwnerId: text, m_Revision: text, m_Variables: array(variable) });
+const readVariableDeclarations = object({ m_OwnerId: text, m_Revision: text, m_Variables: array(variable) });
+export const readVariablesValue = (value: unknown, path = 'VariableDeclarations') =>
+  ({ ...hosted({})(value, path) as JsonObject, ...readVariableDeclarations(value, path) });
 export type VariablesValue = ReturnType<typeof readVariablesValue>;
 const choices = object({
   types: array(object({ typeId: text, clrType: text, valueKind: text, defaultValue: parsedJson, enumMembers: nullable(array(enumMember)) })),

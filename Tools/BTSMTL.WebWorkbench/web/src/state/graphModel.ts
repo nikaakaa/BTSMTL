@@ -1,7 +1,7 @@
 import type {
   EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, LoopScope, NodeOccurrence, PortSample, RouteFrame,
 } from '../api/types';
-import type { SkillDocumentGraph, SkillDocumentRelation } from '../api/authoring';
+import type { AuthoringGraph, AuthoringGraphRelation } from '../api/authoring';
 import type { WorkbenchState } from './store';
 
 // 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
@@ -251,26 +251,26 @@ export function layoutGraph(graph: GraphDefinition, path: string): { nodes: Laid
   };
 }
 
-export type GraphNavigationTarget = Pick<Extract<SkillDocumentRelation['target'], { kind: 'graph' }>, 'id' | 'displayName' | 'role' | 'owner' | 'ownerName' | 'file'>;
+export type GraphNavigationTarget = Pick<Extract<AuthoringGraphRelation['target'], { kind: 'graph' }>, 'id' | 'displayName' | 'role' | 'owner' | 'ownerName' | 'file'>;
 export type NodeNavigationTarget = (GraphNavigationTarget & { kind: 'graph' })
-  | Pick<Extract<SkillDocumentRelation['target'], { kind: 'timeline' }>, 'kind' | 'id' | 'displayName' | 'owner' | 'ownerName' | 'file'>;
+  | Pick<Extract<AuthoringGraphRelation['target'], { kind: 'timeline' }>, 'kind' | 'id' | 'displayName' | 'owner' | 'ownerName' | 'file'>;
 
 export interface GraphHierarchy {
-  graphs: Map<string, SkillDocumentGraph>;
+  graphs: Map<string, AuthoringGraph>;
   nodeTargets: Map<string, NodeNavigationTarget[]>;
-  parents: Map<string, SkillDocumentGraph>;
-  referrers: Map<string, SkillDocumentRelation[]>;
+  parents: Map<string, AuthoringGraph>;
+  referrers: Map<string, AuthoringGraphRelation[]>;
 }
 
 const authorGraphKey = (owner: string, id: string) => JSON.stringify([owner, id]);
 const nodeTargetKey = (graph: GraphDefinition, nodeId: string) => JSON.stringify([graphKey(graph), nodeId]);
 
-export function graphHierarchy(graphs: SkillDocumentGraph[], relations: SkillDocumentRelation[]): GraphHierarchy {
+export function graphHierarchy(graphs: AuthoringGraph[], relations: AuthoringGraphRelation[]): GraphHierarchy {
   const byAuthor = new Map(graphs.map(graph => [authorGraphKey(graph.owner, graph.id), graph]));
   const nodeTargets = new Map<string, NodeNavigationTarget[]>();
-  const parents = new Map<string, SkillDocumentGraph>();
-  const referrers = new Map<string, SkillDocumentRelation[]>();
-  const addTarget = (graph: SkillDocumentGraph, nodeId: string, target: NodeNavigationTarget) => {
+  const parents = new Map<string, AuthoringGraph>();
+  const referrers = new Map<string, AuthoringGraphRelation[]>();
+  const addTarget = (graph: AuthoringGraph, nodeId: string, target: NodeNavigationTarget) => {
     const key = nodeTargetKey(graph, nodeId);
     const targets = nodeTargets.get(key) ?? [];
     if (!targets.some(item => item.kind === target.kind && item.owner === target.owner && item.id === target.id)) targets.push(target);
@@ -304,13 +304,13 @@ export function graphReferrers(hierarchy: GraphHierarchy, graph: GraphDefinition
 }
 
 export interface Crumb {
-  graph: SkillDocumentGraph;
+  graph: AuthoringGraph;
   label: string;
 }
 
 export function graphCrumbs(hierarchy: GraphHierarchy, graph: GraphDefinition): Crumb[] {
   const crumbs: Crumb[] = [];
-  let current: SkillDocumentGraph | undefined = hierarchy.graphs.get(graphKey(graph))!;
+  let current: AuthoringGraph | undefined = hierarchy.graphs.get(graphKey(graph))!;
   while (current !== undefined) {
     crumbs.unshift({ graph: current, label: graphName(current) });
     current = hierarchy.parents.get(graphKey(current));
@@ -318,7 +318,7 @@ export function graphCrumbs(hierarchy: GraphHierarchy, graph: GraphDefinition): 
   return crumbs;
 }
 
-export const isStateMachine = (graph: Pick<SkillDocumentGraph, 'role'>) => graph.role === 'StateMachine';
+export const isStateMachine = (graph: Pick<AuthoringGraph, 'role'>) => graph.role === 'StateMachine';
 
 // 端口值类型色按样本的值类型判断。
 export function portColor(valueType: string | undefined): string {

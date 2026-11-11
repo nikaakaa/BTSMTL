@@ -12,23 +12,23 @@ import { array, boolean, choice, hosted, nullable, number, object, opaque, optio
 // 作者文档 HTTP 接口：文档文件原文、作者合同、编辑视图、编译发布与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
 
-export type SkillFile = {
+export type AuthoringFile = {
   path: string;
   content: string;
 };
 
-export type SkillEditingView = WorkspaceEditingView;
+export type AuthoringEditingView = WorkspaceEditingView;
 
-const readSkillFile = object({ path: text, content: text });
+const readAuthoringFile = object({ path: text, content: text });
 const readCreatedVariables = nullable(readVariablesValue);
-const readSkillSnapshotValue = object({ skill: text, revision: text,
-  files: array(readSkillFile), sourceFiles: array(readSkillFile), document: readWorkspaceDocumentInfo });
-const readSkillSnapshot = (value: unknown, path?: string) => {
-  const snapshot = readSkillSnapshotValue(value, path);
+const readAuthoringSnapshotValue = object({ skill: text, revision: text,
+  files: array(readAuthoringFile), sourceFiles: array(readAuthoringFile), document: readWorkspaceDocumentInfo });
+const readAuthoringSnapshot = (value: unknown, path?: string) => {
+  const snapshot = readAuthoringSnapshotValue(value, path);
   return { ...snapshot, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
     sourceFiles: Object.fromEntries(snapshot.sourceFiles.map(file => [file.path, file.content])) };
 };
-export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
+export type AuthoringSnapshot = ReturnType<typeof readAuthoringSnapshot>;
 
 export type AuthoringTarget = Pick<WorkspaceDocumentInfo, 'kind' | 'documentPath'>;
 const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios', variables: 'Variables', graph: 'Graphs' };
@@ -112,7 +112,7 @@ export interface DescribedPort {
 
 export type DescribedPorts =
   | { availability: Extract<QueryAvailability, { available: true }>; hasMore: boolean; items: DescribedPort[]; errors?: never }
-  | { availability: Extract<QueryAvailability, { available: false }>; errors: SkillFormatError[]; hasMore?: never; items?: never };
+  | { availability: Extract<QueryAvailability, { available: false }>; errors: AuthoringFormatError[]; hasMore?: never; items?: never };
 
 export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract<DescribedPorts, { items: DescribedPort[] }> =>
   ports.availability.available;
@@ -255,7 +255,7 @@ export interface TypeDescription {
   references: { fieldId: string; serializedMemberPath: string[]; identity: string; owner: string; role: string; ownership: 'Private' | 'Shared' }[];
 }
 
-// 技能存储值中出现且在作者包绑定中有条目的业务键。
+// 文档存储值中出现且在作者包绑定中有条目的业务键。
 export interface IdentityItem {
   identity: string;
   kind: string;
@@ -273,7 +273,7 @@ interface ProjectItemBase {
 }
 
 export type ProjectItem = ProjectItemBase & (
-  | { kind: 'skill'; asset: JsonObject }
+  | { kind: 'document'; asset: JsonObject }
   | { kind: 'graph'; role: string }
   | { kind: 'graph'; contentDomain: string; domains: string[]; variableOwnerId: string | null }
   | { kind: 'timeline' }
@@ -301,15 +301,15 @@ export interface SemanticReferenceLocation extends ReferenceLocation {
 export type ProjectReferrer = (ReferenceLocation & { identity: string }) |
   (SemanticReferenceLocation & { targets: ReferenceChoiceTarget[] });
 
-export type SkillDeletionReference = ReferenceLocation & {
+export type DocumentDeletionReference = ReferenceLocation & {
   identity: string;
 } & ({ kind: 'authoring'; view: 'saved' | 'editing' } | { kind: 'carrier-grant'; view: 'saved' });
 
-export type SkillDeleteResult = {
+export type DocumentDeleteResult = {
   success: true; deleted: true; skill: string; revision: string; authoringRevision: string; removedDocuments: string[];
 } | {
   success: false; deleted: false; code: 'skill-referenced'; skill: string; revision: string; authoringRevision: string;
-  references: SkillDeletionReference[]; shared: ProjectItem[]; message: string;
+  references: DocumentDeletionReference[]; shared: ProjectItem[]; message: string;
 } | {
   success: false; deleted: false; code: 'source-revision-conflict'; skill: string; message: string;
 };
@@ -342,7 +342,7 @@ export interface GraphAnchor {
   kind: string;
   type: string;
   uid: string;
-  // 按技能 JSON 规则解析：1.0 形式为浮点对象，用 numberOf 取值。
+  // 按文档 JSON 规则解析：1.0 形式为浮点对象，用 numberOf 取值。
   x: JsonValue;
   y: JsonValue;
 }
@@ -395,7 +395,7 @@ export interface ReferenceCurves {
 export type InputPlanContext = { kind: 'skill' } | { kind: 'timeline'; timeline: string }
   | { kind: 'scene'; scene: string; actor: string };
 
-export interface SkillElements {
+export interface AuthoringElements {
   graphs: GraphTemplate[];
   anchors: Record<string, GraphAnchor[]>;
   // 状态机里新建的普通状态：节点类型、默认名称与默认配置；必填图引用成员随状态一并新建。
@@ -439,7 +439,7 @@ interface Page<T> {
   items: T[];
 }
 
-// 保存：宿主写入文件后用正式编译器编译本技能。成功为 200 与编译回执；
+// 保存：宿主写入文件后用正式编译器编译本文档。成功为 200 与编译回执；
 // 严格读取或编译拒绝为 422，文件仍已保存（saved=true），附原诊断。
 const preparationPhases = array(object({ stage: text, milliseconds: number }));
 const readCompilationReport = object({
@@ -470,21 +470,21 @@ function readDocumentExport(value: unknown) {
 export type DocumentExport = ReturnType<typeof readDocumentExport>;
 export type DocumentExportKind = DocumentExport['kind'];
 
-export interface CompiledSkillSaveResult {
+export interface CompiledDocumentSaveResult {
   saved: true;
   compilationState: 'succeeded';
-  content: SkillSnapshot;
+  content: AuthoringSnapshot;
   documents: WorkspaceDocumentSnapshot[];
   compilation: CompilationReport;
   preview: PlayerContentRefreshReceipt | null;
 }
 
 export interface InputRevision { planId: string; path: string; revision: string }
-const readSaved = (value: unknown, path = 'SkillSave.saved'): true => {
+const readSaved = (value: unknown, path = 'DocumentSave.saved'): true => {
   if (value !== true) throw new Error(`${path} 需要 true`);
   return value;
 };
-const savedContentFields = { saved: readSaved, content: readSkillSnapshot, documents: array(readWorkspaceDocumentSnapshot) };
+const savedContentFields = { saved: readSaved, content: readAuthoringSnapshot, documents: array(readWorkspaceDocumentSnapshot) };
 const readInputSaveResult = object({
   ...savedContentFields, compilationState: choice('not-required'),
   inputs: array(object({ planId: text, path: text, revision: text })),
@@ -497,15 +497,15 @@ const readNull = (value: unknown, path = 'Authoring'): null => {
   if (value !== null) throw new Error(`${path} 需要 null`);
   return null;
 };
-export type SkillSaveResult = CompiledSkillSaveResult | InputSaveResult;
+export type DocumentSaveResult = CompiledDocumentSaveResult | InputSaveResult;
 
 export type PlayerContentRefreshTarget = Pick<StartPlayerJobRequest, 'projectParameters' | 'channels'> & {
   requestId: string;
   liveId: PlayerPreviewTarget['liveId'];
 };
 
-export interface SkillSaveRequest {
-  editingView: SkillEditingView;
+export interface DocumentSaveRequest {
+  editingView: AuthoringEditingView;
   preview: PlayerContentRefreshTarget | null;
   job?: StartPlayerJobRequest;
   // 只保存输入方案闭包；包含其他修改时 Host 以 409 not-input-only 拒绝且不写盘。
@@ -559,7 +559,7 @@ function readContentRefreshReceipt(value: unknown, path = 'ContentRefresh') {
 }
 export type PlayerContentRefreshReceipt = ReturnType<typeof readContentRefreshReceipt>;
 
-export interface SkillFormatError {
+export interface AuthoringFormatError {
   code: string;
   authoring?: string | null;
   skill?: string | null;
@@ -580,15 +580,15 @@ const readSavedContent = object(savedContentFields);
 const readCompilerFailure = object({ exitCode: number, output: text, error: text, outputPath: text, errorPath: text });
 
 function readSaveReceipt(value: unknown) {
-  const receipt = object({ saved: boolean, content: nullable(readSkillSnapshot), documents: array(readWorkspaceDocumentSnapshot) })(value);
+  const receipt = object({ saved: boolean, content: nullable(readAuthoringSnapshot), documents: array(readWorkspaceDocumentSnapshot) })(value);
   if (receipt.saved && receipt.content !== null)
     return { ...receipt, saved: true as const, content: receipt.content };
   if (!receipt.saved && receipt.content === null)
     return { ...receipt, saved: false as const, content: null };
-  throw new Error('SkillSave.saved 与 content 不一致');
+  throw new Error('DocumentSave.saved 与 content 不一致');
 }
 
-export const readSkillSaveConflict = (value: unknown) => ({
+export const readDocumentSaveConflict = (value: unknown) => ({
   ...readSaveReceipt(value), ...object({ code: text, message: text })(value),
 });
 
@@ -602,7 +602,7 @@ function readSourceRejection(value: unknown) {
   return { ...readSaveReceipt(value), compilationState, detail };
 }
 
-export function readSkillSaveRejection(value: unknown) {
+export function readDocumentSaveRejection(value: unknown) {
   const { stage } = object({ stage: choice('source-rejected', 'compilation-failed',
     'unity-publication-failed', 'unity-publication-rejected') })(value);
   switch (stage) {
@@ -616,7 +616,7 @@ export function readSkillSaveRejection(value: unknown) {
   }
 }
 
-export interface SkillDocumentGraph extends GraphDefinition {
+export interface AuthoringGraph extends GraphDefinition {
   authoringPath: string;
   owner: string;
   ownerName: string;
@@ -628,7 +628,7 @@ export interface SkillDocumentGraph extends GraphDefinition {
   declaredOwner: { graphId: string; nodeId: string } | null;
 }
 
-export interface SkillDocumentRelation {
+export interface AuthoringGraphRelation {
   source: {
     owner: string; ownerName: string; file: string; graphId: string; nodeId: string;
     fieldId: string; serializedMemberPath: string[]; roles: StorageShape['roles'];
@@ -639,15 +639,15 @@ export interface SkillDocumentRelation {
   } & ({ kind: 'graph'; role: string | null } | { kind: 'timeline'; role: null });
 }
 
-export interface SkillDocument {
+export interface AuthoringDocumentProjection {
   skill: string;
   programId: string | null;
   sourceRevision: string;
   inputRevision: string;
   tickRate: number;
-  graphs: SkillDocumentGraph[];
-  relations: SkillDocumentRelation[];
-  sources: SkillSnapshot[];
+  graphs: AuthoringGraph[];
+  relations: AuthoringGraphRelation[];
+  sources: AuthoringSnapshot[];
   elements: WorkspaceDocumentElement[];
 }
 
@@ -721,7 +721,7 @@ function readCreationOptions(sourceText: string): DocumentCreationCatalog {
 }
 
 const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text,
-  files: array(readSkillFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
+  files: array(readAuthoringFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
 
 export const authoringApi = {
   catalog: async (revision: string | null, signal?: AbortSignal) =>
@@ -731,7 +731,7 @@ export const authoringApi = {
   commitReferenceReplacement: async (plan: ReferenceReplacementPrepared) =>
     readReferenceReplacement(await postJson<unknown>('/api/authoring/references/replace', { action: 'commit',
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
-  export: async (documentPath: string, kind: DocumentExportKind, editingView: SkillEditingView) =>
+  export: async (documentPath: string, kind: DocumentExportKind, editingView: AuthoringEditingView) =>
     readDocumentExport(await postJson<unknown>(documentQueryPath(documentPath, `exports/${kind}`), { editingView })),
   products: async (signal?: AbortSignal) => {
     const scopes = object({ products: opaque })(await getJson<unknown>('/api/authoring/publication/scopes', signal));
@@ -745,48 +745,48 @@ export const authoringApi = {
       stringifySkillJson({ type: request.type, parameters: { ...request.parameters } }, '\n'))));
   },
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
-    postJson<{ files: SkillFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
+    postJson<{ files: AuthoringFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),
   inputFragment: async (request: InputFragmentRequest) => {
     const fragment = parseSkillJson(await postText('/api/preview/inputs/fragments', request)) as unknown as InputFragment;
     return { ...fragment, variables: readVariablesValue(fragment.variables, 'InputFragment.variables') };
   },
-  deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: SkillEditingView }) =>
-    postJson<SkillDeleteResult>(documentQueryPath(documentPath, 'delete'), request, undefined, [409]),
-  document: (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal, graphId?: string) =>
-    postJson<Omit<SkillDocument, 'sources' | 'elements'> & { sources: unknown[]; elements: unknown }>(
+  deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: AuthoringEditingView }) =>
+    postJson<DocumentDeleteResult>(documentQueryPath(documentPath, 'delete'), request, undefined, [409]),
+  document: (documentPath: string, editingView: AuthoringEditingView, signal?: AbortSignal, graphId?: string) =>
+    postJson<Omit<AuthoringDocumentProjection, 'sources' | 'elements'> & { sources: unknown[]; elements: unknown }>(
       documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
-      .then(document => ({ ...document, sources: document.sources.map(source => readSkillSnapshot(source)),
+      .then(document => ({ ...document, sources: document.sources.map(source => readAuthoringSnapshot(source)),
         elements: readWorkspaceDocumentElements(document.elements) })),
-  save: async (target: AuthoringTarget, request: SkillSaveRequest): Promise<SkillSaveResult> => {
+  save: async (target: AuthoringTarget, request: DocumentSaveRequest): Promise<DocumentSaveResult> => {
     const result = await postJson<unknown>(documentQueryPath(target.documentPath, 'apply'), request);
-    const { compilationState } = object({ compilationState: choice('not-required', 'succeeded') })(result, 'SkillSave');
+    const { compilationState } = object({ compilationState: choice('not-required', 'succeeded') })(result, 'DocumentSave');
     switch (compilationState) {
       case 'not-required': return readInputSaveResult(result, 'InputSave');
       case 'succeeded': return { ...object({ ...savedContentFields, compilation: readCompilationReport,
-        preview: nullable(readContentRefreshReceipt) })(result, 'SkillSave'), compilationState };
+        preview: nullable(readContentRefreshReceipt) })(result, 'DocumentSave'), compilationState };
     }
   },
   refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerContentRefreshReceipt>(statusPath, signal).then(readContentRefreshReceipt),
-  types: (target: AuthoringTarget, offset: number, editingView: SkillEditingView, signal?: AbortSignal) =>
+  types: (target: AuthoringTarget, offset: number, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     postJson<TypePage>(documentQueryPath(target.documentPath, 'queries/types'), { offset, limit: 128, editingView }, signal),
-  // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
-  describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+  // 默认配置写进文档文件，按文档 JSON 规则解析以保留 1.0 这类浮点。
+  describeType: async (target: AuthoringTarget, type: string, graphId: string, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'), { type, graphId, offset: 0, limit: 128, editingView }, signal)),
-  // 按当前未保存配置描述节点或普通作者值，保留技能 JSON 的数值格式。
+  // 按当前未保存配置描述节点或普通作者值，保留文档 JSON 的数值格式。
   describeAuthoringValue: async (type: string, configuration: JsonObject, signal?: AbortSignal) =>
     readTypeDescription(await postText('/api/authoring/types/describe', stringifySkillJson({ type, configuration, offset: 0, limit: 128 }, '\n'), signal)),
-  describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: SkillEditingView, signal?: AbortSignal) =>
+  describeConfiguration: async (target: AuthoringTarget, type: string, configuration: JsonObject, graphId: string | null, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     readTypeDescription(await postText(documentQueryPath(target.documentPath, 'queries/type'),
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128, editingView }, '\n'), signal)),
-  describeNode: async (target: AuthoringTarget, graphId: string, nodeId: string, editingView: SkillEditingView, signal?: AbortSignal) => {
+  describeNode: async (target: AuthoringTarget, graphId: string, nodeId: string, editingView: AuthoringEditingView, signal?: AbortSignal) => {
     const page = <T>(operation: 'fields' | 'ports') => allPages<T>(async offset =>
       parseSkillJson(await postText(documentQueryPath(target.documentPath, `queries/${operation}`),
         { graphId, nodeId, offset, limit: 128, editingView }, signal)) as unknown as Page<T>);
     const [fields, ports] = await Promise.all([page<FieldItem>('fields'), page<DescribedPort>('ports')]);
     return { fields: { ...fields, items: readFieldItems(fields.items) }, ports };
   },
-  profile: async (documentPath: string, editingView: SkillEditingView, signal?: AbortSignal) => {
+  profile: async (documentPath: string, editingView: AuthoringEditingView, signal?: AbortSignal) => {
     const items: FieldItem[] = [];
     for (let offset = 0; ; offset += 128) {
       const result = parseSkillJson(await postText(documentQueryPath(documentPath, 'queries/profile'),
@@ -800,13 +800,13 @@ export const authoringApi = {
         fields: { ...result.fields, items: readFieldItems(items) } };
     }
   },
-  identities: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+  identities: (target: AuthoringTarget, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     allPages<IdentityItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/references'),
       { editingView, offset, limit: 128 }, signal)).then(page => page.items),
-  blackboards: (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal) =>
+  blackboards: (target: AuthoringTarget, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     allPages<BlackboardItem>(offset => postJson(documentQueryPath(target.documentPath, 'queries/blackboards'),
       { editingView, offset, limit: 128 }, signal)).then(page => page.items),
-  referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: SkillEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
+  referrers: async (target: AuthoringTarget, selector: ReferenceSelector, editingView: AuthoringEditingView, signal?: AbortSignal): Promise<ReferrersResult> => {
     const items: ProjectReferrer[] = [];
     const unresolved = new Map<string, ReferenceQueryIssue>();
     let complete = true;
@@ -819,13 +819,13 @@ export const authoringApi = {
       if (!page.hasMore) return { ...page, items, complete, unresolved: [...unresolved.values()] };
     }
   },
-  referenceCurves: (target: AuthoringTarget, identity: string, editingView: SkillEditingView, signal?: AbortSignal) =>
+  referenceCurves: (target: AuthoringTarget, identity: string, editingView: AuthoringEditingView, signal?: AbortSignal) =>
     postJson<ReferenceCurves>(documentQueryPath(target.documentPath, 'queries/reference-curves'), { identity, editingView }, signal),
   // 模板值保留浮点写法以便原样写回；曲线通道的范围与默认值只是查询元数据，读成普通数字。
-  elements: async (target: AuthoringTarget, editingView: SkillEditingView, signal?: AbortSignal, context?: InputPlanContext) => {
+  elements: async (target: AuthoringTarget, editingView: AuthoringEditingView, signal?: AbortSignal, context?: InputPlanContext) => {
     const parameters = context?.kind === 'timeline' ? { timelineId: context.timeline } : {};
     const elements = parseSkillJson(await postText(documentQueryPath(target.documentPath, 'queries/elements', parameters),
-      { offset: 0, limit: 128, editingView }, signal)) as unknown as SkillElements;
+      { offset: 0, limit: 128, editingView }, signal)) as unknown as AuthoringElements;
     elements.graphs = elements.graphs.map((graph, index) => ({ ...graph,
       variables: readCreatedVariables(graph.variables, `Elements.graphs[${index}].variables`) }));
     for (const clip of elements.clips)

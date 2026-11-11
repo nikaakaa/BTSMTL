@@ -40,7 +40,7 @@ function resultLabel(outcome: SaveOutcome): string {
 function resultDetails(outcome: SaveOutcome): string {
   const lines = [outcome.message];
   if (outcome.compilationState === 'not-required') {
-    lines.push('输入文件已保存；不需要重新编译技能。', ...commandDetails(outcome.preview));
+    lines.push('输入文件已保存；不需要重新编译文档。', ...commandDetails(outcome.preview));
     return lines.join('\n');
   }
   if (outcome.compilationState !== 'succeeded') return lines.join('\n');

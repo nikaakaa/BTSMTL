@@ -138,7 +138,7 @@ function QuickPreviewStage({ result, seconds, picture }: {
       setFailure(null);
     }).catch((error: unknown) => {
       if (!ownsFrame()) return;
-      setFailure({ reason: `技能预览画面绘制失败：${error instanceof Error ? error.message : String(error)}`,
+      setFailure({ reason: `文档预览画面绘制失败：${error instanceof Error ? error.message : String(error)}`,
         entryId: consoleActions.error('快预览画面', error) });
     });
     return () => { active = false; };
@@ -148,10 +148,10 @@ function QuickPreviewStage({ result, seconds, picture }: {
     data-quick-frame-request-id={drawn?.requestId} data-quick-sampled-seconds={drawn?.sampledSeconds}
     data-quick-sampled-revision={drawn?.sampledRevision} data-quick-source-revision={drawn?.sourceRevision}
     data-quick-input-revision={drawn?.inputRevision}>
-    <canvas ref={video} className={styles.video} aria-label="技能快速预览画面" hidden={drawn === null} />
+    <canvas ref={video} className={styles.video} aria-label="文档快速预览画面" hidden={drawn === null} />
     {failure !== null ? <ErrorLine text={failure.reason} entryId={failure.entryId} />
       : request.kind === 'failed' ? <ErrorLine text={request.reason} entryId={null} />
-        : drawn === null && <Empty text="正在读取并绘制当前技能画面" />}
+        : drawn === null && <Empty text="正在读取并绘制当前文档画面" />}
     {(failure !== null || request.kind === 'failed') && <Button onClick={() => quickPreview.retryPicture()}>重试当前画面</Button>}
     <div className={styles.source} role="status">目标 {seconds.toFixed(3)} 秒 ·
       {drawn === null ? ' 尚未显示实际画面' : ` 画面 ${drawn.sampledSeconds.toFixed(3)} 秒 · 采样 ${drawn.sampledRevision}`}

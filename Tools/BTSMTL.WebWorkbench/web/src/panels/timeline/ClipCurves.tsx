@@ -2,7 +2,7 @@
 
 import { useTimelineContext } from 'dnd-timeline';
 import { useContext, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from 'react';
-import type { ClipCurveChannel, SkillElements } from '../../api/authoring';
+import type { ClipCurveChannel, AuthoringElements } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { clipCurves, clipReferenceSource, defaultChannelCurve, requestReferenceCurves, useReferenceCurves, type ReferenceEntry } from '../../state/authoringTimeline';
 import { useWorkbench } from '../../state/store';
@@ -52,7 +52,7 @@ interface CurveParameter {
   channel: ClipCurveChannel | null; curve: JsonObject | null; reference: string | null;
 }
 
-function clipParameters(elements: SkillElements, documentId: string, clip: ClipInstance, mix: ClipMix,
+function clipParameters(elements: AuthoringElements, documentId: string, clip: ClipInstance, mix: ClipMix,
   source: ReturnType<typeof clipReferenceSource>, entry: ReferenceEntry | undefined): CurveParameter[] {
   const channels = clipCurves(elements, documentId, clip.clip.id).map(({ channel, curve }): CurveParameter => ({
     id: channel.member, name: channel.name, color: channel.color, span: channelSpan(channel.role, clip, mix),
@@ -74,7 +74,7 @@ function clipParameters(elements: SkillElements, documentId: string, clip: ClipI
 }
 
 // 展开曲线的轨道只看本轨选中的片段（照 IEmbeddedTimelineTrackBinding.SelectedClip）。
-function useCurveClip(row: TrackRow, elements: SkillElements, mixes: Map<string, ClipMix>) {
+function useCurveClip(row: TrackRow, elements: AuthoringElements, mixes: Map<string, ClipMix>) {
   useAuthoring(state => authoringDocument(state).version);
   const selection = useWorkbench(state => state.selection?.kind === 'clip' ? state.selection.id : null);
   const view = useContext(CurveViewContext);
@@ -91,7 +91,7 @@ function useCurveClip(row: TrackRow, elements: SkillElements, mixes: Map<string,
 // 展开曲线的轨道头下部（照 TrackEditorGUI.DrawParametersInfoGUI）：本轨选中片段的各曲线参数，单击查看完整曲线，再次单击收起。
 // 查看时下方是上一关键帧、在游标处加或删关键帧（参考曲线只读）、下一关键帧与游标处的值；拖动底边加高曲线区。
 export function CurveParameters({ row, elements, mixes, author, height }: {
-  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
+  row: TrackRow; elements: AuthoringElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
 }) {
   const clock = useContext(PreviewClockContext);
   const tick = useContext(SnapContext) ?? 1 / 60;
@@ -219,7 +219,7 @@ const scaleLabel = (value: number) => Number(value.toPrecision(4)).toString();
 // （时间按 tick 吸附并限在 0–1，值限在通道取值域，取到万分位），选中关键帧显示切线手柄，双击空白处添加关键帧，
 // 右键关键帧删除或设切线模式，Delete 删除所选；参考曲线只读。
 export function ClipCurves({ row, elements, mixes, author, height }: {
-  row: TrackRow; elements: SkillElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
+  row: TrackRow; elements: AuthoringElements; mixes: Map<string, ClipMix>; author: boolean; height: number;
 }) {
   const { range, valueToPixels, getValueFromScreenX } = useTimelineContext();
   const step = useContext(SnapContext);

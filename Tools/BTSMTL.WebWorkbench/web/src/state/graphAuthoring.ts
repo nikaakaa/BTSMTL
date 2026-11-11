@@ -1,5 +1,5 @@
 // 节点图画布编辑：节点、连线、分组、复制粘贴与组合步骤，经作者文档原地编辑并进入撤销。
-import type { GraphReferenceTarget, GraphTemplate, SkillElements, StorageShape } from '../api/authoring';
+import type { GraphReferenceTarget, GraphTemplate, AuthoringElements, StorageShape } from '../api/authoring';
 import type { VariableDeclarationChanges } from '../api/variables';
 import {
   authoringActions, createGraph, currentDocument, dropOrphans, get, graphLayoutKey, graphLayoutPath, graphPath, isDocumentGraph,
@@ -20,7 +20,7 @@ const connectionUid = () => crypto.randomUUID();
 // 出口列表成员与元素形状由宿主 flowOutputs 给出。
 export interface EdgeStep { nodeId: string; nodeType: string; member: string; index: number; step: JsonObject; shape: StorageShape }
 
-export function edgeStep(document: JsonValue | null, elements: SkillElements, edgeId: string): EdgeStep | null {
+export function edgeStep(document: JsonValue | null, elements: AuthoringElements, edgeId: string): EdgeStep | null {
   const found = findConnection(document, edgeId);
   if (!found) return null;
   const port = connectionSourcePort(found.connection);
@@ -59,7 +59,7 @@ const memberSlots = (graphId: string, owner: SlotOwner, base: JsonKey[], shape: 
   }));
 
 // 连线上的专属图：转移按宿主转移模板的形状，执行出口连线按所属节点出口列表的元素形状。
-export function edgeGraphSlots(document: JsonValue | null, elements: SkillElements, graphId: string, edgeId: string): GraphSlot[] {
+export function edgeGraphSlots(document: JsonValue | null, elements: AuthoringElements, graphId: string, edgeId: string): GraphSlot[] {
   const found = findConnection(document, edgeId);
   if (!found) return [];
   const payload = transitionPayload(found.connection);
@@ -69,7 +69,7 @@ export function edgeGraphSlots(document: JsonValue | null, elements: SkillElemen
 }
 
 // 槽位显示名：字段合同的显示名，没有时用目标角色的图模板名称（合同默认名称）。
-export const slotLabel = (slot: GraphSlot, elements: SkillElements) => slot.label ??
+export const slotLabel = (slot: GraphSlot, elements: AuthoringElements) => slot.label ??
   (elements.graphs.find(template => template.role === slot.targets[0]?.role)?.value.name as string | undefined) ?? slot.targets[0]?.role ?? '';
 
 const ownerContext = (slot: GraphSlot, target: GraphReferenceTarget) => {
@@ -194,7 +194,7 @@ export const graphAuthoring = {
     return uid;
   },
 
-  connectStates(graphId: string, elements: SkillElements, orderMember: string, sourceId: string, targetId: string) {
+  connectStates(graphId: string, elements: AuthoringElements, orderMember: string, sourceId: string, targetId: string) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = findNode(document, sourceId);
       if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);

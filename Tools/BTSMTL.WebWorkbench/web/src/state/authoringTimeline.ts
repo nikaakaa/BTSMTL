@@ -1,6 +1,6 @@
 // Timeline 作者操作与查询使用当前文档，包括还没保存的改动。
 import { create } from 'zustand';
-import { authoringApi, type ClipCurveChannel, type ClipTemplate, type ReferenceCurves, type SkillElements, type TrackOverlap } from '../api/authoring';
+import { authoringApi, type ClipCurveChannel, type ClipTemplate, type ReferenceCurves, type AuthoringElements, type TrackOverlap } from '../api/authoring';
 import { authoringActions, currentDocument, findTimelineClip, get, markersCollide, referencedFiles, timelinePath, tracksOf } from './authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, sortedObject, type JsonObject } from './skillJson';
 import { consoleActions } from './store';
@@ -11,19 +11,19 @@ export function markersTaken(documentId: string, markerIds: ReadonlySet<string>,
 }
 
 // 轨道的正式合同与当前（可能未保存的）执行域；轨道种类不在元素查询里时为 null。
-function trackPlacement(elements: SkillElements, documentId: string, trackId: string) {
+function trackPlacement(elements: AuthoringElements, documentId: string, trackId: string) {
   const document = currentDocument(timelinePath(documentId));
   const track = document ? tracksOf(document).find(item => item.m_AuthoringId === trackId) : undefined;
   const template = track && elements.tracks.find(item => item.kind === track.ContractKind);
   return template ? { template, domain: track!.m_ExecutionDomain as string } : null;
 }
 
-export const trackOverlap = (elements: SkillElements, documentId: string, trackId: string): TrackOverlap | null =>
+export const trackOverlap = (elements: AuthoringElements, documentId: string, trackId: string): TrackOverlap | null =>
   trackPlacement(elements, documentId, trackId)?.template.contract.overlap ?? null;
 
 // 轨道可放的片段种类（照 TimelineDefinitionCatalog.RequireClipPlacement）：轨道合同允许、片段属于这种轨道，
 // 且轨道与片段都支持轨道的执行域。
-export function clipTemplatesFor(elements: SkillElements, documentId: string, trackId: string): ClipTemplate[] {
+export function clipTemplatesFor(elements: AuthoringElements, documentId: string, trackId: string): ClipTemplate[] {
   const placement = trackPlacement(elements, documentId, trackId);
   if (!placement) return [];
   const { template, domain } = placement;
@@ -52,7 +52,7 @@ function pasteIssue(source: CopiedClip, templates: readonly ClipTemplate[]): str
 export const useClipPasteIssue = (templates: readonly ClipTemplate[]) =>
   useClipClipboard(state => state.source ? pasteIssue(state.source, templates) : '先复制一个片段');
 
-export function pasteTimelineClip(elements: SkillElements, documentId: string, trackId: string, startSeconds: number) {
+export function pasteTimelineClip(elements: AuthoringElements, documentId: string, trackId: string, startSeconds: number) {
   const { source } = useClipClipboard.getState();
   if (!source) return null;
   const issue = pasteIssue(source, clipTemplatesFor(elements, documentId, trackId));
@@ -70,11 +70,11 @@ export function pasteTimelineClip(elements: SkillElements, documentId: string, t
 }
 
 // 轨道能放带曲线通道或参考曲线的片段时可展开曲线。
-export const trackHasCurves = (elements: SkillElements, documentId: string, trackId: string) =>
+export const trackHasCurves = (elements: AuthoringElements, documentId: string, trackId: string) =>
   clipTemplatesFor(elements, documentId, trackId).some(template => template.curves.length > 0 || template.referenceCurves !== null);
 
 // 片段各曲线通道的当前曲线；字段未设置（null）时 curve 为 null，运行时该通道不起作用。
-export function clipCurves(elements: SkillElements, documentId: string, clipId: string): { channel: ClipCurveChannel; curve: JsonObject | null }[] {
+export function clipCurves(elements: AuthoringElements, documentId: string, clipId: string): { channel: ClipCurveChannel; curve: JsonObject | null }[] {
   const document = currentDocument(timelinePath(documentId));
   const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
   const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
@@ -86,7 +86,7 @@ export function clipCurves(elements: SkillElements, documentId: string, clipId: 
 }
 
 // 片段吸附所需的作者数据：合同模板、起点与 ClipIn 秒数、片段直接引用的资源（"guid:localFileId" 字符串字段）。
-export function clipSnapSource(elements: SkillElements, documentId: string, clipId: string) {
+export function clipSnapSource(elements: AuthoringElements, documentId: string, clipId: string) {
   const document = currentDocument(timelinePath(documentId));
   const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
   const template = clip && elements.clips.find(item => item.kind === clip.ContractKind);
@@ -99,7 +99,7 @@ export function clipSnapSource(elements: SkillElements, documentId: string, clip
 }
 
 // 片段的参考曲线源：模板 referenceCurves 成员引用的资源身份与片段的源区间（SampledClip 源起止秒数）。
-export function clipReferenceSource(elements: SkillElements, documentId: string, clipId: string) {
+export function clipReferenceSource(elements: AuthoringElements, documentId: string, clipId: string) {
   const document = currentDocument(timelinePath(documentId));
   const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
   const member = clip && elements.clips.find(item => item.kind === clip.ContractKind)?.referenceCurves;
@@ -133,7 +133,7 @@ export function defaultChannelCurve(channel: ClipCurveChannel): JsonObject {
 }
 
 // 片段换轨（照 TimelineData.MoveClip）：目标轨道能放这种片段，且执行域与原轨道相同；可以时为 null，否则给出原因。
-export function clipMoveIssue(elements: SkillElements, documentId: string, clipKind: string, fromTrackId: string, toTrackId: string): string | null {
+export function clipMoveIssue(elements: AuthoringElements, documentId: string, clipKind: string, fromTrackId: string, toTrackId: string): string | null {
   const from = trackPlacement(elements, documentId, fromTrackId), to = trackPlacement(elements, documentId, toTrackId);
   if (!from || !to) return '轨道种类不在元素查询里';
   if (!clipTemplatesFor(elements, documentId, toTrackId).some(template => template.kind === clipKind))

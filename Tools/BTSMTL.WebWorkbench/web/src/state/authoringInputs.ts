@@ -1,5 +1,5 @@
 // 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline。
-import { authoringApi, type InputFragmentRequest, type InputPlanContext, type SkillElements } from '../api/authoring';
+import { authoringApi, type InputFragmentRequest, type InputPlanContext, type AuthoringElements } from '../api/authoring';
 import {
   authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements, timelinePath, tracksOf, variablesDrafts,
   type JsonKey, type JsonMutation,
@@ -42,7 +42,7 @@ export const inputAuthoring = {
     selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
   },
 
-  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: SkillElements['previewInput']) {
+  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: AuthoringElements['previewInput']) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = findNode(document, nodeId)!;
       const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readSkillSaveConflict, readSkillSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
+  authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readDocumentSaveConflict, readDocumentSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerContentRefreshReceipt, type PlayerContentRefreshTarget,
-  type ScenarioDraftRequest, type DocumentCreationRequest, type SkillDocumentGraph, type SkillDocumentRelation, type SkillEditingView, type SkillElements,
-  type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot,
+  type ScenarioDraftRequest, type DocumentCreationRequest, type AuthoringGraph, type AuthoringGraphRelation, type AuthoringEditingView, type AuthoringElements,
+  type DocumentDeleteResult, type AuthoringFormatError, type DocumentSaveResult, type AuthoringSnapshot,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
@@ -29,7 +29,7 @@ import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTi
 import { playerService } from './player';
 import { session, stageNames } from './session';
 
-// 作者编辑（共享文档 9.x）：当前运行所属技能的 JSON 文件。原文按路径保存；编辑过的文件解析后改写，
+// 作者编辑（共享文档 9.x）：当前运行所属文档的 JSON 文件。原文按路径保存；编辑过的文件解析后改写，
 // 保存时整份写回。宿主未启用作者接口时 available=false，作者模式不可用。
 
 export interface AuthoringState {
@@ -59,6 +59,8 @@ export interface AuthoringDocument {
   kind: WorkspaceDocumentInfo['kind'];
   rootFile: WorkspaceDocumentInfo['rootFile'];
   identity: WorkspaceDocumentInfo['identity'] | null;
+  sourceIdentity: string | null;
+  contentDomain: string | null;
   authoringType: string | null;
   name: string;
   roles: StorageRoles;
@@ -83,7 +85,7 @@ export interface AuthoringDocument {
   redo: Snapshot[];
   recording: boolean;
   loading: boolean;
-  // 外部修改了技能文件而本地有未保存修改。
+  // 外部修改了文档文件而本地有未保存修改。
   externalChange: boolean;
   // 网页新增（含粘贴）节点的端口：来自类型描述或复制源，保存并重跑前用于显示与连线。
   addedPorts: Record<string, AddedPort[]>;
@@ -91,18 +93,18 @@ export interface AuthoringDocument {
   // 最近一次保存的编译结论；文件写入后由正式编译器判断。
   lastSave: SaveOutcome | null;
   // 作者 JSON 与当前未保存修改的图投影；来源被拒时给出原因。
-  documentGraphs: SkillDocumentGraph[] | null;
-  documentRelations: SkillDocumentRelation[];
+  documentGraphs: AuthoringGraph[] | null;
+  documentRelations: AuthoringGraphRelation[];
   documentError: string | null;
   tickRate: number | null;
-  execution: SkillEditingView['execution'];
-  product: SkillEditingView['product'];
+  execution: AuthoringEditingView['execution'];
+  product: AuthoringEditingView['product'];
 }
 
 interface SaveOutcomeMessage {
   ok: boolean;
   message: string;
-  errors: SkillFormatError[];
+  errors: AuthoringFormatError[];
 }
 
 export type SaveOutcome = SaveOutcomeMessage & (
@@ -127,7 +129,7 @@ export interface AddedPort {
 }
 
 export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, identity: null, authoringType: null, name: '', roles: {}, variables: null, variablesWriting: false, documentSources: [],
+  rootFile: null, identity: null, sourceIdentity: null, contentDomain: null, authoringType: null, name: '', roles: {}, variables: null, variablesWriting: false, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -240,7 +242,7 @@ useAuthoring.subscribe((state, previous) => {
 });
 
 type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget } | { kind: 'unavailable'; reason: string };
-type SavedCompilation = Pick<Extract<SkillSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
+type SavedCompilation = Pick<Extract<DocumentSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
 async function selectedPreview(): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
@@ -255,7 +257,7 @@ async function selectedPreview(): Promise<PreviewSelection> {
       return { kind: 'unavailable', reason: '所选 Player 尚无已确认载入的内容，预览未刷新' };
     const { liveId: targetLiveId, content, channels } = live.previewTarget;
     if (content.kind !== 'scene')
-      return { kind: 'unavailable', reason: '所选 Player 当前载入 Timeline，技能刷新需要场景内容' };
+      return { kind: 'unavailable', reason: '所选 Player 当前载入 Timeline，文档刷新需要场景内容' };
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
     return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
@@ -283,7 +285,7 @@ function savedOutcome(save: SavedCompilation, preview: PlayerContentRefreshRecei
 }
 
 function inputSaveMessage(outcome: Pick<InputSaveResult, 'preview' | 'previewError' | 'jobError'>) {
-  return ['输入方案已保存，无需编译技能',
+  return ['输入方案已保存，无需编译文档',
     outcome.previewError === null ? outcome.preview === null ? null : `所选 Player 重载：${outcome.preview.stage}`
       : `预览提交失败：${outcome.previewError}`,
     outcome.jobError === null ? null : `作业提交失败：${outcome.jobError}`,
@@ -464,7 +466,7 @@ export function timelineOf(documentId: string, document: JsonObject): AuthorTime
   };
 }
 
-// 结构始终来自当前技能 JSON；Player 档案只提供运行叠加。
+// 结构始终来自当前文档 JSON；Player 档案只提供运行叠加。
 function publishDocument() {
   const state = get();
   const closed = state.target === null || documentDeleted(state);
@@ -524,7 +526,8 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const current = documents[key];
       if (current === undefined) {
         documents[key] = { ...newDocument(), kind: owner.kind, rootFile: source.document.rootFile,
-          identity: source.document.identity, name: source.document.name, roles: source.document.roles,
+          identity: source.document.identity, sourceIdentity: source.document.sourceIdentity, contentDomain: source.document.contentDomain,
+          authoringType: source.document.authoringType ?? null, name: source.document.name, roles: source.document.roles,
           revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
@@ -537,7 +540,9 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
           if (current.files[path] === undefined) delete files[path];
           else files[path] = current.files[path];
         }
-        documents[key] = { ...current, files, edited, name: source.document.name, roles: source.document.roles };
+        documents[key] = { ...current, files, edited, name: source.document.name, roles: source.document.roles,
+          sourceIdentity: source.document.sourceIdentity, contentDomain: source.document.contentDomain,
+          authoringType: source.document.authoringType ?? null };
       }
     }
     const key = authoringTargetKey(target);
@@ -687,14 +692,14 @@ export const authoringActions = {
       });
     } catch (error) {
       const reason = error instanceof ApiError && error.status === 404
-        ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error);
+        ? '宿主尚未挂载作者文档接口' : error instanceof Error ? error.message : String(error);
       set({ directory: [], available: false, unavailableReason: reason,
         ...(isCurrentRequest() ? { elementCatalog: { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason } as const } : {}),
       });
     }
   },
 
-  // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
+  // 直接打开文档文件夹：读原文件与图展开，不需要运行；进入作者模式。
   async open(target: AuthoringTarget): Promise<DocumentOpenResult> {
     const current = get().target;
     if (current && authoringTargetKey(current) === authoringTargetKey(target)) {
@@ -720,7 +725,8 @@ export const authoringActions = {
       if (!opened || opened.revision !== null || !isDocumentDirty(opened)) {
         const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
         controller.signal.throwIfAborted();
-        setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
+        setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity,
+          sourceIdentity: snapshot.sourceIdentity, contentDomain: snapshot.contentDomain, authoringType: snapshot.authoringType ?? null,
           name: snapshot.name, roles: snapshot.roles,
           ...(!opened || opened.revision === null ? { revision: snapshot.revision, sourceFiles: snapshot.files,
             ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) } : {}),
@@ -802,7 +808,7 @@ export const authoringActions = {
     set({ documents });
   },
 
-  acceptSkillDeletion(receipt: Extract<SkillDeleteResult, { deleted: true }>) {
+  acceptSkillDeletion(receipt: Extract<DocumentDeleteResult, { deleted: true }>) {
     const state = get();
     const target = authoringTarget('skill', receipt.skill);
     const removed = new Set(receipt.removedDocuments);
@@ -915,7 +921,7 @@ export const authoringActions = {
     updateScope(query, { source });
   },
 
-  editingView(): SkillEditingView {
+  editingView(): AuthoringEditingView {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
     const writes = Object.entries(state.documents).map(([path, document]) => documentWrite(path, document));
@@ -934,7 +940,7 @@ export const authoringActions = {
     setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
   },
 
-  selectProduct(product: SkillEditingView['product']) {
+  selectProduct(product: AuthoringEditingView['product']) {
     set({ resourceTarget: null });
     setDocument({ product, version: get().version + 1 });
   },
@@ -972,7 +978,7 @@ export const authoringActions = {
     const viewport = useWorkbench.getState().playerViewport;
     const scene = editingView.scene;
     setDocument({ saving: true, inputRevision: { kind: 'catalog' }, saveRun: null }, target);
-    const accept = (receipts: WorkspaceDocumentSnapshot[], content: SkillSnapshot | null, lastSave: SaveOutcome) => {
+    const accept = (receipts: WorkspaceDocumentSnapshot[], content: AuthoringSnapshot | null, lastSave: SaveOutcome) => {
       const received = new Map(receipts.map(document => [document.documentPath, document]));
       if (!received.has(target.documentPath) && !editingView.writes.some(write => write.deleted && write.documentPath === target.documentPath))
         throw new Error(`保存回执没有返回当前文档 ${target.documentPath}。`);
@@ -1076,7 +1082,7 @@ export const authoringActions = {
       }
     } catch (error) {
       if (operation !== 'save' && error instanceof ApiError && [400, 422].includes(error.status)) {
-        const rejection = readSkillSaveRejection(JSON.parse(error.raw));
+        const rejection = readDocumentSaveRejection(JSON.parse(error.raw));
         const errors = rejection.stage === 'source-rejected' ? rejection.detail.errors : [];
         const detail = rejection.stage === 'source-rejected' ? rejection.detail.message : rejection.error;
         const message = rejection.stage === 'source-rejected'
@@ -1109,7 +1115,7 @@ export const authoringActions = {
         return;
       }
       if (operation !== 'save' && error instanceof ApiError && error.status === 409) {
-        const conflict = readSkillSaveConflict(JSON.parse(error.raw));
+        const conflict = readDocumentSaveConflict(JSON.parse(error.raw));
         const outcome = { ok: false, message: conflict.message, errors: [], preview: null } satisfies SaveOutcomeMessage & { preview: null };
         if (conflict.saved) accept(conflict.documents, conflict.content,
           { ...outcome, saved: true, compilationState: 'not-started' });
@@ -1687,7 +1693,7 @@ export const graphLayoutKey = (graphId: string) => isDocumentGraph(graphId) ? 'l
 export const variableRequests = new Map<string, Promise<string>>();
 
 
-export function skillElements(context?: InputPlanContext): Promise<SkillElements> {
+export function skillElements(context?: InputPlanContext): Promise<AuthoringElements> {
   const target = get().target;
   if (!target) return Promise.reject(new Error('没有打开的作者目录'));
   const signal = loadController!.signal;
@@ -1695,7 +1701,7 @@ export function skillElements(context?: InputPlanContext): Promise<SkillElements
 }
 
 // 各面板共用同一作者视图的一次元素查询；结果对应的视图已过期时丢弃，等新视图重新查询。
-let elementsRequest: { key: string; promise: Promise<SkillElements | null> } | null = null;
+let elementsRequest: { key: string; promise: Promise<AuthoringElements | null> } | null = null;
 
 function sharedElements(key: string, target: AuthoringTarget) {
   if (elementsRequest?.key === key) return elementsRequest.promise;
@@ -1709,9 +1715,9 @@ function sharedElements(key: string, target: AuthoringTarget) {
   return promise;
 }
 
-// 文档改动后重新查询期间，同一技能、载体与场景下继续给出上一份结果，连线标签与图槽位不随每次编辑清空；
+// 文档改动后重新查询期间，同一文档、载体与场景下继续给出上一份结果，连线标签与图槽位不随每次编辑清空；
 // 新建等写入操作经 skillElements 读取当前视图。
-export function useSkillElements(enabled: boolean): SkillElements | null {
+export function useAuthoringElements(enabled: boolean): AuthoringElements | null {
   const { target, loading, owners, carrierRevision } = useAuthoring(useShallow(state => ({
     target: state.target, loading: authoringDocument(state).loading, carrierRevision: state.carrierRevision,
     owners: JSON.stringify(Object.entries(state.documents).map(([path, document]) => [path, document.revision, document.version])),
@@ -1719,7 +1725,7 @@ export function useSkillElements(enabled: boolean): SkillElements | null {
   const scene = useWorkbench(state => selectedScene(state));
   const base = JSON.stringify([target === null ? null : authoringTargetKey(target), carrierRevision, scene]);
   const key = JSON.stringify([base, owners]);
-  const [elements, setElements] = useState<{ base: string; items: SkillElements } | null>(null);
+  const [elements, setElements] = useState<{ base: string; items: AuthoringElements } | null>(null);
   useEffect(() => {
     if (!enabled || loading || target === null) return;
     let current = true;
@@ -1738,7 +1744,7 @@ export interface GraphCreation {
   context?: { OwnerGraphId: string; OwnerNodeId: string };
 }
 
-export function createGraph(elements: SkillElements, { role, seed = 'Anchors', ownership = null, name = null, context }: GraphCreation): string {
+export function createGraph(elements: AuthoringElements, { role, seed = 'Anchors', ownership = null, name = null, context }: GraphCreation): string {
   const template = elements.graphs.find(item => item.role === role && item.seed === seed && item.ownership === ownership);
   if (!template) throw new Error(`正式作者接口未提供 ${role} / ${seed} / ${ownership ?? '专属'} 图的创建合同`);
   const graph = cloneJson(template.value);
@@ -1753,8 +1759,8 @@ export function createGraph(elements: SkillElements, { role, seed = 'Anchors', o
 }
 
 
-export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string, JsonValue>,
-  addedPorts: Record<string, AddedPort[]>): SkillDocumentGraph {
+export function applyGraphEdits(graph: AuthoringGraph, edited: Record<string, JsonValue>,
+  addedPorts: Record<string, AddedPort[]>): AuthoringGraph {
   const path = graph.authoringPath;
   const document = edited[graphPath(graph.id)] as JsonObject | undefined;
   const layout = (edited[graphLayoutPath(graph.id)] as JsonObject | undefined)?.[graphLayoutKey(graph.id)] as JsonObject | undefined;
@@ -1802,8 +1808,8 @@ export function applyGraphEdits(graph: SkillDocumentGraph, edited: Record<string
   return { ...graph, nodes, ports, edges };
 }
 
-export function findEditedGraph(graphs: SkillDocumentGraph[] | null, selectId: string, edited: Record<string, JsonValue>,
-  addedPorts: Record<string, AddedPort[]>): { graph: SkillDocumentGraph; path: string; id: string } | null {
+export function findEditedGraph(graphs: AuthoringGraph[] | null, selectId: string, edited: Record<string, JsonValue>,
+  addedPorts: Record<string, AddedPort[]>): { graph: AuthoringGraph; path: string; id: string } | null {
   for (const graph of graphs ?? []) {
     const path = graph.authoringPath;
     const prefix = `${graph.actorId}/${path}/`;

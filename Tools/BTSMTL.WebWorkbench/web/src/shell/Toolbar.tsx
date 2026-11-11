@@ -2,7 +2,7 @@ import { NumberField } from '@base-ui/react/number-field';
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { clockPosition, type PlayerJobReceipt } from '../api/playerRecords';
-import { documentLabel, openableDocumentGroups, projectActions } from '../state/project';
+import { documentLabel, projectActions } from '../state/project';
 import { authoringActions, authoringDocument, documentDeleted, scopeDocument, useAuthoring } from '../state/authoring';
 import { runLabel, session, stageNames } from '../state/session';
 import { consoleActions, contentActions, contentSelectionKey, inputRootKey, previewContentChoices, runActions, useWorkbench } from '../state/store';
@@ -16,7 +16,7 @@ import { QuickCursor } from '../panels/timeline/QuickPreview';
 import { SaveResult } from './SaveResult';
 import styles from './toolbar.module.css';
 
-// 顶部工具栏（D7，只有一行）：左侧内容与技能、运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
+// 顶部工具栏（D7，只有一行）：左侧内容与文档、运行；正中上一帧、播放／暂停、下一帧、帧号与秒数；
 // 右侧预览档位、布局与连接圆点。面板不再各自放播放按钮。
 export function Toolbar() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
@@ -24,7 +24,7 @@ export function Toolbar() {
     <header className={styles.toolbar}>
       <div className={styles.left}>
         <ContentChoice />
-        <SkillChoice />
+        <DocumentChoice />
         <AuthoringStatus />
         {!quick && <RunMenu />}
       </div>
@@ -64,8 +64,8 @@ function ContentChoice() {
   );
 }
 
-// 技能是节点图、Timeline 与检查器共同打开的内容，属于全局选择。
-function SkillChoice() {
+// 文档是节点图、Timeline 与检查器共同打开的内容，属于全局选择。
+function DocumentChoice() {
   const { directory, target, available, unavailableReason } = useAuthoring(useShallow(state => ({
     directory: state.directory, target: state.target, available: state.available, unavailableReason: state.unavailableReason,
   })));
@@ -78,9 +78,8 @@ function SkillChoice() {
   return (
     <>
       <CrumbArrow className={styles.crumbSeparator} />
-      <Select variant="ghost" label="作者文档" placeholder="选择技能" value={target?.documentPath ?? null} disabled={!directory?.length}
-        options={(directory ?? []).filter(item => openableDocumentGroups.some(([kind]) => kind === item.kind) || item.documentPath === target?.documentPath)
-          .map(item => ({ value: item.documentPath, label: openableDocumentGroups.some(([kind]) => kind === item.kind) ? documentLabel(item) : item.documentPath }))}
+      <Select variant="ghost" label="作者文档" placeholder="选择文档" value={target?.documentPath ?? null} disabled={!directory?.length}
+        options={(directory ?? []).map(item => ({ value: item.documentPath, label: documentLabel(item) }))}
         onChange={documentPath => void projectActions.openDocument(documentPath).catch(error => consoleActions.error('作者文档', error))} />
     </>
   );

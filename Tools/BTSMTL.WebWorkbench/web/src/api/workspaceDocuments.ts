@@ -5,8 +5,8 @@ import { readExecutionScopeSelection, type ExecutionScopeSelection } from './res
 import type { SourceFile } from './types';
 
 export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables', 'graph'] as const;
-export type StorageRoles = Partial<Record<'transitionOrder' | 'timelineOwnership' | 'entryGraph', string>>;
-export const readStorageRoles: Decoder<StorageRoles> = object({ transitionOrder: optional(text), timelineOwnership: optional(text), entryGraph: optional(text) });
+export type StorageRoles = Partial<Record<'transitionOrder' | 'timelineOwnership' | 'entryGraph' | 'displayName', string>>;
+export const readStorageRoles: Decoder<StorageRoles> = object({ transitionOrder: optional(text), timelineOwnership: optional(text), entryGraph: optional(text), displayName: optional(text) });
 const documentFields = {
   kind: choice(...workspaceDocumentKinds), identity: text, name: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),

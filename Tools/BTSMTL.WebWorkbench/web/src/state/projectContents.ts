@@ -1,4 +1,4 @@
-import type { ProjectItem, SkillDocumentRelation } from '../api/authoring';
+import type { ProjectItem, AuthoringGraphRelation } from '../api/authoring';
 import { timelineOf, type AuthoringState } from './authoring';
 import { getIn, parseSkillJson, type JsonObject } from './skillJson';
 import { findNode, nodeId, nodeLabel, nodesOf } from './graphDocument';
@@ -11,7 +11,7 @@ export interface ContentNode {
   key: string; label: string; description: string; target: ContentTarget | null; children: ContentNode[]; referrers: ContentUse[];
 }
 const itemKey = (item: Pick<ProjectItem, 'owner' | 'file'>) => JSON.stringify([item.owner, item.file]);
-const graphLabels: Record<string, string> = { Ability: '技能图', Skill: '技能图', StateMachine: '状态机', StateBody: '状态内容',
+const graphLabels: Record<string, string> = { Ability: '文档图', Skill: '文档图', StateMachine: '状态机', StateBody: '状态内容',
   Condition: '条件图', ConditionRule: '条件', Subgraph: '子图', TimelineEvent: '事件图', TimelineBody: '片段内容', TimelineTrigger: '触发片段' };
 export const graphItemDescription = (item: Extract<ProjectItem, { kind: 'graph' }>) =>
   'role' in item ? graphLabels[item.role] ?? item.role : item.contentDomain;
@@ -19,7 +19,7 @@ export const graphItemDescription = (item: Extract<ProjectItem, { kind: 'graph' 
 export function projectContents(documents: AuthoringState['documents']) {
   const items = new Map<string, ProjectItem>();
   const values = new Map<string, JsonObject>();
-  const relations = new Map<string, SkillDocumentRelation>();
+  const relations = new Map<string, AuthoringGraphRelation>();
   const uses = new Map<string, ContentUse[]>();
   const children = new Map<string, string[]>();
   const roots: ProjectItem[] = [];
@@ -40,13 +40,13 @@ export function projectContents(documents: AuthoringState['documents']) {
       const data = value as JsonObject;
       const base = { owner, ownerName, file };
       let item: ProjectItem;
-      if (file === document.rootFile && document.kind === 'skill') item = { ...base, kind: 'skill', identity: document.identity!,
+      if (file === document.rootFile && document.roles.entryGraph !== undefined) item = { ...base, kind: 'document', identity: document.identity!,
         name: ownerName, ownership: 'Private', asset: data };
       else if (file === document.rootFile && document.kind === 'graph') {
         const name = data.name as string;
         item = { ...base, kind: 'graph', identity: data.AuthoringId as string, name, ownerName: name,
           ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private',
-          contentDomain: data.m_ContentDomain as string, domains: data.Domains as string[],
+          contentDomain: document.contentDomain!, domains: data.Domains as string[],
           variableOwnerId: data.VariableOwnerId as string | null };
       }
       else if (file.startsWith('graphs/')) {
@@ -133,7 +133,7 @@ export function projectContents(documents: AuthoringState['documents']) {
     const item = items.get(key)!;
     const references = uses.get(key) ?? [];
     const node: ContentNode = { key, label: item.name, description: item.kind === 'graph' ? graphItemDescription(item) :
-      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '技能', target: { kind: 'item', item }, children: [], referrers: references };
+      item.kind === 'timeline' ? 'Timeline' : item.kind === 'input-plan' ? '输入方案' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '文档', target: { kind: 'item', item }, children: [], referrers: references };
     if (path.has(key)) return node;
     assigned.add(key);
     const next = new Set([...path, key]);

@@ -90,7 +90,7 @@ function buildDefault() {
   const player = addInstance('player', 1, undefined);
   addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
   const timeline = addInstance('timeline', 1, { referencePanel: player, direction: 'below' });
-  // 照 Unity：Project 单独一栏，选场景、技能时画面仍可见。
+  // 照 Unity：Project 单独一栏，选场景、文档时画面仍可见。
   const project = addInstance('resources', 1, { referencePanel: player, direction: 'left' });
   for (const type of ['query', 'console'] as const)
     addInstance(type, 1, { referencePanel: timeline, direction: 'within' }, true);

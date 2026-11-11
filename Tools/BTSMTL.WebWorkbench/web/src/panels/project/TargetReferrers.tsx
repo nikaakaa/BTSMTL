@@ -62,7 +62,7 @@ function TargetReferrers({ document, target }: { document: AuthoringTarget; targ
           .catch(error => consoleActions.error('Project', error));
       }}>
         <span>{reference.ownerName} · {reference.file}</span><small>{reference.path}</small>
-        {'contextOwnerName' in reference && <small>调用技能：{reference.contextOwnerName} · 字段 {reference.fieldId}</small>}
+        {'contextOwnerName' in reference && <small>调用文档：{reference.contextOwnerName} · 字段 {reference.fieldId}</small>}
       </button>;
     }} />}
   </>;

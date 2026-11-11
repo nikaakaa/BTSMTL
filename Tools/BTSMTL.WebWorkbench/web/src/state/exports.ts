@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import { authoringApi, type SkillEditingView, type DocumentExport, type DocumentExportKind } from '../api/authoring';
+import { authoringApi, type AuthoringEditingView, type DocumentExport, type DocumentExportKind } from '../api/authoring';
 import { consoleActions } from './store';
 
 interface ExportRequest {
   id: string;
   documentPath: string;
   purpose: DocumentExportKind;
-  product: SkillEditingView['product'];
+  product: AuthoringEditingView['product'];
   startedAt: number;
 }
 
@@ -23,7 +23,7 @@ function update(operation: ExportOperation) {
 }
 
 export const exportActions = {
-  async prepare({ documentPath, purpose, editingView }: { documentPath: string; purpose: DocumentExportKind; editingView: SkillEditingView }) {
+  async prepare({ documentPath, purpose, editingView }: { documentPath: string; purpose: DocumentExportKind; editingView: AuthoringEditingView }) {
     const request = { id: crypto.randomUUID(), documentPath, purpose, product: editingView.product, startedAt: Date.now() };
     useExports.setState(state => ({ operations: [...state.operations, { ...request, kind: 'preparing' }] }));
     try {

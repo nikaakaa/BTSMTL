@@ -3,7 +3,7 @@
 import type { Range } from 'dnd-timeline';
 import { createContext, useCallback } from 'react';
 import { create } from 'zustand';
-import type { SkillElements } from '../../api/authoring';
+import type { AuthoringElements } from '../../api/authoring';
 import type { ExecutionCall, Frame, FrozenInputTimeline } from '../../api/types';
 import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
 import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
@@ -83,7 +83,7 @@ export const ClipGridContext = createContext<ClipGridOf>(() => null);
 export const snapGrid = (seconds: number, grid: Grid | null) =>
   grid ? grid.offset + Math.round((seconds - grid.offset) / grid.step) * grid.step : seconds;
 
-export function useClipGrid(snap: Snap, tick: number | null, elements: SkillElements | null): ClipGridOf {
+export function useClipGrid(snap: Snap, tick: number | null, elements: AuthoringElements | null): ClipGridOf {
   const enabled = useAuthoring(state => state.author && state.target !== null);
   const rates = useAnimationFrameRates(enabled && snap === 'frame');
   return useCallback((documentId: string, clipId: string): Grid | null => {
@@ -157,7 +157,7 @@ export function recordedLocalPosition(state: WorkbenchState, seconds: number,
     consoleActions.log('info', 'Timeline', `本地游标在 ${timeText(nearest.cursor)} 秒未前进，已定位到该时刻的首个录制帧 ${position.index}`);
   return position;
 }
-// 技能文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
+// 文档文档没有运行观察时的编辑游标（Timeline 本地秒）：照 Timeline Editor 可拖动定位，换 Timeline 回到 0。
 export const useAuthorCursor = create<{ documentId: string | null; seconds: number }>(() => ({ documentId: null, seconds: 0 }));
 export const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, clock: PreviewClock) =>
   ((clock.kind === 'document' && clock.observation === null) || (clock.kind === 'input' && clock.source === 'author')) && clock.documentId !== null

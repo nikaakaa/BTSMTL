@@ -111,7 +111,7 @@ export function ReferenceReplacementImpact({ plan, onOpenSkill }: { plan: Refere
   return <div className={styles.facts}>
     <strong>{plan.oldValue} → {plan.newValue}</strong>
     <span>{plan.saved ? '作者引用已替换。' : '引用替换计划已准备，尚未写入作者文件。'}</span>
-    <span>{plan.runtimeState === 'pending' ? '运行内容待应用，请通过原发布和采用入口继续。' : '本次没有需要应用运行内容的技能。'}</span>
+    <span>{plan.runtimeState === 'pending' ? '运行内容待应用，请通过原发布和采用入口继续。' : '本次没有需要应用运行内容的文档。'}</span>
     <details><summary>引用替换修订</summary><code>{plan.revision}</code></details>
     <details open><summary>{plan.saved ? '已修改' : '会修改'}的文件 · {plan.files.length}</summary>
       {plan.files.map(file => <div className={styles.facts} key={file.path}>
@@ -122,7 +122,7 @@ export function ReferenceReplacementImpact({ plan, onOpenSkill }: { plan: Refere
     <details><summary>计划读取的文件 · {plan.readFiles.length}</summary>
       {plan.readFiles.map(file => <div className={styles.facts} key={file.path}><code>{file.path}</code><small>{file.revision}</small></div>)}
     </details>
-    <details open><summary>受影响技能 · {plan.affectedSkills.length}</summary>
+    <details open><summary>受影响文档 · {plan.affectedSkills.length}</summary>
       {plan.affectedSkills.map(skill => <Button key={skill} variant="ghost" onClick={() => onOpenSkill(skill)}>{skill}</Button>)}
     </details>
   </div>;

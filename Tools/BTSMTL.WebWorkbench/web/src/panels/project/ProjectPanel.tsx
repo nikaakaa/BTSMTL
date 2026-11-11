@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { authoringApi } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
-import { authoringActions, useAuthoring, useSkillElements } from '../../state/authoring';
+import { authoringActions, useAuthoring, useAuthoringElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
 import { session } from '../../state/session';
@@ -109,8 +109,8 @@ export function ProjectPanel() {
   const [files, setFiles] = useState(false);
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const composition = target?.kind === 'skill' || target?.kind === 'timeline';
-  const elements = useSkillElements(author && composition);
+  const composition = target !== null && (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'timeline');
+  const elements = useAuthoringElements(author && composition);
   const byKey = useMemo(() => new Map(nodes.map(node => [node.key, node])), [nodes]);
 
   // 浏览引用字段时展开到当前值并选中它。

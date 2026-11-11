@@ -12,7 +12,7 @@ import {
   type NodeNavigationTarget,
 } from '../../state/graphModel';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useSkillElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
+  applyTimelineEdits, authoringActions, authoringDocument, findEditedGraph, graphPath, ownsAuthoringGraph, useAuthoring, useAuthorTimelines, useCurrentDocument, useInputSchemes, useAuthoringElements, useDocumentGraphHierarchy, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { edgeGraphSlots, edgeStep, slotLabel } from '../../state/graphAuthoring';
 import { documentElementKey, projectActions } from '../../state/project';
@@ -28,14 +28,14 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SkillFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, DocumentRootFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import { DocumentDetails } from '../project/DocumentDetails';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
 // 每个对象一栏自身的序列化字段，引用（节点图、条件图等）作为同栏的对象字段；运行记录只在有运行时附在后面。
-// 不选中时显示技能本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
+// 不选中时显示文档本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
 
 interface Params {
   locked: Selection | null;
@@ -54,7 +54,7 @@ export function InspectorPanel() {
     locked: !!params.locked,
     toggle: params.locked ? unlock : selection ? () => setParams({ locked: selection }) : null,
   };
-  // 动画资源不属于技能，没有打开技能时同样可检查。
+  // 动画资源不属于文档，没有打开文档时同样可检查。
   const content = shown?.kind === 'resource' ? <ResourceInspector key={shown.id} identity={shown.id} />
     : shown?.kind === 'catalog' ? <CatalogInspector key={shown.id} id={shown.id} />
     : shown?.kind === 'scene' ? <SceneInspector />
@@ -96,8 +96,8 @@ function Content({ shown, locked, unlock }: { shown: Selection; locked: boolean;
 function DocumentSummary() {
   const { target, documents } = useAuthoring(useShallow(state => ({ target: state.target, documents: state.documents })));
   if (target === null) return <Empty text="选择要编辑的文档" />;
-  if (target.kind === 'skill') return <SkillSummary />;
   const document = documents[target.documentPath];
+  if (document.roles.entryGraph !== undefined) return <DocumentSummary />;
   if (document.loading) return <Empty text="正在读取文档" />;
   if (target.kind === 'scenario') return <SceneInspector />;
   const root = projectContents(documents).items.find(item => item.owner === target.documentPath && item.file === document.rootFile);
@@ -123,7 +123,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
       { displayName: '所属文档修订', value: element.revision }]} />
   </>;
   if (item === undefined || target === null || item.owner !== target.documentPath) return missing;
-  if (item.kind === 'skill') return <SkillSummary />;
+  if (item.kind === 'document') return <DocumentSummary />;
   return <>
     <Head name={item.name} sub={`${item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} · ${item.ownerName} · ${item.ownership === 'Shared' ? '共享' : '私有'}`} />
     {item.kind === 'timeline' && <Fold title="设置" defaultOpen><TimelineScopeFields documentId={item.identity} /></Fold>}
@@ -256,15 +256,17 @@ function Identity({ extra = [] }: { extra?: Field[] }) {
   return <IdentityFold fields={fields} />;
 }
 
-// ── 技能 ──
+// ── 文档 ──
 
-// 打开技能、没有选中对象时（照 Unity 选中资产本身）：技能名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
-function SkillSummary() {
-  const { skill, plans, editable, noProgram, documentError } = useAuthoring(useShallow(state => {
+// 打开文档、没有选中对象时（照 Unity 选中资产本身）：文档名与所含 Timeline 数，下面是预览输入方案（作者模式可编辑）。
+function DocumentSummary() {
+  const { skill, typeName, plans, editable, noProgram, documentError } = useAuthoring(useShallow(state => {
     const document = authoringDocument(state);
     const path = state.target?.documentPath ?? null;
-    return { skill: state.directory?.find(item => item.documentPath === path)?.name ?? path, editable: state.author, documentError: document.documentError,
-      noProgram: state.target?.kind === 'skill' && document.documentGraphs !== null && document.programId === null && document.documentError === null,
+    return { skill: state.directory?.find(item => item.documentPath === path)?.name ?? path,
+      typeName: state.documentTypes.find(type => type.id === state.target?.kind)?.displayName,
+      editable: state.author, documentError: document.documentError,
+      noProgram: document.roles.entryGraph !== undefined && document.documentGraphs !== null && document.programId === null && document.documentError === null,
       plans: [...new Set([...Object.keys(document.files), ...Object.keys(document.edited)])]
         .filter(path => path.startsWith('inputs/') && !document.removed.includes(path)).sort().join('\n') };
   }));
@@ -272,10 +274,10 @@ function SkillSummary() {
   const paths = plans ? plans.split('\n') : [];
   return (
     <>
-      <Head name={skill ?? '技能'} sub={`技能 · ${timelines} 个 Timeline`} />
+      <Head name={skill ?? '文档'} sub={`${typeName} · ${timelines} 个 Timeline`} />
       {documentError !== null && <ErrorLine text={documentError} entryId={null} />}
-      <SkillFields editable={editable} />
-      {noProgram && <div className={styles.note}>当前技能没有执行图</div>}
+      <DocumentRootFields editable={editable} />
+      {noProgram && <div className={styles.note}>当前文档没有默认入口图</div>}
       {paths.map((path, index) => (
         <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} defaultOpen>
           <InputPlanFields path={path} editable={editable} />
@@ -345,7 +347,7 @@ function NodeInspector({ id, call, missing }: { id: string; call: Selection['cal
 function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefinition; nodeId: string; invocationPath: string; call: ExecutionCall | null }) {
   const hierarchy = useDocumentGraphHierarchy();
   const { document } = useCurrentDocument(graphPath(graph.id));
-  const elements = useSkillElements(document !== null);
+  const elements = useAuthoringElements(document !== null);
   const runId = useWorkbench(state => state.runId);
   const children = nodeReferences(hierarchy, graph, nodeId);
   const source = hierarchy.graphs.get(graphKey(graph))!;
@@ -390,7 +392,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
     return located && edge ? { graph: located.graph, edge } : null;
   }, [graphs, id, author]);
   const editable = useAuthoring(state => found !== null && state.author && ownsAuthoringGraph(state, found.graph.id));
-  const elements = useSkillElements(editable);
+  const elements = useAuthoringElements(editable);
   const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
   if (!found) return missing;
   const { graph, edge } = found;
