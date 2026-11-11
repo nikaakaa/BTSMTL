@@ -1,3 +1,4 @@
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Authoring.Workspace;
 using Newtonsoft.Json.Linq;
 
@@ -29,4 +30,8 @@ public sealed record AuthoringReferenceCapture(IReadOnlyList<AuthoringReferenceD
 public interface IAuthoringResourceAdapter
 {
     AuthoringReferenceCapture CaptureReferences(string workspace, AuthoringCatalogSnapshot catalog);
+
+    GraphAuthoringScopeSnapshot ReadScope(string workspace, GraphAuthoringScopeQuery query);
+
+    GraphAuthoringResourceObjectResult ResourceObjects(string workspace, GraphAuthoringResourceObjectQuery query);
 }

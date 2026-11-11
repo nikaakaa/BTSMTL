@@ -110,6 +110,7 @@ public static class AuthoringApi
         IAuthoringResourceAdapter resources)
     {
         string workspace = documents.Workspace;
+        AuthoringResourceApi.Map(app, workspace, resources);
         AuthoringCommits commits = AuthoringCommits.For(workspace);
         app.MapGet("/api/authoring/documents", (string? kind, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { kind }, () => documents.List(kind)));
