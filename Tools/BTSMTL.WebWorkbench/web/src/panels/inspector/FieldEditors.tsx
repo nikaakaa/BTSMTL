@@ -782,7 +782,7 @@ function VariableDefaultValue({ type, value, onSet }: { type: VariableType; valu
     <Checkbox label="空值 null" checked={value === null} onChange={next => onSet([], next ? null : cloneJson(type.defaultValue))} />
     <TextValue label="默认值" value={value as string | null} onSet={next => onSet([], next)} />
   </Row>;
-  return <ValueEditor label="默认值" value={value} shape={{ clrType: type.clrType, hasAuthoringFields: false, enumValues: null, elementType: null }} keys={[]}
+  return <ValueEditor label="默认值" value={value} shape={{ clrType: type.clrType, roles: {}, hasAuthoringFields: false, enumValues: null, elementType: null }} keys={[]}
     onSet={onSet} />;
 }
 
@@ -867,7 +867,7 @@ function portShape(type: string): StorageShape {
   const clrType = { Single: 'System.Single', Double: 'System.Double', Int32: 'System.Int32', Int64: 'System.Int64',
     UInt64: 'System.UInt64', Boolean: 'System.Boolean', String: 'System.String',
     ObjectHandle: 'BTSMTL.Orchestration.ObjectHandle', 'object-handle': 'BTSMTL.Orchestration.ObjectHandle' }[type] ?? type;
-  return { clrType, hasAuthoringFields: false, enumValues: null, elementType: null };
+  return { clrType, roles: {}, hasAuthoringFields: false, enumValues: null, elementType: null };
 }
 
 function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetFields }: {
@@ -1086,7 +1086,7 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
         : <TextValue label={label} value={value ?? null} nullable onSet={set} />}
     </Row>;
   return <>
-    <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, hasAuthoringFields: false, enumValues: null, elementType: null } : null)}
+    <ValueEditor label={label} value={value} shape={shape ?? (field.objectType ? { clrType: field.objectType, roles: {}, hasAuthoringFields: false, enumValues: null, elementType: null } : null)}
       keys={path} graphId={owner.graphId} scope={id} onSet={onSet} />
     {field.optional && shape?.hasAuthoringFields && value !== null && <Row label="">
       <Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button>
