@@ -108,9 +108,9 @@ public sealed class AuthoringDocumentService
             var files = owner.Files.ToDictionary(file => file.Key, file => file.Value, StringComparer.Ordinal);
             files[owner.Kind.RootFile] = AuthoringJsonText.Text(value);
             AuthoringDocumentEdit? previous = request.Writes.SingleOrDefault(write => write.DocumentPath == owner.DocumentPath);
-            AuthoringDocumentSnapshot saved = captured.Single(document => document.DocumentPath == owner.DocumentPath);
             var replacement = new AuthoringDocumentEdit(owner.Kind.Id, owner.DocumentPath,
-                previous == null ? saved.Revision : previous.ExpectedRevision, files);
+                previous == null ? captured.Single(document => document.DocumentPath == owner.DocumentPath).Revision
+                    : previous.ExpectedRevision, files);
             edited = request with
             {
                 Writes = request.Writes.Where(write => write.DocumentPath != owner.DocumentPath).Append(replacement).ToArray(),
