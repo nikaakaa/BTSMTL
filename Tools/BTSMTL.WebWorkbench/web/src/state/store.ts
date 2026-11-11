@@ -295,8 +295,9 @@ export const connectionActions = {
     const limit = getState().localInputLimit ?? (host ? Number(host.inputLimit.initialValue) : null);
     // 打开即预览：未选过档位时默认快速预览，宿主未提供时取第一个可用档位。
     const modes = host?.modes.filter(mode => mode.available) ?? [];
-    const previewMode = getState().previewMode
-      ?? (modes.find(mode => mode.id === 'quick') ?? modes[0])?.id ?? null;
+    const selected = getState().previewMode;
+    const previewMode = (modes.find(mode => mode.id === selected)
+      ?? modes.find(mode => mode.id === 'quick') ?? modes[0])?.id ?? null;
     set({ hostAvailable: available, host, connected: true, lastError: null, localInputLimit: limit, previewMode });
   },
   setImages(images: ImageSourceAvailability['description']) {

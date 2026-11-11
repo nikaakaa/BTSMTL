@@ -8,12 +8,12 @@ using Newtonsoft.Json.Linq;
 namespace BTSMTL.WebWorkbench;
 
 // ReadMs／RouteMs／WriteMs：改时间并经正式读取器取片段范围、重推路线、写路线负载各自的耗时。
-sealed record QuickRetime(TimelineStaticRoute Route, JsonObject Payload, double ReadMs, double RouteMs, double WriteMs);
+sealed record QuickRetime(TimelineStaticRoute Route, PreviewQuickPlan Plan, JsonObject Payload, double ReadMs, double RouteMs, double WriteMs);
 
 // 快预览作业的片段时间候选：作业保留本次捕获的作者文档与编译结果。每个 Timeline 第一次候选时经正式读取器读一次，
 // 留住作者模型与各片段捕获时的时间范围；每次候选先把片段时间还原到捕获值，再按网页给的起止与 ClipIn 改，
 // 由 TimelineData.Init 重算相邻混合与时长并校验，写进已编译内容的时间候选，再重建静态查询推出路线；不读盘、不重编、不写包。
-sealed class QuickRetimeSource(IPreviewQuickCapture capture, QuickPreviewCompilation compiled,
+sealed class QuickRetimeSource(IPreviewQuickCapture capture, IPreviewQuickEnvironment actor, QuickPreviewCompilation compiled,
     QuickPreviewInputSchedule input, string? graphId)
 {
     readonly Dictionary<string, TimelineContentUnit> m_Candidates = new(StringComparer.Ordinal);
@@ -88,6 +88,6 @@ sealed class QuickRetimeSource(IPreviewQuickCapture capture, QuickPreviewCompila
         };
         long written = System.Diagnostics.Stopwatch.GetTimestamp();
         double Ms(long from, long to) => (to - from) * 1000d / System.Diagnostics.Stopwatch.Frequency;
-        return new QuickRetime(route, payload, Ms(started, read), Ms(read, routed), Ms(routed, written));
+        return new QuickRetime(route, QuickPreviewPlanProjection.Describe(capture, actor, compiled, input, route), payload, Ms(started, read), Ms(read, routed), Ms(routed, written));
     }
 }

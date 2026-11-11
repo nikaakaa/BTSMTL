@@ -7,11 +7,11 @@ import { Button, TipProvider } from '../ui/controls';
 import { playerService } from '../state/player';
 import { quickPreview } from '../state/quickPreview';
 import { session } from '../state/session';
-import { connectionActions, getState } from '../state/store';
+import { connectionActions, getState, useWorkbench } from '../state/store';
 import './dockview.css';
 import { AuthoringExit } from './AuthoringExit';
 import { GroupActions, Watermark } from './GroupActions';
-import { attachLayout } from './layout';
+import { attachLayout, syncPlayerPanels } from './layout';
 import { PanelTab } from './PanelTab';
 import { shellBridge } from './shellBridge';
 import { bindShortcuts } from './shortcuts';
@@ -27,6 +27,9 @@ const theme: DockviewTheme = {
 };
 
 export function Workbench() {
+  const hostAvailable = useWorkbench(state => state.hostAvailable);
+  const playerAvailable = useWorkbench(state => state.host?.player.available === true);
+  useEffect(() => { if (hostAvailable !== null) syncPlayerPanels(playerAvailable); }, [hostAvailable, playerAvailable]);
   useEffect(() => bindShortcuts(window), []);
   return (
     <TipProvider>

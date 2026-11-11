@@ -205,6 +205,7 @@ export const playerService = {
   },
 
   async refresh() {
+    if (!getState().host?.player.available) return;
     try {
       const [builds, lives] = await Promise.all([playerApi.builds(), playerApi.lives()]);
       useWorkbench.setState({ playerBuilds: builds.items, lives });

@@ -70,14 +70,17 @@ function selectedStart(modeId = getState().previewMode) {
 }
 
 async function refresh() {
-  const [sources, jobs] = await Promise.all([previewApi.sources(), playerApi.jobs()]);
+  const [sources, jobs] = await Promise.all([previewApi.sources(),
+    getState().host?.player.available ? playerApi.jobs() : Promise.resolve(null)]);
   contentActions.setSources(sources);
-  runActions.setArchiveJobs(jobs.items);
+  runActions.setArchiveJobs(jobs?.items ?? []);
 }
 
 async function beat() {
   try {
-    runActions.setArchiveJobs((await playerApi.jobs()).items);
+    const host = await previewApi.host();
+    connectionActions.setHost(host.available, host.description);
+    if (host.description?.player.available) runActions.setArchiveJobs((await playerApi.jobs()).items);
     if (!getState().connected) {
       connectionActions.setConnected(true);
       consoleActions.log('info', 'connection', '宿主已重新连接');
@@ -153,15 +156,17 @@ export const session = {
         consoleActions.log('warn', 'connection', '当前工作台未接入运行宿主');
         return;
       }
-      void playerApi.images().then(images => connectionActions.setImages(images.description),
-        error => consoleActions.error('connection', error));
+      if (host.description!.player.available)
+        void playerApi.images().then(images => connectionActions.setImages(images.description),
+          error => consoleActions.error('connection', error));
+      else consoleActions.log('warn', 'connection', host.description!.player.reason!);
       await refresh();
     } catch (error) {
       connectionActions.setConnected(false, error instanceof Error ? error.message : String(error));
       consoleActions.error('connection', error);
     }
     heartbeat ??= setInterval(() => void beat(), heartbeatMilliseconds);
-    if (sessionStorage.getItem(pendingRequestKey)) await session.startRun();
+    if (getState().host?.player.available && sessionStorage.getItem(pendingRequestKey)) await session.startRun();
   },
 
   refresh: () => refresh().catch(error => consoleActions.error(source, error)),

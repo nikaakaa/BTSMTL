@@ -1,7 +1,7 @@
 import type {
   AddPanelPositionOptions, DockviewApi, DockviewGroupPanel, IDockviewPanel, PopoutWindowFailure, SerializedDockview,
 } from 'dockview-react';
-import { consoleActions, layoutActions } from '../state/store';
+import { consoleActions, getState, layoutActions } from '../state/store';
 import { nullable, object, optional, text, tuple } from '../api/playerRecords';
 import { graphKey } from '../state/graphModel';
 import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, type PanelType } from './panelTypes';
@@ -87,14 +87,15 @@ function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
 function buildDefault() {
   const dockview = dock();
   dockview.clear();
-  const player = addInstance('player', 1, undefined);
-  addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
+  const hasPlayer = getState().host?.player.available === true;
+  const player = addInstance(hasPlayer ? 'player' : 'graph', 1, undefined);
+  if (hasPlayer) addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
   const timeline = addInstance('timeline', 1, { referencePanel: player, direction: 'below' });
   // 照 Unity：Project 单独一栏，选场景、文档时画面仍可见。
   const project = addInstance('resources', 1, { referencePanel: player, direction: 'left' });
   for (const type of ['query', 'console'] as const)
     addInstance(type, 1, { referencePanel: timeline, direction: 'within' }, true);
-  const graph = addInstance('graph', 1, { referencePanel: player, direction: 'right' });
+  const graph = hasPlayer ? addInstance('graph', 1, { referencePanel: player, direction: 'right' }) : player;
   const inspector = addInstance('inspector', 1, { direction: 'right' });
   addInstance('frames', 1, { referencePanel: inspector, direction: 'within' }, true);
   player.api.setActive();
@@ -266,6 +267,7 @@ export function attachLayout(dockview: DockviewApi) {
     buildDefault();
   }
   if (!dockview.panels.length) buildDefault();
+  if (!getState().host?.player.available) syncPlayerPanels(false);
   syncSlice();
   requestLayoutSave();
   dockview.onDidLayoutChange(() => { requestLayoutSave(); syncSlice(); });
@@ -274,6 +276,12 @@ export function attachLayout(dockview: DockviewApi) {
     popoutFailureLogged = true;
     consoleActions.log('error', source, `独立窗口未打开：${failureNames[failure.reason]}`, failure.error?.message);
   });
+}
+
+export function syncPlayerPanels(available: boolean) {
+  if (!api) return;
+  if (available) openPanel('player');
+  else for (const panel of instances('player')) api.removePanel(panel);
 }
 
 export function resetLayout() {

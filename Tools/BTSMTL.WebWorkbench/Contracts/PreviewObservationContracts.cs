@@ -87,8 +87,10 @@ public sealed record PreviewObservationPage(string RunId, string ContentRevision
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);
 public sealed record PreviewNumberInput(string Name, string DisplayName, string Minimum, string Step, string InitialValue);
+public sealed record PreviewPlayerAvailability(bool Available, string? Reason);
 public sealed record PreviewHostDescription(string DisplayName, string FrameDisplayName,
     PreviewQueryField[] Filters, PreviewNumberInput InputLimit)
 {
     public PreviewModeAvailability[] Modes { get; init; } = [];
+    public PreviewPlayerAvailability Player { get; init; } = new(false, "未注册项目播放器适配。");
 }

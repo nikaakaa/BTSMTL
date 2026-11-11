@@ -8,8 +8,9 @@ using BTSMTL.Timeline;
 
 namespace BTSMTL.WebWorkbench;
 
-public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPreviewJobs players, PlayerLiveSessions live)
+public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServices? players = null)
 {
+    readonly PlayerLiveSessions? m_Live = players?.Live;
     static readonly JsonSerializerOptions s_QuickJson = new(JsonSerializerDefaults.Web);
     readonly ConcurrentDictionary<Guid, QuickJob> m_QuickJobs = new();
     readonly SemaphoreSlim m_QuickStart = new(1);
@@ -124,7 +125,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
         try
         {
             PreviewQuickStatus status = job.Status;
-            if (job.CancelSource.IsCancellationRequested || status.Stage != "ready")
+            if (job.CancelSource.IsCancellationRequested || status.Stage != "ready" || job.Player == null)
                 return QuickReply(false, false, "preview_not_ready", "当前快预览作业没有可以定位的播放器。", status);
             if (status.Source!.Revision != request.SourceRevision || status.Plan!.InputRevision != request.InputRevision)
                 return QuickReply(false, false, "preview_revision_changed", "快预览定位的作者或输入修订已变化。", status);
@@ -134,7 +135,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
             long timeRaw = request.Seconds <= start / (double)OrchestrationTime.Scale ? start
                 : request.Seconds >= end / (double)OrchestrationTime.Scale ? end
                 : OrchestrationTime.FromSeconds(request.Seconds).RawValue;
-            PlayerCommandReceipt receipt = await Complete(job.Player!.Value, live.Command(job.Player.Value, new JsonObject
+            PlayerCommandReceipt receipt = await Complete(job.Player!.Value, m_Live!.Command(job.Player.Value, new JsonObject
             {
                 ["type"] = "seek", ["commandId"] = Guid.NewGuid().ToString(),
                 ["position"] = new JsonObject { ["hostFrame"] = timeRaw.ToString(CultureInfo.InvariantCulture) }
@@ -177,7 +178,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
         {
             PreviewQuickStatus status = job.Status;
             if (job.CancelSource.IsCancellationRequested || status.Stage != "ready" || job.Retiming == null)
-                return QuickReply(false, false, "preview_not_ready", "当前快预览作业没有可以修改片段时间的播放器。", status);
+                return QuickReply(false, false, "preview_not_ready", "当前快预览作业没有可以修改片段时间的路线。", status);
             if (status.Source!.Revision != request.SourceRevision || status.Plan!.InputRevision != request.InputRevision)
                 return QuickReply(false, false, "preview_revision_changed", "片段时间候选的作者或输入修订已变化。", status);
             var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -191,27 +192,33 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
                 return QuickReply(false, false, "preview_request_invalid", error.Message, status);
             }
             double routeMs = clock.Elapsed.TotalMilliseconds;
-            job.TimeRangeRaw = (retime.Route.RootStart.RawValue, retime.Route.End.RawValue);
-            var (start, end) = job.TimeRangeRaw;
+            var (start, end) = (retime.Route.RootStart.RawValue, retime.Route.End.RawValue);
+            if (job.Player == null)
+            {
+                job.TimeRangeRaw = (start, end);
+                job.Update(value => value with { Plan = retime.Plan });
+                return QuickStatusReply(job.Status);
+            }
             long cursor = request.Seconds <= start / (double)OrchestrationTime.Scale ? start
                 : request.Seconds >= end / (double)OrchestrationTime.Scale ? end
                 : OrchestrationTime.FromSeconds(request.Seconds).RawValue;
             retime.Payload["cursor"] = cursor;
             using var deadline = job.Deadline();
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, cancellation);
-            PlayerCommandReceipt receipt = await Complete(job.Player!.Value, live.Command(job.Player.Value, new JsonObject
+            PlayerCommandReceipt receipt = await Complete(job.Player!.Value, m_Live!.Command(job.Player.Value, new JsonObject
             {
                 ["type"] = "retime", ["commandId"] = Guid.NewGuid().ToString(), ["retime"] = retime.Payload
             }), wait.Token);
             if (receipt.Stage != "applied")
                 return QuickReply(false, false, "preview_retime_rejected",
                     receipt.Ack?["error"]?.ToString() ?? "播放器拒绝本次片段时间候选。", job.Status);
-            PreviewQuickFrame frame = Frame(job, receipt.Ack!, status.Plan, request.RequestId, request.Seconds);
+            job.TimeRangeRaw = (start, end);
+            PreviewQuickFrame frame = Frame(job, receipt.Ack!, retime.Plan, request.RequestId, request.Seconds);
             string note = $"片段时间候选 路线 {routeMs.ToString("0.0", CultureInfo.InvariantCulture)} ms（读 " +
                 $"{retime.ReadMs.ToString("0.0", CultureInfo.InvariantCulture)} · 推 {retime.RouteMs.ToString("0.0", CultureInfo.InvariantCulture)} · 写 " +
                 $"{retime.WriteMs.ToString("0.0", CultureInfo.InvariantCulture)}）· 至画面 " +
                 $"{clock.Elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture)} ms";
-            job.Update(value => value with { Frame = frame, SamplesDone = value.SamplesDone + 1, SamplesTotal = value.SamplesTotal + 1,
+            job.Update(value => value with { Plan = retime.Plan, Frame = frame, SamplesDone = value.SamplesDone + 1, SamplesTotal = value.SamplesTotal + 1,
                 Notes = [.. value.Notes.Where(item => !item.StartsWith("片段时间候选 ", StringComparison.Ordinal)), note] });
             return QuickStatusReply(job.Status);
         }
@@ -293,14 +300,22 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
             PreviewQuickDescription? description = request.SourceRevision == null
                 ? Describe(actor, capture, compiled, inputs) : null;
             Mark("来源描述");
-            string build = actor.SelectPlayerBuild(players.PublishedBuilds());
+            var graph = capture.Identity.Authoring.Entry as PreviewQuickGraphEntry;
+            job.Retiming = new QuickRetimeSource(capture, actor, compiled, input, graph?.GraphId);
+            job.Update(status => status with { Source = capture.Identity, Plan = plan, Description = description });
+            string? playerReason = players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
+            if (playerReason != null)
+            {
+                job.Update(status => status with { Stage = "ready", Completed = true,
+                    Notes = [.. status.Notes, playerReason + " 路线已推导，画面不可用。", string.Join(" · ", timings)] });
+                return;
+            }
+            string build = actor.SelectPlayerBuild(players!.Jobs.PublishedBuilds());
             Mark("选播放器构建");
             string output = PlayerInputPreparation.OutputDirectory(request.OutputDirectory);
-            var graph = capture.Identity.Authoring.Entry as PreviewQuickGraphEntry;
             var motionPrograms = compiled.Publication.Programs;
             Mark("准备表现程序");
             deadline.Token.ThrowIfCancellationRequested();
-            job.Retiming = new QuickRetimeSource(capture, compiled, input, graph?.GraphId);
             var members = new Dictionary<string, string>(StringComparer.Ordinal);
             var previousMembers = m_QuickMembers is { } candidate && candidate.Generation < QuickMemberGenerationLimit &&
                 string.Equals(Path.GetDirectoryName(candidate.Directory), Path.GetDirectoryName(output), StringComparison.OrdinalIgnoreCase) &&
@@ -322,31 +337,31 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
             job.Update(status => status with { Stage = "loading", OutputDirectory = output, Source = capture.Identity, Plan = plan,
                 Description = description });
             deadline.Token.ThrowIfCancellationRequested();
-            if (m_QuickPlayer is { } previous && !live.Connected(previous, build))
+            if (m_QuickPlayer is { } previous && !m_Live!.Connected(previous, build))
                 await ReleaseQuickPlayer();
             if (m_QuickPlayer == null)
             {
                 m_QuickPlayer = Guid.NewGuid();
-                await live.Start(new(m_QuickPlayer.Value, build, HideWindow: true), localPort);
+                await m_Live!.Start(new(m_QuickPlayer.Value, build, HideWindow: true), localPort);
             }
             Guid player = m_QuickPlayer.Value;
             job.Player = player;
-            await live.Ready(player, deadline.Token);
+            await m_Live!.Ready(player, deadline.Token);
             Mark("播放器就绪");
             deadline.Token.ThrowIfCancellationRequested();
             job.Loading = true;
-            await RequireApplied(player, live.Load(player, new(job.LoadId,
+            await RequireApplied(player, m_Live!.Load(player, new(job.LoadId,
                 job.Publication.Content, [PlayerObservationChannel.Images])), timeout.Token);
             job.Loading = false;
             deadline.Token.ThrowIfCancellationRequested();
             Mark("播放器载入");
             // 烘焙在播放器里逐采样点进行，画面留在播放器内存；网页接好共享画面区后按时刻定位，烘焙未到的时刻由播放器挂起到位再写。
             // 沿用原会话换包时，改动时刻之前的画面照用，播放器从第一个缺画面的采样点续算。
-            await RequireApplied(player, live.Command(player, new JsonObject
+            await RequireApplied(player, m_Live!.Command(player, new JsonObject
                 { ["type"] = "bake", ["commandId"] = Guid.NewGuid().ToString() }), deadline.Token);
             Mark("开始烘焙");
-            PlayerLiveIdentity identity = live.Identity(player);
-            var quickPlayer = new PreviewQuickPlayer(player.ToString("N"), live.ProcessId(player), identity.Width, identity.Height);
+            PlayerLiveIdentity identity = m_Live!.Identity(player);
+            var quickPlayer = new PreviewQuickPlayer(player.ToString("N"), m_Live!.ProcessId(player), identity.Width, identity.Height);
             string summary = Path.Combine(output, "quick-summary.json");
             WorkbenchArtifacts.Write(summary, new
             {
@@ -375,7 +390,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
     async Task<PlayerCommandReceipt> Complete(Guid id, Task<PlayerCommandReceipt> command, CancellationToken cancellation)
     {
         PlayerCommandReceipt receipt = await command.WaitAsync(cancellation);
-        return receipt.Stage == "submitted" ? await live.CompleteCommand(id, receipt.CommandId!, cancellation) : receipt;
+        return receipt.Stage == "submitted" ? await m_Live!.CompleteCommand(id, receipt.CommandId!, cancellation) : receipt;
     }
 
     // 定位回执：播放器已把不晚于请求时刻的烘焙点写进共享画面区，回执带帧槽序号、像素翻转与实际采样时刻。
@@ -425,7 +440,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerPrev
             return [];
         try
         {
-            await live.ReleaseQuick(player);
+            await m_Live!.ReleaseQuick(player);
             m_QuickPlayer = null;
             return [];
         }

@@ -3,9 +3,9 @@ namespace BTSMTL.WebWorkbench;
 public static class PreviewQuickApi
 {
     public static QuickPreviewService MapPreviewQuickApi(this WebApplication app, IPreviewQuickAdapter adapter,
-        PlayerPreviewJobs players, PlayerLiveSessions live)
+        PlayerServices? players = null)
     {
-        var quick = new QuickPreviewService(adapter, players, live);
+        var quick = new QuickPreviewService(adapter, players);
         RouteGroupBuilder routes = app.MapGroup("/api/preview/quick");
         routes.MapPost("/describe", async (PreviewQuickTarget target, CancellationToken cancellation) =>
             Result(await quick.DescribeQuick(target, cancellation)));

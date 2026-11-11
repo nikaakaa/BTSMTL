@@ -20,21 +20,22 @@ import styles from './toolbar.module.css';
 // 右侧预览档位、布局与连接圆点。面板不再各自放播放按钮。
 export function Toolbar() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
+  const playerAvailable = useWorkbench(state => state.host?.player.available === true);
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
         <ContentChoice />
         <DocumentChoice />
         <AuthoringStatus />
-        {!quick && <RunMenu />}
+        {!quick && playerAvailable && <RunMenu />}
       </div>
       <div className={styles.center}>
-        <Transport />{quick ? <QuickCursor /> : <FrameField />}
+        {(quick || playerAvailable) && <Transport />}{quick ? <QuickCursor /> : playerAvailable && <FrameField />}
       </div>
       <div className={styles.right}>
         <Button variant="ghost" onClick={() => openPanel('export')}>导出</Button>
         <PreviewModeChoice />
-        <MenuButton label="布局" variant="ghost" entries={panelMenu()} caret>布局</MenuButton>
+        <MenuButton label="布局" variant="ghost" entries={panelMenu(playerAvailable)} caret>布局</MenuButton>
         <Connection />
       </div>
     </header>
@@ -331,7 +332,7 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
 
 function PreviewModeChoice() {
   const { modes, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
-    modes: state.host?.modes, selected: state.previewMode, observing: state.previewMode === 'quick'
+    modes: state.host?.modes.filter(mode => mode.id !== 'real' || state.host.player.available), selected: state.previewMode, observing: state.previewMode === 'quick'
       ? state.quickPreview.job.kind !== 'idle' : state.runId !== null || state.live?.player?.source != null,
     adoptedMode: state.previewMode === 'quick'
       ? 'reply' in state.quickPreview.job ? state.quickPreview.job.reply?.data?.adoptedMode ?? null : null

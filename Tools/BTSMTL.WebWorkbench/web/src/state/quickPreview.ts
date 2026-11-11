@@ -367,7 +367,9 @@ async function sendRetime() {
         continue;
       }
       const frame = receiveFrame(reply.data === null ? null : reply.data.frame, accepted, request.requestId, request.seconds);
-      set({ picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
+      const plan = reply.data!.plan!;
+      set({ route: { request: accepted.request, plan }, accepted: { ...accepted, plan },
+        picture: { frame: { value: frame, playback: null }, request: { kind: 'idle' } } });
       shown = true;
     }
     if (shown) requestPicture(true);

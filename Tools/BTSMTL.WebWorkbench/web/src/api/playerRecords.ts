@@ -64,7 +64,7 @@ const previewMode = choice('off', 'quick', 'real');
 export const readPlayerHost = object({
   available: boolean,
   description: nullable(object({
-    displayName: text, frameDisplayName: text,
+    displayName: text, frameDisplayName: text, player: object({ available: boolean, reason: nullable(text) }),
     filters: array(object({ name: text, displayName: text, inputType: text, placeholder: text })),
     inputLimit: object({ name: text, displayName: text, minimum: text, step: text, initialValue: text }),
     modes: array(object({ id: previewMode, displayName: text, available: boolean, reason: text,

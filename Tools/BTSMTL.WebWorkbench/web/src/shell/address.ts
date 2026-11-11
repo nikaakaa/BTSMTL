@@ -32,7 +32,7 @@ export function isRestoringRunAddress() {
 // 外壳就绪后激活地址指定的面板；没有打开的实例时在默认位置打开。
 export function applyPanelAddress() {
   const panel = initial.get('panel');
-  if (!panel || !isPanelType(panel)) return;
+  if (!panel || !isPanelType(panel) || panel === 'player' && !getState().host?.player.available) return;
   openPanel(panel);
   setAddressPanel(panel);
 }
@@ -48,7 +48,7 @@ export function applyStateAddress() {
   }
   const run = initial.get('run');
   const documentPath = initial.get('document');
-  if (run) {
+  if (run && state.host?.player.available) {
     const frame = Number(initial.get('frame') ?? '0');
     session.selectRun(run, Number.isSafeInteger(frame) && frame >= 0 ? frame : 0);
     selectionActions.select(parseSelection(initial.get('select')));

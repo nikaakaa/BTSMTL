@@ -13,11 +13,17 @@ public static class PreviewApi
         app.MapGet("/api/preview/host", () => new { Available = false, Description = (PreviewHostDescription?)null });
 
     public static void MapPreviewApi<TSourceCatalog, TInputCatalog>(this WebApplication app,
-        IPreviewHost<TSourceCatalog, TInputCatalog> host)
+        IPreviewHost<TSourceCatalog, TInputCatalog> host, PlayerServices? players = null)
     {
         RouteGroupBuilder routes = app.MapGroup("/api/preview");
         routes.MapGet("/host", async (CancellationToken cancellation) =>
-            new { Available = true, Description = await host.Describe(cancellation) });
+        {
+            string? reason = players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
+            return new { Available = true, Description = (await host.Describe(cancellation)) with
+            {
+                Player = new(reason == null, reason)
+            } };
+        });
         routes.MapGet("/sources", host.Sources);
         routes.MapGet("/inputs", (string scene, string revision) => host.Inputs(scene, revision));
     }
