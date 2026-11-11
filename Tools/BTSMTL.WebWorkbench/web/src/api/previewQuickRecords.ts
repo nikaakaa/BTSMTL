@@ -14,10 +14,11 @@ const entry = (value: unknown, path = 'PreviewQuick.entry') => {
 const authoring = object({ documentPath: text, savedRevision: text, entry });
 const document = object({ kind: text, documentPath: text, identity: text, revision: text, savedRevision: text, hasUnsavedChanges: boolean });
 const source = object({ kind: text, authoring, revision: text, sceneRevision: text, documents: array(document) });
+const documentInput = object({ kind: choice('documentInput'), documentPath: text, savedRevision: text, inputId: text, schemeId: text });
 const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
   const { kind } = object({ kind: choice('documentInput', 'rootDefaults') })(value, path);
   switch (kind) {
-    case 'documentInput': return { kind, ...object({ documentPath: text, savedRevision: text, inputId: text, schemeId: text })(value, path) };
+    case 'documentInput': return documentInput(value, path);
     case 'rootDefaults': return { kind };
   }
 };
@@ -34,7 +35,7 @@ const description = object({
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
     authoring, label: text, machines: array(object({ authoring, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
-    inputSchemes: array(scheme), currentInputScheme: nullable(inputSource), conditions: array(condition),
+    inputSchemes: array(scheme), currentInputScheme: nullable(inputSource), defaultInput: nullable(documentInput), conditions: array(condition),
   })),
   source: nullable(source), note: text,
 });

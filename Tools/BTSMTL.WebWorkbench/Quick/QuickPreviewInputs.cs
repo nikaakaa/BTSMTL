@@ -19,6 +19,7 @@ sealed class QuickPreviewInputs
     readonly Selection[] m_Selections;
     readonly IPreviewQuickEnvironment m_Actor;
     public PreviewQuickInputSource? CurrentInputScheme { get; }
+    public PreviewQuickDocumentInput? DefaultInput { get; }
 
     public QuickPreviewInputs(IPreviewQuickCapture capture, IPreviewQuickEnvironment actor)
     {
@@ -48,6 +49,8 @@ sealed class QuickPreviewInputs
             return new Selection(new(selection, (string)scheme["Name"]!, revision, (string?)scheme["InputTimeline"]), plan, ordinal);
         })).ToArray();
         m_Selections = rootPlans.Length <= 1 ? [rootDefault, .. selections] : selections;
+        DefaultInput = defaultPlan == null ? null : (PreviewQuickDocumentInput)selections
+            .Single(selection => selection.Plan == defaultPlan && selection.Index == index).Scheme.Source;
         CurrentInputScheme = rootPlans.Length <= 1 ? defaultInput : null;
     }
 

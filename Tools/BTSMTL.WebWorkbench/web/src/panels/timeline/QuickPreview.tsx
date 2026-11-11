@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
+import { previewApi } from '../../api/preview';
 import { authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey,
@@ -88,8 +89,9 @@ async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'docum
   openPanel('timeline');
 }
 
-async function runInput(source: Extract<PreviewQuickInputSource, { kind: 'documentInput' }>, actorId: string) {
+async function runInput(selection: PreviewQuickInputSource) {
   const targetKey = quickTargetKey(useWorkbench.getState().quickPreview.target);
+  const schemeKey = quickInputSourceKey(selection);
   finishAuthoringInputs();
   if (Object.values(useAuthoring.getState().documents).some(isDocumentDirty)) {
     await authoringActions.save();
@@ -100,9 +102,17 @@ async function runInput(source: Extract<PreviewQuickInputSource, { kind: 'docume
   if (await session.loadInputs() !== null) throw new Error('读取当前场景的输入方案失败，具体原因见控制台');
   const state = useWorkbench.getState();
   if (state.previewMode !== 'quick' || quickTargetKey(state.quickPreview.target) !== targetKey ||
-    quickInputSourceKey(state.quickPreview.scheme) !== quickInputSourceKey(source))
+    quickInputSourceKey(state.quickPreview.scheme) !== schemeKey)
     throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
-  const choice = quickRunInputChoice(state.inputCatalog!, actorId, source);
+  const reply = await previewApi.describeQuick(state.quickPreview.target!);
+  if (!reply.success || reply.data === null || reply.data.root === null)
+    throw new Error(reply.message ?? '当前预览入口尚未读取成功');
+  const source = selection.kind === 'documentInput' ? selection : reply.data.root.defaultInput;
+  if (source?.kind !== 'documentInput') throw new Error('当前根默认输入没有作者方案，请先创建并选择输入方案');
+  const current = useWorkbench.getState();
+  if (quickTargetKey(current.quickPreview.target) !== targetKey || quickInputSourceKey(current.quickPreview.scheme) !== schemeKey)
+    throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
+  const choice = quickRunInputChoice(current.inputCatalog!, reply.data.actorId, source);
   contentActions.selectInputSource({ kind: 'local' });
   contentActions.selectInputPlan(choice);
   await session.startNewRun();
@@ -118,6 +128,7 @@ export function QuickBar() {
   const playerAvailable = useWorkbench(current => current.host?.player.available === true);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
+  const editableInput = input?.kind === 'documentInput' ? input : description?.root?.defaultInput;
   const job = state.job;
   const progress = quickJobProgress(job);
   const plan = state.route?.plan ?? null;
@@ -162,10 +173,10 @@ export function QuickBar() {
           const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === value);
           if (scheme !== undefined) quickPreview.selectScheme(scheme.source);
         }} />}
-      {description?.root && <Button variant="ghost" disabled={input?.kind !== 'documentInput' || busy}
-        tip={input?.kind === 'documentInput' ? '打开所选方案的输入 Timeline，继续编辑输入轨' : '先明确选择一份作者输入方案'}
+      {description?.root && <Button variant="ghost" disabled={editableInput?.kind !== 'documentInput' || busy}
+        tip={editableInput?.kind === 'documentInput' ? '打开所选方案的输入 Timeline，继续编辑输入轨' : '当前默认输入没有作者方案，请先创建输入方案'}
         onClick={() => {
-          if (input?.kind === 'documentInput') void editInput(input).catch(error => consoleActions.error('输入方案', error));
+          if (editableInput?.kind === 'documentInput') void editInput(editableInput).catch(error => consoleActions.error('输入方案', error));
         }}>编辑所选输入</Button>}
       {status && <span role="status" className={styles.status} data-stale={stale || undefined}>{status}</span>}
       {(failure ?? reason) && <span role={failure ? 'alert' : 'status'} className={styles.reason} title={failure ?? reason ?? undefined}>{failure ?? reason}</span>}
@@ -175,13 +186,13 @@ export function QuickBar() {
         : <Button variant="ghost" disabled={sourceReason !== null || busy} tip={sourceReason ?? '按当前作者内容与输入轨重新生成预览'}
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
-      {playerAvailable && <Button variant="ghost" disabled={busy || input?.kind !== 'documentInput' || description === null}
-        tip={input?.kind === 'documentInput' ? '保存当前编辑，使用所选方案的按键日程真实运行一次并录制' : '先明确选择一份作者输入方案'}
+      {playerAvailable && <Button variant="ghost" disabled={busy || editableInput?.kind !== 'documentInput' || description === null}
+        tip={editableInput?.kind === 'documentInput' ? '保存当前编辑，使用所选方案的按键日程真实运行一次并录制' : '当前默认输入没有作者方案，请先创建输入方案'}
         onClick={() => {
-          if (input?.kind !== 'documentInput' || description === null) return;
+          if (input === undefined) return;
           setRunning(true);
           setRunError(null);
-          void runInput(input, description.actorId).catch(error => {
+          void runInput(input).catch(error => {
             consoleActions.error('真实运行', error);
             setRunError(error instanceof Error ? error.message : String(error));
           }).finally(() => setRunning(false));
