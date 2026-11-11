@@ -43,6 +43,9 @@ async function openGraph(target: Pick<GraphNavigationTarget, 'id' | 'owner' | 'o
 }
 
 export const projectActions = {
+  locateResourceFile(path: string) {
+    openPanel('resources').api.updateParameters({ resourceLocation: { path, requestId: crypto.randomUUID() } });
+  },
   openGraph,
   openOwner,
   async openDocumentElement(element: WorkspaceDocumentElement): Promise<void> {

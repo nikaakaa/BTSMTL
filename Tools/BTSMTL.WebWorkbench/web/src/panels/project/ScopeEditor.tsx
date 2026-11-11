@@ -3,6 +3,7 @@ import { isAbort } from '../../api/http';
 import { scopeQueryKey, type ScopeQuery } from '../../api/resourceRegistration';
 import { authoringActions, scopeDocument, useAuthoring } from '../../state/authoring';
 import { consoleActions } from '../../state/store';
+import { projectActions } from '../../state/project';
 import { Fold, PanelBar } from '../../ui/blocks';
 import { Button } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -31,6 +32,19 @@ export function ScopeEditor({ query }: { query: ScopeQuery }) {
         catch (error) { setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('Scope', error) }); }
       }}>重读 Scope 来源</Button>
     </PanelBar>
+    <Fold title="原生动画绑定（只读）" defaultOpen>
+      <div className={styles.note}>绑定与修订来自 Editor 发布的执行范围目录；参数在对应原生资源中编辑，实际准备结果由预览 Player 报告。</div>
+      {source.publishedResources.length === 0 && <div className={styles.note}>此执行范围没有角色原生动画绑定。</div>}
+      {source.publishedResources.map(binding => <div key={binding.id} className={styles.facts}>
+        <strong>{binding.displayName}</strong>
+        {binding.kind === 'unavailable' ? <span className={styles.issue}>{binding.reason}</span> : <>
+          <code>{binding.resource.path}</code>
+          <small>对象身份：{binding.resource.assetToken}</small>
+          <small>资源修订：{binding.resource.revision}</small>
+          <PanelBar><Button onClick={() => projectActions.locateResourceFile(binding.resource.path)}>定位正式资源文件</Button></PanelBar>
+        </>}
+      </div>)}
+    </Fold>
     <Fold title="资源领域声明" defaultOpen>{source.resourceDeclarations.map(item => <div key={item.domain} className={styles.facts}>
       <strong>{item.domain}</strong><small>{item.source === 'AuthoringDocument' ? '工作区作者文档' : `实际对象类型：${item.objectType}`}</small>
       {!item.availability.available && <span className={styles.issue}>{item.availability.reason}</span>}

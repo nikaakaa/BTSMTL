@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isAbort } from '../../api/http';
-import { projectApi, type ProjectFileEntry, type ProjectFolderListing } from '../../api/project';
+import { projectApi, type ProjectFileEntry, type ProjectFolderListing, type ProjectResourceLocation } from '../../api/project';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
@@ -11,8 +11,8 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { VirtualList } from '../../ui/VirtualList';
 import styles from './project.module.css';
 
-export function ProjectFiles() {
-  const [folder, setFolder] = useState('');
+export function ProjectFiles({ location }: { location: ProjectResourceLocation | null }) {
+  const [folder, setFolder] = useState(() => location === null ? '' : location.path.slice(0, location.path.lastIndexOf('/')));
   const [listing, setListing] = useState<ProjectFolderListing | null>(null);
   const [selected, setSelected] = useState<ProjectFileEntry | null>(null);
   const [search, setSearch] = useState('');
@@ -23,7 +23,13 @@ export function ProjectFiles() {
   useEffect(() => {
     const controller = new AbortController();
     setListing(null); setSelected(null); setFailure(null);
-    projectApi.folder(folder, controller.signal).then(setListing, error => {
+    projectApi.folder(folder, controller.signal).then(value => {
+      setListing(value);
+      const file = location === null ? null : value.files.find(item => item.path === location.path) ?? null;
+      setSelected(file);
+      if (location !== null && folder === location.path.slice(0, location.path.lastIndexOf('/')) && file === null)
+        setFailure({ text: `已发布绑定的文件 ${location.path} 不在当前目录中，请重新导出资源目录核对实际地址。`, entryId: null });
+    }, error => {
       if (!isAbort(error)) setFailure({ text: error instanceof Error ? error.message : String(error), entryId: consoleActions.error('文件排查', error) });
     });
     return () => controller.abort();

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { authoringApi } from '../../api/authoring';
 import { isAbort } from '../../api/http';
+import { readProjectLocation, type ProjectResourceLocation } from '../../api/project';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { authoringActions, useAuthoring, useAuthoringElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
@@ -107,6 +108,18 @@ export function ProjectPanel() {
   const [current, setCurrent] = useState('作者内容');
   const [search, setSearch] = useState('');
   const [files, setFiles] = useState(false);
+  const [resourceLocation, setResourceLocation] = useState<ProjectResourceLocation | null>(null);
+  useEffect(() => {
+    const locate = (value: unknown) => {
+      const { resourceLocation: location } = readProjectLocation(value, 'Project.location');
+      if (location === undefined) return;
+      setResourceLocation(location);
+      setFiles(true);
+    };
+    locate(panel.getParameters());
+    const subscription = panel.onDidParametersChange(locate);
+    return () => subscription.dispose();
+  }, [panel]);
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const composition = target !== null && documents[target.documentPath].documentGraphs !== null &&
@@ -262,7 +275,7 @@ export function ProjectPanel() {
     {creating !== null ? <div className={styles.contentDetails}>
       <DocumentCreation key={creating} kind={creating} skill={composition && target !== null ? target.documentPath : null}
         elements={elements} onDone={() => setCreating(null)} />
-    </div> : files ? <div className={styles.body}><ProjectFiles /></div>
+    </div> : files ? <div className={styles.body}><ProjectFiles key={resourceLocation?.requestId ?? 'browse'} location={resourceLocation} /></div>
       : <div className={styles.columns} data-wide={wide || undefined}>
         {wide && query === '' && <VirtualList className={styles.folders} count={folderRows.length} rowHeight={22} label="Project 文件夹"
           render={index => row(folderRows[index], false)} />}

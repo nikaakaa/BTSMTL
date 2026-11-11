@@ -1,4 +1,8 @@
 import { getJson, query } from './http';
+import { object, optional, text } from './playerRecords';
+
+export const readProjectLocation = object({ resourceLocation: optional(object({ path: text, requestId: text })) });
+export type ProjectResourceLocation = NonNullable<ReturnType<typeof readProjectLocation>['resourceLocation']>;
 
 export interface ProjectFolderEntry { name: string; path: string }
 export interface ProjectFileEntry { name: string; path: string; extension: string; length: number; guid: string | null }

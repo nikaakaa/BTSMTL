@@ -56,7 +56,20 @@ function readResourceObjects(value: unknown) {
   return { ...object({ revision: nullable(text), items: array(readObjectCandidate) })(value, 'ResourceObjects'), ...availability };
 }
 export type ResourceObjects = ReturnType<typeof readResourceObjects>;
-const readScope = object({ scope: text, adapter: text, context: text, revision: text, resourceDeclarations: array(readResourceDeclaration) });
+const readPublishedBindingIdentity = object({ id: text, displayName: text });
+const readPublishedResource = object({ path: text, assetToken: text, revision: text });
+type PublishedResourceBinding = ReturnType<typeof readPublishedBindingIdentity> & (
+  | { kind: 'bound'; resource: ReturnType<typeof readPublishedResource> }
+  | { kind: 'unavailable'; reason: string });
+function readPublishedBinding(value: unknown, path: string): PublishedResourceBinding {
+  const identity = readPublishedBindingIdentity(value, path);
+  const { availability } = object({ availability: readAuthoringAvailability })(value, path);
+  return availability.available
+    ? { ...identity, kind: 'bound', resource: readPublishedResource(value, path) }
+    : { ...identity, kind: 'unavailable', reason: availability.reason };
+}
+const readScope = object({ scope: text, adapter: text, context: text, revision: text,
+  resourceDeclarations: array(readResourceDeclaration), publishedResources: array(readPublishedBinding) });
 export type AuthoringScope = ReturnType<typeof readScope>;
 export type ScopeQuery = Pick<AuthoringScope, 'scope' | 'adapter'>;
 export const scopeQueryKey = (query: ScopeQuery) => JSON.stringify([query.scope, query.adapter]);
