@@ -1,14 +1,10 @@
 using System;
 #if UNITY_EDITOR
-using ParadoxNotion.Design;
 using UnityEngine;
 #endif
 
 namespace BTSMTL.Authoring.Graph
 {
-#if UNITY_EDITOR
-    [Name(BtsmtlPreviewConditionNode.DisplayName), Category(BtsmtlPreviewConditionNode.CategoryName)]
-#endif
     [FlowInput("Input", "执行"), FlowOutput("Output", "然后")]
     public sealed partial class BtsmtlPreviewConditionNode
     {
