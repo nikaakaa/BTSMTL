@@ -79,6 +79,8 @@
 
 `input.source` 为 `rootDefaults` 或 `documentInput{documentPath,savedRevision,inputId,schemeId}`，`input.revision` 与 `sourceRevision` 为 null 时按本次捕获的正式来源推导，非 null 时须匹配本次修订。输入 Timeline 的回调时刻、同刻冲突与非法节点由公共读取器处理；条件写入在 BTSMTL 处理，预览按键经项目的 `IPreviewInputKeyAdapter` 换成输入值和动作请求。API 的显式 `points/conditions` 覆盖须成对提供；网页只提交方案来源，不另造覆盖日程。
 
+`root.inputSchemes` 同时包含当前入口的根方案和适配声明属于当前场景、角色的场景方案。根方案只有一份时提供默认选择；同一入口存在多份根方案时，`root.currentInputScheme=null`，网页要求作者明确选择，不按目录顺序代选。场景方案仍只允许原正式按键写入。网页编辑图进入输入目录前，必须沿所属文档适配收集为同次捕获的正式图形状。
+
 结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份。`segments[].conditionDependencies` 回报该段实际推导所读取的条件，每项为 `{key,label,written}`；`written=true` 表示本次路线依赖输入方案中的条件写入，默认读取也保留并标为 false。未知谓词键使用所在图与节点的稳定身份；过期条件写入会报出输入 Timeline 的元素位置。
 
 预览条件字段按 `pickerKind=preview-condition` 消费 `root.conditions`，候选和条件写入的归属检查使用同一次入口编译。未由 Timeline 片段提供的状态读取按正式 `EffectiveRead` 规则作为运行数据候选，片段已经提供的状态仍由实际区间决定。网页只采用与当前入口请求配对的描述；来源变化后重新读取，不能沿用旧入口候选。输入片段草稿的 `graph` 必须是可立即编辑的 `allNodes/outConnections` 形状，节点与连线均带身份；正式存盘转换仍由所属文档适配完成。
