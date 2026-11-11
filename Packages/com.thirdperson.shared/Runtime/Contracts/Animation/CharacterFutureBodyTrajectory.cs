@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace ThirdPersonSimulation
 {
@@ -129,12 +130,14 @@ namespace ThirdPersonSimulation
     public sealed class CharacterFutureBodyTranslation
     {
         public const int MaximumSampleCount = 5;
+        static readonly string s_SourceIdentityParameterName = "sourceIdentity";
         readonly CharacterFutureBodyTranslationSample[] m_Samples;
         string m_SourceIdentity = string.Empty;
         int m_SampleCount;
 
         public CharacterFutureBodyTranslation()
         {
+            RuntimeHelpers.RunClassConstructor(typeof(CharacterFutureBodyTranslation).TypeHandle);
             m_Samples = new CharacterFutureBodyTranslationSample[MaximumSampleCount];
         }
 
@@ -151,16 +154,16 @@ namespace ThirdPersonSimulation
         {
             string identity = SimulationIdentity.Require(
                 sourceIdentity,
-                nameof(sourceIdentity));
+                s_SourceIdentityParameterName);
             if (samples.Length < 2 || samples.Length > m_Samples.Length ||
                 samples[0].ElapsedSeconds != 0f)
-                throw new ArgumentException("Future Body Translation requires an anchored sample sequence.", nameof(samples));
+                throw CreateUnanchoredSamplesError();
             float previousTime = -1f;
             for (int i = 0; i < samples.Length; i++)
             {
                 CharacterFutureBodyTranslationSample sample = samples[i];
                 if (sample.ElapsedSeconds <= previousTime)
-                    throw new ArgumentException("Future Body Translation sample time is not strictly increasing.", nameof(samples));
+                    throw CreateUnorderedSamplesError();
                 m_Samples[i] = sample;
                 previousTime = sample.ElapsedSeconds;
             }
@@ -169,6 +172,14 @@ namespace ThirdPersonSimulation
             m_SourceIdentity = identity;
             m_SampleCount = samples.Length;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static ArgumentException CreateUnanchoredSamplesError() =>
+            new ArgumentException("Future Body Translation requires an anchored sample sequence.", "samples");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static ArgumentException CreateUnorderedSamplesError() =>
+            new ArgumentException("Future Body Translation sample time is not strictly increasing.", "samples");
 
         public void CopyFrom(CharacterFutureBodyTranslation source)
         {
