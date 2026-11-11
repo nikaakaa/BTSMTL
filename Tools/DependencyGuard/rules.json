@@ -7,7 +7,7 @@
     "webRoot": "Tools/BTSMTL.WebWorkbench/web/src",
     "fieldDeclarationRoots": ["Packages/com.btsmtl", "Packages/com.btsmtl.foundation"],
     "excludedDirectories": ["bin", "obj", "node_modules", "wwwroot", "web"],
-    "typeScriptModule": "Tools/BTSMTL.WebWorkbench/web/node_modules/typescript/lib/typescript.js"
+    "parserModule": "Tools/BTSMTL.WebWorkbench/web/node_modules/@babel/parser/lib/index.js"
   },
   "unityActualBoundary": {
     "evidenceRelativePath": "Library/DependencyGuard/unity-boundary.json",

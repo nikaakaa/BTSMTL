@@ -80,7 +80,7 @@ sealed class WorkbenchSourceRules
     public string WebRoot { get; set; } = "";
     public string[] FieldDeclarationRoots { get; set; } = [];
     public string[] ExcludedDirectories { get; set; } = [];
-    public string TypeScriptModule { get; set; } = "";
+    public string ParserModule { get; set; } = "";
 }
 
 sealed class VendorSourceProvenance

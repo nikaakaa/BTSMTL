@@ -6,7 +6,7 @@ namespace BTSMTL.Timeline
 {
     public sealed partial class TimelineData
     {
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(m_Name), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String,
             DocumentMember = BTSMTL.Authoring.Graph.GraphAuthoringDocumentMember.DisplayName)]
 #endif
@@ -14,7 +14,7 @@ namespace BTSMTL.Timeline
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public List<Track> Tracks => m_Tracks;
         public IReadOnlyList<TimelineExternalBindingDeclaration> ExternalBindings => m_ExternalBindings;
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
         [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(m_Loop), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Boolean,
             DocumentMember = BTSMTL.Authoring.Graph.GraphAuthoringDocumentMember.Loop)]
 #endif

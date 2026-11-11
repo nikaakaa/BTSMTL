@@ -34,9 +34,9 @@ sealed class WorkbenchSourceGuard(DependencyCatalog catalog, GuardRules rules, s
         }
         Source[] web = Sources(m_Rules.WebRoot, ".ts", ".tsx").ToArray();
         string parser = Path.Combine(AppContext.BaseDirectory, "workbench-source-parser.cjs");
-        string typescript = Path.GetFullPath(Path.Combine(sdkRoot, m_Rules.TypeScriptModule));
+        string parserModule = Path.GetFullPath(Path.Combine(sdkRoot, m_Rules.ParserModule));
         Record(parser);
-        Record(typescript);
+        Record(parserModule);
         var start = new ProcessStartInfo("node")
         {
             UseShellExecute = false, CreateNoWindow = true,
@@ -45,7 +45,7 @@ sealed class WorkbenchSourceGuard(DependencyCatalog catalog, GuardRules rules, s
             StandardErrorEncoding = Encoding.UTF8
         };
         start.ArgumentList.Add(parser);
-        start.ArgumentList.Add(typescript);
+        start.ArgumentList.Add(parserModule);
         using Process process = Process.Start(start)!;
         Task<string> output = process.StandardOutput.ReadToEndAsync();
         Task<string> error = process.StandardError.ReadToEndAsync();
@@ -79,6 +79,8 @@ sealed class WorkbenchSourceGuard(DependencyCatalog catalog, GuardRules rules, s
         foreach (InvocationExpressionSyntax call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
             if (call.Expression is not MemberAccessExpressionSyntax member || !s_Maps.Contains(member.Name.Identifier.ValueText))
+                continue;
+            if (member.Name.Identifier.ValueText == "Map" && call.ArgumentList.Arguments.Count != 2)
                 continue;
             string? path = Literal(call.ArgumentList.Arguments.First().Expression);
             if (path is null)
