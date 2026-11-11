@@ -717,6 +717,7 @@ useWorkbench.subscribe((state, previous) => {
 
 useAuthoring.subscribe((authoring, previous) => {
   const state = current();
+  if (state.description.kind === 'loading') return;
   if (state.target !== null && state.target.root === null && state.description.kind === 'ready' && authoring.documents !== previous.documents) {
     const chosen = defaultRoot(state.description.reply.data);
     if (chosen !== null) void quickPreview.readSource(chosen);

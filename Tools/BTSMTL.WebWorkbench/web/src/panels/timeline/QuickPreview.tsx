@@ -59,13 +59,16 @@ export function QuickCursor() {
 }
 
 export function QuickEntryButton({ documentPath, entry }: { documentPath: string; entry: PreviewQuickEntry }) {
-  const state = useWorkbench(current => current.quickPreview);
-  const quick = useWorkbench(current => current.previewMode === 'quick');
+  const { description: source, quick, busy } = useWorkbench(useShallow(current => ({
+    description: current.quickPreview.description, quick: current.previewMode === 'quick',
+    busy: current.quickPreview.description.kind === 'loading' || quickJobProgress(current.quickPreview.job) !== null,
+  })));
   if (!quick) return null;
-  const description = state.description.kind === 'ready' ? state.description.reply.data : null;
+  const description = source.kind === 'ready' ? source.reply.data : null;
   const document = description?.documents.find(item => item.documentPath === documentPath);
-  const choice = document?.entries.find(item => JSON.stringify(item.entry) === JSON.stringify(entry));
-  const busy = state.description.kind === 'loading' || quickJobProgress(state.job) !== null;
+  const choice = document?.entries.find(item => entry.kind === 'graph'
+    ? item.entry.kind === 'graph' && item.entry.graphId === entry.graphId && item.entry.machine === entry.machine
+    : item.entry.kind === 'timeline' && item.entry.timelineId === entry.timelineId);
   return <Button variant="ghost" disabled={choice === undefined || busy}
     tip={choice === undefined ? '当前来源目录尚未提供这个预览入口' : '以当前内容为入口，使用所选场景和输入方案生成预览'}
     onClick={() => void quickPreview.readSource({ documentPath, savedRevision: document!.savedRevision, entry: choice!.entry })}>
