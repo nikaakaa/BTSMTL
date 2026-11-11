@@ -10,6 +10,8 @@ public interface IAuthoringDocumentAdapter
 
     Type? AuthoringType(AuthoringDocumentSnapshot document);
 
+    string? DefaultEntry(AuthoringDocumentSnapshot document);
+
     // 随文档正文给出的存储形状；不需要形状的类型返回 null。
     JToken? StorageShape(Type authoringType);
 

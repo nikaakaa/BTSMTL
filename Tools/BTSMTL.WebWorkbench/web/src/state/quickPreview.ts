@@ -8,8 +8,7 @@ import type {
 import { playerApi } from '../api/player';
 import { shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
 import { authoringTargetKey } from '../api/authoring';
-import { authoringActions, currentDocument, useAuthoring, type ClipTimeRaw } from './authoring';
-import type { JsonObject } from './skillJson';
+import { authoringActions, useAuthoring, type ClipTimeRaw } from './authoring';
 import { consoleActions, getState, selectedScene, useWorkbench } from './store';
 
 type Description = { kind: 'idle' } | { kind: 'loading' } | { kind: 'stale'; reason: string }
@@ -156,18 +155,15 @@ export function quickInputSourceKey(source: PreviewQuickInputSource | null): str
     : JSON.stringify(source?.kind ?? null);
 }
 
-// 默认入口：独立 Timeline 取所选 Timeline；技能文档取 skill.json 声明的能力根图，文档只有一个入口时直接取它。
 function defaultRoot(catalog: PreviewQuickDescription): PreviewQuickAuthoringTarget | null {
   const source = selectedSource();
   if (source.kind === 'unavailable') return null;
   const active = useAuthoring.getState().target;
   const choices = catalog.documents.flatMap(document => document.entries.map(choice => ({ document, choice })));
-  const ability = (currentDocument('skill.json') as JsonObject | null)?.m_AbilityGraph;
   const owned = source.kind === 'timeline'
     ? choices.filter(item => item.choice.entry.kind === 'timeline' && item.choice.entry.timelineId === source.timeline.content.timeline)
     : choices.filter(item => active !== null && item.document.documentPath === authoringTargetKey(active));
-  const rooted = owned.filter(item => item.choice.entry.kind === 'graph' && item.choice.entry.graphId === ability);
-  const matches = owned.length === 1 ? owned : rooted.slice(0, 1);
+  const matches = source.kind === 'timeline' ? owned : owned.filter(item => item.choice.isDefault);
   return matches.length !== 1 ? null
     : { documentPath: matches[0].document.documentPath, savedRevision: matches[0].document.savedRevision, entry: matches[0].choice.entry };
 }
@@ -567,7 +563,6 @@ export const quickPreview = {
         }
         chosen = defaultRoot(catalog.data);
         if (chosen === null) {
-          // 技能 skill.json 尚未载入时选不出能力根；载入后由作者订阅按这份目录补选，不重读目录。
           set({ target, description: { kind: 'ready', reply: { ...catalog, data: catalog.data } }, scheme: null });
           return;
         }

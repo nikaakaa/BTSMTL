@@ -120,6 +120,7 @@ export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
   clrType: string;
+  roles: Partial<Record<'transitionOrder' | 'timelineOwnership' | 'entryGraph', string>>;
   hasAuthoringFields: boolean;
   defaultValue?: JsonValue;
   enumValues: string[] | null;

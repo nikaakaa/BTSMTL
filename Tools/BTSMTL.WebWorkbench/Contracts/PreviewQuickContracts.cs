@@ -67,7 +67,7 @@ public sealed record PreviewQuickDocument(string Kind, string DocumentPath, stri
     string SavedRevision, bool HasUnsavedChanges);
 public sealed record PreviewQuickSource(string Kind, PreviewQuickAuthoringTarget Authoring, string Revision,
     string SceneRevision, PreviewQuickDocument[] Documents);
-public sealed record PreviewQuickEntryChoice(PreviewQuickEntry Entry, string DisplayName);
+public sealed record PreviewQuickEntryChoice(PreviewQuickEntry Entry, string DisplayName, bool IsDefault);
 public sealed record PreviewQuickDocumentChoice(string Kind, string DocumentPath, string Identity,
     string DisplayName, string SavedRevision, PreviewQuickEntryChoice[] Entries);
 public sealed record PreviewQuickScene(PreviewSourceFile Publication, string ScenePath, string SceneGuid, string SceneRevision);

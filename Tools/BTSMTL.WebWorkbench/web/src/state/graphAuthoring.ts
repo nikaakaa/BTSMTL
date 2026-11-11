@@ -194,12 +194,12 @@ export const graphAuthoring = {
     return uid;
   },
 
-  connectStates(graphId: string, elements: SkillElements, sourceId: string, targetId: string) {
+  connectStates(graphId: string, elements: SkillElements, orderMember: string, sourceId: string, targetId: string) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = findNode(document, sourceId);
       if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);
-      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf(transitionPayload(connection)!.m_Order))) + 1;
-      connectionsOf(node).push(createTransition(connectionUid(), { ...elements.transition.value, m_Order: order }, targetId));
+      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf(transitionPayload(connection)![orderMember]))) + 1;
+      connectionsOf(node).push(createTransition(connectionUid(), { ...elements.transition.value, [orderMember]: order }, targetId));
     });
   },
 

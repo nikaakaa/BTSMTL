@@ -787,15 +787,17 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     selectCanvas(additive ? nodes.filter(node => node.selected).map(node => node.id) : [], [...next]);
   }, [graph, call, nodes, selectCanvas, selectedEdges, panelId]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
+  const transitionOrder = elements?.transition.shape.roles.transitionOrder;
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
     if (machine) {
-      if (elements) graphAuthoring.connectStates(graph.id, elements, connection.source, connection.target);
+      if (elements && transitionOrder !== undefined)
+        graphAuthoring.connectStates(graph.id, elements, transitionOrder, connection.source, connection.target);
       return;
     }
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
-  }, [graph.id, machine, elements]);
+  }, [graph.id, machine, elements, transitionOrder]);
   // 执行端口只接执行端口，数据端口只接数据端口；不连自己。句柄按 Host 给出的可接受种类判定，其它值类型的转换由编译器判定。
   const isValidConnection = useCallback((connection: Connection | FlowEdge) => {
     const port = (nodeId: string, handle: string | null | undefined) =>
@@ -968,7 +970,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const [link, setLink] = useState<{ source: string; at: XYPosition } | null>(null);
   const linked = useRef(false);
   const beginLink = useCallback((source: string, event: ReactPointerEvent) => {
-    if (!elements) return;
+    if (!elements || transitionOrder === undefined) return;
     linked.current = false;
     const startX = event.clientX, startY = event.clientY;
     const move = (pointer: PointerEvent) => {
@@ -982,14 +984,15 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
       setLink(null);
       if (!linked.current) return;
       const target = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest('.react-flow__node-state')?.getAttribute('data-id');
-      if (target && target !== source) graphAuthoring.connectStates(graph.id, elements, source, target);
+      if (target && target !== source) graphAuthoring.connectStates(graph.id, elements, transitionOrder, source, target);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-  }, [elements, graph.id, screenToFlowPosition]);
+  }, [elements, graph.id, screenToFlowPosition, transitionOrder]);
   const viewOptions = useMemo(() => ({
-    ...options, editable, grabGroup, renameGroup, resizeGroup, beginLink: editable && machine ? beginLink : undefined,
-  }), [options, editable, grabGroup, renameGroup, resizeGroup, machine, beginLink]);
+    ...options, editable, grabGroup, renameGroup, resizeGroup,
+    beginLink: editable && machine && transitionOrder !== undefined ? beginLink : undefined,
+  }), [options, editable, grabGroup, renameGroup, resizeGroup, machine, beginLink, transitionOrder]);
 
   return (
     <ViewContext.Provider value={viewOptions}>
@@ -1018,7 +1021,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
           onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={readableFocus}
-          minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
+          minZoom={0.1} maxZoom={2} nodesConnectable={editable && (!machine || transitionOrder !== undefined)} edgesFocusable={false} elementsSelectable
           deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={['Control', 'Shift']} proOptions={{ hideAttribution: true }}
           colorMode="dark">
           <Background id="minor" variant={BackgroundVariant.Lines} gap={20} patternClassName={styles.gridMinor} />

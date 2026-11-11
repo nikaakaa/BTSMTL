@@ -29,7 +29,7 @@ const scheme = object({ source: inputSource, name: text, revision: text, timelin
 const description = object({
   scenePath: text, carrierPath: text, carrierIdentity: text, tickRate: number,
   documents: array(object({ kind: text, documentPath: text, identity: text, displayName: text, savedRevision: text,
-    entries: array(object({ entry, displayName: text })) })),
+    entries: array(object({ entry, displayName: text, isDefault: boolean })) })),
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
   root: nullable(object({
     authoring, label: text, machines: array(object({ authoring, operation: number, entryTimeline: nullable(text), entryTimelineId: nullable(text) })),
