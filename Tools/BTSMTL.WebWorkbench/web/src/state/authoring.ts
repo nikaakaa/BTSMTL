@@ -787,7 +787,8 @@ export const authoringActions = {
     const removesDocument = before.rootFile !== null && paths.includes(before.rootFile);
     const graphFiles = removesDocument ? livePaths() : paths;
     const graphIds = new Set<string | null>(graphFiles.flatMap(path => /^graphs\/(.+)\.json$/.exec(path)?.slice(1) ?? []));
-    if (removesDocument && before.target?.kind === 'graph') graphIds.add(before.identity);
+    if (removesDocument && before.target?.kind === 'graph')
+      graphIds.add((currentDocument(before.rootFile!) as JsonObject).VariableOwnerId as string | null);
     const drafts = Object.entries(before.documents).filter(([, document]) => document.kind === 'variables' &&
       document.revision === null && graphIds.has(document.identity)).map(([key]) => key);
     const saved = (get().directory ?? []).filter(info => info.kind === 'variables' && graphIds.has(info.identity));
