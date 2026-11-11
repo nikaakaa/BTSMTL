@@ -548,7 +548,8 @@ export function SkillFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
   const execution = useAuthoring(state => authoringDocument(state).execution);
   const rootType = useAuthoring(state => authoringDocument(state).authoringType);
-  const { document } = useCurrentDocument(target?.kind === 'skill' ? 'skill.json' : null);
+  const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
+  const { document } = useCurrentDocument(target?.kind === 'skill' ? rootFile : null);
   if (target?.kind !== 'skill' || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
     <Fold title="预览设置" defaultOpen>
@@ -560,7 +561,7 @@ export function SkillFields({ editable }: { editable: boolean }) {
     </Fold>
     {rootType === null ? <div className={styles.issue}>当前技能文档未提供作者字段声明</div>
       : <AuthoringValueFields label="技能配置" type={rootType} value={document as JsonObject}
-        graphId={null} identity="skill.json" onSet={next => authoringActions.edit('skill.json', value => { Object.assign(value as JsonObject, next); })} />}
+        graphId={null} identity={rootFile!} onSet={next => authoringActions.edit(rootFile!, value => { Object.assign(value as JsonObject, next); })} />}
   </fieldset>;
 }
 

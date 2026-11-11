@@ -22,6 +22,15 @@ public sealed class AuthoringDocumentService
     public AuthoringDocumentRepository Repository => m_Documents;
     public string Workspace => m_Documents.Workspace;
 
+    public JObject Types() => new()
+    {
+        ["types"] = new JArray(Adapter.DocumentTypes.Select(type => new JObject
+        {
+            ["id"] = type.Id, ["displayName"] = type.DisplayName, ["rootType"] = type.RootType?.FullName,
+            ["directory"] = type.Directory, ["rootFile"] = type.RootFile
+        }))
+    };
+
     public async Task<JObject> List(string? kind = null)
     {
         IReadOnlyList<AuthoringDocumentSnapshot> documents = await m_Documents.Read();
@@ -173,10 +182,12 @@ public sealed class AuthoringDocumentService
         if (adapter.AuthoringType(document) is { } authoringType)
         {
             result["authoringType"] = authoringType.FullName;
+            result["roles"] = JObject.FromObject(adapter.StorageRoles(authoringType));
             // 存储形状只随正文给出，供读写该文档的调用方使用；目录列表只列身份与修订。
             if (content && adapter.StorageShape(authoringType) is { } shape)
                 result["storageShape"] = shape;
         }
+        else result["roles"] = new JObject();
         if (content)
             result["files"] = new JObject(document.Files.OrderBy(file => file.Key, StringComparer.Ordinal)
                 .Select(file => new JProperty(file.Key, file.Value)));

@@ -35,12 +35,12 @@ export function projectContents(documents: AuthoringState['documents']) {
         document.edited[path] ?? parseSkillJson(document.files[path])]));
     const root = document.rootFile === null ? undefined : source.get(document.rootFile) as JsonObject | undefined;
     if (root === undefined) continue;
-    const ownerName = document.kind === 'skill' ? root.m_DisplayName as string : document.kind === 'timeline' ? root.m_Name as string : owner;
+    const ownerName = document.name || owner;
     for (const [file, value] of source) {
       const data = value as JsonObject;
       const base = { owner, ownerName, file };
       let item: ProjectItem;
-      if (file === 'skill.json') item = { ...base, kind: 'skill', identity: data.m_AbilityId as string,
+      if (file === document.rootFile && document.kind === 'skill') item = { ...base, kind: 'skill', identity: document.identity!,
         name: ownerName, ownership: 'Private', asset: data };
       else if (file === document.rootFile && document.kind === 'graph') {
         const name = data.name as string;
@@ -102,8 +102,9 @@ export function projectContents(documents: AuthoringState['documents']) {
   }
   for (const [key, item] of items) {
     const data = values.get(key)!;
-    if (item.kind === 'skill') addUse(data.m_AbilityGraph as string,
-      { key, label: `${item.name} / 技能图`, target: { kind: 'item', item } });
+    const entryGraph = documents[item.owner].roles.entryGraph;
+    if (item.file === documents[item.owner].rootFile && entryGraph !== undefined) addUse(data[entryGraph] as string,
+      { key, label: `${item.name} / 入口图`, target: { kind: 'item', item } });
     if (item.kind === 'input-plan') for (const [index, scheme] of (data.Schemes as JsonObject[]).entries())
       addUse(scheme.InputTimeline as string, { key: JSON.stringify([key, index]), label: `${item.ownerName} / ${item.schemes[index].name}`,
         target: { kind: 'item', item } }, key);

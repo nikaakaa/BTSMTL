@@ -41,8 +41,8 @@ export function ProjectPanel() {
     return () => observer.disconnect();
   }, []);
 
-  const { documents, directory, target, author, elementCatalog } = useAuthoring(useShallow(state => ({
-    documents: state.documents, directory: state.directory, target: state.target, author: state.author, elementCatalog: state.elementCatalog })));
+  const { documents, directory, documentTypes, target, author, elementCatalog } = useAuthoring(useShallow(state => ({
+    documents: state.documents, directory: state.directory, documentTypes: state.documentTypes, target: state.target, author: state.author, elementCatalog: state.elementCatalog })));
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
@@ -51,7 +51,7 @@ export function ProjectPanel() {
   const picking = browsing && field !== null && field.domain !== null ? field : null;
 
   const contents = useMemo(() => projectContents(documents).tree, [documents]);
-  const author_ = useMemo(() => authoringRoot(directory ?? [], contents), [directory, contents]);
+  const author_ = useMemo(() => authoringRoot(directory ?? [], contents, documentTypes), [directory, contents, documentTypes]);
   const documentReferences = useMemo(() => {
     const references = new Map<string, { kind: string; choice: ReferenceDragChoice }>();
     for (const element of elementCatalog.items) {

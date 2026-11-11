@@ -4,9 +4,14 @@ using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.WebWorkbench;
 
+public sealed record AuthoringDocumentType(string Id, string DisplayName, Type? RootType, string Directory, string? RootFile);
+
 // 项目对作者文档的解释：根配置类型、文档内声明的元素、保存前的规范化与变量类型候选。工作台只经此取得类型身份与字段合同。
 public interface IAuthoringDocumentAdapter
 {
+    IReadOnlyList<AuthoringDocumentType> DocumentTypes { get; }
+
+    IReadOnlyDictionary<string, string> StorageRoles(Type authoringType);
     IReadOnlyList<AuthoringDocumentElement> DeclaredElements(AuthoringDocumentSnapshot owner);
 
     Type? AuthoringType(AuthoringDocumentSnapshot document);

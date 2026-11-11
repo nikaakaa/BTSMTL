@@ -1,6 +1,6 @@
 import type { AdapterCatalogDomain, AdapterCatalogItem } from '../api/authoring';
 import { executionScopeDomain } from '../api/resourceRegistration';
-import type { WorkspaceDocumentInfo } from '../api/workspaceDocuments';
+import type { DocumentType, WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import type { ContentNode } from './projectContents';
 import type { PreviewContentChoice } from './store';
 
@@ -52,7 +52,7 @@ function byDomain(documents: WorkspaceDocumentInfo[], location: string, color: s
       items.map(document => documentNode(document, opened.get(document.documentPath), `${location}/${domain}`, color)), `${items.length}`));
 }
 
-export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[]): ProjectNode {
+export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[], types: readonly DocumentType[]): ProjectNode {
   const opened = new Map(contents.flatMap(root => root.target?.kind === 'item' ? [[root.target.item.owner, root] as const] : []));
   const sorted = (kind: WorkspaceDocumentInfo['kind']) => directory.filter(document => document.kind === kind)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -62,13 +62,10 @@ export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], conte
     return folder(location, label, '作者内容', split ? byDomain(documents, location, color, opened)
       : documents.map(document => documentNode(document, opened.get(document.documentPath), location, color)), `${documents.length}`);
   };
-  return folder('作者内容', '作者内容', '', [
-    group('skill', '技能', colors.skill, false),
-    group('timeline', 'Timeline', colors.timeline, false),
-    group('graph', '共享图', colors.graph, false),
-    group('curve', '曲线', colors.curve, true),
-    group('profile', 'Profile', colors.profile, true),
-  ]);
+  return folder('作者内容', '作者内容', '', types.filter(type => type.id !== 'variables' && type.id !== 'scenario')
+    .map(type => group(type.id, type.displayName, type.id === 'skill' ? colors.skill : type.id === 'timeline' ? colors.timeline
+      : type.id === 'curve' ? colors.curve : type.id === 'profile' ? colors.profile : colors.graph,
+      type.id === 'curve' || type.id === 'profile')));
 }
 
 // 同名资源（如多个 ActorDefinition）补上能区分它们的最短上级目录。

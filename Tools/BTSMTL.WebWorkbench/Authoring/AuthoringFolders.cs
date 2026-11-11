@@ -10,11 +10,13 @@ public sealed class AuthoringFolders
     readonly string m_Kind;
     readonly AuthoringCommits m_Commits;
     readonly AuthoringDocumentRepository m_Documents;
+    readonly AuthoringDocumentService m_Service;
     readonly AuthoringDocumentKind m_DocumentKind;
 
     // 作者工作区下的全部读取与提交共用同一把读写锁与事务日志；根目录是工作区下某一文档种类的目录。
     public AuthoringFolders(AuthoringDocumentService documents, AuthoringDocumentKind kind, string displayName)
     {
+        m_Service = documents;
         m_DocumentKind = kind;
         m_Root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(documents.Workspace, kind.Directory)));
         m_Kind = displayName;
@@ -121,15 +123,17 @@ public sealed class AuthoringFolders
     }
 
     public (SkillAuthoringSnapshot Content, SkillAuthoringFileRevision[] Files) Snapshot(string name, string directory) =>
-        Snapshot(m_Documents.Open(directory).GetAwaiter().GetResult());
+        Snapshot(m_Documents.Open(directory).GetAwaiter().GetResult(), m_Service);
 
-    public static (SkillAuthoringSnapshot Content, SkillAuthoringFileRevision[] Files) Snapshot(AuthoringDocumentSnapshot document)
+    public static (SkillAuthoringSnapshot Content, SkillAuthoringFileRevision[] Files) Snapshot(AuthoringDocumentSnapshot document,
+        AuthoringDocumentService service)
     {
         SkillAuthoringFile[] files = document.Files.Select(file => new SkillAuthoringFile(file.Key, file.Value))
             .OrderBy(file => file.Path, StringComparer.Ordinal).ToArray();
         SkillAuthoringFileRevision[] revisions = files.Select(file => new SkillAuthoringFileRevision(file.Path,
             AuthoringCommits.Revision(file.Content))).ToArray();
-        return (new(document.DocumentPath, document.Revision, files, files), revisions);
+        return (new(document.DocumentPath, document.Revision, files, files,
+            System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(AuthoringJsonText.Compact(service.Describe(document, false)))), revisions);
     }
 
     public Task<SkillAuthoringSnapshot> Read(string name) => For(name, directory =>

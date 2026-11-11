@@ -8,7 +8,7 @@ import {
   type SkillDeleteResult, type SkillFormatError, type SkillSaveResult, type SkillSnapshot, type WorkspaceCreationKind,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
-import { workspaceDocumentsApi, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
 import type { VariablesQuery, VariablesValue } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
@@ -41,6 +41,7 @@ export interface AuthoringState {
   target: AuthoringTarget | null;
   documents: Record<string, AuthoringDocument>;
   directory: WorkspaceDocumentInfo[] | null;
+  documentTypes: DocumentType[];
   elementCatalog: { kind: 'loading' | 'ready'; items: WorkspaceDocumentElement[] }
     | { kind: 'unavailable'; items: WorkspaceDocumentElement[]; reason: string };
   carrierRevision: string | null;
@@ -59,6 +60,8 @@ export interface AuthoringDocument {
   rootFile: WorkspaceDocumentInfo['rootFile'];
   identity: WorkspaceDocumentInfo['identity'] | null;
   authoringType: string | null;
+  name: string;
+  roles: StorageRoles;
   variables: VariablesQuery | null;
   variablesWriting: boolean;
   documentSources: string[];
@@ -124,7 +127,7 @@ export interface AddedPort {
 }
 
 export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
-  rootFile: null, identity: null, authoringType: null, variables: null, variablesWriting: false, documentSources: [],
+  rootFile: null, identity: null, authoringType: null, name: '', roles: {}, variables: null, variablesWriting: false, documentSources: [],
   programId: null, inputActorId: null,
   inputRevision: { kind: 'catalog' }, saveRun: null, revision: null, sourceRevision: null, documentRevision: null,
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
@@ -141,7 +144,7 @@ export const variablesDrafts = (values: readonly VariablesValue[]): Record<strin
 const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null,
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null, documentTypes: [],
   elementCatalog: { kind: 'loading', items: [] }, carrierRevision: null,
   resourceTarget: null, scopes: {},
 }));
@@ -520,8 +523,8 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
       const key = owner.documentPath;
       const current = documents[key];
       if (current === undefined) {
-        documents[key] = { ...newDocument(), kind: owner.kind, rootFile: authoringRootFiles[owner.kind],
-          identity: document.elements.find(element => element.documentPath === key && element.relativePath === authoringRootFiles[owner.kind] && element.jsonPath === '/')?.identity ?? null,
+        documents[key] = { ...newDocument(), kind: owner.kind, rootFile: source.document.rootFile,
+          identity: source.document.identity, name: source.document.name, roles: source.document.roles,
           revision: source.revision, product: editingView.product, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
@@ -534,7 +537,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
           if (current.files[path] === undefined) delete files[path];
           else files[path] = current.files[path];
         }
-        documents[key] = { ...current, files, edited };
+        documents[key] = { ...current, files, edited, name: source.document.name, roles: source.document.roles };
       }
     }
     const key = authoringTargetKey(target);
@@ -638,13 +641,14 @@ export const authoringActions = {
     if (state.directory?.some(document => document.documentPath === key) || state.documents[key] !== undefined)
       throw new Error(`技能目录 ${target.documentPath} 已存在或已经打开，请使用其他名称`);
     const identityOwner = Object.entries(state.documents).find(([, document]) => document.revision === null &&
-      (document.edited['skill.json'] as JsonObject | undefined)?.m_AbilityId === request.parameters.abilityId);
+      document.identity === request.parameters.abilityId);
     if (identityOwner !== undefined)
       throw new Error(`技能 ID ${request.parameters.abilityId} 已用于未保存草稿 ${identityOwner[0]}，请继续编辑该草稿或使用其他 ID`);
     const draft = await authoringApi.createSkillDraft(request);
     const edited = Object.fromEntries(draft.files.map(file => [file.path, parseSkillJson(file.content)]));
     set({ documents: { ...useAuthoring.getState().documents, ...variablesDrafts(draft.variables === null ? [] : [draft.variables]),
-      [key]: { ...newDocument(), kind: target.kind, rootFile: 'skill.json', edited, version: 1,
+      [key]: { ...newDocument(), kind: target.kind, rootFile: draft.rootFile, identity: request.parameters.abilityId,
+      name: request.parameters.displayName, edited, version: 1,
       sourceFiles: Object.fromEntries(draft.files.map(file => [file.path, file.content])) } } });
     await authoringActions.open(target);
     selectionActions.select(null);
@@ -676,10 +680,11 @@ export const authoringActions = {
   async listDocuments() {
     const { editingView, isCurrentRequest } = captureEditingView();
     try {
-      const [directory, view] = await Promise.allSettled([
-        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView),
+      const [directory, view, types] = await Promise.allSettled([
+        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView), workspaceDocumentsApi.types(),
       ]);
       if (directory.status === 'rejected') throw directory.reason;
+      if (types.status === 'rejected') throw types.reason;
       let elementCatalog: AuthoringState['elementCatalog'];
       if (view.status === 'fulfilled') elementCatalog = { kind: 'ready', items: view.value.elements };
       else {
@@ -688,7 +693,7 @@ export const authoringActions = {
         elementCatalog = { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason };
         consoleActions.error('作者元素目录', error);
       }
-      set({ directory: directory.value, available: true, unavailableReason: null,
+      set({ directory: directory.value, documentTypes: types.value, available: true, unavailableReason: null,
         ...(isCurrentRequest() ? { elementCatalog } : {}),
       });
     } catch (error) {
@@ -727,6 +732,7 @@ export const authoringActions = {
         const snapshot = await workspaceDocumentsApi.open(target.documentPath, controller.signal);
         controller.signal.throwIfAborted();
         setDocument({ kind: snapshot.kind, rootFile: snapshot.rootFile, identity: snapshot.identity, authoringType: snapshot.authoringType ?? null,
+          name: snapshot.name, roles: snapshot.roles,
           ...(!opened || opened.revision === null ? { revision: snapshot.revision, sourceFiles: snapshot.files,
             ...(usesGraphModels(snapshot.kind) ? {} : { files: snapshot.files }) } : {}),
         }, target);
@@ -1436,9 +1442,10 @@ export const isDocumentDirty = (document: Pick<AuthoringDocument, 'edited' | 're
 export const hasChanges = (target = get().target) => isDocumentDirty(authoringDocument(useAuthoring.getState(), target));
 
 function referenceReplacementOwners(plan: ReferenceReplacementResult) {
+  const type = useAuthoring.getState().documentTypes.find(type => type.id === 'skill')!;
   return plan.affectedSkills.map(name => {
-    const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').endsWith(`/Skills/${name}/skill.json`))!;
-    const prefix = root.path.slice(0, -'skill.json'.length);
+    const root = plan.readFiles.find(file => file.path.replaceAll('\\', '/').endsWith(`/${type.directory}/${name}/${type.rootFile}`))!;
+    const prefix = root.path.slice(0, -type.rootFile!.length);
     return { target: authoringTarget('skill', name),
       paths: new Set(plan.files.filter(file => file.path.startsWith(prefix)).map(file => file.path.slice(prefix.length).replaceAll('\\', '/'))) };
   });

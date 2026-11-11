@@ -111,6 +111,8 @@ public static partial class AuthoringApi
         string workspace = documents.Workspace;
         AuthoringResourceApi.Map(app, workspace, resources);
         AuthoringCommits commits = AuthoringCommits.For(workspace);
+        app.MapGet("/api/authoring/documents/types", (HttpContext context) =>
+            AuthoringQueryResults.Read(context, null, documents.Types));
         app.MapGet("/api/authoring/documents", (string? kind, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { kind }, () => documents.List(kind)));
         app.MapGet("/api/authoring/documents/content", (string documentPath, string? revision, int? wait, HttpContext context) =>

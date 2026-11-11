@@ -3,7 +3,7 @@ import type { GraphDefinition, LiveCommandResult, PlayerPreviewTarget } from './
 import { getJson, postJson, postText, query } from './http';
 import { readAuthoringAvailability, type AuthoringAvailability } from './authoringAvailability';
 import { readVariablesValue, type VariablesValue } from './variables';
-import { readWorkspaceDocumentElements, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
+import { readWorkspaceDocumentElements, readWorkspaceDocumentInfo, readWorkspaceDocumentSnapshot, workspaceDocumentKinds, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceEditingView } from './workspaceDocuments';
 import { readExecutionScopeSelection, readObjectSelectionMetadata, readResourceReferenceMetadata,
   type ResourceObjectCapability, type ResourceReferenceMetadata } from './resourceRegistration';
 import { array, boolean, choice, hosted, nullable, number, object, opaque, optional, readPlayerCommandResult, readPlayerJobReceipt, readPlayerRunSource, text,
@@ -22,7 +22,7 @@ export type SkillEditingView = WorkspaceEditingView;
 const readSkillFile = object({ path: text, content: text });
 const readCreatedVariables = nullable(readVariablesValue);
 const readSkillSnapshotValue = object({ skill: text, revision: text,
-  files: array(readSkillFile), sourceFiles: array(readSkillFile) });
+  files: array(readSkillFile), sourceFiles: array(readSkillFile), document: readWorkspaceDocumentInfo });
 const readSkillSnapshot = (value: unknown, path?: string) => {
   const snapshot = readSkillSnapshotValue(value, path);
   return { ...snapshot, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
@@ -32,7 +32,7 @@ export type SkillSnapshot = ReturnType<typeof readSkillSnapshot>;
 
 export type AuthoringTarget = Pick<WorkspaceDocumentInfo, 'kind' | 'documentPath'>;
 const authoringDirectories = { skill: 'Skills', timeline: 'Timelines', curve: 'Curves', profile: 'Profiles', scenario: 'Scenarios', variables: 'Variables', graph: 'Graphs' };
-export const authoringRootFiles = { skill: 'skill.json', timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null, variables: 'variables.json', graph: 'graph.json' };
+export const authoringRootFiles = { timeline: 'timeline.json', curve: 'curve.json', profile: 'profile.json', scenario: null, variables: 'variables.json', graph: 'graph.json' };
 export const authoringTarget = (kind: AuthoringTarget['kind'], name: string): AuthoringTarget => ({ kind, documentPath: `${authoringDirectories[kind]}/${name}` });
 export function authoringOwner(documentPath: string): AuthoringTarget {
   const kind = workspaceDocumentKinds.find(kind => documentPath.startsWith(`${authoringDirectories[kind]}/`));
@@ -120,7 +120,7 @@ export const describedPortsAvailable = (ports: DescribedPorts): ports is Extract
 // 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
 export interface StorageShape {
   clrType: string;
-  roles: Partial<Record<'transitionOrder' | 'timelineOwnership' | 'entryGraph', string>>;
+  roles: StorageRoles;
   hasAuthoringFields: boolean;
   defaultValue?: JsonValue;
   enumValues: string[] | null;
@@ -770,6 +770,7 @@ export interface SkillCreationRequest {
 
 interface SkillCreationDraft {
   stage: 'draft';
+  rootFile: string;
   files: SkillFile[];
   variables: VariablesValue | null;
   availability: QueryAvailability;

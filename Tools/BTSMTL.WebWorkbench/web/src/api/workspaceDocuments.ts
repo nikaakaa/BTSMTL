@@ -5,11 +5,16 @@ import { readExecutionScopeSelection, type ExecutionScopeSelection } from './res
 import type { SourceFile } from './types';
 
 export const workspaceDocumentKinds = ['skill', 'timeline', 'curve', 'profile', 'scenario', 'variables', 'graph'] as const;
+const readStorageRoles = object({ transitionOrder: optional(text), timelineOwnership: optional(text), entryGraph: optional(text) });
+export type StorageRoles = ReturnType<typeof readStorageRoles>;
 const documentFields = {
   kind: choice(...workspaceDocumentKinds), identity: text, name: text, documentPath: text,
   rootFile: nullable(text), revision: text, sourceIdentity: text, contentDomain: nullable(text), scope: nullable(text),
   authoringType: optional(text),
+  roles: readStorageRoles,
 };
+const readDocumentType = object({ id: choice(...workspaceDocumentKinds), displayName: text, rootType: nullable(text), directory: text, rootFile: nullable(text) });
+export type DocumentType = ReturnType<typeof readDocumentType>;
 export const readWorkspaceDocumentInfo = object(documentFields);
 const readDocument = readWorkspaceDocumentInfo;
 export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
@@ -53,6 +58,8 @@ export function readWorkspaceEditingView(value: unknown): WorkspaceEditingView {
 }
 
 export const workspaceDocumentsApi = {
+  types: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/documents/types', signal)
+    .then(value => object({ types: array(readDocumentType) })(value).types),
   list: (kind?: WorkspaceDocumentInfo['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents${query({ kind })}`, signal).then(value => readList(value).documents),
   open: (documentPath: string, signal?: AbortSignal) =>
