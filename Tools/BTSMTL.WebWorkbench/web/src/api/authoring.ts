@@ -382,7 +382,7 @@ export interface ClipTemplate extends ElementTemplate {
   tickQuantized: boolean;
   clipInable: boolean;
   sourceAsset: { serializedMemberPath: string[]; choiceKind: string } | null;
-  // 引用源曲线资产的成员（有只读参考曲线的片段，如位移曲线的 m_SourceCurve）；没有为 null。
+  // 引用源曲线资产的成员；没有只读参考曲线时为 null。
   referenceCurves: string | null;
 }
 
@@ -696,7 +696,7 @@ export interface SkillDocumentGraph extends GraphDefinition {
 export interface SkillDocumentRelation {
   source: {
     owner: string; ownerName: string; file: string; graphId: string; nodeId: string;
-    fieldId: string; serializedMemberPath: string[];
+    fieldId: string; serializedMemberPath: string[]; roles: StorageShape['roles'];
   };
   target: {
     id: string; displayName: string | null;

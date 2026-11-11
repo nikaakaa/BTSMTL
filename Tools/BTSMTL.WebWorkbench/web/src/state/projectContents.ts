@@ -91,7 +91,9 @@ export function projectContents(documents: AuthoringState['documents']) {
     const identity = getIn(node, relation.source.serializedMemberPath);
     if (typeof identity !== 'string' || identity === '') continue;
     const target = byIdentity.get(identity);
-    if (target !== undefined && items.get(target)!.kind === 'timeline' && node.m_Ownership === 'Shared') items.get(target)!.ownership = 'Shared';
+    const ownershipMember = relation.source.roles.timelineOwnership;
+    if (target !== undefined && items.get(target)!.kind === 'timeline' && ownershipMember !== undefined && node[ownershipMember] === 'Shared')
+      items.get(target)!.ownership = 'Shared';
     const key = JSON.stringify([relation.source.owner, relation.source.graphId, relation.source.nodeId]);
     const label = nodeLabel(node);
     addUse(identity, { key: JSON.stringify([key, relation.source.serializedMemberPath]), label: `${relation.source.ownerName} / ${label} / ${relation.source.fieldId}`,
