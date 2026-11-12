@@ -267,7 +267,6 @@ export function attachLayout(dockview: DockviewApi) {
     buildDefault();
   }
   if (!dockview.panels.length) buildDefault();
-  if (!getState().host?.player.available) syncPlayerPanels(false);
   syncSlice();
   requestLayoutSave();
   dockview.onDidLayoutChange(() => { requestLayoutSave(); syncSlice(); });
@@ -280,8 +279,12 @@ export function attachLayout(dockview: DockviewApi) {
 
 export function syncPlayerPanels(available: boolean) {
   if (!api) return;
-  if (available) openPanel('player');
-  else for (const panel of instances('player')) api.removePanel(panel);
+  // 宿主状态确定后才同步；补回画面时不抢激活，避免覆盖地址或用户选中的同组页签。
+  if (available) {
+    if (instances('player').length > 0) return;
+    const timeline = instances('timeline')[0];
+    addInstance('player', 1, defaultPosition('player') ?? (timeline ? { referenceGroup: timeline.group, direction: 'above' } : undefined), true);
+  } else for (const panel of instances('player')) api.removePanel(panel);
 }
 
 export function resetLayout() {
