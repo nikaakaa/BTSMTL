@@ -776,10 +776,10 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
           if (selectedCurves.includes(curve.id) && (!filter || curve.displayName.toLowerCase().includes(filter)))
             result.push({ kind: 'curve', id: `curve:${curve.id}`, curve });
     };
-    // 输入 Timeline 分组：轨道是按键；回看真实运行时其下列出角色实际收到的输入。
+    // 预览输入 Timeline 分组：操作与其它 Timeline 相同；回看真实运行时其下另列角色实际收到的输入。
     const inputRows = (segment: TimelineSegment, focusedGroup: boolean): Row[] => {
-      const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment), focused: focusedGroup, input: true };
-      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(row => ({ ...row, trackKind: 'in' as const }));
+      const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment), focused: focusedGroup };
+      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
       const own: Row[] = [group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
       if (received) {
         own.push({ kind: 'receivedGroup', id: 'received', received });
@@ -1341,7 +1341,7 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
-        {!row.focused && !row.input && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
+        {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (
@@ -1511,7 +1511,7 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const blend = owned && elements !== null && trackOverlap(elements, documentId, row.track.id) === 'Blend';
   const mixes = useMemo(() => new Map(row.clips.map(clip => [clip.key, blend ? clipMix(clip, row.clips) : noMix])), [row.clips, blend]);
   // 能放带曲线通道片段的轨道可展开曲线（预览输入轨没有）。
-  const hasCurves = owned && elements !== null && row.trackKind !== 'in' && trackHasCurves(elements, documentId, row.track.id);
+  const hasCurves = owned && elements !== null && trackHasCurves(elements, documentId, row.track.id);
   const animationLibrary = useAnimationLibrary(author && row.trackKind === 'anim');
   const reportDrop = useDropReport();
   const curves = hasCurves && row.curves ? row.curves : 0;

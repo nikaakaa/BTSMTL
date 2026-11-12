@@ -89,8 +89,6 @@ export interface GroupRow {
   title: string;
   // 单个 Timeline 视图的 Timeline 分组：添加轨道在编辑行，分组头不再重复。
   focused?: boolean;
-  // 预览输入 Timeline：轨道是按键，不加作者轨道。
-  input?: boolean;
 }
 
 // 折叠的分组照 TimelineClipUnion 画各轨道片段的并集：同一轨道上相互重叠的片段合成一段（运行秒数）；
