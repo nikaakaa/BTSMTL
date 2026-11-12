@@ -623,8 +623,15 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
       label: `播放 ${segment.playback} · 循环 ${segment.cycle} · 出现 ${segment.occurrence} · ${segment.start}—${segment.end} s` }))],
     select: value => setQuickSelection(value === 'follow' ? null : { plan: quickPlan, documentId: focused.documentId, index: Number(value) }),
   };
-  const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
+  // 路线视图里输入轨放进它所属角色的对象组：快档为预览所用方案，回看档案为首个方案（与路线入口一致）。
+  const routeInput = routeView ? segments.find(segment => segment.documentId === (quickMode ? quickInputTimeline : schemes[0]?.documentId)) ?? null : null;
+  const inputScheme = schemes.find(scheme => scheme.documentId === (routeInput ?? focused)?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
+  const quickActor = useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.description.kind === 'ready'
+    ? state.quickPreview.description.reply.data?.actorId ?? null : null);
+  // 方案未绑定角色时按实际执行的角色。
+  const inputActor = inputScheme === undefined ? null : inputScheme.actorId
+    || (inputObservation.kind === 'ready' ? inputObservation.input.actorId : quickActor);
   const receivedSource = useMemo(() => !quickMode && runId !== null && inputObservation.kind === 'ready' ? {
     jobId: runId, actorId: inputObservation.input.actorId, stepSeconds: inputObservation.stepSeconds, keys: inputObservation.declarations.keys,
   } : null, [quickMode, runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
@@ -646,9 +653,9 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     // 运行档案只记根程序身份，按已打开文档的程序身份换成文档名。
     const programs = new Map(Object.values(documents).filter(document => document.programId)
       .map(document => [document.programId!, document.name || document.programId!]));
-    return routeLanes(routeSource, [...sources, ...timelines], quickMode ? quickInputTimeline : null,
+    return routeLanes(routeSource, [...sources, ...timelines], inputScheme?.documentId ?? null,
       root => programs.get(root) ?? root);
-  }, [quickMode, routeSource, routeView, quickInput, quickInputTimeline, timelines, documents]);
+  }, [routeSource, routeView, quickInput, inputScheme?.documentId, timelines, documents]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
   const callerNotice = caller !== null && caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例' : null;
@@ -769,12 +776,31 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
           if (selectedCurves.includes(curve.id) && (!filter || curve.displayName.toLowerCase().includes(filter)))
             result.push({ kind: 'curve', id: `curve:${curve.id}`, curve });
     };
-    // 每个对象一层分组；输入轨属于入口角色，放在入口对象组内最前。
+    // 输入 Timeline 分组：轨道是按键；回看真实运行时其下列出角色实际收到的输入。
+    const inputRows = (segment: TimelineSegment, focusedGroup: boolean): Row[] => {
+      const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment), focused: focusedGroup, input: true };
+      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(row => ({ ...row, trackKind: 'in' as const }));
+      const own: Row[] = [group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
+      if (received) {
+        own.push({ kind: 'receivedGroup', id: 'received', received });
+        if (!collapsed.has('received')) {
+          const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
+          if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
+          for (const line of lines)
+            if (!filter || line.name.toLowerCase().includes(filter))
+              own.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
+        }
+      }
+      return own;
+    };
+    // 每个对象一层分组；输入轨放进它所属角色的根对象组最前，对不上任何对象时单列在上方。
     const addPlayed = (input: Row[] = []) => {
-      const entry = played.find(lane => lane.instance.parent === null);
+      const entry = input.length === 0 ? undefined
+        : played.find(lane => lane.instance.parent === null && lane.instance.carrier === inputActor);
       if (entry === undefined) result.push(...input);
       for (const lane of played) {
-        const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane };
+        const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane,
+          empty: lane.segments.length === 0 && lane !== entry };
         const laneMatched = !filter || lane.label.toLowerCase().includes(filter);
         const groups: Row[] = lane === entry ? [...input] : [];
         if (!collapsed.has(instance.id))
@@ -791,29 +817,19 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     const firstInput: FirstInputRow = { kind: 'firstInput', id: 'first-input' };
     if (routeView) {
       if (needsFirstInput) result.push(firstInput);
-      addPlayed();
+      addPlayed(routeInput === null ? [] : inputRows(routeInput, false));
       return result;
     }
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
-      if (!input && needsFirstInput) result.push(firstInput);
-      // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
-      const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
-      const tracks = collapsed.has(group.id) ? []
-        : segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : expand(row));
-      const own: Row[] = [group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
-      if (input && received) {
-        own.push({ kind: 'receivedGroup', id: 'received', received });
-        if (!collapsed.has('received')) {
-          const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
-          if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
-          for (const line of lines)
-            if (!filter || line.name.toLowerCase().includes(filter))
-              own.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
-        }
+      if (input) addPlayed(inputRows(focused, true));
+      else {
+        if (needsFirstInput) result.push(firstInput);
+        // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
+        const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
+        const tracks = collapsed.has(group.id) ? [] : segmentRows(focused, graphNames).map(expand);
+        result.push(group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
       }
-      if (input) addPlayed(own);
-      else result.push(...own);
       addCurves();
       return result;
     }
@@ -834,7 +850,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
     addCurves();
     return result;
-  }, [segments, focused, routeView, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
+  }, [segments, focused, routeView, routeInput, inputActor, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
     params.curveTracks, params.curveParam, params.curveHeights, elements, selectedClip, references]);
 
   const toggle = useCallback((id: string) => {
@@ -1280,23 +1296,29 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
   );
 }
 
-// 对象分组：一个运行 BTSMTL 的对象一层，组内是它的输入轨与所播 Timeline；生成来源只在悬停里写。
-// 被生成的对象双击标题在节点图里定位生成节点。
+// 对象分组：一个运行 BTSMTL 的对象一层，组内是它的输入轨与所播 Timeline；标题注存活区间，生成来源只在悬停里写。
+// 折叠或没有内容时时间区画存活条。被生成的对象双击标题在节点图里定位生成节点。
 const InstanceLine = memo(function InstanceLine({ row, nest, open, toggle }: {
   row: InstanceRow; nest: Nest | undefined; open: boolean; toggle(id: string): void;
 }) {
   const { instance, label } = row.lane;
   const command = instance.command;
+  const { range } = useTimelineContext();
+  const life = `${instance.start.toFixed(2)}–${instance.end.toFixed(2)} s`;
   const tip = [instance.documentPath, instance.parent === null ? null : `由实例 #${instance.parent} 在 ${instance.start.toFixed(2)} s 生成`,
     command && `生成指令：${command.displayPath || command.nodeId}（双击定位）`, instance.endReason && `结束：${instance.endReason}`]
     .filter(Boolean).join('\n');
   return (
     <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
-      <GroupToggle open={open} onToggle={() => toggle(row.id)} name={label} tip={tip || undefined}
+      <GroupToggle open={open} onToggle={() => toggle(row.id)} name={label} meta={row.empty ? `${life} · 无 Timeline` : life}
+        tip={tip || undefined}
         onDoubleClick={command === null || command.graphId === '' ? undefined : () =>
           void projectActions.openGraph({ id: command.graphId, owner: command.documentPath, ownerName: command.documentPath },
             command.nodeId || undefined).catch(error => consoleActions.error('Timeline', error))} />
-    } />
+    }>
+      {(!open || row.empty) && instance.end >= range.start && instance.start <= range.end &&
+        <Positioned start={instance.start} end={instance.end} className={styles.clipUnion} tip={`存活 ${life}`} />}
+    </Line>
   );
 });
 
@@ -1315,7 +1337,7 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
-        {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
+        {!row.focused && !row.input && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>
       {!open && clipUnions(segment).filter(span => span.end >= range.start && span.start <= range.end).map((span, index) => (

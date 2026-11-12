@@ -48,7 +48,8 @@ export interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
 export interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
 export interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
 // 快档路线里的一个执行实例泳道：其下是它所播的 Timeline 分组。
-export interface InstanceRow { kind: 'instance'; id: string; lane: RouteLane }
+// empty：对象既没播 Timeline 也没有输入轨，只画存活区间。
+export interface InstanceRow { kind: 'instance'; id: string; lane: RouteLane; empty: boolean }
 export type Row = InstanceRow | GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 export interface Params {
