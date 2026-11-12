@@ -31,7 +31,7 @@ sealed record QuickPreviewCompilation(IPreviewQuickCompiledContent Content,
         if (graph.Machine < 0 || graph.Machine >= machines.Length)
             throw new ArgumentException($"所选图有 {machines.Length} 个根状态机，machine={graph.Machine} 越界。");
         if (machines[graph.Machine].EntryTimelineId == null)
-            throw new InvalidDataException("所选状态机的起始状态没有正式 Timeline，无法生成快预览画面。");
+            throw new InvalidDataException("所选状态机的起始状态没有固定的一条 Timeline（没有 Timeline，或运行时才在多条之间选择），快预览不能连看：在快预览入口里改选「单看」某条 Timeline。");
         return new(content, queries, publication, query, machines[graph.Machine].Operation, null, machines);
     }
 
