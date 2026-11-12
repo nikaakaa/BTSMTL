@@ -819,11 +819,14 @@ export const authoringActions = {
     for (const documentPath of removed) delete documents[documentPath];
     const closing = isActiveTarget(target);
     if (closing) loadController?.abort();
-    set({ documents, directory: state.directory === null ? null : state.directory.filter(document => !removed.has(document.documentPath)),
-      carrierRevision: receipt.authoringRevision, ...(closing ? { target: null } : {}) });
+    const directory = state.directory === null ? null : state.directory.filter(document => !removed.has(document.documentPath));
+    set({ documents, directory, carrierRevision: receipt.authoringRevision, ...(closing ? { target: null } : {}) });
     if (closing) {
       useWorkbench.setState({ graphRequest: null, timelineRequest: null });
       publishDocument();
+      // 删掉正在编辑的文档后落到同类的下一份文档，快预览与各面板随之跟过去，不停在已删除的内容上。
+      const next = directory?.find(document => document.kind === target.kind) ?? directory?.[0];
+      if (next !== undefined) void authoringActions.open(authoringOwner(next.documentPath));
     }
   },
 

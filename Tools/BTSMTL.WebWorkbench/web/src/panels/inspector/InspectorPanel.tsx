@@ -272,9 +272,16 @@ function EntryDocumentSummary() {
   }));
   const timelines = useAuthorTimelines().length;
   const paths = plans ? plans.split('\n') : [];
+  // 整份文档的打开、重命名、删除与引用者，与文档内其它内容同一套操作。
+  const documents = useAuthoring(state => state.documents);
+  const target = useAuthoring(state => state.target);
+  const items = useMemo(() => projectContents(documents).items, [documents]);
+  const item = items.find(value => value.owner === target?.documentPath && value.kind === 'document');
+  const stamp = useMemo(() => JSON.stringify(Object.entries(documents).map(([key, document]) => [key, document.revision, document.version])), [documents]);
   return (
     <>
       <Head name={skill ?? '文档'} sub={`${typeName} · ${timelines} 个 Timeline`} />
+      {item !== undefined && <DocumentDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />}
       {documentError !== null && <ErrorLine text={documentError} entryId={null} />}
       <DocumentRootFields editable={editable} />
       {noProgram && <div className={styles.note}>当前文档没有默认入口图</div>}

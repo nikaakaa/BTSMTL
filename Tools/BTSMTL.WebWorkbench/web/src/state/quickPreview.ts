@@ -715,16 +715,41 @@ useWorkbench.subscribe((state, previous) => {
     scheduleFollow();
 });
 
-useAuthoring.subscribe((authoring, previous) => {
+// 作者切换文档后，快预览跟随：打开的文档在快预览目录里、当前入口属于别的文档时改用它的默认入口。
+// 切换时来源还在读取则等描述就绪再判断一次；目录外的新建草稿由创建流程指定入口。
+let followPending = false;
+function followActiveDocument(): boolean {
   const state = current();
-  // 作者切换到快预览目录里的另一个文档：跟随该文档的默认入口；目录外的新建草稿由创建流程指定入口。
-  if (authoring.target !== previous.target && authoring.target !== null && state.target?.root != null &&
-      state.description.kind === 'ready' && state.description.reply.data?.documents.some(document => document.documentPath === authoringTargetKey(authoring.target!)) &&
-      state.target.root.authoring.documentPath !== authoringTargetKey(authoring.target)) {
-    set({ target: { ...state.target, root: null }, accepted: null, route: null, seconds: 0 });
+  const active = useAuthoring.getState().target;
+  if (state.description.kind !== 'ready') return false;
+  followPending = false;
+  if (active === null || state.target === null) return false;
+  const key = authoringTargetKey(active);
+  if (state.target.root?.authoring.documentPath === key ||
+      !state.description.reply.data?.documents.some(document => document.documentPath === key)) return false;
+  set({ target: { ...state.target, root: null }, accepted: null, route: null, seconds: 0 });
+  void quickPreview.readSource();
+  return true;
+}
+
+useWorkbench.subscribe((state, previous) => {
+  if (followPending && state.quickPreview.description !== previous.quickPreview.description) followActiveDocument();
+});
+
+useAuthoring.subscribe((authoring, previous) => {
+  // 入口文档被删除：丢掉旧入口，避免重新读取时把已删除的文档再打开；随后跟随新的当前文档。
+  const removedRoot = current().target?.root?.authoring.documentPath;
+  if (removedRoot !== undefined && authoring.directory !== previous.directory && authoring.directory !== null
+      && previous.directory?.some(document => document.documentPath === removedRoot)
+      && !authoring.directory.some(document => document.documentPath === removedRoot)) {
+    set({ target: { ...current().target!, root: null }, accepted: null, route: null, seconds: 0 });
+    followPending = true;
     void quickPreview.readSource();
     return;
   }
+  if (authoring.target !== previous.target) followPending = true;
+  if (followPending && followActiveDocument()) return;
+  const state = current();
   if (state.description.kind === 'loading') return;
   if (state.target !== null && state.target.root === null && state.description.kind === 'ready' && authoring.documents !== previous.documents) {
     const chosen = defaultRoot(state.description.reply.data);

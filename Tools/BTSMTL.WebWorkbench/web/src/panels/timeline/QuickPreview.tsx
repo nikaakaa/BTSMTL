@@ -182,11 +182,17 @@ export function QuickBar() {
   const roots = useMemo(() => {
     const documents = description?.documents ?? [];
     const owned = documents.filter(document => document.documentPath === active);
-    return (owned.length ? owned : documents).flatMap(document => document.entries.map(choice => ({
+    const listed = (owned.length ? owned : documents).flatMap(document => document.entries.map(choice => ({
       authoring: { documentPath: document.documentPath, savedRevision: document.savedRevision, entry: choice.entry },
       name: quickEntryName(choice.entry, owned.length ? choice.displayName : `${document.displayName} / ${choice.displayName}`),
     })));
-  }, [description, active]);
+    // 当前入口属于别的文档时也列出，下拉始终显示它的名称。
+    const root = state.target?.root?.authoring;
+    const document = root && !listed.some(item => quickAuthoringKey(item.authoring) === quickAuthoringKey(root))
+      ? documents.find(item => item.documentPath === root.documentPath) : undefined;
+    const choice = document?.entries.find(item => JSON.stringify(item.entry) === JSON.stringify(root!.entry));
+    return document && choice ? [{ authoring: root!, name: quickEntryName(choice.entry, `${document.displayName} / ${choice.displayName}`) }, ...listed] : listed;
+  }, [description, active, state.target]);
   const busy = running || progress !== null || state.description.kind === 'loading';
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
