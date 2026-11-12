@@ -24,7 +24,7 @@ public static class WorkbenchApplication
                 InvalidOperationException => 409,
                 _ => 500
             };
-            await context.Response.WriteAsJsonAsync(new { Error = exception.Message });
+            await context.Response.WriteAsJsonAsync(new { Error = WorkbenchErrors.Explain(exception) });
         }));
         app.UseDefaultFiles();
         // 页面入口每次向 Host 核对，发布新前端后刷新即用新版；带哈希的 assets 仍按原样缓存。

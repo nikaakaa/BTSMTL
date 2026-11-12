@@ -455,11 +455,7 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
         }
     }
 
-    // 格式错误逐项写出节点与字段，作者能直接看到要补哪一项。
-    static string Explain(Exception error) => error is AuthoringJsonFormatException format
-        ? $"{format.Message}{string.Concat(format.Errors.Select(item =>
-            $"\n· {(string?)item["element"] ?? (string?)item["file"]} · {(string?)item["fieldId"] ?? (string?)item["path"]}：{(string?)item["message"]}"))}"
-        : error.Message;
+    static string Explain(Exception error) => WorkbenchErrors.Explain(error);
 
     QuickJob? FindQuick(string jobId) => Guid.TryParse(jobId, out Guid id) ? m_QuickJobs.GetValueOrDefault(id) : null;
 
