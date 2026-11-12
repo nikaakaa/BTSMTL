@@ -1307,10 +1307,11 @@ svg.clipCurves:focus {
   background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* 分组头里的所属实例标注：窄时先收这一项 */
+/* 分组头里的所属实例标注：最多占四成，Timeline 名优先 */
 .instanceTag {
-  flex: 0 8 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 40%;
   overflow: hidden;
   padding: 0 5px;
   border-radius: 3px;

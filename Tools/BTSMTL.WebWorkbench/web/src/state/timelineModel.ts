@@ -48,7 +48,7 @@ export interface TimelineSegment {
   quickIndex?: number;
   owner?: string;
   // 快档路线里这一段所属的执行实例（运行这份根图的对象）。
-  instance?: { id: number; label: string };
+  instance?: { id: number; label: string; carrier: string };
   origin: number;
   start: number;
   end: number;

@@ -25,7 +25,7 @@ static class QuickPreviewPlanProjection
         }).ToArray();
         string root = compiled.Standalone?.Name ?? capture.Label;
         // 静态推演只沿一份根图走，路线里只有入口实例。
-        PreviewRouteInstance[] instances = [new(0, null, Path.GetFileNameWithoutExtension(actor.CarrierPath), root,
+        PreviewRouteInstance[] instances = [new(0, null, actor.ActorId, root,
             capture.Identity.Authoring.DocumentPath, 0, Seconds(route.End), route.Chain?.Reason, null)];
         return new(root, "staticInference", new("seconds", 0, "Player", actor.TickRate),
             input.Scheme.Source, input.Scheme.Revision, input.Revision, input.Conditions,

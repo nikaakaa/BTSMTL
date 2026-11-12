@@ -1300,7 +1300,7 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
-        {segment.instance && <span className={styles.instanceTag} title={`所属实例：${segment.instance.label}`}>{segment.instance.label}</span>}
+        {segment.instance && <span className={styles.instanceTag} title={`所属实例：${segment.instance.label}`}>{segment.instance.carrier}</span>}
         {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>

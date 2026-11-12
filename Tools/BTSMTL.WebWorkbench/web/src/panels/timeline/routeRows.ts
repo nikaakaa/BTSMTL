@@ -13,22 +13,22 @@ export interface RouteSource {
 }
 
 // 同一载体有多个实例（如连射的多颗子弹）时附实例编号区分。
-export function routeInstanceLabel(instance: RouteInstance, instances: RouteInstance[]): string {
+export function routeCarrierLabel(instance: RouteInstance, instances: RouteInstance[]): string {
   const shared = instances.filter(item => item.carrier === instance.carrier).length > 1;
-  return `${instance.carrier}${shared ? ` #${instance.id}` : ''} · ${instance.root}`;
+  return `${instance.carrier}${shared ? ` #${instance.id}` : ''}`;
 }
 
 export const routeEnd = (route: RouteSource) =>
   Math.max(0, ...route.instances.map(instance => instance.end), ...route.segments.map(segment => segment.end));
 
-export interface RouteLane { instance: RouteInstance; label: string; parent: string | null; segments: TimelineSegment[] }
+export interface RouteLane { instance: RouteInstance; carrier: string; label: string; parent: string | null; segments: TimelineSegment[] }
 
 export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inputTimeline: string | null): RouteLane[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
-  const labels = new Map(route.instances.map(instance => [instance.id, routeInstanceLabel(instance, route.instances)]));
+  const carriers = new Map(route.instances.map(instance => [instance.id, routeCarrierLabel(instance, route.instances)]));
   const lanes = new Map(route.instances.map(instance => [instance.id, {
-    instance, label: labels.get(instance.id)!, parent: instance.parent === null ? null : labels.get(instance.parent) ?? null,
-    segments: [] as TimelineSegment[],
+    instance, carrier: carriers.get(instance.id)!, label: `${carriers.get(instance.id)} · ${instance.root}`,
+    parent: instance.parent === null ? null : carriers.get(instance.parent) ?? null, segments: [] as TimelineSegment[],
   }]));
   route.segments.forEach((segment, index) => {
     const timeline = segment.timelineId === null ? undefined : byId.get(segment.timelineId);
@@ -38,7 +38,7 @@ export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inpu
       lane.segments.push({ id: `route:${index}`, documentId: timeline.documentId, quickIndex: index,
         owner: segment.documentPath ?? undefined, origin: segment.start - segment.localStart,
         start: segment.start, end: segment.end, timeline, length: segment.localEnd - segment.localStart,
-        instance: { id: segment.instance, label: lane.label } });
+        instance: { id: segment.instance, label: lane.label, carrier: lane.carrier } });
   });
   return [...lanes.values()];
 }
