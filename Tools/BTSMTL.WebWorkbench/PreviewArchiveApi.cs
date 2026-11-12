@@ -8,6 +8,8 @@ public interface IPreviewArchive
     PreviewGeometry Geometry(Guid id);
     PreviewPage<PreviewRecord> SourceMap(Guid id, int offset, int limit);
     PreviewPage<PreviewFrame> Frames(Guid id, int offset, int limit);
+    // 整份档案的逐帧路线，序号与 Frames 一致。
+    IReadOnlyList<PreviewRouteFrame> Route(Guid id);
     PreviewObservationPage Observations(Guid id, int firstFrame, int lastFrame, int offset, int limit);
     PreviewArchivePage<PreviewLogicRecord> Logic(Guid id, int firstFrame, int lastFrame, int offset, int limit);
     PreviewPoseLayout PoseLayout(Guid id);
@@ -35,6 +37,7 @@ public static class PreviewArchiveApi
         routes.MapGet("/source-map", (Guid id, int? offset, int? limit) =>
             archive.SourceMap(id, offset ?? 0, limit ?? PageLimit));
         routes.MapGet("/frames", (Guid id, int? offset, int? limit) => archive.Frames(id, offset ?? 0, limit ?? PageLimit));
+        routes.MapGet("/route/lanes", (Guid id) => PreviewRouteLaneProjection.Project(archive.Route(id)));
         routes.MapGet("/observations", (Guid id, int firstFrame, int lastFrame, int? offset, int? limit) =>
             archive.Observations(id, firstFrame, lastFrame, offset ?? 0, limit ?? PageLimit));
         routes.MapGet("/logic", (Guid id, int firstFrame, int lastFrame, int? offset, int? limit) =>

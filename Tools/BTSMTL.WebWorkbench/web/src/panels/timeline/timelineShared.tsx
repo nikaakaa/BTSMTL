@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import type { AuthoringElements } from '../../api/authoring';
 import type { ExecutionCall, Frame, FrozenInputTimeline } from '../../api/types';
 import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
-import type { QuickLane } from './routeRows';
+import type { RouteLane } from './routeRows';
 import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
 import { useAuthoring } from '../../state/authoring';
 import { clipSnapSource } from '../../state/authoringTimeline';
@@ -48,7 +48,7 @@ export interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
 export interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
 export interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
 // 快档路线里的一个执行实例泳道：其下是它所播的 Timeline 分组。
-export interface InstanceRow { kind: 'instance'; id: string; lane: QuickLane }
+export interface InstanceRow { kind: 'instance'; id: string; lane: RouteLane }
 export type Row = InstanceRow | GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 export interface Params {
@@ -111,7 +111,9 @@ export type QuickPlaybackChoice = { value: string; options: { value: string; lab
 export type PreviewClock = { kind: 'document'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'archive'; documentId: string | null; observation: TimelineObservation | null }
   | { kind: 'input'; documentId: string; source: 'archive' | 'author' | 'unavailable' }
-  | { kind: 'quick'; documentId: string | null; source: { kind: 'input' | 'route' } | { kind: 'timeline'; segment: QuickSegment | null } };
+  | { kind: 'quick'; documentId: string | null; source: { kind: 'input' | 'route' } | { kind: 'timeline'; segment: QuickSegment | null } }
+  // 真实运行档案的分道路线：时间轴即录制帧秒数。
+  | { kind: 'run'; documentId: null };
 export const PreviewClockContext = createContext<PreviewClock>({ kind: 'document', documentId: null, observation: null });
 export type CurveClock = { kind: 'ready'; source: PreviewSampleSource; seconds: number }
   | { kind: 'unavailable'; reason: string };
@@ -174,6 +176,7 @@ export function previewSeconds(state: WorkbenchState, clock: PreviewClock, autho
   if (clock.kind === 'quick') return clock.source.kind === 'timeline'
     ? clock.source.segment === null ? null : quickLocalSeconds(clock.source.segment, state.quickPreview.seconds)
     : state.quickPreview.seconds;
+  if (clock.kind === 'run') return transport.secondsAt(state.frameIndex);
   if (clock.kind === 'input') return clock.source === 'archive' && state.archiveFrame?.hostFrame === state.hostFrame
     ? state.archiveFrame?.input?.inputTimeSeconds ?? null : author;
   return author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;

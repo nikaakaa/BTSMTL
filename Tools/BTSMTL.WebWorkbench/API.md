@@ -85,7 +85,7 @@
 
 `root.inputSchemes` 同时包含当前入口的根方案和适配声明属于当前场景、角色的场景方案。根方案只有一份时提供默认选择；同一入口存在多份根方案时，`root.currentInputScheme=null`，网页要求作者明确选择，不按目录顺序代选。场景方案仍只允许原正式按键写入。网页编辑图进入输入目录前，必须沿所属文档适配收集为同次捕获的正式图形状。
 
-结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份。路线按执行实例分道：`plan.instances[]` 为 `{id,parent,carrier,root,documentPath,start,end,endReason,command}`，一个实例是运行一份根图的对象，子实例记父实例编号与生成它的指令位置；`segments[].instance` 指向所属实例。静态推演只沿一份根图，当前只交出入口实例 0；项目执行器交出多实例路线时使用同一张表。`segments[].conditionDependencies` 回报该段实际推导所读取的条件，每项为 `{key,label,written}`；`written=true` 表示本次路线依赖输入方案中的条件写入，默认读取也保留并标为 false。未知谓词键使用所在图与节点的稳定身份；过期条件写入会报出输入 Timeline 的元素位置。
+结果 `plan.sourceType=staticInference`，clock 使用秒和正式来源身份。路线按执行实例分道：`plan.instances[]` 为 `{id,parent,carrier,root,documentPath,start,end,endReason,command}`，一个实例是运行一份根图的对象，子实例记父实例编号与生成它的指令位置；`segments[].instance` 指向所属实例。静态推演只沿一份根图，当前只交出入口实例 0。真实运行档案由 `GET /api/preview/player-jobs/{id}/route/lanes` 交出同一张实例表：`{instances,segments,frameSeconds}`，项目只实现 `IPreviewArchive.Route` 给出整份档案逐帧路线（序号与 `/frames` 一致），BTSMTL 按调用的对象身份（`objectHandle`，其次 `actorId`、`objectSlot`）分道，同一对象同一播放身份在连续帧上合成一段；调用链上首个属于其它对象的父调用即父实例。真实档案尚无生成指令位置，`command` 为 null。`segments[].conditionDependencies` 回报该段实际推导所读取的条件，每项为 `{key,label,written}`；`written=true` 表示本次路线依赖输入方案中的条件写入，默认读取也保留并标为 false。未知谓词键使用所在图与节点的稳定身份；过期条件写入会报出输入 Timeline 的元素位置。
 
 预览条件字段按 `pickerKind=preview-condition` 消费 `root.conditions`，候选和条件写入的归属检查使用同一次入口编译。未由 Timeline 片段提供的状态读取按正式 `EffectiveRead` 规则作为运行数据候选，片段已经提供的状态仍由实际区间决定。网页只采用与当前入口请求配对的描述；来源变化后重新读取，不能沿用旧入口候选。输入片段草稿的 `graph` 必须是可立即编辑的 `allNodes/outConnections` 形状，节点与连线均带身份；正式存盘转换仍由所属文档适配完成。
 

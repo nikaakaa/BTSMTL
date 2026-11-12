@@ -6,6 +6,7 @@ import type {
   Sources, ViewerLive,
 } from '../api/types';
 import type { AuthoringGraph } from '../api/authoring';
+import type { RouteLanes } from '../api/previewQuickRecords';
 import type { QuickPreviewState } from './quickPreview';
 import type {
   PlayerArchive, PlayerFrameImage, PlayerCameraPage, PlayerInputPage, PlayerJobId,
@@ -97,6 +98,8 @@ export interface RunData {
   archiveMetadata: PlayerArchive | null;
   archiveImage: ArchiveImage | null;
   archiveCurves: PlayerDataCurve[] | null;
+  // 整份档案按执行实例分道的路线；未读完或读取失败时为 null（失败原因进控制台）。
+  archiveLanes: RouteLanes | null;
   archiveCurveVersion: number;
   curveAvailability: Availability[];
   selectedCurves: string[];
@@ -139,7 +142,7 @@ export const emptyRunData: RunData = {
   routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
   timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
   archiveLayout: null, archiveFrame: null, archiveMetadata: null, archiveImage: null,
-  archiveCurves: null, archiveCurveVersion: 0, curveAvailability: [], selectedCurves: [],
+  archiveCurves: null, archiveLanes: null, archiveCurveVersion: 0, curveAvailability: [], selectedCurves: [],
 };
 
 // ── cursor：只能由 transport 写入 ──

@@ -11,6 +11,7 @@ import {
   readPlayerCurves, readPlayerCurveSamples,
   type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type PlayerLoadRequest, type StartPlayerJobRequest,
 } from './playerRecords';
+import { readRouteLanes } from './previewQuickRecords';
 import type {
   ImageSourceAvailability, HostLiveCommand, LiveCommand, LivePlayer, PlayerBuild,
   PlayerCodeUpdate, StartLivePlayerRequest, VideoFrame,
@@ -41,6 +42,7 @@ export const playerApi = {
   observations: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/observations${query({ ...range })}`, readPlayerObservations, signal),
   geometry: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/geometry`, readPlayerGeometry, signal),
+  routeLanes: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/route/lanes`, readRouteLanes, signal),
   sourceMap: (id: PlayerJobId, offset: number, limit: number, signal?: AbortSignal) =>
     decoded(`${job(id)}/source-map${query({ offset, limit })}`, readPlayerSourceMap, signal),
   archiveFile: (id: PlayerJobId, path: string, signal?: AbortSignal) =>

@@ -83,6 +83,15 @@ public sealed record PreviewRouteFrame(string HostFrame, double Seconds, Preview
     public PreviewPortSample[] Ports { get; init; } = [];
     public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
+// 执行实例：运行一份根图的一个对象。子实例记父实例与生出它的指令位置；快速推演与真实运行都按这张表交出路线。
+public sealed record PreviewRouteInstance(int Id, int? Parent, string Carrier, string Root, string? DocumentPath,
+    double Start, double End, string? EndReason, PreviewQuickLocation? Command);
+// 真实运行的一次 Timeline 播放：首末出现的录制帧秒数与本地播放位置。
+public sealed record PreviewRouteSegment(int Instance, string TimelineId, double Start, double End,
+    double LocalStart, double LocalEnd);
+// 整份档案按执行实例分道的路线；FrameSeconds 按录制帧序号给出秒数，供按时间定位录制帧。
+public sealed record PreviewRouteLanes(PreviewRouteInstance[] Instances, PreviewRouteSegment[] Segments,
+    double[] FrameSeconds);
 public sealed record PreviewObservationPage(string RunId, string ContentRevision, string[] Channels,
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);

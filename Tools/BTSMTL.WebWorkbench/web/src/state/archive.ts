@@ -343,6 +343,12 @@ export const archive = {
       runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,
         metadataAvailability: summary.availability, archiveCurves: curves.items, curveAvailability: curves.availability });
       runActions.setSummary(generation, summary, true);
+      // 分道路线要读整份档案，不阻塞首帧显示。
+      void playerApi.routeLanes(jobId, controller.signal).then(lanes => {
+        if (isCurrent(generation)) runActions.setData(generation, { archiveLanes: lanes });
+      }, error => {
+        if (!controller.signal.aborted && isCurrent(generation)) consoleActions.error('archive-route', error);
+      });
       if (summary.frameCount) {
         transport.place(Math.min(requestedFrame, summary.frameCount - 1));
         void transport.readBounds({ runId: jobId, frames: timebase }, summary.frameCount, controller.signal).then(() => {

@@ -27,6 +27,17 @@ const inputPoint = object({ inputId: text, time: number, value: opaque });
 const conditionPoint = object({ key: text, time: number, satisfied: boolean, restoreDefault: boolean });
 const condition = object({ key: text, label: text, source: text, operationIndex: number, undeterminable: boolean });
 const location = object({ documentPath: text, graphId: text, nodeId: text, edgeId: text, displayPath: text });
+// 执行实例与按实例分道的路线：快速推演和真实运行档案交出同一种实例表。
+const routeInstance = object({
+  id: number, parent: nullable(number), carrier: text, root: text, documentPath: nullable(text),
+  start: number, end: number, endReason: nullable(text), command: nullable(location),
+});
+export const readRouteLanes = object({
+  instances: array(routeInstance),
+  segments: array(object({ instance: number, timelineId: text, start: number, end: number, localStart: number, localEnd: number })),
+  frameSeconds: array(number),
+});
+export type RouteLanes = ReturnType<typeof readRouteLanes>;
 const scheme = object({ source: inputSource, name: text, revision: text, timelineId: nullable(text) });
 const description = object({
   scenePath: text, carrierPath: text, carrierIdentity: text, actorId: text, actorScope: text, tickRate: number,
@@ -44,10 +55,7 @@ const plan = object({
   root: text, sourceType: text, clock: object({ unit: text, origin: number, owner: text, tickRate: number }),
   input: inputSource, inputSchemeRevision: text, inputRevision: text, conditionsUsed: array(conditionPoint),
   assumptions: array(text), duration: number, stopReason: nullable(text), stopDetail: nullable(text), status: text,
-  instances: array(object({
-    id: number, parent: nullable(number), carrier: text, root: text, documentPath: text,
-    start: number, end: number, endReason: nullable(text), command: nullable(location),
-  })),
+  instances: array(routeInstance),
   segments: array(object({
     instance: number, timeline: nullable(text), timelineId: nullable(text), documentPath: nullable(text), state: text, stateSource: nullable(location),
     start: number, end: number, localStart: number, localEnd: number, playback: number, cycle: number,
@@ -82,7 +90,7 @@ export type PreviewQuickDescription = ReturnType<typeof description>;
 export type PreviewQuickSource = ReturnType<typeof source>;
 export type PreviewQuickPlan = ReturnType<typeof plan>;
 export type PreviewQuickLocation = ReturnType<typeof location>;
-export type PreviewQuickInstance = PreviewQuickPlan['instances'][number];
+export type RouteInstance = ReturnType<typeof routeInstance>;
 export type PreviewQuickStatus = ReturnType<typeof status>;
 export type PreviewQuickJobId = PreviewQuickStatus['jobId'];
 export type PreviewQuickFrame = ReturnType<typeof frame>;
