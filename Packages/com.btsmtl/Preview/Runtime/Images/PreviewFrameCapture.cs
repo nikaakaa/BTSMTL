@@ -92,6 +92,7 @@ namespace BTSMTL.Preview
 
         public int Width => m_Width;
         public int Height => m_Height;
+        public bool EncodedFlipY => m_Encoding == PreviewImageEncoding.Jpeg && m_FlipY;
         public Exception Failure { get; private set; }
         public int Quality { get; set; }
         public bool IsBusy
@@ -168,7 +169,6 @@ namespace BTSMTL.Preview
             try
             {
                 NativeArray<byte> bytes;
-                bool flipY = m_FlipY;
                 bool pixelsFlipY = !m_FlipY;
                 if (!encode(selected.Index))
                     bytes = default;
@@ -181,12 +181,11 @@ namespace BTSMTL.Preview
                         FlipPixelRows(selected.Pixels);
                     bytes = ImageConversion.EncodeNativeArrayToPNG(selected.Pixels, GraphicsFormat.R8G8B8A8_UNorm,
                         (uint)m_Width, (uint)m_Height);
-                    flipY = false;
                     pixelsFlipY = true;
                 }
                 Volatile.Write(ref selected.State, SlotState.Encoded);
                 frame = new PreviewEncodedFrame(selected.Frame, m_Width, m_Height,
-                    flipY, pixelsFlipY, selected.ViewProjection, m_Encoding, bytes, selected.Pixels, selected.Index, selected.CaptureTimestamp, selected.Release);
+                    EncodedFlipY, pixelsFlipY, selected.ViewProjection, m_Encoding, bytes, selected.Pixels, selected.Index, selected.CaptureTimestamp, selected.Release);
                 return true;
             }
             catch (Exception failure)

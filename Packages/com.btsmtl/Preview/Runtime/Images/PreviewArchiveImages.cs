@@ -114,7 +114,7 @@ namespace BTSMTL.Preview
                 Camera camera = m_Camera();
                 m_Still = new PreviewFrameCapture(Screen.width, Screen.height, Screen.width, Screen.height,
                     PreviewImageEncoding.Png, 100);
-                m_Sink.FreezeStillSource(frame, camera, Screen.width, Screen.height, SystemInfo.graphicsUVStartsAtTop);
+                m_Sink.FreezeStillSource(frame, camera, Screen.width, Screen.height, m_Still.EncodedFlipY);
                 m_Still.TryCaptureAtFrameEnd(frame, camera, out _);
             }
             if (m_Still == null && (!m_Sink.WantsImages || m_LastImageFrame == frame) && frame >= m_Sink.LastFrame)
@@ -124,7 +124,7 @@ namespace BTSMTL.Preview
                 Camera camera = m_Camera();
                 if (!camera)
                     throw new InvalidOperationException($"第 {frame} 帧没有实际输出相机，无法保存画面。");
-                m_Sink.FreezeImageSource(frame, camera, m_Width, m_Height, SystemInfo.graphicsUVStartsAtTop);
+                m_Sink.FreezeImageSource(frame, camera, m_Width, m_Height, m_Image.EncodedFlipY);
                 m_Image.TryCaptureAtFrameEnd(frame, camera, out _);
             }
         }
