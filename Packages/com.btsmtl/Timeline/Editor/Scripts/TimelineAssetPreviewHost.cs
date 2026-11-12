@@ -344,7 +344,7 @@ namespace BTSMTL.Timeline.Editor
             m_TargetStep = TargetStage.None;
             m_SampleRequested = false;
             ReleaseScene();
-            SetLifecycle(TimelinePreviewLifecycle.Failed, reason, exception.Message);
+            SetLifecycle(TimelinePreviewLifecycle.Failed, reason, exception.ToString());
         }
 
         // 本宿主主动释放：先释放实例并解除 Stage 归属，再回主 Stage；Stage 迟到的关闭回调不再被当成作者离开。
