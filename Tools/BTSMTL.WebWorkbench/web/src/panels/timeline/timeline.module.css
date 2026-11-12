@@ -1281,61 +1281,20 @@ svg.clipCurves:focus {
   pointer-events: none;
 }
 
-/* 执行实例泳道：左侧强调色条区分实例，时间区画实例从生成到结束的存活区间 */
-.instanceHead {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  border-left: 3px solid var(--accent);
-  border-radius: 4px;
-  background: var(--tl-group);
-  color: var(--tl-group-font);
+/* 对象分组内的行：轨道头再缩进 15 像素，缩进处露出对象分组底色 */
+.inside {
+  display: contents;
 }
 
-.instanceLane {
-  overflow: hidden;
-  background: var(--tl-group-track);
+.inside > .line {
+  background: linear-gradient(90deg, transparent 15px, var(--tl-group) 15px 30px, transparent 30px);
 }
 
-.instanceLife {
-  position: absolute;
-  top: 9px;
-  bottom: 9px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
+.inside > .line[data-nest='child'], .inside > .line[data-nest='last'] {
+  background: linear-gradient(90deg, transparent 15px, var(--tl-group) 15px calc(var(--sidebar) - 2px),
+    transparent calc(var(--sidebar) - 2px) var(--sidebar), var(--tl-group-track) var(--sidebar));
 }
 
-/* 分组头里的所属实例标注：最多占四成，Timeline 名优先 */
-.instanceTag {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 40%;
-  overflow: hidden;
-  padding: 0 5px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
-  color: var(--text-strong);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 生成指令：父实例泳道上的菱形，尖端对准生成时刻 */
-.spawnMarker {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  padding: 0;
-  border: 1px solid var(--bg-0);
-  background: var(--warn);
-  transform: rotate(45deg);
-  cursor: pointer;
-}
-
-.spawnMarker:hover {
-  background: var(--text-strong);
+.inside > .line .head {
+  padding-left: 30px;
 }

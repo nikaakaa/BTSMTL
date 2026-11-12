@@ -1,6 +1,6 @@
 // 路线视图：快速推演与真实运行档案都交出按执行实例分道的路线，时间轴即路线时间；
 // 每次播放按“全局＝起点＋本地－本地起点”摆出所播 Timeline 的轨道，可直接编辑。
-// 每个实例一条泳道，其下是它所播的 Timeline 分组，分组标注所属实例。
+// 每个实例一层分组，组内是它所播的 Timeline。
 
 import type { RouteInstance } from '../../api/previewQuickRecords';
 import type { AuthorTimeline } from '../../api/types';
@@ -21,25 +21,14 @@ export function routeCarrierLabel(instance: RouteInstance, instances: RouteInsta
 export const routeEnd = (route: RouteSource) =>
   Math.max(0, ...route.instances.map(instance => instance.end), ...route.segments.map(segment => segment.end));
 
-// 生成指令：父实例在 seconds 时刻经 command 节点生成了 child 实例。
-export interface RouteSpawn { child: number; seconds: number; label: string; command: RouteInstance['command'] }
-
-export interface RouteLane {
-  instance: RouteInstance; carrier: string; label: string; parent: string | null; segments: TimelineSegment[]; spawns: RouteSpawn[];
-}
+export interface RouteLane { instance: RouteInstance; label: string; segments: TimelineSegment[] }
 
 // rootName：把实例的根身份换成可读名（运行档案只记根程序身份）。
 export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inputTimeline: string | null,
   rootName: (root: string) => string = root => root): RouteLane[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
-  const carriers = new Map(route.instances.map(instance => [instance.id, routeCarrierLabel(instance, route.instances)]));
-  const label = (instance: RouteInstance) => `${carriers.get(instance.id)} · ${rootName(instance.root)}`;
   const lanes = new Map(route.instances.map(instance => [instance.id, {
-    instance, carrier: carriers.get(instance.id)!, label: label(instance),
-    parent: instance.parent === null ? null : carriers.get(instance.parent) ?? null, segments: [] as TimelineSegment[],
-    spawns: route.instances.filter(child => child.parent === instance.id).map(child => ({
-      child: child.id, seconds: child.start, label: label(child), command: child.command,
-    })),
+    instance, label: `${routeCarrierLabel(instance, route.instances)} · ${rootName(instance.root)}`, segments: [] as TimelineSegment[],
   }]));
   route.segments.forEach((segment, index) => {
     const timeline = segment.timelineId === null ? undefined : byId.get(segment.timelineId);
@@ -48,8 +37,7 @@ export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inpu
     if (timeline && timeline.documentId !== inputTimeline)
       lane.segments.push({ id: `route:${index}`, documentId: timeline.documentId, quickIndex: index,
         owner: segment.documentPath ?? undefined, origin: segment.start - segment.localStart,
-        start: segment.start, end: segment.end, timeline, length: segment.localEnd - segment.localStart,
-        instance: { id: segment.instance, label: lane.label, carrier: lane.carrier } });
+        start: segment.start, end: segment.end, timeline, length: segment.localEnd - segment.localStart });
   });
   return [...lanes.values()];
 }

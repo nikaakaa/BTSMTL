@@ -233,6 +233,19 @@ export function rowNesting(rows: Row[]): (Nest | undefined)[] {
   });
 }
 
+// 对象分组之后的行（输入轨与所播 Timeline）属于该对象，整体再缩进一层；曲线组不属于对象。
+export function rowInside(rows: Row[]): boolean[] {
+  let inside = false;
+  return rows.map(row => {
+    if (row.kind === 'instance') {
+      inside = true;
+      return false;
+    }
+    if (row.kind === 'curves' || row.kind === 'curve' || row.kind === 'firstInput') inside = false;
+    return inside;
+  });
+}
+
 export function fitRange(bounds: Range): Range {
   const pad = Math.max(minSpan, (bounds.end - bounds.start) * 0.03);
   return { start: bounds.start - pad, end: bounds.end + pad };

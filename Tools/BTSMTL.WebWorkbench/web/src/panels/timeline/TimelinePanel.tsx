@@ -48,12 +48,12 @@ import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
 import { RunBar } from './RunBar';
-import { routeEnd, routeLanes, type RouteSource, type RouteSpawn } from './routeRows';
+import { routeEnd, routeLanes, type RouteSource } from './routeRows';
 import { AddFirstTrack, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
   curveInspectHeight, curveListHeight, curveMaxHeight, defaults, fitRange, groupKinds, minSpan, minimumStep, observationKey, overscan, playbackFor, previewSeconds,
-  recordedLocalPosition, rowHeight, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
+  recordedLocalPosition, rowHeight, rowInside, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
   trackHeight, useAuthorCursor, useClipGrid,
   type CurveClock, type CurveRow, type CurveView, type InputTrackRow, type Nest, type Params, type PreviewClock, type QuickPlaybackChoice, type ReceivedRow,
   type FirstInputRow, type InstanceRow, type Row, type TimelineObservation,
@@ -769,11 +769,14 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
           if (selectedCurves.includes(curve.id) && (!filter || curve.displayName.toLowerCase().includes(filter)))
             result.push({ kind: 'curve', id: `curve:${curve.id}`, curve });
     };
-    const addPlayed = () => {
+    // 每个对象一层分组；输入轨属于入口角色，放在入口对象组内最前。
+    const addPlayed = (input: Row[] = []) => {
+      const entry = played.find(lane => lane.instance.parent === null);
+      if (entry === undefined) result.push(...input);
       for (const lane of played) {
         const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane };
         const laneMatched = !filter || lane.label.toLowerCase().includes(filter);
-        const groups: Row[] = [];
+        const groups: Row[] = lane === entry ? [...input] : [];
         if (!collapsed.has(instance.id))
           for (const segment of lane.segments) {
             const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
@@ -782,7 +785,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
             const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
             if (titleMatched || children.length) groups.push(group, ...children);
           }
-        if (laneMatched || groups.length) result.push(instance, ...groups);
+        if (laneMatched || groups.length) result.push(instance, ...(collapsed.has(instance.id) ? [] : groups));
       }
     };
     const firstInput: FirstInputRow = { kind: 'firstInput', id: 'first-input' };
@@ -798,18 +801,19 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
       const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
       const tracks = collapsed.has(group.id) ? []
         : segmentRows(focused, graphNames).map(row => input ? { ...row, trackKind: 'in' as const } : expand(row));
-      result.push(group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
+      const own: Row[] = [group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
       if (input && received) {
-        result.push({ kind: 'receivedGroup', id: 'received', received });
+        own.push({ kind: 'receivedGroup', id: 'received', received });
         if (!collapsed.has('received')) {
           const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
           if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
           for (const line of lines)
             if (!filter || line.name.toLowerCase().includes(filter))
-              result.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
+              own.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
         }
       }
-      if (input) addPlayed();
+      if (input) addPlayed(own);
+      else result.push(...own);
       addCurves();
       return result;
     }
@@ -1126,6 +1130,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
   }, [rows]);
   const total = offsets[offsets.length - 1];
   const nesting = useMemo(() => rowNesting(rows), [rows]);
+  const inside = useMemo(() => rowInside(rows), [rows]);
   useLayoutEffect(() => {
     const element = scroller.current!;
     const measure = () => setView({ top: element.scrollTop, height: element.clientHeight });
@@ -1174,20 +1179,8 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
       <div style={{ height: offsets[first] }} />
       {rows.slice(first, last).map((row, offset) => {
         const nest = nesting[first + offset];
-        switch (row.kind) {
-          case 'instance': return <InstanceLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
-          case 'group': return <GroupLine key={row.id} elements={elements} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
-          case 'track': return <TrackLine key={row.id} elements={elements} row={row} nest={nest} toggleCurves={toggleCurves} />;
-          case 'inputGroup':
-            return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
-          case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
-          case 'firstInput': return <FirstInputLine key={row.id} nest={nest} elements={elements} />;
-          case 'curves': return <CurveGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
-          case 'curve': return <CurveLine key={row.id} row={row} nest={nest} />;
-          case 'receivedGroup':
-            return <ReceivedGroupLine key={row.id} nest={nest} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
-          case 'received': return <ReceivedLine key={row.id} row={row} nest={nest} />;
-        }
+        const line = rowLine(row, nest);
+        return inside[first + offset] ? <div key={row.id} className={styles.inside}>{line}</div> : line;
       })}
       <div style={{ height: total - offsets[last] }} />
       </GroupMoveContext.Provider>
@@ -1201,6 +1194,23 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
       )}
     </div>
   );
+
+  function rowLine(row: Row, nest: Nest | undefined) {
+    switch (row.kind) {
+      case 'instance': return <InstanceLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+      case 'group': return <GroupLine key={row.id} elements={elements} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
+      case 'track': return <TrackLine key={row.id} elements={elements} row={row} nest={nest} toggleCurves={toggleCurves} />;
+      case 'inputGroup':
+        return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
+      case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
+      case 'firstInput': return <FirstInputLine key={row.id} nest={nest} elements={elements} />;
+      case 'curves': return <CurveGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+      case 'curve': return <CurveLine key={row.id} row={row} nest={nest} />;
+      case 'receivedGroup':
+        return <ReceivedGroupLine key={row.id} nest={nest} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+      case 'received': return <ReceivedLine key={row.id} row={row} nest={nest} />;
+    }
+  }
 }
 
 // 一行：上方 3 像素行间隔，左侧轨道头（缩进 15，分组内再缩进 15），右侧时间区。
@@ -1270,44 +1280,25 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
   );
 }
 
-// 执行实例泳道：头部写所属载体与根图、由哪个实例生成，时间区画实例存活区间。
+// 对象分组：一个运行 BTSMTL 的对象一层，组内是它的输入轨与所播 Timeline；生成来源只在悬停里写。
+// 被生成的对象双击标题在节点图里定位生成节点。
 const InstanceLine = memo(function InstanceLine({ row, nest, open, toggle }: {
   row: InstanceRow; nest: Nest | undefined; open: boolean; toggle(id: string): void;
 }) {
-  const { instance, label, parent } = row.lane;
-  const life = `${instance.start.toFixed(2)}–${instance.end.toFixed(2)} s`;
-  const tip = [`实例 #${instance.id} · ${instance.documentPath}`, parent === null ? '入口实例' : `由 ${parent} 生成`,
-    instance.command === null ? null : `生成指令：${instance.command.displayPath}`, instance.endReason && `结束：${instance.endReason}`]
+  const { instance, label } = row.lane;
+  const command = instance.command;
+  const tip = [instance.documentPath, instance.parent === null ? null : `由实例 #${instance.parent} 在 ${instance.start.toFixed(2)} s 生成`,
+    command && `生成指令：${command.displayPath || command.nodeId}（双击定位）`, instance.endReason && `结束：${instance.endReason}`]
     .filter(Boolean).join('\n');
   return (
-    <Line id={row.id} nest={nest} laneClass={styles.instanceLane} headClass={styles.instanceHead} head={
-      <GroupToggle open={open} onToggle={() => toggle(row.id)} name={label}
-        meta={parent === null ? life : `由 ${parent} 生成 · ${life}`} tip={tip} />
-    }>
-      <Positioned start={instance.start} end={instance.end} className={styles.instanceLife} tip={tip} />
-      {row.lane.spawns.map(spawn => <SpawnMarker key={spawn.child} spawn={spawn} />)}
-    </Line>
+    <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+      <GroupToggle open={open} onToggle={() => toggle(row.id)} name={label} tip={tip || undefined}
+        onDoubleClick={command === null || command.graphId === '' ? undefined : () =>
+          void projectActions.openGraph({ id: command.graphId, owner: command.documentPath, ownerName: command.documentPath },
+            command.nodeId || undefined).catch(error => consoleActions.error('Timeline', error))} />
+    } />
   );
 });
-
-// 生成指令：父实例泳道上该时刻一枚菱形，悬停写生成了谁、经哪个节点；双击在节点图里定位生成节点。
-function SpawnMarker({ spawn }: { spawn: RouteSpawn }) {
-  const { range, valueToPixels } = useTimelineContext();
-  const command = spawn.command;
-  const tip = [`${spawn.seconds.toFixed(2)} s 生成 ${spawn.label}`, command && `生成指令：${command.displayPath || command.nodeId}`,
-    command && '双击在节点图中定位'].filter(Boolean).join('\n');
-  return (
-    <Tip content={tip}>
-      <button className={styles.spawnMarker} style={{ left: valueToPixels(spawn.seconds - range.start) }}
-        aria-label={`生成 ${spawn.label}`}
-        onDoubleClick={() => {
-          if (command === null || command.graphId === '') return;
-          void projectActions.openGraph({ id: command.graphId, owner: command.documentPath, ownerName: command.documentPath },
-            command.nodeId || undefined).catch(error => consoleActions.error('Timeline', error));
-        }} />
-    </Tip>
-  );
-}
 
 const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
   elements: AuthoringElements | null;
@@ -1324,7 +1315,6 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
-        {segment.instance && <span className={styles.instanceTag} title={`所属实例：${segment.instance.label}`}>{segment.instance.carrier}</span>}
         {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>
