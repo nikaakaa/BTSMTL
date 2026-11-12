@@ -150,7 +150,7 @@ namespace BTSMTL.Compilation.Analysis
                 int operation = first.Call != null ? first.Call.OperationIndex : first.State.TimelineOperationIndex;
                 foreach (OrchestrationStaticExtensionCall call in timeline.ExtensionCalls)
                 {
-                    if (call.CallerOperationIndex != operation || !call.StartsOnCallback)
+                    if (call.CallerOperationIndex >= 0 && call.CallerOperationIndex != operation || !call.StartsOnCallback)
                         continue;
                     for (int index = 0; index < caller.Length; index++)
                     {

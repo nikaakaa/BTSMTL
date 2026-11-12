@@ -167,11 +167,13 @@ namespace BTSMTL.Compilation.Analysis
         }
 
         public OrchestrationStaticTimeline Caller { get; }
+        // 独立编译的 Clip 图对 Timeline 的每次播放都成立，此时为 -1。
         public int CallerOperationIndex { get; }
         public string CallerElementId { get; }
         // Marker 调用为 null。
         public OrchestrationStaticClip Clip { get; }
         public OrchestrationTimelineHook Hook { get; }
+        // 所在程序（根程序或独立编译的 Clip 图）里的操作下标。
         public int OperationIndex { get; }
         public OrchestrationExtensionIdentity Extension { get; }
         // 回调发生的调用方本地时刻；Destroy 钩子取父播放终点。
@@ -564,7 +566,40 @@ namespace BTSMTL.Compilation.Analysis
             }
             var timeline = new OrchestrationStaticTimeline(content, clips);
             m_Timelines.Add(identity, timeline);
+            for (int index = 0; index < clips.Count; index++)
+            {
+                OrchestrationStaticClip clip = clips[index];
+                string binding = content.Clips[index].GraphBinding.GraphId;
+                if (!clip.Muted && clip.Domain == TimelineExecutionDomain.Logic && !string.IsNullOrEmpty(binding))
+                    ClipGraph(TimelineGraphBinding.GraphAuthoringId(binding)).CollectClipExtensionCalls(timeline, clip);
+            }
             return timeline;
+        }
+
+        // 独立编译的逻辑 Clip 图：从根入口与生命周期钩子出发收集动作扩展调用，对该 Timeline 的每次播放都成立。
+        void CollectClipExtensionCalls(OrchestrationStaticTimeline timeline, OrchestrationStaticClip clip)
+        {
+            for (int index = 0; index < Operations.Count; index++)
+            {
+                if (m_Incoming[index].Count != 0)
+                    continue;
+                SemanticOperation entry = Operations[index];
+                OrchestrationTimelineHook hook;
+                if (entry.Code == OrchestrationOperationCode.Root)
+                    hook = OrchestrationTimelineHook.Root;
+                else if (entry.Code == OrchestrationOperationCode.TimelineEnter)
+                    hook = (OrchestrationTimelineHook)entry.Integer0;
+                else
+                    continue;
+                OrchestrationTime offset = hook is OrchestrationTimelineHook.Disable or OrchestrationTimelineHook.Destroy
+                    ? clip.End : clip.Start;
+                foreach (int member in Reachable(index))
+                    if (Operations[member].Code == OrchestrationOperationCode.Extension &&
+                        Operations[member].Extension.Value.Kind == OrchestrationExtensionKind.Action)
+                        timeline.m_ExtensionCalls.Add(new OrchestrationStaticExtensionCall(timeline, -1, clip.ClipId, clip,
+                            hook, member, Operations[member].Extension.Value.Identity, offset,
+                            StartsOnEnter(index, member, new HashSet<int>()), m_Locations[member]));
+            }
         }
 
         void BuildClipGraphs()
