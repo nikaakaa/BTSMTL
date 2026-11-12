@@ -28,7 +28,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
     return document?.loading === true || document?.saving === true;
   });
   const documentRoot = useAuthoring(state => state.documents[item.owner]?.rootFile === item.file);
-  const canRename = item.kind !== 'variables';
+  const canRename = item.kind !== 'variables' && !(item.kind === 'timeline' && item.input);
   useEffect(() => {
     const controller = new AbortController();
     setReferrers(null);

@@ -7,7 +7,7 @@ import {
 import { cloneJson, numberOf, setIn, sortedObject, type JsonObject, type JsonValue } from './skillJson';
 import { findNode, nodeType, nodesOf } from './graphDocument';
 import { selectionActions } from './store';
-import { trackSelectId } from './timelineModel';
+import { inputTimelineName, trackSelectId } from './timelineModel';
 
 
 function planFrom(elements: AuthoringElements, name: string) {
@@ -16,7 +16,7 @@ function planFrom(elements: AuthoringElements, name: string) {
   const plan = cloneJson(elements.previewInput.plan!.value);
   for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
   const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
-  const timeline = authoringActions.createTimeline(elements.timeline, '预览输入');
+  const timeline = authoringActions.createTimeline(elements.timeline, inputTimelineName);
   scheme.Name = name;
   scheme.InputTimeline = timeline;
   const id = crypto.randomUUID();
@@ -65,7 +65,7 @@ export const inputAuthoring = {
   // 新方案复制所选方案的设置，配一条新的空输入 Timeline。
   async addScheme(path: string, name: string) {
     const elements = await skillElements();
-    const timeline = authoringActions.createTimeline(elements.timeline, 'Timeline');
+    const timeline = authoringActions.createTimeline(elements.timeline, inputTimelineName);
     authoringActions.edit(path, document => {
       const plan = document as JsonObject;
       const schemes = plan.Schemes as JsonObject[];

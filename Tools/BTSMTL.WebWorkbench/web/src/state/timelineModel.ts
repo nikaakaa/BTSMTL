@@ -177,6 +177,9 @@ export function timelineLength(timeline: AuthorTimeline): number {
   return length;
 }
 
+// 输入方案引用的 Timeline 按角色定名，不随存盘名变，也不可重命名。
+export const inputTimelineName = '预览输入';
+
 export const segmentTitle = (segment: TimelineSegment) =>
   `${segment.timeline.displayName ?? segment.documentId.slice(0, 8)} · ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`;
 

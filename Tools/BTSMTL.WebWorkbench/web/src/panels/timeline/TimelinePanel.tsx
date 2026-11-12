@@ -28,7 +28,7 @@ import {
 import { consoleActions, getState, inputRootKey, isRealArchive, runActions, selectedScene, selectionActions, useWorkbench } from '../../state/store';
 import {
   clipMix, clipSelectId, clipUnions, documentSegments, inputClipSelectId, overlapIssue, inputTrackSelectId, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
-  timelineObservationNotice, trackColors, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
+  timelineObservationNotice, trackColors, inputTimelineName, type ClipInstance, type GroupRow, type TimelineSegment, type Span, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { callKey, documentObservationNotice, graphCallsAtFrame, graphKey, matchesDocumentCall, parentCallNotice, parentCallMatches, parentGraphCalls, recordedGraphCalls, routeObservation, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
@@ -585,7 +585,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   const needsFirstInput = quickMode && documentRoot && !schemes.some(scheme => scheme.owner !== '');
   const segments = useMemo(() => documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
-    return scheme ? { ...segment, length: Math.max(segment.length, quickRouteEnd > 0 ? 0 : scheme.rangeEndSeconds,
+    return scheme ? { ...segment, timeline: { ...segment.timeline, displayName: inputTimelineName }, length: Math.max(segment.length, quickRouteEnd > 0 ? 0 : scheme.rangeEndSeconds,
       segment.documentId === quickInputTimeline ? quickRouteEnd : 0) } : segment;
   }), [timelines, schemes, quickInputTimeline, quickRouteEnd]);
   const graphNames = useMemo(() => {
@@ -972,8 +972,12 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   ];
 
   const origin = focused?.origin ?? 0;
-  const timelineName = (segment: TimelineSegment) =>
-    schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segment.timeline.displayName ?? segment.documentId.slice(0, 8);
+  // 多个输入方案时在固定名后注方案名区分。
+  const timelineName = (segment: TimelineSegment) => {
+    const scheme = schemes.length > 1 ? schemes.find(item => item.documentId === segment.documentId) : undefined;
+    const name = segment.timeline.displayName ?? segment.documentId.slice(0, 8);
+    return scheme ? `${name} · ${scheme.name}` : name;
+  };
   const subject: Subject = {
     selector: segments.length > 1 || routeSource !== null ? {
       label: '选择 Timeline', entries: [

@@ -2,6 +2,7 @@ import type { ProjectItem, AuthoringGraphRelation } from '../api/authoring';
 import { timelineOf, type AuthoringState } from './authoring';
 import { getIn, parseSkillJson, type JsonObject } from './skillJson';
 import { findNode, nodeId, nodeLabel, nodesOf } from './graphDocument';
+import { inputTimelineName } from './timelineModel';
 
 export type ContentTarget = { kind: 'item'; item: ProjectItem }
   | { kind: 'node'; owner: string; ownerName: string; graphId: string; nodeId: string }
@@ -105,9 +106,12 @@ export function projectContents(documents: AuthoringState['documents']) {
     const entryGraph = documents[item.owner].roles.entryGraph;
     if (item.file === documents[item.owner].rootFile && entryGraph !== undefined) addUse(data[entryGraph] as string,
       { key, label: `${item.name} / 入口图`, target: { kind: 'item', item } });
-    if (item.kind === 'input-plan') for (const [index, scheme] of (data.Schemes as JsonObject[]).entries())
+    if (item.kind === 'input-plan') for (const [index, scheme] of (data.Schemes as JsonObject[]).entries()) {
+      const timeline = items.get(byIdentity.get(scheme.InputTimeline as string) ?? '');
+      if (timeline?.kind === 'timeline') Object.assign(timeline, { name: inputTimelineName, input: true });
       addUse(scheme.InputTimeline as string, { key: JSON.stringify([key, index]), label: `${item.ownerName} / ${item.schemes[index].name}`,
         target: { kind: 'item', item } }, key);
+    }
     if (item.kind !== 'timeline') continue;
     for (const track of timelineOf(item.identity, data).tracks) {
       for (const [index, clip] of track.clips.entries()) if (clip.graphId !== null)

@@ -276,7 +276,8 @@ export type ProjectItem = ProjectItemBase & (
   | { kind: 'document'; asset: JsonObject }
   | { kind: 'graph'; role: string }
   | { kind: 'graph'; contentDomain: string; domains: string[]; variableOwnerId: string | null }
-  | { kind: 'timeline' }
+  // input：输入方案引用的 Timeline，名字固定且不可重命名。
+  | { kind: 'timeline'; input?: boolean }
   | { kind: 'curve' | 'profile' | 'variables'; asset: JsonObject }
   | { kind: 'input-plan'; schemes: { name: string; index: number }[] }
 );
