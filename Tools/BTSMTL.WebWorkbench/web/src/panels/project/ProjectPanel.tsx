@@ -120,9 +120,7 @@ export function ProjectPanel() {
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const composition = target !== null && documents[target.documentPath].documentGraphs !== null &&
-    (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'graph' || target.kind === 'timeline');
-  const inputComposition = composition || target?.kind === 'scenario' && documents[target.documentPath].documentGraphs !== null;
-  const elements = useAuthoringElements(author && composition);
+    (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'graph' || target.kind === 'timeline');  const elements = useAuthoringElements(author && composition);
   const byKey = useMemo(() => new Map(nodes.map(node => [node.key, node])), [nodes]);
 
   // 浏览引用字段时展开到当前值并选中它。
@@ -247,7 +245,6 @@ export function ProjectPanel() {
         { kind: 'separator' },
         { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
         { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
-        { label: '在当前文档中新建输入方案', disabled: !inputComposition, onSelect: () => create('input') },
       ]}>新建</MenuButton>
       <MenuButton label="Project 更多操作" variant="ghost" iconOnly entries={[
         { label: '刷新资源目录', onSelect: () => void adapterCatalogCache.refresh(authoringApi.catalog) },

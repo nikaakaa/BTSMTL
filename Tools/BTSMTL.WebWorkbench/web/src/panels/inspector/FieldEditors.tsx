@@ -788,33 +788,18 @@ function VariableInputBinding({ binding, projections, onSet }: {
   </>;
 }
 
-// ── 预览输入方案：方案列表（所选方案、新增、删除）与所选方案的字段 ──
+// ── 预览输入：文档固定的一份预览输入的环境字段；不新建输入 Timeline ──
 
 export function InputPlanFields({ path, editable }: { path: string; editable: boolean }) {
   const { document } = useCurrentDocument(path);
   const elements = useAuthoringElements(true);
   const plan = document as JsonObject | null;
   if (!plan) return null;
-  const schemes = plan.Schemes as JsonObject[];
   const selected = numberOf(plan.Selected);
-  const scheme = schemes[selected];
+  const scheme = (plan.Schemes as JsonObject[])[selected];
   const set: SetValue = (keys, value) => inputAuthoring.setValue(path, keys, value);
   return (
     <>
-      <Row label="方案">
-        <Select label="方案" value={String(selected)} disabled={!editable}
-          options={schemes.map((item, index) => ({ value: String(index), label: (item.Name as string) || `方案 ${index + 1}` }))}
-          onChange={value => set(['Selected'], Number(value))} />
-      </Row>
-      {editable && (
-        <Row label="">
-          <Button variant="ghost" tip="复制所选方案的设置，配一条新的空输入 Timeline" onClick={() => {
-            void inputAuthoring.addScheme(path, `方案 ${schemes.length + 1}`).catch(error => consoleActions.error('输入', error));
-          }}>新增方案</Button>
-          <Button variant="ghost" disabled={schemes.length < 2} tip={schemes.length < 2 ? '至少保留一个方案' : '删除所选方案；它专属的输入 Timeline 保存时删除'}
-            onClick={() => inputAuthoring.removeScheme(path, selected)}>删除方案</Button>
-        </Row>
-      )}
       {scheme && <Fold title="预览环境（假设目标、起点）" defaultOpen={false}>
         {elements?.previewInput.scheme.shape.members?.filter(member => member.member !== 'InputTimeline' && member.authoring?.authoringVisible).map(member =>
           editable && !member.authoring!.readOnly

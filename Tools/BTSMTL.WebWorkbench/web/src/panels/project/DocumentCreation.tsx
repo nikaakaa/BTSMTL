@@ -9,10 +9,9 @@ import { PanelBar } from '../../ui/blocks';
 import { Button, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { DocumentCreationForm } from './DocumentCreationForm';
-import { InputPlanCreationForm } from './InputPlanCreationForm';
 import styles from './project.module.css';
 
-export type DocumentContentKind = 'document' | 'timeline' | 'macro' | 'input';
+export type DocumentContentKind = 'document' | 'timeline' | 'macro';
 
 export function DocumentCreation({ kind, skill, elements, onDone }: {
   kind: DocumentContentKind; skill: string | null; elements: ReturnType<typeof useAuthoringElements>; onDone(): void;
@@ -20,9 +19,7 @@ export function DocumentCreation({ kind, skill, elements, onDone }: {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
-  if (kind === 'document') return <DocumentCreationForm onCancel={onDone} onCreated={(_, timeline) => { onDone(); openPanel(timeline === null ? 'inspector' : 'timeline'); }} />;
-  if (kind === 'input') return <InputPlanCreationForm key={skill} onCancel={onDone} onCreated={() => { onDone(); openPanel('timeline'); }} />;
-  const title = name.trim();
+  if (kind === 'document') return <DocumentCreationForm onCancel={onDone} onCreated={(_, timeline) => { onDone(); openPanel(timeline === null ? 'inspector' : 'timeline'); }} />;  const title = name.trim();
   const ready = title.length > 0 && !busy && skill !== null && elements !== null;
   const submit = async () => {
     if (!ready) return;

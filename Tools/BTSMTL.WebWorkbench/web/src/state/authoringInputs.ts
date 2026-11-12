@@ -1,10 +1,10 @@
-// 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline。
-import type { InputPlanContext, AuthoringElements } from '../api/authoring';
+// 预览输入（inputs/<方案>.json）：文档固定的一份，带一条输入 Timeline。
+import type { AuthoringElements } from '../api/authoring';
 import {
-  authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements,
+  authoringActions, get, graphPath, setDocument, skillElements,
   type JsonKey, type JsonMutation,
 } from './authoring';
-import { cloneJson, numberOf, setIn, sortedObject, type JsonObject, type JsonValue } from './skillJson';
+import { cloneJson, numberOf, setIn, type JsonObject, type JsonValue } from './skillJson';
 import { findNode, nodeType, nodesOf } from './graphDocument';
 import { selectionActions } from './store';
 import { inputTimelineName, trackSelectId } from './timelineModel';
@@ -25,14 +25,8 @@ function planFrom(elements: AuthoringElements, name: string) {
   return { id, timeline };
 }
 
+// 每个文档只有一份固定的预览输入，不另建输入 Timeline。
 export const inputAuthoring = {
-  async createPlan(name: string, context: InputPlanContext) {
-    const created = planFrom(await skillElements(context), name);
-    selectionActions.select(null);
-    selectionActions.showTimeline(created.timeline, null, null);
-    return created;
-  },
-
   // 文档的预览输入在添加第一条轨道时才建：输入方案、它的 Timeline 与这条轨道同一步写入。
   async createWithTrack(track: JsonObject, name: string) {
     const target = get().target;
@@ -60,31 +54,5 @@ export const inputAuthoring = {
 
   setValue(path: string, keys: JsonKey[], value: JsonValue) {
     authoringActions.edit(path, document => setIn(document, keys, value));
-  },
-
-  // 新方案复制所选方案的设置，配一条新的空输入 Timeline。
-  async addScheme(path: string, name: string) {
-    const elements = await skillElements();
-    const timeline = authoringActions.createTimeline(elements.timeline, inputTimelineName);
-    authoringActions.edit(path, document => {
-      const plan = document as JsonObject;
-      const schemes = plan.Schemes as JsonObject[];
-      const source = schemes[numberOf(plan.Selected)];
-      schemes.push(sortedObject({ ...cloneJson(source), AuthoringId: crypto.randomUUID(), InputTimeline: timeline, Name: name }));
-      plan.Selected = schemes.length - 1;
-    });
-    selectionActions.showTimeline(timeline, null, null);
-  },
-
-  removeScheme(path: string, index: number) {
-    const plan = currentDocument(path) as JsonObject | null;
-    const timeline = ((plan?.Schemes as JsonObject[] | undefined)?.[index]?.InputTimeline as string | undefined) ?? null;
-    authoringActions.edit(path, document => {
-      const target = document as JsonObject;
-      const schemes = target.Schemes as JsonObject[];
-      schemes.splice(index, 1);
-      target.Selected = Math.min(numberOf(target.Selected), schemes.length - 1);
-    });
-    if (timeline) dropOrphans([timeline]);
   },
 };
