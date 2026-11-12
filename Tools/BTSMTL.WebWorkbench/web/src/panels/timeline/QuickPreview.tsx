@@ -71,12 +71,18 @@ export function QuickEntryButton({ documentPath, entry }: { documentPath: string
   const choice = document?.entries.find(item => entry.kind === 'graph'
     ? item.entry.kind === 'graph' && item.entry.graphId === entry.graphId && item.entry.machine === entry.machine
     : item.entry.kind === 'timeline' && item.entry.timelineId === entry.timelineId);
-  return <Button variant="ghost" disabled={choice === undefined || busy}
-    tip={choice === undefined ? '当前来源目录尚未提供这个预览入口' : '以当前内容为入口，使用所选场景和输入方案生成预览'}
-    onClick={() => void quickPreview.readSource({ documentPath, savedRevision: document!.savedRevision, entry: choice!.entry })}>
-    {entry.kind === 'graph' ? '预览此图' : '预览此 Timeline'}
+  // 只有能作为预览入口的图和 Timeline 才有按钮；条件图、特效触发图等由所属入口一起运行。
+  if (choice === undefined) return null;
+  return <Button variant="ghost" disabled={busy} tip={quickEntryTip(choice.entry)}
+    onClick={() => void quickPreview.readSource({ documentPath, savedRevision: document!.savedRevision, entry: choice.entry })}>
+    {choice.entry.kind === 'graph' ? '连看预览' : '单看此 Timeline'}
   </Button>;
 }
+
+const quickEntryTip = (entry: PreviewQuickEntry) => entry.kind === 'graph'
+  ? '从入口图开始，按输入轨连续运行整段（如连招 1→2→3），所播 Timeline 依次排在输入轨下方'
+  : '只运行这一个 Timeline，不经过入口图的状态切换';
+const quickEntryName = (entry: PreviewQuickEntry, name: string) => entry.kind === 'graph' ? `连看 · ${name}` : `单看 · ${name}`;
 
 async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'documentInput' }>) {
   const owner = authoringOwner(source.documentPath);
@@ -158,7 +164,7 @@ export function QuickBar() {
     const owned = documents.filter(document => document.documentPath === active);
     return (owned.length ? owned : documents).flatMap(document => document.entries.map(choice => ({
       authoring: { documentPath: document.documentPath, savedRevision: document.savedRevision, entry: choice.entry },
-      name: owned.length ? choice.displayName : `${document.displayName} / ${choice.displayName}`,
+      name: quickEntryName(choice.entry, owned.length ? choice.displayName : `${document.displayName} / ${choice.displayName}`),
     })));
   }, [description, active]);
   const busy = running || progress !== null || state.description.kind === 'loading';
