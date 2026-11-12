@@ -5,6 +5,7 @@ using System.Linq;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Timeline;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using ThirdPersonSimulation;
@@ -129,7 +130,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
         static JsonSerializer Serializer() => JsonSerializer.Create(new JsonSerializerSettings
             {
                 ContractResolver = new AuthoringContractResolver(),
-                Converters = { new CurveConverter() }
+                Converters = { new CurveConverter(), new StringEnumConverter() }
             });
     }
 }
