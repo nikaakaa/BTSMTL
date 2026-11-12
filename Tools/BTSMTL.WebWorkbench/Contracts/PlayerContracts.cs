@@ -44,4 +44,4 @@ public sealed record PlayerContentRefreshTarget([property: JsonRequired] Guid Re
     [property: JsonRequired] Guid LiveId, [property: JsonRequired] JsonElement ProjectParameters,
     [property: JsonRequired] PlayerObservationChannel[] Channels);
 
-public sealed record PlayerOperationPhase(string Name, double Milliseconds);
+public sealed record PlayerOperationPhase(string Stage, double Milliseconds);
