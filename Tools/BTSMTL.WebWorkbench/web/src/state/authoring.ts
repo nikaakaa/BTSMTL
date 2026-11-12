@@ -405,6 +405,8 @@ export interface AuthorInputScheme {
   schemeIndex: number;
   name: string;
   documentId: string;
+  // 方案归属：技能／图文档的执行身份；Timeline 与场景方案为空。
+  owner: string;
   scene: string;
   actorId: string;
   rangeEndSeconds: number;
@@ -421,32 +423,41 @@ export function useInputSchemes(): AuthorInputScheme[] {
       const plan = (edited[path] ?? parseSkillJson(files[path])) as JsonObject;
       return (plan.Schemes as JsonObject[]).map((scheme, schemeIndex) => ({
         path, planId: path.slice('inputs/'.length, -'.json'.length), schemeIndex, name: scheme.Name as string,
-        documentId: scheme.InputTimeline as string, scene: plan.Scene as string, actorId: plan.Actor as string,
+        documentId: scheme.InputTimeline as string, owner: plan.Owner as string, scene: plan.Scene as string, actorId: plan.Actor as string,
         rangeEndSeconds: numberOf(scheme.RangeEnd),
       }));
     }), [files, edited, removed]);
 }
 
-export function useInputContext(documentId: string | null) {
-  const schemes = useInputSchemes();
-  const scheme = schemes.find(item => item.documentId === documentId);
+// 加按键所需的场景与角色：方案未绑定角色时按快预览实际执行的场景预览角色。
+function usePreviewInputActor(schemeScene: string, schemeActor: string) {
   const actorId = useAuthoring(state => authoringDocument(state).inputActorId);
-  // 方案未绑定角色时按快预览实际执行的场景预览角色加键。
   const { catalog, scene, reading, failure, previewActor } = useWorkbench(useShallow(state => ({
     catalog: state.inputCatalog, scene: selectedScene(state),
     reading: state.inputCatalogReading, failure: state.inputCatalogFailure,
     previewActor: state.quickPreview.description.kind === 'ready' ? state.quickPreview.description.reply.data?.actorId ?? null : null,
   })));
-  if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;
   if (!scene) return { kind: 'unavailable', reason: '先在顶栏或 Project 场景页选择场景' } as const;
   if (!catalog || scene.revision !== catalog.revision)
     return { kind: 'unavailable', reason: failure !== null ? '输入声明读取失败，见控制台；可在场景检查器重新读取'
       : reading ? '正在读取场景的输入声明' : '场景的输入声明尚未读取' } as const;
-  if (scheme.scene && scheme.scene !== scene.path)
+  if (schemeScene && schemeScene !== scene.path)
     return { kind: 'unavailable', reason: '所选场景与输入方案的 Scene 不一致' } as const;
-  const actor = catalog.players.find(player => player.actorId === (scheme.actorId || actorId || previewActor));
+  const actor = catalog.players.find(player => player.actorId === (schemeActor || actorId || previewActor));
   if (!actor) return { kind: 'unavailable', reason: previewActor === null ? '快预览尚未读到场景的预览角色' : '场景里没有这个输入方案的角色' } as const;
-  return { kind: 'ready', scheme, scene, actor, tickRate: catalog.tickRate } as const;
+  return { kind: 'ready', scene, actor, tickRate: catalog.tickRate } as const;
+}
+
+export function useInputContext(documentId: string | null) {
+  const scheme = useInputSchemes().find(item => item.documentId === documentId);
+  const actor = usePreviewInputActor(scheme?.scene ?? '', scheme?.actorId ?? '');
+  if (!scheme) return { kind: 'unavailable', reason: '当前不是输入 Timeline' } as const;
+  return actor.kind === 'ready' ? { ...actor, scheme } : actor;
+}
+
+// 文档还没有预览输入时加第一个按键：用场景预览角色，按下后才建输入方案。
+export function useFirstInputContext() {
+  return usePreviewInputActor('', '');
 }
 
 export function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {

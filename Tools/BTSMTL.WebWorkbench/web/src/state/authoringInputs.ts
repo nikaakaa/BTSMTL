@@ -25,7 +25,15 @@ export const inputAuthoring = {
     setDocument({ inputActorId: plan.Actor as string | null });
     selectionActions.select(null);
     selectionActions.showTimeline(timeline, null, null);
-    return id;
+    return { id, timeline };
+  },
+
+  // 文档的预览输入在加第一个按键时才建：建文档级输入方案，再把这个按键放进它的输入 Timeline。
+  async addFirst(request: InputFragmentRequest) {
+    const target = get().target;
+    const { timeline } = await inputAuthoring.createPlan('默认', { kind: 'document' });
+    if (get().target !== target) return;
+    await inputAuthoring.add(timeline, request, null);
   },
 
   async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {

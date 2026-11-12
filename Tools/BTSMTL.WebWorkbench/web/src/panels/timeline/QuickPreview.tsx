@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { PreviewQuickAuthoringTarget, PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
+import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
 import { previewApi } from '../../api/preview';
-import { authoringApi, authoringOwner, authoringTargetKey, type AuthoringGraph, type InputPlanContext } from '../../api/authoring';
-import { inputAuthoring } from '../../state/authoringInputs';
+import { authoringApi, authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey,
 } from '../../state/quickPreview';
-import { authoringActions, authoringDocument, currentDocument, isDocumentDirty, useAuthoring } from '../../state/authoring';
-import type { JsonObject } from '../../state/skillJson';
+import { authoringActions, authoringDocument, isDocumentDirty, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { edgeSelectId } from '../../state/graphModel';
 import { consoleActions, contentActions, selectionActions, useWorkbench } from '../../state/store';
@@ -19,7 +17,7 @@ import { Button, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { executionScopeNames } from '../../state/projectTree';
 import { documentScope } from '../../state/resourceScope';
-import { finishAuthoringInputs, openPanel } from '../../shell/layout';
+import { finishAuthoringInputs } from '../../shell/layout';
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
@@ -88,25 +86,6 @@ const quickEntryTip = (entry: PreviewQuickEntry) => entry.kind === 'graph'
   : '只运行这一个 Timeline，不经过入口图的状态切换';
 const quickEntryName = (entry: PreviewQuickEntry, name: string) => entry.kind === 'graph' ? `连看 · ${name}` : `单看 · ${name}`;
 
-async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'documentInput' }>) {
-  const owner = authoringOwner(source.documentPath);
-  if (await authoringActions.open(owner) !== 'opened') return;
-  const path = `inputs/${source.inputId}.json`;
-  const plan = currentDocument(path) as JsonObject;
-  const index = (plan.Schemes as JsonObject[]).findIndex(scheme => scheme.AuthoringId === source.schemeId);
-  if (index === -1) throw new Error('所选输入方案已不在当前作者文档中，请重新选择输入方案');
-  await authoringActions.openInput(owner, path, index, plan.Actor as string);
-  openPanel('timeline');
-}
-
-// 就地为当前入口新建输入方案：连看入口归当前文档，单看 Timeline 归该 Timeline；建好后打开它的输入轨。
-async function createInput(root: PreviewQuickAuthoringTarget, entryName: string | undefined) {
-  if (await authoringActions.open(authoringOwner(root.documentPath)) !== 'opened') throw new Error('入口文档尚未打开，未新建输入轨');
-  const context: InputPlanContext = root.entry.kind === 'timeline' ? { kind: 'timeline', timeline: root.entry.timelineId } : { kind: 'document' };
-  await inputAuthoring.createPlan(entryName?.replace(/^(连看|单看) · /, '') ?? '默认', context);
-  openPanel('timeline');
-}
-
 async function runInput(selection: PreviewQuickInputSource) {
   const targetKey = quickTargetKey(useWorkbench.getState().quickPreview.target);
   const schemeKey = quickInputSourceKey(selection);
@@ -126,7 +105,7 @@ async function runInput(selection: PreviewQuickInputSource) {
   if (!reply.success || reply.data === null || reply.data.root === null)
     throw new Error(reply.message ?? '当前预览入口尚未读取成功');
   const source = selection.kind === 'documentInput' ? selection : reply.data.root.defaultInput;
-  if (source?.kind !== 'documentInput') throw new Error('当前入口还没有输入轨，请先点「新建输入轨」');
+  if (source?.kind !== 'documentInput') throw new Error('还没有预览输入：在 Timeline 顶部的「预览输入」用 + 加第一个按键');
   const current = useWorkbench.getState();
   if (quickTargetKey(current.quickPreview.target) !== targetKey || quickInputSourceKey(current.quickPreview.scheme) !== schemeKey)
     throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
@@ -219,12 +198,6 @@ export function QuickBar() {
           const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === value);
           if (scheme !== undefined) quickPreview.selectScheme(scheme.source);
         }} />}
-      {description?.root && (editableInput?.kind === 'documentInput'
-        ? <Button variant="ghost" disabled={state.description.kind === 'loading'} tip="打开所选方案的输入轨，用 Timeline 左上的 + 在游标处加按键"
-          onClick={() => void editInput(editableInput).catch(error => consoleActions.error('输入方案', error))}>编辑输入轨</Button>
-        : state.target?.root != null && <Button variant="ghost" disabled={state.description.kind === 'loading'} tip="为当前入口新建一条输入轨并打开，用 Timeline 左上的 + 在游标处加按键"
-          onClick={() => void createInput(state.target!.root!.authoring, roots.find(root => quickAuthoringKey(root.authoring) === quickAuthoringKey(state.target!.root!.authoring))?.name)
-            .catch(error => consoleActions.error('输入方案', error))}>新建输入轨</Button>)}
       {status && <span role="status" className={styles.status} data-stale={stale || undefined}>{status}</span>}
       {(failure ?? reason) && <span role={failure ? 'alert' : 'status'} className={styles.reason} title={failure ?? reason ?? undefined}>{failure ?? reason}</span>}
       <span className={styles.grow} />
@@ -234,7 +207,7 @@ export function QuickBar() {
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       {playerAvailable && <Button variant="ghost" disabled={busy || sceneApplyReason !== null || editableInput?.kind !== 'documentInput' || description === null}
-        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前入口还没有输入轨，请先点「新建输入轨」')}
+        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '还没有预览输入：在 Timeline 顶部的「预览输入」用 + 加第一个按键')}
         onClick={() => {
           setRunning(true);
           setRunError(null);

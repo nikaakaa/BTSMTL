@@ -15,7 +15,8 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
   const inputs = useInputSchemes();
   const { scene, catalog, sceneName } = useWorkbench(useShallow(state => ({ scene: selectedScene(state), catalog: state.inputCatalog,
     sceneName: state.sources && previewContentChoices(state.sources).find(choice => choice.value === contentSelectionKey(state.contentSelection))?.label })));
-  const [kind, setKind] = useState<'document' | 'timeline' | 'scene'>(documentRoot ? 'document' : target.kind === 'timeline' ? 'timeline' : 'scene');
+  // 技能与图文档只有一份预览输入，所有入口共用；要比较不同起点或目标，在它里面新增方案。
+  const kind = documentRoot ? 'document' : target.kind === 'timeline' ? 'timeline' : 'scene';
   const [timeline, setTimeline] = useState<string | null>(null);
   const [actor, setActor] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -27,12 +28,14 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
   const context: InputPlanContext | null = kind === 'document' ? { kind }
     : kind === 'timeline' ? timeline === null ? null : { kind, timeline }
     : scene && players.some(player => player.actorId === actor) ? { kind, scene: { path: scene.path, revision: scene.revision }, actor: actor! } : null;
+  if (documentRoot && inputs.some(input => input.owner !== '')) return <div className={styles.facts}>
+    <span>这个文档已有预览输入，所有入口共用；在检查器的「预览输入」里新增方案，或直接在 Timeline 顶部的输入轨上加按键。</span>
+    <PanelBar><Button variant="ghost" onClick={onCancel}>关闭</Button></PanelBar>
+  </div>;
   return <div className={styles.facts}>
     <TextInput autoFocus aria-label="输入方案名称" placeholder="输入方案名称" value={name} disabled={busy}
       onChange={event => setName(event.currentTarget.value)} />
-    {documentRoot ? <Select label="输入方案归属" value={kind} disabled={busy}
-      options={[{ value: 'document', label: '当前文档' }, { value: 'timeline', label: '指定 Timeline' }]}
-      onChange={value => setKind(value as 'document' | 'timeline')} /> : target.kind === 'timeline' ? <span>归属指定 Timeline</span> : <span>归属当前场景与所选角色</span>}
+    <span>{documentRoot ? '归属当前文档，所有入口共用' : target.kind === 'timeline' ? '归属指定 Timeline' : '归属当前场景与所选角色'}</span>
     {kind === 'timeline' && <Select label="所属 Timeline" placeholder="选择 Timeline" value={timeline} disabled={busy}
       options={availableTimelines.map(item => ({ value: item.documentId, label: item.displayName ?? item.documentId }))}
       onChange={setTimeline} />}
@@ -45,7 +48,7 @@ export function InputPlanCreationForm({ onCreated, onCancel }: { onCreated(id: s
       <Button disabled={busy || !name.trim() || context === null} onClick={() => {
         setBusy(true);
         setError(null);
-        void inputAuthoring.createPlan(name.trim(), context!).then(onCreated, (reason: unknown) => {
+        void inputAuthoring.createPlan(name.trim(), context!).then(created => onCreated(created.id), (reason: unknown) => {
           consoleActions.error('输入', reason);
           setError(reason instanceof Error ? reason.message : String(reason));
         }).finally(() => setBusy(false));

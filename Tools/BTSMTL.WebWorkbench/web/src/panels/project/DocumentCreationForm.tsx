@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { authoringApi, type AuthoringTarget, type DocumentCreationCatalog } from '../../api/authoring';
 import { isAbort } from '../../api/http';
 import { authoringActions, skillElements, useAuthoring } from '../../state/authoring';
-import { inputAuthoring } from '../../state/authoringInputs';
 import { quickPreview } from '../../state/quickPreview';
 import type { JsonObject } from '../../state/skillJson';
 import { consoleActions, selectionActions } from '../../state/store';
@@ -12,7 +11,7 @@ import { ErrorLine } from '../../ui/ErrorLine';
 import { AuthoringValueContext, AuthoringValueFields } from '../inspector/FieldEditors';
 import styles from './project.module.css';
 
-// 脚手架：作者只填名称并选参照文档；带入口图的文档同时建入口图、一条 Timeline 和它的输入轨，建完即可预览。
+// 脚手架：作者只填名称并选参照文档；带入口图的文档同时建入口图和一条 Timeline，建完即可预览；预览输入在 Timeline 顶部加第一个按键时才建。
 // 其余字段收在「更多设置」里，走同一个创建请求。
 export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target: AuthoringTarget, timeline: string | null): void; onCancel(): void }) {
   const [catalog, setCatalog] = useState<DocumentCreationCatalog | null>(null);
@@ -65,8 +64,6 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
         if (withEntry && scaffold) {
           const elements = await skillElements();
           timeline = authoringActions.createTimeline(elements.timeline, name);
-          if (elements.previewInput.availability.available)
-            await inputAuthoring.createPlan('默认', { kind: 'timeline', timeline });
           selectionActions.showTimeline(timeline, null, null);
           void quickPreview.readSource({ documentPath: target.documentPath, savedRevision: '', entry: { kind: 'timeline', timelineId: timeline } });
         }
@@ -83,7 +80,7 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
       onChange={event => setConfiguration({ ...configuration, [nameMember]: event.currentTarget.value })} />}
     {selected.reference && <Select label="参照" tip="新文档沿用参照文档的准入与排序等设置" placeholder="不参照" value={reference} disabled={busy}
       options={references.map(document => ({ value: document.documentPath, label: document.name }))} onChange={setReference} />}
-    {withEntry && <label><Checkbox label="同时创建入口图、Timeline 与输入轨" checked={scaffold} onChange={setScaffold} />同时创建入口图、Timeline 与输入轨</label>}
+    {withEntry && <label><Checkbox label="同时创建入口图与 Timeline" checked={scaffold} onChange={setScaffold} />同时创建入口图与 Timeline</label>}
     <fieldset disabled={busy}>
       <Fold title="更多设置" defaultOpen={false}>
         <AuthoringValueContext.Provider value={null}>

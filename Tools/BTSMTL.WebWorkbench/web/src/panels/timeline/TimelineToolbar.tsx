@@ -1,7 +1,9 @@
 import { useTimelineContext, type Range } from 'dnd-timeline';
 import { Fragment, useContext, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import type { AuthoringElements } from '../../api/authoring';
-import { authoringActions, authoringDocument, useAuthoring, useDocumentObservationNotice, useInputContext, useInputSchemes } from '../../state/authoring';
+import type { AuthoringElements, InputFragmentRequest } from '../../api/authoring';
+import {
+  authoringActions, authoringDocument, useAuthoring, useDocumentObservationNotice, useFirstInputContext, useInputContext, useInputSchemes,
+} from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
 import { trackSelectId } from '../../state/timelineModel';
@@ -47,6 +49,20 @@ export function AddTrack({ elements, documentId, caret }: { elements: AuthoringE
 
 function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }) {
   const context = useInputContext(documentId);
+  return <InputKeyMenu context={context} caret={caret} add={request => inputAuthoring.add(documentId, request, null)} />;
+}
+
+// 文档还没有预览输入：选第一个按键时建输入方案并放入该键。
+export function AddFirstInput() {
+  const context = useFirstInputContext();
+  return <InputKeyMenu context={context} caret add={request => inputAuthoring.addFirst(request)} />;
+}
+
+// 按场景角色的按键列出「按住／单按」，在游标处加一段 1 秒的输入。
+function InputKeyMenu({ context, caret, add }: {
+  context: Extract<ReturnType<typeof useFirstInputContext>, { kind: 'ready' }> | { kind: 'unavailable'; reason: string };
+  caret?: boolean; add(request: InputFragmentRequest): Promise<void>;
+}) {
   const [pending, setPending] = useState(false);
   const clock = useContext(PreviewClockContext);
   const cursor = usePreviewSelect(clock, seconds => seconds);
@@ -60,10 +76,10 @@ function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }
       onSelect: () => {
         const startSeconds = Math.max(0, cursor ?? 0);
         setPending(true);
-        void inputAuthoring.add(documentId, {
+        void add({
           scene: context.scene.path, sceneRevision: context.scene.revision, actorId: context.actor.actorId,
           key: key.name, operation, startSeconds, endSeconds: startSeconds + 1,
-        }, null).catch(error => consoleActions.error('输入', error)).finally(() => setPending(false));
+        }).catch(error => consoleActions.error('输入', error)).finally(() => setPending(false));
       },
     })),
   ]));

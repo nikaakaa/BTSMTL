@@ -50,14 +50,14 @@ import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
 import { RunBar } from './RunBar';
 import { quickPlayedSegments } from './routeRows';
-import { AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
+import { AddFirstInput, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
   curveInspectHeight, curveListHeight, curveMaxHeight, defaults, fitRange, groupKinds, minSpan, minimumStep, observationKey, overscan, playbackFor, previewSeconds,
   recordedLocalPosition, rowHeight, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
   trackHeight, useAuthorCursor, useClipGrid,
   type CurveClock, type CurveRow, type CurveView, type InputTrackRow, type Nest, type Params, type PreviewClock, type QuickPlaybackChoice, type ReceivedRow,
-  type Row, type TimelineObservation,
+  type FirstInputRow, type Row, type TimelineObservation,
 } from './timelineShared';
 import styles from './timeline.module.css';
 
@@ -572,6 +572,9 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   const quickPlan = useWorkbench(state => state.previewMode === 'quick' ? state.quickPreview.route?.plan ?? null : null);
   const quickInputTimeline = useQuickInputTimeline();
   const quickRouteEnd = useQuickRouteEnd();
+  // 技能与图文档的预览输入固定在快档 Timeline 顶部；还没有时显示一行，用 + 加第一个按键。
+  const documentRoot = useAuthoring(state => state.author && (authoringDocument(state).roles.entryGraph !== undefined || state.target?.kind === 'graph'));
+  const needsFirstInput = quickMode && documentRoot && !schemes.some(scheme => scheme.owner !== '');
   const segments = useMemo(() => documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
     return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds,
@@ -763,12 +766,15 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
         if (titleMatched || children.length) result.push(group, ...children);
       }
     };
+    const firstInput: FirstInputRow = { kind: 'firstInput', id: 'first-input' };
     if (routeView) {
+      if (needsFirstInput) result.push(firstInput);
       addPlayed();
       return result;
     }
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
+      if (!input && needsFirstInput) result.push(firstInput);
       // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
       const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
       const tracks = collapsed.has(group.id) ? []
@@ -805,7 +811,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
     addCurves();
     return result;
-  }, [segments, focused, routeView, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
+  }, [segments, focused, routeView, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
     params.curveTracks, params.curveParam, params.curveHeights, elements, selectedClip, references]);
 
   const toggle = useCallback((id: string) => {
@@ -1145,6 +1151,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
           case 'inputGroup':
             return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
+          case 'firstInput': return <FirstInputLine key={row.id} nest={nest} />;
           case 'curves': return <CurveGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
           case 'curve': return <CurveLine key={row.id} row={row} nest={nest} />;
           case 'receivedGroup':
@@ -1946,6 +1953,19 @@ function InputGroupLine({ nest, open, toggle, roots }: {
         </span>
       </>
     } />
+  );
+}
+
+function FirstInputLine({ nest }: { nest: Nest | undefined }) {
+  return (
+    <Line id="first-input" nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+      <>
+        <GroupToggle open={false} name="预览输入" disabled tip="连看与单看共用这份输入" onToggle={() => {}} />
+        <AddFirstInput />
+      </>
+    }>
+      <span className={styles.laneNote}>还没有按键：用左侧 + 在游标处加第一个按键</span>
+    </Line>
   );
 }
 

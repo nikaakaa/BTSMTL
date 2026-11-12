@@ -716,6 +716,20 @@
   pointer-events: none;
 }
 
+/* 还没有预览输入时分组行里的提示 */
+.laneNote {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* 折叠的分组：子轨道片段的并集条（TimelineClipUnion） */
 /* 折叠分组的片段并集（TimelineClipUnion）：上下各收 4 像素 */
 .clipUnion {
