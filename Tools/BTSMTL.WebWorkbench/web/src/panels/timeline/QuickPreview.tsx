@@ -159,7 +159,7 @@ export function QuickBar() {
       : '内容已变化，正在重新生成 · '}共 ${plan.duration.toFixed(2)} ${plan.clock.unit}`);
   // 推导根只列当前作者文档的入口；当前文档不在目录里时列全部。
   const roots = useMemo(() => {
-    const documents = description?.documents ?? [];
+    const documents = description?.documents ?? state.documents;
     const owned = documents.filter(document => document.documentPath === active);
     const listed = (owned.length ? owned : documents).flatMap(document => document.entries.map(choice => ({
       authoring: { documentPath: document.documentPath, savedRevision: document.savedRevision, entry: choice.entry },
@@ -171,12 +171,12 @@ export function QuickBar() {
       ? documents.find(item => item.documentPath === root.documentPath) : undefined;
     const choice = document?.entries.find(item => JSON.stringify(item.entry) === JSON.stringify(root!.entry));
     return document && choice ? [{ authoring: root!, name: quickEntryName(choice.entry, `${document.displayName} / ${choice.displayName}`) }, ...listed] : listed;
-  }, [description, active, state.target]);
+  }, [description, state.documents, active, state.target]);
   const busy = running || progress !== null || state.description.kind === 'loading';
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
       <strong>快速预览</strong>
-      {description && roots.length > 0 && <Select variant="ghost" label="入口" placeholder="选择入口图"
+      {roots.length > 0 && <Select variant="ghost" label="入口" placeholder="选择入口图"
         value={state.target?.root == null ? null : quickAuthoringKey(state.target.root.authoring)} disabled={busy}
         options={roots.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
         onChange={value => {

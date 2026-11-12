@@ -36,6 +36,8 @@ export interface QuickPreviewState {
   picture: { frame: { value: PreviewQuickFrame; playback: QuickPlayback | null } | null; request: { kind: 'idle' } | { kind: 'pending'; target: PreviewQuickSeekRequest }
     | { kind: 'failed'; reason: string } };
   outputDirectory: string;
+  // 最近一次读到的入口目录：来源读取失败时入口下拉仍可用，作者能改选别的入口。
+  documents: PreviewQuickDescription['documents'];
 }
 
 export const quickJobCancellable = (job: Job) => job.kind === 'starting' || job.kind === 'running' ||
@@ -235,7 +237,7 @@ function resolveFollow(request: PreviewQuickRequest, reply: PreviewQuickStatusRe
   if (job.kind !== 'idle') set({ job: { ...job, request: resolved } as Job });
   if (selected) {
     autoAttempt = requestKey(resolved);
-    set({ description: { kind: 'ready', target: request.target, reply: { success: true, pending: false, code: null, message: null, data: status.description, rawJson: reply.rawJson } },
+    set({ description: { kind: 'ready', target: request.target, reply: { success: true, pending: false, code: null, message: null, data: status.description, rawJson: reply.rawJson } }, documents: status.description.documents,
       scheme: status.plan.input });
   }
   return resolved;
@@ -575,6 +577,7 @@ export const quickPreview = {
           consoleActions.log('error', '快预览', catalog.message ?? catalog.code ?? '读取场景作者文档目录失败', catalog.rawJson);
           return;
         }
+        set({ documents: catalog.data.documents });
         chosen = defaultRoot(catalog.data);
         if (chosen === null) {
           set({ target, description: { kind: 'ready', target, reply: { ...catalog, data: catalog.data } }, scheme: null });
@@ -605,7 +608,7 @@ export const quickPreview = {
       const previous = current().scheme;
       const selected = previous ?? data.root?.currentInputScheme ?? null;
       const offered = data.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === quickInputSourceKey(selected));
-      set({ description: { kind: 'ready', target, reply: { ...reply, data } }, scheme: offered?.source ?? selected });
+      set({ description: { kind: 'ready', target, reply: { ...reply, data } }, documents: data.documents, scheme: offered?.source ?? selected });
       const job = current().job;
       if (job.kind !== 'idle' && !selectedRequest(job.request)) invalidateJob();
     } catch (error) {
