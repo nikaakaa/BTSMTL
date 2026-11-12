@@ -7,10 +7,9 @@ import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatal
 import { authoringActions, useAuthoring, useAuthoringElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
-import { session } from '../../state/session';
-import { authoringRoot, catalogEntryKey, catalogRoots, flatten, scenesRoot, type ProjectNode } from '../../state/projectTree';
+import { authoringRoot, catalogEntryKey, catalogRoots, flatten, type ProjectNode } from '../../state/projectTree';
 import { documentElementChoice, referenceChoiceKey, referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag, type ReferenceDragChoice } from '../../state/referenceSelection';
-import { consoleActions, contentActions, previewContentChoices, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, selectionActions } from '../../state/store';
 import { usePanelApi } from '../../shell/panel';
 import { panelInfo } from '../../shell/panelTypes';
 import { openPanel } from '../../shell/layout';
@@ -47,12 +46,12 @@ export function ProjectPanel() {
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
-  const { sources, hostAvailable } = useWorkbench(useShallow(state => ({ sources: state.sources, hostAvailable: state.hostAvailable })));
   const { field, browsing } = useReferenceSelection(useShallow(state => ({ field: state.field, browsing: state.browsing })));
   const picking = browsing && field !== null && field.domain !== null ? field : null;
 
   const contents = useMemo(() => projectContents(documents).tree, [documents]);
-  const author_ = useMemo(() => authoringRoot(directory ?? [], contents, documentTypes), [directory, contents, documentTypes]);
+  const author_ = useMemo(() => authoringRoot(directory ?? [], contents, documentTypes, picking !== null),
+    [directory, contents, documentTypes, picking !== null]);
   const documentReferences = useMemo(() => {
     const references = new Map<string, { kind: string; choice: ReferenceDragChoice }>();
     for (const element of elementCatalog.items) {
@@ -82,11 +81,9 @@ export function ProjectPanel() {
       ? { kind: item.kind, choice: { value: item.identity, source: `${item.owner}/${item.file}`, targets: [] } } : null;
   };
   const engine = useMemo(() => catalog.kind === 'ready' ? catalogRoots(catalog.snapshot.domains) : null, [catalog]);
-  const scenes = useMemo(() => scenesRoot(sources ? previewContentChoices(sources) : null,
-    hostAvailable === false ? '未接入运行宿主' : '正在读取'), [sources, hostAvailable]);
   const roots = useMemo(() => {
-    const all = [author_, ...engine ? [engine.files, engine.mappings] : [], scenes];
-    if (picking === null) return all;
+    if (picking === null) return [author_];
+    const all = [author_, ...engine ? [engine.files, engine.mappings] : []];
     const keep = (node: ProjectNode): ProjectNode | null => {
       const reference = referenceOf(node, picking.domain);
       if (reference?.kind === picking.domain) return { ...node, children: [] };
@@ -94,7 +91,7 @@ export function ProjectPanel() {
       return children.length ? { ...node, entry: null, children } : null;
     };
     return all.map(keep).filter((node): node is ProjectNode => node !== null);
-  }, [author_, engine, scenes, picking?.domain, documentReferences]);
+  }, [author_, engine, picking?.domain, documentReferences]);
   const nodes = useMemo(() => flatten(roots), [roots]);
   const parents = useMemo(() => {
     const map = new Map<string, string>();
@@ -180,11 +177,6 @@ export function ProjectPanel() {
         selectionActions.select({ kind: 'catalog', id: catalogEntryKey(entry.items[0]) });
         openPanel('inspector');
         return;
-      case 'scene':
-        contentActions.selectContent(entry.choice.selection);
-        selectionActions.select({ kind: 'scene', id: entry.choice.value });
-        openPanel('inspector');
-        return;
     }
   };
   const open = (node: ProjectNode) => {
@@ -259,7 +251,6 @@ export function ProjectPanel() {
       ]}>新建</MenuButton>
       <MenuButton label="Project 更多操作" variant="ghost" iconOnly entries={[
         { label: '刷新资源目录', onSelect: () => void adapterCatalogCache.refresh(authoringApi.catalog) },
-        { label: '刷新场景列表', disabled: !hostAvailable, onSelect: () => void session.refresh() },
         { label: files ? '返回 Project' : '查看工作区文件（排查）', onSelect: () => setFiles(!files) },
       ]}>⋮</MenuButton>
     </PanelBar>

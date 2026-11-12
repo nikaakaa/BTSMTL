@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { authoringApi, type AdapterCatalogItem, type ReferenceReplacementCompleted, type ResourceTarget } from '../../api/authoring';
-import { executionScopeDomain } from '../../api/resourceRegistration';
 import { useAdapterCatalog } from '../../state/adapterCatalog';
-import { authoringActions, authoringDocument, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
+import { authoringActions, referenceReplacementConflicts, useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { executionScopeNames } from '../../state/projectTree';
 import { animationReferenceKind, useAnimationLibrary } from '../../state/resources';
@@ -12,7 +11,6 @@ import { Button } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { AnimationDetails } from './AnimationDetails';
 import { ReferenceReplacementImpact, ResourceReferenceReplacement, type ReferenceReplacementRefresh } from './ResourceReferenceReplacement';
-import { ScopeEditor } from './ScopeEditor';
 import { TargetReferrersFold } from './TargetReferrers';
 import styles from './project.module.css';
 
@@ -40,19 +38,12 @@ function CatalogUse({ item }: { item: AdapterCatalogItem }) {
   const candidates = useMemo(() => catalog.kind === 'ready'
     ? catalog.snapshot.domains.flatMap(group => group.items.map(entry => ({ ...entry, adapter: group.adapter, domain: group.domain }))) : [], [catalog]);
   const target: ResourceTarget = { kind: 'Resource', domain: item.domain, value: item.value, context: item.context === '' ? null : item.context };
-  const skill = authoring.target !== null && authoringDocument(authoring).documentGraphs !== null;
   const openSkill = (documentPath: string) => { void projectActions.openDocument(documentPath).catch(error => consoleActions.error('检查器', error)); };
   return <>
     {item.domain === animationReferenceKind && <Fold title="动画" defaultOpen>{animation.kind === 'ready'
       ? clips.length === 1 ? <AnimationDetails library={animation.library} clip={clips[0]} />
         : <div className={styles.note}>动画素材库里有 {clips.length} 段对应这个引用，无法确定预览哪一段。</div>
       : <div className={styles.note}>{animation.kind === 'loading' ? '正在读取动画素材库。' : animation.reason}</div>}</Fold>}
-    {item.domain === executionScopeDomain &&<Fold title="角色" defaultOpen>
-      <PanelBar wrap>
-        <Button disabled={!skill} tip={skill ? undefined : '先打开一个文档'} onClick={() => authoringActions.selectRole(item.value)}>设为当前文档的角色</Button>
-      </PanelBar>
-      <ScopeEditor query={{ adapter: item.adapter, scope: item.value }} />
-    </Fold>}
     <TargetReferrersFold target={target} />
     <Fold title={`替换所有引用（${item.domain}）`}>
       {receipt !== null && <div className={styles.referenceDetails}>

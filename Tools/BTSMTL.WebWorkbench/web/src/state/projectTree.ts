@@ -2,14 +2,12 @@ import type { AdapterCatalogDomain, AdapterCatalogItem } from '../api/authoring'
 import { executionScopeDomain } from '../api/resourceRegistration';
 import type { DocumentType, WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import type { ContentNode } from './projectContents';
-import type { PreviewContentChoice } from './store';
 
-// Project 树：作者内容、引擎资源、角色映射与场景四个根；文件夹没有 entry，叶子与可展开的对象带 entry。
+// Project 树：平时只有作者内容一个根；为引用字段挑选候选时再列出引擎资源与角色映射。文件夹没有 entry，叶子与可展开的对象带 entry。
 export type ProjectEntry =
   | { kind: 'document'; document: WorkspaceDocumentInfo }
   | { kind: 'content'; node: ContentNode }
   | { kind: 'catalog'; items: AdapterCatalogItem[] }
-  | { kind: 'scene'; choice: PreviewContentChoice };
 
 export interface ProjectNode {
   key: string;
@@ -24,7 +22,7 @@ export interface ProjectNode {
 
 const colors = {
   folder: 'var(--text-disabled)', timeline: 'var(--track-anim)', graph: 'var(--node-flow)',
-  curve: 'var(--track-motion)', profile: 'var(--node-cmp)', resource: 'var(--node-anim)', mapping: 'var(--node-cam)', scene: 'var(--track-act)',
+  curve: 'var(--track-motion)', profile: 'var(--node-cmp)', resource: 'var(--node-anim)', mapping: 'var(--node-cam)',
 };
 
 export const catalogEntryKey = (item: Pick<AdapterCatalogItem, 'value' | 'context'>) => JSON.stringify([item.value, item.context]);
@@ -52,7 +50,8 @@ function byDomain(documents: WorkspaceDocumentInfo[], location: string, color: s
       items.map(document => documentNode(document, opened.get(document.documentPath), `${location}/${domain}`, color)), `${items.length}`));
 }
 
-export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[], types: readonly DocumentType[]): ProjectNode {
+// 平时只列编排文档；Profile 只在为引用字段挑选候选时列出。
+export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[], types: readonly DocumentType[], picking: boolean): ProjectNode {
   const opened = new Map(contents.flatMap(root => root.target?.kind === 'item' ? [[root.target.item.owner, root] as const] : []));
   const sorted = (kind: WorkspaceDocumentInfo['kind']) => directory.filter(document => document.kind === kind)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -62,7 +61,7 @@ export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], conte
     return folder(location, label, '作者内容', split ? byDomain(documents, location, color, opened)
       : documents.map(document => documentNode(document, opened.get(document.documentPath), location, color)), `${documents.length}`);
   };
-  return folder('作者内容', '作者内容', '', types.filter(type => type.id !== 'variables' && type.id !== 'scenario')
+  return folder('作者内容', '作者内容', '', types.filter(type => type.id !== 'variables' && type.id !== 'scenario' && (picking || type.id !== 'profile'))
     .map(type => group(type.id, type.displayName, type.id === 'timeline' ? colors.timeline
       : type.id === 'curve' ? colors.curve : type.id === 'profile' ? colors.profile : colors.graph,
       type.id === 'curve' || type.id === 'profile')));
@@ -165,18 +164,6 @@ export function catalogRoots(domains: readonly AdapterCatalogDomain[]): { files:
             .sort((a, b) => a.label.localeCompare(b.label)), `${groups.length}`)));
     }));
   return { files, mappings, scopes };
-}
-
-// 场景列表未读到或为空时，把原因写在根节点后面。
-export function scenesRoot(choices: readonly PreviewContentChoice[] | null, unavailable: string): ProjectNode {
-  const node = (choice: PreviewContentChoice, location: string): ProjectNode => ({ key: `scene:${choice.value}`, label: choice.label,
-    detail: choice.current ? '' : '历史发布', color: colors.scene, entry: { kind: 'scene', choice }, children: [], location });
-  if (choices === null || choices.length === 0) return folder('scenes', '场景', '', [], choices === null ? unavailable : '还没有发布的场景');
-  const older = choices.filter(choice => !choice.current);
-  return folder('scenes', '场景', '', [
-    ...choices.filter(choice => choice.current).map(choice => node(choice, '场景')),
-    ...older.length ? [folder('scenes:history', '历史发布', '场景', older.map(choice => node(choice, '场景/历史发布')), `${older.length}`)] : [],
-  ]);
 }
 
 // 树中可被搜索与选中的全部节点，按深度优先顺序。

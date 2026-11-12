@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { AuthoringEditingView, DocumentExportKind } from '../../api/authoring';
+import type { DocumentExportKind } from '../../api/authoring';
 import { authoringActions, authoringDocument, useAuthoring } from '../../state/authoring';
 import { exportActions, useExports, type ExportOperation } from '../../state/exports';
 import { consoleActions } from '../../state/store';
@@ -15,8 +15,8 @@ const purposeNames = { authoring: '作者内容', runtime: '运行数据' } sati
 
 export function ExportPanel() {
   const [purpose, setPurpose] = useState<DocumentExportKind>('authoring');
-  const { target, product, loading, documentRevision, sourceRevision } = useAuthoring(useShallow(state => ({
-    target: state.target, product: authoringDocument(state).product, loading: authoringDocument(state).loading,
+  const { target, loading, documentRevision, sourceRevision } = useAuthoring(useShallow(state => ({
+    target: state.target, loading: authoringDocument(state).loading,
     documentRevision: authoringDocument(state).documentRevision, sourceRevision: authoringDocument(state).sourceRevision,
   })));
   const operations = useExports(state => state.operations);
@@ -33,7 +33,6 @@ export function ExportPanel() {
     </PanelBar>
     {documentPath === null ? <Empty text="选择作者文档以导出当前内容或运行数据" /> : <section className={styles.source}>
       <strong>{documentPath}</strong>
-      <ProductScope product={product} />
       <IdentityFold fields={[
         ...(documentRevision === null ? [] : [{ displayName: '作者输入上下文修订', value: documentRevision }]),
         ...(sourceRevision === null ? [] : [{ displayName: '编译来源闭包修订', value: sourceRevision }]),
@@ -48,20 +47,13 @@ export function ExportPanel() {
   </div>;
 }
 
-function ProductScope({ product }: { product: AuthoringEditingView['product'] }) {
-  return product === null ? <div className={styles.note}>未选择 Product 作者范围</div>
-    : <dl className={styles.scope}><dt>Product</dt><dd>{product.value}</dd><dt>版本</dt><dd>{product.revision}</dd></dl>;
-}
-
 function ExportResult({ operation }: { operation: ExportOperation }) {
   const compilation = operation.kind === 'ready' && operation.result.kind === 'runtime' ? operation.result.compilation : null;
   return <Fold title={`${operation.documentPath} · ${purposeNames[operation.purpose]} · ${new Date(operation.startedAt).toLocaleTimeString()}`} defaultOpen>
-    {operation.kind === 'preparing' ? <><div role="status" className={styles.note}>准备中，等待宿主返回本次导出结果。</div>
-      <ProductScope product={operation.product} /></>
-      : operation.kind === 'failed' ? <ErrorLine text={`导出失败：${operation.reason}`} entryId={operation.entryId} />
+    {operation.kind === 'preparing' ? <div role="status" className={styles.note}>准备中，等待宿主返回本次导出结果。</div>
+      :operation.kind === 'failed' ? <ErrorLine text={`导出失败：${operation.reason}`} entryId={operation.entryId} />
         : <>
           <div role="status" className={styles.note}>本次{purposeNames[operation.result.kind]}已准备好。</div>
-          <ProductScope product={operation.result.product} />
           <dl className={styles.scope}><dt>内容修订</dt><dd>{operation.result.sourceRevision}</dd></dl>
           <a className={styles.download} href={operation.result.downloadUrl} download={operation.result.fileName}>
             {operation.result.kind === 'authoring' ? '下载作者内容' : '下载运行编译清单'} · {operation.result.fileName}
@@ -77,9 +69,6 @@ function ExportResult({ operation }: { operation: ExportOperation }) {
           <IdentityFold fields={[
             { displayName: '导出修订', value: operation.result.sourceRevision },
             { displayName: 'Tick Rate', value: String(operation.result.tickRate) },
-            { displayName: '预览 Scope', value: operation.result.execution?.previewScope ? JSON.stringify(operation.result.execution.previewScope) : '未选择' },
-            { displayName: '实际运行 Scope', value: operation.result.execution?.runtimeScope ? JSON.stringify(operation.result.execution.runtimeScope) : '未选择' },
-            { displayName: 'Effect Profile', value: operation.result.effectProfileGuid },
             ...(operation.result.kind === 'runtime' ? [{ displayName: '编译身份', value: operation.result.compilation.compilationKey }] : []),
           ]} />
           {compilation !== null && <Button variant="ghost" onClick={() => {

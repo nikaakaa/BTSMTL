@@ -5,14 +5,13 @@ import { authoringActions, skillElements, useAuthoring } from '../../state/autho
 import { quickPreview } from '../../state/quickPreview';
 import type { JsonObject } from '../../state/skillJson';
 import { consoleActions, selectionActions } from '../../state/store';
-import { Empty, Fold, PanelBar } from '../../ui/blocks';
+import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, Checkbox, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
-import { AuthoringValueContext, AuthoringValueFields } from '../inspector/FieldEditors';
 import styles from './project.module.css';
 
-// 脚手架：作者只填名称并选参照文档；带入口图的文档同时建入口图和一条 Timeline，建完即可预览；预览输入在 Timeline 顶部加第一个按键时才建。
-// 其余字段收在「更多设置」里，走同一个创建请求。
+// 脚手架：作者只填名称并选参照文档；带入口图的文档同时建入口图和一条 Timeline，建完即可预览。
+// 编排之外的文档字段不在这里编辑，按适配给的默认值或参照文档创建。
 export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target: AuthoringTarget, timeline: string | null): void; onCancel(): void }) {
   const [catalog, setCatalog] = useState<DocumentCreationCatalog | null>(null);
   const [configuration, setConfiguration] = useState<JsonObject>({});
@@ -78,17 +77,9 @@ export function DocumentCreationForm({ onCreated, onCancel }: { onCreated(target
       onChange={value => { const item = catalog.types.find(item => item.type === value)!; setType(item.type); setConfiguration(item.configuration); }} />
     {nameMember !== undefined && <TextInput autoFocus aria-label="名称" placeholder="名称" value={String(configuration[nameMember] ?? '')} disabled={busy}
       onChange={event => setConfiguration({ ...configuration, [nameMember]: event.currentTarget.value })} />}
-    {selected.reference && <Select label="参照" tip="新文档沿用参照文档的准入与排序等设置" placeholder="不参照" value={reference} disabled={busy}
+    {selected.reference && <Select label="参照" tip="新文档沿用参照文档中编排之外的设置" placeholder="不参照" value={reference} disabled={busy}
       options={references.map(document => ({ value: document.documentPath, label: document.name }))} onChange={setReference} />}
     {withEntry && <label><Checkbox label="同时创建入口图与 Timeline" checked={scaffold} onChange={setScaffold} />同时创建入口图与 Timeline</label>}
-    <fieldset disabled={busy}>
-      <Fold title="更多设置" defaultOpen={false}>
-        <AuthoringValueContext.Provider value={null}>
-          <AuthoringValueFields label={selected.displayName} type={selected.rootType} value={configuration} graphId={null}
-            identity="new-document" onSet={setConfiguration} />
-        </AuthoringValueContext.Provider>
-      </Fold>
-    </fieldset>
     {failure && <ErrorLine {...failure} />}
     <PanelBar><Button type="submit" disabled={!ready}>{busy ? '正在创建' : '创建'}</Button>
       <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>取消</Button></PanelBar>

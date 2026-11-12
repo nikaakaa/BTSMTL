@@ -28,7 +28,7 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, DocumentRootFields, StepFields, TimelineScopeFields, TrackFields, TransitionFields } from './FieldEditors';
+import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, StepFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import { DocumentDetails } from '../project/DocumentDetails';
 import styles from './inspector.module.css';
@@ -126,7 +126,6 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (item.kind === 'document') return <EntryDocumentSummary />;
   return <>
     <Head name={item.name} sub={`${item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} · ${item.ownerName} · ${item.ownership === 'Shared' ? '共享' : '私有'}`} />
-    {item.kind === 'timeline' && <Fold title="设置" defaultOpen><TimelineScopeFields documentId={item.identity} /></Fold>}
     {item.kind === 'variables' && <Fold title="变量" defaultOpen><BlackboardFields ownerId={item.identity} editable={editable} /></Fold>}
     {(item.kind === 'curve' || item.kind === 'profile') && <DocumentFields editable={editable} location={{ kind: 'root' }} />}
     <DocumentDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />
@@ -283,7 +282,6 @@ function EntryDocumentSummary() {
       <Head name={skill ?? '文档'} sub={`${typeName} · ${timelines} 个 Timeline`} />
       {item !== undefined && <DocumentDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />}
       {documentError !== null && <ErrorLine text={documentError} entryId={null} />}
-      <DocumentRootFields editable={editable} />
       {noProgram && <div className={styles.note}>当前文档没有默认入口图</div>}
       {paths.map((path, index) => (
         <Fold key={path} title={paths.length > 1 ? `预览输入 ${index + 1}` : '预览输入'} defaultOpen>

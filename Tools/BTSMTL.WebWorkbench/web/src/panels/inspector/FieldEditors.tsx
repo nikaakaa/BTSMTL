@@ -21,10 +21,6 @@ import { graphName } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
 import { quickPreview } from '../../state/quickPreview';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
-import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
-import { executionScopeNames } from '../../state/projectTree';
-import { documentScope, useEffectiveScope, useSceneScope } from '../../state/resourceScope';
-import { ProductScope } from '../project/ProductScope';
 import { consoleActions, contentActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
 import { Button, Checkbox, FieldLabel, NumberInput, ObjectField, Select, TextInput, Tip } from '../../ui/controls';
@@ -549,27 +545,6 @@ function ProfileDocumentFields({ file, jsonPath }: { file: string; jsonPath: str
     <ValueFields value={query.value} description={description} owner={{ kind: 'value', graphId: null, identity: `${documentPath}/${file}#${jsonPath}` }}
       onSet={next => authoringActions.setFile(file, next)} />
   </Fold>;
-}
-
-export function DocumentRootFields({ editable }: { editable: boolean }) {
-  const target = useAuthoring(state => state.target);
-  const role = useAuthoring(state => documentScope(authoringDocument(state).execution));
-  const scene = useSceneScope();
-  const rootType = useAuthoring(state => authoringDocument(state).authoringType);
-  const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
-  const { document } = useCurrentDocument(rootFile);
-  if (target === null || document === null) return null;
-  return <fieldset className={styles.authorFields} disabled={!editable}>
-    <Fold title="预览设置" defaultOpen>
-      <ScopeSelect label="角色" value={role} unsetText="不指定 · 预览用场景角色" fallback={scene}
-        tip={'预览、保存、导出和实际运行都用这个角色的资源与映射。\n不指定时：快速预览用预览场景里的角色；技能编译覆盖所有授予它的角色。'}
-        onChange={value => authoringActions.selectRole(value)} />
-      <div className={styles.field}><FieldLabel label="产品范围" tip="编译时从哪个产品内容里找载体等候选" /><ProductScope /></div>
-    </Fold>
-    {rootType === null ? <div className={styles.issue}>当前文档未提供作者字段声明</div>
-      : <AuthoringValueFields label="文档配置" type={rootType} value={document as JsonObject}
-        graphId={null} identity={rootFile!} onSet={next => authoringActions.edit(rootFile!, value => { Object.assign(value as JsonObject, next); })} />}
-  </fieldset>;
 }
 
 // 节点一栏：名称与按合同描述的字段；图引用字段没有候选来源时按专属图槽位编辑（状态内容、状态机等）；
@@ -1138,31 +1113,6 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
 // 定点时间换成秒后显示到 0.0001 秒，不显示 1/65536 的尾数。
 const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
-export function TimelineScopeFields({ documentId }: { documentId: string }) {
-  const { document } = useCurrentDocument(timelinePath(documentId));
-  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined ?? null;
-  const inherited = useEffectiveScope().value;
-  return <ScopeSelect label="所属角色" value={scope} unsetText="跟随文档" fallback={inherited}
-    tip={'默认跟随文档的角色（文档未指定时为预览场景里的角色）。\n只有这个 Timeline 要用别的角色的资源与映射时才单独指定。'}
-    onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />;
-}
-
-// 角色（执行范围）选择：候选来自资源目录，同名角色补上能区分它们的上级目录；第一项为不指定，并写出此时实际用的角色。
-function ScopeSelect({ label, tip, value, unsetText, fallback, onChange }: {
-  label: string; tip: string; value: string | null; unsetText: string; fallback: string | null; onChange(value: string | null): void;
-}) {
-  const catalog = useAdapterCatalog();
-  useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
-  const names = catalog.kind === 'ready' ? executionScopeNames(catalog.snapshot.domains) : new Map<string, string>();
-  const unset = fallback === null ? unsetText : `${unsetText}（${names.get(fallback) ?? fallback}）`;
-  return <div className={styles.field}><FieldLabel label={label} tip={tip} />
-    <Select label={label} value={value ?? ''} options={[{ value: '', label: unset }, ...[...names].map(([scope, name]) => ({ value: scope, label: name }))]}
-      onChange={next => onChange(next === '' ? null : next)} />
-    {catalog.kind === 'failed' && <span className={styles.issue}>{catalog.failure.text}</span>}
-    {catalog.kind === 'ready' && value !== null && !names.has(value) && <span className={styles.issue}>找不到原来选的角色，可能已改名或删除；原值没有改动：{value}</span>}
-  </div>;
-}
-
 // 片段一栏：起止与片段的序列化字段；children 为同栏的引用行（节点图）。
 export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   documentId: string; clipId: string; timeOnly?: boolean; children?: ReactNode;
@@ -1184,7 +1134,7 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   const values = descriptionValues(description, clip);
   const owner: ReferenceOwner = { kind: 'value', graphId: null, identity: JSON.stringify([skill, documentId, clipId]) };
   const start = fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), end = fpSeconds(numberOf(clip.m_EndTimeFPRawValue));
-  // 片段按作者要改的事分三栏：引用（所属角色、节点图与资源字段）、时间（起止与其它定点秒字段）、配置（其余成员）。
+  // 片段按作者要改的事分三栏：引用（节点图与资源字段）、时间（起止与其它定点秒字段）、配置（其余成员）。
   const members = !timeOnly && description !== null && template !== undefined
     ? Object.keys(clip).filter(key => !template.structureMembers.includes(key) && !resourceMembers.has(key)) : [];
   const timeMembers = members.filter(key => key.endsWith('FPRawValue'));
@@ -1192,7 +1142,6 @@ export function ClipFields({ documentId, clipId, timeOnly = false, children }: {
   return (
     <ResourceScopeContext.Provider value={(document as JsonObject).m_AuthoringScope as string | null ?? null}>
     {!timeOnly && <Fold title="引用" defaultOpen>
-      <TimelineScopeFields documentId={documentId} />
       {children}
       <DescriptionStatus description={description} issues={issues} />
       {resourceFields.map(item => <StoredItem key={item.member} item={item} node={clip} values={values} owner={owner}
