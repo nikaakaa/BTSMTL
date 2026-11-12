@@ -52,6 +52,7 @@ public static class QuickPreviewInputTimeline
                     _ => null
                 };
                 if (time is not { } at) continue;
+                visited.Add((string)node["UID"]!);
                 var pending = new Stack<JToken>();
                 pending.Push(node);
                 while (pending.Count != 0)
@@ -74,6 +75,12 @@ public static class QuickPreviewInputTimeline
                         pending.Push(target);
                     }
             }
+            // 预览输入离线生成、没有求值：回调执行链之外的节点连到按键或条件上，只能是值连线。
+            foreach (JToken node in graph["allNodes"]!)
+                if (!visited.Contains((string)node["UID"]!))
+                    foreach (JToken edge in node["outConnections"]!)
+                        if (visited.Contains((string)edge["targetNode"]!))
+                            throw new InvalidDataException($"{element} / 图 {graphId} / 节点 {edge["targetNode"]} 有来自回调执行链之外的连线；预览按键与条件的值只能在节点上填写，不能连线。");
         }
     }
     static float Seconds(JToken raw) => OrchestrationTime.FromRaw((long)raw).AsSingle;

@@ -106,7 +106,8 @@ export interface TypePage {
 
 export interface DescribedPort {
   direction: 'input' | 'output';
-  port: { ID: string; name: string; type: string; serializedValue: unknown;
+  // defaultField：未连线时取该作者字段，值只在字段上编辑。
+  port: { ID: string; name: string; type: string; serializedValue: unknown; defaultField?: string | null;
     objectKind?: string | null; objectKindName?: string | null; acceptedObjectKinds?: string[] | null };
 }
 

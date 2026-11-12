@@ -562,7 +562,8 @@ export function NodeFields({ graphId, nodeId: id, children }: { graphId: string;
   const computed = description?.computed.filter(field => visible(field, values)) ?? [];
   const connected = new Set(nodesOf(document!).flatMap(item =>
     connectionsOf(item).filter(connection => connectionTarget(connection) === id).map(connectionTargetPort)));
-  const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' && !connected.has(port.port.ID));
+  const inputs = (description?.ports ?? []).filter(port => port.direction === 'input' && port.port.type !== 'Flow' &&
+    !port.port.defaultField && !connected.has(port.port.ID));
   const outputs = (description?.ports ?? []).filter(port => port.direction === 'output');
   const anchor = elements !== null && Object.values(elements.anchors).some(anchors => anchors.some(item => item.uid === id));
   return (
