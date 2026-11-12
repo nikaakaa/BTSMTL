@@ -505,6 +505,35 @@ useWorkbench.subscribe((state, previous) => {
   if (receipt.stage !== saved.receipt.stage) acceptSaveJob(receipt);
 });
 
+let pendingListing: { isCurrentRequest(): boolean; promise: Promise<void> } | null = null;
+
+async function readDocuments({ editingView, isCurrentRequest }: ReturnType<typeof captureEditingView>) {
+  try {
+    const [directory, view, types] = await Promise.allSettled([
+      workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView), workspaceDocumentsApi.types(),
+    ]);
+    if (directory.status === 'rejected') throw directory.reason;
+    if (types.status === 'rejected') throw types.reason;
+    let elementCatalog: AuthoringState['elementCatalog'];
+    if (view.status === 'fulfilled') elementCatalog = { kind: 'ready', items: view.value.elements };
+    else {
+      const error: unknown = view.reason;
+      const reason = error instanceof Error ? error.message : String(error);
+      elementCatalog = { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason };
+      consoleActions.error('作者元素目录', error);
+    }
+    set({ directory: directory.value, documentTypes: types.value, available: true, unavailableReason: null,
+      ...(isCurrentRequest() ? { elementCatalog } : {}),
+    });
+  } catch (error) {
+    const reason = error instanceof ApiError && error.status === 404
+      ? '宿主尚未挂载作者文档接口' : error instanceof Error ? error.message : String(error);
+    set({ directory: [], available: false, unavailableReason: reason,
+      ...(isCurrentRequest() ? { elementCatalog: { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason } as const } : {}),
+    });
+  }
+}
+
 export function captureEditingView() {
   const { target, documents } = useAuthoring.getState();
   const capturedOwners = Object.entries(documents)
@@ -680,32 +709,14 @@ export const authoringActions = {
     await Promise.all([authoringActions.listDocuments(), session.loadInputs()]);
   },
 
-  async listDocuments() {
-    const { editingView, isCurrentRequest } = captureEditingView();
-    try {
-      const [directory, view, types] = await Promise.allSettled([
-        workspaceDocumentsApi.list(), workspaceDocumentsApi.editingView(editingView), workspaceDocumentsApi.types(),
-      ]);
-      if (directory.status === 'rejected') throw directory.reason;
-      if (types.status === 'rejected') throw types.reason;
-      let elementCatalog: AuthoringState['elementCatalog'];
-      if (view.status === 'fulfilled') elementCatalog = { kind: 'ready', items: view.value.elements };
-      else {
-        const error: unknown = view.reason;
-        const reason = error instanceof Error ? error.message : String(error);
-        elementCatalog = { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason };
-        consoleActions.error('作者元素目录', error);
-      }
-      set({ directory: directory.value, documentTypes: types.value, available: true, unavailableReason: null,
-        ...(isCurrentRequest() ? { elementCatalog } : {}),
-      });
-    } catch (error) {
-      const reason = error instanceof ApiError && error.status === 404
-        ? '宿主尚未挂载作者文档接口' : error instanceof Error ? error.message : String(error);
-      set({ directory: [], available: false, unavailableReason: reason,
-        ...(isCurrentRequest() ? { elementCatalog: { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason } as const } : {}),
-      });
-    }
+  // 多处同时要目录（启动时 Project 与顶栏）且编辑状态未变时共用同一次读取。
+  listDocuments(): Promise<void> {
+    if (pendingListing !== null && pendingListing.isCurrentRequest()) return pendingListing.promise;
+    const captured = captureEditingView();
+    const listing = { isCurrentRequest: captured.isCurrentRequest,
+      promise: readDocuments(captured).finally(() => { if (pendingListing === listing) pendingListing = null; }) };
+    pendingListing = listing;
+    return listing.promise;
   },
 
   // 直接打开文档文件夹：读原文件与图展开，不需要运行；进入作者模式。
