@@ -946,10 +946,14 @@ export const authoringActions = {
     updateScope(query, { source });
   },
 
-  editingView(): AuthoringEditingView {
+  // 查询只带有改动、新建或删除的文档；未改动的只报修订，由宿主读盘（与原样写入等价）。
+  // 保存要逐文档回执，传 full 带上全部已打开文档。
+  editingView(full = false): AuthoringEditingView {
     const state = get();
     const scene = selectedScene(useWorkbench.getState());
-    const writes = Object.entries(state.documents).map(([path, document]) => documentWrite(path, document));
+    const writes = Object.entries(state.documents)
+      .filter(([, document]) => full || document.revision === null || documentDeleted(document) || isDocumentDirty(document))
+      .map(([path, document]) => documentWrite(path, document));
     return {
       writes,
       reads: Object.entries(state.documents).flatMap(([documentPath, document]) =>
@@ -979,7 +983,7 @@ export const authoringActions = {
       consoleActions.error('变量保存', error);
       return;
     }
-    const editingView = authoringActions.editingView();
+    const editingView = authoringActions.editingView(true);
     const apply = operation === 'apply';
     const submittedDocuments = new Map(editingView.writes.map(write => {
       const document = documents[write.documentPath];
