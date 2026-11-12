@@ -14,8 +14,9 @@ export interface ContentNode {
 const itemKey = (item: Pick<ProjectItem, 'owner' | 'file'>) => JSON.stringify([item.owner, item.file]);
 const graphLabels: Record<string, string> = { Ability: '文档图', Skill: '文档图', StateMachine: '状态机', StateBody: '状态内容',
   Condition: '条件图', ConditionRule: '条件', Subgraph: '子图', TimelineEvent: '事件图', TimelineBody: '片段内容', TimelineTrigger: '触发片段' };
+export const graphRoleLabel = (role: string) => graphLabels[role] ?? role;
 export const graphItemDescription = (item: Extract<ProjectItem, { kind: 'graph' }>) =>
-  'role' in item ? graphLabels[item.role] ?? item.role : item.contentDomain;
+  'role' in item ? graphRoleLabel(item.role) : item.contentDomain;
 
 export function projectContents(documents: AuthoringState['documents']) {
   const items = new Map<string, ProjectItem>();

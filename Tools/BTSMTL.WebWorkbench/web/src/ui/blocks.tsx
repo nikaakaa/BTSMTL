@@ -81,7 +81,7 @@ export function Facts({ fields }: { fields: Field[] }) {
 export function IdentityFold({ fields }: { fields: Field[] }) {
   if (!fields.length) return null;
   return (
-    <Fold title="身份">
+    <Fold title="调试信息">
       <Facts fields={fields} />
     </Fold>
   );

@@ -7,7 +7,7 @@ import { CatalogDetails } from '../project/CatalogDetails';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { usePanelParams } from '../../shell/panel';
 import {
-  findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence, navigationTrail,
+  findGraphNode, graphKey, graphLeafName, graphName, graphRecords, isNodeOccurrence, navigationTrail,
   isPortSample, nodeReferences, nodeName, compareSequence, callKey, callOwnerLabel, routeObservation, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
   type NodeNavigationTarget,
 } from '../../state/graphModel';
@@ -28,14 +28,14 @@ import { Empty, Fold, IdentityFold } from '../../ui/blocks';
 import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
-import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, StepFields, TrackFields, TransitionFields } from './FieldEditors';
+import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SlottedGraphs, StepFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import { DocumentDetails } from '../project/DocumentDetails';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
 // 每个对象一栏自身的序列化字段，引用（节点图、条件图等）作为同栏的对象字段；运行记录只在有运行时附在后面。
-// 不选中时显示文档本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部身份折叠。
+// 不选中时显示文档本身。锁定的实例固定显示锁定对象；身份、修订与哈希只放底部调试信息折叠。
 
 interface Params {
   locked: Selection | null;
@@ -136,7 +136,7 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
 // ── 通用部件 ──
 
 // 对象头：有真实矢量图标的对象（轨道、片段、动画资源）在左侧显示类型图标。
-// 场景：名字与 Unity 场景在头部，运行设置与输入声明在正文，发布路径和修订只放身份折叠。
+// 场景：名字与 Unity 场景在头部，运行设置与输入声明在正文，发布路径和修订只放调试信息折叠。
 function SceneInspector() {
   const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
   const key = contentSelectionKey(selection);
@@ -226,7 +226,7 @@ function locatedRecords(frame: Frame | null, binding: DocumentObservationBinding
 
 const gap = (item: Availability) => !item.available || !item.complete;
 
-// 身份折叠：运行身份、内容修订、宿主帧、能力缺项、协议版本，以及所示对象自身的身份。
+// 调试信息折叠：运行身份、内容修订、宿主帧、能力缺项、协议版本，以及所示对象自身的身份。
 function Identity({ extra = [] }: { extra?: Field[] }) {
   const state = useWorkbench(useShallow(current => ({
     summary: current.summary, hostFrame: current.hostFrame, frame: current.frame, routeProtocol: current.routeProtocol,
@@ -354,7 +354,8 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
   const { document } = useCurrentDocument(graphPath(graph.id));
   const elements = useAuthoringElements(document !== null);
   const runId = useWorkbench(state => state.runId);
-  const children = nodeReferences(hierarchy, graph, nodeId);
+  const slotted = useContext(SlottedGraphs);
+  const children = nodeReferences(hierarchy, graph, nodeId).filter(child => child.kind === 'timeline' || !slotted.has(child.id));
   const source = hierarchy.graphs.get(graphKey(graph))!;
   const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
   const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
@@ -379,8 +380,8 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
         const owned = [...hierarchy.graphs.values()].filter(item => item.owner === source.owner && slots.some(slot => slot.value === item.id));
         if (owned.length === 0) return <Value key={edge.id} label={label} mono={false}
           value={slots.some(slot => slot.value !== null) ? '新建的图保存后可进入' : '未设置条件图'} />;
-        return owned.map(item => <Link key={`${edge.id}/${item.id}`} label={label} text={graphName(item)} kind="var(--node-flow)"
-          tip="在节点图面板打开" onOpen={() => openReference({ ...item, kind: 'graph' })} />);
+        return owned.map(item => <Link key={`${edge.id}/${item.id}`} label={label} text={graphLeafName(item)} kind="var(--node-flow)"
+          tip={`条件图 ${graphName(item)}\n在节点图面板打开`} onOpen={() => openReference({ ...item, kind: 'graph' })} />);
       })}
     </>
   );
@@ -410,13 +411,15 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const slots = editable && elements ? edgeGraphSlots(document, elements, graph.id, edge.id) : [];
   const conditionRows = slots.length !== 0
     ? slots.map(slot => <OwnedGraphRow key={slot.keys.join('/')} label={slotLabel(slot, elements!)} slot={slot} />)
-    : edge.kind === 'Value' ? null : <Value label="条件图" mono={false} value="条件图声明尚未提供" />;
+    : transition ? <Value label="条件图" mono={false} value="条件图声明尚未提供" /> : null;
   return (
     <>
       <Head name={name} sub={graphName(graph)} />
       {transition && editable && elements ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
         : step ? <StepFields graphId={graph.id} step={step}>{conditionRows}</StepFields>
-          : <Fold title={transition ? '转移' : '连线'} defaultOpen>{conditionRows}</Fold>}
+          : <Fold title={transition ? '转移' : '连线'} defaultOpen>
+            {conditionRows ?? <div className={styles.note}>{edge.kind === 'Value' ? '数据连线：把左边端口的值传给右边端口，没有可编辑的设置' : '执行连线：左边节点走到这里后执行右边节点，没有可编辑的设置'}</div>}
+          </Fold>}
       <Identity extra={[
         { displayName: transition ? '转移' : '连线', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
         { displayName: '程序', value: graph.programId },
@@ -591,7 +594,7 @@ function TrackInspector({ id, call, missing }: { id: string; call: Selection['ca
 
 // ── 动画资源 ──
 
-// 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放身份折叠。
+// 照 Unity 选中动画资产：资源清单记录的素材信息只读显示，资源与产物哈希放调试信息折叠。
 function CatalogInspector({ id }: { id: string }) {
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);

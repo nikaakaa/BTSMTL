@@ -115,7 +115,8 @@ function buildDefault() {
     inspector.group.api.setSize({ width: inspectorWidth });
     project.group.api.setSize({ width: projectWidth });
     player.group.api.setSize({ height: Math.round(height * 0.43) });
-    player.group.api.setSize({ width: Math.round((width - inspectorWidth - projectWidth) * 0.5) });
+    // 没有画面时节点图独占中间一栏，不与画面对半分。
+    if (hasPlayer) player.group.api.setSize({ width: Math.round((width - inspectorWidth - projectWidth) * 0.5) });
     return true;
   };
   if (!size()) requestAnimationFrame(() => size());

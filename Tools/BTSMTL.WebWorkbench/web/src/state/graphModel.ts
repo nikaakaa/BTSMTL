@@ -48,6 +48,11 @@ export const compareSequence = (left: { sequence: string }, right: { sequence: s
 };
 export const graphName = (graph: Pick<GraphDefinition, 'id' | 'displayName'>) =>
   graph.displayName === null ? '未命名图' : graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
+// 专属图（条件、状态内容）的名字常带所属路径“所属/名称”；在所属上下文里（连线、所属节点的检查器）只显示最后一段。
+export const graphLeafName = (graph: Pick<GraphDefinition, 'id' | 'displayName'>) => {
+  const name = graphName(graph);
+  return name.slice(name.lastIndexOf('/') + 1) || name;
+};
 // 作者没起名字时宿主给的是 C# 类型名（如 BtsmtlSkillConditionResultFlowNode）：照 Unity 显示类型名的习惯拆成单词，
 // 去掉项目前缀 Btsmtl 与 FlowNode／Node 后缀；完整类型名由 nodeTypeName 给提示用。
 const typeNamePattern = /^[A-Z][A-Za-z0-9]*Node$/;

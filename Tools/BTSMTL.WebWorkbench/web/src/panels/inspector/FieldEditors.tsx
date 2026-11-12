@@ -17,8 +17,9 @@ import {
   connectionSourcePort, connectionTarget, connectionTargetPort, connectionsOf, findConnection, findNode, inputValueKeys, inputValuesKey,
   nodeId, nodeNameKey, nodeType, nodesOf, outputPortId, storedNodeName, transitionPayload, withOutputPortId,
 } from '../../state/graphDocument';
-import { graphName } from '../../state/graphModel';
+import { graphLeafName, graphName } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
+import { graphRoleLabel } from '../../state/projectContents';
 import { quickPreview } from '../../state/quickPreview';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { consoleActions, contentActions, selectedScene, useWorkbench } from '../../state/store';
@@ -566,16 +567,19 @@ export function NodeFields({ graphId, nodeId: id, children }: { graphId: string;
     !port.port.defaultField && !connected.has(port.port.ID));
   const outputs = (description?.ports ?? []).filter(port => port.direction === 'output');
   const anchor = elements !== null && Object.values(elements.anchors).some(anchors => anchors.some(item => item.uid === id));
+  const stored = description?.stored.filter(item => item.member !== inputValuesKey && !(anchor && item.fields.some(field => field.graphTargets.length !== 0))) ?? [];
+  const slotted = new Set(stored.flatMap(item => item.fields).filter(ownedSlot)
+    .map(field => getIn(node, field.serializedMemberPath)).filter((value): value is string => typeof value === 'string' && value !== ''));
   return (
     <>
       <Fold title="节点" defaultOpen>
         <Row label="名称"><TextValue label="名称" value={storedNodeName(node) ?? ''} onSet={next => set([nodeNameKey], next)} /></Row>
         <DescriptionStatus description={description} issues={issues} />
-        {description?.stored.filter(item => item.member !== inputValuesKey && !(anchor && item.fields.some(field => field.graphTargets.length !== 0))).map(item => (
+        {stored.map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
             owner={{ kind: 'node', graphId, nodeId: id }} outputs={outputs} onSet={set} onSetFields={setFields} />
         ))}
-        {children}
+        <SlottedGraphs.Provider value={slotted}>{children}</SlottedGraphs.Provider>
       </Fold>
       {inputs.length > 0 && (
         <Fold title="端口默认值" defaultOpen>
@@ -879,12 +883,25 @@ export function OwnedGraphRow({ label, slot }: { label: string; slot: GraphSlot 
         .catch((reason: unknown) => consoleActions.error('作者', reason))
         .finally(() => setCreating(false));
     }}>{creating ? '正在创建' : slot.targets.length === 1 ? `新建${label}` : `新建 ${item.role}`}</Button>) : <>
-      {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={open} />
+      {target ? <ObjectField kind="var(--node-flow)" text={graphLeafName(target)} tip={`${graphName(target)}\n在节点图面板打开`} onOpen={open} />
         : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
       {slot.optional && <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => graphAuthoring.removeOwnedGraph(slot)}>移除</Button>}
     </>}
   </div></Row>;
 }
+
+const ownedSlot = (field: FieldMetadata) => field.graphTargets.length !== 0 && field.choiceKind === null && field.pickerKind === null &&
+  field.resourceReference === null && field.objectSelection === null;
+
+// 节点栏里已按专属图槽位显示的图；同栏的引用行不再重复列出。
+export const SlottedGraphs = createContext<ReadonlySet<string>>(new Set());
+
+// 专属图槽位的行名：字段有作者显示名时用它；没有（或只是角色名）时用图角色的中文名，如“状态内容”“状态机”。
+const ownedSlotLabel = (field: FieldMetadata) => {
+  const roles = [...new Set(field.graphTargets.map(target => target.role))];
+  return field.displayName && !roles.includes(field.displayName) ? field.displayName
+    : roles.length === 1 ? graphRoleLabel(roles[0]) : field.displayName ?? memberLabel(field.fieldId);
+};
 
 const belowPath = (path: string[], parent: string[]) => path.length > parent.length &&
   parent.every((member, index) => path[index] === member);
@@ -1048,9 +1065,8 @@ function FieldEditor({ id, field, item, node, owner, values, outputs, onSet, onS
       {field.optional && <Row label=""><Button variant="ghost" onClick={() => set(null)}>移除 {label}</Button></Row>}
     </Fold>;
   // 图引用字段没有候选来源时就是专属图槽位：按声明的目标新建、进入或移除。
-  if (owner.kind === 'node' && field.graphTargets.length !== 0 && field.choiceKind === null && field.pickerKind === null &&
-      field.resourceReference === null && field.objectSelection === null)
-    return <OwnedGraphRow label={label} slot={{
+  if (owner.kind === 'node' && ownedSlot(field))
+    return <OwnedGraphRow label={ownedSlotLabel(field)} slot={{
       graphId: owner.graphId, owner: { kind: 'node', nodeId: owner.nodeId }, keys: path, label: field.displayName,
       optional: field.optional, targets: field.graphTargets, value: typeof value === 'string' && value !== '' ? value : null,
     }} />;

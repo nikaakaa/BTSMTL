@@ -53,10 +53,11 @@ export function QuickCursor() {
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   if (plan === null) return null;
   const bounds = quickBounds(plan);
+  const unit = plan.clock.unit === 'seconds' ? '秒' : plan.clock.unit;
   return <label className={styles.cursor}>时间
-    <NumberInput value={seconds} min={bounds.first} max={bounds.last} label={`预览时间（${plan.clock.unit}）`}
+    <NumberInput value={seconds} min={bounds.first} max={bounds.last} label={`预览时间（${unit}）`}
       onChange={value => { if (value !== null) quickPreview.seek(value); }} />
-    <span>{plan.clock.unit}</span>
+    <span>{unit}</span>
   </label>;
 }
 

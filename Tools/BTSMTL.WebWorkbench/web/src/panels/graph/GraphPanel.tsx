@@ -26,7 +26,7 @@ import { useEffectiveScope, useResourceScope } from '../../state/resourceScope';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphKey, navigationTrail, graphName, graphRecords, graphReferrers,
+  callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphKey, navigationTrail, graphName, graphLeafName, graphRecords, graphReferrers,
   isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeDisplayNames, nodeTypeName, parentCallNotice, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
   documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
@@ -277,7 +277,10 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
       : selectedEdge !== undefined && isEdgeOccurrence(record) && record.edgeId === selectedEdge.id)),
   [currentRoute, graph, binding, observedCallKey, selectedNode, selectedEdge]);
   const [blackboard, setBlackboard] = useState(false);
-  const graphOptions = [...hierarchy.graphs].map(([value, item]) => ({ value, label: `${item.ownerName} · ${graphName(item)}` }));
+  // 只有一个所属文档时不重复写文档名。
+  const owners = new Set([...hierarchy.graphs.values()].map(item => item.owner));
+  const graphOptions = [...hierarchy.graphs].map(([value, item]) => ({ value,
+    label: owners.size > 1 ? `${item.ownerName} · ${graphName(item)}` : graphName(item) }));
 
   const settings: MenuEntry[] = [
     { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, pin: null, caller: null, origin: null }) },
@@ -679,7 +682,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, trail, params, setP
     return layout.edges.map(edge => {
       const ids = elements ? edgeGraphSlots(authored, elements, graph.id, edge.id).map(slot => slot.value) : [];
       const conditions = [...hierarchy.graphs.values()].filter(item => item.owner === graph.owner && ids.includes(item.id));
-      const label = conditions.map(graphName).join(' · ');
+      const label = conditions.map(graphLeafName).join(' · ');
       if (machine) {
         const pair = pairKey(edge);
         const index = pairs.get(pair) ?? 0;
@@ -1297,7 +1300,7 @@ function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourceP
       </Tip>
       {condition && labels !== 'none' && (
         <EdgeLabelRenderer>
-          <Tip name={data!.label} content="双击进入条件图">
+          <Tip content={`${data!.conditions.map(graphName).join(' · ')}\n双击进入条件图`}>
             <div className={styles.edgeLabel} data-condition data-faded={faded || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
               onDoubleClick={() => enter(condition, source)}>
@@ -1384,7 +1387,7 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
       <path d={arrow} className={styles.arrow} />
       {showLabel && (
         <EdgeLabelRenderer>
-          <Tip name={data!.label} content="双击进入条件图">
+          <Tip content={`${data!.conditions.map(graphName).join(' · ')}\n双击进入条件图`}>
             <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
               onDoubleClick={() => { if (data!.conditions[0]) enter(data!.conditions[0], source); }}>
