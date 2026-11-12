@@ -1114,6 +1114,12 @@ export const authoringActions = {
           detail, error.raw].filter(Boolean).join('\n'));
         return;
       }
+      // 输入自动保存时已无改动是正常空操作，不提示。
+      if (operation === 'inputs' && error instanceof ApiError && error.status === 409 &&
+        (JSON.parse(error.raw) as { stage?: string }).stage === 'unchanged') {
+        setDocument({ saving: false }, target);
+        return;
+      }
       if (operation === 'inputs' && error instanceof ApiError && error.status === 409 &&
         (JSON.parse(error.raw) as { stage?: string }).stage === 'not-input-only') {
         setDocument({ saving: false }, target);
