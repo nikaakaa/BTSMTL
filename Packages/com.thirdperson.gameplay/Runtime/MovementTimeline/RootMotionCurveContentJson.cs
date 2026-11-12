@@ -16,8 +16,6 @@ namespace ThirdPersonGameplay.Movement.Timeline
     {
         [GraphAuthoringField("authoringId", GraphAuthoringFieldValueKind.String, DisplayName = "作者身份", ReadOnly = true)]
         public string m_AuthoringId = string.Empty;
-        [GraphAuthoringField("sourceIdentity", GraphAuthoringFieldValueKind.String, DisplayName = "来源身份", ReadOnly = true)]
-        public string m_SourceIdentity = string.Empty;
         [GraphAuthoringField("contentDomain", GraphAuthoringFieldValueKind.String, DisplayName = "内容领域", ReadOnly = true)]
         public string m_ContentDomain = "motion-curve";
         [GraphAuthoringField("authoringScope", GraphAuthoringFieldValueKind.String, DisplayName = "作者范围", ReadOnly = true)]
@@ -63,10 +61,9 @@ namespace ThirdPersonGameplay.Movement.Timeline
             totalForwardDistance, totalYaw, authoredSource);
 
         public static RootMotionCurveAuthoring FromContent(RootMotionCurveContent content,
-            string sourceIdentity, string authoringScope) => new RootMotionCurveAuthoring
+            string authoringScope) => new RootMotionCurveAuthoring
             {
                 m_AuthoringId = content.AuthoringId,
-                m_SourceIdentity = sourceIdentity,
                 m_AuthoringScope = authoringScope,
                 m_Name = content.DisplayName,
                 sourceAnimationIdentity = content.SourceAnimationIdentity,
@@ -126,8 +123,8 @@ namespace ThirdPersonGameplay.Movement.Timeline
 
         public static JObject Write(RootMotionCurveAuthoring source) => JObject.FromObject(source, Serializer());
 
-        public static JObject Write(RootMotionCurveContent content, string sourceIdentity, string authoringScope) =>
-            Write(RootMotionCurveAuthoring.FromContent(content, sourceIdentity, authoringScope));
+        public static JObject Write(RootMotionCurveContent content, string authoringScope) =>
+            Write(RootMotionCurveAuthoring.FromContent(content, authoringScope));
 
         static JsonSerializer Serializer() => JsonSerializer.Create(new JsonSerializerSettings
             {

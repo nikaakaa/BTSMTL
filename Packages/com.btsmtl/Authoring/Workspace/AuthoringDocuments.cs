@@ -16,7 +16,7 @@ namespace BTSMTL.Authoring.Workspace
     {
         public static readonly AuthoringDocumentKind Skill = new("skill", "Skills", "skill.json", "m_AbilityId");
         public static readonly AuthoringDocumentKind Timeline = new("timeline", "Timelines", "timeline.json", "m_AuthoringId", "timeline");
-        public static readonly AuthoringDocumentKind Curve = new("curve", "Curves", "curve.json", "m_AuthoringId", "curve", "m_SourceIdentity");
+        public static readonly AuthoringDocumentKind Curve = new("curve", "Curves", "curve.json", "m_AuthoringId", "curve");
         public static readonly AuthoringDocumentKind Scenario = new("scenario", "Scenarios", null, null);
         public static readonly AuthoringDocumentKind Profile = new("profile", "Profiles", "profile.json",
             "m_AuthoringId", "profile", "m_SourceIdentity");
@@ -73,13 +73,10 @@ namespace BTSMTL.Authoring.Workspace
             Identity = kind.RootFile == null ? Path.GetFileName(directory) : (string)Root[kind.IdentityMember];
             if (string.IsNullOrEmpty(Identity))
                 throw new InvalidDataException($"作者文档 '{directory}' 缺少正式身份字段 '{kind.IdentityMember}'。");
-            if (kind.SourceIdentityMember != null)
-            {
-                if (string.IsNullOrEmpty(SourceIdentity))
-                    throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源身份字段 '{kind.SourceIdentityMember}'。");
-                if (string.IsNullOrEmpty(ContentDomain))
-                    throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源领域字段 'm_ContentDomain'。");
-            }
+            if (kind.SourceIdentityMember != null && string.IsNullOrEmpty(SourceIdentity))
+                throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源身份字段 '{kind.SourceIdentityMember}'。");
+            if ((kind.SourceIdentityMember != null || kind == AuthoringDocumentKind.Curve) && string.IsNullOrEmpty(ContentDomain))
+                throw new InvalidDataException($"作者文档 '{directory}' 缺少正式来源领域字段 'm_ContentDomain'。");
             Revision = AuthoringCommits.Revision(new JArray(files.OrderBy(file => file.Key, StringComparer.Ordinal)
                 .Select(file => new JArray(file.Key, file.Value))).ToString(Formatting.None));
         }
