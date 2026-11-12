@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
+import type { PreviewQuickAuthoringTarget, PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
 import { previewApi } from '../../api/preview';
-import { authoringApi, authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
+import { authoringApi, authoringOwner, authoringTargetKey, type AuthoringGraph, type InputPlanContext } from '../../api/authoring';
+import { inputAuthoring } from '../../state/authoringInputs';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey,
 } from '../../state/quickPreview';
@@ -98,6 +99,14 @@ async function editInput(source: Extract<PreviewQuickInputSource, { kind: 'docum
   openPanel('timeline');
 }
 
+// 就地为当前入口新建输入方案：连看入口归当前文档，单看 Timeline 归该 Timeline；建好后打开它的输入轨。
+async function createInput(root: PreviewQuickAuthoringTarget, entryName: string | undefined) {
+  if (await authoringActions.open(authoringOwner(root.documentPath)) !== 'opened') throw new Error('入口文档尚未打开，未新建输入轨');
+  const context: InputPlanContext = root.entry.kind === 'timeline' ? { kind: 'timeline', timeline: root.entry.timelineId } : { kind: 'document' };
+  await inputAuthoring.createPlan(entryName?.replace(/^(连看|单看) · /, '') ?? '默认', context);
+  openPanel('timeline');
+}
+
 async function runInput(selection: PreviewQuickInputSource) {
   const targetKey = quickTargetKey(useWorkbench.getState().quickPreview.target);
   const schemeKey = quickInputSourceKey(selection);
@@ -117,7 +126,7 @@ async function runInput(selection: PreviewQuickInputSource) {
   if (!reply.success || reply.data === null || reply.data.root === null)
     throw new Error(reply.message ?? '当前预览入口尚未读取成功');
   const source = selection.kind === 'documentInput' ? selection : reply.data.root.defaultInput;
-  if (source?.kind !== 'documentInput') throw new Error('当前根默认输入没有作者方案，请先创建并选择输入方案');
+  if (source?.kind !== 'documentInput') throw new Error('当前入口还没有输入轨，请先点「新建输入轨」');
   const current = useWorkbench.getState();
   if (quickTargetKey(current.quickPreview.target) !== targetKey || quickInputSourceKey(current.quickPreview.scheme) !== schemeKey)
     throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
@@ -151,6 +160,14 @@ export function QuickBar() {
   const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
   const editableInput = input?.kind === 'documentInput' ? input : input?.kind === 'rootDefaults' ? description?.root?.defaultInput : null;
   const sceneApplyReason = description?.root?.sceneApplyUnavailableReason ?? null;
+  // 「根默认输入」就是入口默认使用的方案，写出它实际指向哪一个，避免与同名方案看起来重复。
+  const schemeLabel = (scheme: { source: PreviewQuickInputSource; name: string }) => {
+    if (scheme.source.kind !== 'rootDefaults') return `方案：${scheme.name}`;
+    const fallback = description?.root?.defaultInput;
+    const named = fallback == null ? undefined
+      : description?.root?.inputSchemes.find(item => item.source.kind !== 'rootDefaults' && quickInputSourceKey(item.source) === quickInputSourceKey(fallback));
+    return `方案：入口默认（${named?.name ?? '没有按键'}）`;
+  };
   const job = state.job;
   const progress = quickJobProgress(job);
   const plan = state.route?.plan ?? null;
@@ -191,16 +208,17 @@ export function QuickBar() {
           }} />}
       {description?.root && <Select variant="ghost" label="输入方案" placeholder="选择输入方案"
         value={state.scheme === null ? null : quickInputSourceKey(state.scheme)}
-        options={description.root.inputSchemes.map(scheme => ({ value: quickInputSourceKey(scheme.source), label: `方案：${scheme.name}` }))}
+        options={description.root.inputSchemes.map(scheme => ({ value: quickInputSourceKey(scheme.source), label: schemeLabel(scheme) }))}
         onChange={value => {
           const scheme = description.root?.inputSchemes.find(item => quickInputSourceKey(item.source) === value);
           if (scheme !== undefined) quickPreview.selectScheme(scheme.source);
         }} />}
-      {description?.root && <Button variant="ghost" disabled={editableInput?.kind !== 'documentInput' || busy}
-        tip={editableInput?.kind === 'documentInput' ? '打开所选方案的输入 Timeline，继续编辑输入轨' : '当前默认输入没有作者方案，请先创建输入方案'}
-        onClick={() => {
-          if (editableInput?.kind === 'documentInput') void editInput(editableInput).catch(error => consoleActions.error('输入方案', error));
-        }}>编辑所选输入</Button>}
+      {description?.root && (editableInput?.kind === 'documentInput'
+        ? <Button variant="ghost" disabled={state.description.kind === 'loading'} tip="打开所选方案的输入轨，用 Timeline 左上的 + 在游标处加按键"
+          onClick={() => void editInput(editableInput).catch(error => consoleActions.error('输入方案', error))}>编辑输入轨</Button>
+        : state.target?.root != null && <Button variant="ghost" disabled={state.description.kind === 'loading'} tip="为当前入口新建一条输入轨并打开，用 Timeline 左上的 + 在游标处加按键"
+          onClick={() => void createInput(state.target!.root!.authoring, roots.find(root => quickAuthoringKey(root.authoring) === quickAuthoringKey(state.target!.root!.authoring))?.name)
+            .catch(error => consoleActions.error('输入方案', error))}>新建输入轨</Button>)}
       {status && <span role="status" className={styles.status} data-stale={stale || undefined}>{status}</span>}
       {(failure ?? reason) && <span role={failure ? 'alert' : 'status'} className={styles.reason} title={failure ?? reason ?? undefined}>{failure ?? reason}</span>}
       <span className={styles.grow} />
@@ -210,7 +228,7 @@ export function QuickBar() {
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       {playerAvailable && <Button variant="ghost" disabled={busy || sceneApplyReason !== null || editableInput?.kind !== 'documentInput' || description === null}
-        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前默认输入没有作者方案，请先创建输入方案')}
+        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '当前入口还没有输入轨，请先点「新建输入轨」')}
         onClick={() => {
           setRunning(true);
           setRunError(null);

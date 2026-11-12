@@ -26,6 +26,8 @@ sealed record QuickPreviewCompilation(IPreviewQuickCompiledContent Content,
                 .Select(state => timelines[state.TimelineIdentity]).FirstOrDefault();
             return new PreviewQuickMachine(root with { Entry = graph with { Machine = index } }, operation, entry?.Name, entry?.AuthoringId);
         }).ToArray();
+        if (machines.Length == 0)
+            throw new ArgumentException("所选入口图还没有根状态机：在节点图里给入口接上状态机，或在快预览入口里改选「单看」某条 Timeline。");
         if (graph.Machine < 0 || graph.Machine >= machines.Length)
             throw new ArgumentException($"所选图有 {machines.Length} 个根状态机，machine={graph.Machine} 越界。");
         if (machines[graph.Machine].EntryTimelineId == null)
