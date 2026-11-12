@@ -8,46 +8,57 @@ import { cloneJson, numberOf, setIn, sortedObject, type JsonObject, type JsonVal
 import { findNode, nodeType, nodesOf } from './graphDocument';
 import { selectionActions } from './store';
 
+type InputFragment = Awaited<ReturnType<typeof authoringApi.inputFragment>>;
+
+function planFrom(elements: AuthoringElements, name: string) {
+  if (!elements.previewInput.availability.available)
+    throw new Error(elements.previewInput.availability.reason!);
+  const plan = cloneJson(elements.previewInput.plan!.value);
+  for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
+  const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
+  const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
+  scheme.Name = name;
+  scheme.InputTimeline = timeline;
+  const id = crypto.randomUUID();
+  authoringActions.setFile(`inputs/${id}.json`, plan);
+  setDocument({ inputActorId: plan.Actor as string | null });
+  return { id, timeline };
+}
+
+function insertFragment(documentId: string, fragment: InputFragment, trackId: string | null) {
+  authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph, variablesDrafts([fragment.variables]));
+  authoringActions.edit(timelinePath(documentId), document => {
+    const tracks = tracksOf(document);
+    const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
+    if (trackId === null) tracks.push(track);
+    (track.m_Clips as JsonObject[]).push(fragment.clip);
+  });
+  selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
+}
+
 export const inputAuthoring = {
   async createPlan(name: string, context: InputPlanContext) {
-    const elements = await skillElements(context);
-    const template = elements.previewInput.plan;
-    if (!elements.previewInput.availability.available)
-      throw new Error(elements.previewInput.availability.reason!);
-    const plan = cloneJson(template!.value);
-    for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
-    const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
-    const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
-    scheme.Name = name;
-    scheme.InputTimeline = timeline;
-    const id = crypto.randomUUID();
-    authoringActions.setFile(`inputs/${id}.json`, plan);
-    setDocument({ inputActorId: plan.Actor as string | null });
+    const created = planFrom(await skillElements(context), name);
     selectionActions.select(null);
-    selectionActions.showTimeline(timeline, null, null);
-    return { id, timeline };
+    selectionActions.showTimeline(created.timeline, null, null);
+    return created;
   },
 
-  // 文档的预览输入在加第一个按键时才建：建文档级输入方案，再把这个按键放进它的输入 Timeline。
+  // 文档的预览输入在加第一个按键时才建：方案模板与按键片段都取到后同一步写入，不出现空的输入 Timeline。
   async addFirst(request: InputFragmentRequest) {
     const target = get().target;
-    const { timeline } = await inputAuthoring.createPlan('默认', { kind: 'document' });
+    const [elements, fragment] = await Promise.all([skillElements({ kind: 'document' }), authoringApi.inputFragment(request)]);
     if (get().target !== target) return;
-    await inputAuthoring.add(timeline, request, null);
+    const { timeline } = planFrom(elements, '默认');
+    selectionActions.showTimeline(timeline, null, null);
+    insertFragment(timeline, fragment, null);
   },
 
   async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {
     const target = get().target;
     const fragment = await authoringApi.inputFragment(request);
     if (get().target !== target) return;
-    authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph, variablesDrafts([fragment.variables]));
-    authoringActions.edit(timelinePath(documentId), document => {
-      const tracks = tracksOf(document);
-      const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
-      if (trackId === null) tracks.push(track);
-      (track.m_Clips as JsonObject[]).push(fragment.clip);
-    });
-    selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
+    insertFragment(documentId, fragment, trackId);
   },
 
   setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: AuthoringElements['previewInput']) {

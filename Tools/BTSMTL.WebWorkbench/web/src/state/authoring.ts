@@ -443,8 +443,10 @@ function usePreviewInputActor(schemeScene: string, schemeActor: string) {
       : reading ? '正在读取场景的输入声明' : '场景的输入声明尚未读取' } as const;
   if (schemeScene && schemeScene !== scene.path)
     return { kind: 'unavailable', reason: '所选场景与输入方案的 Scene 不一致' } as const;
-  const actor = catalog.players.find(player => player.actorId === (schemeActor || actorId || previewActor));
-  if (!actor) return { kind: 'unavailable', reason: previewActor === null ? '快预览尚未读到场景的预览角色' : '场景里没有这个输入方案的角色' } as const;
+  // 快预览没读出角色（例如入口还生成不了预览）时，场景只有一个角色就是它；加按键不依赖预览先成功。
+  const sole = catalog.players.length === 1 ? catalog.players[0].actorId : null;
+  const actor = catalog.players.find(player => player.actorId === (schemeActor || actorId || previewActor || sole));
+  if (!actor) return { kind: 'unavailable', reason: previewActor === null && sole === null ? '场景有多个角色，先让快预览读到预览角色' : '场景里没有这个输入方案的角色' } as const;
   return { kind: 'ready', scene, actor, tickRate: catalog.tickRate } as const;
 }
 

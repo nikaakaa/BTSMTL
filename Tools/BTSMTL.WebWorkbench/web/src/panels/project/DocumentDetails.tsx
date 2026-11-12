@@ -4,7 +4,7 @@ import { isAbort } from '../../api/http';
 import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions } from '../../state/store';
-import { PanelBar } from '../../ui/blocks';
+import { Fold, PanelBar } from '../../ui/blocks';
 import { Button, Select, TextInput } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import styles from './project.module.css';
@@ -94,8 +94,9 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
           onClick={() => void perform(() => projectActions.open(shared))}>打开共享内容</Button>
       </div>)}
     </>}
-    {!deletion && <>
-    <div className={styles.heading}>引用者{referrers === null ? ' · 读取中' : ` · 已确认 ${referrers.items.length} 项${referrers.complete ? '' : ' · 查询未完整'}`}</div>
+    {/* 引用者默认收起只显示数量，展开再看明细，不把检查器下方的配置挤走。 */}
+    {!deletion && <Fold title="引用者" name="引用者" summary={referrers === null ? '读取中'
+      : `${referrers.items.length} 项${referrers.complete ? '' : ' · 查询未完整'}`}>
     {referrers?.complete && referrers.items.length === 0 && <div className={styles.note}>没有引用者</div>}
     {referrers?.unresolved.map((issue, index) => <div key={index} className={styles.facts}>
       <span className={styles.issue}>{issue.reason}</span>
@@ -113,7 +114,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
         {'contextOwnerName' in reference && <small>调用上下文：{reference.contextOwnerName} · {reference.fieldId}</small>}
       </button>;
     })}
-    </>}
+    </Fold>}
   </div>;
 }
 

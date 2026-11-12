@@ -17,7 +17,7 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, isTimelineFile, timelineOf, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes,
+  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, isTimelineFile, timelineOf, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useFirstInputContext, useInputContext, useInputSchemes,
   useAuthoringElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
@@ -137,8 +137,9 @@ function TimelineWindow() {
   const documentLength = useMemo(() => {
     if (routeView) return quickRouteEnd;
     const selected = authorTimelines.find(item => item.documentId === focusId);
+    // 快档有路线时输入 Timeline 按实际预览长度显示，不拉到方案的模拟上限 RangeEnd。
     return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
-      Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0,
+      Math.max(timelineLength(timeline), quickRouteEnd > 0 ? 0 : schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0,
         timeline.documentId === quickInputTimeline ? quickRouteEnd : 0)));
   }, [authorTimelines, focusId, schemes, quickInputTimeline, quickRouteEnd, routeView]);
   const tickRate = useAuthoring(state => authoringDocument(state).tickRate);
@@ -577,7 +578,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   const needsFirstInput = quickMode && documentRoot && !schemes.some(scheme => scheme.owner !== '');
   const segments = useMemo(() => documentSegments(timelines).map(segment => {
     const scheme = schemes.find(item => item.documentId === segment.documentId);
-    return scheme ? { ...segment, length: Math.max(segment.length, scheme.rangeEndSeconds,
+    return scheme ? { ...segment, length: Math.max(segment.length, quickRouteEnd > 0 ? 0 : scheme.rangeEndSeconds,
       segment.documentId === quickInputTimeline ? quickRouteEnd : 0) } : segment;
   }), [timelines, schemes, quickInputTimeline, quickRouteEnd]);
   const graphNames = useMemo(() => {
@@ -944,7 +945,8 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   const clock = useMemo<PreviewClock>(() => {
     const documentId = focused?.documentId ?? null;
     if (quickPlan !== null) return { kind: 'quick', documentId,
-      source: routeView ? { kind: 'route' } : quickInput ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } };
+      // 输入 Timeline 刚建、预览还没用上它时也按输入看，不当成「播了多次」的普通 Timeline。
+      source: routeView ? { kind: 'route' } : quickInput || inputScheme ? { kind: 'input' } : { kind: 'timeline', segment: quickSegment } };
     if (inputScheme) return { kind: 'input', documentId: inputScheme.documentId, source:
       !quickMode && (inputObservation.kind === 'ready' || realArchive && inputObservation.kind === 'before-start') ? 'archive'
         : realArchive ? 'unavailable' : 'author' };
@@ -1676,16 +1678,20 @@ function ClipShape({ width, blendIn, blendOut }: { width: number; blendIn: ClipB
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // 照 Unity 片段：中段底色、底边 4 像素类别色、居中的白字片段名，放不下时不写；名字没写或被截断时悬停提示完整名字（Tip name），写全时不提示；enter 之前与 exit 之后的部分压暗。
 // 作者模式下给出 edit 时可拖动平移、拖两端改起止。
+const clipMinWidth = 10;
+
 function ClipBox({ boxKey, selectId, owner, kind, label, start, end, enter = -Infinity, exit, graphId, edit, ease, mix, referenceInvalid, referenceIssue, onAnimationDrop }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; enter?: number; exit: number;
   graphId: string | null; edit?: ClipEdit; ease?: ClipEase; mix?: ClipMix;
   owner?: string;
   referenceInvalid?: boolean; referenceIssue?: string | null; onAnimationDrop?(transfer: DataTransfer): void;
 }) {
-  const { setNodeRef, itemStyle, listeners, attributes } = useItem({
-    id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 12,
-  });
   const { range, valueToPixels } = useTimelineContext();
+  // 单按只有一帧长：画成最小可点宽度，太窄时不留边缘缩放区，整段都用来选中和拖动。
+  const narrow = valueToPixels(end - start) < clipMinWidth * 3;
+  const { setNodeRef, itemStyle, listeners, attributes } = useItem({
+    id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: narrow ? 0 : 12,
+  });
   const clock = useContext(PreviewClockContext);
   const panelId = usePanelId();
   // 拖动中由虚影代替；拖端不合规时原地变红。
@@ -1695,7 +1701,7 @@ function ClipBox({ boxKey, selectId, owner, kind, label, start, end, enter = -In
   const selected = useSelected(selectId, 'clip') || boxed;
   const [easeDraft, setEaseDraft] = useState<EaseDraft | null>(null);
   const clipGrid = useContext(ClipGridContext);
-  const width = valueToPixels(end - start);
+  const width = Math.max(clipMinWidth, valueToPixels(end - start));
   const dimmed = start >= exit || end <= enter;
   const cut = !dimmed && end > exit ? valueToPixels(exit - start) : null;
   const skipped = !dimmed && start < enter ? valueToPixels(enter - start) : null;
@@ -1712,7 +1718,7 @@ function ClipBox({ boxKey, selectId, owner, kind, label, start, end, enter = -In
   const labelWidth = width - labelStart - labelEnd - clipLabelPadding * 2;
   return (
     // 片段固定高 30：轨道展开曲线时行变高，曲线画在片段下方。
-    <div ref={setNodeRef} style={{ ...itemStyle, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
+    <div ref={setNodeRef} style={{ ...itemStyle, minWidth: clipMinWidth, height: trackHeight, visibility: moving ? 'hidden' : undefined }} className={styles.item}
       {...(edit ? { ...listeners, ...attributes } : {})}>
       <div className={styles.itemContent}>
         <Tip name={label} content={referenceIssue || undefined}>
@@ -1957,6 +1963,7 @@ function InputGroupLine({ nest, open, toggle, roots }: {
 }
 
 function FirstInputLine({ nest }: { nest: Nest | undefined }) {
+  const context = useFirstInputContext();
   return (
     <Line id="first-input" nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
@@ -1964,7 +1971,7 @@ function FirstInputLine({ nest }: { nest: Nest | undefined }) {
         <AddFirstInput />
       </>
     }>
-      <span className={styles.laneNote}>还没有按键：用左侧 + 在游标处加第一个按键</span>
+      <span className={styles.laneNote}>{context.kind === 'ready' ? '还没有按键：用左侧 + 在游标处加第一个按键' : `暂时不能加按键：${context.reason}`}</span>
     </Line>
   );
 }
