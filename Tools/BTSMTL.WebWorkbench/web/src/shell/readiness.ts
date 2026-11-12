@@ -7,7 +7,7 @@ import { panelTypeOf, type PanelType } from './panelTypes';
 // 截图就绪标记（D8）：Timeline、节点图与地址指定的面板都按当前帧实际绘制完成后一次写入；
 // 只有可见面板参与，帧或运行变化时先删除就绪标记。
 
-const rendered = new Map<string, { key: string; detail?: string }>();
+const rendered = new Map<string, { key: string }>();
 // 按当前帧绘制、会报告已绘制的面板类型。
 const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'player']);
 let addressPanel: PanelType | null = null;
@@ -20,9 +20,9 @@ export function setAddressPanel(type: PanelType | null) {
   schedule();
 }
 
-// 面板按某帧绘制完成后报告；detail 为逻辑视图实际画出的内容。
-export function reportRendered(panelId: string, key: string, detail?: string) {
-  rendered.set(panelId, { key, detail });
+// 面板按某帧绘制完成后报告。
+export function reportRendered(panelId: string, key: string) {
+  rendered.set(panelId, { key });
   schedule();
 }
 
