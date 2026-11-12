@@ -1,8 +1,9 @@
 import { useTimelineContext, type Range } from 'dnd-timeline';
 import { Fragment, useContext, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import type { AuthoringElements, InputFragmentRequest } from '../../api/authoring';
+import type { AuthoringElements } from '../../api/authoring';
+import type { JsonObject } from '../../state/skillJson';
 import {
-  authoringActions, authoringDocument, useAuthoring, useDocumentObservationNotice, useFirstInputContext, useInputContext, useInputSchemes,
+  authoringActions, authoringDocument, useAuthoring, useDocumentObservationNotice,
 } from '../../state/authoring';
 import { inputAuthoring } from '../../state/authoringInputs';
 import { consoleActions, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
@@ -31,59 +32,32 @@ export interface Subject {
 }
 
 // 在 Timeline 上添加轨道（编辑行带下拉三角的＋，分组头的＋）：种类与默认值取原 C# 轨道类型。
+// 预览输入 Timeline 与其它 Timeline 相同：轨道、片段、节点都走同一套操作。
 export function AddTrack({ elements, documentId, caret }: { elements: AuthoringElements | null; documentId: string | null; caret?: boolean }) {
   const author = useAuthoring(state => state.author && state.target !== null);
-  const schemes = useInputSchemes();
   if (!author || !documentId) return null;
-  if (schemes.some(scheme => scheme.documentId === documentId)) return <AddInput documentId={documentId} caret={caret} />;
-  // 每种轨道按轨道合同允许的执行域各列一项。
+  return <TrackMenu elements={elements} caret={caret} add={(track, name) => {
+    const id = authoringActions.addTrack(documentId, track, name);
+    selectionActions.select({ kind: 'track', id: trackSelectId(documentId, id) });
+  }} />;
+}
+
+// 文档还没有预览输入：添加第一条轨道时同时建输入方案与它的 Timeline。
+export function AddFirstTrack({ elements }: { elements: AuthoringElements | null }) {
+  const author = useAuthoring(state => state.author && state.target !== null);
+  if (!author) return null;
+  return <TrackMenu elements={elements} caret add={(track, name) => {
+    void inputAuthoring.createWithTrack(track, name).catch(error => consoleActions.error('预览输入', error));
+  }} />;
+}
+
+// 每种轨道按轨道合同允许的执行域各列一项。
+function TrackMenu({ elements, caret, add }: { elements: AuthoringElements | null; caret?: boolean; add(track: JsonObject, name: string): void }) {
   const entries: MenuEntry[] = elements ? elements.tracks.flatMap(template => template.contract.domains.map((domain): MenuEntry => ({
     label: `${template.kind ?? template.clrType} · ${domain}`,
-    onSelect: () => {
-      const id = authoringActions.addTrack(documentId, { ...template.value, m_ExecutionDomain: domain }, template.kind ?? '新轨道');
-      selectionActions.select({ kind: 'track', id: trackSelectId(documentId, id) });
-    },
+    onSelect: () => add({ ...template.value, m_ExecutionDomain: domain }, template.kind ?? '新轨道'),
   }))) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
   return <MenuButton label="添加轨道" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
-}
-
-function AddInput({ documentId, caret }: { documentId: string; caret?: boolean }) {
-  const context = useInputContext(documentId);
-  return <InputKeyMenu context={context} caret={caret} add={request => inputAuthoring.add(documentId, request, null)} />;
-}
-
-// 文档还没有预览输入：选第一个按键时建输入方案并放入该键。
-export function AddFirstInput() {
-  const context = useFirstInputContext();
-  return <InputKeyMenu context={context} caret add={request => inputAuthoring.addFirst(request)} />;
-}
-
-// 按场景角色的按键列出「按住／单按」，在游标处加一段 1 秒的输入。
-function InputKeyMenu({ context, caret, add }: {
-  context: Extract<ReturnType<typeof useFirstInputContext>, { kind: 'ready' }> | { kind: 'unavailable'; reason: string };
-  caret?: boolean; add(request: InputFragmentRequest): Promise<void>;
-}) {
-  const [pending, setPending] = useState(false);
-  const clock = useContext(PreviewClockContext);
-  const cursor = usePreviewSelect(clock, seconds => seconds);
-  if (context.kind !== 'ready') {
-    return <Button variant="ghost" className={styles.addButton} disabled tip={`添加输入：${context.reason}`} aria-label="添加输入"><AddIcon /></Button>;
-  }
-  const entries = context.actor.keys.flatMap<MenuEntry>(key => ([
-    { kind: 'label', label: key.name },
-    ...(['hold', 'press'] as const).map(operation => ({
-      label: operation === 'hold' ? '按住' : '单按', disabled: pending,
-      onSelect: () => {
-        const startSeconds = Math.max(0, cursor ?? 0);
-        setPending(true);
-        void add({
-          scene: context.scene.path, sceneRevision: context.scene.revision, actorId: context.actor.actorId,
-          key: key.name, operation, startSeconds, endSeconds: startSeconds + 1,
-        }).catch(error => consoleActions.error('输入', error)).finally(() => setPending(false));
-      },
-    })),
-  ]));
-  return <MenuButton label="添加输入" variant="ghost" className={styles.addButton} iconOnly caret={caret} entries={entries}><AddIcon /></MenuButton>;
 }
 
 export function TimelineToolbar({ settings, subject, origin, seek, observations, selectCall, pin, togglePin, parents, openParent, observationNotice, quickPlayback, navigationOrigin }: {

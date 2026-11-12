@@ -457,11 +457,6 @@ export function useInputContext(documentId: string | null) {
   return actor.kind === 'ready' ? { ...actor, scheme } : actor;
 }
 
-// 文档还没有预览输入时加第一个按键：用场景预览角色，按下后才建输入方案。
-export function useFirstInputContext() {
-  return usePreviewInputActor('', '');
-}
-
 export function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
   return {
     documentId, contentIdentity: null, contentRevision: null, displayName: document.m_Name as string,

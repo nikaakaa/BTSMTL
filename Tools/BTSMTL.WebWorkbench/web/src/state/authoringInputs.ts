@@ -1,14 +1,14 @@
 // 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline。
-import { authoringApi, type InputFragmentRequest, type InputPlanContext, type AuthoringElements } from '../api/authoring';
+import type { InputPlanContext, AuthoringElements } from '../api/authoring';
 import {
-  authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements, timelinePath, tracksOf, variablesDrafts,
+  authoringActions, currentDocument, dropOrphans, get, graphPath, setDocument, skillElements,
   type JsonKey, type JsonMutation,
 } from './authoring';
 import { cloneJson, numberOf, setIn, sortedObject, type JsonObject, type JsonValue } from './skillJson';
 import { findNode, nodeType, nodesOf } from './graphDocument';
 import { selectionActions } from './store';
+import { trackSelectId } from './timelineModel';
 
-type InputFragment = Awaited<ReturnType<typeof authoringApi.inputFragment>>;
 
 function planFrom(elements: AuthoringElements, name: string) {
   if (!elements.previewInput.availability.available)
@@ -16,24 +16,13 @@ function planFrom(elements: AuthoringElements, name: string) {
   const plan = cloneJson(elements.previewInput.plan!.value);
   for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
   const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
-  const timeline = authoringActions.createTimeline(elements.timeline, name + ' 输入');
+  const timeline = authoringActions.createTimeline(elements.timeline, '预览输入');
   scheme.Name = name;
   scheme.InputTimeline = timeline;
   const id = crypto.randomUUID();
   authoringActions.setFile(`inputs/${id}.json`, plan);
   setDocument({ inputActorId: plan.Actor as string | null });
   return { id, timeline };
-}
-
-function insertFragment(documentId: string, fragment: InputFragment, trackId: string | null) {
-  authoringActions.setFile(graphPath(fragment.graph.AuthoringId as string), fragment.graph, variablesDrafts([fragment.variables]));
-  authoringActions.edit(timelinePath(documentId), document => {
-    const tracks = tracksOf(document);
-    const track = trackId === null ? fragment.track : tracks.find(item => item.m_AuthoringId === trackId)!;
-    if (trackId === null) tracks.push(track);
-    (track.m_Clips as JsonObject[]).push(fragment.clip);
-  });
-  selectionActions.select({ kind: 'clip', id: `${documentId}/${fragment.clip.m_AuthoringId as string}` });
 }
 
 export const inputAuthoring = {
@@ -44,21 +33,14 @@ export const inputAuthoring = {
     return created;
   },
 
-  // 文档的预览输入在加第一个按键时才建：方案模板与按键片段都取到后同一步写入，不出现空的输入 Timeline。
-  // 留在预览路线视图，新按键显示在「预览输入」行里，不跳到单独的输入 Timeline。
-  async addFirst(request: InputFragmentRequest) {
+  // 文档的预览输入在添加第一条轨道时才建：输入方案、它的 Timeline 与这条轨道同一步写入。
+  async createWithTrack(track: JsonObject, name: string) {
     const target = get().target;
-    const [elements, fragment] = await Promise.all([skillElements({ kind: 'document' }), authoringApi.inputFragment(request)]);
+    const elements = await skillElements({ kind: 'document' });
     if (get().target !== target) return;
     const { timeline } = planFrom(elements, '默认');
-    insertFragment(timeline, fragment, null);
-  },
-
-  async add(documentId: string, request: InputFragmentRequest, trackId: string | null) {
-    const target = get().target;
-    const fragment = await authoringApi.inputFragment(request);
-    if (get().target !== target) return;
-    insertFragment(documentId, fragment, trackId);
+    const id = authoringActions.addTrack(timeline, track, name);
+    selectionActions.select({ kind: 'track', id: trackSelectId(timeline, id) });
   },
 
   setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: AuthoringElements['previewInput']) {

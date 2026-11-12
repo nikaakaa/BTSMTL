@@ -654,25 +654,6 @@ export interface AuthoringDocumentProjection {
 const documentQueryPath = (documentPath: string, operation: string, parameters: Record<string, string | undefined> = {}) =>
   `/api/authoring/documents/${operation}${query({ documentPath, ...parameters })}`;
 
-export interface InputFragmentRequest {
-  scene: string;
-  sceneRevision: string;
-  actorId: string;
-  key: string;
-  operation: 'hold' | 'press';
-  startSeconds: number;
-  endSeconds: number;
-}
-
-export interface InputFragment {
-  track: JsonObject;
-  clip: JsonObject;
-  graph: JsonObject;
-  variables: VariablesValue;
-  tickRate: number;
-  sceneRevision: string;
-}
-
 export interface ScenarioDraftRequest {
   scene: string;
   sceneRevision: string;
@@ -749,10 +730,6 @@ export const authoringApi = {
   scenarioDraft: (name: string, request: ScenarioDraftRequest) =>
     postJson<{ files: AuthoringFile[]; variables: VariablesValue[] }>(`/api/preview/inputs/plans${query({ documentPath: authoringTarget('scenario', name).documentPath })}`, request)
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),
-  inputFragment: async (request: InputFragmentRequest) => {
-    const fragment = parseSkillJson(await postText('/api/preview/inputs/fragments', request)) as unknown as InputFragment;
-    return { ...fragment, variables: readVariablesValue(fragment.variables, 'InputFragment.variables') };
-  },
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: AuthoringEditingView }) =>
     postJson<DocumentDeleteResult>(documentQueryPath(documentPath, 'delete'), request, undefined, [409]),
   document: (documentPath: string, editingView: AuthoringEditingView, signal?: AbortSignal, graphId?: string) =>

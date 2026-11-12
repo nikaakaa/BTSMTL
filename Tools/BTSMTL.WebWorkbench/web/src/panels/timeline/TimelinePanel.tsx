@@ -17,10 +17,9 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, isTimelineFile, timelineOf, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useFirstInputContext, useInputContext, useInputSchemes,
+  applyTimelineEdits, authoringActions, authoringDocument, clipTimes, currentDocument, graphPath, isTimelineFile, timelineOf, type ClipTimeRaw, markerTimeTaken, useAuthoring, useAuthorTimelines, useInputSchemes,
   useAuthoringElements, useDocumentObservationBinding, useTimelineObservationBinding,
 } from '../../state/authoring';
-import { inputAuthoring } from '../../state/authoringInputs';
 import { projectActions } from '../../state/project';
 import {
   clipCurves, clipMoveIssue, clipReferenceSource, clipSnapSource, clipTemplatesFor, copyTimelineClip, markersTaken, pasteTimelineClip,
@@ -50,7 +49,7 @@ import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
 import { RunBar } from './RunBar';
 import { quickPlayedSegments } from './routeRows';
-import { AddFirstInput, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
+import { AddFirstTrack, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
   curveInspectHeight, curveListHeight, curveMaxHeight, defaults, fitRange, groupKinds, minSpan, minimumStep, observationKey, overscan, playbackFor, previewSeconds,
@@ -73,8 +72,11 @@ export function TimelinePanel() {
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
 // 保存后重读来源期间方案不变，继续看原输入 Timeline，视图不跳回文档自身的 Timeline。
+// 宿主还没交回方案（刚建的预览输入）时看文档自己的预览输入 Timeline，输入轨不会消失。
 function useQuickInputTimeline() {
   const last = useRef<string | null>(null);
+  const own = useInputSchemes().find(scheme => scheme.owner !== '')?.documentId ?? null;
+  const quick = useWorkbench(state => state.previewMode === 'quick');
   const value = useWorkbench(state => {
     const description = state.quickPreview.description;
     if (state.previewMode !== 'quick') return null;
@@ -83,7 +85,7 @@ function useQuickInputTimeline() {
       .find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null : null;
   });
   if (value !== undefined) last.current = value;
-  return value === undefined ? last.current : value;
+  return (value === undefined ? last.current : value) ?? (quick ? own : null);
 }
 const useQuickRouteEnd = () => useWorkbench(state => state.previewMode === 'quick' && state.quickPreview.route !== null
   ? quickBounds(state.quickPreview.route.plan).last : 0);
@@ -1153,7 +1155,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
           case 'inputGroup':
             return <InputGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
           case 'inputTrack': return <InputTrackLine key={row.id} row={row} nest={nest} />;
-          case 'firstInput': return <FirstInputLine key={row.id} nest={nest} />;
+          case 'firstInput': return <FirstInputLine key={row.id} nest={nest} elements={elements} />;
           case 'curves': return <CurveGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
           case 'curve': return <CurveLine key={row.id} row={row} nest={nest} />;
           case 'receivedGroup':
@@ -1341,8 +1343,6 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
   useWorkbench(state => state.selection);
   const snap = useContext(SnapContext);
   const step = snap ?? 1 / 65536;
-  const schemes = useInputSchemes();
-  const input = useInputContext(row.timeline.documentId);
   const documentId = row.timeline.documentId;
   const templates = useMemo(() => elements ? clipTemplatesFor(elements, documentId, row.track.id) : [],
     // version：轨道与片段的配对随编辑变化。
@@ -1368,26 +1368,6 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
     const id = authoringActions.splitClip(documentId, splitTarget.id, at);
     if (id) select(id);
   };
-  if (schemes.some(scheme => scheme.documentId === documentId)) {
-    const entries: MenuEntry[] = input.kind === 'ready' && snap !== null ? input.actor.keys.flatMap<MenuEntry>(key => [
-      { kind: 'label' as const, label: key.name },
-      ...(['hold', 'press'] as const).map(operation => ({
-        label: operation === 'hold' ? '按住' : '单按',
-        onSelect: () => {
-          const startSeconds = local();
-          void inputAuthoring.add(documentId, {
-            scene: input.scene.path, sceneRevision: input.scene.revision, actorId: input.actor.actorId,
-            key: key.name, operation, startSeconds, endSeconds: startSeconds + 1,
-          }, row.track.id).catch(error => consoleActions.error('输入', error));
-        },
-      })),
-    ]) : [{ label: input.kind === 'unavailable' ? input.reason : '尚无实际 Tick 频率', disabled: true, onSelect: () => {} }];
-    return [...entries, { kind: 'separator' },
-      { label: '复制所选片段', disabled: !picked, onSelect: copySelection },
-      { label: '删除所选', onSelect: deleteSelection },
-      { label: '重命名轨道', onSelect: rename },
-      { label: '删除轨道', onSelect: () => authoringActions.deleteTracks(documentId, [row.track.id]) }];
-  }
   return [
     { kind: 'label', label: '在此处添加' },
     ...templates.map((template): MenuEntry => ({
@@ -1962,16 +1942,15 @@ function InputGroupLine({ nest, open, toggle, roots }: {
   );
 }
 
-function FirstInputLine({ nest }: { nest: Nest | undefined }) {
-  const context = useFirstInputContext();
+function FirstInputLine({ nest, elements }: { nest: Nest | undefined; elements: AuthoringElements | null }) {
   return (
     <Line id="first-input" nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <GroupToggle open={false} name="预览输入" disabled tip="连看与单看共用这份输入" onToggle={() => {}} />
-        <AddFirstInput />
+        <AddFirstTrack elements={elements} />
       </>
     }>
-      <span className={styles.laneNote}>{context.kind === 'ready' ? '还没有按键：用左侧 + 在游标处加第一个按键' : `暂时不能加按键：${context.reason}`}</span>
+      <span className={styles.laneNote}>还没有预览输入 Timeline：用左侧 + 添加轨道</span>
     </Line>
   );
 }

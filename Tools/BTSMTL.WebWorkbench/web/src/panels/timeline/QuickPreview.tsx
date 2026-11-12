@@ -105,7 +105,7 @@ async function runInput(selection: PreviewQuickInputSource) {
   if (!reply.success || reply.data === null || reply.data.root === null)
     throw new Error(reply.message ?? '当前预览入口尚未读取成功');
   const source = selection.kind === 'documentInput' ? selection : reply.data.root.defaultInput;
-  if (source?.kind !== 'documentInput') throw new Error('还没有预览输入：在 Timeline 顶部的「预览输入」用 + 加第一个按键');
+  if (source?.kind !== 'documentInput') throw new Error('还没有预览输入：在 Timeline 顶部的「预览输入」用 + 添加轨道');
   const current = useWorkbench.getState();
   if (quickTargetKey(current.quickPreview.target) !== targetKey || quickInputSourceKey(current.quickPreview.scheme) !== schemeKey)
     throw new Error('场景、入口或输入选择已变化，本次真实运行准备已取消');
@@ -145,7 +145,7 @@ export function QuickBar() {
     const fallback = description?.root?.defaultInput;
     const named = fallback == null ? undefined
       : description?.root?.inputSchemes.find(item => item.source.kind !== 'rootDefaults' && quickInputSourceKey(item.source) === quickInputSourceKey(fallback));
-    return `方案：入口默认（${named?.name ?? '没有按键'}）`;
+    return `方案：${named?.name ?? '没有预览输入'}`;
   };
   const job = state.job;
   const progress = quickJobProgress(job);
@@ -207,7 +207,7 @@ export function QuickBar() {
           onClick={() => quickPreview.rederive()}>重新生成</Button>}
       <Button variant="ghost" pressed={open} onClick={() => setOpen(!open)}>详情</Button>
       {playerAvailable && <Button variant="ghost" disabled={busy || sceneApplyReason !== null || editableInput?.kind !== 'documentInput' || description === null}
-        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '还没有预览输入：在 Timeline 顶部的「预览输入」用 + 加第一个按键')}
+        tip={sceneApplyReason ?? (editableInput?.kind === 'documentInput' ? '保存并应用入口内容，使用所选方案的按键日程在场景中真实运行并录制' : '还没有预览输入：在 Timeline 顶部的「预览输入」用 + 添加轨道')}
         onClick={() => {
           setRunning(true);
           setRunError(null);
