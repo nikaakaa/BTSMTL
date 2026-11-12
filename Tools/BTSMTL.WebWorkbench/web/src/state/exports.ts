@@ -6,7 +6,6 @@ interface ExportRequest {
   id: string;
   documentPath: string;
   purpose: DocumentExportKind;
-  product: AuthoringEditingView['product'];
   startedAt: number;
 }
 
@@ -24,7 +23,7 @@ function update(operation: ExportOperation) {
 
 export const exportActions = {
   async prepare({ documentPath, purpose, editingView }: { documentPath: string; purpose: DocumentExportKind; editingView: AuthoringEditingView }) {
-    const request = { id: crypto.randomUUID(), documentPath, purpose, product: editingView.product, startedAt: Date.now() };
+    const request = { id: crypto.randomUUID(), documentPath, purpose, startedAt: Date.now() };
     useExports.setState(state => ({ operations: [...state.operations, { ...request, kind: 'preparing' }] }));
     try {
       const result = await authoringApi.export(documentPath, purpose, editingView);

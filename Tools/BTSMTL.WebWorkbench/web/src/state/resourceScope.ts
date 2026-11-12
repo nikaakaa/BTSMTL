@@ -63,7 +63,7 @@ export function useResourceScope(value: string | null): ResourceScopeState {
   }, [key]);
   if (catalog.kind === 'failed') return { kind: 'unavailable', reason: catalog.failure.text };
   if (catalog.kind !== 'ready') return { kind: 'loading' };
-  if (value === null) return { kind: 'unavailable', reason: '还没有可用的角色：在文档检查器选择角色，或开启快速预览使用场景里的角色。' };
+  if (value === null) return { kind: 'unavailable', reason: '还没有可用的角色：开启快速预览后按预览场景里的角色列出资源。' };
   if (items.length === 0) return { kind: 'unavailable', reason: `执行 Scope 不在正式目录中，原字符串已保留：${value}` };
   if (items.length > 1) return { kind: 'unavailable', reason: `执行 Scope 命中多个适配者目录条目：${value}` };
   return result?.key === key ? result.state : { kind: 'loading' };

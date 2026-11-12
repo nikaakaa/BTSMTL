@@ -1,6 +1,5 @@
 import { getJson, postJson, putJson, query } from './http';
 import { array, boolean, choice, hosted, nullable, object, optional, text, type Decoder } from './playerRecords';
-import type { AuthoringProduct } from './authoring';
 import { readExecutionScopeSelection, type ExecutionScopeSelection } from './resourceRegistration';
 import type { SourceFile } from './types';
 
@@ -35,7 +34,6 @@ export type WorkspaceEditingView = {
   writes: WorkspaceDocumentWrite[];
   reads: WorkspaceDocumentRead[];
   execution: ExecutionScopeSelection;
-  product: Pick<AuthoringProduct, 'value' | 'revision'> | null;
   scene?: Pick<SourceFile, 'path' | 'revision'>;
 };
 
@@ -50,7 +48,7 @@ const readEditingView = object({
     deleted: optional(boolean) })),
   reads: array(object({ documentPath: text, revision: text })), execution: readExecutionScopeSelection,
   // Host 的 Scene 可空，未选场景时写出 null。
-  product: nullable(object({ value: text, revision: text })), scene: optional(nullable(object({ path: text, revision: text }))),
+  scene: optional(nullable(object({ path: text, revision: text }))),
 });
 export function readWorkspaceEditingView(value: unknown): WorkspaceEditingView {
   const { scene, ...view } = readEditingView(value, 'EditingView');

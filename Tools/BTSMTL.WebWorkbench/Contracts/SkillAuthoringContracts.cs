@@ -17,7 +17,6 @@ public sealed record SkillAuthoringChanges(string Skill, string Revision, bool C
     SkillAuthoringFileRevision[] Files);
 public sealed record SkillAuthoringWrite([property: JsonRequired] SkillAuthoringFile[] Files,
     [property: JsonRequired] string[] RemovedFiles);
-public sealed record SkillAuthoringProductScope([property: JsonRequired] string Value, [property: JsonRequired] string Revision);
 public sealed record AuthoringDocumentEdit([property: JsonRequired, JsonPropertyName("kind")] string Kind,
     [property: JsonRequired, JsonPropertyName("documentPath")] string DocumentPath,
     [property: JsonRequired, JsonPropertyName("expectedRevision")] string ExpectedRevision,
@@ -27,8 +26,7 @@ public sealed record AuthoringDocumentReadRevision([property: JsonRequired, Json
     [property: JsonRequired, JsonPropertyName("revision")] string Revision);
 public sealed record AuthoringDocumentEditingView([property: JsonRequired, JsonPropertyName("writes")] AuthoringDocumentEdit[] Writes,
     [property: JsonRequired, JsonPropertyName("reads")] AuthoringDocumentReadRevision[] Reads,
-    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null,
-    SkillAuthoringProductScope? Product = null);
+    GraphAuthoringExecutionScopeSelection? Execution = null, PreviewSourceFile? Scene = null);
 public sealed record SkillAuthoringTypeQuery([property: JsonRequired] string Type,
     JsonElement? Configuration = null, string? GraphId = null, int Offset = 0, int Limit = 128,
     AuthoringDocumentEditingView? EditingView = null);

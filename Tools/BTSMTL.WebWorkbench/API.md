@@ -95,7 +95,7 @@
 
 ## 作者文档与输入方案
 
-作者内容以工作区文档为单位读写：`documentPath` 为工作区相对路径，`kind` 为文档种类（如技能、Timeline）。读写都带修订：编辑视图 `editingView` 为 `{writes:[{kind,documentPath,expectedRevision,files:{<相对路径>:<完整 JSON 原文>}}],reads:[{documentPath,revision}],execution?,scene?,product?}`，`writes` 是本次未保存内容，`reads` 是查询所依据的已读修订；任一修订与磁盘不符时拒绝，不覆盖外部修改。查询都可带同一 `editingView`，按未保存内容回答，不需要先保存。
+作者内容以工作区文档为单位读写：`documentPath` 为工作区相对路径，`kind` 为文档种类（如技能、Timeline）。读写都带修订：编辑视图 `editingView` 为 `{writes:[{kind,documentPath,expectedRevision,files:{<相对路径>:<完整 JSON 原文>}}],reads:[{documentPath,revision}],execution?,scene?}`，`writes` 是本次未保存内容，`reads` 是查询所依据的已读修订；任一修订与磁盘不符时拒绝，不覆盖外部修改。查询都可带同一 `editingView`，按未保存内容回答，不需要先保存。
 
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
@@ -112,7 +112,7 @@
 | `POST /api/authoring/documents/delete?documentPath=` | `{expectedRevision,editingView}` | 删除回执；仍有外部引用或共享内容时明确拒绝 |
 | `POST /api/authoring/documents/exports/{kind}?documentPath=` | 对应导出请求 | `CompilationReport` 或导出产物回执 |
 | `GET /api/authoring/documents/exports/files/{kind}/{key}/{path}?documentPath=` | 可选下载名 | 原导出文件 |
-| `GET /api/authoring/publication/scopes` | 无 | 适配提供的发布范围目录，包含所需产品和载体 |
+| `GET /api/authoring/publication/scopes` | 无 | 适配提供的发布范围目录（载体）；产品由项目适配自行确定，编辑器不选择 |
 | `POST /api/authoring/references/replace` | `{action,domain,oldValue,newValue,context?,expectedRevision?}` | 文件差量、读修订及 affectedDocuments 完整文档路径 |
 | `POST /api/preview/inputs/plans?documentPath=` | `{scene,sceneRevision,actorId,schemeName,rangeEndSeconds}` | 新方案、Timeline 与布局草稿，随后经通用文档保存 |
 | `POST /api/preview/inputs/recordings?documentPath=` | `{archive,scene,actorId,planId?}` | 从已封存归档导入方案并返回内容、输入修订及文档回执 |

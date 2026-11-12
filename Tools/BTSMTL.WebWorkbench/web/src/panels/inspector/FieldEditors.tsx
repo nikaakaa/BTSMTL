@@ -815,11 +815,13 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
             onClick={() => inputAuthoring.removeScheme(path, selected)}>删除方案</Button>
         </Row>
       )}
-      {scheme && elements?.previewInput.scheme.shape.members?.filter(member => member.member !== 'InputTimeline' && member.authoring?.authoringVisible).map(member =>
-        editable && !member.authoring!.readOnly
-          ? <ValueEditor key={member.member} label={member.authoring!.displayName ?? memberLabel(member.member)} value={scheme[member.member]} shape={member}
-              keys={['Schemes', selected, member.member]} onSet={set} />
-          : <Row key={member.member} label={member.authoring!.displayName ?? memberLabel(member.member)}><span className={styles.readOnly}>{stringifySkillJson(scheme[member.member] ?? null, ' ')}</span></Row>)}
+      {scheme && <Fold title="预览环境（假设目标、起点）" defaultOpen={false}>
+        {elements?.previewInput.scheme.shape.members?.filter(member => member.member !== 'InputTimeline' && member.authoring?.authoringVisible).map(member =>
+          editable && !member.authoring!.readOnly
+            ? <ValueEditor key={member.member} label={member.authoring!.displayName ?? memberLabel(member.member)} value={scheme[member.member]} shape={member}
+                keys={['Schemes', selected, member.member]} onSet={set} />
+            : <Row key={member.member} label={member.authoring!.displayName ?? memberLabel(member.member)}><span className={styles.readOnly}>{stringifySkillJson(scheme[member.member] ?? null, ' ')}</span></Row>)}
+      </Fold>}
     </>
   );
 }

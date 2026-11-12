@@ -325,8 +325,6 @@ export type ReferrersResult = {
   unresolved: ReferenceQueryIssue[];
 } & ({ identity: string; target: null } | { identity: null; target: ReferenceChoiceTarget });
 
-const readAuthoringProducts = object({ items: array(object({ value: text, name: text, source: text, revision: text })) });
-export type AuthoringProduct = ReturnType<typeof readAuthoringProducts>['items'][number];
 
 export interface BlackboardItem {
   identity: string;
@@ -450,7 +448,7 @@ export type CompilationReport = ReturnType<typeof readCompilationReport>;
 
 const readDocumentExportHeader = object({
   stage: choice('export-ready'), kind: choice('authoring', 'runtime'), sourceRevision: text,
-  product: nullable(object({ value: text, revision: text })), execution: nullable(readExecutionScopeSelection),
+  execution: nullable(readExecutionScopeSelection),
   tickRate: number, effectProfileGuid: text, fileName: text, downloadUrl: text,
   files: array(object({ path: text, downloadUrl: text })),
 });
@@ -716,10 +714,6 @@ export const authoringApi = {
       domain: plan.domain, oldValue: plan.oldValue, newValue: plan.newValue, context: plan.context, expectedRevision: plan.revision }), 'commit'),
   export: async (documentPath: string, kind: DocumentExportKind, editingView: AuthoringEditingView) =>
     readDocumentExport(await postJson<unknown>(documentQueryPath(documentPath, `exports/${kind}`), { editingView })),
-  products: async (signal?: AbortSignal) => {
-    const scopes = object({ products: opaque })(await getJson<unknown>('/api/authoring/publication/scopes', signal));
-    return readAuthoringProducts({ items: scopes.products });
-  },
   carriers: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/publication/scopes', signal)
     .then(value => object({ availability: readAuthoringAvailability, authoringRevision: text })(value, 'Carriers')),
   creationOptions: async (signal?: AbortSignal) => readCreationOptions(await getText('/api/authoring/documents/creation-options', signal)),

@@ -98,7 +98,6 @@ export interface AuthoringDocument {
   documentError: string | null;
   tickRate: number | null;
   execution: AuthoringEditingView['execution'];
-  product: AuthoringEditingView['product'];
 }
 
 interface SaveOutcomeMessage {
@@ -135,7 +134,7 @@ export const newDocument = (): Omit<AuthoringDocument, 'kind'> => ({
   files: {}, sourceFiles: {}, edited: {}, removed: [], version: 0, undo: [], redo: [], recording: false,
   loading: false, externalChange: false, addedPorts: {},
   saving: false, lastSave: null,
-  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, execution: { previewScope: null, runtimeScope: null }, product: null,
+  documentGraphs: null, documentRelations: [], documentError: null, tickRate: null, execution: { previewScope: null, runtimeScope: null },
 });
 
 export const variablesDrafts = (values: readonly VariablesValue[]): Record<string, AuthoringDocument> =>
@@ -538,7 +537,7 @@ async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
         documents[key] = { ...newDocument(), kind: owner.kind, rootFile: source.document.rootFile,
           identity: source.document.identity, sourceIdentity: source.document.sourceIdentity, contentDomain: source.document.contentDomain,
           authoringType: source.document.authoringType ?? null, name: source.document.name, roles: source.document.roles,
-          revision: source.revision, product: editingView.product, execution: editingView.execution,
+          revision: source.revision, execution: editingView.execution,
           sourceFiles: source.sourceFiles, files: source.files };
       } else {
         const edited = { ...current.edited };
@@ -945,20 +944,8 @@ export const authoringActions = {
       reads: Object.entries(state.documents).flatMap(([documentPath, document]) =>
         document.revision !== null ? [{ documentPath, revision: document.revision }] : []),
       execution: state.execution,
-      product: state.product,
       ...(scene === undefined ? {} : { scene }),
     };
-  },
-
-  // 文档只有一个角色：预览与实际运行用同一个；null 表示不指定，技能编译覆盖全部授予它的角色、预览用场景角色。
-  selectRole(scope: string | null) {
-    set({ resourceTarget: null });
-    setDocument({ execution: { previewScope: scope, runtimeScope: scope }, version: get().version + 1 });
-  },
-
-  selectProduct(product: AuthoringEditingView['product']) {
-    set({ resourceTarget: null });
-    setDocument({ product, version: get().version + 1 });
   },
 
   async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource) {
