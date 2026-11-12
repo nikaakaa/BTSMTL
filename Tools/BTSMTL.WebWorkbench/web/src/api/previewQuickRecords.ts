@@ -44,8 +44,12 @@ const plan = object({
   root: text, sourceType: text, clock: object({ unit: text, origin: number, owner: text, tickRate: number }),
   input: inputSource, inputSchemeRevision: text, inputRevision: text, conditionsUsed: array(conditionPoint),
   assumptions: array(text), duration: number, stopReason: nullable(text), stopDetail: nullable(text), status: text,
+  instances: array(object({
+    id: number, parent: nullable(number), carrier: text, root: text, documentPath: text,
+    start: number, end: number, endReason: nullable(text), command: nullable(location),
+  })),
   segments: array(object({
-    timeline: nullable(text), timelineId: nullable(text), documentPath: nullable(text), state: text, stateSource: nullable(location),
+    instance: number, timeline: nullable(text), timelineId: nullable(text), documentPath: nullable(text), state: text, stateSource: nullable(location),
     start: number, end: number, localStart: number, localEnd: number, playback: number, cycle: number,
     occurrence: number, playbackCompleted: boolean, callerPlayback: number, callerClipId: text,
     conditionDependencies: array(object({ key: text, label: text, written: boolean })),
@@ -78,6 +82,7 @@ export type PreviewQuickDescription = ReturnType<typeof description>;
 export type PreviewQuickSource = ReturnType<typeof source>;
 export type PreviewQuickPlan = ReturnType<typeof plan>;
 export type PreviewQuickLocation = ReturnType<typeof location>;
+export type PreviewQuickInstance = PreviewQuickPlan['instances'][number];
 export type PreviewQuickStatus = ReturnType<typeof status>;
 export type PreviewQuickJobId = PreviewQuickStatus['jobId'];
 export type PreviewQuickFrame = ReturnType<typeof frame>;

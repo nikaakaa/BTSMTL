@@ -1280,3 +1280,43 @@ svg.clipCurves:focus {
   color: var(--text-dim);
   pointer-events: none;
 }
+
+/* 执行实例泳道：左侧强调色条区分实例，时间区画实例从生成到结束的存活区间 */
+.instanceHead {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--tl-group);
+  color: var(--tl-group-font);
+}
+
+.instanceLane {
+  overflow: hidden;
+  background: var(--tl-group-track);
+}
+
+.instanceLife {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* 分组头里的所属实例标注：窄时先收这一项 */
+.instanceTag {
+  flex: 0 8 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-strong);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

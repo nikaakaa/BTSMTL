@@ -47,6 +47,8 @@ export interface TimelineSegment {
   documentId: string;
   quickIndex?: number;
   owner?: string;
+  // 快档路线里这一段所属的执行实例（运行这份根图的对象）。
+  instance?: { id: number; label: string };
   origin: number;
   start: number;
   end: number;

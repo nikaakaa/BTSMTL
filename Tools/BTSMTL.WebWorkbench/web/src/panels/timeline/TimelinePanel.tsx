@@ -48,7 +48,7 @@ import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
 import { RunBar } from './RunBar';
-import { quickPlayedSegments } from './routeRows';
+import { quickPlayedLanes } from './routeRows';
 import { AddFirstTrack, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
@@ -56,7 +56,7 @@ import {
   recordedLocalPosition, rowHeight, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
   trackHeight, useAuthorCursor, useClipGrid,
   type CurveClock, type CurveRow, type CurveView, type InputTrackRow, type Nest, type Params, type PreviewClock, type QuickPlaybackChoice, type ReceivedRow,
-  type FirstInputRow, type Row, type TimelineObservation,
+  type FirstInputRow, type InstanceRow, type Row, type TimelineObservation,
 } from './timelineShared';
 import styles from './timeline.module.css';
 
@@ -625,7 +625,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   } : null, [quickMode, runId, inputObservation.kind === 'ready' ? inputObservation.input.actorId : null,
     inputObservation.kind === 'ready' ? inputObservation.stepSeconds : null, inputObservation.kind === 'ready' ? inputObservation.declarations : null]);
   const received = useReceivedInput(receivedSource);
-  // 快档在输入轨下按全局时间摆出 Host 算出的每次播放；不另画路线条。
+  // 快档在输入轨下按执行实例分道，按全局时间摆出 Host 算出的每次播放。
   const played = useMemo(() => {
     if (!quickMode || quickPlan === null || !routeView && !quickInput) return [];
     const owners = new Set(quickPlan.segments.map(segment => segment.documentPath).filter(owner => owner !== null));
@@ -638,7 +638,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
           return timelineOf(value.m_AuthoringId as string, value);
         });
     });
-    return quickPlayedSegments(quickPlan, [...sources, ...timelines], quickInputTimeline);
+    return quickPlayedLanes(quickPlan, [...sources, ...timelines], quickInputTimeline);
   }, [quickMode, quickPlan, routeView, quickInput, quickInputTimeline, timelines, documents]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
@@ -761,12 +761,19 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
             result.push({ kind: 'curve', id: `curve:${curve.id}`, curve });
     };
     const addPlayed = () => {
-      for (const segment of played) {
-        const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
-        const titleMatched = !filter || group.title.toLowerCase().includes(filter);
-        const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
-        const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
-        if (titleMatched || children.length) result.push(group, ...children);
+      for (const lane of played) {
+        const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane };
+        const laneMatched = !filter || lane.label.toLowerCase().includes(filter);
+        const groups: Row[] = [];
+        if (!collapsed.has(instance.id))
+          for (const segment of lane.segments) {
+            const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
+            const titleMatched = laneMatched || group.title.toLowerCase().includes(filter);
+            const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
+            const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
+            if (titleMatched || children.length) groups.push(group, ...children);
+          }
+        if (laneMatched || groups.length) result.push(instance, ...groups);
       }
     };
     const firstInput: FirstInputRow = { kind: 'firstInput', id: 'first-input' };
@@ -1150,6 +1157,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
       {rows.slice(first, last).map((row, offset) => {
         const nest = nesting[first + offset];
         switch (row.kind) {
+          case 'instance': return <InstanceLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
           case 'group': return <GroupLine key={row.id} elements={elements} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
           case 'track': return <TrackLine key={row.id} elements={elements} row={row} nest={nest} toggleCurves={toggleCurves} />;
           case 'inputGroup':
@@ -1244,6 +1252,25 @@ function TrackHead({ kind, color, selected, name, tip, onSelect, onRename, renam
   );
 }
 
+// 执行实例泳道：头部写所属载体与根图、由哪个实例生成，时间区画实例存活区间。
+const InstanceLine = memo(function InstanceLine({ row, nest, open, toggle }: {
+  row: InstanceRow; nest: Nest | undefined; open: boolean; toggle(id: string): void;
+}) {
+  const { instance, label, parent } = row.lane;
+  const life = `${instance.start.toFixed(2)}–${instance.end.toFixed(2)} s`;
+  const tip = [`实例 #${instance.id} · ${instance.documentPath}`, parent === null ? '入口实例' : `由 ${parent} 生成`,
+    instance.command === null ? null : `生成指令：${instance.command.displayPath}`, instance.endReason && `结束：${instance.endReason}`]
+    .filter(Boolean).join('\n');
+  return (
+    <Line id={row.id} nest={nest} laneClass={styles.instanceLane} headClass={styles.instanceHead} head={
+      <GroupToggle open={open} onToggle={() => toggle(row.id)} name={label}
+        meta={parent === null ? life : `由 ${parent} 生成 · ${life}`} tip={tip} />
+    }>
+      <Positioned start={instance.start} end={instance.end} className={styles.instanceLife} tip={tip} />
+    </Line>
+  );
+});
+
 const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
   elements: AuthoringElements | null;
   row: GroupRow; nest: Nest | undefined; open: boolean; toggle(id: string): void; enter(documentId: string, quickIndex?: number | null, owner?: string): void;
@@ -1259,6 +1286,7 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
           meta={`${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`}
           tip={row.focused ? undefined : '双击进入这个 Timeline'}
           onDoubleClick={row.focused ? undefined : () => enter(segment.documentId, segment.quickIndex, segment.owner)} />
+        {segment.instance && <span className={styles.instanceTag} title={`所属实例：${segment.instance.label}`}>{segment.instance.label}</span>}
         {!row.focused && (segment.owner === undefined || segment.owner === owner) && <AddTrack elements={elements} documentId={segment.documentId} />}
       </>
     }>

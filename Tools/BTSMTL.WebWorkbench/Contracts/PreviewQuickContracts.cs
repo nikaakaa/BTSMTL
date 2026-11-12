@@ -84,7 +84,10 @@ public sealed record PreviewQuickDescription(string ScenePath, string CarrierPat
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
 
 public sealed record PreviewQuickLocation(string DocumentPath, string GraphId, string NodeId, string EdgeId, string DisplayPath);
-public sealed record PreviewQuickSegment(string? Timeline, string? TimelineId, string? DocumentPath, string State,
+// 执行实例：运行一份根图的一个对象。子实例记父实例与生出它的指令位置；任何执行者都按这张表交出路线。
+public sealed record PreviewQuickInstance(int Id, int? Parent, string Carrier, string Root, string DocumentPath,
+    double Start, double End, string? EndReason, PreviewQuickLocation? Command);
+public sealed record PreviewQuickSegment(int Instance, string? Timeline, string? TimelineId, string? DocumentPath, string State,
     PreviewQuickLocation? StateSource, double Start, double End, double LocalStart, double LocalEnd,
     int Playback, int Cycle, int Occurrence, bool PlaybackCompleted, int CallerPlayback, string CallerClipId)
 {
@@ -100,7 +103,7 @@ public sealed record PreviewQuickClock(string Unit, double Origin, string Owner,
 public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQuickClock Clock,
     PreviewQuickInputSource Input, string InputSchemeRevision, string InputRevision, PreviewQuickConditionPoint[] ConditionsUsed,
     string[] Assumptions, double Duration, string? StopReason, string? StopDetail, string Status,
-    PreviewQuickSegment[] Segments, PreviewQuickCondition[] Conditions, PreviewQuickSuggestion[] Suggestions,
+    PreviewQuickInstance[] Instances, PreviewQuickSegment[] Segments, PreviewQuickCondition[] Conditions, PreviewQuickSuggestion[] Suggestions,
     PreviewQuickInputDeclaration[] DeclaredInputs, PreviewQuickInputPoint[] InputsUsed, string InputSource);
 public sealed record PreviewQuickStatus(string JobId, string Stage, bool Completed, bool CancellationRequested,
     string NativeMode, string? AdoptedMode, PreviewQuickSource? Source, int SamplesDone, int SamplesTotal,

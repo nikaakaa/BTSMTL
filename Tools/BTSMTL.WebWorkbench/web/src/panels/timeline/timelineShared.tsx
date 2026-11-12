@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import type { AuthoringElements } from '../../api/authoring';
 import type { ExecutionCall, Frame, FrozenInputTimeline } from '../../api/types';
 import type { PreviewQuickPlan } from '../../api/previewQuickRecords';
+import type { QuickLane } from './routeRows';
 import { samePreviewLoad, type PlayerDataCurve, type PlayerJobId, type PreviewSampleSource } from '../../api/playerRecords';
 import { useAuthoring } from '../../state/authoring';
 import { clipSnapSource } from '../../state/authoringTimeline';
@@ -46,7 +47,9 @@ export interface CurveGroupRow { kind: 'curves'; id: string }
 export interface CurveRow { kind: 'curve'; id: string; curve: PlayerDataCurve }
 export interface ReceivedGroupRow { kind: 'receivedGroup'; id: string; received: ReceivedInput }
 export interface ReceivedRow { kind: 'received'; id: string; name: string; spans: ReceivedSpan[]; requests: ReceivedSpan[]; missing: boolean }
-export type Row = GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
+// 快档路线里的一个执行实例泳道：其下是它所播的 Timeline 分组。
+export interface InstanceRow { kind: 'instance'; id: string; lane: QuickLane }
+export type Row = InstanceRow | GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 export interface Params {
   range: Range | null;
@@ -213,7 +216,7 @@ export const CurveViewContext = createContext<CurveView>({
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
 export type Nest = 'head' | 'single' | 'child' | 'last';
-export const groupKinds: ReadonlySet<Row['kind']> = new Set(['group', 'inputGroup', 'firstInput', 'curves', 'receivedGroup']);
+export const groupKinds: ReadonlySet<Row['kind']> = new Set(['instance', 'group', 'inputGroup', 'firstInput', 'curves', 'receivedGroup']);
 export function rowNesting(rows: Row[]): (Nest | undefined)[] {
   let grouped = false;
   return rows.map((row, index) => {

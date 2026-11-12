@@ -15,7 +15,7 @@ static class QuickPreviewPlanProjection
         {
             TimelineStaticRouteSpan span = item.Span;
             TimelineContentUnit timeline = compiled.Content.Timelines.Single(unit => unit.Identity == span.TimelineIdentity);
-            return new PreviewQuickSegment(timeline.Name, timeline.AuthoringId, capture.TimelineOwner(timeline.AuthoringId),
+            return new PreviewQuickSegment(0, timeline.Name, timeline.AuthoringId, capture.TimelineOwner(timeline.AuthoringId),
                 State(span.State), span.State == null ? null : Location(span.State.Location), Seconds(span.Start), Seconds(span.End),
                 Seconds(span.LocalStart), Seconds(span.LocalEnd), span.Playback, span.Cycle, item.Occurrence,
                 span.PlaybackCompleted, span.CallerPlayback, span.Call?.CallerElementId ?? "")
@@ -23,10 +23,14 @@ static class QuickPreviewPlanProjection
                 ConditionDependencies = dependencies.Segment(span)
             };
         }).ToArray();
-        return new(compiled.Standalone?.Name ?? capture.Label, "staticInference", new("seconds", 0, "Player", actor.TickRate),
+        string root = compiled.Standalone?.Name ?? capture.Label;
+        // 静态推演只沿一份根图走，路线里只有入口实例。
+        PreviewQuickInstance[] instances = [new(0, null, Path.GetFileNameWithoutExtension(actor.CarrierPath), root,
+            capture.Identity.Authoring.DocumentPath, 0, Seconds(route.End), route.Chain?.Reason, null)];
+        return new(root, "staticInference", new("seconds", 0, "Player", actor.TickRate),
             input.Scheme.Source, input.Scheme.Revision, input.Revision, input.Conditions,
             ["按作者文档和本次输入轨计算会播哪些 Timeline。", "位移未经玩法碰撞求解，运行条件按快预览输入取值。"],
-            Seconds(route.End), route.Chain?.StopReason.ToString(), route.Chain?.Reason, "已生成", segments,
+            Seconds(route.End), route.Chain?.StopReason.ToString(), route.Chain?.Reason, "已生成", instances, segments,
             conditions.Select(read => new PreviewQuickCondition(read.Key, read.Label, read.Source.ToString(), read.OperationIndex, read.Undeterminable)).ToArray(),
             suggestions.Select(suggestion => new PreviewQuickSuggestion(State(suggestion.State), State(suggestion.Transition.Target),
                 suggestion.Transition.Identity, suggestion.State == null ? null : Location(suggestion.State.Location),
