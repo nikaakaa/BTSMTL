@@ -331,8 +331,8 @@ function LiveFrameField({ value, label, blocked }: { value: string; label: strin
 }
 
 function PreviewModeChoice() {
-  const { modes, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
-    modes: state.host?.modes.filter(mode => mode.id !== 'real' || state.host?.player.available), selected: state.previewMode, observing: state.previewMode === 'quick'
+  const { host, selected, observing, adoptedMode } = useWorkbench(useShallow(state => ({
+    host: state.host, selected: state.previewMode, observing: state.previewMode === 'quick'
       ? state.quickPreview.job.kind !== 'idle' : state.runId !== null || state.live?.player?.source != null,
     adoptedMode: state.previewMode === 'quick'
       ? 'reply' in state.quickPreview.job ? state.quickPreview.job.reply?.data?.adoptedMode ?? null : null
@@ -340,6 +340,7 @@ function PreviewModeChoice() {
       ? state.sealed ? state.summary?.adoptedMode ?? null : state.receipt?.adoptedMode ?? null
       : state.live?.player?.source?.adoptedMode ?? null,
   })));
+  const modes = host?.modes.filter(mode => mode.id !== 'real' || host.player.available);
   if (!modes?.length && !observing) return null;
   const unavailable = modes?.find(mode => mode.id === selected && !mode.available);
   const adoptedLabel = adoptedMode === null ? '未记录' : modes?.find(mode => mode.id === adoptedMode)?.displayName ?? adoptedMode;
