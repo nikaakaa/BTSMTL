@@ -495,7 +495,7 @@ namespace BTSMTL.Timeline
             }, "修改轨道配置");
         }
 
-        int m_AuthoringBatchDepth;
+        [NonSerialized] int m_AuthoringBatchDepth;
         public bool IsAuthoringBatch => m_AuthoringBatchDepth != 0;
 
         public IDisposable BeginAuthoringBatch()
