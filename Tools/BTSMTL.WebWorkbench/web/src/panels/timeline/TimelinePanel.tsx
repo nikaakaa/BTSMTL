@@ -822,7 +822,8 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
-      if (input) addPlayed(inputRows(focused, true));
+      // 与路线里其它 Timeline 分组并列时，分组头同样带添加轨道；只有它一组时才算单个 Timeline 视图。
+      if (input) addPlayed(inputRows(focused, played.length === 0));
       else {
         if (needsFirstInput) result.push(firstInput);
         // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
