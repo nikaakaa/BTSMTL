@@ -7,7 +7,7 @@ import { CatalogDetails } from '../project/CatalogDetails';
 import type { Availability, ExecutionCall, Field, Frame, GraphDefinition, HostRecord, RouteFrame } from '../../api/types';
 import { usePanelParams } from '../../shell/panel';
 import {
-  findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence,
+  findGraphNode, graphKey, graphName, graphRecords, isNodeOccurrence, navigationTrail,
   isPortSample, nodeReferences, nodeName, compareSequence, callKey, callOwnerLabel, routeObservation, singleCall, matchesDocumentCall, documentObservationNotice, type DocumentObservationBinding,
   type NodeNavigationTarget,
 } from '../../state/graphModel';
@@ -361,7 +361,7 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
     edge.invocationPath === invocationPath);
   const openReference = (target: NodeNavigationTarget) => {
     void projectActions.openReference(target, { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId,
-      observation: call === null || runId === null ? null : { runId, call } })
+      observation: call === null || runId === null ? null : { runId, call }, trail: navigationTrail(hierarchy, graph, null) })
       .catch(reason => consoleActions.error('作者', reason));
   };
   return (

@@ -26,12 +26,12 @@ import { useEffectiveScope, useResourceScope } from '../../state/resourceScope';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
-  callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphCrumbs, graphKey, graphName, graphRecords, graphReferrers,
+  callKey, callLabel, edgeSelectId, graphCallsAtFrame, graphKey, navigationTrail, graphName, graphRecords, graphReferrers,
   isEdgeOccurrence, isStateMachine, layoutGraph, loopScopeLabel, matchesDocumentCall, nodeReferences, nodeName, nodeSelectId, nodeTypeDisplayNames, nodeTypeName, parentCallNotice, parentCallMatches, parentGraphCalls, portColor, portSampleKey, portSampleLabel,
   documentObservationNotice, recordedGraphCalls, routeObservation, type GraphHierarchy, type GraphNavigationTarget, type NodeNavigationTarget, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { projectActions } from '../../state/project';
-import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin } from '../../state/store';
+import { consoleActions, getState, selectionActions, useWorkbench, type GraphNavigationOrigin, type GraphNavigationStep } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../../ui/controls';
 import { CloseIcon, SubgraphIcon, TimelineIcon } from '../../ui/icons';
@@ -251,15 +251,21 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
     }
   }, [graph, observedCall, panelId]);
 
+  const trail = useMemo(() => navigationTrail(hierarchy, graph, params.origin), [params.origin, hierarchy, graph]);
   const enter = useCallback((target: GraphNavigationTarget, nodeId?: string) => {
     const source = hierarchy.graphs.get(key)!;
     const observation = pin !== null ? { runId: pin.runId, call: pin.call }
       : observedCall === null || runId === null ? null : { runId, call: observedCall };
-    const origin = nodeId === undefined ? null : { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId, observation };
+    const origin = nodeId === undefined ? null
+      : { owner: source.owner, ownerName: source.ownerName, graphId: source.id, nodeId, observation, trail };
     void projectActions.openGraph(target, undefined, { origin, observation: null, caller: observation, panelId })
       .catch(reason => consoleActions.error('作者', reason));
-  }, [hierarchy, key, observedCall, pin, runId, panelId]);
-  const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
+  }, [hierarchy, key, observedCall, pin, runId, panelId, trail]);
+  const crumbs = useMemo(() => [
+    ...trail.map((step, index) => ({ step: { ...step, trail: trail.slice(0, index) }, label:
+      graphName([...hierarchy.graphs.values()].find(item => item.owner === step.owner && item.id === step.graphId) ?? { id: step.graphId, displayName: step.graphId }) })),
+    { step: null, label: graphName(graph) },
+  ], [trail, hierarchy, graph]);
   const referrers = useMemo(() => graphReferrers(hierarchy, graph), [hierarchy, graph]);
   const selection = useWorkbench(state => state.selection?.panelId === panelId ? state.selection : null);
   const selectedNode = selection?.kind === 'node' ? graph.nodes.find(node => nodeSelectId(graph, node) === selection.id) : undefined;
@@ -320,17 +326,17 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
             </> : crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
                 {index > 0 && <i className={styles.crumbArrow} />}
-                {crumb.graph !== graph
-                  ? <button className={styles.crumbLink} onClick={() => enter(crumb.graph)}>{crumb.label}</button>
-                  : <span data-current={crumb.graph === graph || undefined}>{crumb.label}</span>}
+                {crumb.step !== null
+                  ? <Tip content={`${crumb.step.ownerName}${crumb.step.nodeId === null ? '' : ` · ${crumb.step.nodeId}`}`}>
+                    <button className={styles.crumbLink} onClick={() => void projectActions.returnTo(crumb.step!, panelId)
+                      .catch(reason => consoleActions.error('作者', reason))}>{crumb.label}</button>
+                  </Tip>
+                  : <span data-current>{crumb.label}</span>}
               </span>
             ))}
           </span>
           {params.origin !== null && <Button variant="ghost" tip={`${params.origin.ownerName} · ${params.origin.nodeId}`} onClick={() => {
-            const source = params.origin!;
-            void projectActions.openGraph({ owner: source.owner, ownerName: source.ownerName, id: source.graphId }, source.nodeId,
-              { origin: null, observation: source.observation, caller: null, panelId })
-              .catch(reason => consoleActions.error('作者', reason));
+            void projectActions.returnTo(params.origin!, panelId).catch(reason => consoleActions.error('作者', reason));
           }}>返回引用节点</Button>}
           {referrers.length > 0 && <MenuButton label="已加载引用" caret entries={referrers.map(({ source }) => ({
             label: `${source.ownerName} · ${source.file} · ${source.nodeId} · ${source.fieldId}`,
@@ -355,7 +361,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
         <div className={styles.stage}>
           {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
           <AuthoredCanvas graph={graph} call={observedCall}
-            route={currentRoute} hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />
+            route={currentRoute} hierarchy={hierarchy} enter={enter} trail={trail} params={params} setParams={setParams} />
           {!quickMode && params.observations && (selectedNode !== undefined || selectedEdge !== undefined) &&
             <div className={styles.observationDock}>
               <PanelBar><span>{selectedNode === undefined ? '分支决策' : nodeName(selectedNode)} · 实际记录</span>
@@ -575,6 +581,7 @@ interface GraphCanvasProps {
   route: RouteFrame | null;
   hierarchy: GraphHierarchy;
   enter(graph: GraphNavigationTarget, nodeId?: string): void;
+  trail: GraphNavigationStep[];
   params: Params;
   setParams(patch: Partial<Params>): void;
   editable: boolean;
@@ -582,7 +589,7 @@ interface GraphCanvasProps {
   elements: AuthoringElements | null;
 }
 
-function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+function GraphCanvas({ graph, call, route, hierarchy, enter, trail, params, setParams, editable, groups, elements }: GraphCanvasProps) {
   const scopeValue = useEffectiveScope().value;
   const resourceScope = useResourceScope(scopeValue);
   const resourceCatalog = useAdapterCatalog();
@@ -680,7 +687,9 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
         return {
           id: edge.id, type: 'transition', source: edge.source!.nodeId, target: edge.target!.nodeId,
           sourceHandle: 'out:@node', targetHandle: 'in:@node',
-          data: { edge, conditions, label, offset: (index - (counts.get(pair)! - 1) / 2) * 16,
+          // 错开按排序后的状态对计算；反向转移的法线随方向翻转，取反后 A→B 与 B→A 落在两侧。
+          data: { edge, conditions, label,
+            offset: (index - (counts.get(pair)! - 1) / 2) * 16 * (edge.source!.nodeId < edge.target!.nodeId ? 1 : -1),
             minor: system.has(edge.source!.nodeId) || system.has(edge.target!.nodeId), trigger: false },
         };
       }
@@ -725,9 +734,9 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
   const openReference = useCallback((target: NodeNavigationTarget, nodeId: string) => {
     const observation = params.pin !== null ? { runId: params.pin.runId, call: params.pin.call }
       : call === null || runId === null ? null : { runId, call };
-    const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId, observation };
+    const origin = { owner: graph.owner, ownerName: graph.ownerName, graphId: graph.id, nodeId, observation, trail };
     void projectActions.openReference(target, origin, panelId).catch(reason => consoleActions.error('作者', reason));
-  }, [graph.owner, graph.ownerName, graph.id, call, params.pin, runId, panelId]);
+  }, [graph.owner, graph.ownerName, graph.id, call, params.pin, runId, panelId, trail]);
   const openNode = useCallback((data: NodeData) => {
     if (data.children.length === 1) openReference(data.children[0], data.laid.node.id);
   }, [openReference]);

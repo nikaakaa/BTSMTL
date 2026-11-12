@@ -2,7 +2,7 @@ import type {
   EdgeOccurrence, ExecutionCall, GraphDefinition, GraphEdge, GraphNode, GraphPort, LoopScope, NodeOccurrence, PortSample, RouteFrame,
 } from '../api/types';
 import type { AuthoringGraph, AuthoringGraphRelation } from '../api/authoring';
-import type { WorkbenchState } from './store';
+import type { GraphNavigationOrigin, GraphNavigationStep, WorkbenchState } from './store';
 
 // 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
 
@@ -306,6 +306,17 @@ export function graphReferrers(hierarchy: GraphHierarchy, graph: GraphDefinition
 export interface Crumb {
   graph: AuthoringGraph;
   label: string;
+}
+
+// 页签栈：当前图之前的各级。按节点进入时沿来源记录；直接打开的图按声明归属回溯，每级记下进入下一级的归属节点。
+export function navigationTrail(hierarchy: GraphHierarchy, graph: GraphDefinition, origin: GraphNavigationOrigin | null): GraphNavigationStep[] {
+  if (origin !== null) {
+    const { trail, ...step } = origin;
+    return [...trail, step];
+  }
+  const chain = graphCrumbs(hierarchy, graph).map(crumb => crumb.graph);
+  return chain.slice(0, -1).map((parent, index) => ({ owner: parent.owner, ownerName: parent.ownerName, graphId: parent.id,
+    nodeId: chain[index + 1].declaredOwner?.nodeId ?? null, observation: null }));
 }
 
 export function graphCrumbs(hierarchy: GraphHierarchy, graph: GraphDefinition): Crumb[] {

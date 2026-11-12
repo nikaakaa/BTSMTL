@@ -119,9 +119,7 @@ export function TimelineToolbar({ settings, subject, origin, seek, observations,
       {quickPlayback !== null && <Select variant="ghost" label="第几次播放" value={quickPlayback.value}
         options={quickPlayback.options} onChange={quickPlayback.select} />}
       {navigationOrigin !== null && <Button variant="ghost" tip={`${navigationOrigin.ownerName} · ${navigationOrigin.nodeId}`} onClick={() => {
-        void projectActions.openGraph({ owner: navigationOrigin.owner, ownerName: navigationOrigin.ownerName, id: navigationOrigin.graphId }, navigationOrigin.nodeId,
-          { origin: null, observation: navigationOrigin.observation, caller: null, panelId: null })
-          .catch(error => consoleActions.error('作者', error));
+        void projectActions.returnTo(navigationOrigin, null).catch(error => consoleActions.error('作者', error));
       }}>返回引用节点</Button>}
       {shownObservation !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined} onClick={togglePin}
         tip={`${pin !== null ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(shownObservation.call)} · ${shownObservation.domain}`}>固定调用</Button>}

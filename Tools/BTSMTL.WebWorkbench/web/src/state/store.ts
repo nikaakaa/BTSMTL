@@ -191,12 +191,17 @@ export interface CanvasSelection {
   nodes: readonly string[];
   edges: readonly string[];
 }
-export interface GraphNavigationOrigin {
+// 页签栈的一级：从哪张图的哪个节点（或连线的源节点）进入下一级；照 NodeCanvas 记录的父图当前子图。
+export interface GraphNavigationStep {
   owner: string;
   ownerName: string;
   graphId: string;
-  nodeId: string;
+  nodeId: string | null;
   observation: NonNullable<SelectionSlice['timelineRequest']>['observation'];
+}
+// 进入当前图的来源；trail 是来源之前的各级，与来源一起组成页签栈。
+export interface GraphNavigationOrigin extends GraphNavigationStep {
+  trail: GraphNavigationStep[];
 }
 export interface SelectionSlice {
   selection: Selection | null;

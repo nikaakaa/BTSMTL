@@ -22,6 +22,13 @@ interface Saved {
   graphSelectionVersion?: 1;
   // 1：Project 已从画面组移到画面左侧的独立一栏。
   projectColumnVersion?: 1;
+  // 1：导航来源带页签栈（trail）；之前保存的来源没有页签栈，读入时清掉。
+  navigationVersion?: 1;
+}
+
+function clearNavigationOrigins(layout: SerializedDockview) {
+  for (const panel of Object.values(layout.panels))
+    if (panel.params && 'origin' in panel.params) panel.params = { ...panel.params, origin: null };
 }
 
 const readRevisionGraphKey = tuple(text, text, text, text);
@@ -215,6 +222,7 @@ function readSaved(): { layout: SerializedDockview; projectColumn: boolean } | {
       return { reason: error instanceof Error ? error.message : String(error) };
     }
   }
+  if (saved.navigationVersion !== 1) clearNavigationOrigins(saved.layout);
   removeRetiredPanels(saved.layout);
   const counts = new Map<PanelType, number>();
   for (const panel of Object.values(saved.layout.panels)) {
@@ -230,7 +238,7 @@ function readSaved(): { layout: SerializedDockview; projectColumn: boolean } | {
 function save() {
   saveTimer = null;
   if (!api) return;
-  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON(), graphSelectionVersion: 1, projectColumnVersion: 1 } satisfies Saved));
+  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON(), graphSelectionVersion: 1, projectColumnVersion: 1, navigationVersion: 1 } satisfies Saved));
 }
 
 export function requestLayoutSave() {

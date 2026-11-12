@@ -48,6 +48,14 @@ export const projectActions = {
   },
   openGraph,
   openOwner,
+  // 回到页签栈的某一级：打开该级的图并选中进入下一级的节点，页签栈截到这一级。
+  returnTo(step: GraphNavigationOrigin, panelId: string | null): Promise<void> {
+    const parent = step.trail.at(-1);
+    return openGraph({ owner: step.owner, ownerName: step.ownerName, id: step.graphId }, step.nodeId ?? undefined, {
+      origin: parent === undefined ? null : { ...parent, trail: step.trail.slice(0, -1) },
+      observation: step.observation, caller: null, panelId,
+    });
+  },
   async openDocumentElement(element: WorkspaceDocumentElement): Promise<void> {
     await openOwner({ owner: element.documentPath, ownerName: element.documentPath });
     selectionActions.select({ kind: 'content', id: documentElementKey(element) });
