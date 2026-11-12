@@ -221,6 +221,24 @@ export const playerService = {
     }
   },
 
+  // 真实运行要一台不被快档作业占用的播放器：已选中的连上即用，否则接上一台已连上的，等到时限为止。
+  async attachForRun(timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      await playerService.refresh();
+      const state = getState();
+      if (state.lives.find(live => live.liveId === state.liveId)?.state === 'connected') return;
+      const running = state.lives.find(live => live.state === 'connected' && live.previewTarget?.content.kind !== 'quick');
+      if (running) {
+        playerService.attach(running.liveId);
+        return;
+      }
+      if (Date.now() > deadline)
+        throw new Error('没有可用于真实运行的播放器：快速预览占用的播放器不能接管，请在画面面板启动或选择一台播放器');
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  },
+
   async updateCode(playerBuildId: string) {
     try {
       const result = await playerApi.updateCode(crypto.randomUUID(), playerBuildId);

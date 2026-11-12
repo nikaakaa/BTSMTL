@@ -12,6 +12,7 @@ import { edgeSelectId } from '../../state/graphModel';
 import { consoleActions, contentActions, selectionActions, useWorkbench } from '../../state/store';
 import { quickRunInputChoice } from '../../state/quickInput';
 import { session } from '../../state/session';
+import { playerService } from '../../state/player';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
 import { finishAuthoringInputs } from '../../shell/layout';
@@ -109,13 +110,14 @@ async function runInput(selection: PreviewQuickInputSource) {
   const choice = quickRunInputChoice(current.inputCatalog!, reply.data.actorId, source);
   contentActions.selectInputSource({ kind: 'local' });
   contentActions.selectInputPlan(choice);
+  const mode = current.host!.modes.find(item => item.createsRun)!;
+  contentActions.selectPreviewMode(mode.id);
+  await playerService.attachForRun();
   const blocked = session.canStartNewRun();
   if (blocked !== null) throw new Error(blocked);
   const root = state.quickPreview.target!.root!;
   const owner = authoringOwner(root.authoring.documentPath);
   if (await authoringActions.open(owner) !== 'opened') throw new Error('预览入口文档尚未打开，未提交真实运行');
-  const mode = current.host!.modes.find(item => item.createsRun)!;
-  contentActions.selectPreviewMode(mode.id);
   const prepared = useWorkbench.getState();
   await authoringActions.save('apply', { kind: 'local', [prepared.host!.inputLimit.name]: prepared.localInputLimit,
     players: prepared.inputChoices });
