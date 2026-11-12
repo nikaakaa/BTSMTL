@@ -37,7 +37,6 @@
   font: var(--mono);
   white-space: pre;
   color: var(--text-dim);
-  user-select: text;
 }
 
 .note {
@@ -59,7 +58,6 @@
 .observationDetail {
   max-height: 320px;
   overflow: auto;
-  user-select: text;
 }
 
 .scopes {

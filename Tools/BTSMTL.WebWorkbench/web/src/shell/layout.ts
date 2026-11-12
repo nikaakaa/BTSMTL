@@ -5,6 +5,7 @@ import { consoleActions, getState, layoutActions } from '../state/store';
 import { nullable, object, optional, text, tuple } from '../api/playerRecords';
 import { graphKey } from '../state/graphModel';
 import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, type PanelType } from './panelTypes';
+import { guardNativeBehavior } from './nativeBehavior';
 
 // 布局：保存、恢复、默认布局、按类型打开与多开、拆出窗口（D3、D12）。
 
@@ -269,7 +270,14 @@ export function attachLayout(dockview: DockviewApi) {
   if (!dockview.panels.length) buildDefault();
   syncSlice();
   requestLayoutSave();
-  dockview.onDidLayoutChange(() => { requestLayoutSave(); syncSlice(); });
+  dockview.onDidLayoutChange(() => {
+    requestLayoutSave();
+    syncSlice();
+    for (const group of dockview.groups) {
+      const owner = group.element.ownerDocument.defaultView;
+      if (owner) guardNativeBehavior(owner);
+    }
+  });
   dockview.onDidActivePanelChange(() => syncSlice());
   dockview.onDidOpenPopoutWindowFail(failure => {
     popoutFailureLogged = true;

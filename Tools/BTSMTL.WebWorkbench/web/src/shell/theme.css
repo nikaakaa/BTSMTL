@@ -157,6 +157,16 @@ html, body, #root {
   height: 100%;
 }
 
+/* 工作台不是网页：除输入框外不选中文字、不拖出网页元素。 */
+* {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+}
+
 body {
   background: var(--bg-0);
   color: var(--text);

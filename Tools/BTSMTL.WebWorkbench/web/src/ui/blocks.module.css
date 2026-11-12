@@ -134,7 +134,6 @@
   margin: 0;
   font: var(--mono);
   overflow-wrap: anywhere;
-  user-select: text;
 }
 
 .tabs {
