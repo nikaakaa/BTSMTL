@@ -2,10 +2,29 @@ import { useEffect, useState } from 'react';
 import { executionScopeDomain, resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
 import { authoringApi } from '../api/authoring';
 import { adapterCatalogCache, resourceCatalogChoices, useAdapterCatalog } from './adapterCatalog';
-import { timelinePath, useCurrentDocument } from './authoring';
+import { authoringDocument, timelinePath, useAuthoring, useCurrentDocument } from './authoring';
 import type { JsonObject } from './skillJson';
 import type { ReferenceCatalog } from './referenceSelection';
-import { consoleActions } from './store';
+import { consoleActions, useWorkbench } from './store';
+
+export type EffectiveScope = { value: string | null; source: 'timeline' | 'document' | 'scene' | null };
+
+// 文档指定的角色；未指定时为 null（技能编译覆盖全部授予它的角色）。
+export const documentScope = (execution: { previewScope: string | null; runtimeScope: string | null }) =>
+  execution.runtimeScope ?? execution.previewScope;
+
+// 快速预览场景里实际使用的角色。
+export const useSceneScope = () => useWorkbench(state => state.quickPreview.description.kind === 'ready'
+  ? state.quickPreview.description.reply.data?.actorScope ?? null : null);
+
+// 一套角色：Timeline 单独指定的优先，其次文档指定的角色，都没指定时用快速预览场景里的角色。
+export function useEffectiveScope(timelineScope: string | null = null): EffectiveScope {
+  const document = useAuthoring(state => documentScope(authoringDocument(state).execution));
+  const scene = useSceneScope();
+  if (timelineScope !== null) return { value: timelineScope, source: 'timeline' };
+  if (document !== null) return { value: document, source: 'document' };
+  return scene !== null ? { value: scene, source: 'scene' } : { value: null, source: null };
+}
 
 export type ResourceScopeState = { kind: 'ready'; scope: AuthoringScope } | { kind: 'loading' } | { kind: 'unavailable'; reason: string };
 let scopeCache: { revision: string; requests: Map<string, Promise<ResourceScopeState>> } | null = null;
@@ -44,7 +63,7 @@ export function useResourceScope(value: string | null): ResourceScopeState {
   }, [key]);
   if (catalog.kind === 'failed') return { kind: 'unavailable', reason: catalog.failure.text };
   if (catalog.kind !== 'ready') return { kind: 'loading' };
-  if (value === null) return { kind: 'unavailable', reason: '当前编辑内容尚未选择执行 Scope。' };
+  if (value === null) return { kind: 'unavailable', reason: '还没有可用的角色：在文档检查器选择角色，或开启快速预览使用场景里的角色。' };
   if (items.length === 0) return { kind: 'unavailable', reason: `执行 Scope 不在正式目录中，原字符串已保留：${value}` };
   if (items.length > 1) return { kind: 'unavailable', reason: `执行 Scope 命中多个适配者目录条目：${value}` };
   return result?.key === key ? result.state : { kind: 'loading' };
@@ -52,7 +71,7 @@ export function useResourceScope(value: string | null): ResourceScopeState {
 
 export function useTimelineResourceCatalog(documentId: string, domain: string): ReferenceCatalog {
   const { document } = useCurrentDocument(timelinePath(documentId));
-  const scope = useResourceScope((document as JsonObject | null)?.m_AuthoringScope as string | null ?? null);
+  const scope = useResourceScope(useEffectiveScope((document as JsonObject | null)?.m_AuthoringScope as string | null ?? null).value);
   const catalog = useAdapterCatalog();
   if (scope.kind !== 'ready') return { kind: 'unavailable', reason: scope.kind === 'loading' ? '正在读取 Timeline 的执行 Scope。' : scope.reason };
   if (catalog.kind === 'failed') return { kind: 'unavailable', reason: catalog.failure.text };

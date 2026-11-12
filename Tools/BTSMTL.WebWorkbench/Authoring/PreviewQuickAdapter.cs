@@ -19,6 +19,8 @@ public interface IPreviewQuickEnvironment
     string CarrierPath { get; }
     string CarrierIdentity { get; }
     string ActorId { get; }
+    // 场景角色对应的作者执行范围（适配者目录 execution-scope 的值），快预览按它解析资源与映射。
+    string ActorScope { get; }
     int TickRate { get; }
     IReadOnlyList<GraphHostInputDescriptor> Inputs { get; }
     IReadOnlyList<TimelineStaticInputRequest> Requests { get; }

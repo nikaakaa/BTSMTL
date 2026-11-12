@@ -22,7 +22,7 @@ import { edgeGraphSlots, graphAuthoring, graphGroups, slotLabel, type CanvasGrou
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, resolveReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
-import { useResourceScope } from '../../state/resourceScope';
+import { useEffectiveScope, useResourceScope } from '../../state/resourceScope';
 import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
@@ -587,7 +587,7 @@ interface GraphCanvasProps {
 }
 
 function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
-  const scopeValue = useAuthoring(state => authoringDocument(state).execution.previewScope);
+  const scopeValue = useEffectiveScope().value;
   const resourceScope = useResourceScope(scopeValue);
   const resourceCatalog = useAdapterCatalog();
   const plan = useQuickPlan();

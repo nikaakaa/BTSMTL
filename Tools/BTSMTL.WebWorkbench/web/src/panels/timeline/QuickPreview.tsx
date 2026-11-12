@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { PreviewQuickEntry, PreviewQuickInputSource, PreviewQuickLocation } from '../../api/previewQuickRecords';
 import { previewApi } from '../../api/preview';
-import { authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
+import { authoringApi, authoringOwner, authoringTargetKey, type AuthoringGraph } from '../../api/authoring';
 import {
   quickAuthoringKey, quickBounds, quickInputSourceKey, quickJobCancellable, quickJobFailure, quickJobProgress, quickPlan, quickPlanStale, quickPreview, quickTargetKey,
 } from '../../state/quickPreview';
@@ -14,7 +14,10 @@ import { consoleActions, contentActions, selectionActions, useWorkbench } from '
 import { quickRunInputChoice } from '../../state/quickInput';
 import { session } from '../../state/session';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
-import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
+import { Button, NumberInput, Select, TextInput, Tip } from '../../ui/controls';
+import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
+import { executionScopeNames } from '../../state/projectTree';
+import { documentScope } from '../../state/resourceScope';
 import { finishAuthoringInputs, openPanel } from '../../shell/layout';
 import styles from './quickPreview.module.css';
 
@@ -178,6 +181,7 @@ export function QuickBar() {
           const root = roots.find(item => quickAuthoringKey(item.authoring) === value);
           if (root !== undefined) void quickPreview.readSource(root.authoring);
         }} />}
+      {description && <QuickRole scope={description.actorScope} actorId={description.actorId} />}
       {description?.root && state.target?.root != null && description.root.machines.length > 1 &&
         <Select variant="ghost" label="根状态机" value={quickAuthoringKey(state.target.root.authoring)} disabled={busy}
           options={description.root.machines.map(machine => ({ value: quickAuthoringKey(machine.authoring), label: machine.entryTimeline ?? `操作 ${machine.operation}` }))}
@@ -220,6 +224,19 @@ export function QuickBar() {
     {runError !== null && <p role="alert" className={styles.reason}>{runError}</p>}
     {open && <QuickDetails />}
   </section>;
+}
+
+// 快速预览实际用的角色就是预览场景里的角色；文档另外指定了不同角色时写出提示。
+function QuickRole({ scope, actorId }: { scope: string; actorId: string }) {
+  const catalog = useAdapterCatalog();
+  useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
+  const role = useAuthoring(state => documentScope(authoringDocument(state).execution));
+  const names = catalog.kind === 'ready' ? executionScopeNames(catalog.snapshot.domains) : new Map<string, string>();
+  const name = (value: string) => names.get(value) ?? value;
+  const differs = role !== null && role !== scope;
+  return <Tip content={`快速预览用预览场景里的角色 ${actorId}${differs ? `；文档指定的角色是 ${name(role)}，与场景不同，预览仍按场景角色` : ''}`}>
+    <span className={differs ? styles.reason : styles.status}>角色：{name(scope)}{differs ? '（与文档指定不同）' : ''}</span>
+  </Tip>;
 }
 
 function QuickDetails() {

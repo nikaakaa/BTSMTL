@@ -23,6 +23,7 @@ import { quickPreview } from '../../state/quickPreview';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, getIn, numberOf, parseSkillJson, setIn, sortedObject, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatalog';
 import { executionScopeNames } from '../../state/projectTree';
+import { documentScope, useEffectiveScope, useSceneScope } from '../../state/resourceScope';
 import { ProductScope } from '../project/ProductScope';
 import { consoleActions, contentActions, selectedScene, useWorkbench } from '../../state/store';
 import { Facts, Fold } from '../../ui/blocks';
@@ -552,17 +553,17 @@ function ProfileDocumentFields({ file, jsonPath }: { file: string; jsonPath: str
 
 export function DocumentRootFields({ editable }: { editable: boolean }) {
   const target = useAuthoring(state => state.target);
-  const execution = useAuthoring(state => authoringDocument(state).execution);
+  const role = useAuthoring(state => documentScope(authoringDocument(state).execution));
+  const scene = useSceneScope();
   const rootType = useAuthoring(state => authoringDocument(state).authoringType);
   const rootFile = useAuthoring(state => authoringDocument(state).rootFile);
   const { document } = useCurrentDocument(rootFile);
   if (target === null || document === null) return null;
   return <fieldset className={styles.authorFields} disabled={!editable}>
     <Fold title="预览设置" defaultOpen>
-      <ScopeSelect label="预览角色" tip="预览、保存和导出时用哪个角色的资源与映射" value={execution.previewScope}
-        onChange={value => authoringActions.selectExecutionScope('previewScope', value)} />
-      <ScopeSelect label="实际运行角色" tip="文档实际授予给哪个角色运行" value={execution.runtimeScope}
-        onChange={value => authoringActions.selectExecutionScope('runtimeScope', value)} />
+      <ScopeSelect label="角色" value={role} unsetText="不指定 · 预览用场景角色" fallback={scene}
+        tip={'预览、保存、导出和实际运行都用这个角色的资源与映射。\n不指定时：快速预览用预览场景里的角色；技能编译覆盖所有授予它的角色。'}
+        onChange={value => authoringActions.selectRole(value)} />
       <div className={styles.field}><FieldLabel label="产品范围" tip="编译时从哪个产品内容里找载体等候选" /><ProductScope /></div>
     </Fold>
     {rootType === null ? <div className={styles.issue}>当前文档未提供作者字段声明</div>
@@ -1139,19 +1140,24 @@ const shownSeconds = (seconds: number) => Math.round(seconds * 10000) / 10000;
 
 export function TimelineScopeFields({ documentId }: { documentId: string }) {
   const { document } = useCurrentDocument(timelinePath(documentId));
-  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined;
-  return <ScopeSelect label="所属角色" tip="这个 Timeline 使用哪个角色的资源与映射" value={scope ?? null}
+  const scope = (document as JsonObject | null)?.m_AuthoringScope as string | null | undefined ?? null;
+  const inherited = useEffectiveScope().value;
+  return <ScopeSelect label="所属角色" value={scope} unsetText="跟随文档" fallback={inherited}
+    tip={'默认跟随文档的角色（文档未指定时为预览场景里的角色）。\n只有这个 Timeline 要用别的角色的资源与映射时才单独指定。'}
     onChange={value => authoringActions.edit(timelinePath(documentId), timeline => { (timeline as JsonObject).m_AuthoringScope = value; })} />;
 }
 
-// 角色（执行范围）选择：候选来自资源目录，同名角色补上能区分它们的上级目录。
-function ScopeSelect({ label, tip, value, onChange }: { label: string; tip: string; value: string | null; onChange(value: string): void }) {
+// 角色（执行范围）选择：候选来自资源目录，同名角色补上能区分它们的上级目录；第一项为不指定，并写出此时实际用的角色。
+function ScopeSelect({ label, tip, value, unsetText, fallback, onChange }: {
+  label: string; tip: string; value: string | null; unsetText: string; fallback: string | null; onChange(value: string | null): void;
+}) {
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
   const names = catalog.kind === 'ready' ? executionScopeNames(catalog.snapshot.domains) : new Map<string, string>();
+  const unset = fallback === null ? unsetText : `${unsetText}（${names.get(fallback) ?? fallback}）`;
   return <div className={styles.field}><FieldLabel label={label} tip={tip} />
-    <Select label={label} value={value} placeholder="未选择" options={[...names].map(([scope, name]) => ({ value: scope, label: name }))}
-      onChange={onChange} />
+    <Select label={label} value={value ?? ''} options={[{ value: '', label: unset }, ...[...names].map(([scope, name]) => ({ value: scope, label: name }))]}
+      onChange={next => onChange(next === '' ? null : next)} />
     {catalog.kind === 'failed' && <span className={styles.issue}>{catalog.failure.text}</span>}
     {catalog.kind === 'ready' && value !== null && !names.has(value) && <span className={styles.issue}>找不到原来选的角色，可能已改名或删除；原值没有改动：{value}</span>}
   </div>;

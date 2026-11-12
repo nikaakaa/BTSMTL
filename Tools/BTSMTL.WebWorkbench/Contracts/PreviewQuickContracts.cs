@@ -80,7 +80,7 @@ public sealed record PreviewQuickRootDescription(PreviewQuickAuthoringTarget Aut
     PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource? CurrentInputScheme,
     PreviewQuickInputSource? DefaultInput, string? SceneApplyUnavailableReason, PreviewQuickCondition[] Conditions);
 public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
-    string ActorId, int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
+    string ActorId, string ActorScope, int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
 
 public sealed record PreviewQuickLocation(string DocumentPath, string GraphId, string NodeId, string EdgeId, string DisplayPath);

@@ -937,9 +937,10 @@ export const authoringActions = {
     };
   },
 
-  selectExecutionScope(kind: 'previewScope' | 'runtimeScope', scope: string | null) {
+  // 文档只有一个角色：预览与实际运行用同一个；null 表示不指定，技能编译覆盖全部授予它的角色、预览用场景角色。
+  selectRole(scope: string | null) {
     set({ resourceTarget: null });
-    setDocument({ execution: { ...get().execution, [kind]: scope }, version: get().version + 1 });
+    setDocument({ execution: { previewScope: scope, runtimeScope: scope }, version: get().version + 1 });
   },
 
   selectProduct(product: AuthoringEditingView['product']) {

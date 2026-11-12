@@ -2,15 +2,16 @@ import { createContext, useContext } from 'react';
 import type { AdapterCatalogItem, ReferenceChoice } from '../../api/authoring';
 import type { ResourceReferenceMetadata } from '../../api/resourceRegistration';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
-import { authoringDocument, useAuthoring } from '../../state/authoring';
+import { useAuthoring } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { consoleActions } from '../../state/store';
 import { Button } from '../../ui/controls';
 import { documentElementChoice, resourceReferenceChoice, type ReferenceCatalog, type ResourceObjectFieldSelection } from '../../state/referenceSelection';
-import { useResourceScope } from '../../state/resourceScope';
+import { useEffectiveScope, useResourceScope } from '../../state/resourceScope';
 import type { JsonObject, JsonValue } from '../../state/skillJson';
 import { ReferencePicker } from './ReferencePicker';
 
+// Timeline 内的字段由 Timeline 提供它单独指定的角色（未指定为 null，跟随文档与预览场景）。
 export const ResourceScopeContext = createContext<string | null | undefined>(undefined);
 
 interface ResourceFieldPickerProps {
@@ -48,8 +49,7 @@ function DocumentFieldPicker({ id, label, metadata, value, configuration, onChoo
 function AdapterFieldPicker({ id, label, metadata, value, configuration, onChoose }:
   ResourceFieldPickerProps & { metadata: Extract<ResourceReferenceMetadata, { source: 'AdapterResource' }> }) {
   const inherited = useContext(ResourceScopeContext);
-  const preview = useAuthoring(state => authoringDocument(state).execution.previewScope);
-  const scopeValue = inherited === undefined ? preview : inherited;
+  const scopeValue = useEffectiveScope(inherited ?? null).value;
   const scope = useResourceScope(scopeValue);
   const catalog = useAdapterCatalog();
   const context = scope.kind === 'ready' ? scope.scope.context : '';
