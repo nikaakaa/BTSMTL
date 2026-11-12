@@ -643,7 +643,11 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
           return timelineOf(value.m_AuthoringId as string, value);
         });
     });
-    return routeLanes(routeSource, [...sources, ...timelines], quickMode ? quickInputTimeline : null);
+    // 运行档案只记根程序身份，按已打开文档的程序身份换成文档名。
+    const programs = new Map(Object.values(documents).filter(document => document.programId)
+      .map(document => [document.programId!, document.name || document.programId!]));
+    return routeLanes(routeSource, [...sources, ...timelines], quickMode ? quickInputTimeline : null,
+      root => programs.get(root) ?? root);
   }, [quickMode, routeSource, routeView, quickInput, quickInputTimeline, timelines, documents]);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;

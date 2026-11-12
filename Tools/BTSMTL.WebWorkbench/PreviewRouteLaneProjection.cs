@@ -1,7 +1,7 @@
 namespace BTSMTL.WebWorkbench;
 
 // 把整份档案的逐帧播放记录按执行对象分道：对象按首次出现编号，同一对象同一身份的播放在连续帧上合成一段。
-// 某帧不再出现即在该帧结束，本地终点按经过的秒数外推；档案末仍在播的段止于最后一帧。
+// 同一次播放在逻辑与表现两个执行域各有记录时合成一段。某帧不再出现即在该帧结束，本地终点按经过的秒数外推；档案末仍在播的段止于最后一帧。
 public static class PreviewRouteLaneProjection
 {
     sealed class Lane(int id, string carrier, string root, string? parentKey, double start)
@@ -41,7 +41,7 @@ public static class PreviewRouteLaneProjection
                     lanes.Add(owner, lane = new Lane(lanes.Count, Carrier(call), Root(call).ProgramId, ParentObject(call, owner), frame.Seconds));
                 lane.End = frame.Seconds;
                 string key = string.Join('\n', owner, playback.DocumentId, call.PlaybackId, call.ExecutionGeneration,
-                    call.InvocationGeneration, playback.Domain ?? "");
+                    call.InvocationGeneration);
                 if (!seen.Add(key)) continue;
                 if (open.TryGetValue(key, out Open? current))
                 {

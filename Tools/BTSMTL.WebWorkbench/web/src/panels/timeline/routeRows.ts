@@ -28,14 +28,17 @@ export interface RouteLane {
   instance: RouteInstance; carrier: string; label: string; parent: string | null; segments: TimelineSegment[]; spawns: RouteSpawn[];
 }
 
-export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inputTimeline: string | null): RouteLane[] {
+// rootName：把实例的根身份换成可读名（运行档案只记根程序身份）。
+export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inputTimeline: string | null,
+  rootName: (root: string) => string = root => root): RouteLane[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
   const carriers = new Map(route.instances.map(instance => [instance.id, routeCarrierLabel(instance, route.instances)]));
+  const label = (instance: RouteInstance) => `${carriers.get(instance.id)} · ${rootName(instance.root)}`;
   const lanes = new Map(route.instances.map(instance => [instance.id, {
-    instance, carrier: carriers.get(instance.id)!, label: `${carriers.get(instance.id)} · ${instance.root}`,
+    instance, carrier: carriers.get(instance.id)!, label: label(instance),
     parent: instance.parent === null ? null : carriers.get(instance.parent) ?? null, segments: [] as TimelineSegment[],
     spawns: route.instances.filter(child => child.parent === instance.id).map(child => ({
-      child: child.id, seconds: child.start, label: `${carriers.get(child.id)} · ${child.root}`, command: child.command,
+      child: child.id, seconds: child.start, label: label(child), command: child.command,
     })),
   }]));
   route.segments.forEach((segment, index) => {
