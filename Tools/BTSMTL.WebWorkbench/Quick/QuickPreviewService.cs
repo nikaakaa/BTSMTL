@@ -296,14 +296,16 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
             Mark("编译");
             var route = compiled.Route(input);
             job.TimeRangeRaw = (route.RootStart.RawValue, route.End.RawValue);
-            PreviewQuickPlan plan = QuickPreviewPlanProjection.Describe(capture, actor, compiled, input, route);
+            var instances = new QuickPreviewInstances(actor);
+            await instances.Prepare(capture, route, input.RangeEnd, deadline.Token);
+            PreviewQuickPlan plan = QuickPreviewPlanProjection.Describe(capture, actor, compiled, input, route, instances);
             Mark("算路线");
             // 跟随当前内容的请求不再单独读取来源：同一次捕获的完整描述随作业状态交回网页。
             PreviewQuickDescription? description = request.SourceRevision == null
                 ? Describe(actor, capture, compiled, inputs) : null;
             Mark("来源描述");
             var graph = capture.Identity.Authoring.Entry as PreviewQuickGraphEntry;
-            job.Retiming = new QuickRetimeSource(capture, actor, compiled, input, graph?.GraphId);
+            job.Retiming = new QuickRetimeSource(capture, actor, compiled, input, graph?.GraphId, instances);
             job.Update(status => status with { Source = capture.Identity, Plan = plan, Description = description });
             string? playerReason = players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
             string? selectedBuild = playerReason == null ? actor.SelectPlayerBuild(players!.Jobs.PublishedBuilds()) : null;

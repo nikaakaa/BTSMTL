@@ -53,7 +53,13 @@ public interface IPreviewQuickCapture
     TimelineData ReadTimeline(string timelineId);
     JObject RoutePayload(TimelineStaticRoute route);
     TimelineContractCatalog TimelineContracts { get; }
+    // 作者图里执行时会生成另一对象的节点；被生成对象运行自己的根图，快预览把它推演成独立实例。
+    IReadOnlyList<PreviewQuickSpawn> Spawns { get; }
+    Task<IPreviewQuickCapture> CaptureSpawn(PreviewQuickSpawn spawn, CancellationToken cancellation);
 }
+
+// GraphId／NodeId：生成节点的作者位置；Carrier：被生成对象的载体名；DocumentPath：它运行的根图所属作者文档。
+public sealed record PreviewQuickSpawn(string GraphId, string NodeId, string Carrier, string DocumentPath);
 
 public sealed record PreviewQuickInputPlan(string DocumentPath, string SavedRevision, string Id,
     string Revision, JObject Value, Func<string, JObject> Timeline, Func<string, JObject> Graph, bool AllowsConditions,

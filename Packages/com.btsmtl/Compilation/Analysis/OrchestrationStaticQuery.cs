@@ -84,6 +84,8 @@ namespace BTSMTL.Compilation.Analysis
         // 本 Timeline 的 Clip 或 Marker 图中调用其它 Timeline 的位置；同一 Timeline 被多处播放时每次出现各有一组。
         public IReadOnlyList<OrchestrationStaticTimelineCall> Calls => m_Calls;
         internal readonly List<OrchestrationStaticTimelineCall> m_Calls = new();
+        public IReadOnlyList<OrchestrationStaticExtensionCall> ExtensionCalls => m_ExtensionCalls;
+        internal readonly List<OrchestrationStaticExtensionCall> m_ExtensionCalls = new();
     }
 
     // Timeline 调用点：编译器只允许逻辑轨 Clip 图（含钩子图）与逻辑 Marker 图放置"播放 Timeline"，调用成环时拒绝发布。
@@ -141,6 +143,42 @@ namespace BTSMTL.Compilation.Analysis
         // 被调的起播本地时刻。
         public OrchestrationTime CalleeStartTime { get; }
         public string Reason { get; }
+    }
+
+    // Timeline 回调图可达的动作扩展调用（如生成对象、发事件）：本核心不解释扩展语义，只给出调用点与回调时刻，
+    // 由宿主按扩展身份与作者位置决定它对预览意味着什么。
+    public sealed class OrchestrationStaticExtensionCall
+    {
+        internal OrchestrationStaticExtensionCall(OrchestrationStaticTimeline caller, int callerOperationIndex,
+            string callerElementId, OrchestrationStaticClip clip, OrchestrationTimelineHook hook, int operationIndex,
+            OrchestrationExtensionIdentity extension, OrchestrationTime offset, bool startsOnCallback,
+            OrchestrationStaticSourceLocation location)
+        {
+            Caller = caller;
+            CallerOperationIndex = callerOperationIndex;
+            CallerElementId = callerElementId;
+            Clip = clip;
+            Hook = hook;
+            OperationIndex = operationIndex;
+            Extension = extension;
+            Offset = offset;
+            StartsOnCallback = startsOnCallback;
+            Location = location;
+        }
+
+        public OrchestrationStaticTimeline Caller { get; }
+        public int CallerOperationIndex { get; }
+        public string CallerElementId { get; }
+        // Marker 调用为 null。
+        public OrchestrationStaticClip Clip { get; }
+        public OrchestrationTimelineHook Hook { get; }
+        public int OperationIndex { get; }
+        public OrchestrationExtensionIdentity Extension { get; }
+        // 回调发生的调用方本地时刻；Destroy 钩子取父播放终点。
+        public OrchestrationTime Offset { get; }
+        // 位于回调入口立即执行的步骤时为真，否则时刻需在会话中确定。
+        public bool StartsOnCallback { get; }
+        public OrchestrationStaticSourceLocation Location { get; }
     }
 
     public sealed class OrchestrationStaticTransition
@@ -591,6 +629,15 @@ namespace BTSMTL.Compilation.Analysis
         {
             foreach (int member in members)
             {
+                if (Operations[member].Code == OrchestrationOperationCode.Extension &&
+                    Operations[member].Extension.Value.Kind == OrchestrationExtensionKind.Action)
+                {
+                    caller.m_ExtensionCalls.Add(new OrchestrationStaticExtensionCall(caller, callerOperation, elementId, clip,
+                        hook, member, Operations[member].Extension.Value.Identity,
+                        markerTime ?? (hook == OrchestrationTimelineHook.Disable ? clip.End : clip.Start),
+                        StartsOnEnter(entry, member, new HashSet<int>()), m_Locations[member]));
+                    continue;
+                }
                 if (Operations[member].Code != OrchestrationOperationCode.Timeline)
                     continue;
                 string identity = Operations[member].Text0;

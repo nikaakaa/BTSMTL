@@ -14,7 +14,7 @@ sealed record QuickRetime(TimelineStaticRoute Route, PreviewQuickPlan Plan, Json
 // 留住作者模型与各片段捕获时的时间范围；每次候选先把片段时间还原到捕获值，再按网页给的起止与 ClipIn 改，
 // 由 TimelineData.Init 重算相邻混合与时长并校验，写进已编译内容的时间候选，再重建静态查询推出路线；不读盘、不重编、不写包。
 sealed class QuickRetimeSource(IPreviewQuickCapture capture, IPreviewQuickEnvironment actor, QuickPreviewCompilation compiled,
-    QuickPreviewInputSchedule input, string? graphId)
+    QuickPreviewInputSchedule input, string? graphId, QuickPreviewInstances instances)
 {
     readonly Dictionary<string, TimelineContentUnit> m_Candidates = new(StringComparer.Ordinal);
     readonly Dictionary<string, AuthoredTimeline> m_Authored = new(StringComparer.Ordinal);
@@ -88,6 +88,6 @@ sealed class QuickRetimeSource(IPreviewQuickCapture capture, IPreviewQuickEnviro
         };
         long written = System.Diagnostics.Stopwatch.GetTimestamp();
         double Ms(long from, long to) => (to - from) * 1000d / System.Diagnostics.Stopwatch.Frequency;
-        return new QuickRetime(route, QuickPreviewPlanProjection.Describe(capture, actor, compiled, input, route), payload, Ms(started, read), Ms(read, routed), Ms(routed, written));
+        return new QuickRetime(route, QuickPreviewPlanProjection.Describe(capture, actor, compiled, input, route, instances), payload, Ms(started, read), Ms(read, routed), Ms(routed, written));
     }
 }

@@ -137,6 +137,45 @@ namespace BTSMTL.Compilation.Analysis
             }
         }
 
+        // 路线上每次播放实际经过的动作扩展调用及其全局时刻；只给出回调入口立即执行、时刻可静态确定的调用。
+        public IEnumerable<(OrchestrationStaticExtensionCall Call, OrchestrationTime Time, int Playback)> ExtensionInvocations()
+        {
+            foreach (IGrouping<int, TimelineStaticRouteSpan> group in SpansInOrder().GroupBy(span => span.Playback))
+            {
+                TimelineStaticRouteSpan[] caller = group.ToArray();
+                TimelineStaticRouteSpan first = caller[0];
+                OrchestrationStaticTimeline timeline = first.Call != null ? first.Call.Callee : first.State?.Timeline;
+                if (timeline == null)
+                    continue;
+                int operation = first.Call != null ? first.Call.OperationIndex : first.State.TimelineOperationIndex;
+                foreach (OrchestrationStaticExtensionCall call in timeline.ExtensionCalls)
+                {
+                    if (call.CallerOperationIndex != operation || !call.StartsOnCallback)
+                        continue;
+                    for (int index = 0; index < caller.Length; index++)
+                    {
+                        TimelineStaticRouteSpan span = caller[index];
+                        bool last = index == caller.Length - 1;
+                        OrchestrationTime offset = call.Offset;
+                        if (call.Hook == OrchestrationTimelineHook.Destroy)
+                        {
+                            if (!last)
+                                continue;
+                            offset = span.LocalEnd;
+                        }
+                        else if (call.Hook == OrchestrationTimelineHook.Disable && last && call.Clip != null &&
+                            call.Clip.Start <= span.LocalEnd && call.Clip.End > span.LocalEnd)
+                            offset = span.LocalEnd;
+                        if (offset < span.LocalStart || offset > span.LocalEnd ||
+                            offset == span.LocalEnd && !span.PlaybackCompleted && call.Hook is not
+                                (OrchestrationTimelineHook.Disable or OrchestrationTimelineHook.Destroy))
+                            continue;
+                        yield return (call, span.Start + offset - span.LocalStart, span.Playback);
+                    }
+                }
+            }
+        }
+
         IEnumerable<TimelineStaticRouteSpan> SpansInOrder() =>
             m_Main.Concat(m_Parallel).OrderBy(value => value.Start).ThenBy(value => value.Branch);
 
