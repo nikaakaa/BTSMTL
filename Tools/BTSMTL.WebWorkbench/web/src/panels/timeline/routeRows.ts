@@ -21,7 +21,12 @@ export function routeCarrierLabel(instance: RouteInstance, instances: RouteInsta
 export const routeEnd = (route: RouteSource) =>
   Math.max(0, ...route.instances.map(instance => instance.end), ...route.segments.map(segment => segment.end));
 
-export interface RouteLane { instance: RouteInstance; carrier: string; label: string; parent: string | null; segments: TimelineSegment[] }
+// 生成指令：父实例在 seconds 时刻经 command 节点生成了 child 实例。
+export interface RouteSpawn { child: number; seconds: number; label: string; command: RouteInstance['command'] }
+
+export interface RouteLane {
+  instance: RouteInstance; carrier: string; label: string; parent: string | null; segments: TimelineSegment[]; spawns: RouteSpawn[];
+}
 
 export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inputTimeline: string | null): RouteLane[] {
   const byId = new Map(timelines.map(timeline => [timeline.documentId, timeline]));
@@ -29,6 +34,9 @@ export function routeLanes(route: RouteSource, timelines: AuthorTimeline[], inpu
   const lanes = new Map(route.instances.map(instance => [instance.id, {
     instance, carrier: carriers.get(instance.id)!, label: `${carriers.get(instance.id)} · ${instance.root}`,
     parent: instance.parent === null ? null : carriers.get(instance.parent) ?? null, segments: [] as TimelineSegment[],
+    spawns: route.instances.filter(child => child.parent === instance.id).map(child => ({
+      child: child.id, seconds: child.start, label: `${carriers.get(child.id)} · ${child.root}`, command: child.command,
+    })),
   }]));
   route.segments.forEach((segment, index) => {
     const timeline = segment.timelineId === null ? undefined : byId.get(segment.timelineId);

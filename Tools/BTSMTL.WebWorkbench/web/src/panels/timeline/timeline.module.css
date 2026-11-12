@@ -1321,3 +1321,21 @@ svg.clipCurves:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 生成指令：父实例泳道上的菱形，尖端对准生成时刻 */
+.spawnMarker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  padding: 0;
+  border: 1px solid var(--bg-0);
+  background: var(--warn);
+  transform: rotate(45deg);
+  cursor: pointer;
+}
+
+.spawnMarker:hover {
+  background: var(--text-strong);
+}

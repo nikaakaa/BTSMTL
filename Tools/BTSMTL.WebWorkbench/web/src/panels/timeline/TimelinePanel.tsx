@@ -48,7 +48,7 @@ import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
 import { RunBar } from './RunBar';
-import { routeEnd, routeLanes, type RouteSource } from './routeRows';
+import { routeEnd, routeLanes, type RouteSource, type RouteSpawn } from './routeRows';
 import { AddFirstTrack, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
 import {
   ClipGridContext, CurveClockContext, CurveViewContext, PreviewClockContext, SnapContext, authorCursorOf, clipLabelMinWidth, clipLabelPadding, curveHeight,
@@ -1281,9 +1281,29 @@ const InstanceLine = memo(function InstanceLine({ row, nest, open, toggle }: {
         meta={parent === null ? life : `由 ${parent} 生成 · ${life}`} tip={tip} />
     }>
       <Positioned start={instance.start} end={instance.end} className={styles.instanceLife} tip={tip} />
+      {row.lane.spawns.map(spawn => <SpawnMarker key={spawn.child} spawn={spawn} />)}
     </Line>
   );
 });
+
+// 生成指令：父实例泳道上该时刻一枚菱形，悬停写生成了谁、经哪个节点；双击在节点图里定位生成节点。
+function SpawnMarker({ spawn }: { spawn: RouteSpawn }) {
+  const { range, valueToPixels } = useTimelineContext();
+  const command = spawn.command;
+  const tip = [`${spawn.seconds.toFixed(2)} s 生成 ${spawn.label}`, command && `生成指令：${command.displayPath || command.nodeId}`,
+    command && '双击在节点图中定位'].filter(Boolean).join('\n');
+  return (
+    <Tip content={tip}>
+      <button className={styles.spawnMarker} style={{ left: valueToPixels(spawn.seconds - range.start) }}
+        aria-label={`生成 ${spawn.label}`}
+        onDoubleClick={() => {
+          if (command === null || command.graphId === '') return;
+          void projectActions.openGraph({ id: command.graphId, owner: command.documentPath, ownerName: command.documentPath },
+            command.nodeId || undefined).catch(error => consoleActions.error('Timeline', error));
+        }} />
+    </Tip>
+  );
+}
 
 const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, enter }: {
   elements: AuthoringElements | null;
