@@ -693,12 +693,15 @@ export interface DocumentCreationType {
   rootType: string;
   configuration: JsonObject;
   roles: StorageRoles;
+  // 宿主声明新建时可选同类参照文档，由宿主决定沿用哪些设置。
+  reference: boolean;
 }
 
 export interface DocumentCreationRequest {
   type: string;
   parameters: {
     configuration: JsonObject;
+    reference: string | null;
     entryGraph: { name: string } | null;
   };
 }
@@ -714,7 +717,7 @@ function readCreationOptions(sourceText: string): DocumentCreationCatalog {
   return { ...object({ stage: choice('creation-catalog'), availability: readAuthoringAvailability })(body),
     types: array((value, path) => {
       const item = authoringObject(value as JsonValue, path!);
-      return { ...object({ type: text, displayName: text, rootType: text, roles: readStorageRoles })(item, path),
+      return { ...object({ type: text, displayName: text, rootType: text, roles: readStorageRoles, reference: boolean })(item, path),
         configuration: authoringObject(item.configuration, `${path}.configuration`) };
     })(body.types, 'CreationOptions.types') };
 }

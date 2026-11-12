@@ -717,6 +717,14 @@ useWorkbench.subscribe((state, previous) => {
 
 useAuthoring.subscribe((authoring, previous) => {
   const state = current();
+  // 作者切换到快预览目录里的另一个文档：跟随该文档的默认入口；目录外的新建草稿由创建流程指定入口。
+  if (authoring.target !== previous.target && authoring.target !== null && state.target?.root != null &&
+      state.description.kind === 'ready' && state.description.reply.data?.documents.some(document => document.documentPath === authoringTargetKey(authoring.target!)) &&
+      state.target.root.authoring.documentPath !== authoringTargetKey(authoring.target)) {
+    set({ target: { ...state.target, root: null }, accepted: null, route: null, seconds: 0 });
+    void quickPreview.readSource();
+    return;
+  }
   if (state.description.kind === 'loading') return;
   if (state.target !== null && state.target.root === null && state.description.kind === 'ready' && authoring.documents !== previous.documents) {
     const chosen = defaultRoot(state.description.reply.data);

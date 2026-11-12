@@ -20,7 +20,7 @@ export function DocumentCreation({ kind, skill, elements, onDone }: {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
-  if (kind === 'document') return <DocumentCreationForm onCancel={onDone} onCreated={() => { onDone(); openPanel('inspector'); }} />;
+  if (kind === 'document') return <DocumentCreationForm onCancel={onDone} onCreated={(_, timeline) => { onDone(); openPanel(timeline === null ? 'inspector' : 'timeline'); }} />;
   if (kind === 'input') return <InputPlanCreationForm key={skill} onCancel={onDone} onCreated={() => { onDone(); openPanel('timeline'); }} />;
   const title = name.trim();
   const ready = title.length > 0 && !busy && skill !== null && elements !== null;

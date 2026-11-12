@@ -17,6 +17,8 @@ function touchesInputs(): boolean {
   const state = useAuthoring.getState();
   if (state.target === null) return false;
   const document = authoringDocument(state);
+  // 未保存过的新文档整份由作者保存，输入不单独落盘。
+  if (document.revision === null) return false;
   const changed = [...Object.keys(document.edited), ...document.removed];
   if (changed.length === 0) return false;
   const read = (path: string): JsonValue | null => document.edited[path]
