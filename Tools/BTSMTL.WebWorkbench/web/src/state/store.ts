@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  ArchiveLogicRecord, ArchivePoseLayout, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, Geometry, HostDescription, ImageSourceAvailability,
+  ArchiveLogicRecord, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, HostDescription, ImageSourceAvailability,
   InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
   Sources, ViewerLive,
 } from '../api/types';
@@ -86,14 +86,12 @@ export interface RunData {
   inputRoot: string | null;
   timelines: AuthorTimeline[];
   metadataAvailability: Availability[];
-  geometry: Geometry | null;
   // 游标所在帧的完整记录；读取中保留上一帧。
   frame: Frame | null;
   frameKey: string | null;
   // 运行失败或未启动时的原因与控制台记录。
   failure: { reason: string; entryId: number } | null;
-  // 播放器档案：骨架布局与游标所在宿主帧的逻辑、骨骼记录；读取中保留上一帧。
-  archiveLayout: ArchivePoseLayout | null;
+  // 播放器档案：游标所在宿主帧的逻辑、骨骼记录；读取中保留上一帧。
   archiveFrame: ArchiveFrame | null;
   archiveMetadata: PlayerArchive | null;
   archiveImage: ArchiveImage | null;
@@ -140,8 +138,8 @@ export interface RunSlice extends RunData {
 
 export const emptyRunData: RunData = {
   routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
-  timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
-  archiveLayout: null, archiveFrame: null, archiveMetadata: null, archiveImage: null,
+  timelines: [], metadataAvailability: [], frame: null, frameKey: null, failure: null,
+  archiveFrame: null, archiveMetadata: null, archiveImage: null,
   archiveCurves: null, archiveLanes: null, archiveCurveVersion: 0, curveAvailability: [], selectedCurves: [],
 };
 

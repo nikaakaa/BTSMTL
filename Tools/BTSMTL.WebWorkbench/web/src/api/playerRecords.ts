@@ -304,26 +304,11 @@ export const readPlayerObservations = object({
   runId: jobId, contentRevision: text, channels: array(text), firstFrame: text, lastFrame: text,
   offset: number, total: number, nextOffset: nullable(number), items: array(frame),
 });
-export const readPlayerGeometry = object({
-  runId: jobId, contentRevision: text, rawJson: text,
-  world: array(object({ identity: text, kind: text, pose: logicPose, radius: number, halfLength: number,
-    halfExtents: vector3, isTrigger: boolean })),
-  worldTriangles: array(object({ a: vector3, b: vector3, c: vector3 })),
-  actors: array(object({ actorId: text, radius: number, halfLength: number, centerOffset: vector3 })),
-  shapes: array(object({ identity: text, kind: text, radius: number, halfLength: number, halfExtents: vector3,
-    vertices: array(vector3), parts: array(object({ shapeIndex: number, localPose: logicPose })) })),
-});
 export const readPlayerSourceMap = page(record);
 const pose = object({ position: vector3, rotation: quaternion, scale: vector3 });
 const actorPose = object({
   actorId: text, rosterIndex: number, sourceSequence: text, completionIdentity: text,
   worldRoot: pose, localPoseRoot: pose, localBones: array(pose),
-});
-export const readPlayerPoseLayout = object({
-  coordinates: text, units: text, actors: array(object({
-    actorId: text, rosterIndex: number, rigId: text, rigRevision: text,
-    bones: array(text), parents: array(number), diagnosticsUnavailableReason: text,
-  })),
 });
 export const readPlayerLogic = observationPage(object({ source, actors: array(actor), fields: array(field) }));
 export const readPlayerPresentation = observationPage(object({
@@ -428,7 +413,6 @@ export type ExecutionCall = ReturnType<typeof call>;
 export type LoopScope = ReturnType<typeof loopScope>;
 export type RouteFrame = ReturnType<typeof routeFrame>;
 export type PlayerObservationPage = ReturnType<typeof readPlayerObservations>;
-export type PlayerPoseLayout = ReturnType<typeof readPlayerPoseLayout>;
 export type PlayerLogicPage = ReturnType<typeof readPlayerLogic>;
 export type PlayerPresentationPage = ReturnType<typeof readPlayerPresentation>;
 export type PlayerCameraPage = ReturnType<typeof readPlayerCamera>;

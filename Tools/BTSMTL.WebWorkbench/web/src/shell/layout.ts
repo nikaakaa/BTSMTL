@@ -84,7 +84,7 @@ function defaultPosition(type: PanelType): AddPanelPositionOptions | undefined {
     if (player) return { referenceGroup: player.group, direction: type === 'graph' ? 'right' : 'left' };
   }
   switch (type) {
-    case 'inspector': case 'frames': return { direction: 'right' };
+    case 'inspector': return { direction: 'right' };
     case 'timeline': case 'query': case 'console': return { direction: 'below' };
     default: return undefined;
   }
@@ -97,7 +97,6 @@ function buildDefault() {
   dockview.clear();
   const hasPlayer = getState().host?.player.available === true;
   const player = addInstance(hasPlayer ? 'player' : 'graph', 1, undefined);
-  if (hasPlayer) addInstance('viewport', 1, { referencePanel: player, direction: 'within' }, true);
   const timeline = addInstance('timeline', 1, { referencePanel: player, direction: 'below' });
   // 照 Unity：Project 单独一栏，选场景、文档时画面仍可见。
   const project = addInstance('resources', 1, { referencePanel: player, direction: 'left' });
@@ -105,7 +104,6 @@ function buildDefault() {
     addInstance(type, 1, { referencePanel: timeline, direction: 'within' }, true);
   const graph = hasPlayer ? addInstance('graph', 1, { referencePanel: player, direction: 'right' }) : player;
   const inspector = addInstance('inspector', 1, { direction: 'right' });
-  addInstance('frames', 1, { referencePanel: inspector, direction: 'within' }, true);
   player.api.setActive();
   timeline.api.setActive();
   graph.api.setActive();
@@ -136,7 +134,7 @@ function separateProject() {
 }
 
 // 已退役的面板：对比面板，以及并入 Project 与检查器的内容面板。
-const retiredPanels = new Set(['compare', 'content']);
+const retiredPanels = new Set(['compare', 'content', 'viewport', 'frames']);
 
 function removeRetiredPanels(layout: SerializedDockview) {
   const removed = new Set(Object.values(layout.panels)

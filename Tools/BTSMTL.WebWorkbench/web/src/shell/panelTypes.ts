@@ -10,17 +10,15 @@ export interface PanelDefinition {
   companions: readonly string[];
 }
 
-const sceneGroup = ['player', 'viewport'];
-const sideGroup = ['inspector', 'frames'];
+const sceneGroup = ['player'];
+const sideGroup = ['inspector'];
 const bottomGroup = ['timeline', 'query', 'console'];
 
 const builtinPanels = {
   player: { title: '画面', multi: false, companions: sceneGroup },
-  viewport: { title: '逻辑视图', multi: true, companions: sceneGroup },
   resources: { title: 'Project', multi: false, companions: ['resources'] },
   graph: { title: '节点图', multi: true, companions: ['graph'] },
   inspector: { title: '检查器', multi: true, companions: sideGroup },
-  frames: { title: '帧记录', multi: true, companions: sideGroup },
   timeline: { title: 'Timeline', multi: false, companions: bottomGroup },
   query: { title: '记录查询', multi: false, companions: bottomGroup },
   console: { title: '控制台', multi: false, companions: bottomGroup },

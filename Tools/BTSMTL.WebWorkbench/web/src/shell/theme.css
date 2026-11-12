@@ -112,16 +112,7 @@
   --port-unknown: #7a7a7a;
 
   --viewport-bg: #111111;
-  --logic-bg: #10171d;
-  --logic-grid: #39505b;
-  --logic-grid-minor: #24323a;
-  --logic-world: #426b7c;
-  --logic-trigger: #8164ad;
   --logic-receiver: #87cfc0;
-  --logic-sweep-start: #d49651;
-  --logic-sweep-end: #f4b963;
-  --logic-target: #719ce0;
-  --logic-contact: #fc7980;
   --resource-bg: #111c25;
   --resource-grid: #426473;
   --resource-grid-minor: #223541;

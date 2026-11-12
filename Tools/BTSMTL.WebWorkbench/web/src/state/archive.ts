@@ -331,16 +331,15 @@ export const archive = {
     const controller = new AbortController();
     current = { kind: 'opening', jobId, generation, controller };
     try {
-      const [summary, layout, metadata, geometry, curves] = await Promise.all([
-        playerApi.summary(jobId, controller.signal), playerApi.poseLayout(jobId, controller.signal),
-        playerApi.archive(jobId, controller.signal), playerApi.geometry(jobId, controller.signal),
+      const [summary, metadata, curves] = await Promise.all([
+        playerApi.summary(jobId, controller.signal), playerApi.archive(jobId, controller.signal),
         channel('data-curves', readAll(offset => playerApi.curves(jobId, offset, 128, controller.signal))),
       ]);
       if (!isCurrent(generation)) { controller.abort(); return; }
       const timebase: ArchiveTimebase = new Map();
       current = { kind: 'ready', jobId, generation, summary, timebase, controller };
       transport.setTimebase(jobId, timebase);
-      runActions.setData(generation, { archiveLayout: layout, archiveMetadata: metadata, geometry,
+      runActions.setData(generation, { archiveMetadata: metadata,
         metadataAvailability: summary.availability, archiveCurves: curves.items, curveAvailability: curves.availability });
       runActions.setSummary(generation, summary, true);
       // 分道路线要读整份档案，不阻塞首帧显示。

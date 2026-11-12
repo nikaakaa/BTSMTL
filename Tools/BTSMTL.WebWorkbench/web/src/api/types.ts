@@ -143,38 +143,6 @@ export interface ObservationQuery {
   lastFrame: string;
 }
 
-// ── 几何 ──
-
-export interface Shape {
-  identity: string;
-  kind: string;
-  radius: number;
-  halfLength: number;
-  halfExtents: Vec3;
-  vertices: Vec3[];
-  parts: { shapeIndex: number; localPose: Pose }[];
-}
-
-export interface WorldCollider {
-  identity: string;
-  kind: string;
-  pose: Pose;
-  radius: number;
-  halfLength: number;
-  halfExtents: Vec3;
-  isTrigger: boolean;
-}
-
-export interface Geometry {
-  runId: string;
-  contentRevision: string;
-  world: WorldCollider[];
-  worldTriangles: { a: Vec3; b: Vec3; c: Vec3 }[];
-  actors: { actorId: string; radius: number; halfLength: number; centerOffset: Vec3 }[];
-  shapes: Shape[];
-  rawJson: string;
-}
-
 // ── 路线与节点图 ──
 
 export type { ExecutionCall, LoopScope } from './playerRecords';
@@ -482,7 +450,5 @@ export interface AnimationLibrary {
   clips: AnimationClip[];
 }
 
-export type { PlayerPoseLayout as ArchivePoseLayout } from './playerRecords';
-export type ArchivePose = import('./playerRecords').PlayerPresentationPage['page']['items'][number]['actors'][number]['worldRoot'];
 export type ArchiveLogicRecord = import('./playerRecords').PlayerLogicPage['page']['items'][number];
 export type ArchivePresentationRecord = import('./playerRecords').PlayerPresentationPage['page']['items'][number];

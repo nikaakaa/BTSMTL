@@ -2,11 +2,11 @@ import { getBlob, getJson, postJson, query } from './http';
 import {
   readLivePlayer, readLivePlayers, readPlayerCreationOptions, readPlayerFrameImages,
   readPlayerVideoMetadata, readViewerMessage,
-  readPlayerFrames, readPlayerObservations, readPlayerGeometry, readPlayerSourceMap,
+  readPlayerFrames, readPlayerObservations, readPlayerSourceMap,
   readPlayerCommandResult,
   readPlayerCancellation,
   readPlayerArchive, readPlayerCamera, readPlayerInput,
-  readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic, readPlayerPoseLayout,
+  readPlayerJob, readPlayerJobReceipt, readPlayerJobs, readPlayerLogic,
   readPlayerPresentation, readPlayerSummary, readPlayerUnavailable,
   readPlayerCurves, readPlayerCurveSamples,
   type PlayerArchiveRange, type PlayerCreationRequest, type PlayerJobId, type PlayerLoadRequest, type StartPlayerJobRequest,
@@ -41,7 +41,6 @@ export const playerApi = {
     decoded(`${job(id)}/frames${query({ offset, limit })}`, readPlayerFrames, signal),
   observations: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/observations${query({ ...range })}`, readPlayerObservations, signal),
-  geometry: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/geometry`, readPlayerGeometry, signal),
   routeLanes: (id: PlayerJobId, signal?: AbortSignal) => decoded(`${job(id)}/route/lanes`, readRouteLanes, signal),
   sourceMap: (id: PlayerJobId, offset: number, limit: number, signal?: AbortSignal) =>
     decoded(`${job(id)}/source-map${query({ offset, limit })}`, readPlayerSourceMap, signal),
@@ -49,8 +48,6 @@ export const playerApi = {
     getBlob(`${job(id)}/files/${path.split('/').map(encodeURIComponent).join('/')}`, signal),
   logic: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>
     decoded(`${job(id)}/logic${query({ ...range })}`, readPlayerLogic, signal),
-  poseLayout: (id: PlayerJobId, signal?: AbortSignal) =>
-    decoded(`${job(id)}/pose-layout`, readPlayerPoseLayout, signal),
   presentation: (id: PlayerJobId, range: PlayerArchiveRange & { rosterIndex?: number }, signal?: AbortSignal) =>
     decoded(`${job(id)}/presentation${query({ ...range })}`, readPlayerPresentation, signal),
   camera: (id: PlayerJobId, range: PlayerArchiveRange, signal?: AbortSignal) =>

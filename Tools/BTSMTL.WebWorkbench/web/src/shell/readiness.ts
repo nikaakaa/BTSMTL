@@ -9,7 +9,7 @@ import { panelTypeOf, type PanelType } from './panelTypes';
 
 const rendered = new Map<string, { key: string; detail?: string }>();
 // 按当前帧绘制、会报告已绘制的面板类型。
-const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'viewport', 'player']);
+const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'player']);
 let addressPanel: PanelType | null = null;
 let scheduled = false;
 
@@ -83,8 +83,6 @@ function evaluate() {
     if (frameDrawn.has(addressPanel) && !required.includes(target)) required.push(target);
   }
   if (required.some(id => rendered.get(id)?.key !== key)) return;
-  const viewport = visible.map(id => panelTypeOf(id) === 'viewport' ? rendered.get(id) : undefined)
-    .find(entry => entry?.key === key && entry.detail);
   data.previewRun = state.summary.runId;
   data.previewFrame = frame.hostFrame;
   data.previewFrameIndex = String(state.frameIndex);
@@ -100,7 +98,6 @@ function evaluate() {
   if (state.summary.inputRevision !== null) data.previewInputRevision = state.summary.inputRevision;
   data.previewInputMode = state.archiveMetadata.inputMode;
   data.previewArchiveJob = state.archiveMetadata.jobId;
-  if (viewport?.detail) data.previewRendered = viewport.detail;
   data.previewImageReady = 'true';
 }
 
