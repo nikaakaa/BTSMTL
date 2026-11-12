@@ -45,12 +45,12 @@ export const inputAuthoring = {
   },
 
   // 文档的预览输入在加第一个按键时才建：方案模板与按键片段都取到后同一步写入，不出现空的输入 Timeline。
+  // 留在预览路线视图，新按键显示在「预览输入」行里，不跳到单独的输入 Timeline。
   async addFirst(request: InputFragmentRequest) {
     const target = get().target;
     const [elements, fragment] = await Promise.all([skillElements({ kind: 'document' }), authoringApi.inputFragment(request)]);
     if (get().target !== target) return;
     const { timeline } = planFrom(elements, '默认');
-    selectionActions.showTimeline(timeline, null, null);
     insertFragment(timeline, fragment, null);
   },
 

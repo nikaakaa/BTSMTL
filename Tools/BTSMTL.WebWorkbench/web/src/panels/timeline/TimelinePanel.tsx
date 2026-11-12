@@ -1976,9 +1976,8 @@ function FirstInputLine({ nest }: { nest: Nest | undefined }) {
   );
 }
 
-// 预览输入的按住段名字：所写的键，与 Timeline Editor 的“Fire 按住”一致。
-const inputLabel = (writes: InputWrite[], hold: boolean) =>
-  `${[...new Set(writes.map(write => write.keyId))].join(' / ') || '输入'}${hold ? ' 按住' : ''}`;
+// 预览输入段只标所写的键；单按与按住看段长，片段图名写明操作。
+const inputLabel = (writes: InputWrite[]) => [...new Set(writes.map(write => write.keyId))].join(' / ') || '输入';
 
 // 预览输入轨与作者轨同一外观：轨道头、片段框、标记；路线结束后的部分压暗。
 const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputTrackRow; nest: Nest | undefined }) {
@@ -1996,15 +1995,15 @@ const InputTrackLine = memo(function InputTrackLine({ row, nest }: { row: InputT
       {clips.map(clip => {
         const selectId = inputClipSelectId(row.track.id, clip.id);
         return (
-          <ClipBox key={clip.id} boxKey={selectId} selectId={selectId} kind="in" label={inputLabel(clip.writes, true)}
+          <ClipBox key={clip.id} boxKey={selectId} selectId={selectId} kind="in" label={inputLabel(clip.writes)}
             start={clip.startSeconds} end={clip.endSeconds} exit={routeEnd} graphId={clip.graphId} />
         );
       })}
       {markers.map(marker => {
         const selectId = inputClipSelectId(row.track.id, marker.id);
         return (
-          <Marker key={marker.id} boxKey={selectId} seconds={marker.seconds} kind="in" label={inputLabel(marker.writes, false)}
-            text={inputLabel(marker.writes, false)} graphId={marker.graphId} selectId={selectId} />
+          <Marker key={marker.id} boxKey={selectId} seconds={marker.seconds} kind="in" label={inputLabel(marker.writes)}
+            text={inputLabel(marker.writes)} graphId={marker.graphId} selectId={selectId} />
         );
       })}
     </Line>

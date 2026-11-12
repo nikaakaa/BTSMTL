@@ -124,17 +124,24 @@ const requestKey = (request: Pick<PreviewQuickRequest, 'target' | 'sourceRevisio
 
 // 已读来源后网页编辑内容变化：不再先读来源，直接按当前内容推导一次，来源描述随作业状态交回。
 let contentFollow = false;
+let followAttempt: unknown = null;
 
 function followContent() {
   followTimer = null;
   if (sourceUnavailableReason() !== null) return;
   const description = current().description.kind;
   if (description === 'idle' || description === 'stale') { contentFollow = false; void quickPreview.readSource(); return; }
-  if (contentFollow) {
-    const job = current().job.kind;
+  // 来源描述还停在旧编辑内容（跟随作业被撤下、未交回修订）：仍按当前内容跟随，不能拿旧修订推导；同一内容只跟随一次。
+  const state = current();
+  const root = state.target?.root ?? null;
+  const behind = state.description.kind === 'ready' && root !== null && state.description.target.root !== root;
+  if (contentFollow || behind) {
+    const job = state.job.kind;
     // 原作业正在提交或清理：作业状态变化会再排一次跟随。
     if (description !== 'ready' || job === 'starting' || job === 'starting-cancelled' || job === 'cancelling') return;
+    if (!contentFollow && followAttempt === root) return;
     contentFollow = false;
+    followAttempt = root;
     void quickPreview.start(true).catch(error => consoleActions.error('快预览', error));
     return;
   }
