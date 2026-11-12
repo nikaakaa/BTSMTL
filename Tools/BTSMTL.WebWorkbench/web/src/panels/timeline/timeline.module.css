@@ -1286,15 +1286,15 @@ svg.clipCurves:focus {
   display: contents;
 }
 
-.inside > .line {
+.inside .line {
   background: linear-gradient(90deg, transparent 15px, var(--tl-group) 15px 30px, transparent 30px);
 }
 
-.inside > .line[data-nest='child'], .inside > .line[data-nest='last'] {
+.inside .line[data-nest='child'], .inside .line[data-nest='last'] {
   background: linear-gradient(90deg, transparent 15px, var(--tl-group) 15px calc(var(--sidebar) - 2px),
     transparent calc(var(--sidebar) - 2px) var(--sidebar), var(--tl-group-track) var(--sidebar));
 }
 
-.inside > .line .head {
+.inside .line .head {
   padding-left: 30px;
 }
