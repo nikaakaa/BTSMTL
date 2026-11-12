@@ -35,6 +35,13 @@ export function edgeStep(document: JsonValue | null, elements: AuthoringElements
   return null;
 }
 
+// 状态上的专属图（状态内容）：按宿主状态模板的形状读状态对象。
+export function stateGraphSlots(document: JsonValue | null, elements: AuthoringElements, graphId: string, stateId: string): GraphSlot[] {
+  const node = findNode(document, stateId);
+  return node && nodeType(node) === elements.state.type
+    ? memberSlots(graphId, { kind: 'node', nodeId: stateId }, [], elements.state.shape, node) : [];
+}
+
 // 专属图槽位：节点或连线上按合同路径存放的图身份。keys 相对节点对象或连线对象；
 // targets 来自字段的图引用声明，新建时按其角色与初始内容取宿主图模板。
 export type SlotOwner = { kind: 'node'; nodeId: string } | { kind: 'connection'; connectionId: string };

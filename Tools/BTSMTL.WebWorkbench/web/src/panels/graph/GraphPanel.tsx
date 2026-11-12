@@ -18,7 +18,7 @@ import {
   useDocumentGraphHierarchy, useDocumentObservationBinding,
 } from '../../state/authoring';
 import { graphVariableOwner } from '../../state/authoringVariables';
-import { edgeGraphSlots, graphAuthoring, graphGroups, slotLabel, type CanvasGroup } from '../../state/graphAuthoring';
+import { edgeGraphSlots, graphAuthoring, stateGraphSlots, graphGroups, slotLabel, type CanvasGroup } from '../../state/graphAuthoring';
 import { cloneJson, setIn, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { acceptsReferenceDrag, readReferenceDrag, resolveReferenceDrag, type ReferenceDrag } from '../../state/referenceSelection';
 import { resourceCatalogChoices, useAdapterCatalog } from '../../state/adapterCatalog';
@@ -544,15 +544,11 @@ function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose()
 
 function FitButton() {
   const flow = useReactFlow();
-  return <Button variant="ghost" tip="适配视图" onClick={() => void flow.fitView({ padding: 0.12 })}>全部居中</Button>;
+  return <Button variant="ghost" tip="适配视图" onClick={() => void flow.fitView(readableFocus)}>全部居中</Button>;
 }
 
 const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView), canvasGroup: memo(GroupView) };
 const edgeTypes = { route: memo(RouteEdgeView), transition: memo(TransitionEdgeView) };
-
-function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: LaidNode) {
-  return !nodeReferences(hierarchy, graph, laid.node.id).length;
-}
 
 // 作者模式：当前文档的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
 function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
@@ -634,6 +630,15 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
       }
     return { visited, traveled };
   }, [routeFrames, graph.id, binding, observedCallKey, machine]);
+  const { document: authored } = useCurrentDocument(graphPath(graph.id));
+  // 双击节点进入的图：正式作者关系与声明归属，加上状态按宿主状态模板存放的专属图（状态内容）。
+  const children = useCallback((nodeId: string): NodeNavigationTarget[] => {
+    const ids = machine && elements ? stateGraphSlots(authored, elements, graph.id, nodeId).map(slot => slot.value) : [];
+    const owned = [...hierarchy.graphs.values()].filter(item => item.owner === graph.owner && ids.includes(item.id))
+      .map(item => ({ ...item, kind: 'graph' as const }));
+    const related = nodeReferences(hierarchy, graph, nodeId);
+    return [...related, ...owned.filter(item => !related.some(target => target.kind === 'graph' && target.id === item.id))];
+  }, [machine, elements, authored, hierarchy, graph]);
   const build = useCallback((previous: CanvasNode[]) => {
     const selected = new Set(canvasSelection?.view === view ? canvasSelection.nodes : []);
     // 重建保留已测量的尺寸：否则节点要等重新测量才显示，连线在此之前不画。
@@ -647,9 +652,9 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     return [...groupNodes, ...layout.nodes.map((laid): FlowNode => ({
       id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
       measured: measured.get(laid.node.id),
-      data: { laid, selectId: nodeSelectId(graph, laid.node), children: nodeReferences(hierarchy, graph, laid.node.id) },
+      data: { laid, selectId: nodeSelectId(graph, laid.node), children: children(laid.node.id) },
     }))];
-  }, [layout, hierarchy, graph, machine, groups, canvasSelection, view]);
+  }, [layout, children, graph, machine, groups, canvasSelection, view]);
   const [nodes, setNodes] = useState<CanvasNode[]>(() => build([]));
   // 作者修改后图结构或分组变化：重建节点，保留选中。
   const built = useRef(build);
@@ -658,13 +663,12 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     built.current = build;
     setNodes(build);
   }, [build]);
-  const { document: authored } = useCurrentDocument(graphPath(graph.id));
   const edges = useMemo<FlowEdge[]>(() => {
     const pairs = new Map<string, number>();
     const counts = new Map<string, number>();
     const pairKey = (edge: GraphEdge) => [edge.source!.nodeId, edge.target!.nodeId].sort().join('|');
     for (const edge of layout.edges) counts.set(pairKey(edge), (counts.get(pairKey(edge)) ?? 0) + 1);
-    const system = new Set(machine ? layout.nodes.filter(laid => isSystemNode(graph, hierarchy, laid)).map(laid => laid.node.id) : []);
+    const system = new Set(machine ? layout.nodes.filter(laid => children(laid.node.id).length === 0).map(laid => laid.node.id) : []);
     return layout.edges.map(edge => {
       const ids = elements ? edgeGraphSlots(authored, elements, graph.id, edge.id).map(slot => slot.value) : [];
       const conditions = [...hierarchy.graphs.values()].filter(item => item.owner === graph.owner && ids.includes(item.id));
@@ -690,7 +694,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
         data: { edge, conditions, label, offset: 0, minor: false, trigger: output?.isTrigger ?? true },
       };
     });
-  }, [layout, graph, machine, hierarchy, authored, elements]);
+  }, [layout, graph, machine, hierarchy, authored, elements, children]);
 
   useEffect(() => {
     const records = graphRecords(route, graph, binding).filter(item => callKey(item.call) === observedCallKey);
@@ -751,10 +755,10 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     if (isGroupNode(node)) return;
     openNode(node.data);
   }, [openNode]);
-  // 双击连线进入其专属图；都为空时按第一个槽位声明的目标新建（初始内容由宿主图模板给出），
+  // 双击连线进入其专属图（以源节点为来源，可返回）；都为空时按第一个槽位声明的目标新建（初始内容由宿主图模板给出），
   // 网页新建的图保存后才能进入。
   const openEdge = useCallback((edge: FlowEdge) => {
-    if (edge.data!.conditions.length) { enter(edge.data!.conditions[0]); return; }
+    if (edge.data!.conditions.length) { enter(edge.data!.conditions[0], edge.source); return; }
     const slots = editable && elements ? edgeGraphSlots(currentDocument(graphPath(graph.id)), elements, graph.id, edge.id) : [];
     const empty = slots.find(slot => slot.value === null && slot.targets.length !== 0);
     if (!empty || slots.some(slot => slot.value !== null)) return;
@@ -958,7 +962,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
     { label: '新建分组', disabled: !editable, tip: editable ? '框住选中的节点；没有选中时在此处新建' : blocked, onSelect: addGroup },
     { label: '删除所选', disabled: !editable, tip: editable ? undefined : blocked, onSelect: deleteSelected },
     { kind: 'separator' },
-    { label: '全部居中', onSelect: () => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) },
+    { label: '全部居中', onSelect: () => void fitView({ ...readableFocus, duration: 200 }) },
     { label: '全选', onSelect: () => selectCanvas(nodes.filter(node => !isGroupNode(node)).map(node => node.id), []) },
   ];
   const grabGroup = useCallback((group: CanvasGroup) => selectCanvas(nodes.filter(node =>
@@ -1014,7 +1018,7 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
+          onEdgeClick={onEdgeClick} onEdgeDoubleClick={onEdgeDoubleClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onReconnect={onReconnect} edgesReconnectable={editable && !machine}
           isValidConnection={isValidConnection} connectionLineComponent={ConnectionLineView}
@@ -1044,8 +1048,8 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, params, setParams, 
 // 小地图画在 SVG 属性里，属性不解析 CSS 变量，取主题的实际值。
 const themeColor = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-// 首次显示照本项目 NodeCanvas 的 FocusReadableGraph：缩放 1、以全部节点的中心居中，字号可读；看全图用“全部居中”。
-const readableFocus = { minZoom: 1, maxZoom: 1 };
+// 首次显示装下全部节点、最大缩放 1：停靠面板比 Unity 窗口小得多，固定缩放 1 会把节点全放到可视区外。
+const readableFocus = { padding: 0.12, maxZoom: 1 };
 
 function useNodeState(store: RouteStore, id: string) {
   const { observationScope } = useView();
@@ -1287,7 +1291,7 @@ function RouteEdgeView({ id, source, sourceX, sourceY, targetX, targetY, sourceP
           <Tip name={data!.label} content="双击进入条件图">
             <div className={styles.edgeLabel} data-condition data-faded={faded || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-              onDoubleClick={() => enter(condition)}>
+              onDoubleClick={() => enter(condition, source)}>
               {data!.label}
             </div>
           </Tip>
@@ -1374,7 +1378,7 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Fl
           <Tip name={data!.label} content="双击进入条件图">
             <div className={styles.edgeLabel} data-status={status} data-hi={highlighted || undefined} data-name data-edge={id}
               style={{ transform: `translate(-50%, -50%) translate(${label.x}px, ${label.y}px)` }}
-              onDoubleClick={() => { if (data!.conditions[0]) enter(data!.conditions[0]); }}>
+              onDoubleClick={() => { if (data!.conditions[0]) enter(data!.conditions[0], source); }}>
               {data!.label}
             </div>
           </Tip>
