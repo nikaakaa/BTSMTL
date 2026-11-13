@@ -7,7 +7,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationFrameInput(ulong tick, ulong instanceGeneration, ReadOnlySpan<TValue> hostInputs,
             ReadOnlySpan<int> requestIdentityIds, bool captureTrace = false,
             bool captureValues = false,
-            Span<OrchestrationValueOverride<TValue>> overrides = default,
+            OrchestrationValueOverrides<TValue> overrides = default,
             OrchestrationTraceObjectIdentity executionObject = default, Guid characterRuntimeId = default)
         {
             Tick = tick;
@@ -27,10 +27,75 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<int> RequestIdentityIds { get; }
         public bool CaptureTrace { get; }
         public bool CaptureValues { get; }
-        public Span<OrchestrationValueOverride<TValue>> Overrides { get; }
+        public OrchestrationValueOverrides<TValue> Overrides { get; }
         public OrchestrationTraceObjectIdentity ExecutionObject { get; }
         public Guid CharacterRuntimeId { get; }
         public bool HasDiagnostics => CaptureTrace || CaptureValues || !Overrides.IsEmpty;
+    }
+
+    public interface IOrchestrationValueOverrideStorage<TValue> where TValue : unmanaged
+    {
+        ref OrchestrationValueOverride<TValue> ValueOverride(int storage, int index);
+    }
+
+    public readonly ref struct OrchestrationValueOverrides<TValue> where TValue : unmanaged
+    {
+        readonly Span<OrchestrationValueOverride<TValue>> m_Values;
+        readonly IOrchestrationValueOverrideStorage<TValue> m_Storage;
+        readonly int m_StorageIndex;
+
+        public OrchestrationValueOverrides(Span<OrchestrationValueOverride<TValue>> values)
+        {
+            m_Values = values;
+            m_Storage = null;
+            m_StorageIndex = 0;
+            Length = values.Length;
+        }
+
+        public OrchestrationValueOverrides(IOrchestrationValueOverrideStorage<TValue> storage,
+            int storageIndex, int length)
+        {
+            m_Values = default;
+            m_Storage = storage;
+            m_StorageIndex = storageIndex;
+            Length = length;
+        }
+
+        public int Length { get; }
+        public bool IsEmpty => Length == 0;
+
+        public ref OrchestrationValueOverride<TValue> this[int index]
+        {
+            get
+            {
+                if (m_Storage != null)
+                    return ref m_Storage.ValueOverride(m_StorageIndex, index);
+                return ref m_Values[index];
+            }
+        }
+
+        public static implicit operator OrchestrationValueOverrides<TValue>(
+            Span<OrchestrationValueOverride<TValue>> values) => new OrchestrationValueOverrides<TValue>(values);
+
+        public static implicit operator OrchestrationValueOverrides<TValue>(
+            OrchestrationValueOverride<TValue>[] values) => new OrchestrationValueOverrides<TValue>(values);
+
+        public Enumerator GetEnumerator() => new Enumerator(this);
+
+        public ref struct Enumerator
+        {
+            readonly OrchestrationValueOverrides<TValue> m_Values;
+            int m_Index;
+
+            internal Enumerator(OrchestrationValueOverrides<TValue> values)
+            {
+                m_Values = values;
+                m_Index = -1;
+            }
+
+            public bool MoveNext() => ++m_Index < m_Values.Length;
+            public ref OrchestrationValueOverride<TValue> Current => ref m_Values[m_Index];
+        }
     }
 
     public interface IOrchestrationValueObservationSink<TValue> where TValue : unmanaged
@@ -85,30 +150,36 @@ namespace BTSMTL.Orchestration
         public OrchestrationValueOverrideMode Mode;
         public OrchestrationValueOverrideStatus Status;
 
-        public static int Find(ReadOnlySpan<OrchestrationValueOverride<TValue>> overrides,
+        public static int Find(OrchestrationValueOverrides<TValue> overrides,
             in OrchestrationValueOverrideAddress address)
         {
             for (int index = 0; index < overrides.Length; index++)
-                if (overrides[index].Mode != OrchestrationValueOverrideMode.None &&
-                    overrides[index].Status != OrchestrationValueOverrideStatus.OwnerRetired &&
-                    overrides[index].Address.Equals(in address))
+            {
+                ref readonly OrchestrationValueOverride<TValue> value = ref overrides[index];
+                if (value.Mode != OrchestrationValueOverrideMode.None &&
+                    value.Status != OrchestrationValueOverrideStatus.OwnerRetired &&
+                    value.Address.Equals(in address))
                     return index;
+            }
             return -1;
         }
 
-        public static void Set(Span<OrchestrationValueOverride<TValue>> overrides,
+        public static void Set(OrchestrationValueOverrides<TValue> overrides,
             in OrchestrationValueOverrideAddress address, in TValue value,
             OrchestrationValueOverrideMode mode)
         {
             int index = Find(overrides, in address);
             if (index < 0)
                 for (int candidate = 0; candidate < overrides.Length; candidate++)
-                    if (overrides[candidate].Mode == OrchestrationValueOverrideMode.None ||
-                        overrides[candidate].Status == OrchestrationValueOverrideStatus.OwnerRetired)
+                {
+                    ref readonly OrchestrationValueOverride<TValue> current = ref overrides[candidate];
+                    if (current.Mode == OrchestrationValueOverrideMode.None ||
+                        current.Status == OrchestrationValueOverrideStatus.OwnerRetired)
                     {
                         index = candidate;
                         break;
                     }
+                }
             if (index < 0)
                 throw new InvalidOperationException("The prepared scoped value-override capacity is exhausted.");
             overrides[index] = new OrchestrationValueOverride<TValue>
@@ -119,7 +190,7 @@ namespace BTSMTL.Orchestration
             };
         }
 
-        public static void Release(Span<OrchestrationValueOverride<TValue>> overrides,
+        public static void Release(OrchestrationValueOverrides<TValue> overrides,
             in OrchestrationValueOverrideAddress address)
         {
             int index = Find(overrides, in address);
@@ -127,13 +198,15 @@ namespace BTSMTL.Orchestration
                 overrides[index] = default;
         }
 
-        public static void RetireExecutionFrame(Span<OrchestrationValueOverride<TValue>> overrides,
+        public static void RetireExecutionFrame(OrchestrationValueOverrides<TValue> overrides,
             in OrchestrationExecutionFrameState frame)
         {
             for (int index = 0; index < overrides.Length; index++)
-                if (overrides[index].Mode != OrchestrationValueOverrideMode.None &&
-                    overrides[index].Address.Owner.MatchesFrame(in frame))
-                    overrides[index].Retire();
+            {
+                ref OrchestrationValueOverride<TValue> value = ref overrides[index];
+                if (value.Mode != OrchestrationValueOverrideMode.None && value.Address.Owner.MatchesFrame(in frame))
+                    value.Retire();
+            }
         }
 
         public void Retire()
@@ -143,7 +216,7 @@ namespace BTSMTL.Orchestration
         }
 
         // 候选成功采用后调用；未被正式求值消费的 Set 继续等待。
-        public static void CompleteConsumption(Span<OrchestrationValueOverride<TValue>> overrides)
+        public static void CompleteConsumption(OrchestrationValueOverrides<TValue> overrides)
         {
             for (int index = 0; index < overrides.Length; index++)
             {

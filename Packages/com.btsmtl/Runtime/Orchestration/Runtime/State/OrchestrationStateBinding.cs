@@ -6,7 +6,7 @@ namespace BTSMTL.Orchestration
     public static unsafe class OrchestrationStateBinding
     {
         public static void RetireFrameOverrides<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
-            ReadOnlySpan<int> skillContentIds, Span<OrchestrationValueOverride<TValue>> currentOverrides,
+            ReadOnlySpan<int> skillContentIds, OrchestrationValueOverrides<TValue> currentOverrides,
             ulong tick) where TValue : unmanaged
         {
             // 宿主只对当前输入状态更代；冻结来源快照保留其原 tick。

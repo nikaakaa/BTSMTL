@@ -196,7 +196,7 @@ namespace BTSMTL.Orchestration
             where THost : struct, IOrchestrationHost<TValue>
         {
             OrchestrationProgramView<TValue> program = cursor.Program;
-            Span<OrchestrationValueOverride<TValue>> overrides = cursor.Input.Overrides;
+            var overrides = cursor.Input.Overrides;
             for (int index = 0; index < overrides.Length; index++)
             {
                 ref OrchestrationValueOverride<TValue> value = ref overrides[index];
@@ -225,7 +225,7 @@ namespace BTSMTL.Orchestration
         {
             if (kind == OrchestrationValueOverrideKind.Blackboard)
                 return cursor.ConsumeBlackboardOverride(slot, in blackboardOwner);
-            Span<OrchestrationValueOverride<TValue>> overrides = cursor.Input.Overrides;
+            var overrides = cursor.Input.Overrides;
             for (int index = 0; index < overrides.Length; index++)
             {
                 ref OrchestrationValueOverride<TValue> supplied = ref overrides[index];
