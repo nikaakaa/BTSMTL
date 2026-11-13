@@ -64,7 +64,7 @@ export function useQuickEventEntries(documentId: string, seconds: () => number):
 
 export type QuickAssumption = { key: string; seconds: number; entries: MenuEntry[]; tip: string };
 
-// 路线上的假设处：同一时刻同一来源状态的去向合成一处，菜单给每个假设读取的成立／不成立和各去向的转移。
+// 路线上的假设处：同一时刻同一来源状态的去向合成一处，菜单按去向列出转移和它依赖的假设读取（成立／不成立）。
 export function useQuickAssumptions(documentId: string, origin: number): QuickAssumption[] {
   const plan = useQuickPlan();
   const { timeline, editable } = useQuickInput();
@@ -80,22 +80,24 @@ export function useQuickAssumptions(documentId: string, origin: number): QuickAs
     }
     return [...points.entries()].map(([key, choices]) => {
       const seconds = choices[0].start;
-      const reads = new Map<string, string>();
-      for (const choice of choices)
-        for (const read of choice.missing) reads.set(read.key, condition(read.key, read.label));
+      const at = Math.max(0, seconds - origin);
+      const reads = new Set<string>();
       const entries: MenuEntry[] = [];
-      for (const [read, label] of reads) {
-        const at = Math.max(0, seconds - origin);
-        entries.push({ label: `${label}：成立`, disabled: !editable, tip: editable ? undefined : blockedTip,
-          onSelect: () => write(timeline, at, [{ key: read, label, satisfied: true }]) });
-        entries.push({ label: `${label}：不成立`, disabled: !editable, tip: editable ? undefined : blockedTip,
-          onSelect: () => write(timeline, at, [{ key: read, label, satisfied: false }]) });
-      }
-      entries.push({ kind: 'separator' });
-      for (const choice of choices)
+      // 按去向分组：每条转移下列它依赖的假设读取，同名条件图因此按去向区分。
+      choices.forEach((choice, index) => {
+        if (index !== 0) entries.push({ kind: 'separator' });
         entries.push({ kind: 'radio', checked: choice.branch === 'Taken', label: `转移到 ${state(choice.toSource, choice.toState)}`,
           onSelect: () => void locateQuickSource(choice.transitionSource).catch(error => consoleActions.error('快预览', error)) });
-      return { key, seconds, entries, tip: `假设：${[...reads.values()].join('、')}` };
+        for (const read of choice.missing) {
+          const label = condition(read.key, read.label);
+          reads.add(label);
+          entries.push({ label: `${label}：成立`, disabled: !editable, tip: editable ? undefined : blockedTip,
+            onSelect: () => write(timeline, at, [{ key: read.key, label, satisfied: true }]) });
+          entries.push({ label: `${label}：不成立`, disabled: !editable, tip: editable ? undefined : blockedTip,
+            onSelect: () => write(timeline, at, [{ key: read.key, label, satisfied: false }]) });
+        }
+      });
+      return { key, seconds, entries, tip: `假设：${[...reads].join('、')}` };
     });
   }, [plan, timeline, documentId, editable, condition, state, origin]);
 }
