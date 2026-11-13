@@ -158,6 +158,11 @@ input, textarea, [contenteditable="true"] {
   user-select: text;
 }
 
+/* 停靠页签等自己声明可拖的元素保留原生拖拽；上面的 * 规则会盖掉浏览器默认值。 */
+[draggable="true"] {
+  -webkit-user-drag: element;
+}
+
 body {
   background: var(--bg-0);
   color: var(--text);
