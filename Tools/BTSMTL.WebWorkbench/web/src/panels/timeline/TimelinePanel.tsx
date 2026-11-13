@@ -1530,7 +1530,10 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const step = useContext(SnapContext) ?? 1 / 60;
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
-  const eventSeconds = useCallback(() => Math.max(0, snapTo(at.current - row.segment.origin, step)), [row.segment.origin, step]);
+  // 右键在标记上时外部事件写进这个标记，取它的时刻，不按吸附重算。
+  const markerAt = useRef<number | null>(null);
+  const eventSeconds = useCallback(() => markerAt.current !== null ? markerAt.current - row.segment.origin
+    : Math.max(0, snapTo(at.current - row.segment.origin, step)), [row.segment.origin, step]);
   const events = useQuickEventEntries(documentId, eventSeconds);
   const assumptions = useQuickAssumptions(documentId, row.segment.origin);
   const menu = author && events.length !== 0 ? [...trackMenu, ...events] : trackMenu;
@@ -1553,6 +1556,7 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
     select();
     const seconds = previewSeconds(getState(), clock, authorCursorOf(useAuthorCursor.getState(), clock));
     at.current = segment.origin + (seconds ?? 0);
+    markerAt.current = null;
   };
   return (
     <ContextMenu entries={menu}>
@@ -1580,6 +1584,7 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
       at.current = getValueFromScreenX(event.clientX);
       // 右键片段或标记先选中它，菜单的复制、删除作用于它；右键轨道头选中轨道。
       const item = (event.target as HTMLElement).closest<HTMLElement>('[data-select]');
+      markerAt.current = row.markers.find(marker => marker.selectId === item?.dataset.select)?.seconds ?? null;
       if (item?.dataset.select) selectTimelineObject(clock, 'clip', item.dataset.select, row.segment.owner);
       else if ((event.target as HTMLElement).closest(`.${styles.trackHead}`)) select();
     }}>
