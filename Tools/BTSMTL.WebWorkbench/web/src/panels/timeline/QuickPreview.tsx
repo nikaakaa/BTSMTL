@@ -48,12 +48,15 @@ function LocationButton({ source, label }: { source: PreviewQuickLocation; label
   return <Button variant="ghost" tip={source.displayPath} onClick={() => locate(source)}>{label}</Button>;
 }
 
+// 时钟单位按中文显示。
+const unitName = (unit: string) => unit === 'seconds' ? '秒' : unit;
+
 export function QuickCursor() {
   const plan = useQuickPlan();
   const seconds = useWorkbench(state => state.quickPreview.seconds);
   if (plan === null) return null;
   const bounds = quickBounds(plan);
-  const unit = plan.clock.unit === 'seconds' ? '秒' : plan.clock.unit;
+  const unit = unitName(plan.clock.unit);
   return <label className={styles.cursor}>时间
     <NumberInput value={seconds} min={bounds.first} max={bounds.last} label={`预览时间（${unit}）`}
       onChange={value => { if (value !== null) quickPreview.seek(value); }} />
@@ -156,7 +159,7 @@ export function QuickBar() {
   const failure = quickJobFailure(job);
   const status = state.description.kind === 'loading' ? '正在读取来源'
     : progress ?? (plan === null ? null : `${!stale ? '' : state.description.kind === 'failed' ? '内容已变化，未能重新生成 · '
-      : '内容已变化，正在重新生成 · '}共 ${plan.duration.toFixed(2)} ${plan.clock.unit}`);
+      : '内容已变化，正在重新生成 · '}共 ${plan.duration.toFixed(2)} ${unitName(plan.clock.unit)}`);
   // 推导根只列当前作者文档的入口；当前文档不在目录里时列全部。
   const roots = useMemo(() => {
     const documents = description?.documents ?? state.documents;
@@ -176,13 +179,19 @@ export function QuickBar() {
   return <section className={open ? styles.preview : styles.bar} aria-label="快预览">
     <PanelBar wrap>
       <strong>快速预览</strong>
-      {roots.length > 0 && <Select variant="ghost" label="入口" placeholder="选择入口图"
-        value={state.target?.root == null ? null : quickAuthoringKey(state.target.root.authoring)} disabled={busy}
-        options={roots.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
-        onChange={value => {
-          const root = roots.find(item => quickAuthoringKey(item.authoring) === value);
-          if (root !== undefined) void quickPreview.readSource(root.authoring);
-        }} />}
+      {/* 连看从入口图开始按输入连续运行；单看只播一条 Timeline。两种看法分开选，当前不是的那一个显示提示文字。 */}
+      {[{ kind: 'graph', label: '连看', placeholder: '连看入口图' }, { kind: 'timeline', label: '单看 Timeline', placeholder: '单看某条 Timeline' }].map(view => {
+        const options = roots.filter(root => root.authoring.entry.kind === view.kind);
+        const current = state.target?.root?.authoring;
+        if (options.length === 0) return null;
+        return <Select key={view.kind} variant="ghost" label={view.label} placeholder={view.placeholder} disabled={busy}
+          value={current != null && current.entry.kind === view.kind ? quickAuthoringKey(current) : null}
+          options={options.map(root => ({ value: quickAuthoringKey(root.authoring), label: root.name }))}
+          onChange={value => {
+            const root = options.find(item => quickAuthoringKey(item.authoring) === value);
+            if (root !== undefined) void quickPreview.readSource(root.authoring);
+          }} />;
+      })}
       {description?.root && state.target?.root != null && description.root.machines.length > 1 &&
         <Select variant="ghost" label="根状态机" value={quickAuthoringKey(state.target.root.authoring)} disabled={busy}
           options={description.root.machines.map(machine => ({ value: quickAuthoringKey(machine.authoring), label: machine.entryTimeline ?? `操作 ${machine.operation}` }))}
@@ -253,7 +262,7 @@ function QuickDetails() {
     {plan && plan.segments.some(segment => segment.conditionDependencies.length > 0) && <Fold title="依赖条件的路线区段">
       <p>真实运行只使用相同的按键日程。以下区段的条件写入和默认假设以真实记录为准，状态进入或退出时间不同时，即为路线分歧。</p>
       {plan.segments.filter(segment => segment.conditionDependencies.length > 0).map((segment, index) => <p key={index}>
-        {name(segment.stateSource, segment.state)} · {segment.start.toFixed(3)}–{segment.end.toFixed(3)} {plan.clock.unit} ·
+        {name(segment.stateSource, segment.state)} · {segment.start.toFixed(3)}–{segment.end.toFixed(3)} {unitName(plan.clock.unit)} ·
         {segment.conditionDependencies.map(item => `${item.label}（${item.written ? '依赖条件写入' : '未写入，按默认值'}）`).join('、')}
       </p>)}
     </Fold>}
@@ -264,7 +273,7 @@ function QuickDetails() {
         <span> → </span>
         {suggestion.toSource ? <LocationButton source={suggestion.toSource} label={name(suggestion.toSource, suggestion.toState)} /> : suggestion.toState}
         <LocationButton source={suggestion.transitionSource} label="打开转移" />
-        <span>{suggestion.start}–{suggestion.end} {plan.clock.unit} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
+        <span>{suggestion.start}–{suggestion.end} {unitName(plan.clock.unit)} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
       </div>)}
     </Fold>}
     {status && status.notes.length > 0 && <Fold title="计算说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}
@@ -295,7 +304,7 @@ export function QuickGraphRoute({ graph }: { graph: AuthoringGraph }) {
   if (plan === null) return null;
   const segments = plan.segments.filter(segment => segment.stateSource?.documentPath === graph.owner && segment.stateSource.graphId === graph.id && segment.start <= seconds && seconds < segment.end);
   return <PanelBar wrap><strong>快速预览{stale ? '（内容已变化）' : ''}</strong>{segments.length ? segments.map((segment, index) =>
-    <Button key={index} variant="ghost" tip={`播放区间 ${segment.start}–${segment.end} ${plan.clock.unit}；${segment.conditionDependencies.map(item => `${item.label}：${item.written ? '依赖条件写入' : '未写入，按默认值'}`).join('；')}`}
+    <Button key={index} variant="ghost" tip={`播放区间 ${segment.start}–${segment.end} ${unitName(plan.clock.unit)}；${segment.conditionDependencies.map(item => `${item.label}：${item.written ? '依赖条件写入' : '未写入，按默认值'}`).join('；')}`}
       onClick={() => { quickPreview.seek(segment.start); if (segment.stateSource) locate(segment.stateSource); }}>
       {name(segment.stateSource, segment.state)} {segment.start.toFixed(3)}–{segment.end.toFixed(3)}{segment.conditionDependencies.some(item => item.written) ? ' · 条件写入' : ''}</Button>) : <span>当前时刻没有播放这张图</span>}
   </PanelBar>;

@@ -794,9 +794,9 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
       return own;
     };
     // 每个对象一层分组；输入轨放进它所属角色的根对象组最前，对不上任何对象时单列在上方。
-    const addPlayed = (input: Row[] = []) => {
+    const addPlayed = (input: Row[] = [], actor: string | null = inputActor) => {
       const entry = input.length === 0 ? undefined
-        : played.find(lane => lane.instance.parent === null && lane.instance.carrier === inputActor);
+        : played.find(lane => lane.instance.parent === null && lane.instance.carrier === actor);
       if (entry === undefined) result.push(...input);
       for (const lane of played) {
         const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane,
@@ -815,9 +815,10 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
       }
     };
     const firstInput: FirstInputRow = { kind: 'firstInput', id: 'first-input' };
+    // 输入属于角色：还没有输入时，添加第一个按键的那一行同样放进执行角色的组里。
     if (routeView) {
-      if (needsFirstInput) result.push(firstInput);
-      addPlayed(routeInput === null ? [] : inputRows(routeInput, false));
+      if (routeInput !== null) addPlayed(inputRows(routeInput, false));
+      else addPlayed(needsFirstInput ? [firstInput] : [], quickActor);
       return result;
     }
     if (focused) {
@@ -851,7 +852,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
     addCurves();
     return result;
-  }, [segments, focused, routeView, routeInput, inputActor, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
+  }, [segments, focused, routeView, routeInput, inputActor, quickActor, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
     params.curveTracks, params.curveParam, params.curveHeights, elements, selectedClip, references]);
 
   const toggle = useCallback((id: string) => {
