@@ -47,6 +47,7 @@ import { AddIcon, CurveIcon, FoldoutIcon, MuteIcon, OptionsIcon, SearchIcon } fr
 import { ClipCurves, CurveParameters, noMix, type ClipMix } from './ClipCurves';
 import { MarkerTriangle, PlayheadShape, TrackIcon } from './icons';
 import { QuickBar } from './QuickPreview';
+import { useQuickAssumptions, useQuickEventEntries } from './quickInputEvents';
 import { RunBar } from './RunBar';
 import { routeEnd, routeLanes, type RouteSource } from './routeRows';
 import { AddFirstTrack, AddTrack, Ruler, TimelineToolbar, TimeScroller, type Subject } from './TimelineToolbar';
@@ -1524,12 +1525,16 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const [naming, setNaming] = useState(false);
   const owned = useAuthoring(state => row.segment.owner === undefined || row.segment.owner === state.target?.documentPath);
   const author = useAuthoring(state => state.author && state.target !== null) && owned;
-  const menu = useTrackMenu(row, at, () => setNaming(true), elements, author);
+  const trackMenu = useTrackMenu(row, at, () => setNaming(true), elements, author);
   const documentId = row.timeline.documentId;
-  const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const step = useContext(SnapContext) ?? 1 / 60;
   // 运行秒数换成本 Timeline 的本地秒数，按吸附步长取整。
   const snapLocal = (seconds: number) => Math.max(0, snapTo(seconds - row.segment.origin, step));
+  const eventSeconds = useCallback(() => Math.max(0, snapTo(at.current - row.segment.origin, step)), [row.segment.origin, step]);
+  const events = useQuickEventEntries(documentId, eventSeconds);
+  const assumptions = useQuickAssumptions(documentId, row.segment.origin);
+  const menu = author && events.length !== 0 ? [...trackMenu, ...events] : trackMenu;
+  const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const markers = row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end);
   // 照 Clip.UpdateMix 只给可混合的片段算混合：轨道合同为 Blend 的动画与位移曲线轨。
@@ -1627,6 +1632,12 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
             taken={author ? seconds => markerTimeTaken(documentId, row.track.id, snapLocal(seconds), markerId) : undefined} />
         );
       })}
+      {assumptions.filter(point => point.seconds >= range.start && point.seconds <= range.end).map(point =>
+        <Positioned key={point.key} start={point.seconds} end={point.seconds} className={styles.assumption}>
+          <MenuButton label={point.tip} variant="ghost" iconOnly className={styles.assumptionButton} entries={point.entries}>
+            <span className={styles.assumptionDot} />
+          </MenuButton>
+        </Positioned>)}
     </Line>
     </div>
     </ContextMenu>

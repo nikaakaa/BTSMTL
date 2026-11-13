@@ -1298,3 +1298,33 @@ svg.clipCurves:focus {
 .inside .line .head {
   padding-left: 30px;
 }
+
+/* 快速档假设处：输入轨对应时刻一个警示色小圆点，点开为它放事件或打开相关转移 */
+.assumption {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  overflow: visible;
+}
+
+.assumptionButton {
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  padding: 0;
+  transform: translateY(-50%);
+}
+
+.assumptionDot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 1.5px var(--tl-track);
+}

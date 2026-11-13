@@ -25,7 +25,9 @@ const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
 const inputDeclaration = object({ inputId: text, kind: text, type: nullable(text) });
 const inputPoint = object({ inputId: text, time: number, value: opaque });
 const conditionPoint = object({ key: text, time: number, satisfied: boolean, restoreDefault: boolean });
-const condition = object({ key: text, label: text, source: text, operationIndex: number, undeterminable: boolean });
+const condition = object({
+  key: text, label: text, source: text, operationIndex: number, undeterminable: boolean, defaultSatisfied: boolean, group: nullable(text),
+});
 const location = object({ documentPath: text, graphId: text, nodeId: text, edgeId: text, displayPath: text });
 // 执行实例与按实例分道的路线：快速推演和真实运行档案交出同一种实例表。
 const routeInstance = object({

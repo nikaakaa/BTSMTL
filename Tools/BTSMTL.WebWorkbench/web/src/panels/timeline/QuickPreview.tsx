@@ -17,7 +17,6 @@ import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
 import { finishAuthoringInputs } from '../../shell/layout';
 import { useQuickConditionName } from '../../state/quickConditionName';
-import { inputAuthoring } from '../../state/authoringInputs';
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
@@ -229,7 +228,6 @@ export function QuickBar() {
     </PanelBar>
     {playerAvailable && sceneApplyReason !== null && <p role="status" className={styles.reason}>{sceneApplyReason}</p>}
     {runError !== null && <p role="alert" className={styles.reason}>{runError}</p>}
-    <QuickBranchNotice />
     {open && <QuickDetails />}
   </section>;
 }
@@ -239,65 +237,6 @@ const stopLabels: Record<string, string> = {
   TimelineCompleted: '播完收招', StateMachineExited: '到达状态机出口', NeedsSession: '需要真实运行确认', NoInitialState: '入口没有可进入的状态',
   ZeroTimeCycle: '去向形成零时长循环', PreviewEnd: '到达预览范围终点',
 };
-
-// 路线经过的分岔口：多条去向同时可走时路线按正式顺序走第一条并照常出画面；这里列出每条去向和它缺的条件，
-// 作者点“走这条”即在该角色输入轨上写入预览条件改走别的去向。
-function QuickBranchNotice() {
-  const plan = useQuickPlan();
-  const name = useQuickName();
-  const condition = useQuickConditionName();
-  const input = useWorkbench(useShallow(state => {
-    const description = state.quickPreview.description;
-    const root = description.kind === 'ready' ? description.reply.data?.root ?? null : null;
-    return { root: root?.authoring.documentPath ?? null, timeline: root?.inputSchemes
-      .find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null };
-  }));
-  const editable = useAuthoring(state => state.author && state.target?.documentPath === input.root);
-  const [writing, setWriting] = useState(false);
-  if (plan === null) return null;
-  type Choice = typeof plan.suggestions[number];
-  const points = new Map<string, Choice[]>();
-  for (const suggestion of plan.suggestions) {
-    if (suggestion.branch === 'None') continue;
-    const key = `${suggestion.start}|${suggestion.fromState}|${suggestion.fromSource?.nodeId ?? ''}`;
-    points.set(key, [...points.get(key) ?? [], suggestion]);
-  }
-  if (points.size === 0) return null;
-  // 所选去向的条件写成立，其余同时可走的去向独有的条件写不成立。
-  const choose = (choices: Choice[], picked: Choice) => {
-    const keys = new Set(picked.missing.map(item => item.key));
-    const writes = [...picked.missing.map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: true })),
-      ...choices.filter(item => item !== picked).flatMap(item => item.missing).filter(item => !keys.has(item.key) && (keys.add(item.key), true))
-        .map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: false }))];
-    setWriting(true);
-    inputAuthoring.writeConditions(input.timeline, picked.start, writes)
-      .catch(error => consoleActions.error('快预览', error)).finally(() => setWriting(false));
-  };
-  const blocked = editable ? null : '进入作者模式并打开这个文档后才能写入它的预览输入';
-  const target = (choice: Choice) => choice.toSource
-    ? <LocationButton source={choice.toSource} label={name(choice.toSource, choice.toState)} /> : <span>{choice.toState}</span>;
-  return <div className={styles.notice} role="status">
-    {[...points.values()].map((choices, point) => {
-      const first = choices[0];
-      const from = first.fromState === '入口' ? '入口' : name(first.fromSource, first.fromState);
-      const taken = choices.find(item => item.branch === 'Taken');
-      return <div key={point}>
-        <p>{`${from}在 ${first.start.toFixed(3)} ${unitName(plan.clock.unit)}有 ${choices.length} 条去向同时可走，现在按正式顺序走的是 `}
-          {taken ? target(taken) : null}
-          {'。要预览别的去向，点它的“走这条”，会在该角色的输入轨上写入预览条件。'}</p>
-        {choices.map((choice, index) => <p key={index}>
-          <span>{choice.branch === 'Taken' ? '● ' : '→ '}</span>
-          {target(choice)}
-          <Button variant="ghost" disabled={writing || blocked !== null}
-            tip={blocked ?? (choice.branch === 'Taken' ? '把当前去向写成预览条件固定下来，不再提示' : '在预览输入轨的这一时刻写入预览条件：这条成立，其余不成立')}
-            onClick={() => choose(choices, choice)}>{choice.branch === 'Taken' ? '固定这条' : '走这条'}</Button>
-          <LocationButton source={choice.transitionSource} label="打开转移" />
-          <span>条件：{choice.missing.map(item => condition(item.key, item.label)).join('、') || '无'}</span>
-        </p>)}
-      </div>;
-    })}
-  </div>;
-}
 
 function QuickDetails() {
   const { state, directory } = useWorkbench(useShallow(current => ({ state: current.quickPreview, directory: current.sources?.runDirectory })));
