@@ -767,16 +767,21 @@ function GraphCanvas({ graph, call, route, hierarchy, enter, trail, params, setP
     if (isGroupNode(node)) return;
     openNode(node.data);
   }, [openNode]);
-  // 双击连线进入其专属图（以源节点为来源，可返回）；都为空时按第一个槽位声明的目标新建（初始内容由宿主图模板给出），
-  // 网页新建的图保存后才能进入。
+  // 双击连线进入其专属图（以源节点为来源，可返回）；都为空时按第一个槽位声明的目标新建（初始内容由宿主图模板给出）并直接进入。
+  // 未保存的新图还不在文档图目录里，按槽位里的身份进入，打开时由编辑视图重新投影。
   const openEdge = useCallback((edge: FlowEdge) => {
     if (edge.data!.conditions.length) { enter(edge.data!.conditions[0], edge.source); return; }
     const slots = editable && elements ? edgeGraphSlots(currentDocument(graphPath(graph.id)), elements, graph.id, edge.id) : [];
-    const empty = slots.find(slot => slot.value === null && slot.targets.length !== 0);
-    if (!empty || slots.some(slot => slot.value !== null)) return;
-    void graphAuthoring.createOwnedGraph(empty, empty.targets[0])
-      .then(() => consoleActions.log('info', '作者', `已新建${slotLabel(empty, elements!)}`), (error: unknown) => consoleActions.error('作者', error));
-  }, [enter, editable, elements, graph.id]);
+    const own = (id: string) => ({ id, displayName: null, role: null, owner: graph.owner, ownerName: graph.ownerName, file: graphPath(id) });
+    const filled = slots.find(slot => slot.value !== null);
+    if (filled) { enter(own(filled.value!), edge.source); return; }
+    const empty = slots.find(slot => slot.targets.length !== 0);
+    if (!empty) return;
+    void graphAuthoring.createOwnedGraph(empty, empty.targets[0]).then(id => {
+      consoleActions.log('info', '作者', `已新建${slotLabel(empty, elements!)}`);
+      enter(own(id), edge.source);
+    }, (error: unknown) => consoleActions.error('作者', error));
+  }, [enter, editable, elements, graph.id, graph.owner, graph.ownerName]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => openEdge(edge), [openEdge]);
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);

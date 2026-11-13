@@ -378,8 +378,11 @@ function NodeLinks({ graph, nodeId, invocationPath, call }: { graph: GraphDefini
         const slots = elements ? edgeGraphSlots(document, elements, graph.id, edge.id) : null;
         if (slots === null || slots.length === 0) return <Value key={edge.id} label={label} mono={false} value="转移配置尚未读取" />;
         const owned = [...hierarchy.graphs.values()].filter(item => item.owner === source.owner && slots.some(slot => slot.value === item.id));
-        if (owned.length === 0) return <Value key={edge.id} label={label} mono={false}
-          value={slots.some(slot => slot.value !== null) ? '新建的图保存后可进入' : '未设置条件图'} />;
+        const unsaved = slots.find(slot => slot.value !== null)?.value ?? null;
+        if (owned.length === 0) return unsaved === null ? <Value key={edge.id} label={label} mono={false} value="未设置条件图" />
+          : <Link key={edge.id} label={label} text="新建的条件图（未保存）" kind="var(--node-flow)" tip="在节点图面板打开"
+            onOpen={() => openReference({ kind: 'graph', id: unsaved, displayName: null, role: null, owner: source.owner,
+              ownerName: source.ownerName, file: graphPath(unsaved) })} />;
         return owned.map(item => <Link key={`${edge.id}/${item.id}`} label={label} text={graphLeafName(item)} kind="var(--node-flow)"
           tip={`条件图 ${graphName(item)}\n在节点图面板打开`} onOpen={() => openReference({ ...item, kind: 'graph' })} />);
       })}

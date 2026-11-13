@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   authoringApi, describedPortsAvailable, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
@@ -865,26 +866,28 @@ function StoredItem({ item, node, values, owner, outputs = [], onSet, onSetField
 }
 
 // 专属图槽位（状态内容、条件、状态机等）：已有图可进入；可选槽位可移除，原图不再被引用时保存删除；
-// 空槽位按声明的每个目标新建。网页新建的图保存后才有展开结果。
+// 空槽位按声明的每个目标新建并直接打开。未保存的新图还不在文档图目录里，按槽位身份打开，由编辑视图重新投影。
 export function OwnedGraphRow({ label, slot }: { label: string; slot: GraphSlot }) {
-  const graphs = useWorkbench(state => state.graphs);
-  const error = useAuthoring(state => authoringDocument(state).documentError);
+  const { graphs, error } = useAuthoring(useShallow(state => ({
+    graphs: authoringDocument(state).documentGraphs, error: authoringDocument(state).documentError })));
   const [creating, setCreating] = useState(false);
+  const host = graphs?.find(item => item.id === slot.graphId) ?? null;
   const target = slot.value === null ? null : graphs?.find(item => item.id === slot.value) ?? null;
-  const open = () => {
-    const graph = authoringDocument(useAuthoring.getState()).documentGraphs?.find(item => item.id === slot.value);
-    if (graph) void projectActions.openGraph(graph, undefined, { origin: null, observation: null, caller: null, panelId: null })
-      .catch(reason => consoleActions.error('作者', reason));
+  const open = (id: string) => {
+    if (host === null) return;
+    void projectActions.openGraph({ id, owner: host.owner, ownerName: host.ownerName }, undefined,
+      { origin: null, observation: null, caller: null, panelId: null }).catch(reason => consoleActions.error('作者', reason));
   };
   return <Row label={label}><div className={styles.actions}>
     {slot.value === null ? slot.targets.map(item => <Button key={`${item.role}/${item.seed}`} variant="ghost" disabled={creating} onClick={() => {
       setCreating(true);
-      graphAuthoring.createOwnedGraph(slot, item)
+      graphAuthoring.createOwnedGraph(slot, item).then(open)
         .catch((reason: unknown) => consoleActions.error('作者', reason))
         .finally(() => setCreating(false));
     }}>{creating ? '正在创建' : slot.targets.length === 1 ? `新建${label}` : `新建 ${item.role}`}</Button>) : <>
-      {target ? <ObjectField kind="var(--node-flow)" text={graphLeafName(target)} tip={`${graphName(target)}\n在节点图面板打开`} onOpen={open} />
-        : <span className={styles.note}>{error ?? '正在读取作者图'}</span>}
+      {target ? <ObjectField kind="var(--node-flow)" text={graphLeafName(target)} tip={`${graphName(target)}\n在节点图面板打开`} onOpen={() => open(target.id)} />
+        : error !== null ? <span className={styles.note}>{error}</span>
+        : <ObjectField kind="var(--node-flow)" text={`新建的${label}（未保存）`} tip="在节点图面板打开" onOpen={() => open(slot.value!)} />}
       {slot.optional && <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => graphAuthoring.removeOwnedGraph(slot)}>移除</Button>}
     </>}
   </div></Row>;
