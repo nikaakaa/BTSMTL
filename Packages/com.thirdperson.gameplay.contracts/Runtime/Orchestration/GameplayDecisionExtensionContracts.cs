@@ -76,10 +76,12 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct CanRequest
         {
+            public static readonly OrchestrationExtensionInputPort<CanRequest> Target =
+                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<CanRequest> Available =
                 new("available", OrchestrationValueKind.Boolean, 0);
             public static readonly OrchestrationExtensionDefinition<CanRequest> Definition = Read<CanRequest>(
-                "decision-can-request", new[] { Available.Declaration }, new[] { Fields.Request });
+                "decision-can-request", new[] { Target.Declaration, Available.Declaration }, new[] { Fields.Request });
         }
 
         public readonly struct Attribute
