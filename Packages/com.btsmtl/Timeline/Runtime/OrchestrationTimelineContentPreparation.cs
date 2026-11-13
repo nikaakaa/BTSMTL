@@ -146,7 +146,8 @@ namespace BTSMTL.Timeline.Runtime
             foreach (ref readonly OrchestrationGraphEntry entry in graph.Entries.Span)
             {
                 string entryId = graph.Identities.Table.Resolve(entry.EntryIdentityId);
-                OrchestrationGraphExecutionSource invocation = sources[entryId];
+                if (!sources.TryGetValue(entryId, out OrchestrationGraphExecutionSource invocation))
+                    continue;
                 OrchestrationTimelineHook hook = invocation.InvocationCallerId switch
                 {
                     "OnEnable" => OrchestrationTimelineHook.Enable,
