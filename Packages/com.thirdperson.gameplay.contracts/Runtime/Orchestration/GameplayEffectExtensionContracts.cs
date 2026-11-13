@@ -37,34 +37,30 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct HasTag
         {
+            static readonly OrchestrationExtensionPorts<HasTag> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<HasTag> Result =
-                new OrchestrationExtensionOutputPort<HasTag>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<HasTag> Definition = new OrchestrationExtensionDefinition<HasTag>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-tag-has"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[] { Fields.QueryTarget, Fields.Tag, GameplayOrchestrationPayloadContract.ProviderOwner }));
+                    Ports.Seal(), new[] { Fields.QueryTarget, Fields.Tag, GameplayOrchestrationPayloadContract.ProviderOwner }));
         }
 
         public readonly struct MatchTags
         {
+            static readonly OrchestrationExtensionPorts<MatchTags> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<MatchTags> Result =
-                new OrchestrationExtensionOutputPort<MatchTags>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<MatchTags> Definition = new OrchestrationExtensionDefinition<MatchTags>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-tag-query"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         Fields.QueryTarget, GameplayOrchestrationPayloadContract.ProviderOwner,
                         GameplayOrchestrationPayloadContract.QueryAll, GameplayOrchestrationPayloadContract.QueryAny,
@@ -74,105 +70,84 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct SourceAllowsCandidate
         {
+            static readonly OrchestrationExtensionPorts<SourceAllowsCandidate> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<SourceAllowsCandidate> Result =
-                new OrchestrationExtensionOutputPort<SourceAllowsCandidate>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<SourceAllowsCandidate> Definition = new OrchestrationExtensionDefinition<SourceAllowsCandidate>(
                 new OrchestrationExtensionIdentity(DomainId, "source-effects-allow-candidate"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, Array.Empty<OrchestrationExtensionContentField>()));
+                    Ports.Seal(), Array.Empty<OrchestrationExtensionContentField>()));
         }
 
         public readonly struct Active
         {
+            static readonly OrchestrationExtensionPorts<Active> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Active> Result =
-                new OrchestrationExtensionOutputPort<Active>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionOutputPort<Active> Handle =
-                new OrchestrationExtensionOutputPort<Active>("handle", OrchestrationValueKind.UInt64, 1);
+                Ports.Output("handle", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Active> EventTag =
-                new OrchestrationExtensionOutputPort<Active>("event-tag", OrchestrationValueKind.Identity, 2);
+                Ports.Output("event-tag", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionOutputPort<Active> EventId =
-                new OrchestrationExtensionOutputPort<Active>("event-id", OrchestrationValueKind.UInt64, 3);
+                Ports.Output("event-id", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Active> SourceTick =
-                new OrchestrationExtensionOutputPort<Active>("source-tick", OrchestrationValueKind.UInt64, 4);
+                Ports.Output("source-tick", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Active> AcceptedTick =
-                new OrchestrationExtensionOutputPort<Active>("accepted-tick", OrchestrationValueKind.UInt64, 5);
+                Ports.Output("accepted-tick", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Active> SourceActionId =
-                new OrchestrationExtensionOutputPort<Active>("source-action-id", OrchestrationValueKind.UInt64, 6);
+                Ports.Output("source-action-id", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Active> TargetId =
-                new OrchestrationExtensionOutputPort<Active>("target-id", OrchestrationValueKind.Identity, 7);
+                Ports.Output("target-id", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionOutputPort<Active> Position =
-                new OrchestrationExtensionOutputPort<Active>("position", OrchestrationValueKind.Vector3, 8);
+                Ports.Output("position", OrchestrationValueKind.Vector3);
             public static readonly OrchestrationExtensionOutputPort<Active> Yaw =
-                new OrchestrationExtensionOutputPort<Active>("yaw", OrchestrationValueKind.Scalar, 9);
+                Ports.Output("yaw", OrchestrationValueKind.Scalar);
 
             public static readonly OrchestrationExtensionDefinition<Active> Definition = new OrchestrationExtensionDefinition<Active>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-active"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration,
-                        Handle.Declaration,
-                        EventTag.Declaration,
-                        EventId.Declaration,
-                        SourceTick.Declaration,
-                        AcceptedTick.Declaration,
-                        SourceActionId.Declaration,
-                        TargetId.Declaration,
-                        Position.Declaration,
-                        Yaw.Declaration
-                    }, new[] { Fields.QueryTarget, Fields.Effect, GameplayOrchestrationPayloadContract.ProviderOwner }));
+                    Ports.Seal(), new[] { Fields.QueryTarget, Fields.Effect, GameplayOrchestrationPayloadContract.ProviderOwner }));
         }
 
         public readonly struct AttributeRead
         {
+            static readonly OrchestrationExtensionPorts<AttributeRead> Ports = new();
             public static readonly OrchestrationExtensionInputPort<AttributeRead> ObjectHandle =
-                new OrchestrationExtensionInputPort<AttributeRead>("object-handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
+                Ports.Input("object-handle", OrchestrationValueKind.ObjectHandle, OrchestrationObjectKind.Any);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> Valid =
-                new OrchestrationExtensionOutputPort<AttributeRead>("valid", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("valid", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> BaseValue =
-                new OrchestrationExtensionOutputPort<AttributeRead>("base-value", OrchestrationValueKind.Scalar, 1);
+                Ports.Output("base-value", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionOutputPort<AttributeRead> CurrentValue =
-                new OrchestrationExtensionOutputPort<AttributeRead>("current-value", OrchestrationValueKind.Scalar, 2);
+                Ports.Output("current-value", OrchestrationValueKind.Scalar);
 
             public static readonly OrchestrationExtensionDefinition<AttributeRead> Definition = new OrchestrationExtensionDefinition<AttributeRead>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-attribute-read"),
                 5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        ObjectHandle.Declaration,
-                        Valid.Declaration,
-                        BaseValue.Declaration,
-                        CurrentValue.Declaration
-                    }, new[] { Fields.Attribute, Fields.AttributeTarget, GameplayOrchestrationPayloadContract.ProviderOwner }));
+                    Ports.Seal(), new[] { Fields.Attribute, Fields.AttributeTarget, GameplayOrchestrationPayloadContract.ProviderOwner }));
         }
 
         public readonly struct Apply
         {
+            static readonly OrchestrationExtensionPorts<Apply> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Apply> Applied =
-                new OrchestrationExtensionOutputPort<Apply>("applied", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("applied", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionOutputPort<Apply> Handle =
-                new OrchestrationExtensionOutputPort<Apply>("handle", OrchestrationValueKind.UInt64, 1);
+                Ports.Output("handle", OrchestrationValueKind.UInt64);
 
             public static readonly OrchestrationExtensionDefinition<Apply> Definition = new OrchestrationExtensionDefinition<Apply>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-apply"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Applied.Declaration,
-                        Handle.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         Fields.Effect, Fields.DefinitionRevision, GameplayActionExtensionContracts.Fields.ActionContext,
                         Fields.SuccessEvent, Fields.SuccessEventTag, GameplayOrchestrationPayloadContract.ProviderOwner
@@ -181,21 +156,18 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct Remove
         {
+            static readonly OrchestrationExtensionPorts<Remove> Ports = new();
             public static readonly OrchestrationExtensionInputPort<Remove> HandleInput =
-                new OrchestrationExtensionInputPort<Remove>("handle", OrchestrationValueKind.UInt64, 0);
+                Ports.Input("handle", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<Remove> Removed =
-                new OrchestrationExtensionOutputPort<Remove>("removed", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("removed", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<Remove> Definition = new OrchestrationExtensionDefinition<Remove>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-remove"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        HandleInput.Declaration,
-                        Removed.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         Fields.Selector, Fields.Effect, GameplayOrchestrationPayloadContract.ProviderOwner,
                         GameplayOrchestrationPayloadContract.QueryAll, GameplayOrchestrationPayloadContract.QueryAny,

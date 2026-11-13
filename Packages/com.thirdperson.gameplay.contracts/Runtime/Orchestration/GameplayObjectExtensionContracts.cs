@@ -1,4 +1,3 @@
-using System;
 using BTSMTL.Orchestration;
 
 namespace ThirdPersonGameplay.Orchestration
@@ -27,108 +26,122 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct Facts
         {
-            public static readonly OrchestrationExtensionOutputPort<Facts> Carrier = new("carrier", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Carrier);
-            public static readonly OrchestrationExtensionOutputPort<Facts> Initiator = new("initiator", OrchestrationValueKind.ObjectHandle, 1, GameplayObjectKinds.Actor);
-            public static readonly OrchestrationExtensionDefinition<Facts> Definition = Read<Facts>("object-facts",
-                new[] { Carrier.Declaration, Initiator.Declaration });
+            static readonly OrchestrationExtensionPorts<Facts> Ports = new();
+            public static readonly OrchestrationExtensionOutputPort<Facts> Carrier = Ports.Output("carrier", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Carrier);
+            public static readonly OrchestrationExtensionOutputPort<Facts> Initiator = Ports.Output("initiator", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
+            public static readonly OrchestrationExtensionDefinition<Facts> Definition = Read("object-facts", Ports);
         }
 
         public readonly struct Exists
         {
-            public static readonly OrchestrationExtensionInputPort<Exists> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
-            public static readonly OrchestrationExtensionOutputPort<Exists> Result = new("exists", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<Exists> Definition = Read<Exists>("object-exists",
-                new[] { Handle.Declaration, Result.Declaration });
+            static readonly OrchestrationExtensionPorts<Exists> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<Exists> Handle = Ports.Input("handle", OrchestrationValueKind.ObjectHandle, OrchestrationObjectKind.Any);
+            public static readonly OrchestrationExtensionOutputPort<Exists> Result = Ports.Output("exists", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<Exists> Definition = Read("object-exists", Ports);
         }
 
         public readonly struct Pose
         {
-            public static readonly OrchestrationExtensionInputPort<Pose> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
-            public static readonly OrchestrationExtensionOutputPort<Pose> Valid = new("valid", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<Pose> Position = new("position", OrchestrationValueKind.Vector3, 1);
-            public static readonly OrchestrationExtensionOutputPort<Pose> Yaw = new("yaw", OrchestrationValueKind.Scalar, 2);
-            public static readonly OrchestrationExtensionDefinition<Pose> Definition = Read<Pose>("object-pose",
-                new[] { Handle.Declaration, Valid.Declaration, Position.Declaration, Yaw.Declaration });
+            static readonly OrchestrationExtensionPorts<Pose> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<Pose> Handle = Ports.Input("handle", OrchestrationValueKind.ObjectHandle, OrchestrationObjectKind.Any);
+            public static readonly OrchestrationExtensionOutputPort<Pose> Valid = Ports.Output("valid", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<Pose> Position = Ports.Output("position", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionOutputPort<Pose> Yaw = Ports.Output("yaw", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionDefinition<Pose> Definition = Read("object-pose", Ports);
         }
 
         // 按句柄当前格子的种类显式窄化；空、失效或种类不符时成功为假、输出空句柄。
         public readonly struct CastToActor
         {
-            public static readonly OrchestrationExtensionInputPort<CastToActor> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
-            public static readonly OrchestrationExtensionOutputPort<CastToActor> Succeeded = new("succeeded", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<CastToActor> Result = new("result", OrchestrationValueKind.ObjectHandle, 1, GameplayObjectKinds.Actor);
-            public static readonly OrchestrationExtensionDefinition<CastToActor> Definition = Read<CastToActor>("object-cast-actor",
-                new[] { Handle.Declaration, Succeeded.Declaration, Result.Declaration });
+            static readonly OrchestrationExtensionPorts<CastToActor> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<CastToActor> Handle = Ports.Input("handle", OrchestrationValueKind.ObjectHandle, OrchestrationObjectKind.Any);
+            public static readonly OrchestrationExtensionOutputPort<CastToActor> Succeeded = Ports.Output("succeeded", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<CastToActor> Result = Ports.Output("result", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
+            public static readonly OrchestrationExtensionDefinition<CastToActor> Definition = Read("object-cast-actor", Ports);
         }
 
         public readonly struct CastToCarrier
         {
-            public static readonly OrchestrationExtensionInputPort<CastToCarrier> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 0, OrchestrationObjectKind.Any);
-            public static readonly OrchestrationExtensionOutputPort<CastToCarrier> Succeeded = new("succeeded", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<CastToCarrier> Result = new("result", OrchestrationValueKind.ObjectHandle, 1, GameplayObjectKinds.Carrier);
-            public static readonly OrchestrationExtensionDefinition<CastToCarrier> Definition = Read<CastToCarrier>("object-cast-carrier",
-                new[] { Handle.Declaration, Succeeded.Declaration, Result.Declaration });
+            static readonly OrchestrationExtensionPorts<CastToCarrier> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<CastToCarrier> Handle = Ports.Input("handle", OrchestrationValueKind.ObjectHandle, OrchestrationObjectKind.Any);
+            public static readonly OrchestrationExtensionOutputPort<CastToCarrier> Succeeded = Ports.Output("succeeded", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<CastToCarrier> Result = Ports.Output("result", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Carrier);
+            public static readonly OrchestrationExtensionDefinition<CastToCarrier> Definition = Read("object-cast-carrier", Ports);
         }
 
+        // 值输出端口的种类随所选启动输入声明变化，由每份内容追加一次。
         public readonly struct StartupInput
         {
-            public const string ValuePortId = "value";
-            public static readonly OrchestrationExtensionDefinition<StartupInput> Definition = Read<StartupInput>("startup-input",
-                Array.Empty<OrchestrationExtensionPort>(), new[] { Fields.InputDeclaration, Fields.InputIndex });
+            public static readonly OrchestrationExtensionDefinition<StartupInput> Definition = Read("startup-input",
+                new OrchestrationExtensionPorts<StartupInput>(), Fields.InputDeclaration, Fields.InputIndex);
+
+            public static OrchestrationExtensionContract Contract(OrchestrationValueKind valueKind,
+                out OrchestrationExtensionOutputPort<StartupInput> value)
+            {
+                var ports = new OrchestrationExtensionPorts<StartupInput>();
+                value = ports.Output("value", valueKind,
+                    valueKind == OrchestrationValueKind.ObjectHandle ? OrchestrationObjectKind.Any : null);
+                return Definition.Declaration.WithAdditionalPorts(ports.Seal()).Contract;
+            }
         }
 
+        // 启动输入端口由技能实例声明追加在固定输入之后。
         public readonly struct SpawnAndActivate
         {
-            public const int StartupInputOffset = 2;
-            public static readonly OrchestrationExtensionInputPort<SpawnAndActivate> Position = new("position", OrchestrationValueKind.Vector3, 0);
-            public static readonly OrchestrationExtensionInputPort<SpawnAndActivate> Yaw = new("yaw", OrchestrationValueKind.Scalar, 1);
-            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> Succeeded = new("succeeded", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 1, GameplayObjectKinds.Carrier);
-            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> FailureCode = new("failure-code", OrchestrationValueKind.Int32, 2);
-            public static readonly OrchestrationExtensionDefinition<SpawnAndActivate> Definition = Write<SpawnAndActivate>("spawn-and-activate",
-                new[] { Position.Declaration, Yaw.Declaration, Succeeded.Declaration, Handle.Declaration, FailureCode.Declaration },
-                new[] { Fields.Ability, Fields.CarrierDefinition, Fields.ParentEndPolicy });
+            static readonly OrchestrationExtensionPorts<SpawnAndActivate> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<SpawnAndActivate> Position = Ports.Input("position", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionInputPort<SpawnAndActivate> Yaw = Ports.Input("yaw", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> Succeeded = Ports.Output("succeeded", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> Handle = Ports.Output("handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Carrier);
+            public static readonly OrchestrationExtensionOutputPort<SpawnAndActivate> FailureCode = Ports.Output("failure-code", OrchestrationValueKind.Int32);
+            public static readonly int StartupInputOffset = Ports.InputCount;
+            public static readonly OrchestrationExtensionDefinition<SpawnAndActivate> Definition = Write("spawn-and-activate", Ports,
+                Fields.Ability, Fields.CarrierDefinition, Fields.ParentEndPolicy);
         }
 
         public readonly struct NotifyParent
         {
-            public static readonly OrchestrationExtensionOutputPort<NotifyParent> Delivered = new("delivered", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<NotifyParent> FailureCode = new("failure-code", OrchestrationValueKind.Int32, 1);
-            public static readonly OrchestrationExtensionDefinition<NotifyParent> Definition = Write<NotifyParent>("notify-parent-instance",
-                new[] { Delivered.Declaration, FailureCode.Declaration }, new[] { Fields.Event, Fields.EventTag });
+            static readonly OrchestrationExtensionPorts<NotifyParent> Ports = new();
+            public static readonly OrchestrationExtensionOutputPort<NotifyParent> Delivered = Ports.Output("delivered", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<NotifyParent> FailureCode = Ports.Output("failure-code", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionDefinition<NotifyParent> Definition = Write("notify-parent-instance", Ports,
+                Fields.Event, Fields.EventTag);
         }
 
         public readonly struct CharacterEvent
         {
-            public static readonly OrchestrationExtensionInputPort<CharacterEvent> Recipient = new("recipient", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
-            public static readonly OrchestrationExtensionOutputPort<CharacterEvent> Delivered = new("delivered", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<CharacterEvent> FailureCode = new("failure-code", OrchestrationValueKind.Int32, 1);
-            public static readonly OrchestrationExtensionDefinition<CharacterEvent> Definition = Write<CharacterEvent>("send-character-event",
-                new[] { Recipient.Declaration, Delivered.Declaration, FailureCode.Declaration }, new[] { Fields.Event, Fields.EventTag });
+            static readonly OrchestrationExtensionPorts<CharacterEvent> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<CharacterEvent> Recipient = Ports.Input("recipient", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
+            public static readonly OrchestrationExtensionOutputPort<CharacterEvent> Delivered = Ports.Output("delivered", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<CharacterEvent> FailureCode = Ports.Output("failure-code", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionDefinition<CharacterEvent> Definition = Write("send-character-event", Ports,
+                Fields.Event, Fields.EventTag);
         }
 
         public readonly struct Destroy
         {
-            public static readonly OrchestrationExtensionInputPort<Destroy> Handle = new("handle", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Carrier);
-            public static readonly OrchestrationExtensionOutputPort<Destroy> Destroyed = new("destroyed", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<Destroy> FailureCode = new("failure-code", OrchestrationValueKind.Int32, 1);
-            public static readonly OrchestrationExtensionDefinition<Destroy> Definition = Write<Destroy>("destroy-object",
-                new[] { Handle.Declaration, Destroyed.Declaration, FailureCode.Declaration }, Array.Empty<OrchestrationExtensionContentField>());
+            static readonly OrchestrationExtensionPorts<Destroy> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<Destroy> Handle = Ports.Input("handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Carrier);
+            public static readonly OrchestrationExtensionOutputPort<Destroy> Destroyed = Ports.Output("destroyed", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<Destroy> FailureCode = Ports.Output("failure-code", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionDefinition<Destroy> Definition = Write("destroy-object", Ports);
         }
 
         static OrchestrationExtensionDefinition<TOperation> Read<TOperation>(string operation,
-            OrchestrationExtensionPort[] ports, OrchestrationExtensionContentField[] fields = null) where TOperation : struct =>
+            OrchestrationExtensionPorts<TOperation> ports, params OrchestrationExtensionContentField[] fields)
+            where TOperation : struct =>
             new(new OrchestrationExtensionIdentity(DomainId, operation), 1,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value, OrchestrationExtensionAccess.ReadOnly,
                     OrchestrationExtensionInvocationKind.Evaluate, OrchestrationExtensionCompletion.Immediate,
-                    ports, fields ?? Array.Empty<OrchestrationExtensionContentField>()));
+                    ports.Seal(), fields));
 
         static OrchestrationExtensionDefinition<TOperation> Write<TOperation>(string operation,
-            OrchestrationExtensionPort[] ports, OrchestrationExtensionContentField[] fields) where TOperation : struct =>
+            OrchestrationExtensionPorts<TOperation> ports, params OrchestrationExtensionContentField[] fields)
+            where TOperation : struct =>
             new(new OrchestrationExtensionIdentity(DomainId, operation), 1,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action, OrchestrationExtensionAccess.CandidateWrite,
                     OrchestrationExtensionInvocationKind.Execute | OrchestrationExtensionInvocationKind.RequestStop |
                     OrchestrationExtensionInvocationKind.ContinueStop | OrchestrationExtensionInvocationKind.ForceStop,
-                    OrchestrationExtensionCompletion.Resumable, ports, fields));
+                    OrchestrationExtensionCompletion.Resumable, ports.Seal(), fields));
     }
 }

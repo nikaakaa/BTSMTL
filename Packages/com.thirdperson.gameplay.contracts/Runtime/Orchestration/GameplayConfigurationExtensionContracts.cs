@@ -24,82 +24,55 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct Boolean
         {
+            static readonly OrchestrationExtensionPorts<Boolean> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Boolean> Value =
-                new OrchestrationExtensionOutputPort<Boolean>("value", OrchestrationValueKind.Boolean, 0);
-
-            public static readonly OrchestrationExtensionDefinition<Boolean> Definition = new OrchestrationExtensionDefinition<Boolean>(
-                new OrchestrationExtensionIdentity(DomainId, "configuration-bool"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Value.Declaration
-                    }, new[] { Fields.Field, Fields.BooleanValue }));
+                Ports.Output("value", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<Boolean> Definition =
+                Read("configuration-bool", Ports, Fields.BooleanValue);
         }
 
         public readonly struct Int32
         {
+            static readonly OrchestrationExtensionPorts<Int32> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Int32> Value =
-                new OrchestrationExtensionOutputPort<Int32>("value", OrchestrationValueKind.Int32, 0);
-
-            public static readonly OrchestrationExtensionDefinition<Int32> Definition = new OrchestrationExtensionDefinition<Int32>(
-                new OrchestrationExtensionIdentity(DomainId, "configuration-int32"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Value.Declaration
-                    }, new[] { Fields.Field, Fields.Int32Value }));
+                Ports.Output("value", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionDefinition<Int32> Definition =
+                Read("configuration-int32", Ports, Fields.Int32Value);
         }
 
         public readonly struct UInt64
         {
+            static readonly OrchestrationExtensionPorts<UInt64> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<UInt64> Value =
-                new OrchestrationExtensionOutputPort<UInt64>("value", OrchestrationValueKind.UInt64, 0);
-
-            public static readonly OrchestrationExtensionDefinition<UInt64> Definition = new OrchestrationExtensionDefinition<UInt64>(
-                new OrchestrationExtensionIdentity(DomainId, "configuration-uint64"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Value.Declaration
-                    }, new[] { Fields.Field, Fields.UInt64Value }));
+                Ports.Output("value", OrchestrationValueKind.UInt64);
+            public static readonly OrchestrationExtensionDefinition<UInt64> Definition =
+                Read("configuration-uint64", Ports, Fields.UInt64Value);
         }
 
         public readonly struct Number
         {
+            static readonly OrchestrationExtensionPorts<Number> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Number> Value =
-                new OrchestrationExtensionOutputPort<Number>("value", OrchestrationValueKind.Scalar, 0);
-
-            public static readonly OrchestrationExtensionDefinition<Number> Definition = new OrchestrationExtensionDefinition<Number>(
-                new OrchestrationExtensionIdentity(DomainId, "configuration-number"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Value.Declaration
-                    }, new[] { Fields.Field, Fields.ScalarValue }));
+                Ports.Output("value", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionDefinition<Number> Definition =
+                Read("configuration-number", Ports, Fields.ScalarValue);
         }
 
         public readonly struct Text
         {
+            static readonly OrchestrationExtensionPorts<Text> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Text> Value =
-                new OrchestrationExtensionOutputPort<Text>("value", OrchestrationValueKind.Identity, 0);
-
-            public static readonly OrchestrationExtensionDefinition<Text> Definition = new OrchestrationExtensionDefinition<Text>(
-                new OrchestrationExtensionIdentity(DomainId, "configuration-text"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Value.Declaration
-                    }, new[] { Fields.Field, Fields.TextValue }));
+                Ports.Output("value", OrchestrationValueKind.Identity);
+            public static readonly OrchestrationExtensionDefinition<Text> Definition =
+                Read("configuration-text", Ports, Fields.TextValue);
         }
+
+        static OrchestrationExtensionDefinition<TOperation> Read<TOperation>(string operation,
+            OrchestrationExtensionPorts<TOperation> ports, OrchestrationExtensionContentField value)
+            where TOperation : struct =>
+            new(new OrchestrationExtensionIdentity(DomainId, operation), 4,
+                new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate, ports.Seal(), new[] { Fields.Field, value }));
     }
 }

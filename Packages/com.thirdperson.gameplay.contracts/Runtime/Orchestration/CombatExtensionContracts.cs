@@ -8,8 +8,9 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct AttackQuery
         {
+            static readonly OrchestrationExtensionPorts<AttackQuery> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<AttackQuery> Submitted =
-                new OrchestrationExtensionOutputPort<AttackQuery>("submitted", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("submitted", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionContentField Attack =
                 OrchestrationExtensionContentField.Identity("Attack", "gameplay.attack");
@@ -28,10 +29,7 @@ namespace ThirdPersonGameplay.Orchestration
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Submitted.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         Attack, DefinitionRevision, AttackEventId, AttackIntervalEffect,
                         GameplayOrchestrationPayloadContract.ProviderOwner
@@ -40,8 +38,9 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct AttackHitQuery
         {
+            static readonly OrchestrationExtensionPorts<AttackHitQuery> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<AttackHitQuery> Hit =
-                new OrchestrationExtensionOutputPort<AttackHitQuery>("hit", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("hit", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionContentField AttackEventId =
                 OrchestrationExtensionContentField.Identity("AttackEventId", "gameplay.attack-event");
@@ -51,10 +50,7 @@ namespace ThirdPersonGameplay.Orchestration
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Hit.Declaration
-                    }, new[] { AttackEventId }));
+                    Ports.Seal(), new[] { AttackEventId }));
         }
     }
 }

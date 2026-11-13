@@ -1,4 +1,3 @@
-using System;
 using BTSMTL.Orchestration;
 
 namespace ThirdPersonGameplay.Orchestration
@@ -40,121 +39,131 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct SelectTarget
         {
+            static readonly OrchestrationExtensionPorts<SelectTarget> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<SelectTarget> Target =
-                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
+                Ports.Output("target", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<SelectTarget> Found =
-                new("found", OrchestrationValueKind.Boolean, 1);
-            public static readonly OrchestrationExtensionDefinition<SelectTarget> Definition = Read<SelectTarget>(
-                "decision-select-target", new[] { Target.Declaration, Found.Declaration },
-                new[] { Fields.Relation, Fields.MaxDistance, Fields.RequireLineOfSight });
+                Ports.Output("found", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<SelectTarget> Definition = Read(
+                "decision-select-target", Ports, Fields.Relation, Fields.MaxDistance, Fields.RequireLineOfSight);
         }
 
         public readonly struct TargetRelation
         {
+            static readonly OrchestrationExtensionPorts<TargetRelation> Ports = new();
             public static readonly OrchestrationExtensionInputPort<TargetRelation> Target =
-                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
+                Ports.Input("target", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<TargetRelation> Valid =
-                new("valid", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("valid", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionOutputPort<TargetRelation> Distance =
-                new("distance", OrchestrationValueKind.Scalar, 1);
+                Ports.Output("distance", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionOutputPort<TargetRelation> Direction =
-                new("direction", OrchestrationValueKind.Vector2, 2);
-            public static readonly OrchestrationExtensionDefinition<TargetRelation> Definition = Read<TargetRelation>(
-                "decision-target-relation",
-                new[] { Target.Declaration, Valid.Declaration, Distance.Declaration, Direction.Declaration });
+                Ports.Output("direction", OrchestrationValueKind.Vector2);
+            public static readonly OrchestrationExtensionDefinition<TargetRelation> Definition = Read(
+                "decision-target-relation", Ports);
         }
 
         public readonly struct LineOfSight
         {
+            static readonly OrchestrationExtensionPorts<LineOfSight> Ports = new();
             public static readonly OrchestrationExtensionInputPort<LineOfSight> Target =
-                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
+                Ports.Input("target", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<LineOfSight> Visible =
-                new("visible", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<LineOfSight> Definition = Read<LineOfSight>(
-                "decision-line-of-sight", new[] { Target.Declaration, Visible.Declaration });
+                Ports.Output("visible", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<LineOfSight> Definition = Read(
+                "decision-line-of-sight", Ports);
         }
 
         public readonly struct CanRequest
         {
+            static readonly OrchestrationExtensionPorts<CanRequest> Ports = new();
             public static readonly OrchestrationExtensionInputPort<CanRequest> Target =
-                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
+                Ports.Input("target", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<CanRequest> Available =
-                new("available", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<CanRequest> Definition = Read<CanRequest>(
-                "decision-can-request", new[] { Target.Declaration, Available.Declaration }, new[] { Fields.Request });
+                Ports.Output("available", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<CanRequest> Definition = Read(
+                "decision-can-request", Ports, Fields.Request);
         }
 
         public readonly struct Attribute
         {
+            static readonly OrchestrationExtensionPorts<Attribute> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Attribute> Value =
-                new("value", OrchestrationValueKind.Scalar, 0);
-            public static readonly OrchestrationExtensionDefinition<Attribute> Definition = Read<Attribute>(
-                "decision-attribute", new[] { Value.Declaration }, new[] { Fields.Attribute });
+                Ports.Output("value", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionDefinition<Attribute> Definition = Read(
+                "decision-attribute", Ports, Fields.Attribute);
         }
 
         public readonly struct HasTag
         {
+            static readonly OrchestrationExtensionPorts<HasTag> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<HasTag> Value =
-                new("value", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<HasTag> Definition = Read<HasTag>(
-                "decision-has-tag", new[] { Value.Declaration }, new[] { Fields.Tag });
+                Ports.Output("value", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<HasTag> Definition = Read(
+                "decision-has-tag", Ports, Fields.Tag);
         }
 
         public readonly struct Acting
         {
+            static readonly OrchestrationExtensionPorts<Acting> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Acting> Active =
-                new("active", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<Acting> Definition = Read<Acting>(
-                "decision-acting", new[] { Active.Declaration });
+                Ports.Output("active", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<Acting> Definition = Read(
+                "decision-acting", Ports);
         }
 
         public readonly struct CurrentTick
         {
+            static readonly OrchestrationExtensionPorts<CurrentTick> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<CurrentTick> Tick =
-                new("tick", OrchestrationValueKind.UInt64, 0);
-            public static readonly OrchestrationExtensionDefinition<CurrentTick> Definition = Read<CurrentTick>(
-                "decision-current-tick", new[] { Tick.Declaration });
+                Ports.Output("tick", OrchestrationValueKind.UInt64);
+            public static readonly OrchestrationExtensionDefinition<CurrentTick> Definition = Read(
+                "decision-current-tick", Ports);
         }
 
         public readonly struct RandomInt
         {
+            static readonly OrchestrationExtensionPorts<RandomInt> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<RandomInt> Value =
-                new("value", OrchestrationValueKind.Int32, 0);
-            public static readonly OrchestrationExtensionDefinition<RandomInt> Definition = Read<RandomInt>(
-                "decision-random-int", new[] { Value.Declaration }, new[] { Fields.Minimum, Fields.Maximum });
+                Ports.Output("value", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionDefinition<RandomInt> Definition = Read(
+                "decision-random-int", Ports, Fields.Minimum, Fields.Maximum);
         }
 
         public readonly struct Move
         {
+            static readonly OrchestrationExtensionPorts<Move> Ports = new();
             public static readonly OrchestrationExtensionInputPort<Move> Value =
-                new("value", OrchestrationValueKind.Vector2, 0);
-            public static readonly OrchestrationExtensionDefinition<Move> Definition = Write<Move>(
-                "decision-move", new[] { Value.Declaration }, new[] { Fields.Input });
+                Ports.Input("value", OrchestrationValueKind.Vector2);
+            public static readonly OrchestrationExtensionDefinition<Move> Definition = Write(
+                "decision-move", Ports, Fields.Input);
         }
 
         public readonly struct SubmitRequest
         {
+            static readonly OrchestrationExtensionPorts<SubmitRequest> Ports = new();
             public static readonly OrchestrationExtensionInputPort<SubmitRequest> Target =
-                new("target", OrchestrationValueKind.ObjectHandle, 0, GameplayObjectKinds.Actor);
+                Ports.Input("target", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<SubmitRequest> Submitted =
-                new("submitted", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionDefinition<SubmitRequest> Definition = Write<SubmitRequest>(
-                "decision-submit-request", new[] { Target.Declaration, Submitted.Declaration }, new[] { Fields.Request });
+                Ports.Output("submitted", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionDefinition<SubmitRequest> Definition = Write(
+                "decision-submit-request", Ports, Fields.Request);
         }
 
         static OrchestrationExtensionDefinition<TOperation> Read<TOperation>(string operation,
-            OrchestrationExtensionPort[] ports, OrchestrationExtensionContentField[] fields = null)
+            OrchestrationExtensionPorts<TOperation> ports, params OrchestrationExtensionContentField[] fields)
             where TOperation : struct =>
             new(new OrchestrationExtensionIdentity(DomainId, operation), 1,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value, OrchestrationExtensionAccess.ReadOnly,
                     OrchestrationExtensionInvocationKind.Evaluate, OrchestrationExtensionCompletion.Immediate,
-                    ports, fields ?? Array.Empty<OrchestrationExtensionContentField>()));
+                    ports.Seal(), fields));
 
         static OrchestrationExtensionDefinition<TOperation> Write<TOperation>(string operation,
-            OrchestrationExtensionPort[] ports, OrchestrationExtensionContentField[] fields) where TOperation : struct =>
+            OrchestrationExtensionPorts<TOperation> ports, params OrchestrationExtensionContentField[] fields)
+            where TOperation : struct =>
             new(new OrchestrationExtensionIdentity(ActorDomainId, operation), 1,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
-                    OrchestrationExtensionCompletion.Immediate, ports, fields));
+                    OrchestrationExtensionCompletion.Immediate, ports.Seal(), fields));
     }
 }

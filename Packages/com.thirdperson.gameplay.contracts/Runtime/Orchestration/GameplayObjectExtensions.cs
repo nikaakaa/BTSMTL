@@ -8,11 +8,9 @@ namespace ThirdPersonGameplay.Orchestration
         public GameplayObjectStartupInputContent(int inputIndex, OrchestrationValueKind valueKind)
         {
             InputIndex = inputIndex;
-            Value = new OrchestrationExtensionOutputPort<GameplayObjectExtensionContracts.StartupInput>(
-                GameplayObjectExtensionContracts.StartupInput.ValuePortId, valueKind, 0,
-                valueKind == OrchestrationValueKind.ObjectHandle ? OrchestrationObjectKind.Any : null);
-            Contract = GameplayObjectExtensionContracts.StartupInput.Definition.Declaration
-                .WithAdditionalPorts(new[] { Value.Declaration }).Contract;
+            Contract = GameplayObjectExtensionContracts.StartupInput.Contract(valueKind,
+                out OrchestrationExtensionOutputPort<GameplayObjectExtensionContracts.StartupInput> value);
+            Value = value;
         }
 
         public int InputIndex { get; }

@@ -35,94 +35,80 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct BlackboardFacts
         {
+            static readonly OrchestrationExtensionPorts<BlackboardFacts> Ports = new();
             public static readonly OrchestrationExtensionInputPort<BlackboardFacts> CurrentOwnerGeneration =
-                new OrchestrationExtensionInputPort<BlackboardFacts>("current-owner-generation", OrchestrationValueKind.UInt64, 0);
+                Ports.Input("current-owner-generation", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> InstanceId =
-                new OrchestrationExtensionOutputPort<BlackboardFacts>("instance-id", OrchestrationValueKind.UInt64, 0);
+                Ports.Output("instance-id", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> SkillContent =
-                new OrchestrationExtensionOutputPort<BlackboardFacts>("skill-content", OrchestrationValueKind.Identity, 1);
+                Ports.Output("skill-content", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> ExecutionGeneration =
-                new OrchestrationExtensionOutputPort<BlackboardFacts>("execution-generation", OrchestrationValueKind.UInt64, 2);
+                Ports.Output("execution-generation", OrchestrationValueKind.UInt64);
             public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> SegmentGeneration =
-                new OrchestrationExtensionOutputPort<BlackboardFacts>("segment-generation", OrchestrationValueKind.UInt64, 3);
+                Ports.Output("segment-generation", OrchestrationValueKind.UInt64);
 
             public static readonly OrchestrationExtensionDefinition<BlackboardFacts> Definition = new OrchestrationExtensionDefinition<BlackboardFacts>(
                 new OrchestrationExtensionIdentity(DomainId, "blackboard-facts"),
                 1, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        CurrentOwnerGeneration.Declaration,
-                        InstanceId.Declaration,
-                        SkillContent.Declaration,
-                        ExecutionGeneration.Declaration,
-                        SegmentGeneration.Declaration
-                    }, Array.Empty<OrchestrationExtensionContentField>()));
+                    Ports.Seal(), Array.Empty<OrchestrationExtensionContentField>()));
         }
 
         public readonly struct ActivationEntry
         {
+            static readonly OrchestrationExtensionPorts<ActivationEntry> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<ActivationEntry> Result =
-                new OrchestrationExtensionOutputPort<ActivationEntry>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<ActivationEntry> Definition = new OrchestrationExtensionDefinition<ActivationEntry>(
                 new OrchestrationExtensionIdentity(DomainId, "activation-entry"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[] { Fields.ActivationEntryId }));
+                    Ports.Seal(), new[] { Fields.ActivationEntryId }));
         }
 
         public readonly struct ActionContextActive
         {
+            static readonly OrchestrationExtensionPorts<ActionContextActive> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<ActionContextActive> Result =
-                new OrchestrationExtensionOutputPort<ActionContextActive>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<ActionContextActive> Definition = new OrchestrationExtensionDefinition<ActionContextActive>(
                 new OrchestrationExtensionIdentity(DomainId, "action-context-active"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[] { Fields.ActionContext }));
+                    Ports.Seal(), new[] { Fields.ActionContext }));
         }
 
         public readonly struct ActionEventReceived
         {
+            static readonly OrchestrationExtensionPorts<ActionEventReceived> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<ActionEventReceived> Result =
-                new OrchestrationExtensionOutputPort<ActionEventReceived>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<ActionEventReceived> Definition = new OrchestrationExtensionDefinition<ActionEventReceived>(
                 new OrchestrationExtensionIdentity(DomainId, "action-event-received"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[] { Fields.EventId }));
+                    Ports.Seal(), new[] { Fields.EventId }));
         }
 
         public readonly struct AbilityActive
         {
+            static readonly OrchestrationExtensionPorts<AbilityActive> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<AbilityActive> Result =
-                new OrchestrationExtensionOutputPort<AbilityActive>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<AbilityActive> Definition = new OrchestrationExtensionDefinition<AbilityActive>(
                 new OrchestrationExtensionIdentity(DomainId, "ability-active"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         GameplayOrchestrationPayloadContract.QueryAll, GameplayOrchestrationPayloadContract.QueryAny,
                         GameplayOrchestrationPayloadContract.QueryNone
@@ -131,59 +117,52 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct SelectedSourcePhase
         {
+            static readonly OrchestrationExtensionPorts<SelectedSourcePhase> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<SelectedSourcePhase> Result =
-                new OrchestrationExtensionOutputPort<SelectedSourcePhase>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<SelectedSourcePhase> Definition = new OrchestrationExtensionDefinition<SelectedSourcePhase>(
                 new OrchestrationExtensionIdentity(DomainId, "selected-source-phase"),
                 4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        Result.Declaration
-                    }, new[] { Fields.Phase }));
+                    Ports.Seal(), new[] { Fields.Phase }));
         }
 
         public readonly struct RequestTargetDiffersFromSource
         {
+            static readonly OrchestrationExtensionPorts<RequestTargetDiffersFromSource> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<RequestTargetDiffersFromSource> Result =
-                new("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<RequestTargetDiffersFromSource> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "request-target-differs-from-source"), 1,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate, new[] { Result.Declaration },
+                    OrchestrationExtensionCompletion.Immediate, Ports.Seal(),
                     Array.Empty<OrchestrationExtensionContentField>()));
         }
 
         public readonly struct CanActivateAction
         {
+            static readonly OrchestrationExtensionPorts<CanActivateAction> Ports = new();
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetId =
-                new OrchestrationExtensionInputPort<CanActivateAction>("target-id", OrchestrationValueKind.Identity, 0);
+                Ports.Input("target-id", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetPosition =
-                new OrchestrationExtensionInputPort<CanActivateAction>("target-position", OrchestrationValueKind.Vector3, 1);
+                Ports.Input("target-position", OrchestrationValueKind.Vector3);
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetYaw =
-                new OrchestrationExtensionInputPort<CanActivateAction>("target-yaw", OrchestrationValueKind.Scalar, 2);
+                Ports.Input("target-yaw", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetObjectHandle =
-                new OrchestrationExtensionInputPort<CanActivateAction>("target-object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
+                Ports.Input("target-object-handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<CanActivateAction> Result =
-                new OrchestrationExtensionOutputPort<CanActivateAction>("result", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("result", OrchestrationValueKind.Boolean);
 
             public static readonly OrchestrationExtensionDefinition<CanActivateAction> Definition = new OrchestrationExtensionDefinition<CanActivateAction>(
                 new OrchestrationExtensionIdentity(DomainId, "can-activate-action"),
                 6, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        TargetId.Declaration,
-                        TargetPosition.Declaration,
-                        TargetYaw.Declaration,
-                        TargetObjectHandle.Declaration,
-                        Result.Declaration
-                    }, new[]
+                    Ports.Seal(), new[]
                     {
                         Fields.CandidateAbility,
                         Fields.TargetSnapshotDeclaration, Fields.TargetSnapshotOwner,

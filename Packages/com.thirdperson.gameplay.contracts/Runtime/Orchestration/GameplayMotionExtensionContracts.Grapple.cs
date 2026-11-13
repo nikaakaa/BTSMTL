@@ -59,23 +59,21 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct ReadGrapple
         {
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Ended = new("ended", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Reason = new("reason", OrchestrationValueKind.Int32, 1);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Direction = new("direction", OrchestrationValueKind.Vector3, 2);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Attached = new("attached", OrchestrationValueKind.Boolean, 3);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> InFlight = new("in-flight", OrchestrationValueKind.Boolean, 4);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> GroundHandoff = new("ground-handoff", OrchestrationValueKind.Boolean, 5);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Steady = new("steady", OrchestrationValueKind.Boolean, 6);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Active = new("active", OrchestrationValueKind.Boolean, 7);
-            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Approaching = new("approaching", OrchestrationValueKind.Boolean, 8);
+            static readonly OrchestrationExtensionPorts<ReadGrapple> Ports = new();
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Ended = Ports.Output("ended", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Reason = Ports.Output("reason", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Direction = Ports.Output("direction", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Attached = Ports.Output("attached", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> InFlight = Ports.Output("in-flight", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> GroundHandoff = Ports.Output("ground-handoff", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Steady = Ports.Output("steady", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Active = Ports.Output("active", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Approaching = Ports.Output("approaching", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionDefinition<ReadGrapple> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "read-grapple"), 4,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[] { Ended.Declaration, Reason.Declaration, Direction.Declaration, Attached.Declaration,
-                        InFlight.Declaration, GroundHandoff.Declaration, Steady.Declaration, Active.Declaration,
-                        Approaching.Declaration }, Array.Empty<Field>()));
+                    OrchestrationExtensionCompletion.Immediate, Ports.Seal(), Array.Empty<Field>()));
         }
 
         public readonly struct EndGrapple

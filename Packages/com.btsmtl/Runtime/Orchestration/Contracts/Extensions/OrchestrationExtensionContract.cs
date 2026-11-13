@@ -85,7 +85,7 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
-        public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index,
+        internal OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index,
             OrchestrationObjectKind objectKind = null)
         {
             ObjectKind = OrchestrationExtensionPortKinds.Require(id, valueKind, objectKind);
@@ -105,7 +105,7 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
-        public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index,
+        internal OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index,
             OrchestrationObjectKind objectKind = null)
         {
             ObjectKind = OrchestrationExtensionPortKinds.Require(id, valueKind, objectKind);

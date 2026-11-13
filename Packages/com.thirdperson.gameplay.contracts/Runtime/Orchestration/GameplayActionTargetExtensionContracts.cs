@@ -16,67 +16,52 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct Read
         {
+            static readonly OrchestrationExtensionPorts<Read> Ports = new();
             public static readonly OrchestrationExtensionInputPort<Read> TargetIdInput =
-                new OrchestrationExtensionInputPort<Read>("target-id", OrchestrationValueKind.Identity, 0);
+                Ports.Input("target-id", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionInputPort<Read> PositionInput =
-                new OrchestrationExtensionInputPort<Read>("position", OrchestrationValueKind.Vector3, 1);
+                Ports.Input("position", OrchestrationValueKind.Vector3);
             public static readonly OrchestrationExtensionInputPort<Read> YawInput =
-                new OrchestrationExtensionInputPort<Read>("yaw", OrchestrationValueKind.Scalar, 2);
+                Ports.Input("yaw", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionInputPort<Read> ObjectHandleInput =
-                new OrchestrationExtensionInputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
+                Ports.Input("object-handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
             public static readonly OrchestrationExtensionOutputPort<Read> HasTarget =
-                new OrchestrationExtensionOutputPort<Read>("has-target", OrchestrationValueKind.Boolean, 0);
+                Ports.Output("has-target", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionOutputPort<Read> Position =
-                new OrchestrationExtensionOutputPort<Read>("position", OrchestrationValueKind.Vector3, 1);
+                Ports.Output("position", OrchestrationValueKind.Vector3);
             public static readonly OrchestrationExtensionOutputPort<Read> Yaw =
-                new OrchestrationExtensionOutputPort<Read>("yaw", OrchestrationValueKind.Scalar, 2);
+                Ports.Output("yaw", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionOutputPort<Read> PlanarDistance =
-                new OrchestrationExtensionOutputPort<Read>("planar-distance", OrchestrationValueKind.Scalar, 3);
+                Ports.Output("planar-distance", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionOutputPort<Read> ObjectHandle =
-                new OrchestrationExtensionOutputPort<Read>("object-handle", OrchestrationValueKind.ObjectHandle, 4, GameplayObjectKinds.Actor);
+                Ports.Output("object-handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
 
             public static readonly OrchestrationExtensionDefinition<Read> Definition = new OrchestrationExtensionDefinition<Read>(
                 new OrchestrationExtensionIdentity(DomainId, "action-target"),
                 5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        TargetIdInput.Declaration,
-                        PositionInput.Declaration,
-                        YawInput.Declaration,
-                        ObjectHandleInput.Declaration,
-                        HasTarget.Declaration,
-                        Position.Declaration,
-                        Yaw.Declaration,
-                        PlanarDistance.Declaration,
-                        ObjectHandle.Declaration
-                    }, new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
+                    Ports.Seal(), new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
         }
 
         public readonly struct Capture
         {
+            static readonly OrchestrationExtensionPorts<Capture> Ports = new();
             public static readonly OrchestrationExtensionOutputPort<Capture> TargetId =
-                new OrchestrationExtensionOutputPort<Capture>("target-id", OrchestrationValueKind.Identity, 0);
+                Ports.Output("target-id", OrchestrationValueKind.Identity);
             public static readonly OrchestrationExtensionOutputPort<Capture> Position =
-                new OrchestrationExtensionOutputPort<Capture>("position", OrchestrationValueKind.Vector3, 1);
+                Ports.Output("position", OrchestrationValueKind.Vector3);
             public static readonly OrchestrationExtensionOutputPort<Capture> Yaw =
-                new OrchestrationExtensionOutputPort<Capture>("yaw", OrchestrationValueKind.Scalar, 2);
+                Ports.Output("yaw", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionOutputPort<Capture> ObjectHandle =
-                new OrchestrationExtensionOutputPort<Capture>("object-handle", OrchestrationValueKind.ObjectHandle, 3, GameplayObjectKinds.Actor);
+                Ports.Output("object-handle", OrchestrationValueKind.ObjectHandle, GameplayObjectKinds.Actor);
 
             public static readonly OrchestrationExtensionDefinition<Capture> Definition = new OrchestrationExtensionDefinition<Capture>(
                 new OrchestrationExtensionIdentity(DomainId, "capture-action-target"),
                 5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
-                    new[]
-                    {
-                        TargetId.Declaration,
-                        Position.Declaration,
-                        Yaw.Declaration,
-                        ObjectHandle.Declaration
-                    }, new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
+                    Ports.Seal(), new[] { Fields.DeclarationId, Fields.DeclarationOwner }));
         }
     }
 }

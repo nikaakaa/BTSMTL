@@ -30,37 +30,36 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct EndAuthoredTrajectory
         {
-            public static readonly OrchestrationExtensionInputPort<EndAuthoredTrajectory> When = new("when", OrchestrationValueKind.Boolean, 0);
+            static readonly OrchestrationExtensionPorts<EndAuthoredTrajectory> Ports = new();
+            public static readonly OrchestrationExtensionInputPort<EndAuthoredTrajectory> When = Ports.Input("when", OrchestrationValueKind.Boolean);
             public static readonly OrchestrationExtensionDefinition<EndAuthoredTrajectory> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "end-authored-trajectory"), 2,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
-                    OrchestrationExtensionCompletion.Immediate, new[] { When.Declaration },
+                    OrchestrationExtensionCompletion.Immediate, Ports.Seal(),
                     Array.Empty<OrchestrationExtensionContentField>()));
         }
 
         public readonly struct ReadObstacleTraversal
         {
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Variant = new("variant", OrchestrationValueKind.Int32, 0);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> FrontLedge = new("front-ledge", OrchestrationValueKind.Vector3, 1);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> BackLedge = new("back-ledge", OrchestrationValueKind.Vector3, 2);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> BackFloor = new("back-floor", OrchestrationValueKind.Vector3, 3);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Yaw = new("yaw", OrchestrationValueKind.Scalar, 4);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Ended = new("ended", OrchestrationValueKind.Boolean, 5);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Succeeded = new("succeeded", OrchestrationValueKind.Boolean, 6);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Reason = new("reason", OrchestrationValueKind.Int32, 7);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> HasTarget = new("has-target", OrchestrationValueKind.Boolean, 8);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> EntryTime = new("entry-time", OrchestrationValueKind.Scalar, 9);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> ShouldRelease = new("should-release", OrchestrationValueKind.Boolean, 10);
-            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> PlaybackRate = new("playback-rate", OrchestrationValueKind.Scalar, 11);
+            static readonly OrchestrationExtensionPorts<ReadObstacleTraversal> Ports = new();
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Variant = Ports.Output("variant", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> FrontLedge = Ports.Output("front-ledge", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> BackLedge = Ports.Output("back-ledge", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> BackFloor = Ports.Output("back-floor", OrchestrationValueKind.Vector3);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Yaw = Ports.Output("yaw", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Ended = Ports.Output("ended", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Succeeded = Ports.Output("succeeded", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> Reason = Ports.Output("reason", OrchestrationValueKind.Int32);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> HasTarget = Ports.Output("has-target", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> EntryTime = Ports.Output("entry-time", OrchestrationValueKind.Scalar);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> ShouldRelease = Ports.Output("should-release", OrchestrationValueKind.Boolean);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> PlaybackRate = Ports.Output("playback-rate", OrchestrationValueKind.Scalar);
             public static readonly OrchestrationExtensionDefinition<ReadObstacleTraversal> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "read-obstacle-traversal"), 3,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                    OrchestrationExtensionCompletion.Immediate,
-                    new[] { Variant.Declaration, FrontLedge.Declaration, BackLedge.Declaration, BackFloor.Declaration,
-                        Yaw.Declaration, Ended.Declaration, Succeeded.Declaration, Reason.Declaration, HasTarget.Declaration,
-                        EntryTime.Declaration, ShouldRelease.Declaration, PlaybackRate.Declaration },
+                    OrchestrationExtensionCompletion.Immediate, Ports.Seal(),
                     Array.Empty<OrchestrationExtensionContentField>()));
         }
     }
