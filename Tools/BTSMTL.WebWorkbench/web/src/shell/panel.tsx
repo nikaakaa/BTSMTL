@@ -1,5 +1,7 @@
 import type { DockviewPanelApi, IDockviewPanelProps } from 'dockview-react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { consoleActions } from '../state/store';
+import { Button } from '../ui/controls';
 import { PortalContainerProvider } from '../ui/portal';
 import { requestLayoutSave } from './layout';
 import type { PanelType } from './panelTypes';
@@ -42,10 +44,33 @@ export function PanelFrame({ type, props, children }: { type: PanelType; props: 
   return (
     <PanelContext.Provider value={{ id: api.id, type, api, window: panelWindow, visible }}>
       <PortalContainerProvider value={panelWindow.document.body}>
-        <div className={styles.panel}>{children}</div>
+        <div className={styles.panel}><PanelBoundary title={api.title ?? type}>{children}</PanelBoundary></div>
       </PortalContainerProvider>
     </PanelContext.Provider>
   );
+}
+
+// 单个面板渲染出错只停在该面板：显示原因并写入控制台，其余面板照常可用，不让整个工作台空白。
+class PanelBoundary extends Component<{ title: string; children: ReactNode }, { error: Error | null }> {
+  override state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error) {
+    consoleActions.log('error', 'layout', `${this.props.title} 面板出错：${error.message}`, error.stack);
+  }
+
+  override render() {
+    const { error } = this.state;
+    if (error === null) return this.props.children;
+    return <div className={styles.panelError} role="alert">
+      <p>{`${this.props.title} 面板出错：${error.message}`}</p>
+      <p>详情已写入控制台。</p>
+      <Button onClick={() => this.setState({ error: null })}>重新显示</Button>
+    </div>;
+  }
 }
 
 export function usePanelId(): string {

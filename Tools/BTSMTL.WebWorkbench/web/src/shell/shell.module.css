@@ -39,6 +39,15 @@
   font: var(--font);
 }
 
+.panelError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .groupActions {
   display: flex;
   align-items: center;

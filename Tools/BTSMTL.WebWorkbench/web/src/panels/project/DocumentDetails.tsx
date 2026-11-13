@@ -15,8 +15,9 @@ export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kin
 export function DocumentDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
   const documentTypes = useAuthoring(state => state.documentTypes);
   const documents = useAuthoring(state => state.documents);
+  // 文档类型目录与文档列表随作者仓库异步读回；读回前（如打开时恢复了上次选中的文档）先不显示类型名。
   const kindName = (value: ProjectItem) => value.kind === 'input-plan' ? '输入方案'
-    : documentTypes.find(type => type.id === (value.kind === 'document' ? documents[value.owner].kind : value.kind))!.displayName;
+    : documentTypes.find(type => type.id === (value.kind === 'document' ? documents[value.owner]?.kind : value.kind))?.displayName ?? '';
   const typeName = kindName(item);
   const [referrers, setReferrers] = useState<ReferrersResult | null>(null);
   const [failure, setFailure] = useState<{ text: string; entryId: number | null } | null>(null);
