@@ -69,7 +69,7 @@ namespace BTSMTL.Authoring.Workspace
                     .SingleOrDefault(member => member.Name == path[index]);
                 if (field == null || index == path.Count - 1)
                     return field;
-                bean = m_Model.FindBean(field.Type.Element, field.Bean.Module);
+                bean = field.Type == null ? null : m_Model.FindBean(field.Type.Element, field.Bean.Module);
             }
             return null;
         }
@@ -108,7 +108,10 @@ namespace BTSMTL.Authoring.Workspace
                         foreach (JValue item in values.OfType<JValue>().Where(item => item.Type == JTokenType.String))
                             yield return new AuthoringSchemaReference(kind, item, field.Tags["resource"]);
                 }
-                SkillSchemaBean nested = m_Model.FindBean(field.Type.Element, field.Bean.Module);
+                // 合同端口的值类型在运行合同里，接入的节点由自身 $type 决定读取形状。
+                SkillSchemaBean nested = field.Type != null ? m_Model.FindBean(field.Type.Element, field.Bean.Module) :
+                    stored is JObject { } connected && connected["$type"] is JValue connectedType
+                        ? RequireBean((string)connectedType, field.Bean.Module) : null;
                 if (nested != null)
                     foreach (AuthoringSchemaReference reference in Read(stored, nested))
                         yield return reference;
@@ -116,6 +119,6 @@ namespace BTSMTL.Authoring.Workspace
         }
 
         static string Kind(SkillSchemaVar field) => field.Tags["reference"] ?? field.Tags["asset"] ??
-            field.Tags["resource"] ?? (field.Type.Reference == "Btsmtl.Skill.Graphs" ? "graph" : null);
+            field.Tags["resource"] ?? (field.Type?.Reference == "Btsmtl.Skill.Graphs" ? "graph" : null);
     }
 }

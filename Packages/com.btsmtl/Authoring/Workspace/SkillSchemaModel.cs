@@ -45,11 +45,12 @@ public sealed class SkillSchemaType
 
 public sealed class SkillSchemaVar
 {
-    internal SkillSchemaVar(string name, SkillSchemaType type, string group, string? alias,
+    internal SkillSchemaVar(string name, SkillSchemaType? type, string group, string? alias,
         SkillSchemaTags tags, XElement element, SkillSchemaBean bean)
     { Name = name; Type = type; Group = group; Alias = alias; Tags = tags; Element = element; Bean = bean; }
     public string Name { get; }
-    public SkillSchemaType Type { get; }
+    // 合同端口（port=contract）为空：方向与值类型只由运行合同提供。
+    public SkillSchemaType? Type { get; }
     public string Group { get; }
     public string? Alias { get; }
     public SkillSchemaTags Tags { get; }
@@ -143,9 +144,9 @@ public sealed class SkillSchemaModel
 
     // 引用到 schema 外的类型名：只能是从运行合同导出的枚举。
     public IEnumerable<string> ExternalTypes() => Beans.SelectMany(bean => bean.Vars.Select(item => (bean, item)))
-        .Where(pair => !IsBuiltin(pair.item.Type.Element) && FindBean(pair.item.Type.Element, pair.bean.Module) == null &&
-            !IsSchemaEnum(pair.item.Type.Element, pair.bean.Module))
-        .Select(pair => pair.item.Type.Element).Distinct(StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal);
+        .Where(pair => pair.item.Type is { } type && !IsBuiltin(type.Element) && FindBean(type.Element, pair.bean.Module) == null &&
+            !IsSchemaEnum(type.Element, pair.bean.Module))
+        .Select(pair => pair.item.Type!.Element).Distinct(StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal);
 
     void Read(string file, XElement module, string name, ICollection<SkillSchemaError> errors)
     {
@@ -165,9 +166,17 @@ public sealed class SkillSchemaModel
                         (string?)element.Attribute("alias"), (string?)element.Attribute("valueType") is "1" or "true",
                         Validate(file, element, errors), file, element);
                     foreach (XElement item in element.Elements("var"))
+                    {
+                        SkillSchemaTags tags = Validate(file, item, errors);
+                        string? type = (string?)item.Attribute("type");
+                        if (tags["port"] == "contract" && type != null)
+                            errors.Add(Error(file, item, ".type", "合同端口的方向与值类型由运行合同提供，删除 type。"));
+                        else if (tags["port"] != "contract" && type == null)
+                            errors.Add(Error(file, item, ".type", "缺少 type。"));
                         bean.Vars.Add(new SkillSchemaVar(item.Attribute("name")!.Value,
-                            ParseType(item.Attribute("type")!.Value), (string?)item.Attribute("group") ?? "data",
-                            (string?)item.Attribute("alias"), Validate(file, item, errors), item, bean));
+                            type == null ? null : ParseType(type), (string?)item.Attribute("group") ?? "data",
+                            (string?)item.Attribute("alias"), tags, item, bean));
+                    }
                     if (!m_Beans.TryAdd(bean.FullName, bean))
                         errors.Add(Error(file, element, "", $"bean {bean.FullName} 重复声明。"));
                     Beans.Add(bean);
@@ -222,7 +231,7 @@ public sealed class SkillSchemaModel
                 tag.Key == "authoring" && tag.Value == "true")
                 reason = "与默认行为相同，删除重复声明。";
             else if (tag.Key == "optional" && declaration.Name.LocalName == "var" &&
-                (tag.Value == "true") == ((string)declaration.Attribute("type")!).Split('#')[0].EndsWith('?'))
+                (tag.Value == "true") == (((string?)declaration.Attribute("type"))?.Split('#')[0].EndsWith('?') ?? false))
                 reason = "作者可缺值规则与原生可空相同，删除重复声明。";
             if (reason != null)
                 errors.Add(Error(file, declaration, ".tags." + tag.Key, reason));
