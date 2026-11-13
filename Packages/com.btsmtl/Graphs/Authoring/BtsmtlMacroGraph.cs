@@ -152,7 +152,7 @@ namespace BTSMTL.Graphs
         public static BtsmtlMacroGraph Create(string name, BtsmtlMacroHost host,
             BtsmtlGraphVariableDeclarations variables, Action<string, Action> mutate) => Create(name, host, variables, mutate, macro =>
         {
-            foreach (var input in CreateDefaultInputInterface())
+            foreach (var input in BtsmtlMacroDefaults.CreateDefaultInputInterface())
                 macro.inputDefinitions.Add(new DynamicParameterDefinition(input.Id, input.DisplayName, typeof(Flow)));
         });
 
@@ -206,9 +206,11 @@ namespace BTSMTL.Graphs
         public void EnsureAnchors() => EditAuthoring("配置子图出入口", () =>
         {
             if (InputAnchor == null)
-                base.AddNode(typeof(BtsmtlMacroInputNode), new Vector2(-translation.x + DefaultInputPosition.X, -translation.y + DefaultInputPosition.Y));
+                base.AddNode(typeof(BtsmtlMacroInputNode), new Vector2(-translation.x + BtsmtlMacroDefaults.DefaultInputPosition.X,
+                    -translation.y + BtsmtlMacroDefaults.DefaultInputPosition.Y));
             if (OutputAnchor == null)
-                base.AddNode(typeof(BtsmtlMacroOutputNode), new Vector2(-translation.x + DefaultOutputPosition.X, -translation.y + DefaultOutputPosition.Y));
+                base.AddNode(typeof(BtsmtlMacroOutputNode), new Vector2(-translation.x + BtsmtlMacroDefaults.DefaultOutputPosition.X,
+                    -translation.y + BtsmtlMacroDefaults.DefaultOutputPosition.Y));
             InputAnchor.GatherPorts();
             OutputAnchor.GatherPorts();
         });

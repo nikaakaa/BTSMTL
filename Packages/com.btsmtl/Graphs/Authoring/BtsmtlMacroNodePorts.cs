@@ -4,7 +4,8 @@ using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Graphs
 {
-    public sealed partial class BtsmtlMacroGraph
+    // 子图默认出入口与执行入口；不挂在 FlowCanvas 派生的 BtsmtlMacroGraph 上，调用方无需引用 FlowCanvas。
+    public static class BtsmtlMacroDefaults
     {
         public static (float X, float Y) DefaultInputPosition => (200, 200);
         public static (float X, float Y) DefaultOutputPosition => (800, 200);
