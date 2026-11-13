@@ -128,13 +128,12 @@ namespace BTSMTL.Orchestration
         public int Insert<TStorage>(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            int depth = frame.ParentFrameIndex < 0 ? 0 : Plan.FrameDepth(frame.ParentFrameIndex) + 1;
-            OrchestrationFramePoolRange pool = Plan.FramePool(depth);
+            int programIndex = Plan.ProgramIndex(frame.SkillContentId);
+            OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, frame.OwnerOperationIndex);
             int slot = pool.First;
             while (m_Frames[slot].SkillContentId != 0)
                 slot++;
             m_Frames[slot] = frame;
-            int programIndex = Plan.ProgramIndex(frame.SkillContentId);
             ClearPayloads(slot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             ReadOnlySpan<OrchestrationValueStorageSlot> values = Plan.ProgramStorage(programIndex).Values;
             Span<TValue> outputs = Payload<TValue>(slot, OrchestrationStateSegmentRole.SavedOutputs, programIndex);

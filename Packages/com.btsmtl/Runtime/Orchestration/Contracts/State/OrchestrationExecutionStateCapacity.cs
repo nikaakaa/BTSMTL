@@ -43,10 +43,12 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationExecutionStateCapacity
     {
-        public OrchestrationExecutionStateCapacity(ReadOnlyMemory<OrchestrationExecutionFramePoolCapacity> framePools)
+        public OrchestrationExecutionStateCapacity(ReadOnlyMemory<OrchestrationExecutionFramePoolCapacity> framePools,
+            ReadOnlyMemory<ReadOnlyMemory<int>> ownerPools)
         {
             this = default;
             FramePools = framePools;
+            OwnerPools = ownerPools;
             var kinds = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
             foreach (ref readonly OrchestrationExecutionFramePoolCapacity pool in framePools.Span)
             {
@@ -66,6 +68,7 @@ namespace BTSMTL.Orchestration
         }
 
         public ReadOnlyMemory<OrchestrationExecutionFramePoolCapacity> FramePools { get; }
+        public ReadOnlyMemory<ReadOnlyMemory<int>> OwnerPools { get; }
         public int FrameCount { get; }
         public int OperationCount { get; }
         public int ValueCount { get; }
@@ -84,10 +87,13 @@ namespace BTSMTL.Orchestration
                 for (int kind = 0; kind < kinds.Length; kind++)
                     kinds[kind] = Math.Max(kinds[kind], pool.ValueKindCounts.Span[kind]);
             }
+            var ownerPools = new ReadOnlyMemory<int>[OwnerPools.Length];
+            for (int program = 0; program < ownerPools.Length; program++)
+                ownerPools[program] = new int[OwnerPools.Span[program].Length];
             return new OrchestrationExecutionStateCapacity(new[]
             {
                 new OrchestrationExecutionFramePoolCapacity(frameCount, operations, values, outputs, kinds)
-            });
+            }, ownerPools);
         }
 
         public StableHash BindIdentity(StableHash identity)
@@ -103,7 +109,13 @@ namespace BTSMTL.Orchestration
                     text.Append(':').Append(count.ToString(CultureInfo.InvariantCulture));
                 text.Append(';');
             }
-            return StableHash.Compute(identity.ToString(), "execution-frame-pools/1", text.ToString());
+            foreach (ReadOnlyMemory<int> owners in OwnerPools.Span)
+            {
+                foreach (int pool in owners.Span)
+                    text.Append(pool.ToString(CultureInfo.InvariantCulture)).Append(',');
+                text.Append(';');
+            }
+            return StableHash.Compute(identity.ToString(), "execution-frame-pools/2", text.ToString());
         }
     }
 }

@@ -144,7 +144,8 @@ namespace BTSMTL.Orchestration
                 records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
                     writer.Add(storage.OperationIndices.Span), writer.Add(storage.Values.Span),
                     writer.Add<int>(payloadSizes),
-                    writer.Add<OrchestrationFrameValueAddress>(addresses));
+                    writer.Add<OrchestrationFrameValueAddress>(addresses),
+                    writer.Add(capacity.OwnerPools.Span[program].Span));
             }
             header.Programs = writer.Add<OrchestrationStateProgramRecord>(records);
             m_Image = writer.Finish(in header);

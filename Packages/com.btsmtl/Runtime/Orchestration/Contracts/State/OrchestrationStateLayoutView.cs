@@ -33,13 +33,14 @@ namespace BTSMTL.Orchestration
     {
         internal OrchestrationStateProgramRecord(int skillContentId, OrchestrationMemorySection operationIndices,
             OrchestrationMemorySection values, OrchestrationMemorySection payloadSizes,
-            OrchestrationMemorySection privateAddresses)
+            OrchestrationMemorySection privateAddresses, OrchestrationMemorySection ownerPools)
         {
             SkillContentId = skillContentId;
             OperationIndices = operationIndices;
             Values = values;
             PayloadSizes = payloadSizes;
             PrivateAddresses = privateAddresses;
+            OwnerPools = ownerPools;
         }
 
         internal int SkillContentId { get; }
@@ -47,6 +48,7 @@ namespace BTSMTL.Orchestration
         internal OrchestrationMemorySection Values { get; }
         internal OrchestrationMemorySection PayloadSizes { get; }
         internal OrchestrationMemorySection PrivateAddresses { get; }
+        internal OrchestrationMemorySection OwnerPools { get; }
     }
 
     internal readonly struct OrchestrationFramePayloadSegment
@@ -131,9 +133,8 @@ namespace BTSMTL.Orchestration
         }
 
         internal int FrameIndexInPool(int frame) => Section<OrchestrationFrameSlot>(Header.FrameSlots)[frame].Index;
-        internal int FrameDepth(int frame) => Section<OrchestrationFrameSlot>(Header.FrameSlots)[frame].Pool;
-        internal OrchestrationFramePoolRange FramePool(int depth) =>
-            Section<OrchestrationFramePoolRange>(Header.FramePools)[depth];
+        internal OrchestrationFramePoolRange FramePool(int program, int owner) =>
+            Section<OrchestrationFramePoolRange>(Header.FramePools)[Section<int>(Program(program).OwnerPools)[owner]];
 
         public int ProgramIndex(int skillContentId) =>
             FindProgramIndex(Section<OrchestrationStateProgramRecord>(Header.Programs), skillContentId);
