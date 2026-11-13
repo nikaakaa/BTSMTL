@@ -80,21 +80,35 @@ sealed class DesktopLaunch : IDisposable
             "--Workspace", m_Profile.Workspace, "--urls", $"http://127.0.0.1:{m_Profile.Port}",
             "--contentRoot", AppContext.BaseDirectory }.Concat(m_Profile.HostArguments))
             start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动工作台 Host。");
+        var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动工作台 Host。");
+        var errors = DrainErrors(process);
         using var starting = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var error = process.StandardError.ReadToEndAsync(starting.Token);
         var connecting = Attach(35_000, starting.Token);
-        var exited = process.WaitForExitAsync(starting.Token);
         try
         {
-            if (await Task.WhenAny(connecting, exited) == connecting)
+            if (await Task.WhenAny(connecting, errors) == connecting)
                 return await connecting;
-            await exited;
-            throw new InvalidOperationException($"工作台 Host 启动失败（退出码 {process.ExitCode}）。\n{(await error).Trim()}");
+            var (text, exitCode) = await errors;
+            throw new InvalidOperationException($"工作台 Host 启动失败（退出码 {exitCode}）。\n{text.Trim()}");
         }
         finally
         {
             starting.Cancel();
+        }
+    }
+
+    // Host 运行期间持续向 stderr 写阶段计时；只读启动段会让管道写满，Host 之后的每次写入都永久阻塞，所以一直读到 Host 退出。
+    static async Task<(string Text, int ExitCode)> DrainErrors(Process process)
+    {
+        using (process)
+        {
+            const int startupTail = 64 * 1024;
+            var text = new StringBuilder();
+            while (await process.StandardError.ReadLineAsync() is { } line)
+                if (text.Length < startupTail)
+                    text.AppendLine(line);
+            await process.WaitForExitAsync();
+            return (text.ToString(), process.ExitCode);
         }
     }
 
