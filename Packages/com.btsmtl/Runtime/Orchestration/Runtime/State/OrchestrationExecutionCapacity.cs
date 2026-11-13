@@ -72,15 +72,17 @@ namespace BTSMTL.Orchestration
     {
         readonly ReadOnlyMemory<int>[] m_OwnerInstances;
         readonly int[] m_SourceDepths;
+        readonly OwnerAdmission[] m_OwnerAdmissions;
 
         OrchestrationExecutionCapacity(in OrchestrationExecutionStateCapacity state,
             int playbackCount, ReadOnlyMemory<int>[] ownerInstances,
-            int[] sourceDepths)
+            int[] sourceDepths, OwnerAdmission[] ownerAdmissions)
         {
             State = state;
             PlaybackCount = playbackCount;
             m_OwnerInstances = ownerInstances;
             m_SourceDepths = sourceDepths;
+            m_OwnerAdmissions = ownerAdmissions;
         }
 
         public OrchestrationExecutionStateCapacity State { get; }
@@ -88,6 +90,24 @@ namespace BTSMTL.Orchestration
         public int ProgramCount => m_OwnerInstances.Length;
         public ReadOnlyMemory<int> OwnerInstances(int programIndex) => m_OwnerInstances[programIndex];
         public int SourceDepth(int programIndex) => m_SourceDepths[programIndex];
+
+        public int CountOwnerElements(ReadOnlySpan<ReadOnlyMemory<int>> elements)
+        {
+            int total = 0;
+            foreach (OwnerAdmission admission in m_OwnerAdmissions)
+            {
+                int maximum = 0;
+                foreach (OwnerCount[] root in admission.Roots)
+                {
+                    int count = 0;
+                    foreach (OwnerCount owner in root)
+                        count = checked(count + checked(owner.Count * elements[owner.Program].Span[owner.Owner]));
+                    maximum = Math.Max(maximum, count);
+                }
+                total = checked(total + checked(maximum * admission.Instances));
+            }
+            return total;
+        }
 
         internal static OrchestrationExecutionCapacity Prepare<TValue>(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -99,11 +119,12 @@ namespace BTSMTL.Orchestration
                 callMap.Add((call.ProgramIndex, call.OperationIndex), call);
             var ownerCalls = new List<int>[programs.Length][];
             var roots = new Dictionary<(int Program, int Owner),
-                (int Playbacks, int[][] Owners, int Depth, List<FramePoolBuilder> Pools)>();
+                (int Playbacks, int[][] Owners, int Depth, List<FramePoolBuilder> Pools, OwnerCount[] Elements)>();
             var ownerInstanceBuffers = new int[programs.Length][];
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
             var sourceDepths = new int[programs.Length];
             var framePools = new List<FramePoolBuilder>();
+            var ownerAdmissions = new List<OwnerAdmission>();
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
                 OrchestrationProgram<TValue> program = programs[programIndex];
@@ -130,6 +151,8 @@ namespace BTSMTL.Orchestration
                 int playbacks = 0;
                 var admissionPools = new List<FramePoolBuilder>();
                 var admissionOwners = new Dictionary<int, int[]>();
+                var admissionRoots = new OwnerCount[admission.Roots.Length][];
+                int rootIndex = 0;
                 foreach (ref readonly OrchestrationExecutionRoot root in admission.Roots.Span)
                 {
                     int programIndex = root.ProgramIndex;
@@ -147,8 +170,14 @@ namespace BTSMTL.Orchestration
                         int depth = AccumulateOwners(programs, programIndex, root.OwnerOperationIndex, 1,
                             ownerCalls, callMap, counts, new HashSet<(int Program, int Owner)>(),
                             rootPools, 0, ref rootPlaybacks);
-                        roots.Add(key, capacity = (rootPlaybacks, counts, depth, rootPools));
+                        var elements = new List<OwnerCount>();
+                        for (int target = 0; target < counts.Length; target++)
+                            for (int owner = 0; owner < counts[target].Length; owner++)
+                                if (counts[target][owner] != 0)
+                                    elements.Add(new OwnerCount(target, owner, counts[target][owner]));
+                        roots.Add(key, capacity = (rootPlaybacks, counts, depth, rootPools, elements.ToArray()));
                     }
+                    admissionRoots[rootIndex++] = capacity.Elements;
                     playbacks = Math.Max(playbacks, capacity.Playbacks);
                     for (int depth = 0; depth < capacity.Pools.Count; depth++)
                         Pool(admissionPools, depth).MergeMaximum(capacity.Pools[depth]);
@@ -175,12 +204,40 @@ namespace BTSMTL.Orchestration
                 for (int depth = 0; depth < admissionPools.Count; depth++)
                     Pool(framePools, depth).AddAdmission(admissionPools[depth], admission.MaximumInstances);
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
+                ownerAdmissions.Add(new OwnerAdmission(admissionRoots, admission.MaximumInstances));
             }
             var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
             for (int depth = 0; depth < pools.Length; depth++)
                 pools[depth] = framePools[depth].Build();
             var state = new OrchestrationExecutionStateCapacity(pools);
-            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths);
+            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths,
+                ownerAdmissions.ToArray());
+        }
+
+        readonly struct OwnerCount
+        {
+            internal OwnerCount(int program, int owner, int count)
+            {
+                Program = program;
+                Owner = owner;
+                Count = count;
+            }
+
+            internal readonly int Program;
+            internal readonly int Owner;
+            internal readonly int Count;
+        }
+
+        readonly struct OwnerAdmission
+        {
+            internal OwnerAdmission(OwnerCount[][] roots, int instances)
+            {
+                Roots = roots;
+                Instances = instances;
+            }
+
+            internal readonly OwnerCount[][] Roots;
+            internal readonly int Instances;
         }
 
         static int AccumulateOwners<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
