@@ -128,6 +128,8 @@ namespace BTSMTL.Compilation.Analysis
         public string Reason { get; private set; }
         public OrchestrationStaticState LastState { get; private set; }
         public IReadOnlyList<OrchestrationStaticRead> InitialReads { get; private set; } = Array.Empty<OrchestrationStaticRead>();
+        // 起点所有入口转移读到的条件（含未胜出的入口），作者据此在输入轨放事件改走别的入口。
+        public IReadOnlyList<OrchestrationStaticRead> EntryReads { get; private set; } = Array.Empty<OrchestrationStaticRead>();
 
         public IReadOnlyList<TimelineStaticChainBranchPoint> BranchPoints => m_BranchPoints;
         readonly List<TimelineStaticChainBranchPoint> m_BranchPoints = new();
@@ -176,6 +178,9 @@ namespace BTSMTL.Compilation.Analysis
             activeMachines.Add(machineOperationIndex);
             TimelineStaticChain chain = Build(query, selected.Target, start, previewEnd, inputs, activeMachines);
             chain.InitialReads = trace.Reads;
+            var entryReads = new List<OrchestrationStaticRead>(trace.Reads);
+            entryReads.AddRange(others.Reads);
+            chain.EntryReads = entryReads;
             if (choices != null)
                 chain.m_BranchPoints.Insert(0, new TimelineStaticChainBranchPoint(null, start, choices));
             activeMachines.Remove(machineOperationIndex);

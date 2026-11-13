@@ -202,6 +202,7 @@ namespace BTSMTL.Compilation.Analysis
             var keys = new HashSet<string>(StringComparer.Ordinal);
             var suggested = new HashSet<(OrchestrationStaticTransition, OrchestrationTime)>();
             AddBranchChoices(Chain, reads, keys, suggestions, suggested);
+            AddEntryReads(Chain, reads, keys);
             foreach (TimelineStaticRouteSpan span in SpansInOrder())
             {
                 OrchestrationStaticState state = span.State;
@@ -247,6 +248,16 @@ namespace BTSMTL.Compilation.Analysis
                 }
             foreach (TimelineStaticChainBranch branch in chain.Branches)
                 AddBranchChoices(branch.Chain, reads, keys, suggestions, suggested);
+        }
+
+        // 各状态机起点所有入口读到的运行数据，未胜出的入口取值也列为条件候选。
+        static void AddEntryReads(TimelineStaticChain chain, List<OrchestrationStaticRead> reads, HashSet<string> keys)
+        {
+            foreach (OrchestrationStaticRead read in chain.EntryReads)
+                if (read.Source == OrchestrationStaticReadSource.RuntimeData && keys.Add(read.Key))
+                    reads.Add(read);
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                AddEntryReads(branch.Chain, reads, keys);
         }
 
         static void CollectTaken(TimelineStaticChain chain, HashSet<OrchestrationStaticTransition> taken)
