@@ -56,7 +56,7 @@ import {
   recordedLocalPosition, rowHeight, rowInside, rowNesting, rowSpacing, rowsPadding, segmentRange, selectTimelineObject, sidebarFor, snapGrid, snapStep, snapTo, timeText,
   trackHeight, useAuthorCursor, useClipGrid,
   type CurveClock, type CurveRow, type CurveView, type InputTrackRow, type Nest, type Params, type PreviewClock, type QuickPlaybackChoice, type ReceivedRow,
-  type FirstInputRow, type InstanceRow, type Row, type TimelineObservation,
+  type ActorRow, type FirstInputRow, type InstanceRow, type Row, type TimelineObservation,
 } from './timelineShared';
 import styles from './timeline.module.css';
 
@@ -837,14 +837,21 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     if (focused) {
       const input = schemes.some(scheme => scheme.documentId === focused.documentId);
       // 与路线里其它 Timeline 分组并列时，分组头同样带添加轨道；只有它一组时才算单个 Timeline 视图。
-      if (input) addPlayed(inputRows(focused, played.length === 0));
+      let own: Row[];
+      if (input) own = inputRows(focused, played.length === 0);
       else {
-        if (needsFirstInput) result.push(firstInput);
         // 照 BTSMTL Timeline 编辑器：所看的 Timeline 是一个可折叠的分组，轨道在组内。
         const group: GroupRow = { kind: 'group', id: `group:${focused.id}`, segment: focused, title: segmentTitle(focused), focused: true };
         const tracks = collapsed.has(group.id) ? [] : segmentRows(focused, graphNames).map(expand);
-        result.push(group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks));
+        own = [...(needsFirstInput ? [firstInput] : []), group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
       }
+      // 输入属于角色：有路线时放进该角色的对象组；还没有路线时用快预览的执行角色包一层。
+      const actor = inputActor ?? quickActor;
+      if (played.length > 0) addPlayed(own, actor);
+      else if (actor !== null) {
+        const head: ActorRow = { kind: 'actor', id: `actor:${actor}`, actor };
+        result.push(head, ...(collapsed.has(head.id) ? [] : own));
+      } else result.push(...own);
       addCurves();
       return result;
     }
@@ -1233,6 +1240,9 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
   function rowLine(row: Row, nest: Nest | undefined) {
     switch (row.kind) {
       case 'instance': return <InstanceLine key={row.id} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+      case 'actor':
+        return <Line key={row.id} id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+          <GroupToggle open={!collapsedSet.has(row.id)} onToggle={() => toggle(row.id)} name={row.actor} meta="执行角色" />} />;
       case 'group': return <GroupLine key={row.id} elements={elements} row={row} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
       case 'track': return <TrackLine key={row.id} elements={elements} row={row} nest={nest} toggleCurves={toggleCurves} />;
       case 'inputGroup':

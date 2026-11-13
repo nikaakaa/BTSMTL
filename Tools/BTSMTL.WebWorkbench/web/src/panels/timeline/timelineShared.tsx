@@ -50,7 +50,9 @@ export interface ReceivedRow { kind: 'received'; id: string; name: string; spans
 // 快档路线里的一个执行实例泳道：其下是它所播的 Timeline 分组。
 // empty：对象既没播 Timeline 也没有输入轨，只画存活区间。
 export interface InstanceRow { kind: 'instance'; id: string; lane: RouteLane; empty: boolean }
-export type Row = InstanceRow | GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
+// 单看 Timeline 还没有路线时，快预览的执行角色：其下是它的预览输入与所看的 Timeline。
+export interface ActorRow { kind: 'actor'; id: string; actor: string }
+export type Row = InstanceRow | ActorRow | GroupRow | TrackRow | InputGroupRow | InputTrackRow | FirstInputRow | CurveGroupRow | CurveRow | ReceivedGroupRow | ReceivedRow;
 
 export interface Params {
   range: Range | null;
@@ -220,7 +222,7 @@ export const CurveViewContext = createContext<CurveView>({
 // 分组之后的行都属于最近的分组：照 Unity 分组轨道再缩进一级，由分组底色包住，最后一行收圆角。
 // 分组行本身按有无子行区分只画上圆角还是整块圆角。
 export type Nest = 'head' | 'single' | 'child' | 'last';
-export const groupKinds: ReadonlySet<Row['kind']> = new Set(['instance', 'group', 'inputGroup', 'firstInput', 'curves', 'receivedGroup']);
+export const groupKinds: ReadonlySet<Row['kind']> = new Set(['instance', 'actor', 'group', 'inputGroup', 'firstInput', 'curves', 'receivedGroup']);
 export function rowNesting(rows: Row[]): (Nest | undefined)[] {
   let grouped = false;
   return rows.map((row, index) => {
@@ -234,15 +236,15 @@ export function rowNesting(rows: Row[]): (Nest | undefined)[] {
   });
 }
 
-// 对象分组之后的行（输入轨与所播 Timeline）属于该对象，整体再缩进一层；曲线组不属于对象。
+// 对象分组之后的行（输入轨、添加第一个按键的行与所播 Timeline）属于该对象，整体再缩进一层；曲线组不属于对象。
 export function rowInside(rows: Row[]): boolean[] {
   let inside = false;
   return rows.map(row => {
-    if (row.kind === 'instance') {
+    if (row.kind === 'instance' || row.kind === 'actor') {
       inside = true;
       return false;
     }
-    if (row.kind === 'curves' || row.kind === 'curve' || row.kind === 'firstInput') inside = false;
+    if (row.kind === 'curves' || row.kind === 'curve') inside = false;
     return inside;
   });
 }
