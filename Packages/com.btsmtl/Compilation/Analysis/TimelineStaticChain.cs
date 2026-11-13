@@ -12,8 +12,7 @@ namespace BTSMTL.Compilation.Analysis
         NeedsSession,
         NoInitialState,
         ZeroTimeCycle,
-        PreviewEnd,
-        BranchUndetermined
+        PreviewEnd
     }
 
     // 分岔口的一条去向，以及它只因按默认成立才可走的运行数据读取。
@@ -27,6 +26,23 @@ namespace BTSMTL.Compilation.Analysis
 
         public OrchestrationStaticTransition Transition { get; }
         public IReadOnlyList<OrchestrationStaticRead> Assumed { get; }
+    }
+
+    // 路线经过的分岔口：多条去向同时可走，路线按正式顺序走了 Choices[0]，但它依赖未写入、按默认成立的运行数据。
+    // State 为空表示状态机入口。
+    public sealed class TimelineStaticChainBranchPoint
+    {
+        internal TimelineStaticChainBranchPoint(OrchestrationStaticState state, OrchestrationTime time,
+            IReadOnlyList<TimelineStaticChainBranchChoice> choices)
+        {
+            State = state;
+            Time = time;
+            Choices = choices;
+        }
+
+        public OrchestrationStaticState State { get; }
+        public OrchestrationTime Time { get; }
+        public IReadOnlyList<TimelineStaticChainBranchChoice> Choices { get; }
     }
 
     public sealed class TimelineStaticChainSpan
@@ -113,10 +129,8 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticState LastState { get; private set; }
         public IReadOnlyList<OrchestrationStaticRead> InitialReads { get; private set; } = Array.Empty<OrchestrationStaticRead>();
 
-        // 停在分岔口时的位置与同时可走的去向；BranchState 为空表示状态机入口。
-        public OrchestrationStaticState BranchState { get; private set; }
-        public OrchestrationTime BranchTime { get; private set; }
-        public IReadOnlyList<TimelineStaticChainBranchChoice> BranchChoices { get; private set; } = Array.Empty<TimelineStaticChainBranchChoice>();
+        public IReadOnlyList<TimelineStaticChainBranchPoint> BranchPoints => m_BranchPoints;
+        readonly List<TimelineStaticChainBranchPoint> m_BranchPoints = new();
 
         // 状态 Root 中并行运行的状态机：每台各推导一条分支，从所属状态进入时起，到所属状态退出时止。
         public IReadOnlyList<TimelineStaticChainBranch> Branches => m_Branches;
@@ -136,7 +150,7 @@ namespace BTSMTL.Compilation.Analysis
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
             HashSet<int> activeMachines)
         {
-            // 运行时按顺序取第一条成立的入口，读取依赖只记到胜出者为止；其后的入口另行求值，只用来判断是否停在分岔口。
+            // 运行时按顺序取第一条成立的入口，读取依赖只记到胜出者为止；其后的入口另行求值，只用来记录分岔口。
             var trace = new ReadTrace(inputs);
             var others = new ReadTrace(inputs);
             var satisfied = new List<OrchestrationStaticTransition>();
@@ -152,12 +166,6 @@ namespace BTSMTL.Compilation.Analysis
                     Reason = "入口状态的条件在预览起点没有成立。"
                 };
             IReadOnlyList<TimelineStaticChainBranchChoice> choices = Undetermined(null, satisfied, start, inputs);
-            if (choices != null)
-            {
-                var undetermined = new TimelineStaticChain { InitialReads = trace.Reads };
-                undetermined.StopAtBranch(null, start, choices);
-                return undetermined;
-            }
             OrchestrationStaticTransition selected = satisfied[0];
             if (selected.Target == null)
                 return new TimelineStaticChain
@@ -168,12 +176,14 @@ namespace BTSMTL.Compilation.Analysis
             activeMachines.Add(machineOperationIndex);
             TimelineStaticChain chain = Build(query, selected.Target, start, previewEnd, inputs, activeMachines);
             chain.InitialReads = trace.Reads;
+            if (choices != null)
+                chain.m_BranchPoints.Insert(0, new TimelineStaticChainBranchPoint(null, start, choices));
             activeMachines.Remove(machineOperationIndex);
             return chain;
         }
 
         // 同一时刻有两条以上去向可走、且按顺序胜出的那条依赖未写入（按默认成立）的运行数据时，
-        // 走哪条只是预览的猜测：停在这里，由作者在角色输入轨上用预览条件写明。胜出者的读取都已写入时按正式顺序走。
+        // 路线照正式顺序走胜出者，但记下这个分岔口，作者可在角色输入轨上用预览条件改走别的去向。胜出者的读取都已写入时不记。
         static IReadOnlyList<TimelineStaticChainBranchChoice> Undetermined(OrchestrationStaticState state,
             IReadOnlyList<OrchestrationStaticTransition> competing, OrchestrationTime time, ITimelineStaticReadIntervals inputs)
         {
@@ -198,21 +208,6 @@ namespace BTSMTL.Compilation.Analysis
                     assumed.Add(read);
             }
             return assumed;
-        }
-
-        void StopAtBranch(OrchestrationStaticState state, OrchestrationTime time, IReadOnlyList<TimelineStaticChainBranchChoice> choices)
-        {
-            BranchState = state;
-            BranchTime = time;
-            BranchChoices = choices;
-            var labels = new List<string>();
-            foreach (TimelineStaticChainBranchChoice choice in choices)
-                foreach (OrchestrationStaticRead read in choice.Assumed)
-                    if (!labels.Contains(read.Label))
-                        labels.Add(read.Label);
-            Stop(TimelineStaticChainStopReason.BranchUndetermined,
-                $"{(state == null ? "入口" : state.Name)}有 {choices.Count} 条去向同时可走，走哪条取决于没有写入的条件：" +
-                $"{string.Join("、", labels)}。请在该角色的输入轨上用“预览条件”写明。");
         }
 
         // 只沿状态转移推导：出边按成立区间的最早时刻与正式比较器选择，无出边成立时播到终点并按"完成"转移继续。
@@ -282,13 +277,9 @@ namespace BTSMTL.Compilation.Analysis
                 OrchestrationTime spanEndLocal = local + spanEnd - time;
                 bool playbackCompleted = completed && spanEnd == end && selected.Transition?.FromAnyState != true;
                 result.m_Spans.Add(new TimelineStaticChainSpan(state, time, spanEnd, local,
-                    spanEndLocal, cycle, playbackCompleted && branch == null, trace.Reads));
+                    spanEndLocal, cycle, playbackCompleted, trace.Reads));
                 if (branch != null)
-                {
-                    result.m_Now = spanEnd;
-                    result.StopAtBranch(state, spanEnd, branch);
-                    return result;
-                }
+                    result.m_BranchPoints.Add(new TimelineStaticChainBranchPoint(state, spanEnd, branch));
                 foreach (OrchestrationStaticClip clip in timeline.Clips)
                     if (clip.Start >= local && clip.Start < spanEndLocal)
                         foreach ((string variable, double value) in clip.StartWrites)

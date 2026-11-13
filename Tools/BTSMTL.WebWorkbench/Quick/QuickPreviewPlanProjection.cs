@@ -43,7 +43,8 @@ static class QuickPreviewPlanProjection
                 suggestion.Transition.Identity, suggestion.State == null ? null : Location(suggestion.State.Location, capture),
                 suggestion.Transition.Target == null ? null : Location(suggestion.Transition.Target.Location, capture),
                 Location(suggestion.Transition.Location, capture), Seconds(suggestion.Start), Seconds(suggestion.End),
-                suggestion.Missing.Select(read => new PreviewQuickMissingCondition(read.Key, read.Label)).ToArray())).ToArray(),
+                suggestion.Missing.Select(read => new PreviewQuickMissingCondition(read.Key, read.Label)).ToArray(),
+                suggestion.Branch.ToString())).ToArray(),
             actor.Inputs.Select(descriptor => new PreviewQuickInputDeclaration(descriptor.InputId, descriptor.ValueKind.ToString(),
                 descriptor.ValueType.Name)).ToArray(), input.Points, input.InputSource);
     }

@@ -46,13 +46,15 @@ namespace BTSMTL.Compilation.Analysis
     public readonly struct TimelineStaticConditionSuggestion
     {
         internal TimelineStaticConditionSuggestion(OrchestrationStaticState state, OrchestrationStaticTransition transition,
-            IReadOnlyList<OrchestrationStaticRead> missing, OrchestrationTime start, OrchestrationTime end)
+            IReadOnlyList<OrchestrationStaticRead> missing, OrchestrationTime start, OrchestrationTime end,
+            TimelineStaticBranchChoiceKind branch = TimelineStaticBranchChoiceKind.None)
         {
             State = state;
             Transition = transition;
             Missing = missing;
             Start = start;
             End = end;
+            Branch = branch;
         }
 
         public OrchestrationStaticState State { get; }
@@ -60,6 +62,15 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<OrchestrationStaticRead> Missing { get; }
         public OrchestrationTime Start { get; }
         public OrchestrationTime End { get; }
+        public TimelineStaticBranchChoiceKind Branch { get; }
+    }
+
+    // 分岔口去向：Taken 为路线按正式顺序走的那条，Other 为同时可走、需写预览条件才会走的其余去向。
+    public enum TimelineStaticBranchChoiceKind : byte
+    {
+        None,
+        Taken,
+        Other
     }
 
     public sealed class TimelineStaticRoute
@@ -219,19 +230,21 @@ namespace BTSMTL.Compilation.Analysis
             return (reads, suggestions);
         }
 
-        // 停在分岔口的每条去向都给出要写的条件，作者选定其一后路线才继续。
+        // 路线经过的每个分岔口：每条去向都给出要写的条件，第一条是路线按正式顺序实际走的。
         static void AddBranchChoices(TimelineStaticChain chain, List<OrchestrationStaticRead> reads, HashSet<string> keys,
             List<TimelineStaticConditionSuggestion> suggestions, HashSet<(OrchestrationStaticTransition, OrchestrationTime)> suggested)
         {
-            foreach (TimelineStaticChainBranchChoice choice in chain.BranchChoices)
-            {
-                foreach (OrchestrationStaticRead read in choice.Assumed)
-                    if (keys.Add(read.Key))
-                        reads.Add(read);
-                if (suggested.Add((choice.Transition, chain.BranchTime)))
-                    suggestions.Add(new TimelineStaticConditionSuggestion(chain.BranchState, choice.Transition, choice.Assumed,
-                        chain.BranchTime, chain.BranchTime));
-            }
+            foreach (TimelineStaticChainBranchPoint point in chain.BranchPoints)
+                for (int index = 0; index < point.Choices.Count; index++)
+                {
+                    TimelineStaticChainBranchChoice choice = point.Choices[index];
+                    foreach (OrchestrationStaticRead read in choice.Assumed)
+                        if (keys.Add(read.Key))
+                            reads.Add(read);
+                    if (suggested.Add((choice.Transition, point.Time)))
+                        suggestions.Add(new TimelineStaticConditionSuggestion(point.State, choice.Transition, choice.Assumed,
+                            point.Time, point.Time, index == 0 ? TimelineStaticBranchChoiceKind.Taken : TimelineStaticBranchChoiceKind.Other));
+                }
             foreach (TimelineStaticChainBranch branch in chain.Branches)
                 AddBranchChoices(branch.Chain, reads, keys, suggestions, suggested);
         }

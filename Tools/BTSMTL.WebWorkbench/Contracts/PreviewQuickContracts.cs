@@ -95,7 +95,7 @@ public sealed record PreviewQuickCondition(string Key, string Label, string Sour
 public sealed record PreviewQuickMissingCondition(string Key, string Label);
 public sealed record PreviewQuickSuggestion(string FromState, string ToState, string Transition,
     PreviewQuickLocation? FromSource, PreviewQuickLocation? ToSource, PreviewQuickLocation TransitionSource,
-    double Start, double End, PreviewQuickMissingCondition[] Missing);
+    double Start, double End, PreviewQuickMissingCondition[] Missing, string Branch);
 public sealed record PreviewQuickClock(string Unit, double Origin, string Owner, int TickRate);
 public sealed record PreviewQuickPlan(string Root, string SourceType, PreviewQuickClock Clock,
     PreviewQuickInputSource Input, string InputSchemeRevision, string InputRevision, PreviewQuickConditionPoint[] ConditionsUsed,

@@ -237,10 +237,11 @@ export function QuickBar() {
 // 推导停止的原因按作者能懂的话显示。
 const stopLabels: Record<string, string> = {
   TimelineCompleted: '播完收招', StateMachineExited: '到达状态机出口', NeedsSession: '需要真实运行确认', NoInitialState: '入口没有可进入的状态',
-  ZeroTimeCycle: '去向形成零时长循环', PreviewEnd: '到达预览范围终点', BranchUndetermined: '停在分岔口',
+  ZeroTimeCycle: '去向形成零时长循环', PreviewEnd: '到达预览范围终点',
 };
 
-// 停在分岔口：列出同时可走的每条去向和它缺的条件，作者在该角色输入轨上加“预览条件”写明后重新推导。
+// 路线经过的分岔口：多条去向同时可走时路线按正式顺序走第一条并照常出画面；这里列出每条去向和它缺的条件，
+// 作者点“走这条”即在该角色输入轨上写入预览条件改走别的去向。
 function QuickBranchNotice() {
   const plan = useQuickPlan();
   const name = useQuickName();
@@ -253,31 +254,48 @@ function QuickBranchNotice() {
   }));
   const editable = useAuthoring(state => state.author && state.target?.documentPath === input.root);
   const [writing, setWriting] = useState(false);
-  if (plan === null || plan.stopReason !== 'BranchUndetermined') return null;
-  const choices = plan.suggestions.filter(suggestion => suggestion.start === suggestion.end);
+  if (plan === null) return null;
+  type Choice = typeof plan.suggestions[number];
+  const points = new Map<string, Choice[]>();
+  for (const suggestion of plan.suggestions) {
+    if (suggestion.branch === 'None') continue;
+    const key = `${suggestion.start}|${suggestion.fromState}|${suggestion.fromSource?.nodeId ?? ''}`;
+    points.set(key, [...points.get(key) ?? [], suggestion]);
+  }
+  if (points.size === 0) return null;
   // 所选去向的条件写成立，其余同时可走的去向独有的条件写不成立。
-  const choose = (picked: typeof choices[number]) => {
+  const choose = (choices: Choice[], picked: Choice) => {
     const keys = new Set(picked.missing.map(item => item.key));
     const writes = [...picked.missing.map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: true })),
       ...choices.filter(item => item !== picked).flatMap(item => item.missing).filter(item => !keys.has(item.key) && (keys.add(item.key), true))
         .map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: false }))];
     setWriting(true);
-    inputAuthoring.writeConditions(input.timeline, plan.duration, writes)
+    inputAuthoring.writeConditions(input.timeline, picked.start, writes)
       .catch(error => consoleActions.error('快预览', error)).finally(() => setWriting(false));
   };
   const blocked = editable ? null : '进入作者模式并打开这个文档后才能写入它的预览输入';
-  const from = choices[0] === undefined || choices[0].fromState === '入口' ? '入口' : name(choices[0].fromSource, choices[0].fromState);
+  const target = (choice: Choice) => choice.toSource
+    ? <LocationButton source={choice.toSource} label={name(choice.toSource, choice.toState)} /> : <span>{choice.toState}</span>;
   return <div className={styles.notice} role="status">
-    <p>{`${from}在 ${plan.duration.toFixed(3)} ${unitName(plan.clock.unit)}有 ${choices.length} 条去向同时可走，走哪条取决于下面没写的条件。` +
-      '在该角色的输入轨上加“预览条件”，把要走那条的条件写成成立、其余写成不成立，再重新生成。'}</p>
-    {choices.map((choice, index) => <p key={index}>
-      <span>→ </span>
-      {choice.toSource ? <LocationButton source={choice.toSource} label={name(choice.toSource, choice.toState)} /> : <span>{choice.toState}</span>}
-      <Button variant="ghost" disabled={writing || blocked !== null} tip={blocked ?? '在预览输入轨的这一时刻写入预览条件：这条成立，其余不成立'}
-        onClick={() => choose(choice)}>走这条</Button>
-      <LocationButton source={choice.transitionSource} label="打开转移" />
-      <span>条件：{choice.missing.map(item => condition(item.key, item.label)).join('、') || '无'}</span>
-    </p>)}
+    {[...points.values()].map((choices, point) => {
+      const first = choices[0];
+      const from = first.fromState === '入口' ? '入口' : name(first.fromSource, first.fromState);
+      const taken = choices.find(item => item.branch === 'Taken');
+      return <div key={point}>
+        <p>{`${from}在 ${first.start.toFixed(3)} ${unitName(plan.clock.unit)}有 ${choices.length} 条去向同时可走，现在按正式顺序走的是 `}
+          {taken ? target(taken) : null}
+          {'。要预览别的去向，点它的“走这条”，会在该角色的输入轨上写入预览条件。'}</p>
+        {choices.map((choice, index) => <p key={index}>
+          <span>{choice.branch === 'Taken' ? '● ' : '→ '}</span>
+          {target(choice)}
+          <Button variant="ghost" disabled={writing || blocked !== null}
+            tip={blocked ?? (choice.branch === 'Taken' ? '把当前去向写成预览条件固定下来，不再提示' : '在预览输入轨的这一时刻写入预览条件：这条成立，其余不成立')}
+            onClick={() => choose(choices, choice)}>{choice.branch === 'Taken' ? '固定这条' : '走这条'}</Button>
+          <LocationButton source={choice.transitionSource} label="打开转移" />
+          <span>条件：{choice.missing.map(item => condition(item.key, item.label)).join('、') || '无'}</span>
+        </p>)}
+      </div>;
+    })}
   </div>;
 }
 
@@ -292,6 +310,7 @@ function QuickDetails() {
   const plan = route?.plan ?? null;
   const name = useQuickName();
   const condition = useQuickConditionName();
+  const notTaken = plan?.suggestions.filter(suggestion => suggestion.branch !== 'Taken') ?? [];
   const identity = useMemo(() => route === null || plan === null ? [] : [
     { displayName: '结果作业', value: status?.jobId ?? '' }, { displayName: '结果来源修订', value: route.request.sourceRevision ?? '跟随当前内容' },
     { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
@@ -317,9 +336,9 @@ function QuickDetails() {
         {segment.conditionDependencies.map(item => `${condition(item.key, item.label)}（${item.written ? '依赖条件写入' : '未写入，按默认值'}）`).join('、')}
       </p>)}
     </Fold>}
-    {plan && <Fold title={`用到的条件 / 缺条件没走成的转移（${plan.conditions.length} / ${plan.suggestions.length}）`}>
+    {plan && <Fold title={`用到的条件 / 缺条件没走成的转移（${plan.conditions.length} / ${notTaken.length}）`}>
       {plan.conditions.map(item => <p key={item.key}>{condition(item.key, item.label)} · {item.source}{item.undeterminable ? ' · 无法确定' : ''}</p>)}
-      {plan.suggestions.map((suggestion, index) => <div key={index}>
+      {notTaken.map((suggestion, index) => <div key={index}>
         {suggestion.fromSource ? <LocationButton source={suggestion.fromSource} label={name(suggestion.fromSource, suggestion.fromState)} /> : suggestion.fromState}
         <span> → </span>
         {suggestion.toSource ? <LocationButton source={suggestion.toSource} label={name(suggestion.toSource, suggestion.toState)} /> : suggestion.toState}

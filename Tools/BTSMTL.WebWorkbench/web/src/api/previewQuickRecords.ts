@@ -65,7 +65,7 @@ const plan = object({
   conditions: array(condition),
   suggestions: array(object({
     fromState: text, toState: text, transition: text, fromSource: nullable(location), toSource: nullable(location), transitionSource: location,
-    start: number, end: number, missing: array(object({ key: text, label: text })),
+    start: number, end: number, missing: array(object({ key: text, label: text })), branch: choice('None', 'Taken', 'Other'),
   })),
   declaredInputs: array(inputDeclaration), inputsUsed: array(inputPoint), inputSource: text,
 });
