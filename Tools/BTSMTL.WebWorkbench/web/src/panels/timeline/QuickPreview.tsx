@@ -16,6 +16,8 @@ import { playerService } from '../../state/player';
 import { Facts, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, NumberInput, Select, TextInput } from '../../ui/controls';
 import { finishAuthoringInputs } from '../../shell/layout';
+import { useQuickConditionName } from '../../state/quickConditionName';
+import { inputAuthoring } from '../../state/authoringInputs';
 import styles from './quickPreview.module.css';
 
 export const useQuickPlan = () => useWorkbench(state => state.previewMode === 'quick' && !quickPlanStale() ? quickPlan() : null);
@@ -242,15 +244,39 @@ const stopLabels: Record<string, string> = {
 function QuickBranchNotice() {
   const plan = useQuickPlan();
   const name = useQuickName();
+  const condition = useQuickConditionName();
+  const input = useWorkbench(useShallow(state => {
+    const description = state.quickPreview.description;
+    const root = description.kind === 'ready' ? description.reply.data?.root ?? null : null;
+    return { root: root?.authoring.documentPath ?? null, timeline: root?.inputSchemes
+      .find(item => quickInputSourceKey(item.source) === quickInputSourceKey(state.quickPreview.scheme))?.timelineId ?? null };
+  }));
+  const editable = useAuthoring(state => state.author && state.target?.documentPath === input.root);
+  const [writing, setWriting] = useState(false);
   if (plan === null || plan.stopReason !== 'BranchUndetermined') return null;
   const choices = plan.suggestions.filter(suggestion => suggestion.start === suggestion.end);
+  // 所选去向的条件写成立，其余同时可走的去向独有的条件写不成立。
+  const choose = (picked: typeof choices[number]) => {
+    const keys = new Set(picked.missing.map(item => item.key));
+    const writes = [...picked.missing.map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: true })),
+      ...choices.filter(item => item !== picked).flatMap(item => item.missing).filter(item => !keys.has(item.key) && (keys.add(item.key), true))
+        .map(item => ({ key: item.key, label: condition(item.key, item.label), satisfied: false }))];
+    setWriting(true);
+    inputAuthoring.writeConditions(input.timeline, plan.duration, writes)
+      .catch(error => consoleActions.error('快预览', error)).finally(() => setWriting(false));
+  };
+  const blocked = editable ? null : '进入作者模式并打开这个文档后才能写入它的预览输入';
+  const from = choices[0] === undefined || choices[0].fromState === '入口' ? '入口' : name(choices[0].fromSource, choices[0].fromState);
   return <div className={styles.notice} role="status">
-    <p>{plan.stopDetail}</p>
+    <p>{`${from}在 ${plan.duration.toFixed(3)} ${unitName(plan.clock.unit)}有 ${choices.length} 条去向同时可走，走哪条取决于下面没写的条件。` +
+      '在该角色的输入轨上加“预览条件”，把要走那条的条件写成成立、其余写成不成立，再重新生成。'}</p>
     {choices.map((choice, index) => <p key={index}>
-      <span>{choice.fromState === '入口' ? '入口' : name(choice.fromSource, choice.fromState)} → </span>
+      <span>→ </span>
       {choice.toSource ? <LocationButton source={choice.toSource} label={name(choice.toSource, choice.toState)} /> : <span>{choice.toState}</span>}
+      <Button variant="ghost" disabled={writing || blocked !== null} tip={blocked ?? '在预览输入轨的这一时刻写入预览条件：这条成立，其余不成立'}
+        onClick={() => choose(choice)}>走这条</Button>
       <LocationButton source={choice.transitionSource} label="打开转移" />
-      <span>要走这条，需写成立：{choice.missing.map(condition => condition.label).join('、') || '无'}</span>
+      <span>条件：{choice.missing.map(item => condition(item.key, item.label)).join('、') || '无'}</span>
     </p>)}
   </div>;
 }
@@ -265,6 +291,7 @@ function QuickDetails() {
   const route = state.route;
   const plan = route?.plan ?? null;
   const name = useQuickName();
+  const condition = useQuickConditionName();
   const identity = useMemo(() => route === null || plan === null ? [] : [
     { displayName: '结果作业', value: status?.jobId ?? '' }, { displayName: '结果来源修订', value: route.request.sourceRevision ?? '跟随当前内容' },
     { displayName: 'Clock', value: `${plan.clock.unit} · origin ${plan.clock.origin} · ${plan.clock.owner} · ${plan.clock.tickRate} Hz` },
@@ -287,17 +314,17 @@ function QuickDetails() {
       <p>真实运行只使用相同的按键日程。以下区段的条件写入和默认假设以真实记录为准，状态进入或退出时间不同时，即为路线分歧。</p>
       {plan.segments.filter(segment => segment.conditionDependencies.length > 0).map((segment, index) => <p key={index}>
         {name(segment.stateSource, segment.state)} · {segment.start.toFixed(3)}–{segment.end.toFixed(3)} {unitName(plan.clock.unit)} ·
-        {segment.conditionDependencies.map(item => `${item.label}（${item.written ? '依赖条件写入' : '未写入，按默认值'}）`).join('、')}
+        {segment.conditionDependencies.map(item => `${condition(item.key, item.label)}（${item.written ? '依赖条件写入' : '未写入，按默认值'}）`).join('、')}
       </p>)}
     </Fold>}
     {plan && <Fold title={`用到的条件 / 缺条件没走成的转移（${plan.conditions.length} / ${plan.suggestions.length}）`}>
-      {plan.conditions.map(condition => <p key={condition.key}>{condition.label} · {condition.source}{condition.undeterminable ? ' · 无法确定' : ''}</p>)}
+      {plan.conditions.map(item => <p key={item.key}>{condition(item.key, item.label)} · {item.source}{item.undeterminable ? ' · 无法确定' : ''}</p>)}
       {plan.suggestions.map((suggestion, index) => <div key={index}>
         {suggestion.fromSource ? <LocationButton source={suggestion.fromSource} label={name(suggestion.fromSource, suggestion.fromState)} /> : suggestion.fromState}
         <span> → </span>
         {suggestion.toSource ? <LocationButton source={suggestion.toSource} label={name(suggestion.toSource, suggestion.toState)} /> : suggestion.toState}
         <LocationButton source={suggestion.transitionSource} label="打开转移" />
-        <span>{suggestion.start}–{suggestion.end} {unitName(plan.clock.unit)} · {suggestion.missing.map(condition => condition.label).join('、')}</span>
+        <span>{suggestion.start.toFixed(3)}–{suggestion.end.toFixed(3)} {unitName(plan.clock.unit)} · {suggestion.missing.map(item => condition(item.key, item.label)).join('、')}</span>
       </div>)}
     </Fold>}
     {status && status.notes.length > 0 && <Fold title="计算说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}

@@ -410,7 +410,8 @@ export interface AuthoringElements {
   referenceNodes: ReferenceNodeTemplate[];
   previewInput: { plan: ElementTemplate | null; availability: { available: boolean; reason: string | null };
     scheme: ElementTemplate; nodeType: string; keyPath: string[];
-    valueFields: Record<'Button' | 'Scalar' | 'Vector2', string> };
+    valueFields: Record<'Button' | 'Scalar' | 'Vector2', string>;
+    condition: { nodeType: string; conditionPath: string[]; labelPath: string[]; satisfiedPath: string[] } };
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
   blackboard: StorageShape;
 }

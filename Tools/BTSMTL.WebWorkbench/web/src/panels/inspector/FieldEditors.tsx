@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { useQuickConditionName } from '../../state/quickConditionName';
 import {
   authoringApi, describedPortsAvailable, type AuthoringTarget, type ComputedField, type DescribedPort, type FieldMetadata,
   type ReferenceChoice, type MemberShape, type StorageShape, type StoredField,
@@ -946,8 +947,10 @@ function PreviewConditionPicker({ id, label, value, configuration, onChoose }: {
   const mode = useWorkbench(state => state.host?.modes.find(item => item.id === 'quick'));
   const root = description.kind === 'ready' && description.target.root === target
     ? description.reply.data.root : null;
-  const items = useMemo(() => root?.conditions.map(condition => ({ value: condition.key, name: condition.label, detail: condition.key,
-    source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) ?? [], [root]);
+  const conditionName = useQuickConditionName();
+  const items = useMemo(() => root?.conditions.map(condition => ({ value: condition.key, name: conditionName(condition.key, condition.label),
+    detail: condition.label, source: `${root.label} · ${root.authoring.documentPath}`, conflict: null, targets: [], associated: [] })) ?? [],
+  [root, conditionName]);
   const catalog: ReferenceCatalog = root === null
     ? { kind: 'unavailable', reason: mode === undefined ? '宿主尚未声明快预览能力' : !mode.available ? mode.reason!
       : description.kind === 'failed' || description.kind === 'stale' ? description.reason

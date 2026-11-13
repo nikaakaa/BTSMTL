@@ -307,7 +307,9 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
             var graph = capture.Identity.Authoring.Entry as PreviewQuickGraphEntry;
             job.Retiming = new QuickRetimeSource(capture, actor, compiled, input, graph?.GraphId, instances);
             job.Update(status => status with { Source = capture.Identity, Plan = plan, Description = description });
-            string? playerReason = players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
+            // 停在入口分岔口等情况没有任何播放区间，不送播放器采样。
+            string? playerReason = route.Main.Count == 0 && route.Parallel.Count == 0 ? "路线还没有播放任何 Timeline。"
+                : players == null ? "未注册项目播放器适配。" : players.Jobs.UnavailableReason;
             string? selectedBuild = playerReason == null ? actor.SelectPlayerBuild(players!.Jobs.PublishedBuilds()) : null;
             if (playerReason == null && selectedBuild == null)
                 playerReason = $"没有匹配场景 '{actor.ScenePath}' 与角色 '{actor.ActorId}' 的播放器构建。";
