@@ -190,5 +190,14 @@ namespace BTSMTL.Compilation.Analysis
                 }
             return value;
         }
+
+        public bool Written(string key, OrchestrationTime time)
+        {
+            bool written = false;
+            foreach (var point in m_Conditions[key])
+                if (point.Time <= time)
+                    written = !point.RestoreDefault;
+            return written;
+        }
     }
 }

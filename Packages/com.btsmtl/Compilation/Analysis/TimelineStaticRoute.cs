@@ -190,6 +190,7 @@ namespace BTSMTL.Compilation.Analysis
             CollectTaken(Chain, taken);
             var keys = new HashSet<string>(StringComparer.Ordinal);
             var suggested = new HashSet<(OrchestrationStaticTransition, OrchestrationTime)>();
+            AddBranchChoices(Chain, reads, keys, suggestions, suggested);
             foreach (TimelineStaticRouteSpan span in SpansInOrder())
             {
                 OrchestrationStaticState state = span.State;
@@ -216,6 +217,23 @@ namespace BTSMTL.Compilation.Analysis
                 }
             }
             return (reads, suggestions);
+        }
+
+        // 停在分岔口的每条去向都给出要写的条件，作者选定其一后路线才继续。
+        static void AddBranchChoices(TimelineStaticChain chain, List<OrchestrationStaticRead> reads, HashSet<string> keys,
+            List<TimelineStaticConditionSuggestion> suggestions, HashSet<(OrchestrationStaticTransition, OrchestrationTime)> suggested)
+        {
+            foreach (TimelineStaticChainBranchChoice choice in chain.BranchChoices)
+            {
+                foreach (OrchestrationStaticRead read in choice.Assumed)
+                    if (keys.Add(read.Key))
+                        reads.Add(read);
+                if (suggested.Add((choice.Transition, chain.BranchTime)))
+                    suggestions.Add(new TimelineStaticConditionSuggestion(chain.BranchState, choice.Transition, choice.Assumed,
+                        chain.BranchTime, chain.BranchTime));
+            }
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                AddBranchChoices(branch.Chain, reads, keys, suggestions, suggested);
         }
 
         static void CollectTaken(TimelineStaticChain chain, HashSet<OrchestrationStaticTransition> taken)

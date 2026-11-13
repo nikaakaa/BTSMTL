@@ -22,6 +22,8 @@ namespace BTSMTL.Compilation.Analysis
         // RuntimeData 收到原始读取：来源仍为 ClipState 表示当前 Timeline 没有 Clip 静态提供该状态。
         IReadOnlyList<TimelineStaticInterval> HostInput(string inputId);
         IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read);
+        // 此刻该运行数据是否由作者写入的预览条件决定；未写入时取的是默认值，只是预览假设。
+        bool Written(string key, OrchestrationTime time);
     }
 
     public interface ITimelineStaticClipState

@@ -39,7 +39,7 @@ static class QuickPreviewPlanProjection
             Seconds(route.End), route.Chain?.StopReason.ToString(), route.Chain?.Reason, "已生成",
             placed.Select(item => item.Instance).ToArray(), segments,
             conditions.Select(read => new PreviewQuickCondition(read.Key, read.Label, read.Source.ToString(), read.OperationIndex, read.Undeterminable)).ToArray(),
-            suggestions.Select(suggestion => new PreviewQuickSuggestion(State(suggestion.State), State(suggestion.Transition.Target),
+            suggestions.Select(suggestion => new PreviewQuickSuggestion(suggestion.State?.Name ?? "入口", State(suggestion.Transition.Target),
                 suggestion.Transition.Identity, suggestion.State == null ? null : Location(suggestion.State.Location, capture),
                 suggestion.Transition.Target == null ? null : Location(suggestion.Transition.Target.Location, capture),
                 Location(suggestion.Transition.Location, capture), Seconds(suggestion.Start), Seconds(suggestion.End),

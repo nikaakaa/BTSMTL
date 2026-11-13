@@ -227,8 +227,32 @@ export function QuickBar() {
     </PanelBar>
     {playerAvailable && sceneApplyReason !== null && <p role="status" className={styles.reason}>{sceneApplyReason}</p>}
     {runError !== null && <p role="alert" className={styles.reason}>{runError}</p>}
+    <QuickBranchNotice />
     {open && <QuickDetails />}
   </section>;
+}
+
+// 推导停止的原因按作者能懂的话显示。
+const stopLabels: Record<string, string> = {
+  TimelineCompleted: '播完收招', StateMachineExited: '到达状态机出口', NeedsSession: '需要真实运行确认', NoInitialState: '入口没有可进入的状态',
+  ZeroTimeCycle: '去向形成零时长循环', PreviewEnd: '到达预览范围终点', BranchUndetermined: '停在分岔口',
+};
+
+// 停在分岔口：列出同时可走的每条去向和它缺的条件，作者在该角色输入轨上加“预览条件”写明后重新推导。
+function QuickBranchNotice() {
+  const plan = useQuickPlan();
+  const name = useQuickName();
+  if (plan === null || plan.stopReason !== 'BranchUndetermined') return null;
+  const choices = plan.suggestions.filter(suggestion => suggestion.start === suggestion.end);
+  return <div className={styles.notice} role="status">
+    <p>{plan.stopDetail}</p>
+    {choices.map((choice, index) => <p key={index}>
+      <span>{choice.fromState === '入口' ? '入口' : name(choice.fromSource, choice.fromState)} → </span>
+      {choice.toSource ? <LocationButton source={choice.toSource} label={name(choice.toSource, choice.toState)} /> : <span>{choice.toState}</span>}
+      <LocationButton source={choice.transitionSource} label="打开转移" />
+      <span>要走这条，需写成立：{choice.missing.map(condition => condition.label).join('、') || '无'}</span>
+    </p>)}
+  </div>;
 }
 
 function QuickDetails() {
@@ -257,7 +281,7 @@ function QuickDetails() {
       {[...new Set([receipt.code, receipt.message, status?.error, ...(status?.cleanupErrors ?? []), ...(status?.logErrors ?? [])])]
         .filter(value => value !== null && value !== undefined && value !== '').map((value, index) => <p key={index}>{value}</p>)}
     </div>}
-    {plan && (plan.stopReason || plan.stopDetail) && <p className={styles.notice}>{[plan.stopReason, plan.stopDetail].filter(Boolean).join(' · ')}</p>}
+    {plan && (plan.stopReason || plan.stopDetail) && <p className={styles.notice}>{[plan.stopReason === null ? null : stopLabels[plan.stopReason] ?? plan.stopReason, plan.stopDetail].filter(Boolean).join(' · ')}</p>}
     {plan && plan.assumptions.length > 0 && <Fold title={`计算时的假设（${plan.assumptions.length}）`}>{plan.assumptions.map((assumption, index) => <p key={index}>{assumption}</p>)}</Fold>}
     {plan && plan.segments.some(segment => segment.conditionDependencies.length > 0) && <Fold title="依赖条件的路线区段">
       <p>真实运行只使用相同的按键日程。以下区段的条件写入和默认假设以真实记录为准，状态进入或退出时间不同时，即为路线分歧。</p>

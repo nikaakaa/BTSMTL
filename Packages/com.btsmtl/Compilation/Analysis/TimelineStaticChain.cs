@@ -12,7 +12,21 @@ namespace BTSMTL.Compilation.Analysis
         NeedsSession,
         NoInitialState,
         ZeroTimeCycle,
-        PreviewEnd
+        PreviewEnd,
+        BranchUndetermined
+    }
+
+    // 分岔口的一条去向，以及它只因按默认成立才可走的运行数据读取。
+    public sealed class TimelineStaticChainBranchChoice
+    {
+        internal TimelineStaticChainBranchChoice(OrchestrationStaticTransition transition, IReadOnlyList<OrchestrationStaticRead> assumed)
+        {
+            Transition = transition;
+            Assumed = assumed;
+        }
+
+        public OrchestrationStaticTransition Transition { get; }
+        public IReadOnlyList<OrchestrationStaticRead> Assumed { get; }
     }
 
     public sealed class TimelineStaticChainSpan
@@ -99,6 +113,11 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticState LastState { get; private set; }
         public IReadOnlyList<OrchestrationStaticRead> InitialReads { get; private set; } = Array.Empty<OrchestrationStaticRead>();
 
+        // 停在分岔口时的位置与同时可走的去向；BranchState 为空表示状态机入口。
+        public OrchestrationStaticState BranchState { get; private set; }
+        public OrchestrationTime BranchTime { get; private set; }
+        public IReadOnlyList<TimelineStaticChainBranchChoice> BranchChoices { get; private set; } = Array.Empty<TimelineStaticChainBranchChoice>();
+
         // 状态 Root 中并行运行的状态机：每台各推导一条分支，从所属状态进入时起，到所属状态退出时止。
         public IReadOnlyList<TimelineStaticChainBranch> Branches => m_Branches;
         readonly List<TimelineStaticChainBranch> m_Branches = new();
@@ -117,29 +136,83 @@ namespace BTSMTL.Compilation.Analysis
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
             HashSet<int> activeMachines)
         {
+            // 运行时按顺序取第一条成立的入口，读取依赖只记到胜出者为止；其后的入口另行求值，只用来判断是否停在分岔口。
             var trace = new ReadTrace(inputs);
+            var others = new ReadTrace(inputs);
+            var satisfied = new List<OrchestrationStaticTransition>();
             foreach (OrchestrationStaticTransition initial in query.InitialTransitions(machineOperationIndex))
                 if (TimelineStaticConditionEvaluator.Earliest(initial.Condition, new ConditionTime(null, start,
-                    OrchestrationTime.Zero, start, true, false), trace,
+                    OrchestrationTime.Zero, start, true, false), satisfied.Count == 0 ? trace : others,
                     out OrchestrationTime time, out _, out _) && time == start)
+                    satisfied.Add(initial);
+            if (satisfied.Count == 0)
+                return new TimelineStaticChain
                 {
-                    if (initial.Target == null)
-                        return new TimelineStaticChain
-                        {
-                            StopReason = TimelineStaticChainStopReason.NoInitialState,
-                            Reason = "入口选中的目标不是状态，需在会话中验证。"
-                        };
-                    activeMachines.Add(machineOperationIndex);
-                    TimelineStaticChain chain = Build(query, initial.Target, start, previewEnd, inputs, activeMachines);
-                    chain.InitialReads = trace.Reads;
-                    activeMachines.Remove(machineOperationIndex);
-                    return chain;
-                }
-            return new TimelineStaticChain
+                    StopReason = TimelineStaticChainStopReason.NoInitialState,
+                    Reason = "入口状态的条件在预览起点没有成立。"
+                };
+            IReadOnlyList<TimelineStaticChainBranchChoice> choices = Undetermined(null, satisfied, start, inputs);
+            if (choices != null)
             {
-                StopReason = TimelineStaticChainStopReason.NoInitialState,
-                Reason = "入口状态的条件在预览起点没有成立。"
-            };
+                var undetermined = new TimelineStaticChain { InitialReads = trace.Reads };
+                undetermined.StopAtBranch(null, start, choices);
+                return undetermined;
+            }
+            OrchestrationStaticTransition selected = satisfied[0];
+            if (selected.Target == null)
+                return new TimelineStaticChain
+                {
+                    StopReason = TimelineStaticChainStopReason.NoInitialState,
+                    Reason = "入口选中的目标不是状态，需在会话中验证。"
+                };
+            activeMachines.Add(machineOperationIndex);
+            TimelineStaticChain chain = Build(query, selected.Target, start, previewEnd, inputs, activeMachines);
+            chain.InitialReads = trace.Reads;
+            activeMachines.Remove(machineOperationIndex);
+            return chain;
+        }
+
+        // 同一时刻有两条以上去向可走、且按顺序胜出的那条依赖未写入（按默认成立）的运行数据时，
+        // 走哪条只是预览的猜测：停在这里，由作者在角色输入轨上用预览条件写明。胜出者的读取都已写入时按正式顺序走。
+        static IReadOnlyList<TimelineStaticChainBranchChoice> Undetermined(OrchestrationStaticState state,
+            IReadOnlyList<OrchestrationStaticTransition> competing, OrchestrationTime time, ITimelineStaticReadIntervals inputs)
+        {
+            if (competing.Count < 2 || Assumed(state, competing[0], time, inputs).Count == 0)
+                return null;
+            var choices = new List<TimelineStaticChainBranchChoice>(competing.Count);
+            foreach (OrchestrationStaticTransition transition in competing)
+                choices.Add(new TimelineStaticChainBranchChoice(transition, Assumed(state, transition, time, inputs)));
+            return choices;
+        }
+
+        static IReadOnlyList<OrchestrationStaticRead> Assumed(OrchestrationStaticState state,
+            OrchestrationStaticTransition transition, OrchestrationTime time, ITimelineStaticReadIntervals inputs)
+        {
+            var assumed = new List<OrchestrationStaticRead>();
+            foreach (OrchestrationStaticRead read in transition.Reads)
+            {
+                OrchestrationStaticReadSource source = state?.Timeline == null
+                    ? read.Source : OrchestrationStaticReads.EffectiveSource(state.Timeline, in read);
+                if (source == OrchestrationStaticReadSource.RuntimeData && TimelineStaticReadIntervals.DefaultSatisfied(in read) &&
+                    !inputs.Written(read.Key, time) && !assumed.Exists(value => value.Key == read.Key))
+                    assumed.Add(read);
+            }
+            return assumed;
+        }
+
+        void StopAtBranch(OrchestrationStaticState state, OrchestrationTime time, IReadOnlyList<TimelineStaticChainBranchChoice> choices)
+        {
+            BranchState = state;
+            BranchTime = time;
+            BranchChoices = choices;
+            var labels = new List<string>();
+            foreach (TimelineStaticChainBranchChoice choice in choices)
+                foreach (OrchestrationStaticRead read in choice.Assumed)
+                    if (!labels.Contains(read.Label))
+                        labels.Add(read.Label);
+            Stop(TimelineStaticChainStopReason.BranchUndetermined,
+                $"{(state == null ? "入口" : state.Name)}有 {choices.Count} 条去向同时可走，走哪条取决于没有写入的条件：" +
+                $"{string.Join("、", labels)}。请在该角色的输入轨上用“预览条件”写明。");
         }
 
         // 只沿状态转移推导：出边按成立区间的最早时刻与正式比较器选择，无出边成立时播到终点并按"完成"转移继续。
@@ -202,14 +275,20 @@ namespace BTSMTL.Compilation.Analysis
                     end == time + endLocal - local;
                 var trace = new ReadTrace(inputs);
                 Candidate selected = Select(state, time, local, end, completed, trace,
-                    out string unavailableReason, out bool needsSession);
+                    out string unavailableReason, out bool needsSession, out IReadOnlyList<TimelineStaticChainBranchChoice> branch);
                 if (needsSession)
                     return result.Stop(TimelineStaticChainStopReason.NeedsSession, unavailableReason);
                 OrchestrationTime spanEnd = selected.Exists ? selected.Time : end;
                 OrchestrationTime spanEndLocal = local + spanEnd - time;
                 bool playbackCompleted = completed && spanEnd == end && selected.Transition?.FromAnyState != true;
                 result.m_Spans.Add(new TimelineStaticChainSpan(state, time, spanEnd, local,
-                    spanEndLocal, cycle, playbackCompleted, trace.Reads));
+                    spanEndLocal, cycle, playbackCompleted && branch == null, trace.Reads));
+                if (branch != null)
+                {
+                    result.m_Now = spanEnd;
+                    result.StopAtBranch(state, spanEnd, branch);
+                    return result;
+                }
                 foreach (OrchestrationStaticClip clip in timeline.Clips)
                     if (clip.Start >= local && clip.Start < spanEndLocal)
                         foreach ((string variable, double value) in clip.StartWrites)
@@ -291,6 +370,8 @@ namespace BTSMTL.Compilation.Analysis
                 m_Reads[read.Key] = read;
                 return m_Inputs.RuntimeData(in read);
             }
+
+            public bool Written(string key, OrchestrationTime time) => m_Inputs.Written(key, time);
         }
 
         readonly struct Candidate
@@ -309,11 +390,13 @@ namespace BTSMTL.Compilation.Analysis
 
         static Candidate Select(OrchestrationStaticState state,
             OrchestrationTime start, OrchestrationTime local, OrchestrationTime end, bool completed,
-            ITimelineStaticReadIntervals inputs, out string unavailableReason, out bool needsSession)
+            ITimelineStaticReadIntervals inputs, out string unavailableReason, out bool needsSession,
+            out IReadOnlyList<TimelineStaticChainBranchChoice> branch)
         {
             Candidate selected = default;
             OrchestrationStaticRead? unavailable = null;
             needsSession = false;
+            var satisfied = new List<Candidate>();
             // 出边已按正式比较器排序（AnyState 优先，再按优先级与顺序）；同一时刻先成立的胜出。
             foreach (OrchestrationStaticTransition transition in state.Transitions)
             {
@@ -322,6 +405,7 @@ namespace BTSMTL.Compilation.Analysis
                 if (TimelineStaticConditionEvaluator.Earliest(transition.Condition, in context, inputs, out OrchestrationTime time,
                     out OrchestrationStaticRead? blocked, out bool unresolved))
                 {
+                    satisfied.Add(new Candidate(time, transition));
                     if (!selected.Exists || time < selected.Time)
                         selected = new Candidate(time, transition);
                 }
@@ -345,6 +429,15 @@ namespace BTSMTL.Compilation.Analysis
                         nextTickAny = true;
                 }
             needsSession |= nextTickAny;
+            branch = null;
+            if (selected.Exists)
+            {
+                var competing = new List<OrchestrationStaticTransition>();
+                foreach (Candidate candidate in satisfied)
+                    if (candidate.Time == selected.Time)
+                        competing.Add(candidate.Transition);
+                branch = Undetermined(state, competing, selected.Time, inputs);
+            }
             unavailableReason = nextTickAny ? "AnyState 要在下一次 FSM Tick 才读取到主体完成，需在会话中验证具体时刻。" :
                 needsSession ? "条件查询了当前静态遍历之外的 Timeline 播放实例，需在会话中验证。" : UnavailableReason(unavailable);
             return selected;

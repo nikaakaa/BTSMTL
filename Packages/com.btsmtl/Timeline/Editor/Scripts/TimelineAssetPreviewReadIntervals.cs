@@ -58,6 +58,7 @@ namespace BTSMTL.Timeline.Editor
         public OrchestrationTime RootStart => Intervals.RootStart;
         public IReadOnlyList<TimelineStaticInterval> HostInput(string inputId) => Intervals.HostInput(inputId);
         public IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read) => Intervals.RuntimeData(in read);
+        public bool Written(string key, OrchestrationTime time) => Intervals.Written(key, time);
 
         public static bool DefaultSatisfied(in OrchestrationStaticRead read) =>
             TimelineStaticReadIntervals.DefaultSatisfied(in read);
