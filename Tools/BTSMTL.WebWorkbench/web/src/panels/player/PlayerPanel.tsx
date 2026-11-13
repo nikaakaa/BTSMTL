@@ -153,9 +153,6 @@ function QuickPreviewStage({ result, seconds, picture }: {
       : request.kind === 'failed' ? <ErrorLine text={request.reason} entryId={null} />
         : drawn === null && <Empty text="正在读取并绘制当前文档画面" />}
     {(failure !== null || request.kind === 'failed') && <Button onClick={() => quickPreview.retryPicture()}>重试当前画面</Button>}
-    <div className={styles.source} role="status">目标 {seconds.toFixed(3)} 秒 ·
-      {drawn === null ? ' 尚未显示实际画面' : ` 画面 ${drawn.sampledSeconds.toFixed(3)} 秒 · 采样 ${drawn.sampledRevision}`}
-      {request.kind === 'pending' && ' · 正在取帧'}</div>
   </div>;
 }
 
@@ -648,8 +645,6 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
   const actual = view.runId ? undefined : view.player?.source?.clock;
   const pictureSource = view.runId ? view.archiveImage?.kind === 'frame' ? view.archiveImage.metadata.source : null : video?.source ?? null;
   const picture = pictureSource?.clock;
-  const imageHostFrame = view.runId && view.archiveImage && view.archiveImage.kind !== 'unavailable'
-    ? view.archiveImage.metadata.sourceHostFrame : null;
   const adopted = view.runId ? view.logicSource : view.player?.source ?? null;
   const compared = view.runId ? '当前逻辑记录' : '当前 Player 状态';
   const sourceNotice = pictureSource === null || pictureSource.content === null
@@ -668,15 +663,12 @@ function Corner({ stats, video }: { stats: boolean; video: VideoFrame | null }) 
   return (
     <>
       {notices.length !== 0 && <div className={styles.badge}>{notices.join(' · ')}</div>}
-      <div className={styles.source} title={`原始播放器画面\n${view.runId ? `Run：${view.runId}` : '实时 Player'}\n${sourceNotice}\n内容类型：${pictureSource?.content?.kind ?? '未记录'}\n实际采用修订：${pictureSource?.content?.revision ?? '未记录'}\n画面来源帧：${imageHostFrame ?? picture?.position.hostFrame ?? '未记录'}`}>
-        原始画面 · {view.runId ? `Run ${view.runId}` : '实时 Player'} · {pictureSource?.content?.kind ?? '内容未记录'}
-        {pictureSource?.content && ` · ${pictureSource.content.revision}`}
-        {picture ? ` · ${picture.positionDisplayName} ${clockPosition(picture)}` : imageHostFrame !== null ? ` · 画面来源帧 ${imageHostFrame}` : ''} · {sourceNotice}
-      </div>
       {stats && (
         <div className={styles.stats}>
           <b>Statistics</b>
-          <div><span>来源</span><span>{view.runId ? '运行档案' : '实时 Player'}</span></div>
+          <div><span>来源</span><span>{view.runId ? `Run ${view.runId}` : '实时 Player'}</span></div>
+          <div><span>画面内容</span><span>{pictureSource?.content ? `${pictureSource.content.kind} · ${pictureSource.content.revision}` : '未记录'}</span></div>
+          <div><span>画面同源</span><span>{sourceNotice}</span></div>
           <div><span>实际采用档位</span><span>{view.adoptedMode ?? '未记录'}</span></div>
           {view.runId ? <div><span>{view.frameDisplayName}</span><span>{view.hostFrame ?? '读取中'}</span></div> : <>
             <div><span>播放器</span><span>{view.player ? playerStates[view.player.state] : view.process}</span></div>
