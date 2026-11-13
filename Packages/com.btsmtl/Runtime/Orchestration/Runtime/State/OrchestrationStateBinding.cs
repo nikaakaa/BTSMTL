@@ -150,7 +150,7 @@ namespace BTSMTL.Orchestration
         {
             readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
             readonly ReadOnlyOrchestrationExecutionFrames<TValue> m_Frames;
-            readonly ReadOnlySpan<OrchestrationFramePayloadSegment> m_FramePayloads;
+            ReadOnlySpan<OrchestrationFramePayloadSegment> m_FramePayloads;
             ReadOnlySpan<int> m_PayloadSizes;
             int m_SegmentIndex;
             int m_FrameSlot;
@@ -160,7 +160,7 @@ namespace BTSMTL.Orchestration
             {
                 m_Segments = plan.Segments;
                 m_Frames = frames;
-                m_FramePayloads = plan.FramePayloads;
+                m_FramePayloads = default;
                 m_PayloadSizes = default;
                 m_SegmentIndex = -1;
                 m_FrameSlot = -1;
@@ -197,6 +197,7 @@ namespace BTSMTL.Orchestration
                         ref readonly OrchestrationExecutionFrameState header = ref m_Frames.Header(m_FrameSlot);
                         while (header.SkillContentId == 0)
                             header = ref m_Frames.Header(++m_FrameSlot);
+                        m_FramePayloads = m_Frames.Plan.FramePayloads(m_FrameSlot);
                         m_PayloadSizes = m_Frames.Plan.PayloadSizesForSkill(header.SkillContentId,
                             header.OwnerOperationIndex);
                     }
@@ -206,7 +207,7 @@ namespace BTSMTL.Orchestration
                         int size = m_PayloadSizes[index];
                         if (size > 0)
                         {
-                            Current = m_FramePayloads[index].AtFrame(m_FrameSlot, size);
+                            Current = m_FramePayloads[index].AtFrame(m_Frames.Plan.FrameIndexInPool(m_FrameSlot), size);
                             return true;
                         }
                     }
