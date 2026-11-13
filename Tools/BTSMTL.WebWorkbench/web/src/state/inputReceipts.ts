@@ -65,6 +65,13 @@ function spans(records: FrameInput[], keys: KeyDeclaration[], tick: number) {
   return { keys: result.filter(key => key.spans.length || key.requests.length), missing, ranges };
 }
 
+// 回看真实运行时场景里每个角色实际收到的输入：每个角色按自己的输入声明分行。
+export function useActorsReceivedInput(jobId: PlayerJobId | null, actors: { actorId: string; keys: KeyDeclaration[] }[], stepSeconds: number | null) {
+  const frame = useWorkbench(state => state.archiveFrame);
+  return useMemo(() => new Map(jobId === null || stepSeconds === null ? [] : actors.map(actor =>
+    [actor.actorId, spans(archive.inputFrames(jobId, actor.actorId), actor.keys, stepSeconds)] as const)), [jobId, actors, stepSeconds, frame]);
+}
+
 export function useReceivedInput(source: { jobId: PlayerJobId; actorId: string; stepSeconds: number;
   keys: KeyDeclaration[] } | null): ReceivedInput | null {
   const frame = useWorkbench(state => state.archiveFrame);

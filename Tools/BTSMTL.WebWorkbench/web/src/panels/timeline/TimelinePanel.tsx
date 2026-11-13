@@ -34,7 +34,7 @@ import { callKey, documentObservationNotice, graphCallsAtFrame, graphKey, matche
 import { transport } from '../../state/transport';
 import { quickBounds, quickInputSourceKey, quickPreview } from '../../state/quickPreview';
 import { useInputObservation } from '../../state/inputModel';
-import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
+import { useActorsReceivedInput, useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
 import { cachedFrame } from '../../state/frames';
 import { animationReferenceKind, readAnimationDrop, useAnimationLibrary } from '../../state/resources';
@@ -656,6 +656,15 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     return routeLanes(routeSource, [...sources, ...timelines], inputScheme?.documentId ?? null,
       root => programs.get(root) ?? root);
   }, [routeSource, routeView, quickInput, inputScheme?.documentId, timelines, documents]);
+  // 场景里每个角色有自己的输入：回看真实运行时，其它角色的组里列出它实际收到的输入（按它自己的输入声明分行）。
+  const inputCatalog = useWorkbench(state => state.inputCatalog);
+  const inputStep = useWorkbench(state => state.archiveFrame?.inputContext?.inputTimeStepSeconds ?? null);
+  const otherActors = useMemo(() => !routeView || quickMode || runId === null || inputCatalog === null ? []
+    : played.filter(lane => lane.instance.parent === null && lane.instance.carrier !== inputActor).flatMap(lane => {
+      const player = inputCatalog.players.find(item => item.actorId === lane.instance.carrier);
+      return player === undefined ? [] : [{ actorId: player.actorId, keys: player.keys }];
+    }), [routeView, quickMode, runId, inputCatalog, played, inputActor]);
+  const othersReceived = useActorsReceivedInput(runId, otherActors, inputStep);
   const playbacks = currentRoute?.playbacks;
   const caller = params.caller;
   const callerNotice = caller !== null && caller.runId !== runId ? '来源调用属于另一份运行档案，未选择其它实例' : null;
@@ -781,17 +790,19 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
       const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment), focused: focusedGroup };
       const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames).map(expand);
       const own: Row[] = [group, ...(filter ? tracks.filter(row => row.track.displayName.toLowerCase().includes(filter)) : tracks)];
-      if (received) {
-        own.push({ kind: 'receivedGroup', id: 'received', received });
-        if (!collapsed.has('received')) {
-          const lines: (ReceivedKey & { missing: boolean })[] = received.keys.map(key => ({ ...key, missing: false }));
-          if (received.missing.length) lines.push({ name: '未收到', spans: received.missing, requests: [], missing: true });
-          for (const line of lines)
-            if (!filter || line.name.toLowerCase().includes(filter))
-              own.push({ kind: 'received', id: `received:${line.missing ? '' : 'key:'}${line.name}`, ...line });
-        }
-      }
+      if (received) own.push(...receivedRows('received', received));
       return own;
+    };
+    const receivedRows = (prefix: string, value: ReceivedInput): Row[] => {
+      const rows: Row[] = [{ kind: 'receivedGroup', id: prefix, received: value }];
+      if (!collapsed.has(prefix)) {
+        const lines: (ReceivedKey & { missing: boolean })[] = value.keys.map(key => ({ ...key, missing: false }));
+        if (value.missing.length) lines.push({ name: '未收到', spans: value.missing, requests: [], missing: true });
+        for (const line of lines)
+          if (!filter || line.name.toLowerCase().includes(filter))
+            rows.push({ kind: 'received', id: `${prefix}:${line.missing ? '' : 'key:'}${line.name}`, ...line });
+      }
+      return rows;
     };
     // 每个对象一层分组；输入轨放进它所属角色的根对象组最前，对不上任何对象时单列在上方。
     const addPlayed = (input: Row[] = [], actor: string | null = inputActor) => {
@@ -802,7 +813,9 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
         const instance: InstanceRow = { kind: 'instance', id: `instance:${lane.instance.id}`, lane,
           empty: lane.segments.length === 0 && lane !== entry };
         const laneMatched = !filter || lane.label.toLowerCase().includes(filter);
-        const groups: Row[] = lane === entry ? [...input] : [];
+        const other = lane.instance.parent === null ? othersReceived.get(lane.instance.carrier) : undefined;
+        const groups: Row[] = lane === entry ? [...input]
+          : other !== undefined ? receivedRows(`received@${lane.instance.carrier}`, other) : [];
         if (!collapsed.has(instance.id))
           for (const segment of lane.segments) {
             const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
@@ -852,7 +865,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
     }
     addCurves();
     return result;
-  }, [segments, focused, routeView, routeInput, inputActor, quickActor, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, played, params.filter, params.collapsed,
+  }, [segments, focused, routeView, routeInput, inputActor, quickActor, needsFirstInput, graphNames, inputTimeline, inputRoot, schemes, curves, selectedCurves, received, othersReceived, played, params.filter, params.collapsed,
     params.curveTracks, params.curveParam, params.curveHeights, elements, selectedClip, references]);
 
   const toggle = useCallback((id: string) => {
@@ -1229,7 +1242,7 @@ function Rows({ elements, rows, collapsed, toggle, toggleCurves, enter, frameAll
       case 'curves': return <CurveGroupLine key={row.id} nest={nest} open={!collapsedSet.has(row.id)} toggle={toggle} />;
       case 'curve': return <CurveLine key={row.id} row={row} nest={nest} />;
       case 'receivedGroup':
-        return <ReceivedGroupLine key={row.id} nest={nest} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
+        return <ReceivedGroupLine key={row.id} id={row.id} nest={nest} received={row.received} open={!collapsedSet.has(row.id)} toggle={toggle} />;
       case 'received': return <ReceivedLine key={row.id} row={row} nest={nest} />;
     }
   }
@@ -1977,14 +1990,14 @@ function CurveLine({ row, nest }: { row: CurveRow; nest: Nest | undefined }) {
   </Line>;
 }
 
-function ReceivedGroupLine({ nest, received, open, toggle }: {
-  nest: Nest | undefined; received: ReceivedInput; open: boolean; toggle(id: string): void;
+function ReceivedGroupLine({ id, nest, received, open, toggle }: {
+  id: string; nest: Nest | undefined; received: ReceivedInput; open: boolean; toggle(id: string): void;
 }) {
   const frameName = useWorkbench(state => state.summary?.frameDisplayName ?? '宿主帧');
   const notice = !received.keys.length && !received.missing.length ? '已读帧内没有非中性输入' : null;
   const scope = received.ranges.map(range => range.first === range.last ? range.first : `${range.first}—${range.last}`).join('、');
-  return <Line id="received" nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
-    <GroupToggle open={open} name="实际收到的输入" meta="已读帧" onToggle={() => toggle('received')}
+  return <Line id={id} nest={nest} headClass={styles.groupHead} laneClass={styles.groupLane} head={<>
+    <GroupToggle open={open} name="实际收到的输入" meta="已读帧" onToggle={() => toggle(id)}
       tip={`已读${frameName} ${scope}，随游标分页读取`} />
   </>}>
     {notice && <Tip name={notice}><span className={styles.curveNotice} data-name>{notice}</span></Tip>}
