@@ -313,7 +313,7 @@ namespace BTSMTL.Compilation.Analysis
         {
             OrchestrationStaticReadSource source = EffectiveSource(clips, in read);
             return source == read.Source ? read : new OrchestrationStaticRead(read.OperationIndex,
-                source, read.Key, true, read.Label);
+                source, read.Key, true, read.Label, read.DefaultSatisfied, read.Group);
         }
 
         internal static bool ProvidesState(ITimelineStaticClipState clip, string key)

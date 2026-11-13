@@ -16,21 +16,28 @@ namespace BTSMTL.Compilation.Analysis
     public readonly struct OrchestrationStaticRead : IEquatable<OrchestrationStaticRead>
     {
         public OrchestrationStaticRead(int operationIndex, OrchestrationStaticReadSource source, string key,
-            bool undeterminable, string label)
+            bool undeterminable, string label, bool defaultSatisfied = true, string group = null)
         {
             OperationIndex = operationIndex;
             Source = source;
             Key = key;
             Undeterminable = undeterminable;
             Label = label;
+            DefaultSatisfied = defaultSatisfied;
+            Group = group;
         }
 
         public int OperationIndex { get; }
         public OrchestrationStaticReadSource Source { get; }
         // 状态键、宿主输入身份，或运行数据的稳定描述。
         public string Key { get; }
+        // 宿主未声明含义、快速路线只能假设的读取。
         public bool Undeterminable { get; }
         public string Label { get; }
+        // 未写入时的值；宿主随含义键声明。
+        public bool DefaultSatisfied { get; }
+        // 互斥取值所属的选择组（如激活入口）；同组同一时刻只有一项成立，独立含义为 null。
+        public string Group { get; }
 
         public bool Equals(OrchestrationStaticRead other) => OperationIndex == other.OperationIndex &&
             Source == other.Source && string.Equals(Key, other.Key, StringComparison.Ordinal);
@@ -89,10 +96,13 @@ namespace BTSMTL.Compilation.Analysis
             new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
                 new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.HostInput, inputId, false, inputId));
 
-        // 宿主声明了含义的运行数据：同一含义键在不同节点上是同一条件。
-        public static OrchestrationStaticCondition RuntimeData(int operationIndex, string key, string label) =>
+        // 宿主声明了含义的运行数据：同一含义键在不同节点上是同一条件，未写入时按声明默认值；
+        // 互斥取值给同一 group，默认取值声明为默认成立。
+        public static OrchestrationStaticCondition RuntimeData(int operationIndex, string key, string label,
+            bool defaultSatisfied, string group = null) =>
             new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
-                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.RuntimeData, key, false, label));
+                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.RuntimeData, key, false, label,
+                    defaultSatisfied, group));
 
         internal static OrchestrationStaticCondition Combine(bool all, params OrchestrationStaticCondition[] children) =>
             Combine(all, (IReadOnlyList<OrchestrationStaticCondition>)children);

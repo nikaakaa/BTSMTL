@@ -182,7 +182,7 @@ namespace BTSMTL.Compilation.Analysis
             return chain;
         }
 
-        // 同一时刻有两条以上去向可走、且按顺序胜出的那条依赖未写入（按默认成立）的运行数据时，
+        // 同一时刻有两条以上去向可走、且按顺序胜出的那条依赖未写入、宿主未声明含义（只能假设）的读取时，
         // 路线照正式顺序走胜出者，但记下这个分岔口，作者可在角色输入轨上用预览条件改走别的去向。胜出者的读取都已写入时不记。
         static IReadOnlyList<TimelineStaticChainBranchChoice> Undetermined(OrchestrationStaticState state,
             IReadOnlyList<OrchestrationStaticTransition> competing, OrchestrationTime time, ITimelineStaticReadIntervals inputs)
@@ -203,7 +203,7 @@ namespace BTSMTL.Compilation.Analysis
             {
                 OrchestrationStaticReadSource source = state?.Timeline == null
                     ? read.Source : OrchestrationStaticReads.EffectiveSource(state.Timeline, in read);
-                if (source == OrchestrationStaticReadSource.RuntimeData && TimelineStaticReadIntervals.DefaultSatisfied(in read) &&
+                if (source == OrchestrationStaticReadSource.RuntimeData && read.Undeterminable &&
                     !inputs.Written(read.Key, time) && !assumed.Exists(value => value.Key == read.Key))
                     assumed.Add(read);
             }

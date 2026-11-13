@@ -175,7 +175,7 @@ namespace BTSMTL.Compilation.Analysis
         }
 
         public static bool DefaultSatisfied(in OrchestrationStaticRead read) =>
-            read.Source != OrchestrationStaticReadSource.ClipState;
+            read.Source != OrchestrationStaticReadSource.ClipState && read.DefaultSatisfied;
 
         public bool ValueAt(in OrchestrationStaticRead read, OrchestrationTime time, out bool written)
         {

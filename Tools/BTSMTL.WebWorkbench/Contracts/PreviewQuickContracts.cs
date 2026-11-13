@@ -91,7 +91,8 @@ public sealed record PreviewQuickSegment(int Instance, string? Timeline, string?
     public PreviewQuickConditionDependency[] ConditionDependencies { get; init; } = [];
 }
 public sealed record PreviewQuickConditionDependency(string Key, string Label, bool Written);
-public sealed record PreviewQuickCondition(string Key, string Label, string Source, int OperationIndex, bool Undeterminable);
+public sealed record PreviewQuickCondition(string Key, string Label, string Source, int OperationIndex, bool Undeterminable,
+    bool DefaultSatisfied, string? Group);
 public sealed record PreviewQuickMissingCondition(string Key, string Label);
 public sealed record PreviewQuickSuggestion(string FromState, string ToState, string Transition,
     PreviewQuickLocation? FromSource, PreviewQuickLocation? ToSource, PreviewQuickLocation TransitionSource,

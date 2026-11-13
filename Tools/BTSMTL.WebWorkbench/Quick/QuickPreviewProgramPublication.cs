@@ -52,7 +52,7 @@ sealed record QuickPreviewProgramPublication(JArray Programs, IReadOnlyDictionar
                 var runtime = OrchestrationStaticReads.EffectiveRead(null, in read);
                 if (runtime.Source == OrchestrationStaticReadSource.RuntimeData)
                     conditions.TryAdd(runtime.Key, new(runtime.Key, runtime.Label, runtime.Source.ToString(),
-                        runtime.OperationIndex, runtime.Undeterminable));
+                        runtime.OperationIndex, runtime.Undeterminable, TimelineStaticReadIntervals.DefaultSatisfied(in runtime), runtime.Group));
                 value["read"] = new JObject { ["operationIndex"] = read.OperationIndex, ["source"] = read.Source.ToString(),
                     ["key"] = read.Key, ["undeterminable"] = read.Undeterminable, ["label"] = read.Label };
                 break;
