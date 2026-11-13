@@ -44,7 +44,7 @@ namespace BTSMTL.Orchestration
         internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
 
         internal OrchestrationValueAddress CandidateAddress(int frameSlot, int valueSlot) =>
-            m_CandidatePrivateAddresses[valueSlot].AtFrame(frameSlot);
+            m_Frames.Plan.ResolveAddress(m_CandidatePrivateAddresses[valueSlot], frameSlot);
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
             int characterSlot, bool actionInstance, ref TValue destination)
@@ -68,7 +68,7 @@ namespace BTSMTL.Orchestration
                 FrameAddress owner = Owner(ownerOperationIndex);
                 ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
                 OrchestrationValueAddress address = owner.Source
-                    ? m_SourcePrivateAddresses[valueSlot].AtFrame(owner.Index)
+                    ? m_Source.Frames.Plan.ResolveAddress(m_SourcePrivateAddresses[valueSlot], owner.Index)
                     : CandidateAddress(owner.Index, valueSlot);
                 default(TStorage).Read(frames.Memory, in address, ref destination);
             }

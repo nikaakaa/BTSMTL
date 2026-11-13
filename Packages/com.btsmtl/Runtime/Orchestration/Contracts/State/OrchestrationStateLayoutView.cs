@@ -6,10 +6,13 @@ namespace BTSMTL.Orchestration
     internal struct OrchestrationStateLayoutImageHeader
     {
         public int FrameCapacity;
+        public int FramePayloadCount;
         public OrchestrationStateRegion<byte> TimelineRegion;
         public OrchestrationMemorySection Segments;
         public OrchestrationMemorySection Indices;
         public OrchestrationMemorySection FramePayloads;
+        public OrchestrationMemorySection FramePools;
+        public OrchestrationMemorySection FrameSlots;
         public OrchestrationMemorySection CharacterAddresses;
         public OrchestrationMemorySection Programs;
     }
@@ -64,17 +67,38 @@ namespace BTSMTL.Orchestration
 
     internal readonly struct OrchestrationFrameValueAddress
     {
-        internal OrchestrationFrameValueAddress(OrchestrationValueAddress address, int stride)
+        internal OrchestrationFrameValueAddress(OrchestrationValueAddress address, int payloadIndex)
         {
             Address = address;
-            Stride = stride;
+            PayloadIndex = payloadIndex;
         }
 
         internal OrchestrationValueAddress Address { get; }
-        internal int Stride { get; }
-        internal OrchestrationValueAddress AtFrame(int frame) =>
-            new OrchestrationValueAddress(Address.Kind,
-                Address.OffsetBytes + frame * Stride, Address.SizeBytes, Address.BitIndex);
+        internal int PayloadIndex { get; }
+    }
+
+    internal readonly struct OrchestrationFramePoolRange
+    {
+        internal OrchestrationFramePoolRange(int first, int count)
+        {
+            First = first;
+            Count = count;
+        }
+
+        internal int First { get; }
+        internal int Count { get; }
+    }
+
+    internal readonly struct OrchestrationFrameSlot
+    {
+        internal OrchestrationFrameSlot(int pool, int index)
+        {
+            Pool = pool;
+            Index = index;
+        }
+
+        internal int Pool { get; }
+        internal int Index { get; }
     }
 
     // 推进只经此视图读取状态布局；视图只持有布局镜像字节。
@@ -98,8 +122,18 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<byte> TimelineRegion => Header.TimelineRegion;
         public ReadOnlySpan<OrchestrationStateSegment> Segments =>
             Section<OrchestrationStateSegment>(Header.Segments);
-        internal ReadOnlySpan<OrchestrationFramePayloadSegment> FramePayloads =>
-            Section<OrchestrationFramePayloadSegment>(Header.FramePayloads);
+        internal ReadOnlySpan<OrchestrationFramePayloadSegment> FramePayloads(int frame)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            int pool = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame].Pool;
+            return Section<OrchestrationFramePayloadSegment>(header.FramePayloads)
+                .Slice(pool * header.FramePayloadCount, header.FramePayloadCount);
+        }
+
+        internal int FrameIndexInPool(int frame) => Section<OrchestrationFrameSlot>(Header.FrameSlots)[frame].Index;
+        internal int FrameDepth(int frame) => Section<OrchestrationFrameSlot>(Header.FrameSlots)[frame].Pool;
+        internal OrchestrationFramePoolRange FramePool(int depth) =>
+            Section<OrchestrationFramePoolRange>(Header.FramePools)[depth];
 
         public int ProgramIndex(int skillContentId) =>
             FindProgramIndex(Section<OrchestrationStateProgramRecord>(Header.Programs), skillContentId);
@@ -128,7 +162,19 @@ namespace BTSMTL.Orchestration
             Section<OrchestrationValueAddress>(Header.CharacterAddresses)[slot];
 
         public OrchestrationValueAddress PrivateAddress(int program, int frame, int valueSlot) =>
-            Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses)[valueSlot].AtFrame(frame);
+            ResolveAddress(Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses)[valueSlot], frame);
+
+        internal OrchestrationValueAddress ResolveAddress(in OrchestrationFrameValueAddress value, int frame)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
+            OrchestrationFramePayloadSegment payload = Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[
+                slot.Pool * header.FramePayloadCount + value.PayloadIndex];
+            OrchestrationValueAddress address = value.Address;
+            return new OrchestrationValueAddress(address.Kind,
+                payload.OffsetBytes + slot.Index * payload.StrideBytes + address.OffsetBytes,
+                address.SizeBytes, address.BitIndex);
+        }
 
         internal ReadOnlySpan<OrchestrationFrameValueAddress> PrivateAddresses(int program) =>
             Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses);
@@ -145,7 +191,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             OrchestrationMemorySection sizes =
                 Section<OrchestrationStateProgramRecord>(header.Programs)[program].PayloadSizes;
-            return PayloadSizes(sizes, owner, header.FramePayloads.Count);
+            return PayloadSizes(sizes, owner, header.FramePayloadCount);
         }
 
         internal ReadOnlySpan<int> PayloadSizesForSkill(int skillContentId, int owner)
@@ -154,7 +200,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationStateProgramRecord> programs =
                 Section<OrchestrationStateProgramRecord>(header.Programs);
             int program = FindProgramIndex(programs, skillContentId);
-            return PayloadSizes(programs[program].PayloadSizes, owner, header.FramePayloads.Count);
+            return PayloadSizes(programs[program].PayloadSizes, owner, header.FramePayloadCount);
         }
 
         ReadOnlySpan<int> PayloadSizes(OrchestrationMemorySection sizes, int owner, int count) =>
@@ -165,11 +211,12 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             int index = Index(in header, role, valueKind).FramePayload;
+            OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
             ref readonly OrchestrationFramePayloadSegment payload =
-                ref Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[index];
+                ref Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[slot.Pool * header.FramePayloadCount + index];
             OrchestrationMemorySection sizes =
                 Section<OrchestrationStateProgramRecord>(header.Programs)[program].PayloadSizes;
-            return payload.AtFrame(frame, PayloadSizes(sizes, owner, header.FramePayloads.Count)[index]);
+            return payload.AtFrame(slot.Index, PayloadSizes(sizes, owner, header.FramePayloadCount)[index]);
         }
     }
 }

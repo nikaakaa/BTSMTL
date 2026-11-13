@@ -74,16 +74,17 @@ namespace BTSMTL.Orchestration
             where TPlayback : unmanaged
         {
             OrchestrationExecutionStateCapacity capacity = executionCapacity.State;
+            StableHash layoutIdentity = capacity.BindIdentity(Identity);
             int characterCount = CharacterValueDefaults.Length;
-            var blackboard = blackboardFactory(Identity, numericProfile, targetAbi,
+            var blackboard = blackboardFactory(layoutIdentity, numericProfile, targetAbi,
                 characterCount, characterCount);
-            var execution = executionFactory(Identity, numericProfile, targetAbi,
+            var execution = executionFactory(layoutIdentity, numericProfile, targetAbi,
                 capacity.ValueCount, capacity.FrameCount, capacity.OperationCount, 1,
                 capacity.SavedOutputCount, capacity.ValueCount);
-            var composite = compositeFactory(Identity, numericProfile, targetAbi,
+            var composite = compositeFactory(layoutIdentity, numericProfile, targetAbi,
                 blackboard, execution, timelineLayout);
             return new OrchestrationPreparedStateLayout<TValue>(composite.Layout, composite.StateSegments,
-                capacity.FrameCount, PreparedProgramStorages, CharacterValueTypes,
+                in capacity, PreparedProgramStorages, CharacterValueTypes,
                 composite.GetTimelineRegion(), timelineLayout.Layout);
         }
 

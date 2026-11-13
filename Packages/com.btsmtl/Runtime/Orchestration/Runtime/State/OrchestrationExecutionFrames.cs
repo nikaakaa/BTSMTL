@@ -128,7 +128,9 @@ namespace BTSMTL.Orchestration
         public int Insert<TStorage>(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            int slot = 0;
+            int depth = frame.ParentFrameIndex < 0 ? 0 : Plan.FrameDepth(frame.ParentFrameIndex) + 1;
+            OrchestrationFramePoolRange pool = Plan.FramePool(depth);
+            int slot = pool.First;
             while (m_Frames[slot].SkillContentId != 0)
                 slot++;
             m_Frames[slot] = frame;
@@ -163,13 +165,14 @@ namespace BTSMTL.Orchestration
 
         internal void ClearPayloads(int frameSlot, ReadOnlySpan<int> sizes)
         {
-            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = Plan.FramePayloads;
+            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = Plan.FramePayloads(frameSlot);
+            int frame = Plan.FrameIndexInPool(frameSlot);
             for (int i = 0; i < sizes.Length; i++)
             {
                 int size = sizes[i];
                 if (size > 0)
                 {
-                    OrchestrationStateRegion<byte> region = payloads[i].AtFrame(frameSlot, size);
+                    OrchestrationStateRegion<byte> region = payloads[i].AtFrame(frame, size);
                     m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
                 }
             }

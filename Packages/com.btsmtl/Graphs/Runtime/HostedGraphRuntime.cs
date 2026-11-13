@@ -72,13 +72,13 @@ namespace BTSMTL.Graphs
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
             OrchestrationExecutionStateCapacity stateCapacity = capacity.State;
             OrchestrationExecutionStateLayout<TValue> executionLayout = default(TNumerics).CreateStateLayout(
-                content.Identity.ExecutionIdentity,
+                stateCapacity.BindIdentity(content.Identity.ExecutionIdentity),
                 content.Structure.NumericProfile.Id, content.Structure.NumericProfile.AbiVersion,
                 stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
                 1, stateCapacity.SavedOutputCount, stateCapacity.ValueCount);
             m_PrivateValues = executionLayout.Values;
             m_Layout = new OrchestrationPreparedStateLayout<TValue>(executionLayout.Layout,
-                executionLayout.StateSegments, stateCapacity.FrameCount,
+                executionLayout.StateSegments, in stateCapacity,
                 new[] { new OrchestrationPreparedProgramStorage<TValue>(m_Bindings.SourceIdentityId,
                     program.ExecutionStorage, program.Content.ValueSlotTypes) },
                 ReadOnlyMemory<OrchestrationValueSlotType>.Empty,

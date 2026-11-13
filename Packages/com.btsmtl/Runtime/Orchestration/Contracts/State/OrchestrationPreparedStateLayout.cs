@@ -25,15 +25,17 @@ namespace BTSMTL.Orchestration
         const int KindCount = OrchestrationStateLayoutView.KindCount;
         readonly OrchestrationStateSegment[] m_Segments;
         readonly byte[] m_Image;
+        readonly OrchestrationExecutionStateCapacity m_Capacity;
 
         public OrchestrationPreparedStateLayout(OrchestrationStateLayout layout,
-            ReadOnlyMemory<OrchestrationStateSegment> segments, int frameCapacity,
+            ReadOnlyMemory<OrchestrationStateSegment> segments, in OrchestrationExecutionStateCapacity capacity,
             ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> programs,
             ReadOnlyMemory<OrchestrationValueSlotType> characterTypes,
             OrchestrationStateRegion<byte> timelineRegion, OrchestrationStateLayout timelineLayout)
         {
             Layout = layout;
-            FrameCapacity = frameCapacity;
+            m_Capacity = capacity;
+            FrameCapacity = capacity.FrameCount;
             Programs = programs;
             CharacterTypes = characterTypes;
             TimelineRegion = timelineRegion;
@@ -60,12 +62,29 @@ namespace BTSMTL.Orchestration
                         indices[start + kind] = index;
                 indices[start + (int)segment.ValueKind] = index;
             }
-            var framePayloads = new OrchestrationFramePayloadSegment[payloadSegments.Count];
-            for (int i = 0; i < framePayloads.Length; i++)
+            var framePayloads = new OrchestrationFramePayloadSegment[capacity.FramePools.Length * payloadSegments.Count];
+            for (int i = 0; i < payloadSegments.Count; i++)
             {
                 OrchestrationStateSegment segment = payloadSegments[i];
-                framePayloads[i] = new OrchestrationFramePayloadSegment(segment.OffsetBytes,
-                    frameCapacity == 0 ? 0 : segment.SizeBytes / frameCapacity);
+                int offset = segment.OffsetBytes;
+                for (int depth = 0; depth < capacity.FramePools.Length; depth++)
+                {
+                    ref readonly OrchestrationExecutionFramePoolCapacity pool = ref capacity.FramePools.Span[depth];
+                    int stride = checked(pool.PayloadElementCount(in segment) * segment.ElementSizeBytes);
+                    framePayloads[depth * payloadSegments.Count + i] = new OrchestrationFramePayloadSegment(offset, stride);
+                    offset = checked(offset + pool.FrameCount * stride);
+                }
+            }
+            var framePools = new OrchestrationFramePoolRange[capacity.FramePools.Length];
+            var frameSlots = new OrchestrationFrameSlot[FrameCapacity];
+            int first = 0;
+            for (int depth = 0; depth < framePools.Length; depth++)
+            {
+                int count = capacity.FramePools.Span[depth].FrameCount;
+                framePools[depth] = new OrchestrationFramePoolRange(first, count);
+                for (int index = 0; index < count; index++)
+                    frameSlots[first + index] = new OrchestrationFrameSlot(depth, index);
+                first = checked(first + count);
             }
             var characterAddresses = new OrchestrationValueAddress[characterTypes.Length];
             for (int slot = 0; slot < characterAddresses.Length; slot++)
@@ -79,12 +98,15 @@ namespace BTSMTL.Orchestration
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationStateLayoutImageHeader>());
             var header = new OrchestrationStateLayoutImageHeader
             {
-                FrameCapacity = frameCapacity,
+                FrameCapacity = FrameCapacity,
+                FramePayloadCount = payloadSegments.Count,
                 TimelineRegion = timelineRegion
             };
             header.Segments = writer.Add<OrchestrationStateSegment>(m_Segments);
             header.Indices = writer.Add<OrchestrationStateSegmentIndex>(indices);
             header.FramePayloads = writer.Add<OrchestrationFramePayloadSegment>(framePayloads);
+            header.FramePools = writer.Add<OrchestrationFramePoolRange>(framePools);
+            header.FrameSlots = writer.Add<OrchestrationFrameSlot>(frameSlots);
             header.CharacterAddresses = writer.Add<OrchestrationValueAddress>(characterAddresses);
             var records = new OrchestrationStateProgramRecord[programs.Length];
             for (int program = 0; program < programs.Length; program++)
@@ -105,7 +127,7 @@ namespace BTSMTL.Orchestration
                             segment.ElementSizeBytes);
                     }
                 }
-                var addresses = new OrchestrationFrameValueAddress[frameCapacity == 0 ? 0 : storage.Values.Length];
+                var addresses = new OrchestrationFrameValueAddress[FrameCapacity == 0 ? 0 : storage.Values.Length];
                 for (int slot = 0; slot < addresses.Length; slot++)
                 {
                     OrchestrationValueStorageSlot value = storage.Values.Span[slot];
@@ -113,8 +135,11 @@ namespace BTSMTL.Orchestration
                         continue;
                     OrchestrationValueKind kind = prepared.ValueTypes.Span[slot].ValueKind;
                     OrchestrationStateSegment segment = Segment(indices, OrchestrationStateSegmentRole.PrivateValues, kind);
-                    addresses[slot] = new OrchestrationFrameValueAddress(Address(in segment, kind,
-                        segment.ValueKind == 0 ? value.ValueIndex : value.TypeIndex), segment.SizeBytes / frameCapacity);
+                    OrchestrationValueAddress address = Address(in segment, kind,
+                        segment.ValueKind == 0 ? value.ValueIndex : value.TypeIndex);
+                    addresses[slot] = new OrchestrationFrameValueAddress(new OrchestrationValueAddress(
+                        address.Kind, address.OffsetBytes - segment.OffsetBytes, address.SizeBytes, address.BitIndex),
+                        indices[(int)OrchestrationStateSegmentRole.PrivateValues * KindCount + (int)kind].FramePayload);
                 }
                 records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
                     writer.Add(storage.OperationIndices.Span), writer.Add(storage.Values.Span),
@@ -137,6 +162,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationPreparedStateLayout<TValue> PrepareSource(int frameCapacity)
         {
+            OrchestrationExecutionStateCapacity capacity = m_Capacity.PrepareSource(frameCapacity);
             var segments = new List<OrchestrationStateSegment>();
             int offset = 0;
             int alignment = 1;
@@ -144,7 +170,10 @@ namespace BTSMTL.Orchestration
             {
                 if (segment.Role >= OrchestrationStateSegmentRole.TimelinePlaybacks)
                     continue;
-                int length = segment.PerFrame ? segment.Length / FrameCapacity * frameCapacity : segment.Length;
+                int length = segment.Length;
+                if (segment.PerFrame)
+                    length = segment.Role == OrchestrationStateSegmentRole.Frames ? frameCapacity :
+                        checked(capacity.FramePools.Span[0].PayloadElementCount(in segment) * frameCapacity);
                 offset = checked((offset + segment.Alignment - 1) / segment.Alignment * segment.Alignment);
                 segments.Add(new OrchestrationStateSegment(offset, length, segment.ElementSizeBytes,
                     segment.Alignment, segment.Role, segment.ValueKind, segment.PerFrame));
@@ -154,7 +183,7 @@ namespace BTSMTL.Orchestration
             int size = checked((offset + alignment - 1) / alignment * alignment);
             var layout = new OrchestrationStateLayout(size, alignment,
                 StableHash.Compute(Layout.Identity.ToString(), "source", frameCapacity.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-            return new OrchestrationPreparedStateLayout<TValue>(layout, segments.ToArray(), frameCapacity,
+            return new OrchestrationPreparedStateLayout<TValue>(layout, segments.ToArray(), in capacity,
                 Programs, CharacterTypes, new OrchestrationStateRegion<byte>(size, 0), default);
         }
 
