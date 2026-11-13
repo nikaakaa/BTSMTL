@@ -57,8 +57,8 @@ export const inputAuthoring = {
     authoringActions.edit(path, document => setIn(document, keys, value));
   },
 
-  // 快速预览停在分岔口时选一条去向：在执行角色的预览输入轨上、分岔时刻的标记图里接一串“预览条件”，
-  // 所选去向的条件写成立，其余同时可走的去向的条件写不成立。没有预览输入时先建；该时刻已有标记就接在它的执行链末尾。
+  // 输入轨“外部事件”：在预览输入轨该时刻的标记图里写一串“预览条件”（成立／不成立）。没有预览输入时先建；
+  // 该时刻已写过的含义直接改值，其余接在标记图执行链末尾。
   async writeConditions(timelineId: string | null, seconds: number, writes: { key: string; label: string; satisfied: boolean }[]) {
     const target = get().target;
     if (target === null) throw new Error('没有打开的作者文档');
@@ -91,16 +91,29 @@ export const inputAuthoring = {
     const anchor = graph.nodes.find(node => flowOut(node.id) !== undefined && !nodesOf(stored)
       .some(item => connectionsOf(item).some(connection => connectionTarget(connection) === node.id)));
     if (anchor === undefined) throw new Error('标记图没有回调入口');
+    const contract = elements.previewInput.condition;
+    const type = contract.nodeType;
+    // 链上已有的预览条件按含义记下，同一含义后写的生效。
+    const written = new Map<string, string>();
     let tail = { nodeId: anchor.id, portId: flowOut(anchor.id)!.id };
     for (let next = connectionsOf(findNode(stored, tail.nodeId)!).find(item => connectionSourcePort(item) === tail.portId);
       next !== undefined; next = connectionsOf(findNode(stored, tail.nodeId)!).find(item => connectionSourcePort(item) === tail.portId)) {
       const nodeId = connectionTarget(next);
+      const node = findNode(stored, nodeId)!;
+      if (nodeType(node) === type)
+        written.set(contract.conditionPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], node) as string, nodeId);
       const port = (get().addedPorts[nodeId] ?? []).find(item => item.isTrigger && item.direction === 'output')?.id ?? flowOut(nodeId)?.id;
       if (port === undefined) break;
       tail = { nodeId, portId: port };
     }
-    const contract = elements.previewInput.condition;
-    const type = contract.nodeType;
+    writes = writes.filter(write => {
+      const nodeId = written.get(write.key);
+      if (nodeId === undefined) return true;
+      graphAuthoring.setNodeValues(graphId, nodeId, [
+        { keys: contract.labelPath, value: write.label }, { keys: contract.satisfiedPath, value: write.satisfied }]);
+      return false;
+    });
+    if (writes.length === 0) return;
     const description = await authoringApi.describeType(target, type, graphId, authoringActions.editingView());
     if (!description.availability.available) throw new Error(description.availability.reason ?? '预览条件节点不可创建');
     if (!describedPortsAvailable(description.ports)) throw new Error(description.ports.availability.reason);
