@@ -1358,8 +1358,13 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
 }) {
   const segment = row.segment;
   const owner = useAuthoring(state => state.target?.documentPath);
-  const { range } = useTimelineContext();
-  return (
+  const { range, getValueFromScreenX } = useTimelineContext();
+  const at = useRef(0);
+  const step = useContext(SnapContext) ?? 1 / 60;
+  const eventSeconds = useCallback(() => Math.max(0, snapTo(at.current - segment.origin, step)), [segment.origin, step]);
+  // 输入 Timeline 的分组行也能放外部事件（还没有轨道时由写入先建轨道）。
+  const events = useQuickEventEntries(segment.documentId, eventSeconds).slice(1);
+  const line = (
     <Line id={row.id} nest={nest} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <GroupToggle open={open} onToggle={() => toggle(row.id)}
@@ -1374,7 +1379,13 @@ const GroupLine = memo(function GroupLine({ elements, row, nest, open, toggle, e
         <Positioned key={index} start={span.start} end={span.end} className={styles.clipUnion}
           tip={`${span.start.toFixed(3)}–${span.end.toFixed(3)} s`} />
       ))}
+      <QuickAssumptionDots documentId={segment.documentId} origin={segment.origin} />
     </Line>
+  );
+  return events.length === 0 ? line : (
+    <ContextMenu entries={events}>
+      <div className={styles.menuArea} onContextMenuCapture={event => { at.current = getValueFromScreenX(event.clientX); }}>{line}</div>
+    </ContextMenu>
   );
 });
 
@@ -1535,7 +1546,6 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
   const eventSeconds = useCallback(() => markerAt.current !== null ? markerAt.current - row.segment.origin
     : Math.max(0, snapTo(at.current - row.segment.origin, step)), [row.segment.origin, step]);
   const events = useQuickEventEntries(documentId, eventSeconds);
-  const assumptions = useQuickAssumptions(documentId, row.segment.origin);
   const menu = author && events.length !== 0 ? [...trackMenu, ...events] : trackMenu;
   const animationCatalog = useTimelineResourceCatalog(documentId, animationReferenceKind);
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
@@ -1637,17 +1647,23 @@ const TrackLine = memo(function TrackLine({ elements, row, nest, toggleCurves }:
             taken={author ? seconds => markerTimeTaken(documentId, row.track.id, snapLocal(seconds), markerId) : undefined} />
         );
       })}
-      {assumptions.filter(point => point.seconds >= range.start && point.seconds <= range.end).map(point =>
-        <Positioned key={point.key} start={point.seconds} end={point.seconds} className={styles.assumption}>
-          <MenuButton label={point.tip} variant="ghost" iconOnly className={styles.assumptionButton} entries={point.entries}>
-            <span className={styles.assumptionDot} />
-          </MenuButton>
-        </Positioned>)}
     </Line>
     </div>
     </ContextMenu>
   );
 });
+
+// 快速路线的假设处画在输入 Timeline 的分组行上：输入轨还没有轨道时也看得到，有多条轨道时只画一份。
+function QuickAssumptionDots({ documentId, origin }: { documentId: string; origin: number }) {
+  const { range } = useTimelineContext();
+  const assumptions = useQuickAssumptions(documentId, origin);
+  return assumptions.filter(point => point.seconds >= range.start && point.seconds <= range.end).map(point =>
+    <Positioned key={point.key} start={point.seconds} end={point.seconds} className={styles.assumption}>
+      <MenuButton label={point.tip} variant="ghost" iconOnly className={styles.assumptionButton} entries={point.entries}>
+        <span className={styles.assumptionDot} />
+      </MenuButton>
+    </Positioned>);
+}
 
 function Positioned({ start, end, className, children, style, tip }: {
   start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; tip?: string;
