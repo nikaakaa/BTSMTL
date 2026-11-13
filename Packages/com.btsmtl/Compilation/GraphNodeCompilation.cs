@@ -64,6 +64,10 @@ namespace BTSMTL.Compilation
         public static KeyValuePair<string, object>[] PayloadFields(params (OrchestrationOutputPort Port, object Value)[] payload) =>
             SimulationNodeEmissionFields.Fields(payload.Select(item => (item.Port.Id, item.Value)).ToArray());
 
+        internal GraphNodeCompileDescription WithPayload(IEnumerable<KeyValuePair<string, object>> payload) =>
+            new(payload, ReadBindings, WriteBindings, ConstantInputs, ConstantOutputs, DerivedInputs,
+                RequiredInputConnections, AdditionalPorts);
+
         public IReadOnlyList<KeyValuePair<string, object>> Payload { get; }
         public IReadOnlyList<GraphOrchestrationBlackboardPort> ReadBindings { get; }
         public IReadOnlyList<GraphOrchestrationBlackboardPort> WriteBindings { get; }
@@ -94,16 +98,27 @@ namespace BTSMTL.Compilation
             return new GraphNodeCompilers(compilers);
         }
 
-        // 按节点类型及其基类查找；没有编译描述的节点返回空描述。
+        // 标了 ContractField 的作者字段原样写入合同字段；其余载荷与端口描述按节点类型及其基类查找编译描述。
         public GraphNodeCompileDescription Describe(GraphNodeFields fields)
         {
             IGraphNodeCompiler compiler = null;
             for (Type type = fields.NodeType; type != null && !m_Compilers.TryGetValue(type, out compiler); type = type.BaseType) { }
-            if (compiler == null)
-                return GraphNodeCompileDescription.Empty;
             try
             {
-                return compiler.Describe(fields);
+                GraphNodeCompileDescription description = compiler?.Describe(fields) ?? GraphNodeCompileDescription.Empty;
+                IReadOnlyList<GraphNodeContractField> copied = GraphNodeContracts.Fields(fields.NodeType);
+                if (copied.Count == 0)
+                    return description;
+                var payload = new List<KeyValuePair<string, object>>(copied.Count + description.Payload.Count);
+                foreach (GraphNodeContractField field in copied)
+                    payload.Add(new KeyValuePair<string, object>(field.Contract.Id, fields.Read(field.AuthoringFieldId, field.ValueType)));
+                foreach (KeyValuePair<string, object> item in description.Payload)
+                {
+                    if (payload.Any(existing => existing.Key == item.Key))
+                        throw new GraphNodeCompileException($"节点 '{fields.NodeType.Name}' 的合同字段 '{item.Key}' 已由作者字段直接写入，编译描述不能再写。");
+                    payload.Add(item);
+                }
+                return description.WithPayload(payload);
             }
             catch (Exception exception) when (exception is not GraphNodeCompileException)
             {
@@ -167,8 +182,25 @@ namespace BTSMTL.Compilation
             m_References = references;
         }
 
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, MethodInfo> s_Reads = new();
+
         public Type NodeType => m_Reader.NodeType;
         public GraphNodeField Value(string fieldId) => new(m_Reader, fieldId);
+
+        internal object Read(string fieldId, Type type)
+        {
+            MethodInfo read = s_Reads.GetOrAdd(type, value =>
+                typeof(IGraphNodeFieldReader).GetMethod(nameof(IGraphNodeFieldReader.Read)).MakeGenericMethod(value));
+            try
+            {
+                return read.Invoke(m_Reader, new object[] { fieldId });
+            }
+            catch (TargetInvocationException exception)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+                throw;
+            }
+        }
         public bool IsNull(string fieldId) => m_Reader.IsNull(fieldId);
         public string String(string fieldId) => m_Reader.Read<string>(fieldId);
         public bool Boolean(string fieldId) => m_Reader.Read<bool>(fieldId);

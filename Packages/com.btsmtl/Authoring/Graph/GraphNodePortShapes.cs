@@ -257,6 +257,29 @@ namespace BTSMTL.Authoring.Graph
         }
     }
 
+    // 作者字段原样写入扩展合同内容字段：Id 为节点合同上的字段身份，值类型取该作者字段。
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
+    public sealed class ContractFieldAttribute : Attribute
+    {
+        public ContractFieldAttribute(string id) => Id = id;
+
+        public string Id { get; }
+    }
+
+    public readonly struct GraphNodeContractField
+    {
+        public GraphNodeContractField(string authoringFieldId, Type valueType, OrchestrationExtensionContentField contract)
+        {
+            AuthoringFieldId = authoringFieldId;
+            ValueType = valueType;
+            Contract = contract;
+        }
+
+        public string AuthoringFieldId { get; }
+        public Type ValueType { get; }
+        public OrchestrationExtensionContentField Contract { get; }
+    }
+
     // 列表成员逐项产出流程输出端口，identity 与显示名取自列表项；Numbered 时显示名前加序号。
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
     public sealed class FlowOutputListAttribute : Attribute
@@ -499,6 +522,30 @@ namespace BTSMTL.Authoring.Graph
             return definitions.Length == 1 ? definitions[0]
                 : throw new InvalidOperationException($"合同类型 '{contract.FullName}' 必须恰有一个扩展定义静态字段。");
         });
+
+        static readonly ConcurrentDictionary<Type, GraphNodeContractField[]> s_Fields = new();
+
+        // 节点上标了 ContractField 的作者字段，按声明顺序；合同没有该字段时报错。
+        public static IReadOnlyList<GraphNodeContractField> Fields(Type nodeType) => nodeType == null
+            ? Array.Empty<GraphNodeContractField>()
+            : s_Fields.GetOrAdd(nodeType, type =>
+            {
+                var fields = new List<GraphNodeContractField>();
+                foreach (MemberInfo member in GraphNodeMembers.Ordered(type))
+                {
+                    if (member.GetCustomAttribute<ContractFieldAttribute>(true) is not { } declared)
+                        continue;
+                    ReadOnlySpan<OrchestrationExtensionContentField> contract = Definition(type).Declaration.Contract.Fields.Span;
+                    int index = 0;
+                    while (index < contract.Length && contract[index].Id != declared.Id)
+                        index++;
+                    if (index == contract.Length)
+                        throw new InvalidOperationException($"节点 '{type.FullName}' 的成员 '{member.Name}' 指向的合同字段 '{declared.Id}' 不存在。");
+                    (string fieldId, Type valueType) = GraphNodeMembers.AuthoringField(type, member.Name);
+                    fields.Add(new GraphNodeContractField(fieldId, valueType, contract[index]));
+                }
+                return fields.ToArray();
+            });
 
         internal static IOrchestrationExtensionPort Port(Type nodeType, string member)
         {

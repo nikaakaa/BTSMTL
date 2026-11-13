@@ -50,7 +50,10 @@ public sealed class SkillSchemaVar
     { Name = name; Type = type; Group = group; Alias = alias; Tags = tags; Element = element; Bean = bean; }
     public string Name { get; }
     // 合同端口（port=contract）为空：方向与值类型只由运行合同提供。
-    public SkillSchemaType? Type { get; }
+    // 合同字段（field=合同字段 Id）加载时为空，由持有运行合同的代码目标经 ResolveContractFields 填入。
+    public SkillSchemaType? Type { get; private set; }
+
+    internal void Resolve(SkillSchemaType type) => Type = type;
     public string Group { get; }
     public string? Alias { get; }
     public SkillSchemaTags Tags { get; }
@@ -95,7 +98,8 @@ public sealed class SkillSchemaModel
         "displayName", "port", "compilationImpact", "kind", "category", "default", "finite", "operation", "optional",
         "minimum", "unit", "reference", "hidden", "readOnly", "id", "defaultField", "allowedValues", "timelineDomains",
         "nonEmpty", "inline", "asset", "variant", "maximum", "resource", "pickerOwner", "picker", "encoding",
-        "output", "portSource", "enumSchema", "authoring", "numbered", "hostInputs", "graphRole", "documentMember"
+        "output", "portSource", "enumSchema", "authoring", "numbered", "hostInputs", "graphRole", "documentMember", "field",
+        "compilerPorts"
     };
     static readonly HashSet<string> Booleans = new(StringComparer.Ordinal)
     {
@@ -142,6 +146,14 @@ public sealed class SkillSchemaModel
 
     public static bool IsBuiltin(string type) => Builtins.Contains(type);
 
+    // 代码目标按运行合同给出合同字段的 schema 类型文本；返回 null 表示已记录错误。
+    public void ResolveContractFields(Func<SkillSchemaVar, string?> type)
+    {
+        foreach (SkillSchemaVar item in Beans.SelectMany(bean => bean.Vars).Where(item => item.Tags.Has("field")))
+            if (type(item) is { } text)
+                item.Resolve(ParseType(text));
+    }
+
     // 引用到 schema 外的类型名：只能是从运行合同导出的枚举。
     public IEnumerable<string> ExternalTypes() => Beans.SelectMany(bean => bean.Vars.Select(item => (bean, item)))
         .Where(pair => pair.item.Type is { } type && !IsBuiltin(type.Element) && FindBean(type.Element, pair.bean.Module) == null &&
@@ -169,9 +181,10 @@ public sealed class SkillSchemaModel
                     {
                         SkillSchemaTags tags = Validate(file, item, errors);
                         string? type = (string?)item.Attribute("type");
-                        if (tags["port"] == "contract" && type != null)
-                            errors.Add(Error(file, item, ".type", "合同端口的方向与值类型由运行合同提供，删除 type。"));
-                        else if (tags["port"] != "contract" && type == null)
+                        bool contract = tags["port"] == "contract" || tags.Has("field");
+                        if (contract && type != null)
+                            errors.Add(Error(file, item, ".type", "合同端口与合同字段的值类型由运行合同提供，删除 type。"));
+                        else if (!contract && type == null)
                             errors.Add(Error(file, item, ".type", "缺少 type。"));
                         bean.Vars.Add(new SkillSchemaVar(item.Attribute("name")!.Value,
                             type == null ? null : ParseType(type), (string?)item.Attribute("group") ?? "data",
