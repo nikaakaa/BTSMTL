@@ -16,12 +16,51 @@ namespace BTSMTL.Orchestration
         OrchestrationProgramStructure Structure => m_Content.Structure;
 
         readonly byte[] m_Image;
+        readonly int[] m_SourceGraphRows;
+        readonly ulong[] m_SourceGraphMembers;
 
         public OrchestrationProgram(OrchestrationProgramContent content, OrchestrationGraphParameters<TValue> parameters)
         {
             m_Content = content;
             m_Parameters = parameters;
             m_Image = OrchestrationProgramImage.Build(content, parameters);
+            m_SourceGraphRows = new int[OperationCount];
+            Array.Fill(m_SourceGraphRows, -1);
+            int rows = 0;
+            foreach (ref readonly OrchestrationBlackboardSlot slot in m_Blackboards)
+                if (slot.ScopeKind == OrchestrationScopeKind.Graph && slot.OwnerOperationIndex >= 0 &&
+                    m_SourceGraphRows[slot.OwnerOperationIndex] < 0)
+                    m_SourceGraphRows[slot.OwnerOperationIndex] = rows++;
+            m_SourceGraphMembers = new ulong[checked(rows * SourceGraphWordsPerRow)];
+            for (int owner = 0; owner < m_SourceGraphRows.Length; owner++)
+                if (m_SourceGraphRows[owner] >= 0)
+                    CollectSourceGraphMembers(owner, Operation(owner).ExecutionFrameOwnerOperationIndex,
+                        m_SourceGraphRows[owner]);
+        }
+
+        internal ReadOnlySpan<int> SourceGraphRows => m_SourceGraphRows;
+        internal ReadOnlySpan<ulong> SourceGraphMembers => m_SourceGraphMembers;
+        internal int SourceGraphWordsPerRow => (OperationCount + 63) / 64;
+
+        void CollectSourceGraphMembers(int operationIndex, int frameOwner, int row)
+        {
+            int word = row * SourceGraphWordsPerRow + (operationIndex >> 6);
+            ulong mask = 1UL << (operationIndex & 63);
+            if ((m_SourceGraphMembers[word] & mask) != 0 ||
+                Operation(operationIndex).ExecutionFrameOwnerOperationIndex != frameOwner)
+                return;
+            m_SourceGraphMembers[word] |= mask;
+            foreach (int edge in Outgoing(operationIndex, OrchestrationFlowKind.Child))
+                CollectSourceGraphMembers(Edge(edge).TargetOperationIndex, frameOwner, row);
+            foreach (int edge in Outgoing(operationIndex, OrchestrationFlowKind.Enter))
+                CollectSourceGraphMembers(Edge(edge).TargetOperationIndex, frameOwner, row);
+            foreach (int edge in Outgoing(operationIndex, OrchestrationFlowKind.Exit))
+                CollectSourceGraphMembers(Edge(edge).TargetOperationIndex, frameOwner, row);
+            if (Operation(operationIndex).Code == OrchestrationOperationCode.StateMachine)
+                for (int state = 0; state < OperationCount; state++)
+                    if (Operation(state).Code == OrchestrationOperationCode.State &&
+                        Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
+                        CollectSourceGraphMembers(state, frameOwner, row);
         }
 
         public OrchestrationProgramContent Content => m_Content;
