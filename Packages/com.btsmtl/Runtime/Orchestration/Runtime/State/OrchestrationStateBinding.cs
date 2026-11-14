@@ -64,21 +64,32 @@ namespace BTSMTL.Orchestration
         {
             var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(layout, source);
             var destinationFrames = new OrchestrationExecutionFrames<TValue>(layout, destination);
-            for (int slot = 0, remaining = destinationFrames.Count; remaining > 0; slot++)
+            for (int slot = 0, sourceRemaining = sourceFrames.Count, destinationRemaining = destinationFrames.Count;
+                 sourceRemaining > 0 || destinationRemaining > 0; slot++)
             {
-                ref readonly OrchestrationExecutionFrameState previous = ref destinationFrames.Header(slot);
-                if (previous.SkillContentId == 0)
-                    continue;
-                remaining--;
+                ref OrchestrationExecutionFrameState previous = ref destinationFrames.Header(slot);
                 ref readonly OrchestrationExecutionFrameState next = ref sourceFrames.Header(slot);
-                if (previous.SkillContentId != next.SkillContentId ||
-                    previous.OwnerOperationIndex != next.OwnerOperationIndex)
-                    destinationFrames.ClearPayloads(slot,
-                        layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
+                if (previous.SkillContentId != 0)
+                {
+                    destinationRemaining--;
+                    if (previous.SkillContentId != next.SkillContentId ||
+                        previous.OwnerOperationIndex != next.OwnerOperationIndex)
+                        destinationFrames.ClearPayloads(slot,
+                            layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
+                }
+                if (next.SkillContentId != 0)
+                {
+                    sourceRemaining--;
+                    previous = next;
+                }
+                else if (previous.SkillContentId != 0)
+                    previous = default;
             }
             var ranges = new OrchestrationStateValidRanges<TValue>.Enumerator(layout, sourceFrames);
             while (ranges.MoveNext())
             {
+                if (ranges.IsFrameHeaders)
+                    continue;
                 OrchestrationStateRegion<byte> region = ranges.Current;
                 source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
             }
@@ -170,6 +181,8 @@ namespace BTSMTL.Orchestration
 
             public OrchestrationStateRegion<byte> Current { get; private set; }
             internal bool IsPayload => m_FrameSlot >= 0;
+            internal bool IsFrameHeaders => m_FrameSlot < 0 &&
+                m_Segments[m_SegmentIndex].Role == OrchestrationStateSegmentRole.Frames;
 
             public bool MoveNext()
             {
