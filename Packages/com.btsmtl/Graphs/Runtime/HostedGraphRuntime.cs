@@ -64,7 +64,7 @@ namespace BTSMTL.Graphs
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, new[] { new OrchestrationRootAdmission(
-                    new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },
+                    new[] { new OrchestrationRootAlternative(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
             OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<TValue>(
                 new[] { program }, new[] { content.Structure.Extensions },

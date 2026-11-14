@@ -176,7 +176,7 @@ namespace BTSMTL.Timeline.Runtime
             {
                 ref readonly OrchestrationOccurrenceCapacity occurrence = ref content.Occurrences.Span[index];
                 admissions[index] = new OrchestrationRootAdmission(new[] {
-                    new OrchestrationExecutionRoot(occurrence.ProgramIndex, occurrence.OwnerOperationIndex)
+                    new OrchestrationRootAlternative(occurrence.ProgramIndex, occurrence.OwnerOperationIndex)
                 }, occurrence.MaximumInstances);
             }
             Admissions = admissions;
