@@ -143,7 +143,7 @@ function SceneInspector() {
   const choice = sources ? previewContentChoices(sources).find(option => option.value === key) : undefined;
   if (!choice) return <Empty text={sources ? '在 Project 的场景页选择场景' : '正在读取场景'} />;
   return <>
-    <Head name={choice.label} sub={choice.selection.kind === 'timeline' ? 'Timeline 预览包' : choice.current ? '场景 · 当前发布' : '场景 · 历史发布'} />
+    <Head name={choice.label} sub={choice.selection.kind === 'timeline' ? 'Timeline 预览包' : '场景'} />
     <SceneDetails />
     <IdentityFold fields={[
       ...(choice.scenePath === null ? [] : [{ displayName: 'Unity 场景', value: choice.scenePath }]),

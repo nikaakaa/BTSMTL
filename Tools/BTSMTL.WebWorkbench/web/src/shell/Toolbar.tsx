@@ -42,22 +42,16 @@ export function Toolbar() {
   );
 }
 
-// 当前场景：菜单直接列各 Unity 场景的最新发布，历史修订与临时包收在“显示历史”后；完整信息在 Project 场景页与检查器。
+// 当前场景：菜单列各 Unity 场景唯一的一份发布；完整信息在 Project 场景页与检查器。
 function ContentChoice() {
   const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
-  const [history, setHistory] = useState(false);
   if (!sources) return null;
   const options = previewContentChoices(sources);
   const key = contentSelectionKey(selection);
   const current = options.find(option => option.value === key);
-  const radio = (option: typeof options[number]): MenuEntry => ({
+  const entries: MenuEntry[] = options.map(option => ({
     kind: 'radio', label: option.label, checked: option.value === key, onSelect: () => contentActions.selectContent(option.selection),
-  });
-  const older = options.filter(option => !option.current);
-  const entries: MenuEntry[] = options.filter(option => option.current).map(radio);
-  if (older.length) entries.push({ kind: 'separator' },
-    { kind: 'check', label: `显示历史（${older.length}）`, checked: history, onChange: setHistory },
-    ...(history ? older.map(radio) : []));
+  }));
   return (
     <MenuButton label="场景" variant="ghost" caret entries={entries}>
       {current ? current.label : options.length ? '选择场景' : '宿主尚未提供场景'}
