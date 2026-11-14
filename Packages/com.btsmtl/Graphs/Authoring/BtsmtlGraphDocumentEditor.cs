@@ -92,8 +92,8 @@ namespace BTSMTL.Graphs
                 }));
                 value["_inputPortValues"] = new JObject(node.GetInputValuePorts().Select(input =>
                     new JProperty(input.ID, m_WriteValue(input.serializedValue, input.type))));
-                if (node is MacroNodeWrapper call)
-                    value["_macro"] = ((BtsmtlMacroGraph)call.macro).AuthoringId;
+                if (node is BtsmtlMacroCallNode call)
+                    value[BtsmtlGraphDocumentNode.CalleeMember] = ((BtsmtlMacroGraph)call.macro).AuthoringId;
                 return value;
             }));
             root["layout"] = new JObject
@@ -205,7 +205,7 @@ namespace BTSMTL.Graphs
                 ? typeof(FlowCanvas.Nodes.SimplexNodeWrapper<>).MakeGenericType(BtsmtlNativeValueNodes.SourceType(native)) : resolveType(source.TypeName);
             return (FlowNode)Node.Create(graph, type, position, node =>
             {
-                if (node is MacroNodeWrapper call)
+                if (node is BtsmtlMacroCallNode call)
                     call.macro = (Macro)resolveGraph(source.CalleeId);
                 GraphAuthoringTypeContract contract = GraphAuthoringMemberBindings.Contract(node);
                 GraphAuthoringCandidate candidate = contract.CreateCandidate(node, complete: true);

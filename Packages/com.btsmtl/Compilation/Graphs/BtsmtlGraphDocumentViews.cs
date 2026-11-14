@@ -90,7 +90,7 @@ namespace BTSMTL.Compilation
             {
                 "BtsmtlMacroInputNode" => CompileNodeRole.MacroInput,
                 "BtsmtlMacroOutputNode" => CompileNodeRole.MacroOutput,
-                "MacroNodeWrapper" => CompileNodeRole.MacroCall,
+                "BtsmtlMacroCallNode" => CompileNodeRole.MacroCall,
                 _ => CompileNodeRole.Leaf
             };
             object definition = native == null && role == CompileNodeRole.Leaf ? m_Definition(document, source) : null;

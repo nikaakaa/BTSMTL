@@ -4,7 +4,6 @@ using System.Linq;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Orchestration;
 using FlowCanvas;
-using FlowCanvas.Macros;
 using NodeCanvas.Framework;
 using UnityEngine;
 using UnityEngine.Scripting;
@@ -68,7 +67,7 @@ namespace BTSMTL.Graphs
 
         // 通用图与声明通用图宿主的子图共用的节点准入；子图调用的目标内容由校验器按调用方复核。
         public static bool AllowsNodeType(Type nodeType, IReadOnlyList<string> domains) =>
-            nodeType == typeof(MacroNodeWrapper) ||
+            nodeType == typeof(BtsmtlMacroCallNode) ||
             Attribute.IsDefined(nodeType, typeof(BtsmtlGraphOperationAttribute), false) ||
             typeof(IBtsmtlVariableFlowNode).IsAssignableFrom(nodeType) ||
             typeof(IBtsmtlHostInputFlowNode).IsAssignableFrom(nodeType) ||

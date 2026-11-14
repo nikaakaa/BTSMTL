@@ -351,6 +351,15 @@ namespace BTSMTL.Graphs
 #endif
     }
 
+    // Unity 编辑壳：用 FlowCanvas 子图节点承载编辑，被调子图身份由文档转换器按 BtsmtlGraphDocumentNode.CalleeMember 读写。
+    [DoNotList]
+    public sealed partial class BtsmtlMacroCallNode : MacroNodeWrapper
+    {
+        [GraphAuthoringField("graphId", GraphAuthoringFieldValueKind.IdentityReference, PickerKind = "graph", NonEmpty = true,
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
+        public Macro Subgraph { get => macro; set => macro = value; }
+    }
+
     [DoNotList, ProtectedSingleton, Name("子图输入")]
     public sealed partial class BtsmtlMacroInputNode : MacroInputNode
     {

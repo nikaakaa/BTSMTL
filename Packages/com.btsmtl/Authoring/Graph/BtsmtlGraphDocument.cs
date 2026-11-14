@@ -142,12 +142,15 @@ namespace BTSMTL.Authoring.Graph
 
     public sealed class BtsmtlGraphDocumentNode
     {
+        // 子图调用节点保存被调用子图身份的作者字段。
+        public const string CalleeMember = "m_Subgraph";
+
         readonly JObject m_Value;
         internal BtsmtlGraphDocumentNode(JObject value) => m_Value = value;
         public string Id => (string)m_Value["UID"];
         public string TypeName => (string)m_Value["type"];
         public string Name => (string)m_Value["_name"];
-        public string CalleeId => (string)m_Value["_macro"];
+        public string CalleeId => (string)m_Value[CalleeMember];
         public JObject Json() => (JObject)m_Value.DeepClone();
         public JObject InputValues() => (JObject)m_Value["_inputPortValues"].DeepClone();
         public IReadOnlyList<JObject> OutConnections => ((JArray)m_Value["outConnections"])

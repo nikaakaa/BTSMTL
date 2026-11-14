@@ -58,7 +58,7 @@ namespace BTSMTL.Graphs
             }
         }
 
-        public static void ValidateCall(MacroNodeWrapper call, Macro macro, string path)
+        public static void ValidateCall(BtsmtlMacroCallNode call, Macro macro, string path)
         {
             if (call == null || macro == null)
                 throw new InvalidOperationException($"{path}: 子图调用目标缺失。");
@@ -180,7 +180,7 @@ namespace BTSMTL.Graphs
         static IEnumerable<Caller> FindCallers(BtsmtlMacroGraph macro)
         {
             foreach (FlowGraph graph in macro.Host.CallerGraphs(macro))
-                foreach (MacroNodeWrapper call in graph.allNodes.OfType<MacroNodeWrapper>())
+                foreach (BtsmtlMacroCallNode call in graph.allNodes.OfType<BtsmtlMacroCallNode>())
                     if (ReferenceEquals(call.macro, macro))
                         yield return new Caller(graph, call,
                             $"{macro.Host.AuthoringPath(graph)}/{graph.name}/node:{call.UID}");
@@ -188,7 +188,7 @@ namespace BTSMTL.Graphs
 
         readonly struct Caller
         {
-            internal Caller(FlowGraph graph, MacroNodeWrapper call, string path)
+            internal Caller(FlowGraph graph, BtsmtlMacroCallNode call, string path)
             {
                 Graph = graph;
                 Call = call;
@@ -196,7 +196,7 @@ namespace BTSMTL.Graphs
             }
 
             internal FlowGraph Graph { get; }
-            internal MacroNodeWrapper Call { get; }
+            internal BtsmtlMacroCallNode Call { get; }
             internal string Path { get; }
         }
 #endif

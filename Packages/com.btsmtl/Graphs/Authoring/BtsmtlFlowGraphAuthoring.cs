@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FlowCanvas;
-using FlowCanvas.Macros;
 using FlowCanvas.Nodes;
 using NodeCanvas.Framework;
 using UnityEditor;
@@ -193,7 +192,7 @@ namespace BTSMTL.Graphs
         // 子图入口：新建私有子图取本图准入；共享子图只列出其全部节点都被本图接受的资产。
         public void AppendMacroItems(GenericMenu menu, Vector2 position, Port context)
         {
-            if (m_Graph.isEditorReadOnly || !m_Graph.CanAuthorNodeType(typeof(MacroNodeWrapper)) ||
+            if (m_Graph.isEditorReadOnly || !m_Graph.CanAuthorNodeType(typeof(BtsmtlMacroCallNode)) ||
                 m_Graph is not IBtsmtlMacroHostProvider provider || context != null && context is not FlowOutput)
                 return;
             BtsmtlMacroHost host = provider.CreatePrivateMacroHost();
@@ -213,12 +212,12 @@ namespace BTSMTL.Graphs
             }
         }
 
-        public MacroNodeWrapper AddCall(BtsmtlMacroGraph macro, Vector2 position, Port context)
+        public BtsmtlMacroCallNode AddCall(BtsmtlMacroGraph macro, Vector2 position, Port context)
         {
-            MacroNodeWrapper call = null;
+            BtsmtlMacroCallNode call = null;
             Edit("调用子图", () =>
             {
-                call = (MacroNodeWrapper)m_Graph.AddNode(typeof(MacroNodeWrapper), position);
+                call = (BtsmtlMacroCallNode)m_Graph.AddNode(typeof(BtsmtlMacroCallNode), position);
                 call.macro = macro;
                 if (context != null)
                     ConnectCreated(context, call, macro.inputDefinitions.Single(value => value.type == typeof(Flow)).ID);
@@ -291,7 +290,7 @@ namespace BTSMTL.Graphs
         // 调用节点按目标子图的最新接口收集端口，并在同一事务内复核端口登记。
         public void ConfigureMacroCall(FlowNode node, BtsmtlMacroGraph macro)
         {
-            if (node is not MacroNodeWrapper call || node.graph != m_Graph)
+            if (node is not BtsmtlMacroCallNode call || node.graph != m_Graph)
                 throw new InvalidOperationException("子图调用必须是当前图中的调用节点。");
             if (!macro)
                 throw new ArgumentNullException(nameof(macro));
