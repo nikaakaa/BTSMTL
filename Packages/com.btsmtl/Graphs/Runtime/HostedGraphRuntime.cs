@@ -90,7 +90,7 @@ namespace BTSMTL.Graphs
             m_Inputs = new TValue[m_Bindings.InputCapacity];
             m_Output = new GraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
             m_Scratch = new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(
-                program.View, stateCapacity.FrameCount, tickCapacity.Programs.Span[0].CursorOutputs));
+                program.View, in stateCapacity, 0, tickCapacity.Programs.Span[0].CursorOutputs));
             m_Diagnostics = new OrchestrationWorkbenchDiagnosticStorage<TValue>(program, content, stateCapacity.FrameCount);
             m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
                 content.Structure.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Structure.Extensions.Length),

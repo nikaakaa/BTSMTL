@@ -80,7 +80,7 @@ namespace BTSMTL.Orchestration
             m_States = scratch.Section<OrchestrationStateContext>(layout.States);
             m_StateAncestors = scratch.Section<OrchestrationStateAncestor>(layout.StateAncestors);
             m_ForceStopVisits = new OrchestrationForceStopVisits(scratch.Section<ulong>(layout.ForceStopVisited),
-                scratch.Section<int>(layout.ForceStopNext), program.OperationCount);
+                scratch.Section<int>(layout.ForceStopNext), layout.ForceStopFirstFrame, program.OperationCount);
             OrchestrationValueScheduleView schedule = program.ValueSchedule;
             m_ValueInstructions = schedule.Instructions;
             m_ValueArgumentSlots = schedule.ArgumentSlots;

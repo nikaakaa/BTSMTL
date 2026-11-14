@@ -100,7 +100,7 @@ namespace BTSMTL.Timeline.Runtime
             {
                 OrchestrationProgram<TValue> program = graphs.Programs.Span[programIndex];
                 m_Scratches[programIndex] = new OrchestrationExecutionScratchMemory<TValue>(
-                    OrchestrationExecutionScratchLayout.Prepare(program.View, executionCapacity.State.FrameCount,
+                    OrchestrationExecutionScratchLayout.Prepare(program.View, executionCapacity.State, programIndex,
                         tickCapacity.Programs.Span[programIndex].CursorOutputs));
                 m_Diagnostics[programIndex] = new OrchestrationWorkbenchDiagnosticStorage<TValue>(
                     program, graphs.Graphs.Span[programIndex].Source, executionCapacity.State.FrameCount);

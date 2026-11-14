@@ -84,7 +84,7 @@ try {
 
 普通插头（托管扩展照常实现 `IOrchestrationExtension`）：
 
-1. 准备期：`new OrchestrationProgram<TValue>(content)` 生成程序镜像；`OrchestrationExtensionBindings.Prepare(...)` 绑定扩展；`new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(program.View, frameCapacity, tickCapacity.CursorOutputs))` 准备草稿；需要 Trace 或值观察时另建 `OrchestrationWorkbenchDiagnosticStorage<TValue>`。
+1. 准备期：`new OrchestrationProgram<TValue>(content)` 生成程序镜像；`OrchestrationExtensionBindings.Prepare(...)` 绑定扩展；`new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(program.View, executionCapacity.State, programIndex, tickCapacity.CursorOutputs))` 按同一正式帧池容量准备草稿，停止访问位图只覆盖本程序所有者可能使用的帧区间；需要 Trace 或值观察时另建 `OrchestrationWorkbenchDiagnosticStorage<TValue>`。
 2. 推进：`var host = new ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>(in context, diagnostics, bindings, timelineDispatcher);`，`host.CreateCursor<TNumerics>(OrchestrationStateBinding.BindCandidate(layout, memory), program.View, scratch.View, frameSlot, characterSlots, in input, identities)`。`TStorage` 决定状态区段中值的读写格式（例如 Quantum 位压缩存储）；诊断用 `default(OrchestrationProductDiagnostics<TValue>)`，采集时用 `new OrchestrationWorkbenchDiagnostics<TValue>(storage)`，两者以类型在编译期区分。Timeline 推进 `cursor.AdvanceTimeline(in invocation, in time, in stop, captureContext, out traceContext)` 只在工作台诊断下 `captureContext` 才有内容。
 3. 失败：推进路径只抛固定文字，捕获后用 `OrchestrationExecutionErrorFormatter.Describe(exception, in scratch.Error, graphId, revision)` 组织原信息。
 

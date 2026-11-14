@@ -5,7 +5,7 @@ namespace BTSMTL.Orchestration
     // 一次推进的草稿区布局，准备期按程序与容量算出；宿主按 SizeBytes 提供内存并调用 Initialize。
     public readonly struct OrchestrationExecutionScratchLayout
     {
-        OrchestrationExecutionScratchLayout(int sizeBytes, OrchestrationMemorySection inputValues,
+        OrchestrationExecutionScratchLayout(int sizeBytes, int forceStopFirstFrame, OrchestrationMemorySection inputValues,
             OrchestrationMemorySection outputValues, OrchestrationMemorySection scheduledValues,
             OrchestrationMemorySection scheduledPredictions, OrchestrationMemorySection graphCalls,
             OrchestrationMemorySection states, OrchestrationMemorySection stateAncestors,
@@ -13,6 +13,7 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection outputRequests, OrchestrationMemorySection emittedValues)
         {
             SizeBytes = sizeBytes;
+            ForceStopFirstFrame = forceStopFirstFrame;
             InputValues = inputValues;
             OutputValues = outputValues;
             ScheduledValues = scheduledValues;
@@ -27,6 +28,7 @@ namespace BTSMTL.Orchestration
         }
 
         public int SizeBytes { get; }
+        internal int ForceStopFirstFrame { get; }
         internal OrchestrationMemorySection InputValues { get; }
         internal OrchestrationMemorySection OutputValues { get; }
         internal OrchestrationMemorySection ScheduledValues { get; }
@@ -40,8 +42,25 @@ namespace BTSMTL.Orchestration
         internal OrchestrationMemorySection EmittedValues { get; }
 
         public static OrchestrationExecutionScratchLayout Prepare<TValue>(in OrchestrationProgramView<TValue> program,
-            int frameCapacity, in OrchestrationProgramOutputCapacity outputs) where TValue : unmanaged
+            in OrchestrationExecutionStateCapacity capacity, int programIndex,
+            in OrchestrationProgramOutputCapacity outputs) where TValue : unmanaged
         {
+            ReadOnlySpan<OrchestrationExecutionFramePoolCapacity> pools = capacity.FramePools.Span;
+            int firstPool = pools.Length;
+            int lastPool = -1;
+            foreach (int pool in capacity.OwnerPools.Span[programIndex].Span)
+                if (pool >= 0)
+                {
+                    firstPool = Math.Min(firstPool, pool);
+                    lastPool = Math.Max(lastPool, pool);
+                }
+            int firstFrame = 0;
+            int frameCapacity = 0;
+            for (int pool = 0; pool <= lastPool; pool++)
+                if (pool < firstPool)
+                    firstFrame = checked(firstFrame + pools[pool].FrameCount);
+                else
+                    frameCapacity = checked(frameCapacity + pools[pool].FrameCount);
             var builder = new OrchestrationMemoryLayoutBuilder(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationExecutionScratchHeader>());
             int forceStopWords = (int)((checked((long)frameCapacity * program.OperationCount) + 63L) / 64);
@@ -59,7 +78,7 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection forceStopNext = builder.Add<int>(forceStopWords);
             OrchestrationMemorySection outputRequests = builder.Add<OrchestrationOutputRequest>(outputs.RequestCount);
             OrchestrationMemorySection emittedValues = builder.Add<TValue>(outputs.ValueCount);
-            return new OrchestrationExecutionScratchLayout(builder.SizeBytes, inputValues, outputValues, scheduledValues,
+            return new OrchestrationExecutionScratchLayout(builder.SizeBytes, firstFrame, inputValues, outputValues, scheduledValues,
                 scheduledPredictions, graphCalls, states, stateAncestors, forceStopVisited, forceStopNext,
                 outputRequests, emittedValues);
         }
