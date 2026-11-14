@@ -138,7 +138,7 @@ namespace BTSMTL.Timeline.Runtime
         readonly int m_RecordedStateHeaderBytes;
         readonly List<PresentationBufferPool> m_BufferPools = new();
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
-        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), (Stack<PresentationPlaybackState> States, PresentationPlaybackState Template, PresentationBufferPool Buffers)> m_RecycledPlaybacks = new(new PlaybackPoolComparer());
+        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), PresentationContent> m_RecycledPlaybacks = new(new PlaybackPoolComparer());
         TimelineSchedulingBoundary<OrchestrationTime>[] m_Boundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_SyntheticBoundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineScheduledInvocation<OrchestrationTime>[] m_Scheduled = Array.Empty<TimelineScheduledInvocation<OrchestrationTime>>();
@@ -245,15 +245,8 @@ namespace BTSMTL.Timeline.Runtime
                 m_BufferPools.Add(new PresentationBufferPool(shareAcrossContents
                     ? m_RecordedPlaybackCapacity : m_PlaybackCapacity));
             PresentationBufferPool buffers = m_BufferPools[poolIndex];
-            buffers.Prepare(in capacity);
-            var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
-            PresentationPlaybackState template = null;
-            for (int i = 0; i < m_PlaybackCapacity; i++)
-            {
-                template = new PresentationPlaybackState(content, executionContent, graphSource, recycled, buffers);
-                recycled.Push(template);
-            }
-            m_RecycledPlaybacks.Add(key, (recycled, template, buffers));
+            buffers.Prepare(in capacity, content, executionContent, graphSource);
+            m_RecycledPlaybacks.Add(key, new PresentationContent(content, executionContent, graphSource, buffers));
             UpdateRecordedCapacity();
         }
 
@@ -262,7 +255,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             var key = (content.Content, sourceIdentityId, mode, graphSource);
             var pool = m_RecycledPlaybacks[key];
-            if (pool.States.Count != m_PlaybackCapacity)
+            if (pool.ActiveCount != 0)
                 throw new InvalidOperationException("Timeline 时间版本仍有播放持有，不能释放其正式准备存储。");
             m_RecycledPlaybacks.Remove(key);
             bool retained = false;
@@ -398,7 +391,7 @@ namespace BTSMTL.Timeline.Runtime
                 state.Candidate);
             if (state.GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
             {
-                Array.Copy(state.Graphs.MarkerLastTraversal, state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal.Length);
+                Array.Copy(state.Graphs.MarkerLastTraversal, state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerCount);
                 if (allowTraversal || !state.Graphs.InitialBoundaryConsumed && !stopped)
                     AppendMarkerEvents(
                     content,
@@ -457,9 +450,9 @@ namespace BTSMTL.Timeline.Runtime
             if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
             {
                 var key = (content.Content, start.SourceIdentityId, start.Mode, graphSource);
-                Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key].States;
-                state = recycled.Pop();
-                state.AcquireBuffers();
+                PresentationContent pool = m_RecycledPlaybacks[key];
+                state = pool.Buffers.FreeStates.Pop();
+                state.Bind(pool);
                 state.Restart(startTime, cycle);
                 m_Playbacks.Add(start, state);
             }
@@ -506,7 +499,7 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     if (state.GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
                     {
-                        Array.Copy(state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal, state.Graphs.MarkerLastTraversal.Length);
+                        Array.Copy(state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal, state.Graphs.MarkerCount);
                         state.Graphs.PendingTreeExitFirstCycles.CopyTo(state.Graphs.TreeExitFirstCycles, 0);
                         state.Graphs.PendingTreeExitBits.CopyTo(state.Graphs.TreeExitBits, 0);
                         state.Graphs.TreeInitialBoundaryState = state.Graphs.PendingTreeInitialBoundaryState;
@@ -624,10 +617,10 @@ namespace BTSMTL.Timeline.Runtime
                 string contentRevision = reader.ReadText();
                 TimelineRuntimePreparedContent prepared = RequireRecordedContent(contents, contentIdentity, contentRevision);
                 if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.SourceIdentityId, start.Mode, graphSource), out var pool) ||
-                    pool.States.Count == 0)
+                    pool.Buffers.FreeStates.Count == 0)
                     throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{start.Mode}'.");
-                PresentationPlaybackState state = pool.States.Pop();
-                state.AcquireBuffers();
+                PresentationPlaybackState state = pool.Buffers.FreeStates.Pop();
+                state.Bind(pool);
                 state.RestoreRecordedState(ref reader, in start);
                 m_Playbacks.Add(start, state);
             }
@@ -933,30 +926,52 @@ namespace BTSMTL.Timeline.Runtime
 
         sealed class PresentationGraphState
         {
-            public PresentationGraphState(TimelineRuntimePreparedContent prepared,
+            public void PrepareCapacity(TimelineRuntimePreparedContent prepared,
                 OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
             {
                 int markerCount = prepared.Content.Markers.Count;
-                MarkerLastTraversal = new ulong[markerCount];
-                PendingMarkerLastTraversal = new ulong[markerCount];
-                m_Windows = executionContent.TreeCycleWindows;
-                TreeExitFirstCycles = new long[executionContent.RequiredTreeExitWindows];
-                PendingTreeExitFirstCycles = new long[executionContent.RequiredTreeExitWindows];
-                TreeExitBits = new ulong[executionContent.RequiredTreeExitWords];
-                PendingTreeExitBits = new ulong[executionContent.RequiredTreeExitWords];
+                if (MarkerLastTraversal.Length < markerCount)
+                {
+                    Array.Resize(ref MarkerLastTraversal, markerCount);
+                    Array.Resize(ref PendingMarkerLastTraversal, markerCount);
+                }
+                if (TreeExitFirstCycles.Length < executionContent.RequiredTreeExitWindows)
+                {
+                    Array.Resize(ref TreeExitFirstCycles, executionContent.RequiredTreeExitWindows);
+                    Array.Resize(ref PendingTreeExitFirstCycles, executionContent.RequiredTreeExitWindows);
+                }
+                if (TreeExitBits.Length < executionContent.RequiredTreeExitWords)
+                {
+                    Array.Resize(ref TreeExitBits, executionContent.RequiredTreeExitWords);
+                    Array.Resize(ref PendingTreeExitBits, executionContent.RequiredTreeExitWords);
+                }
             }
 
-            readonly ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> m_Windows;
-            public readonly long[] TreeExitFirstCycles;
-            public readonly long[] PendingTreeExitFirstCycles;
-            public readonly ulong[] TreeExitBits;
-            public readonly ulong[] PendingTreeExitBits;
-            public TimelineTreeExitView Exits => new(m_Windows.Span, TreeExitFirstCycles, TreeExitBits);
-            public TimelineTreeExitState PendingExits => new(m_Windows.Span, PendingTreeExitFirstCycles, PendingTreeExitBits);
+            public void Bind(TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
+            {
+                MarkerCount = prepared.Content.Markers.Count;
+                m_Windows = executionContent.TreeCycleWindows;
+                m_TreeWindowCount = executionContent.RequiredTreeExitWindows;
+                m_TreeWordCount = executionContent.RequiredTreeExitWords;
+            }
+
+            ReadOnlyMemory<OrchestrationTimelineTreeCycleWindow> m_Windows;
+            int m_TreeWindowCount;
+            int m_TreeWordCount;
+            public int MarkerCount;
+            public long[] TreeExitFirstCycles = Array.Empty<long>();
+            public long[] PendingTreeExitFirstCycles = Array.Empty<long>();
+            public ulong[] TreeExitBits = Array.Empty<ulong>();
+            public ulong[] PendingTreeExitBits = Array.Empty<ulong>();
+            public TimelineTreeExitView Exits => new(m_Windows.Span,
+                TreeExitFirstCycles.AsSpan(0, m_TreeWindowCount), TreeExitBits.AsSpan(0, m_TreeWordCount));
+            public TimelineTreeExitState PendingExits => new(m_Windows.Span,
+                PendingTreeExitFirstCycles.AsSpan(0, m_TreeWindowCount), PendingTreeExitBits.AsSpan(0, m_TreeWordCount));
             public OrchestrationTimelineInitialBoundaryState TreeInitialBoundaryState;
             public OrchestrationTimelineInitialBoundaryState PendingTreeInitialBoundaryState;
-            public readonly ulong[] MarkerLastTraversal;
-            public readonly ulong[] PendingMarkerLastTraversal;
+            public ulong[] MarkerLastTraversal = Array.Empty<ulong>();
+            public ulong[] PendingMarkerLastTraversal = Array.Empty<ulong>();
             public bool InitialBoundaryConsumed;
             public bool PendingInitialBoundaryConsumed;
 
@@ -965,12 +980,12 @@ namespace BTSMTL.Timeline.Runtime
             {
                 writer.Write(InitialBoundaryConsumed);
                 writer.Write(PendingInitialBoundaryConsumed);
-                writer.WriteSpan<ulong>(MarkerLastTraversal);
-                writer.WriteSpan<ulong>(PendingMarkerLastTraversal);
-                writer.WriteSpan<long>(TreeExitFirstCycles);
-                writer.WriteSpan<long>(PendingTreeExitFirstCycles);
-                writer.WriteSpan<ulong>(TreeExitBits);
-                writer.WriteSpan<ulong>(PendingTreeExitBits);
+                writer.WriteSpan<ulong>(MarkerLastTraversal.AsSpan(0, MarkerCount));
+                writer.WriteSpan<ulong>(PendingMarkerLastTraversal.AsSpan(0, MarkerCount));
+                writer.WriteSpan<long>(TreeExitFirstCycles.AsSpan(0, m_TreeWindowCount));
+                writer.WriteSpan<long>(PendingTreeExitFirstCycles.AsSpan(0, m_TreeWindowCount));
+                writer.WriteSpan<ulong>(TreeExitBits.AsSpan(0, m_TreeWordCount));
+                writer.WriteSpan<ulong>(PendingTreeExitBits.AsSpan(0, m_TreeWordCount));
                 writer.Write(TreeInitialBoundaryState);
                 writer.Write(PendingTreeInitialBoundaryState);
             }
@@ -979,12 +994,12 @@ namespace BTSMTL.Timeline.Runtime
             {
                 InitialBoundaryConsumed = reader.Read<bool>();
                 PendingInitialBoundaryConsumed = reader.Read<bool>();
-                reader.ReadSpan<ulong>(MarkerLastTraversal.Length).CopyTo(MarkerLastTraversal);
-                reader.ReadSpan<ulong>(PendingMarkerLastTraversal.Length).CopyTo(PendingMarkerLastTraversal);
-                reader.ReadSpan<long>(TreeExitFirstCycles.Length).CopyTo(TreeExitFirstCycles);
-                reader.ReadSpan<long>(PendingTreeExitFirstCycles.Length).CopyTo(PendingTreeExitFirstCycles);
-                reader.ReadSpan<ulong>(TreeExitBits.Length).CopyTo(TreeExitBits);
-                reader.ReadSpan<ulong>(PendingTreeExitBits.Length).CopyTo(PendingTreeExitBits);
+                reader.ReadSpan<ulong>(MarkerCount).CopyTo(MarkerLastTraversal);
+                reader.ReadSpan<ulong>(MarkerCount).CopyTo(PendingMarkerLastTraversal);
+                reader.ReadSpan<long>(m_TreeWindowCount).CopyTo(TreeExitFirstCycles);
+                reader.ReadSpan<long>(m_TreeWindowCount).CopyTo(PendingTreeExitFirstCycles);
+                reader.ReadSpan<ulong>(m_TreeWordCount).CopyTo(TreeExitBits);
+                reader.ReadSpan<ulong>(m_TreeWordCount).CopyTo(PendingTreeExitBits);
                 TreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
                 PendingTreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
             }
@@ -993,71 +1008,114 @@ namespace BTSMTL.Timeline.Runtime
             {
                 InitialBoundaryConsumed = false;
                 PendingInitialBoundaryConsumed = false;
-                Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);
-                Array.Clear(PendingMarkerLastTraversal, 0, PendingMarkerLastTraversal.Length);
+                Array.Clear(MarkerLastTraversal, 0, MarkerCount);
+                Array.Clear(PendingMarkerLastTraversal, 0, MarkerCount);
             }
 
             public void Clear()
             {
-                Array.Clear(TreeExitFirstCycles, 0, TreeExitFirstCycles.Length);
-                Array.Clear(PendingTreeExitFirstCycles, 0, PendingTreeExitFirstCycles.Length);
-                Array.Clear(TreeExitBits, 0, TreeExitBits.Length);
-                Array.Clear(PendingTreeExitBits, 0, PendingTreeExitBits.Length);
+                Array.Clear(TreeExitFirstCycles, 0, m_TreeWindowCount);
+                Array.Clear(PendingTreeExitFirstCycles, 0, m_TreeWindowCount);
+                Array.Clear(TreeExitBits, 0, m_TreeWordCount);
+                Array.Clear(PendingTreeExitBits, 0, m_TreeWordCount);
                 TreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
                 PendingTreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
             }
         }
 
+        sealed class PresentationContent
+        {
+            public readonly PresentationPlaybackState Template;
+            public readonly PresentationBufferPool Buffers;
+            public int ActiveCount;
+
+            public PresentationContent(TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+                TimelineRuntimePresentationGraphSource graphSource, PresentationBufferPool buffers)
+            {
+                Buffers = buffers;
+                Template = new PresentationPlaybackState(prepared, executionContent, graphSource, buffers);
+            }
+        }
+
         sealed class PresentationBufferPool
         {
-            public readonly (TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)[] Storage;
-            public readonly Stack<(TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)> Free;
+            public readonly PresentationPlaybackState[] Storage;
+            public readonly Stack<PresentationPlaybackState> FreeStates;
 
             public PresentationBufferPool(int capacity)
             {
-                Storage = new (TimelineRuntimePresentationBuffer, TimelineRuntimePresentationBuffer)[capacity];
-                Free = new Stack<(TimelineRuntimePresentationBuffer, TimelineRuntimePresentationBuffer)>(capacity);
+                Storage = new PresentationPlaybackState[capacity];
+                FreeStates = new Stack<PresentationPlaybackState>(capacity);
                 for (int index = 0; index < Storage.Length; index++)
                 {
-                    Storage[index] = (new TimelineRuntimePresentationBuffer(), new TimelineRuntimePresentationBuffer());
-                    Free.Push(Storage[index]);
+                    Storage[index] = new PresentationPlaybackState(this);
+                    FreeStates.Push(Storage[index]);
                 }
             }
 
-            public void Prepare(in TimelineRuntimePresentationBuffer.Capacity capacity)
+            public void Prepare(in TimelineRuntimePresentationBuffer.Capacity capacity,
+                TimelineRuntimePreparedContent content,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+                TimelineRuntimePresentationGraphSource graphSource)
             {
                 foreach (var buffers in Storage)
                 {
                     buffers.Candidate.PrepareCapacity(in capacity);
                     buffers.Accepted.PrepareCapacity(in capacity);
+                    if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                        buffers.Graphs.PrepareCapacity(content, executionContent);
                 }
             }
         }
 
         sealed class PresentationPlaybackState
         {
-            readonly Stack<PresentationPlaybackState> m_Recycled;
             readonly PresentationBufferPool m_Buffers;
+            PresentationContent m_Content;
+
+            public PresentationPlaybackState(PresentationBufferPool buffers)
+            {
+                m_Buffers = buffers;
+                Candidate = new TimelineRuntimePresentationBuffer();
+                Accepted = new TimelineRuntimePresentationBuffer();
+            }
 
             public PresentationPlaybackState(
                 TimelineRuntimePreparedContent prepared,
                 OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-                TimelineRuntimePresentationGraphSource graphSource, Stack<PresentationPlaybackState> recycled,
-                PresentationBufferPool buffers)
+                TimelineRuntimePresentationGraphSource graphSource, PresentationBufferPool buffers)
             {
-                m_Recycled = recycled;
                 m_Buffers = buffers;
+                if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs.PrepareCapacity(prepared, executionContent);
+                Configure(prepared, executionContent, graphSource);
+            }
+
+            void Configure(TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+                TimelineRuntimePresentationGraphSource graphSource)
+            {
                 Prepared = prepared;
                 ExecutionContent = executionContent;
                 GraphSource = graphSource;
                 if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
-                    Graphs = new PresentationGraphState(prepared, executionContent);
+                    Graphs.Bind(prepared, executionContent);
             }
 
-            public readonly TimelineRuntimePreparedContent Prepared;
-            public readonly OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
-            public readonly TimelineRuntimePresentationGraphSource GraphSource;
-            public readonly PresentationGraphState Graphs;
+            public void Bind(PresentationContent content)
+            {
+                m_Content = content;
+                m_Content.ActiveCount++;
+                Configure(content.Template.Prepared, content.Template.ExecutionContent, content.Template.GraphSource);
+                Candidate.SampleKindCount = Prepared.SampleKindCount;
+                Accepted.SampleKindCount = Prepared.SampleKindCount;
+            }
+
+            public TimelineRuntimePreparedContent Prepared;
+            public OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
+            public TimelineRuntimePresentationGraphSource GraphSource;
+            public readonly PresentationGraphState Graphs = new();
             public TimelineRuntimePresentationBuffer Candidate;
             public TimelineRuntimePresentationBuffer Accepted;
             public OrchestrationTime PendingTime;
@@ -1074,15 +1132,6 @@ namespace BTSMTL.Timeline.Runtime
             public TimelineRuntimePresentationFrame CachedFrame;
             public ulong LastPresentationFrame;
             public bool HasCachedFrame;
-
-            public void AcquireBuffers()
-            {
-                var buffers = m_Buffers.Free.Pop();
-                Candidate = buffers.Candidate;
-                Accepted = buffers.Accepted;
-                Candidate.SampleKindCount = Prepared.SampleKindCount;
-                Accepted.SampleKindCount = Prepared.SampleKindCount;
-            }
 
             public void WriteRecordedState<TWriter>(ref TWriter writer, bool maximum,
                 TimelineRuntimePresentationBuffer candidate, TimelineRuntimePresentationBuffer accepted)
@@ -1148,10 +1197,11 @@ namespace BTSMTL.Timeline.Runtime
             public void Recycle()
             {
                 Clear();
-                m_Buffers.Free.Push((Candidate, Accepted));
-                Candidate = null;
-                Accepted = null;
-                m_Recycled.Push(this);
+                m_Content.ActiveCount--;
+                m_Content = null;
+                Prepared = null;
+                ExecutionContent = null;
+                m_Buffers.FreeStates.Push(this);
             }
 
             public void Cache(TimelineRuntimePresentationFrame frame)
