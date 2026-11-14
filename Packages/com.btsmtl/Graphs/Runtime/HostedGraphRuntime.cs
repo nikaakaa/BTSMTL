@@ -62,8 +62,10 @@ namespace BTSMTL.Graphs
             m_Contract = contract;
             m_Bindings = new HostedGraphBindings<TValue, TNumerics>(contract, content);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
+            var programStorages = new[] { new OrchestrationPreparedProgramStorage<TValue>(
+                m_Bindings.SourceIdentityId, program.ExecutionStorage, program.Content.ValueSlotTypes) };
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
-                new[] { program }, new[] { new OrchestrationRootAdmission(
+                new[] { program }, programStorages, new[] { new OrchestrationRootAdmission(
                     new[] { new OrchestrationRootAlternative(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
             OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<TValue>(
@@ -79,8 +81,7 @@ namespace BTSMTL.Graphs
             m_PrivateValues = executionLayout.Values;
             m_Layout = new OrchestrationPreparedStateLayout<TValue>(executionLayout.Layout,
                 executionLayout.StateSegments, in stateCapacity,
-                new[] { new OrchestrationPreparedProgramStorage<TValue>(m_Bindings.SourceIdentityId,
-                    program.ExecutionStorage, program.Content.ValueSlotTypes) },
+                programStorages,
                 ReadOnlyMemory<OrchestrationValueSlotType>.Empty,
                 new OrchestrationStateRegion<byte>(executionLayout.Layout.SizeBytes, 0), default);
             m_MemoryLayout = m_Layout.Layout;

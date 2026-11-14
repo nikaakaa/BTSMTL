@@ -18,6 +18,36 @@ namespace BTSMTL.Orchestration
         public int SkillContentId { get; }
         public OrchestrationProgramStorageLayout Storage { get; }
         public ReadOnlyMemory<OrchestrationValueSlotType> ValueTypes { get; }
+
+        public OrchestrationPreparedProgramStorage<TValue> BorrowActionInstanceValues()
+        {
+            var values = Storage.Values.ToArray();
+            var counts = new int[Storage.Owners.Length];
+            var kinds = new int[Storage.Owners.Length][];
+            for (int owner = 0; owner < kinds.Length; owner++)
+                if (!Storage.Owners.Span[owner].ValueKindCounts.IsEmpty)
+                    kinds[owner] = new int[OrchestrationStateLayoutView.KindCount];
+            for (int slot = 0; slot < values.Length; slot++)
+            {
+                OrchestrationValueStorageSlot value = values[slot];
+                if (value.ValueIndex < 0 || value.OwnerOperationIndex < 0)
+                    continue;
+                int owner = value.OwnerOperationIndex;
+                int kind = (int)ValueTypes.Span[slot].ValueKind;
+                values[slot] = new OrchestrationValueStorageSlot(owner, counts[owner]++,
+                    kinds[owner][kind]++, value.SavedOutputIndex);
+            }
+            var owners = new OrchestrationExecutionOwnerStorage[Storage.Owners.Length];
+            for (int owner = 0; owner < owners.Length; owner++)
+                if (kinds[owner] != null)
+                {
+                    OrchestrationExecutionOwnerStorage source = Storage.Owners.Span[owner];
+                    owners[owner] = new OrchestrationExecutionOwnerStorage(source.OperationCount,
+                        source.SavedOutputCount, counts[owner], kinds[owner]);
+                }
+            return new OrchestrationPreparedProgramStorage<TValue>(SkillContentId,
+                new OrchestrationProgramStorageLayout(Storage.OperationIndices, values, owners), ValueTypes);
+        }
     }
 
     public sealed class OrchestrationPreparedStateLayout<TValue> where TValue : unmanaged

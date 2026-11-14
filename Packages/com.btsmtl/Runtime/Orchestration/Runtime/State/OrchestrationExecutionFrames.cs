@@ -11,9 +11,10 @@ namespace BTSMTL.Orchestration
 
         public static OrchestrationExecutionCapacity PrepareCapacity(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> storages,
             ReadOnlySpan<OrchestrationRootAdmission> admissions,
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
-            OrchestrationExecutionCapacity.Prepare(programs, admissions, calls);
+            OrchestrationExecutionCapacity.Prepare(programs, storages, admissions, calls);
 
         internal OrchestrationExecutionFrames(OrchestrationStateLayoutView plan,
             Span<byte> memory)

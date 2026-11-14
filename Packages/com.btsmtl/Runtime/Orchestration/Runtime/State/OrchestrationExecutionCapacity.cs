@@ -112,6 +112,7 @@ namespace BTSMTL.Orchestration
 
         internal static OrchestrationExecutionCapacity Prepare<TValue>(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> storages,
             ReadOnlySpan<OrchestrationRootAdmission> admissions,
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) where TValue : unmanaged
         {
@@ -149,7 +150,7 @@ namespace BTSMTL.Orchestration
                 for (int owner = 0; owner < poolIndices.Length; owner++)
                     if (program.Operation(owner).ExecutionFrameOwnerOperationIndex == owner)
                     {
-                        ref readonly OrchestrationExecutionOwnerStorage storage = ref program.ExecutionStorage.Owners.Span[owner];
+                        ref readonly OrchestrationExecutionOwnerStorage storage = ref storages[programIndex].Storage.Owners.Span[owner];
                         int pool = 0;
                         while (pool < framePools.Count && !framePools[pool].Matches(in storage))
                             pool++;
@@ -192,7 +193,7 @@ namespace BTSMTL.Orchestration
                             var counts = new Dictionary<(int Program, int Owner), int>();
                             int rootPlaybacks = 0;
                             var rootPools = new List<FramePoolBuilder>();
-                            int depth = AccumulateOwners(programs, programIndex, root.OwnerOperationIndex, 1,
+                            int depth = AccumulateOwners(storages, programIndex, root.OwnerOperationIndex, 1,
                                 ownerCalls, callMap, counts, new HashSet<(int Program, int Owner)>(),
                                 rootPools, ownerPools, ref rootPlaybacks);
                             var elements = new List<OwnerCount>();
@@ -268,7 +269,7 @@ namespace BTSMTL.Orchestration
             internal readonly int Instances;
         }
 
-        static int AccumulateOwners<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+        static int AccumulateOwners<TValue>(ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> storages,
             int programIndex, int owner, int count,
             List<int>[][] ownerCalls,
             Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity> calls,
@@ -281,7 +282,7 @@ namespace BTSMTL.Orchestration
             instances.TryGetValue(key, out int previous);
             instances[key] = checked(previous + count);
             Pool(pools, ownerPools[programIndex].Span[owner]).AddOwner(count,
-                programs[programIndex].ExecutionStorage.Owners.Span[owner]);
+                storages[programIndex].Storage.Owners.Span[owner]);
             List<int> owned = ownerCalls[programIndex][owner];
             int depth = 1;
             if (owned != null)
@@ -292,7 +293,7 @@ namespace BTSMTL.Orchestration
                     playbacks = checked(playbacks + count);
                     foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
                         if (occurrence.MaximumInstances != 0)
-                            depth = Math.Max(depth, checked(1 + AccumulateOwners(programs, occurrence.ProgramIndex,
+                            depth = Math.Max(depth, checked(1 + AccumulateOwners(storages, occurrence.ProgramIndex,
                                 occurrence.OwnerOperationIndex, checked(count * occurrence.MaximumInstances),
                                 ownerCalls, calls, instances, active, pools, ownerPools, ref playbacks)));
                 }

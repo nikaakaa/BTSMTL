@@ -90,7 +90,7 @@ namespace BTSMTL.Orchestration
                 return ref m_Frames.CharacterMetadata[characterSlot];
             int frameSlot = ValueFrame(valueSlot);
             return ref m_Frames.BlackboardMetadata(frameSlot)[
-                m_Program.ExecutionStorage.Values[valueSlot].ValueIndex];
+                m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex];
         }
 
         int ValueFrame(int valueSlot)
