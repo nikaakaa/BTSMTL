@@ -27,6 +27,29 @@ public sealed class PlayerCodeUpdates
         m_Compiler = compiler;
         m_Burst = burst;
         m_RecipeDirectory = recipeDirectory;
+        RemoveSuperseded();
+    }
+
+    // 播放器只留最新一个版本：宿主启动时（还没有播放器进程）删掉其它版本、它们的编译目录与未完成的暂存目录。
+    void RemoveSuperseded()
+    {
+        if (!Directory.Exists(m_Players))
+            return;
+        var versions = Directory.EnumerateDirectories(m_Players)
+            .Where(directory => File.Exists(Path.Combine(directory, ManifestFileName)))
+            .Select(directory => (Directory: directory,
+                BuiltAt: (string?)JsonNode.Parse(File.ReadAllBytes(Path.Combine(directory, ManifestFileName)))!["builtAt"] ?? ""))
+            .OrderByDescending(version => version.BuiltAt, StringComparer.Ordinal).ToArray();
+        string compilations = Path.Combine(m_Players, "CodeCompilations");
+        foreach (var version in versions.Skip(1))
+        {
+            Directory.Delete(version.Directory, true);
+            string compilation = Path.Combine(compilations, Path.GetFileName(version.Directory));
+            if (Directory.Exists(compilation))
+                Directory.Delete(compilation, true);
+        }
+        foreach (string partial in Directory.EnumerateDirectories(m_Players, "*.partial"))
+            Directory.Delete(partial, true);
     }
 
     public async Task<object> Update(UpdatePlayerCodeRequest request)
@@ -148,7 +171,7 @@ public sealed class PlayerCodeUpdates
         string staging = target + ".partial";
         if (Directory.Exists(staging))
             Directory.Delete(staging, true);
-        LinkTree(sourceDirectory, staging, Path.Combine(sourceDirectory, "recipe"));
+        LinkTree(sourceDirectory, staging);
         string stagedManaged = Path.Combine(staging, Path.GetRelativePath(sourceDirectory, managed));
         var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var assembly in changed)
@@ -187,6 +210,8 @@ public sealed class PlayerCodeUpdates
         var manifest = (JsonObject)source.DeepClone();
         manifest["buildId"] = versionId;
         manifest["parentBuildId"] = sourceId;
+        // 配方随版本链接过来，新版本自成基包，旧版本可整体删除。
+        manifest["baseBuildId"] = versionId;
         manifest["builtAt"] = DateTimeOffset.UtcNow.ToString("O");
         foreach (JsonNode? entry in manifest["assemblies"]!.AsArray())
             if (hashes.TryGetValue((string)entry!["name"]!, out string? hash))
@@ -240,12 +265,11 @@ public sealed class PlayerCodeUpdates
     }
 
     // 版本目录只读共用：未变化文件硬链接到上一版本，替换时先删链接再写新文件，不就地改写共用文件。
-    static void LinkTree(string from, string to, string skip)
+    static void LinkTree(string from, string to)
     {
         Directory.CreateDirectory(to);
         foreach (string directory in Directory.EnumerateDirectories(from))
-            if (!string.Equals(directory, skip, StringComparison.OrdinalIgnoreCase))
-                LinkTree(directory, Path.Combine(to, Path.GetFileName(directory)), skip);
+            LinkTree(directory, Path.Combine(to, Path.GetFileName(directory)));
         foreach (string file in Directory.EnumerateFiles(from))
         {
             if (Path.GetFileName(file) == ManifestFileName)
