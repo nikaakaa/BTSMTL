@@ -291,8 +291,6 @@ namespace BTSMTL.Timeline.Runtime
     {
         internal OrchestrationTimelinePreparedCapacity Capacity;
         internal int ClipCapacity;
-        internal int BoundaryCapacity;
-        internal int SyntheticBoundaryCapacity;
         internal int InvocationCapacity;
         internal int InvocationDepth;
         internal ulong BatchSequence;
@@ -344,8 +342,6 @@ namespace BTSMTL.Timeline.Runtime
             {
                 Capacity = capacity,
                 ClipCapacity = clips,
-                BoundaryCapacity = boundaries,
-                SyntheticBoundaryCapacity = syntheticBoundaries,
                 InvocationCapacity = invocations,
                 Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
                 Invocations = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks * invocations)),
@@ -386,8 +382,6 @@ namespace BTSMTL.Timeline.Runtime
 
         public OrchestrationTimelinePreparedCapacity Capacity => Header.Capacity;
         internal int ClipCapacity => Header.ClipCapacity;
-        internal int BoundaryCapacity => Header.BoundaryCapacity;
-        internal int SyntheticBoundaryCapacity => Header.SyntheticBoundaryCapacity;
         internal int InvocationCapacity => Header.InvocationCapacity;
         internal Span<OrchestrationTimelineOperationWork<TTime>> Operations =>
             Section<OrchestrationTimelineOperationWork<TTime>>(Header.Operations);
