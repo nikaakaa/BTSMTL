@@ -100,10 +100,13 @@ namespace BTSMTL.Orchestration
             return -1;
         }
 
-        public int FindTimeline(in OrchestrationTimelineStart<OrchestrationTime> start,
+        public int FindTimeline(int skillContentId, int ownerOperationIndex,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
             in OrchestrationTimelineInvocationToken token)
         {
-            for (int slot = 0; slot < m_Frames.Length; slot++)
+            OrchestrationFramePoolRange pool = Plan.FramePool(Plan.ProgramIndex(skillContentId), ownerOperationIndex);
+            int end = pool.First + pool.Count;
+            for (int slot = pool.First; slot < end; slot++)
                 if (m_Frames[slot].SkillContentId != 0 &&
                     m_Frames[slot].TimelineStart.Equals(start) &&
                     m_Frames[slot].ClipOrdinal == token.ClipOrdinal &&

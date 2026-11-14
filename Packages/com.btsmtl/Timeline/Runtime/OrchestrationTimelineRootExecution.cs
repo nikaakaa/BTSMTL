@@ -265,11 +265,13 @@ namespace BTSMTL.Timeline.Runtime
             int programIndex = metadata.ProgramIndex;
             OrchestrationProgram<TValue> program = m_Graphs.Programs.Span[programIndex];
             OrchestrationExecutionFrames<TValue> frames = candidate.Frames;
-            int frameSlot = frames.FindTimeline(in invocation.Start, in token);
+            int skillContentId = m_Graphs.PreparedProgramStorages.Span[programIndex].SkillContentId;
+            int frameSlot = frames.FindTimeline(skillContentId, metadata.ExecutionFrameOwnerOperationIndex,
+                in invocation.Start, in token);
             if (frameSlot < 0)
                 frameSlot = frames.Insert<THost>(new OrchestrationExecutionFrameState
                 {
-                    SkillContentId = m_Graphs.PreparedProgramStorages.Span[programIndex].SkillContentId,
+                    SkillContentId = skillContentId,
                     EntryOperationIndex = metadata.ExecutionFrameOwnerOperationIndex,
                     OwnerOperationIndex = metadata.ExecutionFrameOwnerOperationIndex,
                     ParentFrameIndex = -1,
