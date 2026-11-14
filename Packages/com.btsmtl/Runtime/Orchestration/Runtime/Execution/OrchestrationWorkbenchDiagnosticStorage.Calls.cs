@@ -32,8 +32,13 @@ namespace BTSMTL.Orchestration
 
         public void BindCallOrigins(OrchestrationWorkbenchDiagnosticStorage<TValue>[] programs)
         {
-            PrepareInvocationBindings();
             m_CallPrograms = programs;
+            if (m_TraceBindings != null)
+                PrepareCallOriginStorage();
+        }
+
+        void PrepareCallOriginStorage()
+        {
             m_CallOrigins = new CallOrigin[checked(m_ExecutionFrameCapacity * m_TraceInvocations.Length)];
             m_OperationCallOrigins = new int[checked(m_ExecutionFrameCapacity * m_Program.OperationCount)];
             m_OperationCallOrigins.AsSpan().Fill(-1);
@@ -45,8 +50,11 @@ namespace BTSMTL.Orchestration
                 return;
             m_CallBranch = executionBranchId;
             m_CallEpoch = runtimeEpoch;
-            Array.Clear(m_CallOrigins, 0, m_CallOrigins.Length);
-            m_OperationCallOrigins.AsSpan().Fill(-1);
+            if (m_CallOrigins != null)
+            {
+                Array.Clear(m_CallOrigins, 0, m_CallOrigins.Length);
+                m_OperationCallOrigins.AsSpan().Fill(-1);
+            }
         }
 
         void ObserveCall<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,

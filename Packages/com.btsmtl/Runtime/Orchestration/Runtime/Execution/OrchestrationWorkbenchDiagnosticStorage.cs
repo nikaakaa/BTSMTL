@@ -137,6 +137,8 @@ namespace BTSMTL.Orchestration
                 m_TraceBindings[operation] = new TraceBinding(sourceIndex,
                     groupIndexes[sources[sourceIndex].Source.GraphInvocationPath]);
             }
+            if (m_CallPrograms != null)
+                PrepareCallOriginStorage();
         }
 
         internal void Lifecycle<TNumerics, THost>(ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
