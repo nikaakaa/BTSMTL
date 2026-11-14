@@ -92,6 +92,45 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> OwnerInstances(int programIndex) => m_OwnerInstances[programIndex];
         public int SourceDepth(int programIndex) => m_SourceDepths[programIndex];
 
+        public OrchestrationRootAdmission[] CreateTimelineRootAdmissions<TValue>(
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<OrchestrationTimelineCallCapacity> calls,
+            int maximumCopies) where TValue : unmanaged
+        {
+            var occurrencesByOwner = new Dictionary<(int Program, int Owner), List<OrchestrationOccurrenceCapacity>>();
+            foreach (ref readonly OrchestrationTimelineCallCapacity call in calls)
+            {
+                int owner = programs[call.ProgramIndex].Operation(call.OperationIndex).ExecutionFrameOwnerOperationIndex;
+                var key = (call.ProgramIndex, owner);
+                if (!occurrencesByOwner.TryGetValue(key, out var occurrences))
+                    occurrencesByOwner.Add(key, occurrences = new List<OrchestrationOccurrenceCapacity>());
+                foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
+                    occurrences.Add(occurrence);
+            }
+            var admissions = new OrchestrationRootAdmission[m_OwnerAdmissions.Length];
+            for (int index = 0; index < admissions.Length; index++)
+            {
+                OwnerAdmission admission = m_OwnerAdmissions[index];
+                var alternatives = new OrchestrationRootAlternative[admission.Alternatives.Length];
+                for (int alternative = 0; alternative < alternatives.Length; alternative++)
+                {
+                    var projected = new List<OrchestrationOccurrenceCapacity>();
+                    foreach (OwnerCount owner in admission.Alternatives[alternative])
+                    {
+                        if (!occurrencesByOwner.TryGetValue((owner.Program, owner.Owner), out var occurrences))
+                            continue;
+                        foreach (OrchestrationOccurrenceCapacity occurrence in occurrences)
+                            projected.Add(new OrchestrationOccurrenceCapacity(occurrence.ProgramIndex,
+                                occurrence.OwnerOperationIndex, checked(owner.Count * occurrence.MaximumInstances)));
+                    }
+                    alternatives[alternative] = new OrchestrationRootAlternative(projected.ToArray());
+                }
+                admissions[index] = new OrchestrationRootAdmission(alternatives,
+                    checked(admission.Instances * maximumCopies));
+            }
+            return admissions;
+        }
+
         public int CountOwnerElements(ReadOnlySpan<ReadOnlyMemory<int>> elements)
         {
             int total = 0;
