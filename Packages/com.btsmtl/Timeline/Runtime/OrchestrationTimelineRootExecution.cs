@@ -125,7 +125,7 @@ namespace BTSMTL.Timeline.Runtime
                 m_LogicSamples = prepareLogicSamples(root.Prepared, root.Logic.Content.Mode);
             }
             m_Presentation = new TimelineRuntimePresentationDriver(timelineCapacity.PlaybackCount, timelineCapacity.PlaybackCount);
-            m_Presentation.Prepare(root.Prepared, root.Presentation.Content, sourceIdentityId,
+            m_Presentation.Prepare(root.Prepared, root.Presentation.Content, sourceIdentityId, timelineCapacity.PlaybackCount,
                 TimelineRuntimePresentationGraphSource.Unexecuted,
                 m_Bindings.SupportsPresentationSampleKind);
         }

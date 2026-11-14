@@ -136,7 +136,8 @@ namespace BTSMTL.Timeline.Runtime
         readonly int m_PlaybackCapacity;
         readonly int m_RecordedPlaybackCapacity;
         readonly int m_RecordedStateHeaderBytes;
-        readonly List<PresentationBufferPool> m_BufferPools = new();
+        readonly Dictionary<int, PresentationBufferPool> m_SourceBuffers = new();
+        PresentationBufferPool m_ExecutedBuffers;
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
         readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), PresentationContent> m_RecycledPlaybacks = new(new PlaybackPoolComparer());
         TimelineSchedulingBoundary<OrchestrationTime>[] m_Boundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
@@ -217,7 +218,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public void Prepare(TimelineRuntimePreparedContent content,
             OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-            int sourceIdentityId, TimelineRuntimePresentationGraphSource graphSource,
+            int sourceIdentityId, int sourcePlaybackCapacity, TimelineRuntimePresentationGraphSource graphSource,
             Predicate<string> supportsSampleKind)
         {
             if (executionContent.Domain != TimelineExecutionDomain.Presentation ||
@@ -240,11 +241,13 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimePresentationBuffer.Capacity capacity =
                 TimelineRuntimePresentationBuffer.CreateCapacity(content, executionContent, graphSource);
             bool shareAcrossContents = m_RecordedPlaybackCapacity <= m_PlaybackCapacity;
-            int poolIndex = shareAcrossContents ? 0 : m_BufferPools.Count;
-            if (poolIndex == m_BufferPools.Count)
-                m_BufferPools.Add(new PresentationBufferPool(shareAcrossContents
-                    ? m_RecordedPlaybackCapacity : m_PlaybackCapacity));
-            PresentationBufferPool buffers = m_BufferPools[poolIndex];
+            PresentationBufferPool buffers;
+            if (!shareAcrossContents)
+                buffers = new PresentationBufferPool(m_PlaybackCapacity);
+            else if (graphSource == TimelineRuntimePresentationGraphSource.Executed)
+                buffers = m_ExecutedBuffers ??= new PresentationBufferPool(m_RecordedPlaybackCapacity);
+            else if (!m_SourceBuffers.TryGetValue(sourceIdentityId, out buffers))
+                m_SourceBuffers.Add(sourceIdentityId, buffers = new PresentationBufferPool(sourcePlaybackCapacity));
             buffers.Prepare(in capacity, content, executionContent, graphSource);
             m_RecycledPlaybacks.Add(key, new PresentationContent(content, executionContent, graphSource, buffers));
             UpdateRecordedCapacity();
@@ -265,8 +268,13 @@ namespace BTSMTL.Timeline.Runtime
                     retained = true;
                     break;
                 }
-            if (!retained)
-                m_BufferPools.Remove(pool.Buffers);
+            if (!retained && m_RecordedPlaybackCapacity <= m_PlaybackCapacity)
+            {
+                if (graphSource == TimelineRuntimePresentationGraphSource.Executed)
+                    m_ExecutedBuffers = null;
+                else
+                    m_SourceBuffers.Remove(sourceIdentityId);
+            }
             UpdateRecordedCapacity();
         }
 
@@ -283,8 +291,8 @@ namespace BTSMTL.Timeline.Runtime
                     var buffers = pool.Buffers.Storage[0];
                     WritePlayback(ref writer, default, pool.Template, true, buffers.Candidate, buffers.Accepted);
                     writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
-                    allBytes = checked(allBytes + (long)writer.WrittenBytes * m_PlaybackCapacity);
-                    allTexts = checked(allTexts + (long)writer.TextReferenceCount * m_PlaybackCapacity);
+                    allBytes = checked(allBytes + (long)writer.WrittenBytes * pool.Buffers.Storage.Length);
+                    allTexts = checked(allTexts + (long)writer.TextReferenceCount * pool.Buffers.Storage.Length);
                     maximumBytes = Math.Max(maximumBytes, writer.WrittenBytes);
                     maximumTexts = Math.Max(maximumTexts, writer.TextReferenceCount);
                 }
@@ -566,7 +574,8 @@ namespace BTSMTL.Timeline.Runtime
                 state.Recycle();
             m_Playbacks.Clear();
             m_RecycledPlaybacks.Clear();
-            m_BufferPools.Clear();
+            m_SourceBuffers.Clear();
+            m_ExecutedBuffers = null;
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedState(ref writer);
             MaximumRecordedStateBytes = writer.WrittenBytes;
