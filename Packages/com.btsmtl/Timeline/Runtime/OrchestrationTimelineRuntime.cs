@@ -178,17 +178,15 @@ namespace BTSMTL.Timeline.Runtime
                         evaluationExits.SetFirstCycle(ordinal, 1);
             if (!work.Paused)
                 work.InjectedExitCount = pending.Length;
-            int boundaryOffset = checked(slot * workspace.BoundaryCapacity);
-            Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees.Slice(
-                checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
+            Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees;
             int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback, exits, active);
 
-            Span<TimelineSchedulingBoundary<TTime>> boundaryOutput = workspace.Boundaries.Slice(boundaryOffset, workspace.BoundaryCapacity);
+            Span<TimelineSchedulingBoundary<TTime>> boundaryOutput = workspace.Boundaries;
             int boundaryCount = work.Paused ? 0 : TimelineRuntimeScheduling<TTime, TClock>.Boundaries(boundaries,
                 previous, previousCycle, time, cycle, content.Duration, loop,
                 playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits, pending,
                 boundaryOutput,
-                workspace.SyntheticBoundaries.Slice(checked(slot * workspace.SyntheticBoundaryCapacity), workspace.SyntheticBoundaryCapacity));
+                workspace.SyntheticBoundaries);
             foreach (ref readonly TimelineSchedulingBoundary<TTime> boundary in boundaryOutput.Slice(0, boundaryCount))
                 if (!boundary.Enter && clips[boundary.ClipOrdinal].TreeDecision)
                     evaluationExits.SetExited(boundary.ClipOrdinal, boundary.Cycle);
@@ -278,8 +276,7 @@ namespace BTSMTL.Timeline.Runtime
             CopyExitState(candidate, slot);
             if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
             {
-                Span<TimelineSchedulingBoundary<TTime>> active = m_Workspace.ActiveTrees.Slice(
-                    checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
+                Span<TimelineSchedulingBoundary<TTime>> active = m_Workspace.ActiveTrees;
                 int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(m_Content, in playback,
                     TreeExits(candidate, slot).View, active);
                 ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Content.Clips;

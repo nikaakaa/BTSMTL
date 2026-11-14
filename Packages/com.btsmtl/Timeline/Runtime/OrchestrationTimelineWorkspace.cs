@@ -337,6 +337,7 @@ namespace BTSMTL.Timeline.Runtime
                 invocations = Math.Max(invocations, content.TickCapacity.GraphInvocationsPerAdvance);
             }
             int playbacks = capacity.PlaybackCount;
+            int preparationCopies = Math.Min(playbacks, 1);
             var builder = new OrchestrationMemoryLayoutBuilder(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationTimelineWorkspaceHeader>());
             var header = new OrchestrationTimelineWorkspaceHeader
@@ -349,9 +350,9 @@ namespace BTSMTL.Timeline.Runtime
                 Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
                 Invocations = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks * invocations)),
                 Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(playbacks * invocations)),
-                Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * boundaries)),
-                SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * syntheticBoundaries)),
-                ActiveTrees = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(playbacks * capacity.ActiveTreesPerPlayback)),
+                Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * boundaries)),
+                SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * syntheticBoundaries)),
+                ActiveTrees = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * capacity.ActiveTreesPerPlayback)),
                 EvaluationFirstCycles = builder.Add<long>(checked(playbacks * capacity.TreeExitWindowsPerPlayback)),
                 EvaluationExitBits = builder.Add<ulong>(checked(playbacks * capacity.TreeExitWordsPerPlayback)),
                 ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(playbacks * capacity.TreeExitRequestsPerPlayback)),
