@@ -388,10 +388,10 @@ namespace BTSMTL.Diagnostics
     sealed class RuntimeLiveStateStore
     {
         readonly Dictionary<RuntimeLiveStateKey, LinkedListNode<int>> m_Current;
-        readonly RuntimeTraceEvent[] m_States;
-        readonly RuntimeLiveStateChange[] m_Changes;
+        RuntimeTraceEvent[] m_States = Array.Empty<RuntimeTraceEvent>();
+        RuntimeLiveStateChange[] m_Changes = Array.Empty<RuntimeLiveStateChange>();
         readonly LinkedList<int> m_Recency = new();
-        readonly LinkedListNode<int>[] m_RecencyNodePool;
+        LinkedListNode<int>[] m_RecencyNodePool = Array.Empty<LinkedListNode<int>>();
         readonly int m_MaxChanges;
         long m_Version;
         long m_LastResetVersion;
@@ -405,9 +405,16 @@ namespace BTSMTL.Diagnostics
             if (maxChanges < 64)
                 throw new ArgumentOutOfRangeException(nameof(maxChanges));
             m_MaxChanges = maxChanges;
-            m_Current = new Dictionary<RuntimeLiveStateKey, LinkedListNode<int>>(maxChanges);
-            m_States = new RuntimeTraceEvent[maxChanges];
-            m_Changes = new RuntimeLiveStateChange[maxChanges];
+            m_Current = new Dictionary<RuntimeLiveStateKey, LinkedListNode<int>>();
+        }
+
+        internal void Prepare()
+        {
+            if (m_States.Length != 0)
+                return;
+            m_Current.EnsureCapacity(m_MaxChanges);
+            m_States = new RuntimeTraceEvent[m_MaxChanges];
+            m_Changes = new RuntimeLiveStateChange[m_MaxChanges];
             m_RecencyNodePool = new LinkedListNode<int>[m_MaxChanges];
             for (int i = 0; i < m_RecencyNodePool.Length; i++)
                 m_RecencyNodePool[i] = new LinkedListNode<int>(i);
@@ -539,6 +546,7 @@ namespace BTSMTL.Diagnostics
 
         internal void Restore(ReadOnlySpan<RuntimeTraceEvent> states)
         {
+            Prepare();
             Clear();
             for (int i = 0; i < states.Length; i++)
                 Write(in states[i], false);
@@ -1168,6 +1176,7 @@ namespace BTSMTL.Diagnostics
             RuntimeTraceChannel added = channels & ~m_LiveChannels;
             if (added != RuntimeTraceChannel.None)
             {
+                m_LiveState.Prepare();
                 m_LiveStateGeneration++;
                 if (m_LiveChannels == RuntimeTraceChannel.None)
                     m_LiveState.Clear();
