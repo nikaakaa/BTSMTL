@@ -89,9 +89,11 @@ namespace BTSMTL.Orchestration
             return -1;
         }
 
-        public int FindPersistent(int skillContentId)
+        public int FindPersistent(int skillContentId, int ownerOperationIndex)
         {
-            for (int slot = 0; slot < m_Frames.Length; slot++)
+            OrchestrationFramePoolRange pool = Plan.FramePool(Plan.ProgramIndex(skillContentId), ownerOperationIndex);
+            int end = pool.First + pool.Count;
+            for (int slot = pool.First; slot < end; slot++)
                 if (m_Frames[slot].TimelineStart.PlaybackIdentity == 0 && m_Frames[slot].ActionInstanceId == 0 &&
                     m_Frames[slot].SkillContentId == skillContentId)
                     return slot;
