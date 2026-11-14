@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -10,6 +12,10 @@ namespace BTSMTL.Graphs
         where TValue : unmanaged
         where TNumerics : struct, IGraphNumerics<TValue>
     {
+        static readonly ConditionalWeakTable<OrchestrationGraphContent<TValue>,
+            ConcurrentDictionary<string, (PreparedOrchestrationGraph<TValue, TNumerics> Prepared,
+                OrchestrationProgram<TValue> Program)>> s_PreparedPrograms = new();
+
         internal readonly OrchestrationGraphContent<TValue> Content;
         internal readonly PreparedOrchestrationGraph<TValue, TNumerics> Prepared;
         internal readonly OrchestrationProgram<TValue> Program;
@@ -48,13 +54,20 @@ namespace BTSMTL.Graphs
             OrchestrationGraphContent<TValue> content)
         {
             Content = content;
-            FrozenOrchestrationIdentities frozen = FrozenOrchestrationIdentities.Prepare(
-                new[] { Content.Identities, OrchestrationIdentityPublication.Create(new[] { contract.ContractId }) },
-                Array.Empty<string>());
+            var programs = s_PreparedPrograms.GetValue(content, _ => new(StringComparer.Ordinal));
+            var preparedProgram = programs.GetOrAdd(contract.ContractId, contractId =>
+            {
+                FrozenOrchestrationIdentities identities = FrozenOrchestrationIdentities.Prepare(
+                    new[] { content.Identities, OrchestrationIdentityPublication.Create(new[] { contractId }) },
+                    Array.Empty<string>());
+                var prepared = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(content, identities, 0,
+                    ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty, content.Structure.Program.ExecutionStorage);
+                return (prepared, new OrchestrationProgram<TValue>(prepared.Program, prepared.Parameters));
+            });
+            Prepared = preparedProgram.Prepared;
+            Program = preparedProgram.Program;
+            FrozenOrchestrationIdentities frozen = Prepared.Identities;
             SourceIdentityId = frozen.Table.Bind(contract.ContractId);
-            Prepared = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(Content, frozen, 0,
-                    ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty, Content.Structure.Program.ExecutionStorage);
-            Program = new OrchestrationProgram<TValue>(Prepared.Program, Prepared.Parameters);
             StateTypes = new Type[Program.ValueSlotCount];
             for (int i = 0; i < StateTypes.Length; i++)
                 StateTypes[i] = default(TNumerics).ValueType(Program.DefaultValue(i), frozen.Table);
