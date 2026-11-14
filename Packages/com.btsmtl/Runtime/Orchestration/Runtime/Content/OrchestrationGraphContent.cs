@@ -20,6 +20,7 @@ namespace BTSMTL.Orchestration
                 layout.OperationContents.Length != parameters.OperationContents.Length || structure.Sources.Length != sources.Entries.Length)
                 throw new System.IO.InvalidDataException("图结构的参数槽或来源布局与配对分块不一致。");
             Identities = OrchestrationIdentityPublication.Extend(structure.Identities, parameters.Identities.Entries.ToArray());
+            BoundSources = sources.Bind(structure.Sources.Span);
         }
 
         public GraphExecutionIdentity Identity { get; }
@@ -27,6 +28,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationGraphParameters<TValue> Parameters { get; }
         public OrchestrationGraphSourceMap Sources { get; }
         [ValueStorageIgnore] public OrchestrationIdentityTable Identities { get; }
+        [ValueStorageIgnore] public ReadOnlyMemory<OrchestrationGraphSource> BoundSources { get; }
     }
 
     [ValueStorage(UseConstructor = true)]

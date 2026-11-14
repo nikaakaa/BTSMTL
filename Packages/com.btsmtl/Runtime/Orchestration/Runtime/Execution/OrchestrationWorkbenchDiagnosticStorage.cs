@@ -37,7 +37,7 @@ namespace BTSMTL.Orchestration
             OrchestrationGraphContent<TValue> content, int executionFrameCapacity)
         {
             m_Program = program;
-            m_Sources = content.Sources.Bind(content.Structure.Sources.Span);
+            m_Sources = content.BoundSources;
             m_ExecutionFrameCapacity = executionFrameCapacity;
         }
 
