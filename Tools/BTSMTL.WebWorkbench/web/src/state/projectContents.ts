@@ -12,6 +12,8 @@ export interface ContentNode {
   key: string; label: string; description: string; target: ContentTarget | null; children: ContentNode[]; referrers: ContentUse[];
 }
 const itemKey = (item: Pick<ProjectItem, 'owner' | 'file'>) => JSON.stringify([item.owner, item.file]);
+// OrchestrationExecutionContract.Resumable：常驻入口，由拥有者每次到期推进。
+const resumableContract = 2;
 const graphLabels: Record<string, string> = { Ability: '文档图', Skill: '文档图', StateMachine: '状态机', StateBody: '状态内容',
   Condition: '条件图', ConditionRule: '条件', Subgraph: '子图', TimelineEvent: '事件图', TimelineBody: '片段内容', TimelineTrigger: '触发片段' };
 export const graphRoleLabel = (role: string) => graphLabels[role] ?? role;
@@ -49,7 +51,8 @@ export function projectContents(documents: AuthoringState['documents']) {
         item = { ...base, kind: 'graph', identity: data.AuthoringId as string, name, ownerName: name,
           ownership: data.Ownership === 'Shared' ? 'Shared' : 'Private',
           contentDomain: document.contentDomain!, domains: data.Domains as string[],
-          variableOwnerId: data.VariableOwnerId as string | null };
+          variableOwnerId: data.VariableOwnerId as string | null,
+          resumable: (data.EntryDeclarations as JsonObject[]).some(entry => entry.m_Contract === resumableContract) };
       }
       else if (file.startsWith('graphs/')) {
         const name = graphNames.get(data.AuthoringId as string);

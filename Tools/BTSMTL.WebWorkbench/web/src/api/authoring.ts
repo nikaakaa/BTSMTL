@@ -276,7 +276,8 @@ interface ProjectItemBase {
 export type ProjectItem = ProjectItemBase & (
   | { kind: 'document'; asset: JsonObject }
   | { kind: 'graph'; role: string }
-  | { kind: 'graph'; contentDomain: string; domains: string[]; variableOwnerId: string | null }
+  // resumable：图声明了常驻入口，可由场景角色按间隔推进（决策图）。
+  | { kind: 'graph'; contentDomain: string; domains: string[]; variableOwnerId: string | null; resumable: boolean }
   // input：输入方案引用的 Timeline，名字固定且不可重命名。
   | { kind: 'timeline'; input?: boolean }
   | { kind: 'curve' | 'profile' | 'variables'; asset: JsonObject }
@@ -707,7 +708,15 @@ function readCreationOptions(sourceText: string): DocumentCreationCatalog {
 const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text, name: text,
   files: array(readAuthoringFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
 
+const readDecisionActors = object({ actors: array(object({ actorId: text, localPlayer: boolean, hasInput: boolean,
+  decision: nullable(object({ graphId: text, intervalTicks: number, phaseTicks: number })) })) });
+export type DecisionActor = ReturnType<typeof readDecisionActors>['actors'][number];
+// 决策图绑定到场景里的非玩家角色，按间隔与相位推进；随独立图刷新写进场景包。
+export interface DecisionBinding { actorId: string; intervalTicks: number; phaseTicks: number }
+
 export const authoringApi = {
+  decisionActors: async (scene: string, revision: string, signal?: AbortSignal) =>
+    readDecisionActors(await getJson<unknown>(`/api/authoring/decision-actors${query({ scene, revision })}`, signal), 'DecisionActors').actors,
   catalog: async (revision: string | null, signal?: AbortSignal) =>
     readAdapterCatalog(await getJson<unknown>(`/api/authoring/catalog${revision === null ? '' : query({ revision })}`, signal)),
   prepareReferenceReplacement: async (input: ReferenceReplacementInput, signal?: AbortSignal) =>

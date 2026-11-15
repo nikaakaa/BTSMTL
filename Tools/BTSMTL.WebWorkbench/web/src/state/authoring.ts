@@ -5,7 +5,7 @@ import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readDocumentSaveConflict, readDocumentSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerContentRefreshReceipt, type PlayerContentRefreshTarget,
   type ScenarioDraftRequest, type DocumentCreationRequest, type AuthoringGraph, type AuthoringGraphRelation, type AuthoringEditingView, type AuthoringElements,
-  type DocumentDeleteResult, type AuthoringFormatError, type DocumentSaveResult, type AuthoringSnapshot,
+  type DocumentDeleteResult, type AuthoringFormatError, type DocumentSaveResult, type AuthoringSnapshot, type DecisionBinding,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
@@ -240,10 +240,11 @@ useAuthoring.subscribe((state, previous) => {
   if (state.target !== previous.target) previewController?.abort();
 });
 
-type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget } | { kind: 'unavailable'; reason: string };
+type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget; scene: { path: string; revision: string } }
+  | { kind: 'unavailable'; reason: string };
 type SavedCompilation = Pick<Extract<DocumentSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
-async function selectedPreview(inputSource?: RunSource): Promise<PreviewSelection> {
+export async function selectedPreview(inputSource?: RunSource, decision?: DecisionBinding): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
   const mode = state.host?.modes.find(item => item.id === state.previewMode);
   if (!mode) return { kind: 'unavailable', reason: '未选择预览档位，运行未应用' };
@@ -260,7 +261,8 @@ async function selectedPreview(inputSource?: RunSource): Promise<PreviewSelectio
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
     return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
-      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: inputSource ?? content.source }, channels } };
+      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: inputSource ?? content.source,
+        ...(decision === undefined ? {} : { decision }) }, channels }, scene: { path: content.scene, revision: content.revision } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -963,7 +965,8 @@ export const authoringActions = {
     };
   },
 
-  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource) {
+  // decision：应用独立决策图时把它绑定到所选角色；不给时沿用场景包里已有的绑定。
+  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource, decision?: DecisionBinding) {
     const state = get();
     const active = state.target;
     const dirtyPath = active === null && operation === 'save'
@@ -1061,7 +1064,7 @@ export const authoringActions = {
       }
       const jobBlocked = apply ? session.canStart() : null;
       const [selection, job] = apply ? await Promise.all([
-        selectedPreview(inputSource),
+        selectedPreview(inputSource, decision),
         jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]) : [null, undefined] as const;
       const result = await authoringApi.save(target, {
