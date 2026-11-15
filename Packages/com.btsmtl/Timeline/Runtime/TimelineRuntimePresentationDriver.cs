@@ -707,8 +707,8 @@ namespace BTSMTL.Timeline.Runtime
             for (int index = 0; index < sampleKindCount; index++)
                 WriteSamples(ref writer, buffer.Samples[index], maximum);
             WriteSamples(ref writer, buffer.Events, maximum);
-            WriteSamples(ref writer, buffer.TreeClips, maximum);
-            WriteSamples(ref writer, buffer.ActiveTreeClips, maximum);
+            WriteTreeSamples(ref writer, buffer.TreeClips, maximum);
+            WriteTreeSamples(ref writer, buffer.ActiveTreeClips, maximum);
             int count = maximum ? buffer.SamplingClips.Capacity : buffer.SamplingClips.Count;
             writer.Write(count);
             for (int index = 0; index < count; index++)
@@ -723,8 +723,8 @@ namespace BTSMTL.Timeline.Runtime
                 buffer.Samples[index].RestoreRecordedState(ReadOnlySpan<TimelineRuntimeSample<Float32Scalar>>.Empty,
                     buffer.Samples[0].Version);
             ReadSamples(ref reader, buffer.Events);
-            ReadSamples(ref reader, buffer.TreeClips);
-            ReadSamples(ref reader, buffer.ActiveTreeClips);
+            ReadTreeSamples(ref reader, buffer.TreeClips);
+            ReadTreeSamples(ref reader, buffer.ActiveTreeClips);
             int count = reader.Read<int>();
             if (count < 0 || count > buffer.SamplingClips.Capacity)
                 throw new InvalidOperationException("Recorded Timeline sampling workspace exceeds the prepared content capacity.");
@@ -749,6 +749,23 @@ namespace BTSMTL.Timeline.Runtime
             ulong version = reader.Read<ulong>();
             int count = reader.Read<int>();
             buffer.RestoreRecordedState(reader.ReadSpan<T>(count), version);
+        }
+
+        static void WriteTreeSamples<TWriter>(ref TWriter writer, TimelineRuntimeTreeClipBuffer buffer, bool maximum)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            writer.Write(buffer.Version);
+            int count = maximum ? buffer.Capacity : buffer.Count;
+            writer.Write(count);
+            for (int index = 0; index < count; index++)
+                writer.Write(maximum ? default : buffer[index]);
+        }
+
+        static void ReadTreeSamples(ref RecordedRuntimeStateReader reader, TimelineRuntimeTreeClipBuffer buffer)
+        {
+            ulong version = reader.Read<ulong>();
+            int count = reader.Read<int>();
+            buffer.RestoreRecordedState(reader.ReadSpan<TimelineRuntimeTreeClipRequest>(count), version);
         }
 
         void AppendMarkerEvents(

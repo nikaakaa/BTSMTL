@@ -117,8 +117,8 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] Samples;
         public readonly List<int> SamplingClips;
         public readonly TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> Events;
-        public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeTreeClipRequest> TreeClips;
-        public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeTreeClipRequest> ActiveTreeClips;
+        public readonly TimelineRuntimeTreeClipBuffer TreeClips;
+        public readonly TimelineRuntimeTreeClipBuffer ActiveTreeClips;
 
         public void Clear()
         {
@@ -128,6 +128,155 @@ namespace BTSMTL.Timeline.Runtime
             Events.Clear();
             TreeClips.Clear();
             ActiveTreeClips.Clear();
+        }
+    }
+
+    sealed class TimelineRuntimeTreeClipBuffer
+    {
+        readonly struct StoredRequest
+        {
+            readonly OrchestrationTime m_Time;
+            readonly OrchestrationTime m_PreviousTime;
+            readonly OrchestrationTime m_WindowStartTime;
+            readonly int m_ClipOrdinal;
+            readonly int m_Cycle;
+            readonly float m_NormalizedTime;
+            readonly byte m_Phase;
+            readonly TimelineClipExitSource m_ExitSource;
+            readonly TimelineRuntimeTreeClipEventKind m_EventKind;
+            readonly bool m_Marker;
+
+            internal StoredRequest(in TimelineRuntimeTreeClipRequest request)
+            {
+                m_Time = request.Time;
+                m_PreviousTime = request.PreviousTime;
+                m_WindowStartTime = request.WindowStartTime;
+                m_ClipOrdinal = request.Token.ClipOrdinal;
+                m_Cycle = request.Token.Cycle;
+                m_NormalizedTime = request.NormalizedTime;
+                m_Phase = (byte)request.Phase;
+                m_ExitSource = request.ExitSource;
+                m_EventKind = request.EventKind;
+                m_Marker = request.Token.Marker;
+            }
+
+            internal TimelineRuntimeTreeClipRequest Expand(int playbackSlot, ulong sequence, ulong playbackIdentity) =>
+                new(new OrchestrationTimelineInvocationToken(playbackSlot, sequence, playbackIdentity,
+                        m_ClipOrdinal, m_Cycle, m_Marker),
+                    (TimelineTreeExecutionPhase)m_Phase, m_ExitSource, m_EventKind,
+                    m_Time, m_PreviousTime, m_WindowStartTime, m_NormalizedTime);
+        }
+
+        StoredRequest[] m_Values;
+        int m_Count;
+        int m_PlaybackSlot;
+        ulong m_Sequence;
+        ulong m_PlaybackIdentity;
+
+        public TimelineRuntimeTreeClipBuffer(int capacity)
+        {
+            m_Values = capacity == 0 ? Array.Empty<StoredRequest>() : new StoredRequest[capacity];
+        }
+
+        public int Count => m_Count;
+        public int Capacity => m_Values.Length;
+        public ulong Version { get; private set; }
+        public TimelineRuntimeTreeClipView View => new(this);
+
+        public TimelineRuntimeTreeClipRequest this[int index]
+        {
+            get
+            {
+                if ((uint)index >= (uint)m_Count)
+                    throw new ArgumentOutOfRangeException(nameof(index));
+                return m_Values[index].Expand(m_PlaybackSlot, m_Sequence, m_PlaybackIdentity);
+            }
+        }
+
+        internal void PrepareCapacity(int capacity)
+        {
+            if (capacity > m_Values.Length)
+                Array.Resize(ref m_Values, capacity);
+        }
+
+        public void Add(in TimelineRuntimeTreeClipRequest value)
+        {
+            if (m_Count == Capacity)
+                throw new InvalidOperationException("Timeline sample count exceeds the prepared content capacity.");
+            if (m_Count == 0)
+                SetPlayback(value.Token);
+            m_Values[m_Count++] = new StoredRequest(in value);
+        }
+
+        public void RemoveAt(int index)
+        {
+            if ((uint)index >= (uint)m_Count)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            m_Count--;
+            Array.Copy(m_Values, index + 1, m_Values, index, m_Count - index);
+        }
+
+        public void Clear()
+        {
+            m_Count = 0;
+            Version = checked(Version + 1);
+        }
+
+        internal void RestoreRecordedState(ReadOnlySpan<TimelineRuntimeTreeClipRequest> values, ulong version)
+        {
+            if (values.Length > Capacity)
+                throw new InvalidOperationException("Recorded Timeline samples exceed the prepared content capacity.");
+            if (values.Length != 0)
+                SetPlayback(values[0].Token);
+            for (int index = 0; index < values.Length; index++)
+                m_Values[index] = new StoredRequest(in values[index]);
+            m_Count = values.Length;
+            Version = version;
+        }
+
+        void SetPlayback(OrchestrationTimelineInvocationToken token)
+        {
+            m_PlaybackSlot = token.PlaybackSlot;
+            m_Sequence = token.Sequence;
+            m_PlaybackIdentity = token.PlaybackIdentity;
+        }
+    }
+
+    public readonly struct TimelineRuntimeTreeClipView
+    {
+        readonly TimelineRuntimeTreeClipBuffer m_Buffer;
+        readonly ulong m_Version;
+
+        internal TimelineRuntimeTreeClipView(TimelineRuntimeTreeClipBuffer buffer)
+        {
+            m_Buffer = buffer;
+            m_Version = buffer.Version;
+        }
+
+        public int Count
+        {
+            get
+            {
+                if (m_Buffer == null)
+                    return 0;
+                RequireCurrent();
+                return m_Buffer.Count;
+            }
+        }
+
+        public TimelineRuntimeTreeClipRequest this[int index]
+        {
+            get
+            {
+                RequireCurrent();
+                return m_Buffer[index];
+            }
+        }
+
+        void RequireCurrent()
+        {
+            if (m_Buffer == null || m_Buffer.Version != m_Version)
+                throw new InvalidOperationException("Timeline sample view no longer belongs to a live frame.");
         }
     }
 
@@ -144,8 +293,8 @@ namespace BTSMTL.Timeline.Runtime
             ActiveTreeClips = buffer.ActiveTreeClips.View;
         }
 
-        public TimelineRuntimeSampleView<TimelineRuntimeTreeClipRequest> TreeClips { get; }
-        public TimelineRuntimeSampleView<TimelineRuntimeTreeClipRequest> ActiveTreeClips { get; }
+        public TimelineRuntimeTreeClipView TreeClips { get; }
+        public TimelineRuntimeTreeClipView ActiveTreeClips { get; }
         public int SampleKindCount => m_Buffer.SampleKindCount;
         public TimelineRuntimeSampleView<TimelineRuntimeSample<Float32Scalar>> GetSamples(int kindIndex) =>
             new(m_Buffer.Samples[kindIndex], m_SampleVersion);
