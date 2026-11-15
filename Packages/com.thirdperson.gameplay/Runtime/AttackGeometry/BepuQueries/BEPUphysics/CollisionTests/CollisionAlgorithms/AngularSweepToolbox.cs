@@ -27,6 +27,9 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
         public FPVector3 Translation => m_End.Position - m_Start.Position;
         public FP Angle { get; }
 
+        public static FPVector3 PositionAt(FPVector3 start, FPVector3 end, FP fraction) =>
+            fraction == FP._0 ? start : fraction == FP._1 ? end : start + (end - start) * fraction;
+
         public RigidTransform At(FP fraction)
         {
             if (fraction == FP._0)
@@ -39,7 +42,7 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
                 FPQuaternion increment = FPQuaternion.RadianAxis(Angle * fraction, m_Axis);
                 orientation = increment * orientation;
             }
-            return new RigidTransform(m_Start.Position + Translation * fraction, orientation);
+            return new RigidTransform(PositionAt(m_Start.Position, m_End.Position, fraction), orientation);
         }
     }
 

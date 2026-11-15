@@ -204,24 +204,36 @@ namespace ThirdPersonSimulation.AttackGeometry
                     ref readonly SweepTarget target = ref query.Targets[targetIndex];
                     if (!query.Filter.Includes(target.Identity.TargetId, target.Layer, target.IsTrigger))
                         continue;
-                    RigidTransform targetStart;
-                    RigidTransform targetEnd;
+                    FP startFraction = FP._0;
+                    FP endFraction = FP._0;
                     if (movingTarget)
                     {
                         if (segment.Start.Time < target.Start.Time || segment.End.Time > target.End.Time)
                             return results.Fail(SweepQueryStatus.TargetTimeMismatch, segmentIndex, target.Identity);
+                        FP duration = target.End.Time - target.Start.Time;
+                        startFraction = (segment.Start.Time - target.Start.Time) / duration;
+                        endFraction = (segment.End.Time - target.Start.Time) / duration;
+                    }
+                    FPVector3 targetStartPosition = RigidSweepMotion.PositionAt(
+                        target.Start.Pose.Position, target.End.Pose.Position, startFraction);
+                    FPVector3 targetEndPosition = RigidSweepMotion.PositionAt(
+                        target.Start.Pose.Position, target.End.Pose.Position, endFraction);
+                    if (Separated(sourceStart.Position - targetStartPosition, sourceEnd.Position - targetEndPosition,
+                            m_Bounds[segment.Track.ShapeIndex] + m_Bounds[target.ShapeIndex] + SeparationMargin))
+                        continue;
+                    RigidTransform targetStart;
+                    RigidTransform targetEnd;
+                    if (movingTarget)
+                    {
                         var targetMotion = new RigidSweepMotion(ToGeometry(target.Start.Pose), ToGeometry(target.End.Pose));
-                        targetStart = PoseAt(in target, in targetMotion, segment.Start.Time);
-                        targetEnd = PoseAt(in target, in targetMotion, segment.End.Time);
+                        targetStart = targetMotion.At(startFraction);
+                        targetEnd = targetMotion.At(endFraction);
                     }
                     else
                     {
                         targetStart = ToGeometry(target.Start.Pose);
                         targetEnd = targetStart;
                     }
-                    if (Separated(sourceStart.Position - targetStart.Position, sourceEnd.Position - targetEnd.Position,
-                            m_Bounds[segment.Track.ShapeIndex] + m_Bounds[target.ShapeIndex] + SeparationMargin))
-                        continue;
                     NativePart[] targetParts = m_Parts[target.ShapeIndex];
                     var targetRootMotion = angular ? new RigidSweepMotion(in targetStart, in targetEnd) : default;
                     for (int sourcePartIndex = 0; sourcePartIndex < sourceParts.Length; sourcePartIndex++)
@@ -304,12 +316,6 @@ namespace ThirdPersonSimulation.AttackGeometry
                 }
             }
             return results.Complete();
-        }
-
-        static RigidTransform PoseAt(in SweepTarget target, in RigidSweepMotion motion, FP time)
-        {
-            FP fraction = (time - target.Start.Time) / (target.End.Time - target.Start.Time);
-            return motion.At(fraction);
         }
 
         static RigidTransform Compose(RigidTransform local, RigidTransform parent)
