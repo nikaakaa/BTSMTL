@@ -274,12 +274,83 @@ namespace BTSMTL.Orchestration
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
                 ownerAdmissions.Add(new OwnerAdmission(admissionRoots, admission.MaximumInstances));
             }
+            MergeFramePools(framePools, ownerPools, ownerAdmissions);
             var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
             for (int depth = 0; depth < pools.Length; depth++)
                 pools[depth] = framePools[depth].Build();
             var state = new OrchestrationExecutionStateCapacity(pools, ownerPools);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths,
                 ownerAdmissions.ToArray());
+        }
+
+        static void MergeFramePools(List<FramePoolBuilder> pools,
+            ReadOnlyMemory<int>[] ownerPools, List<OwnerAdmission> admissions)
+        {
+            int rootCount = 0;
+            foreach (OwnerAdmission admission in admissions)
+                rootCount = checked(rootCount + admission.Alternatives.Length);
+            var counts = new List<int[]>(pools.Count);
+            var poolMap = new int[pools.Count];
+            for (int pool = 0; pool < pools.Count; pool++)
+            {
+                counts.Add(new int[rootCount]);
+                poolMap[pool] = pool;
+            }
+            int rootIndex = 0;
+            foreach (OwnerAdmission admission in admissions)
+                foreach (OwnerCount[] root in admission.Alternatives)
+                {
+                    foreach (OwnerCount owner in root)
+                    {
+                        int pool = ownerPools[owner.Program].Span[owner.Owner];
+                        counts[pool][rootIndex] = checked(counts[pool][rootIndex] + owner.Count);
+                    }
+                    rootIndex++;
+                }
+            bool merged;
+            do
+            {
+                merged = false;
+                for (int first = 0; first < pools.Count && !merged; first++)
+                    for (int second = first + 1; second < pools.Count; second++)
+                    {
+                        int frameCount = 0;
+                        rootIndex = 0;
+                        foreach (OwnerAdmission admission in admissions)
+                        {
+                            int maximum = 0;
+                            foreach (OwnerCount[] root in admission.Alternatives)
+                            {
+                                maximum = Math.Max(maximum,
+                                    checked(counts[first][rootIndex] + counts[second][rootIndex]));
+                                rootIndex++;
+                            }
+                            frameCount = checked(frameCount + checked(maximum * admission.Instances));
+                        }
+                        if (!pools[first].CanMerge(pools[second], frameCount))
+                            continue;
+                        pools[first].MergeSharedAdmission(pools[second], frameCount);
+                        for (int root = 0; root < rootCount; root++)
+                            counts[first][root] = checked(counts[first][root] + counts[second][root]);
+                        pools.RemoveAt(second);
+                        counts.RemoveAt(second);
+                        for (int pool = 0; pool < poolMap.Length; pool++)
+                            if (poolMap[pool] == second)
+                                poolMap[pool] = first;
+                            else if (poolMap[pool] > second)
+                                poolMap[pool]--;
+                        merged = true;
+                        break;
+                    }
+            } while (merged);
+            for (int program = 0; program < ownerPools.Length; program++)
+            {
+                int[] owners = ownerPools[program].ToArray();
+                for (int owner = 0; owner < owners.Length; owner++)
+                    if (owners[owner] >= 0)
+                        owners[owner] = poolMap[owners[owner]];
+                ownerPools[program] = owners;
+            }
         }
 
         readonly struct OwnerCount
@@ -358,6 +429,38 @@ namespace BTSMTL.Orchestration
             internal bool Matches(in OrchestrationExecutionOwnerStorage storage) =>
                 m_Operations == storage.OperationCount && m_Values == storage.BlackboardCount &&
                 m_Outputs == storage.SavedOutputCount && storage.ValueKindCounts.Span.SequenceEqual(m_Kinds);
+
+            internal bool CanMerge(FramePoolBuilder other, int frameCount)
+            {
+                if (frameCount >= (long)m_Count + other.m_Count ||
+                    !PreservesElementCount(other, frameCount, m_Operations, other.m_Operations) ||
+                    !PreservesElementCount(other, frameCount, m_Values, other.m_Values) ||
+                    !PreservesElementCount(other, frameCount, m_Outputs, other.m_Outputs))
+                    return false;
+                for (int kind = 0; kind < m_Kinds.Length; kind++)
+                {
+                    int first = m_Kinds[kind];
+                    int second = other.m_Kinds[kind];
+                    if (kind == (int)OrchestrationValueKind.Boolean)
+                    {
+                        first = checked((first + 63) / 64);
+                        second = checked((second + 63) / 64);
+                    }
+                    if (!PreservesElementCount(other, frameCount, first, second))
+                        return false;
+                }
+                return true;
+            }
+
+            bool PreservesElementCount(FramePoolBuilder other, int frameCount, int first, int second) =>
+                (long)frameCount * Math.Max(first, second) <=
+                (long)m_Count * first + (long)other.m_Count * second;
+
+            internal void MergeSharedAdmission(FramePoolBuilder other, int frameCount)
+            {
+                m_Count = frameCount;
+                MergeWidths(other);
+            }
 
             internal void AddOwner(int count, in OrchestrationExecutionOwnerStorage storage)
             {
