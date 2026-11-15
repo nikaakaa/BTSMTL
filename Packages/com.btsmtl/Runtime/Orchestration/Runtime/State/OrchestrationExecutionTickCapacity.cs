@@ -302,21 +302,32 @@ namespace BTSMTL.Orchestration
             {
                 int caller = ready.Dequeue();
                 prepared++;
+                var targets = new Dictionary<int, (long[] Weights, long RetainedStops)>();
                 foreach (OrchestrationTimelineTickContentCapacity timeline in calls[caller])
                 {
                     int owner = programs[caller].Operation(timeline.OperationIndex).ExecutionFrameOwnerOperationIndex;
-                    long advances = checked((long)budgets[caller].OuterInvocationCount * analyses[caller].ExecuteVisits[timeline.OperationIndex]);
-                    long stops = budgets[caller].OuterInvocationCount == 0 ? 0 :
-                        checked(capacity.OwnerInstances(caller).Span[owner] + advances);
                     foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in timeline.Content.GraphEntries.Span)
                     {
-                        int invocations = checked((int)(advances * entry.AdvanceInvocations + stops * entry.StopInvocations));
-                        OrchestrationProgramTickBudget target = budgets[entry.ProgramIndex];
-                        budgets[entry.ProgramIndex] = new OrchestrationProgramTickBudget(
-                            checked(target.OuterInvocationCount + invocations), target.StandaloneEvaluationCount);
-                        if (--incoming[entry.ProgramIndex] == 0)
-                            ready.Enqueue(entry.ProgramIndex);
+                        if (!targets.TryGetValue(entry.ProgramIndex, out var target))
+                            target = (new long[programs[caller].OperationCount], 0);
+                        target.Weights[timeline.OperationIndex] = checked(target.Weights[timeline.OperationIndex] +
+                            entry.AdvanceInvocations + entry.StopInvocations);
+                        if (budgets[caller].OuterInvocationCount != 0)
+                            target.RetainedStops = checked(target.RetainedStops +
+                                (long)capacity.OwnerInstances(caller).Span[owner] * entry.StopInvocations);
+                        targets[entry.ProgramIndex] = target;
+                        incoming[entry.ProgramIndex]--;
                     }
+                }
+                foreach (var target in targets)
+                {
+                    int invocations = checked((int)(checked((long)budgets[caller].OuterInvocationCount *
+                        analyses[caller].MaximumWeightedExecutions(target.Value.Weights)) + target.Value.RetainedStops));
+                    OrchestrationProgramTickBudget budget = budgets[target.Key];
+                    budgets[target.Key] = new OrchestrationProgramTickBudget(
+                        checked(budget.OuterInvocationCount + invocations), budget.StandaloneEvaluationCount);
+                    if (incoming[target.Key] == 0)
+                        ready.Enqueue(target.Key);
                 }
             }
             if (prepared != programs.Length)
@@ -337,8 +348,9 @@ namespace BTSMTL.Orchestration
             readonly long[] m_ValueVisits;
             int m_CountTarget = -1;
             CapacityMetric m_Metric;
+            long[] m_ExecutionWeights;
 
-            enum CapacityMetric { Evaluations, TraceEvents, StateFrames }
+            enum CapacityMetric { Evaluations, TraceEvents, StateFrames, WeightedExecutions }
             enum VisitPhase { Tick, Stop, ForceStop }
 
             internal ProgramAnalysis(OrchestrationProgram<TValue> program,
@@ -369,6 +381,7 @@ namespace BTSMTL.Orchestration
             internal long[] ExecuteVisits { get; }
             internal long InvocationEvaluations { get; private set; }
             internal long ValueEvaluations { get; private set; }
+            bool CountsExecutions => m_CountTarget >= 0 || m_Metric == CapacityMetric.WeightedExecutions;
 
             internal void Analyze()
             {
@@ -428,6 +441,19 @@ namespace BTSMTL.Orchestration
                 long events = enabled ? TraceMetric(CapacityMetric.TraceEvents) : 0;
                 long states = enabled ? TraceMetric(CapacityMetric.StateFrames) : 0;
                 return new OrchestrationTraceCapacity(events, states);
+            }
+
+            internal long MaximumWeightedExecutions(long[] weights)
+            {
+                m_ExecutionWeights = weights;
+                m_CountTarget = -1;
+                m_Metric = CapacityMetric.WeightedExecutions;
+                ClearBoundedVisits();
+                long maximum = 0;
+                for (int root = 0; root < m_Program.OperationCount; root++)
+                    maximum = Math.Max(maximum,
+                        checked(BoundedVisits(root, VisitPhase.Tick) + StoppedVisits(root)));
+                return maximum;
             }
 
             long TraceMetric(CapacityMetric metric)
@@ -510,7 +536,8 @@ namespace BTSMTL.Orchestration
                     throw new InvalidOperationException($"Program '{m_ProgramIndex}' has no finite invocation bound: operation '{index}' has a {(stop ? "stop" : "execution")} call cycle.");
                 m_ActiveVisits[mode][index] = true;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
-                long count = m_Metric != CapacityMetric.Evaluations ? LocalTraceCost(index, stop) :
+                long count = m_Metric == CapacityMetric.WeightedExecutions ? stop ? 0 : m_ExecutionWeights[index] :
+                    m_Metric != CapacityMetric.Evaluations ? LocalTraceCost(index, stop) :
                     m_CountTarget >= 0 ? !stop && index == m_CountTarget ? 1 : 0 :
                     stop ? 1 : checked(1 + ValueVisits(index, -1));
                 count = checked(count + 2 * InputVisits(index));
@@ -547,7 +574,7 @@ namespace BTSMTL.Orchestration
                             else
                                 child = checked(child + 2 * stopped);
                             count = checked(count + child +
-                                (m_CountTarget < 0 && edge.HasCondition
+                                (!CountsExecutions && edge.HasCondition
                                     ? 2 * ValueVisits(edge.ConditionOperationIndex, -1) : 0));
                         }
                     }
@@ -615,7 +642,7 @@ namespace BTSMTL.Orchestration
 
             long TransitionVisits(int index)
             {
-                if (m_CountTarget >= 0)
+                if (CountsExecutions)
                     return 0;
                 long count = 0;
                 foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Transition))
@@ -627,7 +654,7 @@ namespace BTSMTL.Orchestration
 
             long InputVisits(int index)
             {
-                if (m_CountTarget >= 0)
+                if (CountsExecutions)
                     return 0;
                 long count = 0;
                 foreach (ref readonly OrchestrationValueInputBinding input in m_Program.Inputs(index))
