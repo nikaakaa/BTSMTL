@@ -107,7 +107,7 @@ namespace BTSMTL.Timeline.Runtime
             ref TContext context)
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
         {
-            for (int index = 0; index < batch.Invocations.Length; index++)
+            for (int index = 0; index < batch.InvocationCount; index++)
             {
                 runtime.Workspace.EnterInvocation(batch.PlaybackSlot, index);
                 try

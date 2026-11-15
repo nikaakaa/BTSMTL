@@ -278,10 +278,42 @@ namespace BTSMTL.Timeline.Runtime
         internal TTime RequestedAdvance;
     }
 
-    internal struct OrchestrationTimelineInvocationFrame
+    internal readonly struct OrchestrationTimelineStoredInvocation<TTime> where TTime : unmanaged, IEquatable<TTime>
     {
-        internal int PlaybackSlot;
-        internal int InvocationIndex;
+        readonly OrchestrationExecutionEntry m_Entry;
+        readonly OrchestrationTimelineHook m_Hook;
+        readonly int m_ClipOrdinal;
+        readonly int m_Cycle;
+        readonly bool m_Marker;
+        readonly TTime m_Time;
+        readonly TTime m_PreviousTime;
+        readonly TTime m_WindowStartTime;
+        readonly TTime m_BodyStartFraction;
+        readonly TTime m_BodyEndFraction;
+
+        internal OrchestrationTimelineStoredInvocation(OrchestrationExecutionEntry entry,
+            OrchestrationTimelineHook hook, int clipOrdinal, int cycle, bool marker,
+            TTime time, TTime previousTime, TTime windowStartTime,
+            TTime bodyStartFraction, TTime bodyEndFraction)
+        {
+            m_Entry = entry;
+            m_Hook = hook;
+            m_ClipOrdinal = clipOrdinal;
+            m_Cycle = cycle;
+            m_Marker = marker;
+            m_Time = time;
+            m_PreviousTime = previousTime;
+            m_WindowStartTime = windowStartTime;
+            m_BodyStartFraction = bodyStartFraction;
+            m_BodyEndFraction = bodyEndFraction;
+        }
+
+        internal OrchestrationTimelineInvocation<TTime> Expand(int playbackSlot,
+            in OrchestrationTimelineOperationWork<TTime> work) =>
+            new(new OrchestrationTimelineInvocationToken(playbackSlot, work.Proposed.InvocationSequence,
+                    work.Proposed.Start.PlaybackIdentity, m_ClipOrdinal, m_Cycle, m_Marker),
+                m_Entry, m_Hook, work.Tick, work.SourceIdentityId,
+                m_Time, m_PreviousTime, m_WindowStartTime, m_BodyStartFraction, m_BodyEndFraction);
     }
 
     internal struct OrchestrationTimelineWorkspaceHeader
@@ -341,7 +373,7 @@ namespace BTSMTL.Timeline.Runtime
                 ClipCapacity = clips,
                 InvocationCapacity = invocations,
                 Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
-                Invocations = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks * invocations)),
+                Invocations = builder.Add<OrchestrationTimelineStoredInvocation<TTime>>(checked(playbacks * invocations)),
                 Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(preparationCopies * invocations)),
                 Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * boundaries)),
                 SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * syntheticBoundaries)),
@@ -351,7 +383,7 @@ namespace BTSMTL.Timeline.Runtime
                 ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(playbacks * capacity.TreeExitRequestsPerPlayback)),
                 SelectedTrees = builder.Add<bool>(checked(preparationCopies * clips)),
                 SelectedTreeOrdinals = builder.Add<int>(checked(preparationCopies * clips)),
-                InvocationFrames = builder.Add<OrchestrationTimelineInvocationFrame>(checked(playbacks + 1))
+                InvocationFrames = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks + 1))
             };
             m_Memory = new byte[builder.SizeBytes];
             OrchestrationMemoryImageWriter.Header<OrchestrationTimelineWorkspaceHeader>(m_Memory) = header;
@@ -381,8 +413,8 @@ namespace BTSMTL.Timeline.Runtime
         internal int InvocationCapacity => Header.InvocationCapacity;
         internal Span<OrchestrationTimelineOperationWork<TTime>> Operations =>
             Section<OrchestrationTimelineOperationWork<TTime>>(Header.Operations);
-        internal Span<OrchestrationTimelineInvocation<TTime>> Invocations =>
-            Section<OrchestrationTimelineInvocation<TTime>>(Header.Invocations);
+        internal Span<OrchestrationTimelineStoredInvocation<TTime>> Invocations =>
+            Section<OrchestrationTimelineStoredInvocation<TTime>>(Header.Invocations);
         internal Span<TimelineScheduledInvocation<TTime>> Scheduled =>
             Section<TimelineScheduledInvocation<TTime>>(Header.Scheduled);
         internal Span<TimelineSchedulingBoundary<TTime>> Boundaries =>
@@ -408,12 +440,8 @@ namespace BTSMTL.Timeline.Runtime
         public ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation =>
             ref InvocationAt(Header.InvocationDepth - 1);
 
-        public ref readonly OrchestrationTimelineInvocation<TTime> InvocationAt(int stackIndex)
-        {
-            OrchestrationTimelineInvocationFrame frame =
-                Section<OrchestrationTimelineInvocationFrame>(Header.InvocationFrames)[stackIndex];
-            return ref Invocations[checked(frame.PlaybackSlot * InvocationCapacity + frame.InvocationIndex)];
-        }
+        public ref readonly OrchestrationTimelineInvocation<TTime> InvocationAt(int stackIndex) =>
+            ref Section<OrchestrationTimelineInvocation<TTime>>(Header.InvocationFrames)[stackIndex];
 
         public ref readonly OrchestrationTimelineStart<TTime> CurrentStart =>
             ref Operations[CurrentInvocation.Token.PlaybackSlot].Proposed.Start;
@@ -425,12 +453,10 @@ namespace BTSMTL.Timeline.Runtime
         internal void EnterInvocation(int playbackSlot, int invocationIndex)
         {
             ref OrchestrationTimelineWorkspaceHeader header = ref Header;
-            Section<OrchestrationTimelineInvocationFrame>(header.InvocationFrames)[header.InvocationDepth++] =
-                new OrchestrationTimelineInvocationFrame
-                {
-                    PlaybackSlot = playbackSlot,
-                    InvocationIndex = invocationIndex
-                };
+            ref readonly OrchestrationTimelineStoredInvocation<TTime> stored =
+                ref Invocations[checked(playbackSlot * header.InvocationCapacity + invocationIndex)];
+            Section<OrchestrationTimelineInvocation<TTime>>(header.InvocationFrames)[header.InvocationDepth++] =
+                stored.Expand(playbackSlot, in Operations[playbackSlot]);
         }
 
         internal void LeaveInvocation() => Header.InvocationDepth--;

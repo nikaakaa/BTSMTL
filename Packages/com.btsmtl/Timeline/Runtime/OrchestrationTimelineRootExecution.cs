@@ -234,7 +234,7 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineBatch<OrchestrationTime> batch, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var workspace = m_Workspace.View;
-            for (int index = 0; index < batch.Invocations.Length; index++)
+            for (int index = 0; index < batch.InvocationCount; index++)
             {
                 workspace.EnterInvocation(batch.PlaybackSlot, index);
                 try

@@ -214,14 +214,14 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> treeRequests = scheduled.Slice(
                 markerCount, scheduledTreeCount);
             for (int i = 0; i < markerCount; i++)
-                AppendInvocation(slot, in work.Proposed.Start, in scheduled[i], ref work.InvocationCount);
+                AppendInvocation(slot, in scheduled[i], ref work.InvocationCount);
             for (int i = 0; i < treeRequests.Length; i++)
             {
                 ref readonly TimelineScheduledInvocation<TTime> request = ref treeRequests[i];
                 if (request.Hook != OrchestrationTimelineHook.Root ||
                     TimelineRuntimeScheduling<TTime, TClock>.IsActive(request.Ordinal, request.Cycle,
                         request.Time, request.Hook, treeRequests, active.Slice(0, activeCount)))
-                    AppendInvocation(slot, in work.Proposed.Start, in request, ref work.InvocationCount);
+                    AppendInvocation(slot, in request, ref work.InvocationCount);
             }
             if (!work.Paused && content.Mode == OrchestrationTimelinePlaybackMode.Once &&
                 clock.LessThanOrEqual(content.Duration, time))
@@ -284,7 +284,7 @@ namespace BTSMTL.Timeline.Runtime
                         clips[branch.ClipOrdinal].SortOrdinal, false,
                         OrchestrationTimelineHook.Destroy, clock.Zero, clock.Zero, clock.Zero,
                         branch.Cycle);
-                    AppendInvocation(slot, in playback.Start, in request, ref work.InvocationCount);
+                    AppendInvocation(slot, in request, ref work.InvocationCount);
                 }
             }
             return Batch(slot);
@@ -380,18 +380,15 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[slot];
             return new OrchestrationTimelineBatch<TTime>(slot, work.BatchSequence, work.Proposed.Progress.State,
-                m_Workspace.Invocations.Slice(checked(slot * m_Workspace.InvocationCapacity), work.InvocationCount));
+                work.InvocationCount);
         }
 
-        void AppendInvocation(int slot, in OrchestrationTimelineStart<TTime> start,
-            in TimelineScheduledInvocation<TTime> request, ref int count)
+        void AppendInvocation(int slot, in TimelineScheduledInvocation<TTime> request, ref int count)
         {
             OrchestrationExecutionEntry entry = request.Marker
                 ? m_Content.MarkerEntries[request.Ordinal]
                 : m_Content.ClipEntries[request.Ordinal].Entry(request.Hook);
             ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[slot];
-            var token = new OrchestrationTimelineInvocationToken(slot, work.Proposed.InvocationSequence,
-                start.PlaybackIdentity, request.Ordinal, request.Cycle, request.Marker);
             TClock clock = default;
             TTime duration = m_Content.Duration;
             TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
@@ -402,8 +399,8 @@ namespace BTSMTL.Timeline.Runtime
                     ? clock.One : TimelineRuntimeScheduling<TTime, TClock>.Fraction(work.PreviousTime,
                         work.RequestedAdvance, work.PreviousCycle, duration, request.Time, request.Cycle);
             m_Workspace.Invocations[checked(slot * m_Workspace.InvocationCapacity + count++)] =
-                new OrchestrationTimelineInvocation<TTime>(token, entry, request.Hook,
-                    work.Tick, work.SourceIdentityId,
+                new OrchestrationTimelineStoredInvocation<TTime>(entry, request.Hook,
+                    request.Ordinal, request.Cycle, request.Marker,
                     request.Time, request.PreviousTime, request.WindowStartTime,
                     startFraction, endFraction);
         }

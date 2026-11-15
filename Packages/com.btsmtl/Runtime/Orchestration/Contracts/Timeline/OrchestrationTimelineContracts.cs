@@ -156,18 +156,18 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationTimelineBatch(int playbackSlot, ulong sequence,
             OrchestrationTimelinePlaybackStatus status,
-            ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> invocations)
+            int invocationCount)
         {
             PlaybackSlot = playbackSlot;
             Sequence = sequence;
             Status = status;
-            Invocations = invocations;
+            InvocationCount = invocationCount;
         }
 
         public int PlaybackSlot { get; }
         public ulong Sequence { get; }
         public OrchestrationTimelinePlaybackStatus Status { get; }
-        public ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> Invocations { get; }
+        public int InvocationCount { get; }
     }
 
     public readonly struct OrchestrationTimelineEntryBinding
