@@ -133,7 +133,7 @@ namespace BTSMTL.Graphs
         public void PrepareOrdinals()
         {
             int written = 0;
-            for (int i = 0; i < m_Texts.Length; i++)
+            for (int i = 0; written < m_Count; i++)
             {
                 if (m_ReferenceCounts[i] == 0)
                     continue;
@@ -176,7 +176,6 @@ namespace BTSMTL.Graphs
             source.m_ContentRanks.AsSpan().CopyTo(m_ContentRanks);
             source.m_RosterRanks.AsSpan().CopyTo(m_RosterRanks);
             source.m_RuntimeRanks.AsSpan().CopyTo(m_RuntimeRanks);
-            source.m_SortedRuntimeIndices.AsSpan().CopyTo(m_SortedRuntimeIndices);
             source.m_ReferenceCounts.AsSpan().CopyTo(m_ReferenceCounts);
             source.m_FreeIndices.AsSpan().CopyTo(m_FreeIndices);
             source.m_References.AsSpan().CopyTo(m_References);
