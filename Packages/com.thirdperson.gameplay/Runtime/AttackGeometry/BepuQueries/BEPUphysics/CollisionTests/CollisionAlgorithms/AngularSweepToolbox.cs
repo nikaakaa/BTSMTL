@@ -11,7 +11,7 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
         readonly RigidTransform m_End;
         readonly FPVector3 m_Axis;
 
-        public RigidSweepMotion(RigidTransform start, RigidTransform end)
+        public RigidSweepMotion(in RigidTransform start, in RigidTransform end)
         {
             m_Start = start;
             m_End = end;
@@ -48,9 +48,9 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
         readonly RigidSweepMotion m_Root;
         readonly RigidTransform m_Local;
 
-        public ConvexSweepMotion(RigidTransform start, RigidTransform end, RigidTransform local)
+        public ConvexSweepMotion(in RigidSweepMotion root, RigidTransform local)
         {
-            m_Root = new RigidSweepMotion(start, end);
+            m_Root = root;
             m_Local = local;
         }
 

@@ -165,6 +165,7 @@ namespace ThirdPersonSimulation.AttackGeometry
                 NativePart[] sourceParts = m_Parts[segment.Track.ShapeIndex];
                 bool angular = segment.Track.Motion == SweepMotionModel.RigidRotation ||
                     query.TargetModel == SweepTargetModel.RigidRotation;
+                var sourceRootMotion = angular ? new RigidSweepMotion(in sourceStart, in sourceEnd) : default;
                 for (int targetIndex = 0; targetIndex < query.Targets.Length; targetIndex++)
                 {
                     ref readonly SweepTarget target = ref query.Targets[targetIndex];
@@ -186,6 +187,7 @@ namespace ThirdPersonSimulation.AttackGeometry
                         targetEnd = targetStart;
                     }
                     NativePart[] targetParts = m_Parts[target.ShapeIndex];
+                    var targetRootMotion = angular ? new RigidSweepMotion(in targetStart, in targetEnd) : default;
                     for (int sourcePartIndex = 0; sourcePartIndex < sourceParts.Length; sourcePartIndex++)
                     for (int targetPartIndex = 0; targetPartIndex < targetParts.Length; targetPartIndex++)
                     {
@@ -201,8 +203,8 @@ namespace ThirdPersonSimulation.AttackGeometry
                         RayHit hit;
                         if (angular)
                         {
-                            var sourceMotion = new ConvexSweepMotion(sourceStart, sourceEnd, sourcePart.LocalPose);
-                            var targetMotion = new ConvexSweepMotion(targetStart, targetEnd, targetPart.LocalPose);
+                            var sourceMotion = new ConvexSweepMotion(in sourceRootMotion, sourcePart.LocalPose);
+                            var targetMotion = new ConvexSweepMotion(in targetRootMotion, targetPart.LocalPose);
                             intersects = AngularSweepToolbox.Sweep(sourcePart.Shape, targetPart.Shape,
                                 in sourceMotion, in targetMotion, out hit, out iterationLimitReached, out initialOverlap);
                             positionAvailable = intersects;
