@@ -353,24 +353,27 @@ namespace BTSMTL.Graphs
 
         public T As<T>()
         {
-            if (typeof(T) == typeof(string) && Kind == GraphHostValueKind.Text)
-                return Reinterpret<string, T>(m_TextValue);
-            if (typeof(T) == typeof(bool) && Kind == GraphHostValueKind.Bool)
-                return Reinterpret<bool, T>(m_BoolValue);
-            if (typeof(T) == typeof(int) && Kind == GraphHostValueKind.Int32)
-                return Reinterpret<int, T>(m_IntValue);
-            if (typeof(T) == typeof(ObjectHandle) && Kind == GraphHostValueKind.ObjectHandle)
-                return Reinterpret<ObjectHandle, T>(m_ObjectHandleValue);
-            if (typeof(T) == typeof(float) && Kind == GraphHostValueKind.Float32)
-                return Reinterpret<float, T>(m_FloatValue);
-            if (typeof(T) == typeof(UnityEngine.Vector2) && Kind == GraphHostValueKind.Vector2)
-                return Reinterpret<UnityEngine.Vector2, T>(m_Vector2Value);
-            if (typeof(T) == typeof(UnityEngine.Vector3) && Kind == GraphHostValueKind.Vector3)
-                return Reinterpret<UnityEngine.Vector3, T>(m_Vector3Value);
-            if (typeof(T) == typeof(UnityEngine.Quaternion) && Kind == GraphHostValueKind.Quaternion)
-                return Reinterpret<UnityEngine.Quaternion, T>(m_QuaternionValue);
-            if (typeof(T).IsEnum && Kind == GraphHostValueKind.Enum && m_EnumType == typeof(T))
-                return GraphEnumValue<T>.FromInt32(m_EnumValue);
+            switch (Kind)
+            {
+                case GraphHostValueKind.Text when typeof(T) == typeof(string):
+                    return Reinterpret<string, T>(m_TextValue);
+                case GraphHostValueKind.Bool when typeof(T) == typeof(bool):
+                    return Reinterpret<bool, T>(m_BoolValue);
+                case GraphHostValueKind.Int32 when typeof(T) == typeof(int):
+                    return Reinterpret<int, T>(m_IntValue);
+                case GraphHostValueKind.ObjectHandle when typeof(T) == typeof(ObjectHandle):
+                    return Reinterpret<ObjectHandle, T>(m_ObjectHandleValue);
+                case GraphHostValueKind.Float32 when typeof(T) == typeof(float):
+                    return Reinterpret<float, T>(m_FloatValue);
+                case GraphHostValueKind.Vector2 when typeof(T) == typeof(UnityEngine.Vector2):
+                    return Reinterpret<UnityEngine.Vector2, T>(m_Vector2Value);
+                case GraphHostValueKind.Vector3 when typeof(T) == typeof(UnityEngine.Vector3):
+                    return Reinterpret<UnityEngine.Vector3, T>(m_Vector3Value);
+                case GraphHostValueKind.Quaternion when typeof(T) == typeof(UnityEngine.Quaternion):
+                    return Reinterpret<UnityEngine.Quaternion, T>(m_QuaternionValue);
+                case GraphHostValueKind.Enum when typeof(T).IsEnum && m_EnumType == typeof(T):
+                    return GraphEnumValue<T>.FromInt32(m_EnumValue);
+            }
             throw new InvalidOperationException(
                 $"Event graph value kind '{Kind}' cannot be read as '{typeof(T).FullName}'.");
         }
@@ -380,18 +383,19 @@ namespace BTSMTL.Graphs
 
         public static GraphHostValue FromTyped<T>(T value)
         {
-            if (typeof(T) == typeof(bool)) return FromBool(Unsafe.As<T, bool>(ref value));
-            if (typeof(T) == typeof(int)) return FromInt32(Unsafe.As<T, int>(ref value));
-            if (typeof(T) == typeof(ObjectHandle)) return FromObjectHandle(Unsafe.As<T, ObjectHandle>(ref value));
-            if (typeof(T) == typeof(float)) return FromFloat32(Unsafe.As<T, float>(ref value));
-            if (typeof(T) == typeof(UnityEngine.Vector2)) return FromVector2(Unsafe.As<T, UnityEngine.Vector2>(ref value));
-            if (typeof(T) == typeof(UnityEngine.Vector3)) return FromVector3(Unsafe.As<T, UnityEngine.Vector3>(ref value));
-            if (typeof(T) == typeof(UnityEngine.Quaternion)) return FromQuaternion(Unsafe.As<T, UnityEngine.Quaternion>(ref value));
-            if (typeof(T) == typeof(string)) return FromText(Unsafe.As<T, string>(ref value));
-            if (typeof(T).IsEnum)
+            Type valueType = typeof(T);
+            if (valueType == typeof(bool)) return FromBool(Unsafe.As<T, bool>(ref value));
+            if (valueType == typeof(int)) return FromInt32(Unsafe.As<T, int>(ref value));
+            if (valueType == typeof(ObjectHandle)) return FromObjectHandle(Unsafe.As<T, ObjectHandle>(ref value));
+            if (valueType == typeof(float)) return FromFloat32(Unsafe.As<T, float>(ref value));
+            if (valueType == typeof(UnityEngine.Vector2)) return FromVector2(Unsafe.As<T, UnityEngine.Vector2>(ref value));
+            if (valueType == typeof(UnityEngine.Vector3)) return FromVector3(Unsafe.As<T, UnityEngine.Vector3>(ref value));
+            if (valueType == typeof(UnityEngine.Quaternion)) return FromQuaternion(Unsafe.As<T, UnityEngine.Quaternion>(ref value));
+            if (valueType == typeof(string)) return FromText(Unsafe.As<T, string>(ref value));
+            if (valueType.IsEnum)
                 return new GraphHostValue(GraphHostValueKind.Enum, false, 0, 0f, default, default,
-                    default, typeof(T), GraphEnumValue<T>.ToInt32(value));
-            throw new InvalidOperationException($"Unsupported graph value type '{typeof(T).FullName}'.");
+                    default, valueType, GraphEnumValue<T>.ToInt32(value));
+            throw new InvalidOperationException($"Unsupported graph value type '{valueType.FullName}'.");
         }
 
         void RequireKind(GraphHostValueKind expected)
