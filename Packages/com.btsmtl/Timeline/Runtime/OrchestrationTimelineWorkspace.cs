@@ -271,11 +271,8 @@ namespace BTSMTL.Timeline.Runtime
         internal bool Stop;
         internal bool Paused;
         internal int InvocationCount;
-        internal int MarkerCount;
         internal int InjectedExitCount;
         internal int ProducedExitCount;
-        internal int ScheduledTreeOffset;
-        internal int ScheduledTreeCount;
         internal TTime PreviousTime;
         internal int PreviousCycle;
         internal TTime RequestedAdvance;
@@ -293,6 +290,7 @@ namespace BTSMTL.Timeline.Runtime
         internal int ClipCapacity;
         internal int InvocationCapacity;
         internal int InvocationDepth;
+        internal int SelectedTreeCount;
         internal ulong BatchSequence;
         internal OrchestrationMemorySection Operations;
         internal OrchestrationMemorySection Invocations;
@@ -305,7 +303,6 @@ namespace BTSMTL.Timeline.Runtime
         internal OrchestrationMemorySection ProducedExits;
         internal OrchestrationMemorySection SelectedTrees;
         internal OrchestrationMemorySection SelectedTreeOrdinals;
-        internal OrchestrationMemorySection SelectedTreeCounts;
         internal OrchestrationMemorySection InvocationFrames;
     }
 
@@ -345,16 +342,15 @@ namespace BTSMTL.Timeline.Runtime
                 InvocationCapacity = invocations,
                 Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
                 Invocations = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks * invocations)),
-                Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(playbacks * invocations)),
+                Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(preparationCopies * invocations)),
                 Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * boundaries)),
                 SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * syntheticBoundaries)),
                 ActiveTrees = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * capacity.ActiveTreesPerPlayback)),
                 EvaluationFirstCycles = builder.Add<long>(checked(playbacks * capacity.TreeExitWindowsPerPlayback)),
                 EvaluationExitBits = builder.Add<ulong>(checked(playbacks * capacity.TreeExitWordsPerPlayback)),
                 ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(playbacks * capacity.TreeExitRequestsPerPlayback)),
-                SelectedTrees = builder.Add<bool>(checked(playbacks * clips)),
-                SelectedTreeOrdinals = builder.Add<int>(checked(playbacks * clips)),
-                SelectedTreeCounts = builder.Add<int>(playbacks),
+                SelectedTrees = builder.Add<bool>(checked(preparationCopies * clips)),
+                SelectedTreeOrdinals = builder.Add<int>(checked(preparationCopies * clips)),
                 InvocationFrames = builder.Add<OrchestrationTimelineInvocationFrame>(checked(playbacks + 1))
             };
             m_Memory = new byte[builder.SizeBytes];
@@ -401,7 +397,7 @@ namespace BTSMTL.Timeline.Runtime
             Section<OrchestrationTimelineClipOccurrence>(Header.ProducedExits);
         internal Span<bool> SelectedTrees => Section<bool>(Header.SelectedTrees);
         internal Span<int> SelectedTreeOrdinals => Section<int>(Header.SelectedTreeOrdinals);
-        internal Span<int> SelectedTreeCounts => Section<int>(Header.SelectedTreeCounts);
+        internal ref int SelectedTreeCount => ref Header.SelectedTreeCount;
 
         internal ulong NextBatchSequence() => checked(++Header.BatchSequence);
 

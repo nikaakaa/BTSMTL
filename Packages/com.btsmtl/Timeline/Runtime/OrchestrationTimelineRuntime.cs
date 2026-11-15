@@ -191,33 +191,30 @@ namespace BTSMTL.Timeline.Runtime
                 if (!boundary.Enter && clips[boundary.ClipOrdinal].TreeDecision)
                     evaluationExits.SetExited(boundary.ClipOrdinal, boundary.Cycle);
             TimelineTreeExitView consumed = evaluationExits.View;
-            int invocationOffset = checked(slot * workspace.InvocationCapacity);
             Span<TimelineScheduledInvocation<TTime>> scheduled = workspace.Scheduled;
             TTime requestedAdvance = clock.Subtract(target, previous);
             work.RequestedAdvance = requestedAdvance;
-            work.MarkerCount = TimelineRuntimeScheduling<TTime, TClock>.Markers(content.Markers, previous, previousCycle,
+            int markerCount = TimelineRuntimeScheduling<TTime, TClock>.Markers(content.Markers, previous, previousCycle,
                 time, cycle, content.Duration,
                 !work.Paused && playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending,
-                scheduled.Slice(invocationOffset, workspace.InvocationCapacity));
-            work.ScheduledTreeOffset = checked(invocationOffset + work.MarkerCount);
-            int clipOffset = checked(slot * workspace.ClipCapacity);
-            work.ScheduledTreeCount = TimelineRuntimeScheduling<TTime, TClock>.Trees(clips,
+                scheduled);
+            int scheduledTreeCount = TimelineRuntimeScheduling<TTime, TClock>.Trees(clips,
                 boundaryOutput.Slice(0, boundaryCount), active.Slice(0, activeCount),
                 previous, previousCycle, time, cycle, content.Duration,
                 loop && !work.Paused, consumed,
-                workspace.SelectedTrees.Slice(clipOffset, workspace.ClipCapacity),
-                workspace.SelectedTreeOrdinals.Slice(clipOffset, workspace.ClipCapacity),
-                ref workspace.SelectedTreeCounts[slot],
-                scheduled.Slice(work.ScheduledTreeOffset));
-            work.ScheduledTreeCount += TimelineRuntimeScheduling<TTime, TClock>.ContinueTrees(clips, active.Slice(0, activeCount),
+                workspace.SelectedTrees,
+                workspace.SelectedTreeOrdinals,
+                ref workspace.SelectedTreeCount,
+                scheduled.Slice(markerCount));
+            scheduledTreeCount += TimelineRuntimeScheduling<TTime, TClock>.ContinueTrees(clips, active.Slice(0, activeCount),
                 previous, previousCycle, time, cycle, content.Duration, consumed,
-                scheduled.Slice(work.ScheduledTreeOffset + work.ScheduledTreeCount,
-                    workspace.InvocationCapacity - work.MarkerCount - work.ScheduledTreeCount));
-            TimelineRuntimeScheduling<TTime, TClock>.SortTrees(scheduled.Slice(work.ScheduledTreeOffset, work.ScheduledTreeCount));
+                scheduled.Slice(markerCount + scheduledTreeCount,
+                    workspace.InvocationCapacity - markerCount - scheduledTreeCount));
+            TimelineRuntimeScheduling<TTime, TClock>.SortTrees(scheduled.Slice(markerCount, scheduledTreeCount));
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> treeRequests = scheduled.Slice(
-                work.ScheduledTreeOffset, work.ScheduledTreeCount);
-            for (int i = 0; i < work.MarkerCount; i++)
-                AppendInvocation(slot, in work.Proposed.Start, in scheduled[invocationOffset + i], ref work.InvocationCount);
+                markerCount, scheduledTreeCount);
+            for (int i = 0; i < markerCount; i++)
+                AppendInvocation(slot, in work.Proposed.Start, in scheduled[i], ref work.InvocationCount);
             for (int i = 0; i < treeRequests.Length; i++)
             {
                 ref readonly TimelineScheduledInvocation<TTime> request = ref treeRequests[i];
