@@ -282,9 +282,9 @@ namespace BTSMTL.Timeline.Runtime
     {
         readonly OrchestrationExecutionEntry m_Entry;
         readonly OrchestrationTimelineHook m_Hook;
+        readonly bool m_Marker;
         readonly int m_ClipOrdinal;
         readonly int m_Cycle;
-        readonly bool m_Marker;
         readonly TTime m_Time;
         readonly TTime m_PreviousTime;
         readonly TTime m_WindowStartTime;
