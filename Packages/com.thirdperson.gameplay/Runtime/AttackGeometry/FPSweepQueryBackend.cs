@@ -199,20 +199,29 @@ namespace ThirdPersonSimulation.AttackGeometry
                 bool angular = segment.Track.Motion == SweepMotionModel.RigidRotation ||
                     query.TargetModel == SweepTargetModel.RigidRotation;
                 var sourceRootMotion = angular ? new RigidSweepMotion(in sourceStart, in sourceEnd) : default;
+                FP targetRangeStart = default;
+                FP targetRangeEnd = default;
+                FP startFraction = default;
+                FP endFraction = default;
+                bool targetRangePrepared = false;
                 for (int targetIndex = 0; targetIndex < query.Targets.Length; targetIndex++)
                 {
                     ref readonly SweepTarget target = ref query.Targets[targetIndex];
                     if (!query.Filter.Includes(target.Identity.TargetId, target.Layer, target.IsTrigger))
                         continue;
-                    FP startFraction = FP._0;
-                    FP endFraction = FP._0;
                     if (movingTarget)
                     {
                         if (segment.Start.Time < target.Start.Time || segment.End.Time > target.End.Time)
                             return results.Fail(SweepQueryStatus.TargetTimeMismatch, segmentIndex, target.Identity);
-                        FP duration = target.End.Time - target.Start.Time;
-                        startFraction = (segment.Start.Time - target.Start.Time) / duration;
-                        endFraction = (segment.End.Time - target.Start.Time) / duration;
+                        if (!targetRangePrepared || target.Start.Time != targetRangeStart || target.End.Time != targetRangeEnd)
+                        {
+                            targetRangeStart = target.Start.Time;
+                            targetRangeEnd = target.End.Time;
+                            FP duration = targetRangeEnd - targetRangeStart;
+                            startFraction = (segment.Start.Time - targetRangeStart) / duration;
+                            endFraction = (segment.End.Time - targetRangeStart) / duration;
+                            targetRangePrepared = true;
+                        }
                     }
                     FPVector3 targetStartPosition = RigidSweepMotion.PositionAt(
                         target.Start.Pose.Position, target.End.Pose.Position, startFraction);
@@ -225,9 +234,20 @@ namespace ThirdPersonSimulation.AttackGeometry
                     RigidTransform targetEnd;
                     if (movingTarget)
                     {
-                        var targetMotion = new RigidSweepMotion(ToGeometry(target.Start.Pose), ToGeometry(target.End.Pose));
-                        targetStart = targetMotion.At(startFraction);
-                        targetEnd = targetMotion.At(endFraction);
+                        RigidTransform before = ToGeometry(target.Start.Pose);
+                        RigidTransform after = ToGeometry(target.End.Pose);
+                        if ((startFraction == FP._0 || startFraction == FP._1) &&
+                            (endFraction == FP._0 || endFraction == FP._1))
+                        {
+                            targetStart = startFraction == FP._0 ? before : after;
+                            targetEnd = endFraction == FP._0 ? before : after;
+                        }
+                        else
+                        {
+                            var targetMotion = new RigidSweepMotion(in before, in after);
+                            targetStart = targetMotion.At(startFraction);
+                            targetEnd = targetMotion.At(endFraction);
+                        }
                     }
                     else
                     {
