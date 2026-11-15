@@ -281,10 +281,11 @@ namespace BTSMTL.Graphs
             {
                 m_Output.BeginWrite();
                 Span<TValue> values = CandidateValues;
+                var storage = m_Bindings.Program.ExecutionStorage.Values.Span;
                 for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
                 {
                     int slot = m_Bindings.PublishedSlots[i];
-                    int valueIndex = m_Bindings.Program.ExecutionStorage.Values.Span[slot].ValueIndex;
+                    int valueIndex = storage[slot].ValueIndex;
                     int supplied = m_RuntimePorts == null ? -1 :
                         FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
                     TValue value = supplied >= 0
