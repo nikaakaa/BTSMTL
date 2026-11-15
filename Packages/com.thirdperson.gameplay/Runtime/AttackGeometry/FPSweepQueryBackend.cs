@@ -12,8 +12,12 @@ namespace ThirdPersonSimulation.AttackGeometry
     public sealed class FPSweepQueryBackend
     {
         public const string ImplementationId = "bepuphysics1int/9237daa68c3014fd7c2e93c6a99326ba5248d60b/fp-q48.16-mpr-gjk-angular-query-v4";
+        // 分离判定额外留出的距离，覆盖接触容差与定点舍入。
+        static readonly FP SeparationMargin = FP._0_01;
         readonly SweepShape[] m_Shapes;
         readonly NativePart[][] m_Parts;
+        // 每个形状所有部件相对根点的最大包络半径（部件偏移 + 最大半径 + 碰撞边距）。
+        readonly FP[] m_Bounds;
 
         readonly struct NativePart
         {
@@ -30,14 +34,43 @@ namespace ThirdPersonSimulation.AttackGeometry
         {
             m_Shapes = shapes.ToArray();
             m_Parts = new NativePart[shapes.Length][];
+            m_Bounds = new FP[shapes.Length];
             for (int i = 0; i < shapes.Length; i++)
+            {
                 m_Parts[i] = PrepareShape(i);
+                m_Bounds[i] = Bound(m_Parts[i]);
+            }
         }
 
         public void SetSphereRadius(int shapeIndex, FP radius)
         {
             m_Shapes[shapeIndex] = SweepShape.Sphere(m_Shapes[shapeIndex].Id, radius);
             ((SphereShape)m_Parts[shapeIndex][0].Shape).SetRadius(radius);
+            m_Bounds[shapeIndex] = Bound(m_Parts[shapeIndex]);
+        }
+
+        static FP Bound(NativePart[] parts)
+        {
+            FP bound = FP._0;
+            for (int i = 0; i < parts.Length; i++)
+                bound = FPMath.Max(bound, Toolbox.Length(parts[i].LocalPose.Position) +
+                    parts[i].Shape.MaximumRadius + parts[i].Shape.CollisionMargin);
+            return bound;
+        }
+
+        // 两根点都沿直线运动、部件绕根点旋转不改变到根点的距离，所以整段相对根点轨迹到原点的最近距离
+        // 超过双方包络半径之和时，任何时刻表面都不会进入接触容差，精确扫掠必然无候选。
+        static bool Separated(FPVector3 startOffset, FPVector3 endOffset, FP reach)
+        {
+            FPVector3 delta = endOffset - startOffset;
+            FP lengthSquared = FPVector3.Dot(delta, delta);
+            FPVector3 closest = startOffset;
+            if (lengthSquared > FP._0)
+            {
+                FP t = FPMath.Clamp01(-FPVector3.Dot(startOffset, delta) / lengthSquared);
+                closest = startOffset + delta * t;
+            }
+            return FPVector3.Dot(closest, closest) > reach * reach;
         }
 
         public FP AngularContactTolerance => AngularSweepToolbox.ContactTolerance;
@@ -186,6 +219,9 @@ namespace ThirdPersonSimulation.AttackGeometry
                         targetStart = ToGeometry(target.Start.Pose);
                         targetEnd = targetStart;
                     }
+                    if (Separated(sourceStart.Position - targetStart.Position, sourceEnd.Position - targetEnd.Position,
+                            m_Bounds[segment.Track.ShapeIndex] + m_Bounds[target.ShapeIndex] + SeparationMargin))
+                        continue;
                     NativePart[] targetParts = m_Parts[target.ShapeIndex];
                     var targetRootMotion = angular ? new RigidSweepMotion(in targetStart, in targetEnd) : default;
                     for (int sourcePartIndex = 0; sourcePartIndex < sourceParts.Length; sourcePartIndex++)
