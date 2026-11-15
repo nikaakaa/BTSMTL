@@ -175,12 +175,88 @@ namespace BTSMTL.Orchestration
 
     public sealed class OrchestrationExecutionTickCapacity
     {
-        OrchestrationExecutionTickCapacity(OrchestrationProgramTickCapacity[] programs)
+        readonly int[] m_RootInvocations;
+        readonly OrchestrationExecutionCapacity m_ExecutionCapacity;
+        readonly InvocationCostCall[] m_InvocationCalls;
+
+        OrchestrationExecutionTickCapacity(OrchestrationProgramTickCapacity[] programs,
+            int[] rootInvocations, OrchestrationExecutionCapacity executionCapacity,
+            InvocationCostCall[] invocationCalls)
         {
             Programs = programs;
+            m_RootInvocations = rootInvocations;
+            m_ExecutionCapacity = executionCapacity;
+            m_InvocationCalls = invocationCalls;
         }
 
         public ReadOnlyMemory<OrchestrationProgramTickCapacity> Programs { get; }
+
+        public int CountExecutions(ReadOnlySpan<ReadOnlyMemory<int>> weights, int maximumRootInvocations)
+        {
+            var costs = new long[Programs.Length];
+            var order = new int[Programs.Length];
+            var ownerValues = new int[Programs.Length][];
+            var ownerWeights = new ReadOnlyMemory<int>[Programs.Length];
+            for (int programIndex = 0; programIndex < Programs.Length; programIndex++)
+            {
+                OrchestrationProgramTickCapacity program = Programs.Span[programIndex];
+                order[programIndex] = programIndex;
+                ownerWeights[programIndex] = ownerValues[programIndex] = new int[program.Operations.Length];
+                int outer = program.Budget.OuterInvocationCount;
+                if (outer == 0)
+                    continue;
+                for (int operation = 0; operation < program.Operations.Length; operation++)
+                {
+                    long invocations = checked(program.Operations.Span[operation].ExecuteInvocations +
+                        program.Timelines.Span[operation].AdvanceCount);
+                    costs[programIndex] = checked(costs[programIndex] +
+                        weights[programIndex].Span[operation] * (invocations / outer));
+                }
+            }
+            foreach (ref readonly InvocationCostCall invocation in m_InvocationCalls.AsSpan())
+            {
+                OrchestrationTimelineTickContentCapacity call = invocation.Content;
+                OrchestrationProgramTickCapacity program = Programs.Span[call.ProgramIndex];
+                int outer = program.Budget.OuterInvocationCount;
+                if (outer == 0)
+                    continue;
+                long advances = 0;
+                long stops = 0;
+                foreach (ref readonly OrchestrationTimelineEntryTickCapacity entry in call.Content.GraphEntries.Span)
+                {
+                    long targetCost = costs[entry.ProgramIndex];
+                    advances = checked(advances + targetCost *
+                        checked(entry.AdvanceInvocations + entry.StopInvocations));
+                    stops = checked(stops + targetCost * entry.StopInvocations);
+                }
+                long visits = program.Timelines.Span[call.OperationIndex].AdvanceCount / outer;
+                costs[call.ProgramIndex] = checked(costs[call.ProgramIndex] + visits * advances);
+                ownerValues[call.ProgramIndex][invocation.OwnerOperationIndex] = checked(
+                    ownerValues[call.ProgramIndex][invocation.OwnerOperationIndex] + (int)stops);
+            }
+            long total = m_ExecutionCapacity.CountOwnerElements(ownerWeights);
+            Array.Sort(costs, order);
+            int remaining = maximumRootInvocations;
+            for (int index = order.Length - 1; index >= 0 && remaining != 0; index--)
+            {
+                int count = Math.Min(remaining, m_RootInvocations[order[index]]);
+                total = checked(total + costs[index] * count);
+                remaining -= count;
+            }
+            return checked((int)total);
+        }
+
+        readonly struct InvocationCostCall
+        {
+            internal InvocationCostCall(in OrchestrationTimelineTickContentCapacity content, int ownerOperationIndex)
+            {
+                Content = content;
+                OwnerOperationIndex = ownerOperationIndex;
+            }
+
+            internal readonly OrchestrationTimelineTickContentCapacity Content;
+            internal readonly int OwnerOperationIndex;
+        }
 
         public static OrchestrationExecutionTickCapacity Prepare<TValue>(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -209,7 +285,8 @@ namespace BTSMTL.Orchestration
                 analyses[programIndex] = new ProgramAnalysis<TValue>(programs[programIndex], extensions[programIndex], programIndex);
                 analyses[programIndex].Analyze();
             }
-            OrchestrationProgramTickBudget[] executionBudgets = PrepareBudgets(programs, budgets, executionCapacity, timelines, analyses);
+            OrchestrationProgramTickBudget[] executionBudgets = PrepareBudgets(programs, budgets, executionCapacity,
+                timelines, analyses, out int[] programOrder);
             var result = new OrchestrationProgramTickCapacity[programs.Length];
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
@@ -274,13 +351,29 @@ namespace BTSMTL.Orchestration
                 result[programIndex] = new OrchestrationProgramTickCapacity(in budget, evaluations,
                     operations, timelineResults, in cursorOutputs, in trace);
             }
-            return new OrchestrationExecutionTickCapacity(result);
+            var rootInvocations = new int[programs.Length];
+            var orderRanks = new int[programs.Length];
+            for (int index = 0; index < programs.Length; index++)
+            {
+                rootInvocations[index] = budgets[index].OuterInvocationCount;
+                orderRanks[programOrder[index]] = index;
+            }
+            var invocationCalls = new InvocationCostCall[timelineContents.Length];
+            for (int index = 0; index < invocationCalls.Length; index++)
+            {
+                ref readonly OrchestrationTimelineTickContentCapacity content = ref timelineContents[index];
+                invocationCalls[index] = new InvocationCostCall(in content,
+                    programs[content.ProgramIndex].Operation(content.OperationIndex).ExecutionFrameOwnerOperationIndex);
+            }
+            Array.Sort(invocationCalls, (left, right) => orderRanks[right.Content.ProgramIndex]
+                .CompareTo(orderRanks[left.Content.ProgramIndex]));
+            return new OrchestrationExecutionTickCapacity(result, rootInvocations, executionCapacity, invocationCalls);
         }
 
         static OrchestrationProgramTickBudget[] PrepareBudgets<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
             ReadOnlySpan<OrchestrationProgramTickBudget> roots, OrchestrationExecutionCapacity capacity,
             Dictionary<(int Program, int Operation), OrchestrationTimelineTickContentCapacity> timelines,
-            ProgramAnalysis<TValue>[] analyses) where TValue : unmanaged
+            ProgramAnalysis<TValue>[] analyses, out int[] programOrder) where TValue : unmanaged
         {
             var incoming = new int[programs.Length];
             var calls = new List<OrchestrationTimelineTickContentCapacity>[programs.Length];
@@ -297,10 +390,12 @@ namespace BTSMTL.Orchestration
                 if (incoming[program] == 0)
                     ready.Enqueue(program);
             OrchestrationProgramTickBudget[] budgets = roots.ToArray();
+            programOrder = new int[programs.Length];
             int prepared = 0;
             while (ready.Count != 0)
             {
                 int caller = ready.Dequeue();
+                programOrder[prepared] = caller;
                 prepared++;
                 foreach (OrchestrationTimelineTickContentCapacity timeline in calls[caller])
                 {
