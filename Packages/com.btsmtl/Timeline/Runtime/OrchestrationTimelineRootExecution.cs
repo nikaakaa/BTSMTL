@@ -236,7 +236,7 @@ namespace BTSMTL.Timeline.Runtime
             var workspace = m_Workspace.View;
             for (int index = 0; index < batch.InvocationCount; index++)
             {
-                workspace.EnterInvocation(batch.PlaybackSlot, index);
+                workspace.EnterInvocation<OrchestrationTimeClock>(m_Root.Logic.Content.View, batch.PlaybackSlot, index);
                 try
                 {
                     OrchestrationTimelineInvocationFacts invocation = OrchestrationTimelineDispatch<TValue, TContext,

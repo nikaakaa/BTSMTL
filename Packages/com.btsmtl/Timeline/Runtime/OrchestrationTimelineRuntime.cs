@@ -385,24 +385,10 @@ namespace BTSMTL.Timeline.Runtime
 
         void AppendInvocation(int slot, in TimelineScheduledInvocation<TTime> request, ref int count)
         {
-            OrchestrationExecutionEntry entry = request.Marker
-                ? m_Content.MarkerEntries[request.Ordinal]
-                : m_Content.ClipEntries[request.Ordinal].Entry(request.Hook);
-            ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[slot];
-            TClock clock = default;
-            TTime duration = m_Content.Duration;
-            TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
-                work.PreviousTime, work.RequestedAdvance, work.PreviousCycle,
-                duration, request.PreviousTime, request.Cycle);
-            TTime endFraction = work.Stop ? clock.Zero :
-                clock.IsZero(work.RequestedAdvance) && request.Hook == OrchestrationTimelineHook.Root
-                    ? clock.One : TimelineRuntimeScheduling<TTime, TClock>.Fraction(work.PreviousTime,
-                        work.RequestedAdvance, work.PreviousCycle, duration, request.Time, request.Cycle);
             m_Workspace.Invocations[checked(slot * m_Workspace.InvocationCapacity + count++)] =
-                new OrchestrationTimelineStoredInvocation<TTime>(entry, request.Hook,
+                new OrchestrationTimelineStoredInvocation<TTime>(request.Hook,
                     request.Ordinal, request.Cycle, request.Marker,
-                    request.Time, request.PreviousTime, request.WindowStartTime,
-                    startFraction, endFraction);
+                    request.Time, request.PreviousTime, request.WindowStartTime);
         }
     }
 

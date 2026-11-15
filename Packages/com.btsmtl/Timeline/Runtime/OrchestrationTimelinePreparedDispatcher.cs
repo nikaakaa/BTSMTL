@@ -109,7 +109,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             for (int index = 0; index < batch.InvocationCount; index++)
             {
-                runtime.Workspace.EnterInvocation(batch.PlaybackSlot, index);
+                runtime.Workspace.EnterInvocation<TClock>(runtime.Content, batch.PlaybackSlot, index);
                 try
                 {
                     OrchestrationTimelineInvocationFacts invocation = ReadInvocationFacts(runtime);
