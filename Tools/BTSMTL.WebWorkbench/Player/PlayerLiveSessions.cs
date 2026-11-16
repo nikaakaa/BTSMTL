@@ -217,6 +217,13 @@ public sealed class PlayerLiveSessions
         {
             lock (player.Gate)
             {
+                // 宿主确认的预览目标就是最后一次载入：上一次载入还没有回执时不接新载入，
+                // 否则 Player 拒绝的这次会顶替在途载入，回执到达后目标永远对不上。
+                if (player.LastLoad?["commandId"] is JsonNode pending && !player.Acks.ContainsKey((string)pending!))
+                {
+                    player.Forget(commandId!);
+                    throw new InvalidOperationException("上一次载入尚未完成。");
+                }
                 player.LastLoad = (JsonObject)resolved.DeepClone();
                 player.LatestFrame = null;
             }
