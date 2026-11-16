@@ -10,17 +10,17 @@ namespace BTSMTL.Orchestration
             ulong tick) where TValue : unmanaged
         {
             // 宿主只对当前输入状态更代；冻结来源快照保留其原 tick。
-            for (int programIndex = 0; programIndex < programs.Length; programIndex++)
+            for (int index = 0; index < currentOverrides.Length; index++)
             {
-                OrchestrationProgram<TValue> program = programs[programIndex];
-                for (int index = 0; index < currentOverrides.Length; index++)
+                ref OrchestrationValueOverride<TValue> value = ref currentOverrides[index];
+                if (value.Mode == OrchestrationValueOverrideMode.None ||
+                    value.Address.Kind != OrchestrationValueOverrideKind.Blackboard ||
+                    value.Address.Owner.InvocationGeneration == tick)
+                    continue;
+                for (int programIndex = 0; programIndex < programs.Length; programIndex++)
                 {
-                    ref OrchestrationValueOverride<TValue> value = ref currentOverrides[index];
-                    if (value.Mode != OrchestrationValueOverrideMode.None &&
-                        value.Address.Kind == OrchestrationValueOverrideKind.Blackboard &&
-                        value.Address.Owner.SkillContentId == skillContentIds[programIndex] &&
-                        program.Blackboard(value.Address.Slot).ScopeKind == OrchestrationScopeKind.Frame &&
-                        value.Address.Owner.InvocationGeneration != tick)
+                    if (value.Address.Owner.SkillContentId == skillContentIds[programIndex] &&
+                        programs[programIndex].Blackboard(value.Address.Slot).ScopeKind == OrchestrationScopeKind.Frame)
                         value.Retire();
                 }
             }
