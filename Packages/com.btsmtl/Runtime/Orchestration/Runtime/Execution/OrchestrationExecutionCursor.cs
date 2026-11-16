@@ -17,6 +17,7 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationRange> m_InputRows;
         readonly ReadOnlySpan<OrchestrationRange> m_OutputRows;
         readonly Span<TValue> m_ScheduledValues;
+        readonly ReadOnlySpan<TValue> m_Constants;
         readonly Span<OrchestrationScheduledPrediction> m_ScheduledPredictions;
         readonly Span<OrchestrationGraphCallContext> m_GraphCalls;
         readonly Span<OrchestrationStateContext> m_States;
@@ -75,6 +76,7 @@ namespace BTSMTL.Orchestration
             m_InputRows = program.WorkspaceInputRows;
             m_OutputRows = program.WorkspaceOutputRows;
             m_ScheduledValues = scratch.Section<TValue>(layout.ScheduledValues);
+            m_Constants = program.Constants;
             m_ScheduledPredictions = scratch.Section<OrchestrationScheduledPrediction>(layout.ScheduledPredictions);
             m_GraphCalls = scratch.Section<OrchestrationGraphCallContext>(layout.GraphCalls);
             m_States = scratch.Section<OrchestrationStateContext>(layout.States);

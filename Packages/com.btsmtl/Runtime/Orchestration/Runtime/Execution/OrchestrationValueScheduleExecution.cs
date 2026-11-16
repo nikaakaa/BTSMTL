@@ -55,7 +55,7 @@ namespace BTSMTL.Orchestration
                         return new ScheduledSelection(instruction.Argument, (OrchestrationValueSelectionReason)instruction.Operand);
                     case OrchestrationValueScheduleCode.ReadInputConstant:
                         m_CurrentOperationIndex = instruction.Operation;
-                        values[instruction.Destination] = m_Program.Constant(instruction.Operand);
+                        values[instruction.Destination] = m_Constants[instruction.Operand];
                         break;
                     case OrchestrationValueScheduleCode.ReadInputBlackboard:
                         ReadBlackboard(instruction.Operation, instruction.Operand, ref values[instruction.Destination]);
@@ -69,9 +69,61 @@ namespace BTSMTL.Orchestration
                             in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.Compute:
-                        EvaluateCoreValue(instruction.Operation, instruction.Operand,
-                            ScheduledArguments(instruction.Argument), depth, ref values[instruction.Destination]);
+                    {
+                        int operationIndex = instruction.Operation;
+                        m_CurrentOperationIndex = operationIndex;
+                        ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[instruction.Operand];
+                        ref TValue value = ref values[instruction.Destination];
+                        TNumerics numerics = default;
+                        switch (typed.Code)
+                        {
+                            case OrchestrationValueOpcode.Copy:
+                                value = values[m_ValueArgumentSlots[m_ValueArgumentLists[instruction.Argument].Offset + typed.Argument]];
+                                break;
+                            case OrchestrationValueOpcode.Constant:
+                                value = m_Constants[typed.Argument];
+                                break;
+                            case OrchestrationValueOpcode.HostInput:
+                                value = m_Input.HostInputs[typed.Argument];
+                                break;
+                            case OrchestrationValueOpcode.InputVector2Magnitude:
+                                numerics.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
+                                    in m_Identities, ref value);
+                                break;
+                            case OrchestrationValueOpcode.InputRequest:
+                                value = numerics.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
+                                break;
+                            case OrchestrationValueOpcode.BlackboardGet:
+                                ReadBlackboard(operationIndex, typed.Argument, ref value);
+                                break;
+                            case OrchestrationValueOpcode.GraphCallOutput:
+                                ReadGraphCallOutput(operationIndex, typed.Argument, ref value);
+                                break;
+                            case OrchestrationValueOpcode.StateRootCompleted:
+                                value = numerics.FromBoolean(CurrentStateRootCompleted());
+                                break;
+                            case OrchestrationValueOpcode.StateExitCause:
+                                value = numerics.FromBoolean(unchecked((uint)typed.Argument) == CurrentStateExitCause());
+                                break;
+                            case OrchestrationValueOpcode.Cycle:
+                            {
+                                OrchestrationCyclePayload cycle = m_Program.Payload<OrchestrationCyclePayload>(operationIndex);
+                                value = numerics.FromInt32((cycle.Start + ReadOperationState(operationIndex).ChildCursor) % cycle.Count);
+                                break;
+                            }
+                            case OrchestrationValueOpcode.TimelineTime:
+                                value = m_TimelineTime;
+                                break;
+                            case OrchestrationValueOpcode.Extension:
+                                EvaluateExtensionValue(operationIndex, typed.Argument,
+                                    ScheduledArguments(instruction.Argument), depth, ref value);
+                                break;
+                            default:
+                                numerics.Compute(typed.Code, values, ScheduledArguments(instruction.Argument), in m_Identities, ref value);
+                                break;
+                        }
                         break;
+                    }
                     case OrchestrationValueScheduleCode.ReadActionOutput:
                     {
                         m_CurrentOperationIndex = instruction.Operation;

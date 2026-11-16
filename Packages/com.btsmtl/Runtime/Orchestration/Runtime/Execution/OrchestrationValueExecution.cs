@@ -26,72 +26,22 @@ namespace BTSMTL.Orchestration
             return default(TNumerics).Boolean(in m_ScheduledValues[m_Program.ScheduleBooleanSlot]);
         }
 
-        void EvaluateCoreValue(int operationIndex, int valueOperation, ReadOnlySpan<int> arguments,
+        void EvaluateExtensionValue(int operationIndex, int outputPortIndex, ReadOnlySpan<int> arguments,
             int depth, ref TValue value)
         {
-            m_CurrentOperationIndex = operationIndex;
-            ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[valueOperation];
-            TNumerics values = default;
-            switch (typed.Code)
-            {
-                case OrchestrationValueOpcode.Copy:
-                    value = m_ScheduledValues[arguments[typed.Argument]];
-                    return;
-                case OrchestrationValueOpcode.Constant:
-                    value = m_Program.Constant(typed.Argument);
-                    return;
-                case OrchestrationValueOpcode.HostInput:
-                    value = m_Input.HostInputs[typed.Argument];
-                    return;
-                case OrchestrationValueOpcode.InputVector2Magnitude:
-                    values.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
-                        in m_Identities, ref value);
-                    return;
-                case OrchestrationValueOpcode.InputRequest:
-                    value = values.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
-                    return;
-                case OrchestrationValueOpcode.BlackboardGet:
-                    ReadBlackboard(operationIndex, typed.Argument, ref value);
-                    return;
-                case OrchestrationValueOpcode.GraphCallOutput:
-                    ReadGraphCallOutput(operationIndex, typed.Argument, ref value);
-                    return;
-                case OrchestrationValueOpcode.StateRootCompleted:
-                    value = values.FromBoolean(CurrentStateRootCompleted());
-                    return;
-                case OrchestrationValueOpcode.StateExitCause:
-                    value = values.FromBoolean(unchecked((uint)typed.Argument) == CurrentStateExitCause());
-                    return;
-                case OrchestrationValueOpcode.Cycle:
-                {
-                    OrchestrationCyclePayload cycle = m_Program.Payload<OrchestrationCyclePayload>(operationIndex);
-                    value = values.FromInt32((cycle.Start + ReadOperationState(operationIndex).ChildCursor) % cycle.Count);
-                    return;
-                }
-                case OrchestrationValueOpcode.TimelineTime:
-                    value = m_TimelineTime;
-                    return;
-                case OrchestrationValueOpcode.Extension:
-                {
-                    ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
-                    RequireRowDepth(operationIndex, depth + 1);
-                    int count = CopyScheduledArguments(arguments, depth, operationIndex);
-                    ReadOnlySpan<TValue> inputs = InputRow(depth).Slice(0, count);
-                    Span<TValue> outputs = BorrowOutputs(operationIndex, depth, operation.OutputCount);
-                    var invocation = new OrchestrationExtensionArguments<TValue>(
-                        OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
-                        inputs, outputs, in m_TimelineInvocation);
-                    RequireSynchronousValueResult(operationIndex, binding,
-                        m_Host.InvokeReadOnly(binding, in invocation));
-                    value = outputs[typed.Argument];
-                    return;
-                }
-                default:
-                    values.Compute(typed.Code, m_ScheduledValues, arguments, in m_Identities, ref value);
-                    return;
-            }
+            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+            ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
+            RequireRowDepth(operationIndex, depth + 1);
+            int count = CopyScheduledArguments(arguments, depth, operationIndex);
+            ReadOnlySpan<TValue> inputs = InputRow(depth).Slice(0, count);
+            Span<TValue> outputs = BorrowOutputs(operationIndex, depth, operation.OutputCount);
+            var invocation = new OrchestrationExtensionArguments<TValue>(
+                OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
+                m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
+                inputs, outputs, in m_TimelineInvocation);
+            RequireSynchronousValueResult(operationIndex, binding,
+                m_Host.InvokeReadOnly(binding, in invocation));
+            value = outputs[outputPortIndex];
         }
 
         int ReadInputs(int operationIndex, out int count)

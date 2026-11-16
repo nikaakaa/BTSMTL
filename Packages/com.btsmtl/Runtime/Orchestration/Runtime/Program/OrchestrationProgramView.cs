@@ -132,8 +132,9 @@ namespace BTSMTL.Orchestration
                 ValueEvaluationSlot(operationIndex, outputPortIndex)];
         public ref readonly OrchestrationFlowEdge Edge(int edgeIndex) =>
             ref Section<OrchestrationFlowEdge>(in Header.Edges)[edgeIndex];
+        internal ReadOnlySpan<TValue> Constants => Section<TValue>(in Header.Constants);
         public ref readonly TValue Constant(int constantIndex) =>
-            ref Section<TValue>(in Header.Constants)[constantIndex];
+            ref Constants[constantIndex];
         public ref readonly TValue DefaultValue(int valueSlot) =>
             ref Section<TValue>(in Header.DefaultValues)[valueSlot];
         public ReadOnlySpan<TValue> DefaultValues => Section<TValue>(in Header.DefaultValues);
