@@ -44,15 +44,14 @@ namespace BTSMTL.Orchestration
             value = outputs[outputPortIndex];
         }
 
-        int ReadInputs(int operationIndex, out int count)
+        ReadOnlySpan<int> ReadInputSlots(int operationIndex, out int depth)
         {
-            int depth = EnterInputRow(operationIndex);
+            depth = EnterInputRow(operationIndex);
             ref readonly OrchestrationValueScheduleEntry entry = ref m_InputEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             int arguments = RunValueSchedule(in entry).Value;
             m_CurrentOperationIndex = operationIndex;
-            count = CopyScheduledArguments(ScheduledArguments(arguments), depth, operationIndex);
-            return depth;
+            return ScheduledArguments(arguments);
         }
 
         int EnterInputRow(int operationIndex)
@@ -102,7 +101,7 @@ namespace BTSMTL.Orchestration
             OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
             if (IsActive(call.EntryOperationIndex))
                 return;
-            int depth = ReadInputs(operationIndex, out int count);
+            ReadOnlySpan<int> inputs = ReadInputSlots(operationIndex, out _);
             try
             {
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs)
@@ -114,7 +113,7 @@ namespace BTSMTL.Orchestration
                 ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs;
                 for (int i = 0; i < parameters.Length; i++)
                 {
-                    m_Blackboards.WriteValue(parameters[i].ValueSlot, in InputRow(depth)[i]);
+                    m_Blackboards.WriteValue(parameters[i].ValueSlot, in m_ScheduledValues[inputs[i]]);
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameters[i].ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -169,27 +168,30 @@ namespace BTSMTL.Orchestration
                         return EvaluateControlValue(operationIndex);
                     break;
             }
-            int depth = ReadInputs(operationIndex, out int count);
+            ReadOnlySpan<int> inputs = ReadInputSlots(operationIndex, out int depth);
             try
             {
-                m_CurrentOperationIndex = operationIndex;
+                switch (operation.Code)
+                {
+                    case OrchestrationOperationCode.BlackboardSet:
+                    {
+                        OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(in operation);
+                        WriteBlackboard(operationIndex, set.Slot,
+                            in m_ScheduledValues[inputs[0]], set.Assignment);
+                        return OrchestrationOperationResult.Success;
+                    }
+                    case OrchestrationOperationCode.TimelineClipExitRequest:
+                        return default(TNumerics).Boolean(in m_ScheduledValues[inputs[0]])
+                            ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
+                }
+                int count = CopyScheduledArguments(inputs, depth, operationIndex);
                 switch (operation.Code)
                 {
                     case OrchestrationOperationCode.EmitOutput:
                         EmitOutput(operationIndex, InputRow(depth).Slice(0, count));
                         return OrchestrationOperationResult.Success;
-                    case OrchestrationOperationCode.BlackboardSet:
-                    {
-                        OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(in operation);
-                        WriteBlackboard(operationIndex, set.Slot,
-                            in InputRow(depth)[0], set.Assignment);
-                        return OrchestrationOperationResult.Success;
-                    }
                     case OrchestrationOperationCode.Timeline:
                         return TickTimeline(operationIndex, depth, count);
-                    case OrchestrationOperationCode.TimelineClipExitRequest:
-                        return default(TNumerics).Boolean(in InputRow(depth)[0])
-                            ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0

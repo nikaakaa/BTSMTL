@@ -600,8 +600,8 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickBranch(int operationIndex)
         {
-            int depth = ReadInputs(operationIndex, out int count);
-            bool condition = default(TNumerics).Boolean(in InputRow(depth)[0]);
+            ReadOnlySpan<int> inputs = ReadInputSlots(operationIndex, out _);
+            bool condition = default(TNumerics).Boolean(in m_ScheduledValues[inputs[0]]);
             ReleaseInputs();
             OrchestrationOperationResult result = TickOutput(operationIndex,
                 condition ? m_Program.Ports.BranchTrue : m_Program.Ports.BranchFalse);
