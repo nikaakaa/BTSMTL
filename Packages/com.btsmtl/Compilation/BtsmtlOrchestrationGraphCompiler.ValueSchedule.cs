@@ -321,6 +321,9 @@ namespace BTSMTL.Compilation
 
                 int BooleanSlot(int bank) => bank * m_BankSize + m_BankSize - 1;
 
+                bool ReadsStoredGraphOutput(int operation) =>
+                    !m_Diagnostics && m_Operations[operation].Code == OrchestrationOperationCode.SubGraph;
+
                 internal int ValueEntry(int operation, int output) => Compile(
                     Work(WorkKind.Value, operation, output, argument: 0,
                         next: Emit(OrchestrationValueScheduleCode.Return,
@@ -488,7 +491,8 @@ namespace BTSMTL.Compilation
                         }
                         else
                         {
-                            if (!m_Compiler.IsAction(in m_Operations[current.Operation]))
+                            if (!m_Compiler.IsAction(in m_Operations[current.Operation]) &&
+                                !ReadsStoredGraphOutput(current.Operation))
                                 Inputs(current.Operation, current.Bank);
                         }
                     }
@@ -600,11 +604,16 @@ namespace BTSMTL.Compilation
                             if ((available & (BigInteger.One << slot)) != 0)
                                 return Alias(d.Next, available);
                             int done = Work(WorkKind.CompleteValue, op, d.Operand, slot, next: d.Next);
-                            int compute = m_Compiler.IsAction(in m_Operations[op])
-                                ? Emit(OrchestrationValueScheduleCode.ReadActionOutput, op, d.Operand, slot, next: done)
-                                : Work(WorkKind.Inputs, op, argument: d.Argument,
-                                    next: Emit(OrchestrationValueScheduleCode.Compute, op,
-                                        m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1, slot, next: done));
+                            int compute;
+                            if (m_Compiler.IsAction(in m_Operations[op]))
+                                compute = Emit(OrchestrationValueScheduleCode.ReadActionOutput, op, d.Operand, slot, next: done);
+                            else
+                            {
+                                int read = Emit(OrchestrationValueScheduleCode.Compute, op,
+                                    m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1, slot, next: done);
+                                compute = ReadsStoredGraphOutput(op) ? read :
+                                    Work(WorkKind.Inputs, op, argument: d.Argument, next: read);
+                            }
                             return Alias(m_Diagnostics
                                 ? Emit(OrchestrationValueScheduleCode.OverrideOutput, op,
                                     m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1, slot,
