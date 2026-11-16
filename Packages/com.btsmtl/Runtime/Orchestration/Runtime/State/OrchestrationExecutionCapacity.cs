@@ -158,28 +158,33 @@ namespace BTSMTL.Orchestration
             var callMap = new Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity>();
             foreach (ref readonly OrchestrationTimelineCallCapacity call in calls)
                 callMap.Add((call.ProgramIndex, call.OperationIndex), call);
-            var ownerCalls = new List<int>[programs.Length][];
+            var ownerOperations = new List<int>[programs.Length][];
+            var machineStates = new List<int>[programs.Length][];
             var roots = new Dictionary<(int Program, int Owner),
-                (int Playbacks, int Depth, List<FramePoolBuilder> Pools, OwnerCount[] Elements)>();
+                (int Playbacks, int Depth, FrameUsage Frames, OwnerCount[] Elements)>();
             var ownerInstanceBuffers = new int[programs.Length][];
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
             var sourceDepths = new int[programs.Length];
             var framePools = new List<FramePoolBuilder>();
-            var ownerAdmissions = new List<OwnerAdmission>();
+            var ownerAdmissions = new List<PreparedOwnerAdmission>();
             var ownerPools = new ReadOnlyMemory<int>[programs.Length];
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
                 OrchestrationProgram<TValue> program = programs[programIndex];
-                ownerCalls[programIndex] = new List<int>[program.OperationCount];
+                ownerOperations[programIndex] = new List<int>[program.OperationCount];
+                machineStates[programIndex] = new List<int>[program.OperationCount];
                 for (int operationIndex = 0; operationIndex < program.OperationCount; operationIndex++)
                 {
                     ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
-                    if (operation.Code == OrchestrationOperationCode.Timeline)
+                    if (operation.Code == OrchestrationOperationCode.StateMachine)
+                        machineStates[programIndex][operationIndex] = new List<int>();
+                    if (operation.Code == OrchestrationOperationCode.Timeline ||
+                        operation.Code == OrchestrationOperationCode.StateMachine)
                     {
                         int owner = operation.ExecutionFrameOwnerOperationIndex;
-                        List<int> owned = ownerCalls[programIndex][owner];
+                        List<int> owned = ownerOperations[programIndex][owner];
                         if (owned == null)
-                            ownerCalls[programIndex][owner] = owned = new List<int>();
+                            ownerOperations[programIndex][owner] = owned = new List<int>();
                         owned.Add(operationIndex);
                     }
                 }
@@ -187,6 +192,9 @@ namespace BTSMTL.Orchestration
                 var poolIndices = new int[program.OperationCount];
                 Array.Fill(poolIndices, -1);
                 for (int owner = 0; owner < poolIndices.Length; owner++)
+                {
+                    if (program.Operation(owner).Code == OrchestrationOperationCode.State)
+                        machineStates[programIndex][program.Payload<OrchestrationStatePayload>(owner).MachineIndex].Add(owner);
                     if (program.Operation(owner).ExecutionFrameOwnerOperationIndex == owner)
                     {
                         ref readonly OrchestrationExecutionOwnerStorage storage = ref storages[programIndex].Storage.Owners.Span[owner];
@@ -194,15 +202,15 @@ namespace BTSMTL.Orchestration
                         while (pool < framePools.Count && !framePools[pool].Matches(in storage))
                             pool++;
                         if (pool == framePools.Count)
-                        {
-                            var prepared = new FramePoolBuilder();
-                            prepared.AddOwner(0, in storage);
-                            framePools.Add(prepared);
-                        }
+                            framePools.Add(new FramePoolBuilder(in storage));
                         poolIndices[owner] = pool;
                     }
+                }
                 ownerPools[programIndex] = poolIndices;
             }
+            var poolMap = new int[framePools.Count];
+            for (int pool = 0; pool < poolMap.Length; pool++)
+                poolMap[pool] = pool;
             int playbackCount = 0;
             foreach (ref readonly OrchestrationRootAdmission admission in admissions)
             {
@@ -212,11 +220,12 @@ namespace BTSMTL.Orchestration
                 var admissionPools = new List<FramePoolBuilder>();
                 var admissionOwners = new Dictionary<(int Program, int Owner), int>();
                 var admissionRoots = new OwnerCount[admission.Alternatives.Length][];
+                var admissionFrames = new FrameUsage[admission.Alternatives.Length];
                 int rootIndex = 0;
                 foreach (ref readonly OrchestrationRootAlternative alternative in admission.Alternatives.Span)
                 {
                     int alternativePlaybacks = 0;
-                    var alternativePools = new List<FramePoolBuilder>();
+                    var alternativeFrames = new List<FrameUsage>();
                     var alternativeOwners = new Dictionary<(int Program, int Owner), int>();
                     foreach (ref readonly OrchestrationOccurrenceCapacity root in alternative.Occurrences.Span)
                     {
@@ -231,19 +240,18 @@ namespace BTSMTL.Orchestration
                                 throw new InvalidOperationException($"Program '{programIndex}' admission '{root.OwnerOperationIndex}' is not an execution frame owner.");
                             var counts = new Dictionary<(int Program, int Owner), int>();
                             int rootPlaybacks = 0;
-                            var rootPools = new List<FramePoolBuilder>();
-                            int depth = AccumulateOwners(storages, programIndex, root.OwnerOperationIndex, 1,
-                                ownerCalls, callMap, counts, new HashSet<(int Program, int Owner)>(),
-                                rootPools, ownerPools, ref rootPlaybacks);
+                            int depth = AccumulateOwners(programs, programIndex, root.OwnerOperationIndex, 1,
+                                ownerOperations, machineStates, callMap, counts, new HashSet<(int Program, int Owner)>(),
+                                out FrameUsage frames, ref rootPlaybacks);
                             var elements = new List<OwnerCount>();
                             foreach (var item in counts)
                                 elements.Add(new OwnerCount(item.Key.Program, item.Key.Owner, item.Value));
-                            roots.Add(key, capacity = (rootPlaybacks, depth, rootPools, elements.ToArray()));
+                            roots.Add(key, capacity = (rootPlaybacks, depth, frames, elements.ToArray()));
                         }
                         alternativePlaybacks = checked(alternativePlaybacks +
                             checked(capacity.Playbacks * root.MaximumInstances));
-                        for (int pool = 0; pool < capacity.Pools.Count; pool++)
-                            Pool(alternativePools, pool).AddAdmission(capacity.Pools[pool], root.MaximumInstances);
+                        alternativeFrames.Add(new FrameGroup(new[] { capacity.Frames },
+                            FrameComposition.Together, root.MaximumInstances));
                         foreach (OwnerCount element in capacity.Elements)
                         {
                             sourceDepths[element.Program] = Math.Max(sourceDepths[element.Program], capacity.Depth);
@@ -260,10 +268,13 @@ namespace BTSMTL.Orchestration
                         admissionOwners.TryGetValue(item.Key, out int previous);
                         admissionOwners[item.Key] = Math.Max(previous, item.Value);
                     }
-                    admissionRoots[rootIndex++] = alternativeElements;
+                    var liveFrames = new FrameGroup(alternativeFrames.ToArray(), FrameComposition.Together, 1);
+                    admissionRoots[rootIndex] = alternativeElements;
+                    admissionFrames[rootIndex++] = liveFrames;
                     playbacks = Math.Max(playbacks, alternativePlaybacks);
-                    for (int pool = 0; pool < alternativePools.Count; pool++)
-                        Pool(admissionPools, pool).MergeMaximum(alternativePools[pool]);
+                    for (int pool = 0; pool < framePools.Count; pool++)
+                        Pool(admissionPools, pool).MergeMaximum(framePools[pool],
+                            liveFrames.Count(ownerPools, poolMap, pool, pool));
                 }
                 foreach (var item in admissionOwners)
                     ownerInstanceBuffers[item.Key.Program][item.Key.Owner] = checked(
@@ -272,41 +283,27 @@ namespace BTSMTL.Orchestration
                 for (int depth = 0; depth < admissionPools.Count; depth++)
                     Pool(framePools, depth).AddAdmission(admissionPools[depth], admission.MaximumInstances);
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
-                ownerAdmissions.Add(new OwnerAdmission(admissionRoots, admission.MaximumInstances));
+                ownerAdmissions.Add(new PreparedOwnerAdmission(
+                    new OwnerAdmission(admissionRoots, admission.MaximumInstances), admissionFrames));
             }
             MergeFramePools(framePools, ownerPools, ownerAdmissions);
             var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
             for (int depth = 0; depth < pools.Length; depth++)
                 pools[depth] = framePools[depth].Build();
+            var budgets = new OwnerAdmission[ownerAdmissions.Count];
+            for (int index = 0; index < budgets.Length; index++)
+                budgets[index] = ownerAdmissions[index].Budget;
             var state = new OrchestrationExecutionStateCapacity(pools, ownerPools);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths,
-                ownerAdmissions.ToArray());
+                budgets);
         }
 
         static void MergeFramePools(List<FramePoolBuilder> pools,
-            ReadOnlyMemory<int>[] ownerPools, List<OwnerAdmission> admissions)
+            ReadOnlyMemory<int>[] ownerPools, List<PreparedOwnerAdmission> admissions)
         {
-            int rootCount = 0;
-            foreach (OwnerAdmission admission in admissions)
-                rootCount = checked(rootCount + admission.Alternatives.Length);
-            var counts = new List<int[]>(pools.Count);
             var poolMap = new int[pools.Count];
             for (int pool = 0; pool < pools.Count; pool++)
-            {
-                counts.Add(new int[rootCount]);
                 poolMap[pool] = pool;
-            }
-            int rootIndex = 0;
-            foreach (OwnerAdmission admission in admissions)
-                foreach (OwnerCount[] root in admission.Alternatives)
-                {
-                    foreach (OwnerCount owner in root)
-                    {
-                        int pool = ownerPools[owner.Program].Span[owner.Owner];
-                        counts[pool][rootIndex] = checked(counts[pool][rootIndex] + owner.Count);
-                    }
-                    rootIndex++;
-                }
             bool merged;
             do
             {
@@ -315,25 +312,17 @@ namespace BTSMTL.Orchestration
                     for (int second = first + 1; second < pools.Count; second++)
                     {
                         int frameCount = 0;
-                        rootIndex = 0;
-                        foreach (OwnerAdmission admission in admissions)
+                        foreach (PreparedOwnerAdmission admission in admissions)
                         {
                             int maximum = 0;
-                            foreach (OwnerCount[] root in admission.Alternatives)
-                            {
-                                maximum = Math.Max(maximum,
-                                    checked(counts[first][rootIndex] + counts[second][rootIndex]));
-                                rootIndex++;
-                            }
-                            frameCount = checked(frameCount + checked(maximum * admission.Instances));
+                            foreach (FrameUsage root in admission.LiveFrames)
+                                maximum = Math.Max(maximum, root.Count(ownerPools, poolMap, first, second));
+                            frameCount = checked(frameCount + checked(maximum * admission.Budget.Instances));
                         }
                         if (!pools[first].CanMerge(pools[second], frameCount))
                             continue;
                         pools[first].MergeSharedAdmission(pools[second], frameCount);
-                        for (int root = 0; root < rootCount; root++)
-                            counts[first][root] = checked(counts[first][root] + counts[second][root]);
                         pools.RemoveAt(second);
-                        counts.RemoveAt(second);
                         for (int pool = 0; pool < poolMap.Length; pool++)
                             if (poolMap[pool] == second)
                                 poolMap[pool] = first;
@@ -379,36 +368,127 @@ namespace BTSMTL.Orchestration
             internal readonly int Instances;
         }
 
-        static int AccumulateOwners<TValue>(ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> storages,
+        static int AccumulateOwners<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
             int programIndex, int owner, int count,
-            List<int>[][] ownerCalls,
+            List<int>[][] ownerOperations, List<int>[][] machineStates,
             Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity> calls,
             Dictionary<(int Program, int Owner), int> instances, HashSet<(int Program, int Owner)> active,
-            List<FramePoolBuilder> pools, ReadOnlyMemory<int>[] ownerPools, ref int playbacks) where TValue : unmanaged
+            out FrameUsage usage, ref int playbacks) where TValue : unmanaged
         {
             var key = (programIndex, owner);
             if (!active.Add(key))
                 throw new InvalidOperationException($"Program '{programIndex}' 的执行帧 '{owner}' 存在没有有限容量的 Timeline 调用循环。");
             instances.TryGetValue(key, out int previous);
             instances[key] = checked(previous + count);
-            Pool(pools, ownerPools[programIndex].Span[owner]).AddOwner(count,
-                storages[programIndex].Storage.Owners.Span[owner]);
-            List<int> owned = ownerCalls[programIndex][owner];
+            List<int> owned = ownerOperations[programIndex][owner];
+            var timelineFrames = new Dictionary<int, FrameUsage>();
             int depth = 1;
             if (owned != null)
                 foreach (int operationIndex in owned)
                 {
+                    if (programs[programIndex].Operation(operationIndex).Code != OrchestrationOperationCode.Timeline)
+                        continue;
                     if (!calls.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineCallCapacity call))
                         throw new InvalidOperationException($"Program '{programIndex}' Timeline '{operationIndex}' 缺少已完成的生命周期容量生产结果。");
                     playbacks = checked(playbacks + count);
+                    var children = new List<FrameUsage>();
                     foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
                         if (occurrence.MaximumInstances != 0)
-                            depth = Math.Max(depth, checked(1 + AccumulateOwners(storages, occurrence.ProgramIndex,
+                        {
+                            depth = Math.Max(depth, checked(1 + AccumulateOwners(programs, occurrence.ProgramIndex,
                                 occurrence.OwnerOperationIndex, checked(count * occurrence.MaximumInstances),
-                                ownerCalls, calls, instances, active, pools, ownerPools, ref playbacks)));
+                                ownerOperations, machineStates, calls, instances, active, out FrameUsage child, ref playbacks)));
+                            children.Add(child);
+                        }
+                    timelineFrames.Add(operationIndex, new FrameGroup(children.ToArray(), FrameComposition.Together, 1));
                 }
+            FrameUsage scope = owned == null
+                ? new FrameGroup(Array.Empty<FrameUsage>(), FrameComposition.Together, 1)
+                : ScopeFrames(programs[programIndex], owned, machineStates[programIndex], timelineFrames,
+                    programs[programIndex].Operation(owner).ParentStateOperationIndex);
+            usage = new FrameGroup(new FrameUsage[] { new OwnerFrames(new OwnerCount(programIndex, owner, count)), scope },
+                FrameComposition.Together, 1);
             active.Remove(key);
             return depth;
+        }
+
+        static FrameUsage ScopeFrames<TValue>(OrchestrationProgram<TValue> program, List<int> owned,
+            List<int>[] machineStates, Dictionary<int, FrameUsage> timelineFrames, int parentState) where TValue : unmanaged
+        {
+            var children = new List<FrameUsage>();
+            foreach (int operation in owned)
+            {
+                if (program.Operation(operation).ParentStateOperationIndex != parentState)
+                    continue;
+                if (program.Operation(operation).Code == OrchestrationOperationCode.Timeline)
+                    children.Add(timelineFrames[operation]);
+                else
+                {
+                    var states = new List<FrameUsage>();
+                    foreach (int state in machineStates[operation])
+                        states.Add(ScopeFrames(program, owned, machineStates, timelineFrames, state));
+                    children.Add(new FrameGroup(states.ToArray(), FrameComposition.Exclusive, 1));
+                }
+            }
+            return new FrameGroup(children.ToArray(), FrameComposition.Together, 1);
+        }
+
+        readonly struct PreparedOwnerAdmission
+        {
+            internal PreparedOwnerAdmission(OwnerAdmission budget, FrameUsage[] liveFrames)
+            {
+                Budget = budget;
+                LiveFrames = liveFrames;
+            }
+
+            internal readonly OwnerAdmission Budget;
+            internal readonly FrameUsage[] LiveFrames;
+        }
+
+        enum FrameComposition { Together, Exclusive }
+
+        abstract class FrameUsage
+        {
+            internal abstract int Count(ReadOnlyMemory<int>[] ownerPools, int[] poolMap, int first, int second);
+        }
+
+        sealed class OwnerFrames : FrameUsage
+        {
+            readonly OwnerCount m_Owner;
+
+            internal OwnerFrames(OwnerCount owner) => m_Owner = owner;
+
+            internal override int Count(ReadOnlyMemory<int>[] ownerPools, int[] poolMap, int first, int second)
+            {
+                int pool = poolMap[ownerPools[m_Owner.Program].Span[m_Owner.Owner]];
+                return pool == first || pool == second ? m_Owner.Count : 0;
+            }
+        }
+
+        sealed class FrameGroup : FrameUsage
+        {
+            readonly FrameUsage[] m_Children;
+            readonly FrameComposition m_Composition;
+            readonly int m_Copies;
+
+            internal FrameGroup(FrameUsage[] children, FrameComposition composition, int copies)
+            {
+                m_Children = children;
+                m_Composition = composition;
+                m_Copies = copies;
+            }
+
+            internal override int Count(ReadOnlyMemory<int>[] ownerPools, int[] poolMap, int first, int second)
+            {
+                int count = 0;
+                foreach (FrameUsage child in m_Children)
+                {
+                    int childCount = child.Count(ownerPools, poolMap, first, second);
+                    count = m_Composition == FrameComposition.Exclusive
+                        ? Math.Max(count, childCount) : checked(count + childCount);
+                }
+                return checked(count * m_Copies);
+            }
         }
 
         static FramePoolBuilder Pool(List<FramePoolBuilder> pools, int depth)
@@ -425,6 +505,16 @@ namespace BTSMTL.Orchestration
             int m_Values;
             int m_Outputs;
             readonly int[] m_Kinds = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
+
+            internal FramePoolBuilder() { }
+
+            internal FramePoolBuilder(in OrchestrationExecutionOwnerStorage storage)
+            {
+                m_Operations = storage.OperationCount;
+                m_Values = storage.BlackboardCount;
+                m_Outputs = storage.SavedOutputCount;
+                storage.ValueKindCounts.Span.CopyTo(m_Kinds);
+            }
 
             internal bool Matches(in OrchestrationExecutionOwnerStorage storage) =>
                 m_Operations == storage.OperationCount && m_Values == storage.BlackboardCount &&
@@ -462,19 +552,9 @@ namespace BTSMTL.Orchestration
                 MergeWidths(other);
             }
 
-            internal void AddOwner(int count, in OrchestrationExecutionOwnerStorage storage)
+            internal void MergeMaximum(FramePoolBuilder other, int count)
             {
-                m_Count = checked(m_Count + count);
-                m_Operations = Math.Max(m_Operations, storage.OperationCount);
-                m_Values = Math.Max(m_Values, storage.BlackboardCount);
-                m_Outputs = Math.Max(m_Outputs, storage.SavedOutputCount);
-                for (int kind = 0; kind < m_Kinds.Length; kind++)
-                    m_Kinds[kind] = Math.Max(m_Kinds[kind], storage.ValueKindCounts.Span[kind]);
-            }
-
-            internal void MergeMaximum(FramePoolBuilder other)
-            {
-                m_Count = Math.Max(m_Count, other.m_Count);
+                m_Count = Math.Max(m_Count, count);
                 MergeWidths(other);
             }
 
