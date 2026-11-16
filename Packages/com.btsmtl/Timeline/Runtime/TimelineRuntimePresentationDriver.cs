@@ -480,9 +480,11 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             exits.SetExited(request.Token.ClipOrdinal, request.Token.Cycle);
             for (int activeIndex = state.Candidate.ActiveTreeClips.Count - 1; activeIndex >= 0; activeIndex--)
-                if (state.Candidate.ActiveTreeClips[activeIndex].Token.ClipOrdinal == request.Token.ClipOrdinal &&
-                    state.Candidate.ActiveTreeClips[activeIndex].Token.Cycle == request.Token.Cycle)
+            {
+                TimelineRuntimeTreeClipRequest active = state.Candidate.ActiveTreeClips[activeIndex];
+                if (active.Token.ClipOrdinal == request.Token.ClipOrdinal && active.Token.Cycle == request.Token.Cycle)
                     state.Candidate.ActiveTreeClips.RemoveAt(activeIndex);
+            }
             if (request.EventKind == TimelineRuntimeTreeClipEventKind.Enter)
                 for (int pendingIndex = state.Candidate.TreeClips.Count - 1; pendingIndex >= 0; pendingIndex--)
                 {
@@ -1134,6 +1136,8 @@ namespace BTSMTL.Timeline.Runtime
                 m_Content = content;
                 m_Content.ActiveCount++;
                 Configure(content.Template.Prepared, content.Template.ExecutionContent, content.Template.GraphSource);
+                Candidate.Bind(ExecutionContent);
+                Accepted.Bind(ExecutionContent);
                 Candidate.SampleKindCount = Prepared.SampleKindCount;
                 Accepted.SampleKindCount = Prepared.SampleKindCount;
             }
@@ -1223,6 +1227,8 @@ namespace BTSMTL.Timeline.Runtime
             public void Recycle()
             {
                 Clear();
+                Candidate.Bind(null);
+                Accepted.Bind(null);
                 m_Content.ActiveCount--;
                 m_Content = null;
                 Prepared = null;

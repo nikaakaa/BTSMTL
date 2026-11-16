@@ -39,6 +39,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimePresentationGraphSource graphSource)
             : this(CreateCapacity(prepared, executionContent, graphSource), prepared.SampleKindCount)
         {
+            Bind(executionContent);
         }
 
         public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared)
@@ -120,6 +121,12 @@ namespace BTSMTL.Timeline.Runtime
         public readonly TimelineRuntimeTreeClipBuffer TreeClips;
         public readonly TimelineRuntimeTreeClipBuffer ActiveTreeClips;
 
+        public void Bind(OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
+        {
+            TreeClips.ExecutionContent = executionContent;
+            ActiveTreeClips.ExecutionContent = executionContent;
+        }
+
         public void Clear()
         {
             for (int kindIndex = 0; kindIndex < Samples.Length; kindIndex++)
@@ -137,7 +144,6 @@ namespace BTSMTL.Timeline.Runtime
         {
             readonly OrchestrationTime m_Time;
             readonly OrchestrationTime m_PreviousTime;
-            readonly OrchestrationTime m_WindowStartTime;
             readonly int m_ClipOrdinal;
             readonly int m_Cycle;
             readonly float m_NormalizedTime;
@@ -150,7 +156,6 @@ namespace BTSMTL.Timeline.Runtime
             {
                 m_Time = request.Time;
                 m_PreviousTime = request.PreviousTime;
-                m_WindowStartTime = request.WindowStartTime;
                 m_ClipOrdinal = request.Token.ClipOrdinal;
                 m_Cycle = request.Token.Cycle;
                 m_NormalizedTime = request.NormalizedTime;
@@ -160,13 +165,16 @@ namespace BTSMTL.Timeline.Runtime
                 m_Marker = request.Token.Marker;
             }
 
-            internal TimelineRuntimeTreeClipRequest Expand(int playbackSlot, ulong sequence, ulong playbackIdentity) =>
+            internal TimelineRuntimeTreeClipRequest Expand(
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+                int playbackSlot, ulong sequence, ulong playbackIdentity) =>
                 new(new OrchestrationTimelineInvocationToken(playbackSlot, sequence, playbackIdentity,
                         m_ClipOrdinal, m_Cycle, m_Marker),
                     (TimelineTreeExecutionPhase)m_Phase, m_ExitSource, m_EventKind,
-                    m_Time, m_PreviousTime, m_WindowStartTime, m_NormalizedTime);
+                    m_Time, m_PreviousTime, executionContent.Clips.Span[m_ClipOrdinal].Start, m_NormalizedTime);
         }
 
+        internal OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
         StoredRequest[] m_Values;
         int m_Count;
         int m_PlaybackSlot;
@@ -189,7 +197,7 @@ namespace BTSMTL.Timeline.Runtime
             {
                 if ((uint)index >= (uint)m_Count)
                     throw new ArgumentOutOfRangeException(nameof(index));
-                return m_Values[index].Expand(m_PlaybackSlot, m_Sequence, m_PlaybackIdentity);
+                return m_Values[index].Expand(ExecutionContent, m_PlaybackSlot, m_Sequence, m_PlaybackIdentity);
             }
         }
 
