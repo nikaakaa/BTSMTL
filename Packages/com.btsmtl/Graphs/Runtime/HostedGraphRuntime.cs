@@ -19,6 +19,8 @@ namespace BTSMTL.Graphs
             Failed
         }
 
+        public event Action<GraphRuntimePhase, bool> EvaluationPhase;
+
         readonly GraphCompilationIdentity m_Source;
         readonly GraphHostContract m_Contract;
         readonly HostedGraphBindings<TValue, TNumerics> m_Bindings;
@@ -168,20 +170,25 @@ namespace BTSMTL.Graphs
 
         public void Compute(in TContext context, bool captureValues = false)
         {
-            if (captureValues)
-                PrepareRuntimeObservation();
-            var input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
-                instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default,
-                captureValues: captureValues, overrides: m_RuntimePorts == null
-                    ? default : ActiveOverrides(m_CandidateOverrides));
-            if (input.HasDiagnostics)
+            OrchestrationFrameInput<TValue> input;
+            using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PrepareDiagnostics))
             {
-                if (input.CaptureValues)
-                    m_Diagnostics.PrepareValueCapture();
-                else
-                    m_Diagnostics.PrepareInvocationBindings();
-                Compute(in context, in input, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics));
+                if (captureValues)
+                    PrepareRuntimeObservation();
+                input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
+                    instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default,
+                    captureValues: captureValues, overrides: m_RuntimePorts == null
+                        ? default : ActiveOverrides(m_CandidateOverrides));
+                if (input.HasDiagnostics)
+                {
+                    if (input.CaptureValues)
+                        m_Diagnostics.PrepareValueCapture();
+                    else
+                        m_Diagnostics.PrepareInvocationBindings();
+                }
             }
+            if (input.HasDiagnostics)
+                Compute(in context, in input, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics));
             else
                 Compute(in context, in input, default(OrchestrationProductDiagnostics<TValue>));
         }
@@ -194,26 +201,38 @@ namespace BTSMTL.Graphs
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
-            OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            var cursor = Host(in context, diagnostics).CreateCursor<TNumerics>(state,
-                m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
+            OrchestrationIdentityOrdinalView identities;
+            using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PrepareIdentities))
+                identities = m_CandidateTexts.Ordinals;
+            OrchestrationExecutionCursor<TValue, TNumerics,
+                ManagedOrchestrationHost<TValue, TContext, OrchestrationArrayValueStorage<TValue>, TDiagnostics>> cursor;
+            using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.BindCursor))
+                cursor = Host(in context, diagnostics).CreateCursor<TNumerics>(state,
+                    m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             try
             {
-                if (m_RunStart && m_Bindings.Start.OperationIndex >= 0)
+                using (new GraphRuntimePhaseScope(EvaluationPhase, input.HasDiagnostics
+                           ? GraphRuntimePhase.ExecuteObserved : GraphRuntimePhase.ExecuteProduct))
                 {
-                    cursor.Advance(m_Bindings.Start);
+                    if (m_RunStart && m_Bindings.Start.OperationIndex >= 0)
+                    {
+                        cursor.Advance(m_Bindings.Start);
+                        CollectOutputs();
+                    }
+                    if (m_RuntimePorts != null)
+                        ExecuteTriggers(ref cursor);
+                    cursor.Advance(m_Bindings.Update);
                     CollectOutputs();
                 }
-                if (m_RuntimePorts != null)
-                    ExecuteTriggers(ref cursor);
-                cursor.Advance(m_Bindings.Update);
-                CollectOutputs();
                 if (input.CaptureValues)
                 {
-                    CopyObserved(m_Diagnostics.ObservedInputs, m_Diagnostics.WrittenInputs, m_CandidateObservedInputs);
-                    CopyObserved(m_Diagnostics.ObservedOutputs, m_Diagnostics.WrittenOutputs, m_CandidateObservedOutputs);
+                    using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.CopyObservedValues))
+                    {
+                        CopyObserved(m_Diagnostics.ObservedInputs, m_Diagnostics.WrittenInputs, m_CandidateObservedInputs);
+                        CopyObserved(m_Diagnostics.ObservedOutputs, m_Diagnostics.WrittenOutputs, m_CandidateObservedOutputs);
+                    }
                 }
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 m_Status = EvaluationStatus.Succeeded;
@@ -273,38 +292,45 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException("图 owner 只能采用已完成的本次计算结果。");
             if (m_Status == EvaluationStatus.Failed)
                 return AdoptFailure();
-            Span<OrchestrationValueOverride<TValue>> overrides = m_RuntimePorts == null
-                ? default : ActiveOverrides(m_CandidateOverrides);
-            try
+            using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PublishVariables))
             {
-                m_Output.BeginWrite();
-                Span<TValue> values = CandidateValues;
-                var storage = m_Bindings.Program.ExecutionStorage.Values.Span;
-                for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
+                Span<OrchestrationValueOverride<TValue>> overrides = m_RuntimePorts == null
+                    ? default : ActiveOverrides(m_CandidateOverrides);
+                try
                 {
-                    int slot = m_Bindings.PublishedSlots[i];
-                    int valueIndex = storage[slot].ValueIndex;
-                    int supplied = overrides.IsEmpty ? -1 :
-                        FindOverride(overrides, OrchestrationValueOverrideKind.Blackboard, slot);
-                    TValue value = supplied >= 0
-                        ? overrides[supplied].Value : values[valueIndex];
-                    GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
-                    m_Output.Write(i, in published);
+                    m_Output.BeginWrite();
+                    Span<TValue> values = CandidateValues;
+                    var storage = m_Bindings.Program.ExecutionStorage.Values.Span;
+                    for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
+                    {
+                        int slot = m_Bindings.PublishedSlots[i];
+                        int valueIndex = storage[slot].ValueIndex;
+                        int supplied = overrides.IsEmpty ? -1 :
+                            FindOverride(overrides, OrchestrationValueOverrideKind.Blackboard, slot);
+                        TValue value = supplied >= 0
+                            ? overrides[supplied].Value : values[valueIndex];
+                        GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
+                        m_Output.Write(i, in published);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Reject(exception.Message, exception);
+                    return AdoptFailure();
                 }
             }
-            catch (Exception exception)
-            {
-                Reject(exception.Message, exception);
-                return AdoptFailure();
-            }
             if (m_RuntimePorts != null)
-                CompleteRuntimeOverrides();
-            AdoptCandidateState();
-            m_Started = true;
-            m_LastInvocation = m_Invocation.Identity;
-            GraphHostValueFrame frame = m_Output.Publish(m_Invocation.Identity, m_ResetGeneration);
-            Discard();
-            return GraphExecutionResult.Success(new GraphVariableFrame(VariableContract, frame));
+                using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.CompleteOverrides))
+                    CompleteRuntimeOverrides();
+            using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.CommitState))
+            {
+                AdoptCandidateState();
+                m_Started = true;
+                m_LastInvocation = m_Invocation.Identity;
+                GraphHostValueFrame frame = m_Output.Publish(m_Invocation.Identity, m_ResetGeneration);
+                Discard();
+                return GraphExecutionResult.Success(new GraphVariableFrame(VariableContract, frame));
+            }
         }
 
         GraphExecutionResult AdoptFailure()
@@ -368,7 +394,8 @@ namespace BTSMTL.Graphs
             for (int i = 0; i < savedOutputs.Length; i++)
                 RemapValue(ref savedOutputs[i]);
             if (m_RuntimePorts != null)
-                PrepareObservationCandidateState();
+                using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.CopyObservationState))
+                    PrepareObservationCandidateState();
         }
 
         void RemapValue(ref TValue value)

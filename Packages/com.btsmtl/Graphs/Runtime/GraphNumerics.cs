@@ -5,6 +5,35 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
+    public enum GraphRuntimePhase : byte
+    {
+        PrepareDiagnostics,
+        PrepareIdentities,
+        BindCursor,
+        ExecuteProduct,
+        ExecuteObserved,
+        CopyObservedValues,
+        PublishVariables,
+        CompleteOverrides,
+        CommitState,
+        CopyObservationState
+    }
+
+    readonly struct GraphRuntimePhaseScope : IDisposable
+    {
+        readonly Action<GraphRuntimePhase, bool> m_Observer;
+        readonly GraphRuntimePhase m_Phase;
+
+        internal GraphRuntimePhaseScope(Action<GraphRuntimePhase, bool> observer, GraphRuntimePhase phase)
+        {
+            m_Observer = observer;
+            m_Phase = phase;
+            observer?.Invoke(phase, true);
+        }
+
+        public void Dispose() => m_Observer?.Invoke(m_Phase, false);
+    }
+
     // 数值方案在此实例化自己的强类型运行时；普通入口只经返回的生命周期接口调用。
     public interface IGraphRuntimeFactory
     {
@@ -54,6 +83,7 @@ namespace BTSMTL.Graphs
         bool IsPrepared { get; }
         GraphExecutionFailure LastFailure { get; }
 
+        event Action<GraphRuntimePhase, bool> EvaluationPhase;
         void Prepare(GraphInvocationContext invocation, IGraphHostContext hostContext);
         void Compute(in TContext context, bool captureValues = false);
         void Discard();
@@ -95,6 +125,12 @@ namespace BTSMTL.Graphs
         public bool IsFaulted => m_Core.IsFaulted;
         public bool IsPrepared => m_Core.IsPrepared;
         public GraphExecutionFailure LastFailure => m_Core.LastFailure;
+
+        public event Action<GraphRuntimePhase, bool> EvaluationPhase
+        {
+            add => m_Core.EvaluationPhase += value;
+            remove => m_Core.EvaluationPhase -= value;
+        }
 
         public void Prepare(GraphInvocationContext invocation, IGraphHostContext hostContext) =>
             m_Core.Prepare(invocation, hostContext);
