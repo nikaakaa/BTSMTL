@@ -214,6 +214,7 @@ namespace BTSMTL.Orchestration
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot)
                 .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick, OrchestrationStopMode.Request);
+            CloseStateOperations(stateOperationIndex, in state.StopContext);
             int completedEdge = state.ChildCursor <= 0
                 ? m_Program.StateOnEnterEdge(stateOperationIndex) : m_Program.StateRootEdge(stateOperationIndex);
             if (completedEdge >= 0)
@@ -312,22 +313,30 @@ namespace BTSMTL.Orchestration
             if (state.ChildCursor == 0 || state.ChildCursor == 3)
                 return;
             OrchestrationStopContext exitContext = StateExitContext(stateOperationIndex, in context);
-            PushState(stateOperationIndex, in exitContext);
+            CloseStateOperations(stateOperationIndex, in exitContext);
+            if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
+                CompleteStateExit(stateOperationIndex, in exitContext);
+        }
+
+        void CloseStateOperations(int stateOperationIndex, in OrchestrationStopContext context)
+        {
+            int owner = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
+            PushState(stateOperationIndex, in context);
             try
             {
-                foreach (int edgeIndex in m_Program.Outgoing(stateOperationIndex, OrchestrationFlowKind.Enter))
-                {
-                    int child = m_Program.Edge(edgeIndex).TargetOperationIndex;
-                    if (IsActive(child))
-                        ForceStop(child, in exitContext);
-                }
+                for (int operation = 0; operation < m_Program.OperationCount; operation++)
+                    if (m_Program.Operation(operation).ParentStateOperationIndex == stateOperationIndex &&
+                        m_Program.Operation(operation).ExecutionFrameOwnerOperationIndex == owner &&
+                        m_OperationIndices[operation] != OrchestrationProgramStorageLayout.NoOperationIndex &&
+                        (OperationState(operation).Status == OrchestrationOperationStatus.Running ||
+                         OperationState(operation).Status == OrchestrationOperationStatus.Stopping ||
+                         OperationState(operation).TimelineRuntimeHandle != 0))
+                        ForceStop(operation, in context);
             }
             finally
             {
                 PopState();
             }
-            if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
-                CompleteStateExit(stateOperationIndex, in exitContext);
         }
 
         void ForceStopStateMachine(int machineOperationIndex, in OrchestrationStopContext context)

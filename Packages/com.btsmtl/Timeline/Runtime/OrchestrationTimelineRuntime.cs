@@ -246,12 +246,35 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public OrchestrationTimelineBatch<TTime> BeginStop(OrchestrationStateView candidate,
-            int slot, in OrchestrationStopContext context)
+            int slot, in OrchestrationStopContext context, int startedInvocations)
         {
             TClock clock = default;
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
             RequireContent(in playback.Start);
             ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[slot];
+            Span<TimelineSchedulingBoundary<TTime>> active = m_Workspace.ActiveTrees;
+            int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(m_Content, in playback,
+                TreeExits(candidate, slot).View, active);
+            ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Content.Clips;
+            for (int index = 0; index < startedInvocations; index++)
+            {
+                OrchestrationTimelineInvocation<TTime> invocation = m_Workspace.Invocations[
+                    checked(slot * m_Workspace.InvocationCapacity + index)].Expand<TClock>(m_Content, slot, in work);
+                if (invocation.Token.Marker)
+                    continue;
+                if (invocation.Hook == OrchestrationTimelineHook.Enable)
+                    active[activeCount++] = new TimelineSchedulingBoundary<TTime>(invocation.Token.ClipOrdinal,
+                        clips[invocation.Token.ClipOrdinal].SortOrdinal, invocation.Time, invocation.Token.Cycle, true);
+                else if (invocation.Hook == OrchestrationTimelineHook.Disable || invocation.Hook == OrchestrationTimelineHook.Destroy)
+                {
+                    int current = 0;
+                    while (active[current].ClipOrdinal != invocation.Token.ClipOrdinal ||
+                           active[current].Cycle != invocation.Token.Cycle)
+                        current++;
+                    active.Slice(current + 1, activeCount - current - 1).CopyTo(active.Slice(current));
+                    activeCount--;
+                }
+            }
             work = default;
             work.Proposed = playback;
             work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
@@ -273,10 +296,6 @@ namespace BTSMTL.Timeline.Runtime
             CopyExitState(candidate, slot);
             if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
             {
-                Span<TimelineSchedulingBoundary<TTime>> active = m_Workspace.ActiveTrees;
-                int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(m_Content, in playback,
-                    TreeExits(candidate, slot).View, active);
-                ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Content.Clips;
                 for (int i = 0; i < activeCount; i++)
                 {
                     TimelineSchedulingBoundary<TTime> branch = active[i];

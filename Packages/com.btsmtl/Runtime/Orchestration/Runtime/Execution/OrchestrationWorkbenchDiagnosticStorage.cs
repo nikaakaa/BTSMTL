@@ -178,9 +178,6 @@ namespace BTSMTL.Orchestration
                 case OrchestrationDiagnosticLifecycle.RetireOperation:
                     RetireOperationOverrides(ref cursor, operation);
                     break;
-                case OrchestrationDiagnosticLifecycle.RetireFrame:
-                    OrchestrationValueOverride<TValue>.RetireExecutionFrame(cursor.Input.Overrides, in cursor.FrameHeader(frame));
-                    break;
                 case OrchestrationDiagnosticLifecycle.EnterLoopIteration:
                     if (cursor.Input.CaptureTrace || Observations != null)
                         WriteLoopScope(ref cursor, operation, out m_LoopScopes[m_LoopDepth++]);
