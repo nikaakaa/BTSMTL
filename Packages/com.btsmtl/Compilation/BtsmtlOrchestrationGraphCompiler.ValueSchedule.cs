@@ -24,6 +24,19 @@ namespace BTSMTL.Compilation
                         states.Add(i);
                     }
                 int values = structure.ValueEvaluationOffsets.Span[operations.Length];
+                var productInputSlots = new int[m_Inputs.Count];
+                for (int operation = 0; operation < operations.Length; operation++)
+                {
+                    OperationDraft op = operations[operation];
+                    for (int input = op.Inputs.Offset; input < op.Inputs.Offset + op.Inputs.Count; input++)
+                    {
+                        OrchestrationValueInputBinding binding = m_Inputs[input];
+                        productInputSlots[input] = binding.Source == OrchestrationValueInputSource.Operation &&
+                            InputConversion(op, input) == OrchestrationValueOpcode.Copy
+                            ? structure.ValueEvaluationOffsets.Span[binding.SourceIndex] + binding.SourceOutputPortIndex + 1
+                            : values + input;
+                    }
+                }
                 var valueEntries = new OrchestrationValueScheduleEntry[checked(states.Count * values)];
                 var inputEntries = new OrchestrationValueScheduleEntry[checked(states.Count * operations.Length)];
                 var transitions = new OrchestrationValueScheduleEntry[inputEntries.Length];
@@ -114,9 +127,9 @@ namespace BTSMTL.Compilation
                 for (int context = 0; context < states.Count; context++)
                 {
                     var product = new ValueScheduleBuilder(this, operations, edges, structure, states[context], false,
-                        instructions, argumentSlots, argumentLists);
+                        productInputSlots, instructions, argumentSlots, argumentLists);
                     var workbench = new ValueScheduleBuilder(this, operations, edges, structure, states[context], true,
-                        instructions, argumentSlots, argumentLists);
+                        productInputSlots, instructions, argumentSlots, argumentLists);
                     for (int operation = 0; operation < operations.Length; operation++)
                     {
                         OperationDraft op = operations[operation];
@@ -253,6 +266,7 @@ namespace BTSMTL.Compilation
                 readonly bool m_Diagnostics;
                 readonly int m_ValueCount;
                 readonly int m_BankSize;
+                readonly int[] m_ProductInputSlots;
                 readonly List<OrchestrationValueScheduleInstruction> m_Instructions;
                 readonly List<int> m_ArgumentSlots;
                 readonly List<OrchestrationRange> m_ArgumentLists;
@@ -264,7 +278,8 @@ namespace BTSMTL.Compilation
                 internal ValueScheduleBuilder(
                     Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> compiler,
                     OperationDraft[] operations, OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure,
-                    int state, bool diagnostics, List<OrchestrationValueScheduleInstruction> instructions,
+                    int state, bool diagnostics, int[] productInputSlots,
+                    List<OrchestrationValueScheduleInstruction> instructions,
                     List<int> argumentSlots, List<OrchestrationRange> argumentLists)
                 {
                     m_Compiler = compiler;
@@ -275,6 +290,7 @@ namespace BTSMTL.Compilation
                     m_Diagnostics = diagnostics;
                     m_ValueCount = structure.ValueEvaluationOffsets.Span[operations.Length];
                     m_BankSize = m_ValueCount + compiler.m_Inputs.Count + 1;
+                    m_ProductInputSlots = productInputSlots;
                     m_Instructions = instructions;
                     m_ArgumentSlots = argumentSlots;
                     m_ArgumentLists = argumentLists;
@@ -300,7 +316,8 @@ namespace BTSMTL.Compilation
                 int ValueSlot(int operation, int output, int bank) =>
                     bank * m_BankSize + m_Structure.ValueEvaluationOffsets.Span[operation] + output + 1;
 
-                int InputSlot(int input, int bank) => bank * m_BankSize + m_ValueCount + input;
+                int InputSlot(int input, int bank) => bank * m_BankSize +
+                    (m_Diagnostics ? m_ValueCount + input : m_ProductInputSlots[input]);
 
                 int BooleanSlot(int bank) => bank * m_BankSize + m_BankSize - 1;
 
@@ -381,7 +398,7 @@ namespace BTSMTL.Compilation
                     var pending = new Stack<int>();
                     var visited = new HashSet<int>();
                     var values = new Stack<(int Operation, int Port, int Bank, bool Input)>();
-                    var slots = new HashSet<int>();
+                    var slots = new HashSet<(int Slot, bool Input)>();
                     void Next(int work)
                     {
                         if (work >= 0)
@@ -454,7 +471,7 @@ namespace BTSMTL.Compilation
                         var current = values.Pop();
                         int slot = current.Input ? InputSlot(current.Port, current.Bank)
                             : ValueSlot(current.Operation, current.Port, current.Bank);
-                        if (!slots.Add(slot))
+                        if (!slots.Add((slot, current.Input)))
                             continue;
                         BigInteger bit = BigInteger.One << slot;
                         // 已缓存的结果截断上游求值；其后方缓存差异不再区分编译状态。
@@ -608,10 +625,13 @@ namespace BTSMTL.Compilation
                             switch (input.Source)
                             {
                                 case OrchestrationValueInputSource.Operation:
+                                {
+                                    int source = ValueSlot(input.SourceIndex, input.SourceOutputPortIndex, d.Argument);
                                     read = Work(WorkKind.Value, input.SourceIndex, input.SourceOutputPortIndex, argument: d.Argument,
-                                        next: Emit(OrchestrationValueScheduleCode.CopyInput, op,
-                                            ValueSlot(input.SourceIndex, input.SourceOutputPortIndex, d.Argument), slot, inputIndex, done));
+                                        next: slot == source ? done : Emit(OrchestrationValueScheduleCode.CopyInput,
+                                            op, source, slot, inputIndex, done));
                                     break;
+                                }
                                 case OrchestrationValueInputSource.Constant:
                                     read = Emit(OrchestrationValueScheduleCode.ReadInputConstant, op, input.SourceIndex, slot, inputIndex, done);
                                     break;

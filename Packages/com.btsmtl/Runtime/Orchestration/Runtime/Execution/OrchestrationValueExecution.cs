@@ -100,6 +100,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationValueScheduleEntry entry = ref m_InputEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             int arguments = RunValueSchedule(in entry).Value;
+            m_CurrentOperationIndex = operationIndex;
             count = CopyScheduledArguments(ScheduledArguments(arguments), depth, operationIndex);
             return depth;
         }
