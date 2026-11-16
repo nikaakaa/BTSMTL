@@ -81,6 +81,8 @@ namespace BTSMTL.Diagnostics
         public RuntimeCaptureReadWindow(int stateCapacity, int eventCapacity)
         {
             m_State = new RuntimeLiveStateStore(stateCapacity);
+            // 读窗口就是为回放归档状态而建，建好即按容量准备；只有实时存储才等首次订阅再准备。
+            m_State.Prepare();
             m_StateChanges = new List<RuntimeLiveStateChange>(stateCapacity);
             TimelineSpans = new RuntimeCaptureSpanAccumulator(eventCapacity);
         }
