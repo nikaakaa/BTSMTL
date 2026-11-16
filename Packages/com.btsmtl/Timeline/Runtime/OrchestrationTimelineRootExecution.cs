@@ -226,7 +226,7 @@ namespace BTSMTL.Timeline.Runtime
         public void ReleasePlayback(OrchestrationCandidateState<TValue> candidate, int slot)
         {
             var runtime = Runtime;
-            runtime.ReleasePlayback(candidate.Timeline, runtime.Playback(candidate.Timeline, slot).Start.PlaybackIdentity);
+            runtime.ReleasePlayback(candidate.Timeline, slot);
         }
 
         OrchestrationOperationResult Dispatch(OrchestrationCandidateState<TValue> candidate,

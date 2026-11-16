@@ -51,9 +51,8 @@ namespace BTSMTL.Timeline.Runtime
         public ref OrchestrationTimelinePlaybackState<TTime> Playback(OrchestrationStateView candidate, int slot) =>
             ref candidate.Get(m_Layout.Playbacks)[slot];
 
-        public void ReleasePlayback(OrchestrationStateView candidate, ulong playbackIdentity)
+        public void ReleasePlayback(OrchestrationStateView candidate, int slot)
         {
-            int slot = FindPlayback(candidate, playbackIdentity);
             TreeExitRequests(candidate, slot).Clear();
             TreeExitFirstCycles(candidate, slot).Clear();
             TreeExitBits(candidate, slot).Clear();

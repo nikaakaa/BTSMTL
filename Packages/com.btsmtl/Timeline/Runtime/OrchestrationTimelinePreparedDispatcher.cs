@@ -22,8 +22,21 @@ namespace BTSMTL.Timeline.Runtime
             where THost : struct, IOrchestrationHost<TValue>
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
             where TSamples : struct, ITimelineRuntimeLogicSamples<TValue, TContext>
+            => Tick(runtime, ref bindings, ref samples, ref cursor, candidate, operationIndex,
+                playbackIdentity == 0 ? -1 : runtime.FindPlayback(candidate, playbackIdentity),
+                contentIdentityId, operationGeneration, ref playbackIdentity, inputs, tick, ref context);
+
+        public static OrchestrationOperationResult Tick<TNumerics, THost, TBindings, TSamples>(
+            OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings, ref TSamples samples,
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
+            OrchestrationStateView candidate, int operationIndex, int slot, int contentIdentityId,
+            ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
+            ulong tick, ref TContext context)
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>
+            where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
+            where TSamples : struct, ITimelineRuntimeLogicSamples<TValue, TContext>
         {
-            int slot;
             if (playbackIdentity == 0)
             {
                 OrchestrationTimelineStart<TTime> start = bindings.Start(operationIndex, contentIdentityId,
@@ -33,8 +46,6 @@ namespace BTSMTL.Timeline.Runtime
                 runtime.Start(candidate, slot, in start);
                 playbackIdentity = start.PlaybackIdentity;
             }
-            else
-                slot = runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref runtime.Playback(candidate, slot);
             OrchestrationTimelineStep<TTime> step = bindings.Step(operationIndex,
                 in playback.Start, tick, inputs, ref context);
@@ -46,7 +57,8 @@ namespace BTSMTL.Timeline.Runtime
             {
                 OrchestrationStopContext failure = stopContext[0].AtOperation(operationIndex,
                     cursor.ExecutionFrameIndex, tick, OrchestrationStopMode.Force);
-                ClosePlayback(runtime, ref bindings, candidate, operationIndex, ref playbackIdentity,
+                ClosePlayback(runtime, ref bindings, candidate, operationIndex,
+                    runtime.FindPlayback(candidate, playbackIdentity), ref playbackIdentity,
                     MemoryMarshal.CreateSpan(ref failure, 1), ref context, startedInvocations);
                 return OrchestrationOperationResult.Failure;
             }
@@ -74,16 +86,26 @@ namespace BTSMTL.Timeline.Runtime
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
-            => ClosePlayback(runtime, ref bindings, candidate, operationIndex, ref playbackIdentity,
+            => Stop(runtime, ref bindings, ref cursor, candidate, operationIndex,
+                runtime.FindPlayback(candidate, playbackIdentity), ref playbackIdentity, stopContext, ref context);
+
+        public static OrchestrationStopStatus Stop<TNumerics, THost, TBindings>(
+            OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings,
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
+            OrchestrationStateView candidate, int operationIndex, int slot, ref ulong playbackIdentity,
+            ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context)
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue>
+            where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
+            => ClosePlayback(runtime, ref bindings, candidate, operationIndex, slot, ref playbackIdentity,
                 stopContext, ref context, 0);
 
         static OrchestrationStopStatus ClosePlayback<TBindings>(
             OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings,
-            OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
+            OrchestrationStateView candidate, int operationIndex, int slot, ref ulong playbackIdentity,
             ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context, int startedInvocations)
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
         {
-            int slot = runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref runtime.Playback(candidate, slot);
             OrchestrationTimelineBatch<TTime> batch = runtime.BeginStop(candidate, slot, in stopContext[0], startedInvocations);
             OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
@@ -99,9 +121,13 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTime.FromRaw(default(TClock).Raw(runtime.Workspace.CurrentInvocation.Time));
 
         public static void ReleasePlayback(OrchestrationTimelineRuntime<TTime, TClock> runtime,
-            OrchestrationStateView candidate, ref ulong playbackIdentity)
+            OrchestrationStateView candidate, ref ulong playbackIdentity) =>
+            ReleasePlayback(runtime, candidate, runtime.FindPlayback(candidate, playbackIdentity), ref playbackIdentity);
+
+        public static void ReleasePlayback(OrchestrationTimelineRuntime<TTime, TClock> runtime,
+            OrchestrationStateView candidate, int slot, ref ulong playbackIdentity)
         {
-            runtime.ReleasePlayback(candidate, playbackIdentity);
+            runtime.ReleasePlayback(candidate, slot);
             playbackIdentity = 0;
         }
 
@@ -249,11 +275,34 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.Stop(Runtime, ref m_Bindings, ref cursor,
                 candidate, operationIndex, ref playbackIdentity, stopContext, ref context);
 
+        public OrchestrationOperationResult Tick<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
+            OrchestrationStateView candidate, int operationIndex, int slot, int contentIdentityId,
+            ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
+            ulong tick, ref TContext context)
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue> =>
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.Tick(Runtime, ref m_Bindings, ref m_Samples,
+                ref cursor, candidate, operationIndex, slot, contentIdentityId, operationGeneration, ref playbackIdentity,
+                inputs, tick, ref context);
+
+        public OrchestrationStopStatus Stop<TNumerics, THost>(
+            ref OrchestrationExecutionCursor<TValue, TNumerics, THost> cursor,
+            OrchestrationStateView candidate, int operationIndex, int slot, ref ulong playbackIdentity,
+            ReadOnlySpan<OrchestrationStopContext> stopContext, ref TContext context)
+            where TNumerics : struct, IOrchestrationNumerics<TValue>
+            where THost : struct, IOrchestrationHost<TValue> =>
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.Stop(Runtime, ref m_Bindings, ref cursor,
+                candidate, operationIndex, slot, ref playbackIdentity, stopContext, ref context);
+
         public OrchestrationTime ReadTime() => OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReadTime(Runtime);
 
         public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context) =>
             OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReleasePlayback(Runtime, candidate, ref playbackIdentity);
+
+        public void ReleasePlayback(OrchestrationStateView candidate, int slot, ref ulong playbackIdentity) =>
+            OrchestrationTimelineDispatch<TValue, TContext, TTime, TClock>.ReleasePlayback(Runtime, candidate, slot, ref playbackIdentity);
 
         public OrchestrationOperationResult RequestClipExit(OrchestrationStateView candidate,
             int operationIndex, ulong tick, ref TContext context) =>
