@@ -209,11 +209,9 @@ namespace BTSMTL.Compilation
                         }
                     }
                     foreach (OrchestrationValueScheduleEntry entry in m_Schedule.ValueEntries.Span)
-                        if (entry.Product >= 0)
-                            result.Merge(Schedule(entry.Product));
+                        MergeSchedule(result, in entry);
                     foreach (OrchestrationValueScheduleEntry entry in m_Schedule.BooleanEntries.Span)
-                        if (entry.Product >= 0)
-                            result.Merge(Schedule(entry.Product));
+                        MergeSchedule(result, in entry);
                     foreach (OrchestrationBlackboardSlot slot in m_Compiler.m_Blackboards)
                         if (slot.ScopeKind == OrchestrationScopeKind.ActionInstance)
                         {
@@ -277,6 +275,8 @@ namespace BTSMTL.Compilation
                             case OrchestrationValueScheduleCode.BranchBoolean:
                             case OrchestrationValueScheduleCode.BranchExcludedTarget:
                             case OrchestrationValueScheduleCode.BranchCondition:
+                            case OrchestrationValueScheduleCode.OverrideInput:
+                            case OrchestrationValueScheduleCode.OverrideOutput:
                                 pending.Push((instruction.Alternative, predictions));
                                 break;
                         }
@@ -286,14 +286,22 @@ namespace BTSMTL.Compilation
                     return result;
                 }
 
+                void MergeSchedule(Shape result, in OrchestrationValueScheduleEntry entry,
+                    int rows = 0, int states = 0)
+                {
+                    if (entry.Product >= 0)
+                        result.Merge(Schedule(entry.Product), rows, states);
+                    if (entry.Workbench >= 0 && entry.Workbench != entry.Product)
+                        result.Merge(Schedule(entry.Workbench), rows, states);
+                }
+
                 void Schedules(Shape result, ReadOnlySpan<OrchestrationValueScheduleEntry> entries,
                     int index, int stride, int rows = 0, int states = 0)
                 {
                     for (int context = 0; context * stride + index < entries.Length; context++)
                     {
                         OrchestrationValueScheduleEntry entry = entries[context * stride + index];
-                        if (entry.Product >= 0)
-                            result.Merge(Schedule(entry.Product), rows, states);
+                        MergeSchedule(result, in entry, rows, states);
                     }
                 }
 
