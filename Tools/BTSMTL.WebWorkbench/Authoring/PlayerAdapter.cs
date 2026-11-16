@@ -15,7 +15,6 @@ public interface IPlayerAdapter
     int PoolLimit { get; }
     string ObservationProtocol { get; }
     IReadOnlySet<string> Commands { get; }
-    string RecipeDirectory(string baseBuildId);
     string[] LaunchArguments(string connection, string directory, int width, int height, bool hideWindow);
     PlayerJobParameters CreationParameters(JsonElement parameters);
     void ValidateJob(PlayerPreviewRequest request);

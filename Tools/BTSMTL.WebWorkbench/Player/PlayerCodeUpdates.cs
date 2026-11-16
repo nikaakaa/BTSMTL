@@ -16,17 +16,14 @@ public sealed class PlayerCodeUpdates
     readonly string m_Players;
     readonly PlayerScriptCompiler m_Compiler;
     readonly PlayerBurstCompiler m_Burst;
-    readonly Func<string, string> m_RecipeDirectory;
     static readonly JsonSerializerOptions s_Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     readonly SemaphoreSlim m_Gate = new(1);
 
-    public PlayerCodeUpdates(string players, PlayerScriptCompiler compiler, PlayerBurstCompiler burst,
-        Func<string, string> recipeDirectory)
+    public PlayerCodeUpdates(string players, PlayerScriptCompiler compiler, PlayerBurstCompiler burst)
     {
         m_Players = Path.TrimEndingDirectorySeparator(Path.GetFullPath(players));
         m_Compiler = compiler;
         m_Burst = burst;
-        m_RecipeDirectory = recipeDirectory;
         RemoveSuperseded();
     }
 
@@ -80,13 +77,14 @@ public sealed class PlayerCodeUpdates
     {
         var watch = Stopwatch.StartNew();
         JsonObject source = ReadManifest(sourceId);
-        string baseId = (string?)source["baseBuildId"]
+        string recipeFile = (string?)source["codeRecipe"]
             ?? throw new InvalidOperationException($"播放器构建 '{sourceId}' 没有编译配方，需按当前构建入口整包构建一次。");
         string sourceDirectory = Path.Combine(m_Players, sourceId);
         string managed = Path.Combine(sourceDirectory,
             Path.GetFileNameWithoutExtension((string)source["executable"]!) + "_Data", "Managed");
-        string recipeDirectory = m_RecipeDirectory(baseId);
-        JsonObject recipe = JsonNode.Parse(File.ReadAllBytes(Path.Combine(recipeDirectory, "recipe.json")))!.AsObject();
+        string recipePath = Path.Combine(sourceDirectory, recipeFile);
+        string recipeDirectory = Path.GetDirectoryName(recipePath)!;
+        JsonObject recipe = JsonNode.Parse(File.ReadAllBytes(recipePath))!.AsObject();
         var refusals = new List<string>();
         Dictionary<string, RecipeAssembly> assemblies = recipe["assemblies"]!.AsArray()
             .Select(node => RecipeAssembly.Read(node!.AsObject(), recipeDirectory))
@@ -172,6 +170,8 @@ public sealed class PlayerCodeUpdates
         if (Directory.Exists(staging))
             Directory.Delete(staging, true);
         LinkTree(sourceDirectory, staging);
+        RelocateRecipe(recipe, recipeDirectory, Path.Combine(target, Path.GetRelativePath(sourceDirectory, recipeDirectory)),
+            Path.Combine(staging, recipeFile));
         string stagedManaged = Path.Combine(staging, Path.GetRelativePath(sourceDirectory, managed));
         var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var assembly in changed)
@@ -210,8 +210,6 @@ public sealed class PlayerCodeUpdates
         var manifest = (JsonObject)source.DeepClone();
         manifest["buildId"] = versionId;
         manifest["parentBuildId"] = sourceId;
-        // 配方随版本链接过来，新版本自成基包，旧版本可整体删除。
-        manifest["baseBuildId"] = versionId;
         manifest["builtAt"] = DateTimeOffset.UtcNow.ToString("O");
         foreach (JsonNode? entry in manifest["assemblies"]!.AsArray())
             if (hashes.TryGetValue((string)entry!["name"]!, out string? hash))
@@ -262,6 +260,44 @@ public sealed class PlayerCodeUpdates
         JsonObject manifest = JsonNode.Parse(File.ReadAllBytes(path))!.AsObject();
         return (string?)manifest["buildId"] == buildId ? manifest
             : throw new InvalidDataException($"预览播放器构建清单 '{path}' 的身份不符。");
+    }
+
+    // 配方随版本链接过来，其中封存文件的绝对路径改指新版本目录，旧版本与基包目录可整体删除；
+    // baseBuildId 仍是播放器内烘焙的基包身份，不随版本改变。链接文件先删再写，不改共用文件。
+    static void RelocateRecipe(JsonObject recipe, string from, string to, string destination)
+    {
+        string prefix = Path.GetFullPath(from).Replace('\\', '/').TrimEnd('/') + "/";
+        string replacement = Path.GetFullPath(to).Replace('\\', '/').TrimEnd('/') + "/";
+        var relocated = (JsonObject)recipe.DeepClone();
+        Relocate(relocated);
+        File.Delete(destination);
+        File.WriteAllText(destination, relocated.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
+            new UTF8Encoding(false));
+
+        void Relocate(JsonNode? node)
+        {
+            if (node is JsonObject value)
+                foreach (string key in value.Select(pair => pair.Key).ToArray())
+                {
+                    if (Moved(value[key]) is { } path)
+                        value[key] = path;
+                    else
+                        Relocate(value[key]);
+                }
+            else if (node is JsonArray items)
+                for (int index = 0; index < items.Count; index++)
+                {
+                    if (Moved(items[index]) is { } path)
+                        items[index] = path;
+                    else
+                        Relocate(items[index]);
+                }
+        }
+
+        string? Moved(JsonNode? node) =>
+            node is JsonValue value && value.TryGetValue(out string? text) &&
+            text.Replace('\\', '/').StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                ? replacement + text.Replace('\\', '/')[prefix.Length..] : null;
     }
 
     // 版本目录只读共用：未变化文件硬链接到上一版本，替换时先删链接再写新文件，不就地改写共用文件。

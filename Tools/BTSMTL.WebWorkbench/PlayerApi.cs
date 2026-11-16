@@ -17,7 +17,7 @@ public static class PlayerApi
         if (options.CompilationProject is { } project)
             app.MapPlayerCodeUpdateApi(new PlayerCodeUpdates(adapter.PlayersDirectory,
                 new PlayerScriptCompiler(project, adapter.TemporaryDirectory),
-                new PlayerBurstCompiler(project, adapter.TemporaryDirectory), adapter.RecipeDirectory));
+                new PlayerBurstCompiler(project, adapter.TemporaryDirectory)));
         else
             app.MapPost("/api/preview/players/code-updates", () => Results.Json(new
             {
