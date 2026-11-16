@@ -114,7 +114,6 @@ namespace BTSMTL.Graphs
                 TValue state = operation == GraphVariableMutation.Release ? default :
                     m_Bindings.ToState(in value, enumTypeContentId, m_CandidateTexts);
                 MutateCandidateVariable(slot, in state, operation);
-                m_CandidateTexts.PrepareOrdinals();
                 AdoptCandidateState();
             }
             finally
@@ -180,7 +179,6 @@ namespace BTSMTL.Graphs
             try
             {
                 ApplyCandidatePortMutation(port, in value, operation);
-                m_CandidateTexts.PrepareOrdinals();
                 AdoptCandidateState();
             }
             finally
@@ -496,7 +494,6 @@ namespace BTSMTL.Graphs
                             m_Bindings.ToState(in observed, port.EnumTypeContentId, m_CandidateTexts);
                     }
                 }
-                m_CandidateTexts.PrepareOrdinals();
                 m_Output.Invalidate();
                 AdoptCandidateState();
                 m_ResetGeneration = resetGeneration;

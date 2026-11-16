@@ -40,8 +40,14 @@ namespace BTSMTL.Graphs
         public FrozenOrchestrationIdentities Frozen => m_Frozen;
         public int Capacity => m_Texts.Length;
         public int ReferenceSlotCount => m_References.Length;
-        public OrchestrationIdentityOrdinalView Ordinals =>
-            new OrchestrationIdentityOrdinalView(m_ContentRanks, m_RosterRanks, m_ReferenceRanks);
+        public OrchestrationIdentityOrdinalView Ordinals
+        {
+            get
+            {
+                PrepareOrdinals();
+                return new OrchestrationIdentityOrdinalView(m_ContentRanks, m_RosterRanks, m_ReferenceRanks);
+            }
+        }
 
         public OrchestrationIdentityValue Capture(string text)
         {
@@ -99,7 +105,6 @@ namespace BTSMTL.Graphs
                 bucket = NextBucket(bucket);
             }
             m_Texts[index] = null;
-            m_RuntimeRanks[value.Index] = 0;
             m_FreeIndices[m_FreeCount++] = index;
             m_Count--;
         }
@@ -130,8 +135,9 @@ namespace BTSMTL.Graphs
             _ => throw new ArgumentOutOfRangeException(nameof(value))
         };
 
-        public void PrepareOrdinals()
+        void PrepareOrdinals()
         {
+            Array.Clear(m_RuntimeRanks, 0, m_RuntimeRanks.Length);
             int written = 0;
             for (int i = 0; written < m_Count; i++)
             {
@@ -173,14 +179,9 @@ namespace BTSMTL.Graphs
         {
             source.m_Texts.AsSpan().CopyTo(m_Texts);
             source.m_Buckets.AsSpan().CopyTo(m_Buckets);
-            source.m_ContentRanks.AsSpan().CopyTo(m_ContentRanks);
-            source.m_RosterRanks.AsSpan().CopyTo(m_RosterRanks);
-            source.m_RuntimeRanks.AsSpan().CopyTo(m_RuntimeRanks);
             source.m_ReferenceCounts.AsSpan().CopyTo(m_ReferenceCounts);
             source.m_FreeIndices.AsSpan().CopyTo(m_FreeIndices);
             source.m_References.AsSpan().CopyTo(m_References);
-            if (m_References.Length != 0)
-                source.m_ReferenceRanks.AsSpan().CopyTo(m_ReferenceRanks);
             m_Count = source.m_Count;
             m_FreeCount = source.m_FreeCount;
         }
@@ -220,7 +221,6 @@ namespace BTSMTL.Graphs
                     InsertBucket(i + 1);
                     m_Count++;
                 }
-            PrepareOrdinals();
         }
 
         public void Reset()
@@ -233,11 +233,6 @@ namespace BTSMTL.Graphs
                 m_FreeIndices[i] = m_FreeIndices.Length - i - 1;
             m_Count = 0;
             m_FreeCount = m_Texts.Length;
-            m_Frozen.Ordinals.ContentRanks.CopyTo(m_ContentRanks);
-            m_Frozen.Ordinals.RosterRanks.CopyTo(m_RosterRanks);
-            Array.Clear(m_RuntimeRanks, 0, m_RuntimeRanks.Length);
-            if (m_References.Length != 0)
-                Array.Clear(m_ReferenceRanks, 0, m_ReferenceRanks.Length);
         }
     }
 }

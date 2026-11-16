@@ -162,7 +162,6 @@ namespace BTSMTL.Graphs
             {
                 BeginCandidateState();
                 m_Bindings.PrepareInputs(hostContext, m_Inputs, m_CandidateTexts);
-                m_CandidateTexts.PrepareOrdinals();
             }
             catch (Exception exception)
             {
