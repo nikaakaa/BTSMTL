@@ -47,9 +47,11 @@ namespace BTSMTL.Orchestration
             Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
                 Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
 
-        public ref OrchestrationOperationState Operation(int frameSlot, int operationIndex)
+        public ref OrchestrationOperationState Operation(int frameSlot, int operationIndex) =>
+            ref Operation(frameSlot, operationIndex, Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
+
+        public ref OrchestrationOperationState Operation(int frameSlot, int operationIndex, int programIndex)
         {
-            int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
             return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
                 programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
         }
@@ -80,12 +82,17 @@ namespace BTSMTL.Orchestration
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
-        public int Find(ulong actionInstanceId)
+        public int FindAction(int programIndex, int ownerOperationIndex, ulong actionInstanceId)
         {
-            for (int slot = 0; slot < m_Frames.Length; slot++)
-                if (m_Frames[slot].SkillContentId != 0 && m_Frames[slot].TimelineStart.PlaybackIdentity == 0 &&
-                    m_Frames[slot].ActionInstanceId == actionInstanceId)
+            OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, ownerOperationIndex);
+            int end = pool.First + pool.Count;
+            for (int slot = pool.First; slot < end; slot++)
+            {
+                ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[slot];
+                if (frame.SkillContentId != 0 && frame.TimelineStart.PlaybackIdentity == 0 &&
+                    frame.ActionInstanceId == actionInstanceId)
                     return slot;
+            }
             return -1;
         }
 
