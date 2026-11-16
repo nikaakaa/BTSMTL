@@ -62,6 +62,25 @@ namespace BTSMTL.Orchestration
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
+        public int FindTimelineSource(int skillContentId, int ownerOperationIndex, int operationIndex,
+            in OrchestrationTimelineStart<OrchestrationTime> start)
+        {
+            int programIndex = Plan.ProgramIndex(skillContentId);
+            OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, ownerOperationIndex);
+            int operation = Plan.ProgramStorage(programIndex).OperationIndices[operationIndex];
+            int end = pool.First + pool.Count;
+            for (int slot = pool.First; slot < end; slot++)
+            {
+                ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[slot];
+                if (frame.SkillContentId == skillContentId && frame.OwnerOperationIndex == ownerOperationIndex &&
+                    frame.ActionInstanceId == start.OwnerInstanceId &&
+                    Payload<OrchestrationOperationState>(slot, OrchestrationStateSegmentRole.Operations,
+                        programIndex)[operation].TimelineRuntimeHandle == start.PlaybackIdentity)
+                    return slot;
+            }
+            return -1;
+        }
+
         public int OwnerFrame(int frameSlot, int ownerOperationIndex)
         {
             while (m_Frames[frameSlot].OwnerOperationIndex != ownerOperationIndex)
