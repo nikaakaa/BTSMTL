@@ -98,9 +98,6 @@ namespace BTSMTL.Graphs
             // Start 与 Update 的输出按两次调用保留；编辑器排队触发时提前准备额外容量。
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Scratch.OutputRequestCapacity * 2)];
             m_OutputValues = new TValue[checked(m_Scratch.OutputValueCapacity * 2)];
-#if UNITY_EDITOR
-            PrepareRuntimeObservation();
-#endif
             int textCapacity = checked(program.ValueSlotCount + m_Inputs.Length +
                 m_Bindings.PublishedSlots.Length + content.Structure.Ports.Length +
                 program.InputBindingCount + program.ValueEvaluationSlotCount + 1);
@@ -276,6 +273,8 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException("图 owner 只能采用已完成的本次计算结果。");
             if (m_Status == EvaluationStatus.Failed)
                 return AdoptFailure();
+            Span<OrchestrationValueOverride<TValue>> overrides = m_RuntimePorts == null
+                ? default : ActiveOverrides(m_CandidateOverrides);
             try
             {
                 m_Output.BeginWrite();
@@ -285,10 +284,10 @@ namespace BTSMTL.Graphs
                 {
                     int slot = m_Bindings.PublishedSlots[i];
                     int valueIndex = storage[slot].ValueIndex;
-                    int supplied = m_RuntimePorts == null ? -1 :
-                        FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
+                    int supplied = overrides.IsEmpty ? -1 :
+                        FindOverride(overrides, OrchestrationValueOverrideKind.Blackboard, slot);
                     TValue value = supplied >= 0
-                        ? m_CandidateOverrides[supplied].Value : values[valueIndex];
+                        ? overrides[supplied].Value : values[valueIndex];
                     GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
                     m_Output.Write(i, in published);
                 }
