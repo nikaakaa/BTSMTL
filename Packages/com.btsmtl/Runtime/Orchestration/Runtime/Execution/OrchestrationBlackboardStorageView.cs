@@ -59,6 +59,15 @@ namespace BTSMTL.Orchestration
                 slot.ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
         }
 
+        internal bool TryReadValue(int valueSlot, in OrchestrationBlackboardOwnerToken expected,
+            ref TValue destination)
+        {
+            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
+            return m_Reader.TryReadValue<TStorage>(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
+                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
+                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, in expected, ref destination);
+        }
+
         internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];

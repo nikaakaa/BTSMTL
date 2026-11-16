@@ -17,10 +17,9 @@ namespace BTSMTL.Orchestration
                 OrchestrationValueOverrideKind.Blackboard, in expected);
             if (overrideIndex >= 0)
                 destination = m_Input.Overrides[overrideIndex].Value;
-            else if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex) ||
-                SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected))
+            else if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex))
                 m_Blackboards.ReadValue(valueSlot, ref destination);
-            else
+            else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref destination))
                 destination = m_Program.DefaultValue(valueSlot);
         }
 
@@ -47,9 +46,7 @@ namespace BTSMTL.Orchestration
                 TValue current = default;
                 if (overrideIndex >= 0)
                     current = m_Input.Overrides[overrideIndex].Value;
-                else if (SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected))
-                    m_Blackboards.ReadValue(valueSlot, ref current);
-                else
+                else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref current))
                     current = m_Program.DefaultValue(valueSlot);
                 default(TNumerics).Assign(assignment, in current, in value, ref current);
                 m_Blackboards.WriteValue(valueSlot, in current);
@@ -197,8 +194,5 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        static bool SameOwner(in OrchestrationBlackboardOwnerToken left,
-            in OrchestrationBlackboardOwnerToken right) => left.ScopeKind == right.ScopeKind &&
-            left.CompiledOwnerIndex == right.CompiledOwnerIndex && left.Generation == right.Generation;
     }
 }

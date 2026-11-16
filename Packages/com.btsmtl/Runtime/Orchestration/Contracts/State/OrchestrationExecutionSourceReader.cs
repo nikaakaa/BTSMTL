@@ -66,12 +66,37 @@ namespace BTSMTL.Orchestration
             else
             {
                 FrameAddress owner = Owner(ownerOperationIndex);
-                ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
-                OrchestrationValueAddress address = owner.Source
-                    ? m_Source.Frames.Plan.ResolveAddress(m_SourcePrivateAddresses[valueSlot], owner.Index)
-                    : CandidateAddress(owner.Index, valueSlot);
-                default(TStorage).Read(frames.Memory, in address, ref destination);
+                ReadValue<TStorage>(valueSlot, owner, ref destination);
             }
+        }
+
+        internal bool TryReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
+            int characterSlot, bool actionInstance, in OrchestrationBlackboardOwnerToken expected,
+            ref TValue destination)
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+        {
+            if (characterSlot >= 0 || actionInstance)
+            {
+                if (!ReadMetadata(valueSlot, ownerOperationIndex, characterSlot, actionInstance).Owner.Equals(in expected))
+                    return false;
+                ReadValue<TStorage>(valueSlot, ownerOperationIndex, characterSlot, actionInstance, ref destination);
+                return true;
+            }
+            FrameAddress owner = Owner(ownerOperationIndex);
+            if (!ReadMetadata(valueSlot, owner).Owner.Equals(in expected))
+                return false;
+            ReadValue<TStorage>(valueSlot, owner, ref destination);
+            return true;
+        }
+
+        void ReadValue<TStorage>(int valueSlot, FrameAddress owner, ref TValue destination)
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
+        {
+            ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
+            OrchestrationValueAddress address = owner.Source
+                ? m_Source.Frames.Plan.ResolveAddress(m_SourcePrivateAddresses[valueSlot], owner.Index)
+                : CandidateAddress(owner.Index, valueSlot);
+            default(TStorage).Read(frames.Memory, in address, ref destination);
         }
 
         public ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot,
@@ -82,6 +107,11 @@ namespace BTSMTL.Orchestration
             if (actionInstance)
                 return ref SharedFrames.BlackboardMetadata(ActionFrameIndex)[m_CandidateStorage.Values[valueSlot].ValueIndex];
             FrameAddress owner = Owner(ownerOperationIndex);
+            return ref ReadMetadata(valueSlot, owner);
+        }
+
+        ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot, FrameAddress owner)
+        {
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             return ref frames.Payload<OrchestrationBlackboardMetadata>(owner.Index,
                 OrchestrationStateSegmentRole.PrivateMetadata, ProgramIndex(owner))[
