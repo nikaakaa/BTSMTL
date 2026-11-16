@@ -286,7 +286,7 @@ namespace BTSMTL.Orchestration
                 ownerAdmissions.Add(new PreparedOwnerAdmission(
                     new OwnerAdmission(admissionRoots, admission.MaximumInstances), admissionFrames));
             }
-            MergeFramePools(framePools, ownerPools, ownerAdmissions);
+            MergeFramePools(framePools, ownerPools, poolMap, ownerAdmissions);
             var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
             for (int depth = 0; depth < pools.Length; depth++)
                 pools[depth] = framePools[depth].Build();
@@ -299,11 +299,8 @@ namespace BTSMTL.Orchestration
         }
 
         static void MergeFramePools(List<FramePoolBuilder> pools,
-            ReadOnlyMemory<int>[] ownerPools, List<PreparedOwnerAdmission> admissions)
+            ReadOnlyMemory<int>[] ownerPools, int[] poolMap, List<PreparedOwnerAdmission> admissions)
         {
-            var poolMap = new int[pools.Count];
-            for (int pool = 0; pool < pools.Count; pool++)
-                poolMap[pool] = pool;
             bool merged;
             do
             {
