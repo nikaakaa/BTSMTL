@@ -61,8 +61,8 @@ namespace BTSMTL.Graphs
             int stateMachinesCapacity, int timelineHandlesCapacity,
             int rosterCapacity, int savedOutputsCapacity, int valuesCapacity) =>
             Float32GraphStateLayouts.Create(contentIdentity, numericProfile, targetAbi, blackboardMetadataCapacity,
-                framesCapacity, operationsCapacity, operationStopsCapacity, stateMachinesCapacity,
-                timelineHandlesCapacity, rosterCapacity, savedOutputsCapacity, valuesCapacity);
+                framesCapacity, operationStopsCapacity, operationsCapacity, rosterCapacity,
+                savedOutputsCapacity, stateMachinesCapacity, timelineHandlesCapacity, valuesCapacity);
 
         public IGraphRuntimeCore<TContext> CreateGraphRuntime<TContext>(GraphRuntimeSetup setup) where TContext : struct =>
             new HostedGraphRuntime<Float32OrchestrationValue, Float32GraphNumerics, TContext>(setup.Contract,
@@ -88,8 +88,8 @@ namespace BTSMTL.Graphs
         [ValueStateLayoutFactory]
         internal static partial OrchestrationExecutionStateLayout<Float32OrchestrationValue> Create(
             StableHash contentIdentity, NumericProfileId numericProfile, TargetAbiVersion targetAbi,
-            int blackboardMetadataCapacity, int framesCapacity, int operationsCapacity,
-            int operationStopsCapacity, int stateMachinesCapacity, int timelineHandlesCapacity,
-            int rosterCapacity, int savedOutputsCapacity, int valuesCapacity);
+            int blackboardMetadataCapacity, int framesCapacity, int operationStopsCapacity,
+            int operationsCapacity, int rosterCapacity, int savedOutputsCapacity,
+            int stateMachinesCapacity, int timelineHandlesCapacity, int valuesCapacity);
     }
 }
