@@ -69,12 +69,9 @@ namespace BTSMTL.Compilation
                 return new OrchestrationProgramStorageLayout(operationIndices, values, owners);
             }
 
-            static bool RequiresOperationStorage(OperationDraft operation) => operation.IsRunnable ||
-                operation.Code is OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.Loop or
-                    OrchestrationOperationCode.Parallel or OrchestrationOperationCode.Sequence or
-                    OrchestrationOperationCode.Selector or OrchestrationOperationCode.Cycle or
-                    OrchestrationOperationCode.StateMachine or OrchestrationOperationCode.State or
-                    OrchestrationOperationCode.Timeline;
+            static bool RequiresOperationStorage(OperationDraft operation) =>
+                (OrchestrationOperationStateRequirements.For(operation.Code, operation.IsRunnable) &
+                    OrchestrationOperationStateFields.Core) != 0;
         }
     }
 }

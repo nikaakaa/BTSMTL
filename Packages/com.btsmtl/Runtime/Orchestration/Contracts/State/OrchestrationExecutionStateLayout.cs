@@ -13,6 +13,12 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<OrchestrationExecutionFrameState> Frames { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.Operations, perFrame: true)]
         public OrchestrationStateRegion<OrchestrationOperationState> Operations { get; }
+        [OrchestrationStateSegment(OrchestrationStateSegmentRole.OperationStops, perFrame: true)]
+        public OrchestrationStateRegion<OrchestrationStopContext> OperationStops { get; }
+        [OrchestrationStateSegment(OrchestrationStateSegmentRole.StateMachines, perFrame: true)]
+        public OrchestrationStateRegion<OrchestrationStateMachineState> StateMachines { get; }
+        [OrchestrationStateSegment(OrchestrationStateSegmentRole.TimelineHandles, perFrame: true)]
+        public OrchestrationStateRegion<ulong> TimelineHandles { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.Roster)]
         public OrchestrationStateRegion<OrchestrationExecutionRosterState> Roster { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.SavedOutputs, perFrame: true)]

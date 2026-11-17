@@ -57,9 +57,12 @@ namespace ThirdPersonSimulation.QuantumNumerics
 
         public OrchestrationExecutionStateLayout<FPOrchestrationValue> CreateStateLayout(StableHash contentIdentity,
             NumericProfileId numericProfile, TargetAbiVersion targetAbi, int blackboardMetadataCapacity,
-            int framesCapacity, int operationsCapacity, int rosterCapacity, int savedOutputsCapacity, int valuesCapacity) =>
+            int framesCapacity, int operationsCapacity, int operationStopsCapacity,
+            int stateMachinesCapacity, int timelineHandlesCapacity,
+            int rosterCapacity, int savedOutputsCapacity, int valuesCapacity) =>
             FPGraphStateLayouts.Create(contentIdentity, numericProfile, targetAbi, blackboardMetadataCapacity,
-                framesCapacity, operationsCapacity, rosterCapacity, savedOutputsCapacity, valuesCapacity);
+                framesCapacity, operationsCapacity, operationStopsCapacity, stateMachinesCapacity,
+                timelineHandlesCapacity, rosterCapacity, savedOutputsCapacity, valuesCapacity);
 
         public IGraphRuntimeCore<TContext> CreateGraphRuntime<TContext>(GraphRuntimeSetup setup) where TContext : struct =>
             new HostedGraphRuntime<FPOrchestrationValue, FPGraphNumerics, TContext>(setup.Contract,
@@ -84,6 +87,7 @@ namespace ThirdPersonSimulation.QuantumNumerics
         internal static partial OrchestrationExecutionStateLayout<FPOrchestrationValue> Create(
             StableHash contentIdentity, NumericProfileId numericProfile, TargetAbiVersion targetAbi,
             int blackboardMetadataCapacity, int framesCapacity, int operationsCapacity,
+            int operationStopsCapacity, int stateMachinesCapacity, int timelineHandlesCapacity,
             int rosterCapacity, int savedOutputsCapacity, int valuesCapacity);
     }
 }

@@ -34,9 +34,13 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationValueOperation> m_ValueOperations;
         readonly ReadOnlySpan<int> m_StateContexts;
         readonly ReadOnlySpan<ushort> m_OperationIndices;
+        readonly ReadOnlySpan<OrchestrationOperationStateIndices> m_OperationStateIndices;
         readonly ReadOnlySpan<OrchestrationValueStorageSlot> m_ValueStorage;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         Span<OrchestrationOperationState> m_Operations;
+        Span<OrchestrationStopContext> m_OperationStops;
+        Span<OrchestrationStateMachineState> m_StateMachines;
+        Span<ulong> m_TimelineHandles;
         Span<TValue> m_SavedOutputs;
         OrchestrationBlackboardStorageView<TValue, THost> m_Blackboards;
         int m_FrameSlot;
@@ -115,8 +119,15 @@ namespace BTSMTL.Orchestration
             m_FrameSlot = frameSlot;
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(program, frames, frameSlot,
                 characterSlots, sourceBinding, source);
+            m_OperationStateIndices = frames.Plan.OperationStateIndices(m_Blackboards.ProgramIndex);
             m_Operations = frames.Payload<OrchestrationOperationState>(frameSlot,
                 OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
+            m_OperationStops = frames.Payload<OrchestrationStopContext>(frameSlot,
+                OrchestrationStateSegmentRole.OperationStops, m_Blackboards.ProgramIndex);
+            m_StateMachines = frames.Payload<OrchestrationStateMachineState>(frameSlot,
+                OrchestrationStateSegmentRole.StateMachines, m_Blackboards.ProgramIndex);
+            m_TimelineHandles = frames.Payload<ulong>(frameSlot,
+                OrchestrationStateSegmentRole.TimelineHandles, m_Blackboards.ProgramIndex);
             m_SavedOutputs = frames.Payload<TValue>(frameSlot,
                 OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
             m_Input = input;
@@ -260,6 +271,15 @@ namespace BTSMTL.Orchestration
         ref OrchestrationOperationState OperationState(int operationIndex) =>
             ref m_Operations[m_OperationIndices[operationIndex]];
 
+        ref OrchestrationStopContext OperationStopContext(int operationIndex) =>
+            ref m_OperationStops[m_OperationStateIndices[operationIndex].StopContext];
+
+        ref OrchestrationStateMachineState MachineState(int operationIndex) =>
+            ref m_StateMachines[m_OperationStateIndices[operationIndex].StateMachine];
+
+        ref ulong TimelineRuntimeHandle(int operationIndex) =>
+            ref m_TimelineHandles[m_OperationStateIndices[operationIndex].Timeline];
+
         Span<TValue> SavedOutputs(in OrchestrationOperation operation) =>
             m_SavedOutputs.Slice(m_ValueStorage[operation.OutputSlotOffset].SavedOutputIndex,
                 operation.OutputCount);
@@ -269,6 +289,12 @@ namespace BTSMTL.Orchestration
             m_FrameSlot = frameSlot;
             m_Operations = m_Frames.Payload<OrchestrationOperationState>(frameSlot,
                 OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
+            m_OperationStops = m_Frames.Payload<OrchestrationStopContext>(frameSlot,
+                OrchestrationStateSegmentRole.OperationStops, m_Blackboards.ProgramIndex);
+            m_StateMachines = m_Frames.Payload<OrchestrationStateMachineState>(frameSlot,
+                OrchestrationStateSegmentRole.StateMachines, m_Blackboards.ProgramIndex);
+            m_TimelineHandles = m_Frames.Payload<ulong>(frameSlot,
+                OrchestrationStateSegmentRole.TimelineHandles, m_Blackboards.ProgramIndex);
             m_SavedOutputs = m_Frames.Payload<TValue>(frameSlot,
                 OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
             m_Blackboards.SelectFrame(frameSlot);
@@ -361,7 +387,7 @@ namespace BTSMTL.Orchestration
                     }
                 }
                 else
-                    state.StopContext = state.StopContext.Resume(in request);
+                    OperationStopContext(operationIndex) = OperationStopContext(operationIndex).Resume(in request);
                 return ContinueStop(operationIndex);
             }
             finally
@@ -378,7 +404,7 @@ namespace BTSMTL.Orchestration
                 if (!IsStopping(operationIndex))
                     return OrchestrationStopStatus.Completed;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                OperationState(operationIndex).StopContext.UpdateTick(m_Input.Tick);
+                OperationStopContext(operationIndex).UpdateTick(m_Input.Tick);
                 ref readonly OrchestrationStopContext context = ref ReadStopContext(operationIndex);
                 OrchestrationStopStatus status;
                 switch (operation.Code)
@@ -444,7 +470,7 @@ namespace BTSMTL.Orchestration
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Timeline:
-                    if (OperationState(operationIndex).TimelineRuntimeHandle != 0)
+                    if (TimelineRuntimeHandle(operationIndex) != 0)
                         ForceStopLeaf(operationIndex, in current);
                     break;
                 case OrchestrationOperationCode.Extension:
@@ -504,11 +530,21 @@ namespace BTSMTL.Orchestration
                 return;
             RetireOperationOverrides(operationIndex);
             ref OrchestrationOperationState state = ref OperationState(operationIndex);
-            if (state.TimelineRuntimeHandle != 0)
-                m_Host.ReleasePlayback(m_TimelineState, operationIndex, ref state.TimelineRuntimeHandle);
+            OrchestrationOperationStateIndices indices = m_OperationStateIndices[operationIndex];
+            if (indices.Timeline != OrchestrationOperationStateIndices.NoIndex)
+            {
+                ref ulong handle = ref m_TimelineHandles[indices.Timeline];
+                if (handle != 0)
+                    m_Host.ReleasePlayback(m_TimelineState, operationIndex, ref handle);
+                handle = 0;
+            }
             ulong generation = state.Generation;
             state = default;
             state.Generation = generation;
+            if (indices.StopContext != OrchestrationOperationStateIndices.NoIndex)
+                m_OperationStops[indices.StopContext] = default;
+            if (indices.StateMachine != OrchestrationOperationStateIndices.NoIndex)
+                m_StateMachines[indices.StateMachine] = default;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.OutputSlotOffset >= 0)
                 for (int i = 0; i < operation.OutputCount; i++)
@@ -543,15 +579,15 @@ namespace BTSMTL.Orchestration
                 operationIndex, m_FrameSlot);
 
         ref readonly OrchestrationStopContext ReadStopContext(int operationIndex) =>
-            ref OperationState(operationIndex).StopContext;
+            ref OperationStopContext(operationIndex);
 
         public ReadOnlySpan<OrchestrationStopContext> StopContextStorage(int operationIndex) =>
-            MemoryMarshal.CreateSpan(ref OperationState(operationIndex).StopContext, 1);
+            MemoryMarshal.CreateSpan(ref OperationStopContext(operationIndex), 1);
 
         void WriteStopContext(int operationIndex, in OrchestrationStopContext context) =>
-            OperationState(operationIndex).StopContext = context;
+            OperationStopContext(operationIndex) = context;
 
-        void ClearStopContext(int operationIndex) => OperationState(operationIndex).StopContext = default;
+        void ClearStopContext(int operationIndex) => OperationStopContext(operationIndex) = default;
 
         OrchestrationOperationResult Execute(int operationIndex, int inputPortId, in OrchestrationOperation operation)
         {

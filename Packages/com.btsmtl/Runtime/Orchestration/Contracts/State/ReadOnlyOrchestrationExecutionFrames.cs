@@ -67,15 +67,15 @@ namespace BTSMTL.Orchestration
         {
             int programIndex = Plan.ProgramIndex(skillContentId);
             OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, ownerOperationIndex);
-            int operation = Plan.ProgramStorage(programIndex).OperationIndices[operationIndex];
+            int timeline = Plan.OperationStateIndices(programIndex)[operationIndex].Timeline;
             int end = pool.First + pool.Count;
             for (int slot = pool.First; slot < end; slot++)
             {
                 ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[slot];
                 if (frame.SkillContentId == skillContentId && frame.OwnerOperationIndex == ownerOperationIndex &&
                     frame.ActionInstanceId == start.OwnerInstanceId &&
-                    Payload<OrchestrationOperationState>(slot, OrchestrationStateSegmentRole.Operations,
-                        programIndex)[operation].TimelineRuntimeHandle == start.PlaybackIdentity)
+                    Payload<ulong>(slot, OrchestrationStateSegmentRole.TimelineHandles,
+                        programIndex)[timeline] == start.PlaybackIdentity)
                     return slot;
             }
             return -1;

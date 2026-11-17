@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickStateMachine(int operationIndex)
         {
-            ref OrchestrationOperationState machine = ref OperationState(operationIndex);
+            ref OrchestrationStateMachineState machine = ref MachineState(operationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting >= 0)
             {
@@ -93,7 +93,7 @@ namespace BTSMTL.Orchestration
             int targetState = m_Program.Operation(edge.TargetOperationIndex).Code == OrchestrationOperationCode.StateExit
                 ? -1 : edge.TargetOperationIndex;
             machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(active).IdentityId;
-            machine.StopContext = OrchestrationStopContext.StateTransition(operationIndex, m_FrameSlot,
+            OperationStopContext(operationIndex) = OrchestrationStopContext.StateTransition(operationIndex, m_FrameSlot,
                 m_Input.Tick, edge.TargetOperationIndex, transition).ForStateExit(active, m_FrameSlot,
                 targetState, transition);
             return ContinueStateTransition(operationIndex, active);
@@ -101,9 +101,9 @@ namespace BTSMTL.Orchestration
 
         void RetargetStateTransition(int machineOperationIndex, int exiting)
         {
-            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
-            OperationState(exiting).StopContext.UpdateTick(m_Input.Tick);
-            int pending = machine.StopContext.ReplacementEdgeIndex;
+            ref OrchestrationStopContext context = ref OperationStopContext(machineOperationIndex);
+            OperationStopContext(exiting).UpdateTick(m_Input.Tick);
+            int pending = context.ReplacementEdgeIndex;
             int anyState = m_Program.AnyStateEntry(machineOperationIndex);
             int selected = anyState >= 0 ? SelectTransition(anyState, exiting, exiting) : -1;
             int source = SelectTransition(exiting, -1, exiting);
@@ -113,22 +113,23 @@ namespace BTSMTL.Orchestration
                 return;
             int target = m_Program.Edge(selected).TargetOperationIndex;
             int targetState = m_Program.Operation(target).Code == OrchestrationOperationCode.StateExit ? -1 : target;
-            machine.StopContext.RetargetStateExit(target, selected, targetState);
+            context.RetargetStateExit(target, selected, targetState);
             TraceEdge(selected, true, true, exiting);
         }
 
         OrchestrationOperationResult ContinueStateTransition(int machineOperationIndex, int exiting)
         {
-            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
-            machine.StopContext.UpdateTick(m_Input.Tick);
-            int target = machine.StopContext.ReplacementOperationIndex;
-            OrchestrationStopStatus stop = RequestStop(exiting, in machine.StopContext);
+            ref OrchestrationStateMachineState machine = ref MachineState(machineOperationIndex);
+            ref OrchestrationStopContext context = ref OperationStopContext(machineOperationIndex);
+            context.UpdateTick(m_Input.Tick);
+            int target = context.ReplacementOperationIndex;
+            OrchestrationStopStatus stop = RequestStop(exiting, in context);
             if (stop == OrchestrationStopStatus.Running)
                 return Wait(machineOperationIndex, OrchestrationWaitReason.StateExit);
             if (stop == OrchestrationStopStatus.Failed)
                 return OrchestrationOperationResult.Failure;
             machine.ExitingStateIdentityId = 0;
-            PushState(exiting, in machine.StopContext);
+            PushState(exiting, in context);
             try
             {
                 InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateExited,
@@ -167,7 +168,7 @@ namespace BTSMTL.Orchestration
                 {
                     PopState();
                 }
-                OperationState(machineOperationIndex).ActiveStateIdentityId = 0;
+                MachineState(machineOperationIndex).ActiveStateIdentityId = 0;
             }
             return result;
         }
@@ -210,16 +211,17 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult CompleteFailedState(int stateOperationIndex)
         {
             ref OrchestrationOperationState state = ref OperationState(stateOperationIndex);
-            state.StopContext = new OrchestrationStopContext(
+            ref OrchestrationStopContext context = ref OperationStopContext(stateOperationIndex);
+            context = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 stateOperationIndex, m_FrameSlot).ForStateExit(stateOperationIndex, m_FrameSlot)
                 .AtOperation(stateOperationIndex, m_FrameSlot, m_Input.Tick, OrchestrationStopMode.Request);
-            CloseStateOperations(stateOperationIndex, in state.StopContext);
+            CloseStateOperations(stateOperationIndex, in context);
             int completedEdge = state.ChildCursor <= 0
                 ? m_Program.StateOnEnterEdge(stateOperationIndex) : m_Program.StateRootEdge(stateOperationIndex);
             if (completedEdge >= 0)
                 ResetOperation(m_Program.Edge(completedEdge).TargetOperationIndex);
-            CompleteStateExit(stateOperationIndex, in state.StopContext);
+            CompleteStateExit(stateOperationIndex, in context);
             return OrchestrationOperationResult.Failure;
         }
 
@@ -278,7 +280,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus ContinueStateMachineStop(int machineOperationIndex, in OrchestrationStopContext context)
         {
-            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
+            ref OrchestrationStateMachineState machine = ref MachineState(machineOperationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting < 0)
                 exiting = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
@@ -330,7 +332,8 @@ namespace BTSMTL.Orchestration
                         m_OperationIndices[operation] != OrchestrationProgramStorageLayout.NoOperationIndex &&
                         (OperationState(operation).Status == OrchestrationOperationStatus.Running ||
                          OperationState(operation).Status == OrchestrationOperationStatus.Stopping ||
-                         OperationState(operation).TimelineRuntimeHandle != 0))
+                          (m_Program.Operation(operation).Code == OrchestrationOperationCode.Timeline &&
+                              TimelineRuntimeHandle(operation) != 0)))
                         ForceStop(operation, in context);
             }
             finally
@@ -341,7 +344,7 @@ namespace BTSMTL.Orchestration
 
         void ForceStopStateMachine(int machineOperationIndex, in OrchestrationStopContext context)
         {
-            ref readonly OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
+            ref readonly OrchestrationStateMachineState machine = ref MachineState(machineOperationIndex);
             int active = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (active >= 0)
@@ -381,7 +384,7 @@ namespace BTSMTL.Orchestration
 
         void ActivateState(int machineOperationIndex, int stateOperationIndex)
         {
-            OperationState(machineOperationIndex).ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
+            MachineState(machineOperationIndex).ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateEntered,
                 stateOperationIndex);
         }

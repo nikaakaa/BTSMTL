@@ -102,7 +102,7 @@ namespace BTSMTL.Graphs
             m_Bindings = new HostedGraphBindings<TValue, TNumerics>(contract, content);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             var programStorages = new[] { new OrchestrationPreparedProgramStorage<TValue>(
-                m_Bindings.SourceIdentityId, program.ExecutionStorage, program.Content.ValueSlotTypes) };
+                m_Bindings.SourceIdentityId, program.Content) };
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, programStorages, new[] { new OrchestrationRootAdmission(
                     new[] { new OrchestrationRootAlternative(0, program.RootOperationIndex) }, 1) },
@@ -116,6 +116,7 @@ namespace BTSMTL.Graphs
                 stateCapacity.BindIdentity(content.Identity.ExecutionIdentity),
                 content.Structure.NumericProfile.Id, content.Structure.NumericProfile.AbiVersion,
                 stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
+                stateCapacity.OperationStopCount, stateCapacity.StateMachineCount, stateCapacity.TimelineHandleCount,
                 1, stateCapacity.SavedOutputCount, stateCapacity.ValueCount);
             m_PrivateValues = executionLayout.Values;
             m_Layout = new OrchestrationPreparedStateLayout<TValue>(executionLayout.Layout,

@@ -198,11 +198,12 @@ namespace BTSMTL.Orchestration
                     if (program.Operation(owner).ExecutionFrameOwnerOperationIndex == owner)
                     {
                         ref readonly OrchestrationExecutionOwnerStorage storage = ref storages[programIndex].Storage.Owners.Span[owner];
+                        ref readonly OrchestrationOperationStateStorage states = ref storages[programIndex].OperationStateOwners.Span[owner];
                         int pool = 0;
-                        while (pool < framePools.Count && !framePools[pool].Matches(in storage))
+                        while (pool < framePools.Count && !framePools[pool].Matches(in storage, in states))
                             pool++;
                         if (pool == framePools.Count)
-                            framePools.Add(new FramePoolBuilder(in storage));
+                            framePools.Add(new FramePoolBuilder(in storage, in states));
                         poolIndices[owner] = pool;
                     }
                 }
@@ -501,28 +502,41 @@ namespace BTSMTL.Orchestration
             int m_Operations;
             int m_Values;
             int m_Outputs;
+            int m_StopContexts;
+            int m_StateMachines;
+            int m_Timelines;
             readonly int[] m_Kinds = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
 
             internal FramePoolBuilder() { }
 
-            internal FramePoolBuilder(in OrchestrationExecutionOwnerStorage storage)
+            internal FramePoolBuilder(in OrchestrationExecutionOwnerStorage storage,
+                in OrchestrationOperationStateStorage states)
             {
                 m_Operations = storage.OperationCount;
                 m_Values = storage.BlackboardCount;
                 m_Outputs = storage.SavedOutputCount;
+                m_StopContexts = states.StopContexts;
+                m_StateMachines = states.StateMachines;
+                m_Timelines = states.Timelines;
                 storage.ValueKindCounts.Span.CopyTo(m_Kinds);
             }
 
-            internal bool Matches(in OrchestrationExecutionOwnerStorage storage) =>
+            internal bool Matches(in OrchestrationExecutionOwnerStorage storage,
+                in OrchestrationOperationStateStorage states) =>
                 m_Operations == storage.OperationCount && m_Values == storage.BlackboardCount &&
-                m_Outputs == storage.SavedOutputCount && storage.ValueKindCounts.Span.SequenceEqual(m_Kinds);
+                m_Outputs == storage.SavedOutputCount && m_StopContexts == states.StopContexts &&
+                m_StateMachines == states.StateMachines && m_Timelines == states.Timelines &&
+                storage.ValueKindCounts.Span.SequenceEqual(m_Kinds);
 
             internal bool CanMerge(FramePoolBuilder other, int frameCount)
             {
                 if (frameCount >= (long)m_Count + other.m_Count ||
                     !PreservesElementCount(other, frameCount, m_Operations, other.m_Operations) ||
                     !PreservesElementCount(other, frameCount, m_Values, other.m_Values) ||
-                    !PreservesElementCount(other, frameCount, m_Outputs, other.m_Outputs))
+                    !PreservesElementCount(other, frameCount, m_Outputs, other.m_Outputs) ||
+                    !PreservesElementCount(other, frameCount, m_StopContexts, other.m_StopContexts) ||
+                    !PreservesElementCount(other, frameCount, m_StateMachines, other.m_StateMachines) ||
+                    !PreservesElementCount(other, frameCount, m_Timelines, other.m_Timelines))
                     return false;
                 for (int kind = 0; kind < m_Kinds.Length; kind++)
                 {
@@ -566,12 +580,16 @@ namespace BTSMTL.Orchestration
                 m_Operations = Math.Max(m_Operations, other.m_Operations);
                 m_Values = Math.Max(m_Values, other.m_Values);
                 m_Outputs = Math.Max(m_Outputs, other.m_Outputs);
+                m_StopContexts = Math.Max(m_StopContexts, other.m_StopContexts);
+                m_StateMachines = Math.Max(m_StateMachines, other.m_StateMachines);
+                m_Timelines = Math.Max(m_Timelines, other.m_Timelines);
                 for (int kind = 0; kind < m_Kinds.Length; kind++)
                     m_Kinds[kind] = Math.Max(m_Kinds[kind], other.m_Kinds[kind]);
             }
 
             internal OrchestrationExecutionFramePoolCapacity Build() =>
-                new OrchestrationExecutionFramePoolCapacity(m_Count, m_Operations, m_Values, m_Outputs, m_Kinds);
+                new OrchestrationExecutionFramePoolCapacity(m_Count, m_Operations, m_Values, m_Outputs, m_Kinds,
+                    new OrchestrationOperationStateStorage(m_StopContexts, m_StateMachines, m_Timelines));
         }
     }
 }

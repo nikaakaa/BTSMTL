@@ -7,17 +7,53 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationPreparedProgramStorage<TValue> where TValue : unmanaged
     {
         public OrchestrationPreparedProgramStorage(int skillContentId,
-            OrchestrationProgramStorageLayout storage,
-            ReadOnlyMemory<OrchestrationValueSlotType> valueTypes)
+            OrchestrationProgramContent program)
+        {
+            SkillContentId = skillContentId;
+            Storage = program.ExecutionStorage;
+            ValueTypes = program.ValueSlotTypes;
+            var stops = new int[Storage.Owners.Length];
+            var machines = new int[Storage.Owners.Length];
+            var timelines = new int[Storage.Owners.Length];
+            var indices = new OrchestrationOperationStateIndices[program.Operations.Length];
+            for (int index = 0; index < indices.Length; index++)
+            {
+                ref readonly OrchestrationOperation operation = ref program.Operations.Span[index];
+                int owner = operation.ExecutionFrameOwnerOperationIndex;
+                OrchestrationOperationStateFields fields =
+                    OrchestrationOperationStateRequirements.For(operation.Code, operation.IsRunnable);
+                indices[index] = new OrchestrationOperationStateIndices(
+                    (fields & OrchestrationOperationStateFields.StopContext) != 0
+                        ? checked((ushort)stops[owner]++) : OrchestrationOperationStateIndices.NoIndex,
+                    (fields & OrchestrationOperationStateFields.StateMachine) != 0
+                        ? checked((ushort)machines[owner]++) : OrchestrationOperationStateIndices.NoIndex,
+                    (fields & OrchestrationOperationStateFields.Timeline) != 0
+                        ? checked((ushort)timelines[owner]++) : OrchestrationOperationStateIndices.NoIndex);
+            }
+            var owners = new OrchestrationOperationStateStorage[Storage.Owners.Length];
+            for (int owner = 0; owner < owners.Length; owner++)
+                owners[owner] = new OrchestrationOperationStateStorage(stops[owner], machines[owner], timelines[owner]);
+            OperationStateIndices = indices;
+            OperationStateOwners = owners;
+        }
+
+        OrchestrationPreparedProgramStorage(int skillContentId, OrchestrationProgramStorageLayout storage,
+            ReadOnlyMemory<OrchestrationValueSlotType> valueTypes,
+            ReadOnlyMemory<OrchestrationOperationStateIndices> operationStateIndices,
+            ReadOnlyMemory<OrchestrationOperationStateStorage> operationStateOwners)
         {
             SkillContentId = skillContentId;
             Storage = storage;
             ValueTypes = valueTypes;
+            OperationStateIndices = operationStateIndices;
+            OperationStateOwners = operationStateOwners;
         }
 
         public int SkillContentId { get; }
         public OrchestrationProgramStorageLayout Storage { get; }
         public ReadOnlyMemory<OrchestrationValueSlotType> ValueTypes { get; }
+        public ReadOnlyMemory<OrchestrationOperationStateIndices> OperationStateIndices { get; }
+        public ReadOnlyMemory<OrchestrationOperationStateStorage> OperationStateOwners { get; }
 
         public OrchestrationPreparedProgramStorage<TValue> BorrowActionInstanceValues()
         {
@@ -46,7 +82,8 @@ namespace BTSMTL.Orchestration
                         source.SavedOutputCount, counts[owner], kinds[owner]);
                 }
             return new OrchestrationPreparedProgramStorage<TValue>(SkillContentId,
-                new OrchestrationProgramStorageLayout(Storage.OperationIndices, values, owners), ValueTypes);
+                new OrchestrationProgramStorageLayout(Storage.OperationIndices, values, owners), ValueTypes,
+                OperationStateIndices, OperationStateOwners);
         }
     }
 
@@ -153,7 +190,8 @@ namespace BTSMTL.Orchestration
                     for (int i = 0; i < payloadSegments.Count; i++)
                     {
                         OrchestrationStateSegment segment = payloadSegments[i];
-                        payloadSizes[start + i] = checked(PayloadElementCount(in segment, in source) *
+                        payloadSizes[start + i] = checked(PayloadElementCount(in segment, in source,
+                            prepared.OperationStateOwners.Span[owner]) *
                             segment.ElementSizeBytes);
                     }
                 }
@@ -172,7 +210,8 @@ namespace BTSMTL.Orchestration
                         indices[(int)OrchestrationStateSegmentRole.PrivateValues * KindCount + (int)kind].FramePayload);
                 }
                 records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
-                    writer.Add(storage.OperationIndices.Span), writer.Add(storage.Values.Span),
+                    writer.Add(storage.OperationIndices.Span), writer.Add(prepared.OperationStateIndices.Span),
+                    writer.Add(storage.Values.Span),
                     writer.Add<int>(payloadSizes),
                     writer.Add<OrchestrationFrameValueAddress>(addresses),
                     writer.Add(capacity.OwnerPools.Span[program].Span));
@@ -223,11 +262,14 @@ namespace BTSMTL.Orchestration
             m_Segments[indices[(int)role * KindCount + (int)valueKind].Segment];
 
         static int PayloadElementCount(in OrchestrationStateSegment segment,
-            in OrchestrationExecutionOwnerStorage storage)
+            in OrchestrationExecutionOwnerStorage storage, in OrchestrationOperationStateStorage states)
         {
             switch (segment.Role)
             {
                 case OrchestrationStateSegmentRole.Operations: return storage.OperationCount;
+                case OrchestrationStateSegmentRole.OperationStops: return states.StopContexts;
+                case OrchestrationStateSegmentRole.StateMachines: return states.StateMachines;
+                case OrchestrationStateSegmentRole.TimelineHandles: return states.Timelines;
                 case OrchestrationStateSegmentRole.SavedOutputs: return storage.SavedOutputCount;
                 case OrchestrationStateSegmentRole.PrivateMetadata: return storage.BlackboardCount;
                 case OrchestrationStateSegmentRole.PrivateValues:

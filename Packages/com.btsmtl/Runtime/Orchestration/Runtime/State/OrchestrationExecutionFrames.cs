@@ -56,6 +56,13 @@ namespace BTSMTL.Orchestration
                 programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
         }
 
+        public ref OrchestrationStateMachineState StateMachine(int frameSlot, int operationIndex)
+        {
+            int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
+            return ref Payload<OrchestrationStateMachineState>(frameSlot, OrchestrationStateSegmentRole.StateMachines,
+                programIndex)[Plan.OperationStateIndices(programIndex)[operationIndex].StateMachine];
+        }
+
         public Span<TValue> SavedOutputs(int frameSlot) =>
             Payload<TValue>(frameSlot, OrchestrationStateSegmentRole.SavedOutputs,
                 Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));

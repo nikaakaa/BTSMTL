@@ -51,7 +51,9 @@ namespace BTSMTL.Graphs
 
         OrchestrationExecutionStateLayout<TValue> CreateStateLayout(StableHash contentIdentity,
             NumericProfileId numericProfile, TargetAbiVersion targetAbi, int blackboardMetadataCapacity,
-            int framesCapacity, int operationsCapacity, int rosterCapacity, int savedOutputsCapacity, int valuesCapacity);
+            int framesCapacity, int operationsCapacity, int operationStopsCapacity,
+            int stateMachinesCapacity, int timelineHandlesCapacity,
+            int rosterCapacity, int savedOutputsCapacity, int valuesCapacity);
     }
 
     // Content 为所选数值方案的 OrchestrationGraphContent，由装配边界提供。

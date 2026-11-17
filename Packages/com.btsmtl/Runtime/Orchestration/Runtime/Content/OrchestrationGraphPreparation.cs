@@ -54,7 +54,7 @@ namespace BTSMTL.Orchestration
                 OrchestrationProgramContent program = graphs[programIndex].Program;
                 programs[programIndex] = new OrchestrationProgram<TValue>(program, graphs[programIndex].Parameters);
                 storages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
-                    programContentIds[programIndex], program.ExecutionStorage, program.ValueSlotTypes);
+                    programContentIds[programIndex], program);
             }
             return new OrchestrationGraphPreparation<TValue, TNumerics>(
                 graphs, programs, storages);

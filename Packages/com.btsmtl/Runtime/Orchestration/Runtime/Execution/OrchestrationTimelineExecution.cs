@@ -10,18 +10,18 @@ namespace BTSMTL.Orchestration
     {
         OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount)
         {
-            OperationState(operationIndex).StopContext = new OrchestrationStopContext(
+            OperationStopContext(operationIndex) = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 operationIndex, m_FrameSlot);
             return m_Host.Tick(ref this, m_TimelineState, operationIndex,
                 m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
-                ref OperationState(operationIndex).TimelineRuntimeHandle,
+                ref TimelineRuntimeHandle(operationIndex),
                 InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick);
         }
 
         OrchestrationStopStatus StopTimeline(int operationIndex) =>
             m_Host.Stop(ref this, m_TimelineState, operationIndex,
-                ref OperationState(operationIndex).TimelineRuntimeHandle, StopContextStorage(operationIndex));
+                ref TimelineRuntimeHandle(operationIndex), StopContextStorage(operationIndex));
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
@@ -121,7 +121,8 @@ namespace BTSMTL.Orchestration
                     m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex &&
                     (OperationState(operationIndex).Status == OrchestrationOperationStatus.Running ||
                      OperationState(operationIndex).Status == OrchestrationOperationStatus.Stopping ||
-                     OperationState(operationIndex).TimelineRuntimeHandle != 0))
+                      (m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Timeline &&
+                          TimelineRuntimeHandle(operationIndex) != 0)))
                     ForceStop(operationIndex, in stopContext[0]);
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&

@@ -32,11 +32,13 @@ namespace BTSMTL.Orchestration
     internal readonly struct OrchestrationStateProgramRecord
     {
         internal OrchestrationStateProgramRecord(int skillContentId, OrchestrationMemorySection operationIndices,
+            OrchestrationMemorySection operationStateIndices,
             OrchestrationMemorySection values, OrchestrationMemorySection payloadSizes,
             OrchestrationMemorySection privateAddresses, OrchestrationMemorySection ownerPools)
         {
             SkillContentId = skillContentId;
             OperationIndices = operationIndices;
+            OperationStateIndices = operationStateIndices;
             Values = values;
             PayloadSizes = payloadSizes;
             PrivateAddresses = privateAddresses;
@@ -45,6 +47,7 @@ namespace BTSMTL.Orchestration
 
         internal int SkillContentId { get; }
         internal OrchestrationMemorySection OperationIndices { get; }
+        internal OrchestrationMemorySection OperationStateIndices { get; }
         internal OrchestrationMemorySection Values { get; }
         internal OrchestrationMemorySection PayloadSizes { get; }
         internal OrchestrationMemorySection PrivateAddresses { get; }
@@ -186,6 +189,9 @@ namespace BTSMTL.Orchestration
             return new OrchestrationProgramStorageView(Section<ushort>(record.OperationIndices),
                 Section<OrchestrationValueStorageSlot>(record.Values));
         }
+
+        public ReadOnlySpan<OrchestrationOperationStateIndices> OperationStateIndices(int program) =>
+            Section<OrchestrationOperationStateIndices>(Program(program).OperationStateIndices);
 
         internal ReadOnlySpan<int> PayloadSizes(int program, int owner)
         {
