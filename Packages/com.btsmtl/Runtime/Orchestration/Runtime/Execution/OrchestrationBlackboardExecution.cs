@@ -42,14 +42,15 @@ namespace BTSMTL.Orchestration
         {
             int overrideIndex = m_Host.FindOverride(ref this, operationIndex, valueSlot,
                 OrchestrationValueOverrideKind.Blackboard, in expected);
+            TValue current = default;
+            ref readonly TValue assignedValue = ref current;
             if (assignment == OrchestrationAssignmentOpcode.Set)
-                m_Blackboards.WriteValue(valueSlot, in value);
+                assignedValue = ref value;
             else
             {
 #if UNITY_EDITOR
                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
 #endif
-                TValue current = default;
                 if (overrideIndex >= 0)
                     current = m_Input.Overrides[overrideIndex].Value;
                 else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref current))
@@ -58,12 +59,11 @@ namespace BTSMTL.Orchestration
                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericAssignments);
 #endif
                 default(TNumerics).Assign(assignment, in current, in value, ref current);
-                m_Blackboards.WriteValue(valueSlot, in current);
             }
+            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(valueSlot, in assignedValue);
 #if UNITY_EDITOR
             m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
-            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
             metadata.Revision = checked(metadata.Revision + 1);
             metadata.Owner = expected;
             m_Host.Trace(ref this, OrchestrationTraceKind.Blackboard, operationIndex,

@@ -76,30 +76,23 @@ namespace BTSMTL.Orchestration
                 slot.ScopeKind == OrchestrationScopeKind.ActionInstance);
         }
 
-        internal void WriteValue(int valueSlot, in TValue value)
+        internal ref OrchestrationBlackboardMetadata WriteValue(int valueSlot, in TValue value)
         {
             int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
             if (characterSlot >= 0)
             {
                 OrchestrationValueAddress address = m_Frames.Plan.CharacterAddress(characterSlot);
                 default(TStorage).Write(m_Frames.Memory, in address, in value);
+                return ref m_Frames.CharacterMetadata[characterSlot];
             }
             else
             {
                 int frameSlot = ValueFrame(valueSlot);
                 OrchestrationValueAddress address = m_Reader.CandidateAddress(frameSlot, valueSlot);
                 default(TStorage).Write(m_Frames.Memory, in address, in value);
+                return ref m_Frames.BlackboardMetadata(frameSlot)[
+                    m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex];
             }
-        }
-
-        internal ref OrchestrationBlackboardMetadata WriteMetadata(int valueSlot)
-        {
-            int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
-            if (characterSlot >= 0)
-                return ref m_Frames.CharacterMetadata[characterSlot];
-            int frameSlot = ValueFrame(valueSlot);
-            return ref m_Frames.BlackboardMetadata(frameSlot)[
-                m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex];
         }
 
         int ValueFrame(int valueSlot)

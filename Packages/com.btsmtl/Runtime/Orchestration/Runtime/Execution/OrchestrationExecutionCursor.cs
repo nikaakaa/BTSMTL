@@ -555,20 +555,20 @@ namespace BTSMTL.Orchestration
                 OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs)
                 {
-                    m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
+                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
-                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs)
                 {
-                    m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
+                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
-                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
             }
