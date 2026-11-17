@@ -40,6 +40,7 @@ namespace BTSMTL.Graphs
         public FrozenOrchestrationIdentities Frozen => m_Frozen;
         public int Capacity => m_Texts.Length;
         public int ReferenceSlotCount => m_References.Length;
+        public bool HasRuntimeTexts => m_Count != 0;
         public OrchestrationIdentityOrdinalView Ordinals
         {
             get

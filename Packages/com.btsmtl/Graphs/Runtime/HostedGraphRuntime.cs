@@ -458,15 +458,18 @@ namespace BTSMTL.Graphs
 
         void BeginCandidateState()
         {
-            Array.Clear(m_TextRemap, 0, m_TextRemap.Length);
             m_StateTransaction.Begin(m_FirstMemory, m_SecondMemory);
-            Span<TValue> values = CandidateValues;
-            for (int i = 0; i < values.Length; i++)
-                RemapValue(ref values[i]);
-            var frames = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory).Frames;
-            Span<TValue> savedOutputs = frames.SavedOutputs(0);
-            for (int i = 0; i < savedOutputs.Length; i++)
-                RemapValue(ref savedOutputs[i]);
+            if (m_StateTexts.HasRuntimeTexts)
+            {
+                Array.Clear(m_TextRemap, 0, m_TextRemap.Length);
+                Span<TValue> values = CandidateValues;
+                for (int i = 0; i < values.Length; i++)
+                    RemapValue(ref values[i]);
+                var frames = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory).Frames;
+                Span<TValue> savedOutputs = frames.SavedOutputs(0);
+                for (int i = 0; i < savedOutputs.Length; i++)
+                    RemapValue(ref savedOutputs[i]);
+            }
             if (m_RuntimePorts != null)
                 using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.CopyObservationState))
                     PrepareObservationCandidateState();
