@@ -47,6 +47,9 @@ namespace BTSMTL.Orchestration
             while (true)
             {
                 ref readonly OrchestrationValueScheduleInstruction instruction = ref m_ValueInstructions[pc];
+#if UNITY_EDITOR
+                m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.ScheduleSteps);
+#endif
                 switch (instruction.Code)
                 {
                     case OrchestrationValueScheduleCode.Return:
@@ -54,6 +57,9 @@ namespace BTSMTL.Orchestration
                         m_InputDepth--;
                         return new ScheduledSelection(instruction.Argument, (OrchestrationValueSelectionReason)instruction.Operand);
                     case OrchestrationValueScheduleCode.ReadInputConstant:
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputConstants);
+#endif
                         m_CurrentOperationIndex = instruction.Operation;
                         values[instruction.Destination] = m_Constants[instruction.Operand];
                         break;
@@ -61,16 +67,25 @@ namespace BTSMTL.Orchestration
                         ReadBlackboard(instruction.Operation, instruction.Operand, ref values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.CopyInput:
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputCopies);
+#endif
                         m_CurrentOperationIndex = instruction.Operation;
                         values[instruction.Destination] = values[instruction.Operand];
                         break;
                     case OrchestrationValueScheduleCode.ConvertInput:
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputConversions);
+#endif
                         default(TNumerics).Unary((OrchestrationValueOpcode)instruction.Operand,
                             in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.Compute:
                     {
                         int operationIndex = instruction.Operation;
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ValueComputes);
+#endif
                         m_CurrentOperationIndex = operationIndex;
                         ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[instruction.Operand];
                         ref TValue value = ref values[instruction.Destination];
@@ -84,9 +99,16 @@ namespace BTSMTL.Orchestration
                                 value = m_Constants[typed.Argument];
                                 break;
                             case OrchestrationValueOpcode.HostInput:
+#if UNITY_EDITOR
+                                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.HostInputReads);
+#endif
                                 value = m_Input.HostInputs[typed.Argument];
                                 break;
                             case OrchestrationValueOpcode.InputVector2Magnitude:
+#if UNITY_EDITOR
+                                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.HostInputReads);
+                                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
+#endif
                                 numerics.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
                                     in m_Identities, ref value);
                                 break;
@@ -119,6 +141,9 @@ namespace BTSMTL.Orchestration
                                     ScheduledArguments(instruction.Argument), depth, ref value);
                                 break;
                             default:
+#if UNITY_EDITOR
+                                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
+#endif
                                 numerics.Compute(typed.Code, values, ScheduledArguments(instruction.Argument), in m_Identities, ref value);
                                 break;
                         }
@@ -126,6 +151,9 @@ namespace BTSMTL.Orchestration
                     }
                     case OrchestrationValueScheduleCode.ReadActionOutput:
                     {
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.SavedOutputReads);
+#endif
                         m_CurrentOperationIndex = instruction.Operation;
                         ref readonly OrchestrationOperation operation = ref m_Program.Operation(instruction.Operation);
                         values[instruction.Destination] = m_Blackboards.ReadOutputValue(instruction.Operation,

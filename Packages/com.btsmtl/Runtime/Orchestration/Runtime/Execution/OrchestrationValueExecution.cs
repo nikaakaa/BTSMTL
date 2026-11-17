@@ -39,6 +39,9 @@ namespace BTSMTL.Orchestration
                 OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
                 m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 inputs, outputs, in m_TimelineInvocation);
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ReadOnlyExtensions);
+#endif
             RequireSynchronousValueResult(operationIndex, binding,
                 m_Host.InvokeReadOnly(binding, in invocation));
             value = outputs[outputPortIndex];
@@ -46,10 +49,17 @@ namespace BTSMTL.Orchestration
 
         ReadOnlySpan<int> ReadInputSlots(int operationIndex, out int depth)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.InputSchedules);
+#endif
             depth = EnterInputRow(operationIndex);
             ref readonly OrchestrationValueScheduleEntry entry = ref m_InputEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             int arguments = RunValueSchedule(in entry).Value;
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.InputSlotRequests,
+                m_ValueArgumentLists[arguments].Count);
+#endif
             m_CurrentOperationIndex = operationIndex;
             return ScheduledArguments(arguments);
         }
@@ -107,6 +117,9 @@ namespace BTSMTL.Orchestration
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs)
                 {
                     m_Blackboards.WriteValue(output.ValueSlot, in m_Program.DefaultValue(output.ValueSlot));
+#if UNITY_EDITOR
+                    m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
+#endif
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(output.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -114,6 +127,9 @@ namespace BTSMTL.Orchestration
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     m_Blackboards.WriteValue(parameters[i].ValueSlot, in m_ScheduledValues[inputs[i]]);
+#if UNITY_EDITOR
+                    m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
+#endif
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameters[i].ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -126,13 +142,23 @@ namespace BTSMTL.Orchestration
 
         void ReadGraphCallOutput(int operationIndex, int outputPortIndex, ref TValue destination)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.GraphCallOutputReads);
+#endif
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(in operation).CallIndex);
             int slot = call.Outputs[outputPortIndex].ValueSlot;
             OrchestrationOperationStatus status = operation.IsRunnable
                 ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
             if (status == OrchestrationOperationStatus.Success)
+#if UNITY_EDITOR
+            {
+                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
+#endif
                 m_Blackboards.ReadValue(slot, ref destination);
+#if UNITY_EDITOR
+            }
+#endif
             else
                 destination = m_Program.DefaultValue(slot);
         }
@@ -202,6 +228,9 @@ namespace BTSMTL.Orchestration
                             m_Input.Tick, CurrentStopContextStorage(), StateAncestors(operationIndex),
                             ReadExecutionFrame(operationIndex),
                             InputRow(depth).Slice(0, count), outputs, in m_TimelineInvocation);
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.CandidateExtensions);
+#endif
                         OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                             extensionBinding, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))

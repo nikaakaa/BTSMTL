@@ -82,6 +82,11 @@ namespace BTSMTL.Graphs
         bool IsFaulted { get; }
         bool IsPrepared { get; }
         GraphExecutionFailure LastFailure { get; }
+#if UNITY_EDITOR
+        OrchestrationWorkloadObservation StartWorkloadObservation(int maximumCalls);
+        OrchestrationWorkloadObservation StopWorkloadObservation();
+        OrchestrationWorkloadObservation ReadWorkloadObservation();
+#endif
 
         event Action<GraphRuntimePhase, bool> EvaluationPhase;
         void Prepare(GraphInvocationContext invocation, IGraphHostContext hostContext);
@@ -125,6 +130,12 @@ namespace BTSMTL.Graphs
         public bool IsFaulted => m_Core.IsFaulted;
         public bool IsPrepared => m_Core.IsPrepared;
         public GraphExecutionFailure LastFailure => m_Core.LastFailure;
+#if UNITY_EDITOR
+        public OrchestrationWorkloadObservation StartWorkloadObservation(int maximumCalls) =>
+            m_Core.StartWorkloadObservation(maximumCalls);
+        public OrchestrationWorkloadObservation StopWorkloadObservation() => m_Core.StopWorkloadObservation();
+        public OrchestrationWorkloadObservation ReadWorkloadObservation() => m_Core.ReadWorkloadObservation();
+#endif
 
         public event Action<GraphRuntimePhase, bool> EvaluationPhase
         {

@@ -3,6 +3,191 @@ using System.Runtime.CompilerServices;
 
 namespace BTSMTL.Orchestration
 {
+#if UNITY_EDITOR
+    public enum OrchestrationWorkloadCounter : byte
+    {
+        HostInputBindingReads,
+        HostInputBindingWrites,
+        EntryAdvances,
+        OutputAdvances,
+        ControlTicks,
+        ControlExecutions,
+        ScheduleSteps,
+        InputSchedules,
+        InputSlotRequests,
+        InputConstants,
+        InputCopies,
+        InputConversions,
+        HostInputReads,
+        ValueComputes,
+        NumericComputes,
+        NumericAssignments,
+        BlackboardReads,
+        BlackboardWrites,
+        GraphCallOutputReads,
+        SavedOutputReads,
+        ReadOnlyExtensions,
+        CandidateExtensions,
+        InputScheduleReevaluations,
+        ValueReevaluations,
+        NumericRecomputes,
+        Count
+    }
+
+    public enum OrchestrationWorkloadCallStatus : byte
+    {
+        Prepared,
+        Computed,
+        Failed,
+        Discarded
+    }
+
+    public enum OrchestrationWorkloadStopReason : byte
+    {
+        None,
+        CallLimit,
+        ExplicitStop
+    }
+
+    public struct OrchestrationWorkloadCall
+    {
+        public BTSMTL.Graphs.GraphInvocationIdentity Invocation { get; internal set; }
+        public ulong ResetGeneration { get; internal set; }
+        public bool StartsPending { get; internal set; }
+        public bool RunsStart { get; internal set; }
+        public bool ComputeEntered { get; internal set; }
+        public bool HasDiagnostics { get; internal set; }
+        public OrchestrationWorkloadCallStatus Status { get; internal set; }
+        public int LastOperationIndex { get; internal set; }
+    }
+
+    public sealed class OrchestrationWorkloadObservation
+    {
+        const int CounterCount = (int)OrchestrationWorkloadCounter.Count;
+        readonly OrchestrationWorkloadCall[] m_Calls;
+        readonly int[] m_CallOperationCounters;
+        readonly long[] m_OperationCounters;
+        int m_CallCount;
+
+        public OrchestrationWorkloadObservation(ThirdPersonSimulation.GraphExecutionIdentity content,
+            OrchestrationProgramContent program, OrchestrationIdentityTable identities, int maximumCalls)
+        {
+            if (maximumCalls <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maximumCalls));
+            Content = content;
+            Program = program;
+            Identities = identities;
+            m_Calls = new OrchestrationWorkloadCall[maximumCalls];
+            m_OperationCounters = new long[checked((OperationCount + 1) * CounterCount)];
+            m_CallOperationCounters = new int[checked(maximumCalls * m_OperationCounters.Length)];
+        }
+
+        public ThirdPersonSimulation.GraphExecutionIdentity Content { get; }
+        public OrchestrationProgramContent Program { get; }
+        public OrchestrationIdentityTable Identities { get; }
+        public int OperationCount => Program.Operations.Length;
+        public int CallCapacity => m_Calls.Length;
+        public int CallCount => m_CallCount;
+        public bool IsEnabled => StopReason == OrchestrationWorkloadStopReason.None;
+        public OrchestrationWorkloadStopReason StopReason { get; private set; }
+        public ReadOnlySpan<OrchestrationWorkloadCall> Calls => m_Calls.AsSpan(0, m_CallCount);
+        public long CounterStorageBytes =>
+            (long)m_OperationCounters.Length * sizeof(long) +
+            (long)m_CallOperationCounters.Length * sizeof(int);
+
+        public long OperationCounter(int operationIndex, OrchestrationWorkloadCounter counter) =>
+            m_OperationCounters[(operationIndex + 1) * CounterCount + (int)counter];
+
+        public int CallOperationCounter(int callIndex, int operationIndex, OrchestrationWorkloadCounter counter) =>
+            m_CallOperationCounters[callIndex * m_OperationCounters.Length +
+                (operationIndex + 1) * CounterCount + (int)counter];
+
+        public long CallCounter(int callIndex, OrchestrationWorkloadCounter counter)
+        {
+            long total = 0;
+            int start = callIndex * m_OperationCounters.Length;
+            int end = start + m_OperationCounters.Length;
+            for (int i = start + (int)counter; i < end; i += CounterCount)
+                total += m_CallOperationCounters[i];
+            return total;
+        }
+
+        public OrchestrationWorkloadObservation BeginInvocation(
+            BTSMTL.Graphs.GraphInvocationIdentity invocation, ulong resetGeneration, bool runsStart)
+        {
+            if (!IsEnabled)
+                return null;
+            m_Calls[m_CallCount++] = new OrchestrationWorkloadCall
+            {
+                Invocation = invocation,
+                ResetGeneration = resetGeneration,
+                StartsPending = runsStart,
+                Status = OrchestrationWorkloadCallStatus.Prepared,
+                LastOperationIndex = -1
+            };
+            return this;
+        }
+
+        public void EnterCompute(bool hasDiagnostics)
+        {
+            ref OrchestrationWorkloadCall call = ref m_Calls[m_CallCount - 1];
+            call.ComputeEntered = true;
+            call.HasDiagnostics = hasDiagnostics;
+        }
+
+        public void EnterStart() => m_Calls[m_CallCount - 1].RunsStart = true;
+
+        public void EndInvocation(OrchestrationWorkloadCallStatus status, int lastOperationIndex)
+        {
+            ref OrchestrationWorkloadCall call = ref m_Calls[m_CallCount - 1];
+            call.Status = status;
+            call.LastOperationIndex = lastOperationIndex;
+            if (m_CallCount == m_Calls.Length)
+                StopReason = OrchestrationWorkloadStopReason.CallLimit;
+        }
+
+        public void Stop()
+        {
+            if (IsEnabled)
+                StopReason = OrchestrationWorkloadStopReason.ExplicitStop;
+        }
+
+        public void Count(int operationIndex, OrchestrationWorkloadCounter counter, int amount = 1)
+        {
+            int previous = Add(operationIndex, counter, amount);
+            if (previous == 0)
+                return;
+            OrchestrationWorkloadCounter repeated;
+            switch (counter)
+            {
+                case OrchestrationWorkloadCounter.InputSchedules:
+                    repeated = OrchestrationWorkloadCounter.InputScheduleReevaluations;
+                    break;
+                case OrchestrationWorkloadCounter.ValueComputes:
+                    repeated = OrchestrationWorkloadCounter.ValueReevaluations;
+                    break;
+                case OrchestrationWorkloadCounter.NumericComputes:
+                    repeated = OrchestrationWorkloadCounter.NumericRecomputes;
+                    break;
+                default:
+                    return;
+            }
+            Add(operationIndex, repeated, 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        int Add(int operationIndex, OrchestrationWorkloadCounter counter, int amount)
+        {
+            int index = (operationIndex + 1) * CounterCount + (int)counter;
+            ref int callCounter = ref m_CallOperationCounters[(m_CallCount - 1) * m_OperationCounters.Length + index];
+            int previous = callCounter;
+            callCounter += amount;
+            m_OperationCounters[index] += amount;
+            return previous;
+        }
+    }
+#endif
+
     public enum OrchestrationDiagnosticLifecycle : byte
     {
         Initialize,

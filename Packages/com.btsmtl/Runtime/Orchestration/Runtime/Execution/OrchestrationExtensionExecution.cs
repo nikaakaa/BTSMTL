@@ -24,6 +24,9 @@ namespace BTSMTL.Orchestration
                     ReadExecutionFrame(operationIndex),
                     Span<TValue>.Empty, Span<TValue>.Empty, in m_TimelineInvocation);
                 m_CurrentOperationIndex = operationIndex;
+#if UNITY_EDITOR
+                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.CandidateExtensions);
+#endif
                 OrchestrationExtensionResult result = InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                     hook.ExtensionBindingIndex, in invocation);
                 if (result != OrchestrationExtensionResult.Success)
@@ -106,6 +109,9 @@ namespace BTSMTL.Orchestration
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, StopContextStorage(operationIndex),
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.CandidateExtensions);
+#endif
             OrchestrationExtensionResult result = InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
                 m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex, in invocation);
             switch (result)

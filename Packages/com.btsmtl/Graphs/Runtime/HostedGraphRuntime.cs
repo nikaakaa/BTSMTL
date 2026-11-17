@@ -56,6 +56,43 @@ namespace BTSMTL.Graphs
         EvaluationStatus m_Status;
         bool m_Faulted;
         bool m_Disposed;
+#if UNITY_EDITOR
+        OrchestrationWorkloadObservation m_WorkloadObservation;
+        OrchestrationWorkloadObservation m_ActiveWorkload;
+
+        public OrchestrationWorkloadObservation StartWorkloadObservation(int maximumCalls)
+        {
+            RequireIdle();
+            var observation = new OrchestrationWorkloadObservation(
+                m_Bindings.Content.Identity, m_Bindings.Program.Content, m_Bindings.Prepared.Identities.Table, maximumCalls);
+            m_WorkloadObservation?.Stop();
+            return m_WorkloadObservation = observation;
+        }
+
+        public OrchestrationWorkloadObservation ReadWorkloadObservation()
+        {
+            RequireIdle();
+            return m_WorkloadObservation ?? throw new InvalidOperationException("图实例尚未开启工作量观测。");
+        }
+
+        public OrchestrationWorkloadObservation StopWorkloadObservation()
+        {
+            OrchestrationWorkloadObservation observation = ReadWorkloadObservation();
+            observation.Stop();
+            return observation;
+        }
+
+        void FinishWorkloadInvocation(OrchestrationWorkloadCallStatus status)
+        {
+            if (m_ActiveWorkload != null)
+            {
+                int operation = m_ActiveWorkload.Calls[m_ActiveWorkload.CallCount - 1].ComputeEntered
+                    ? m_CurrentOperationIndex : -1;
+                m_ActiveWorkload.EndInvocation(status, operation);
+                m_ActiveWorkload = null;
+            }
+        }
+#endif
 
         public HostedGraphRuntime(GraphHostContract contract,
             OrchestrationGraphContent<TValue> content, IReadOnlyList<IOrchestrationExtension> extensions)
@@ -132,6 +169,10 @@ namespace BTSMTL.Graphs
             m_Invocation = invocation;
             m_CandidateFailure = m_LastFailure;
             m_RunStart = !m_Started;
+#if UNITY_EDITOR
+            m_ActiveWorkload = m_WorkloadObservation?.BeginInvocation(
+                invocation.Identity, m_ResetGeneration, m_RunStart);
+#endif
             if (m_Faulted)
                 return;
             m_CurrentOperationIndex = -1;
@@ -160,7 +201,11 @@ namespace BTSMTL.Graphs
             try
             {
                 BeginCandidateState();
-                m_Bindings.PrepareInputs(hostContext, m_Inputs, m_CandidateTexts);
+                m_Bindings.PrepareInputs(hostContext, m_Inputs, m_CandidateTexts
+#if UNITY_EDITOR
+                    , m_ActiveWorkload
+#endif
+                );
             }
             catch (Exception exception)
             {
@@ -170,6 +215,10 @@ namespace BTSMTL.Graphs
 
         public void Compute(in TContext context, bool captureValues = false)
         {
+#if UNITY_EDITOR
+            try
+            {
+#endif
             OrchestrationFrameInput<TValue> input;
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PrepareDiagnostics))
             {
@@ -191,6 +240,14 @@ namespace BTSMTL.Graphs
                 Compute(in context, in input, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics));
             else
                 Compute(in context, in input, default(OrchestrationProductDiagnostics<TValue>));
+#if UNITY_EDITOR
+            }
+            finally
+            {
+                FinishWorkloadInvocation(m_Status == EvaluationStatus.Succeeded
+                    ? OrchestrationWorkloadCallStatus.Computed : OrchestrationWorkloadCallStatus.Failed);
+            }
+#endif
         }
 
         void Compute<TDiagnostics>(in TContext context, in OrchestrationFrameInput<TValue> input, TDiagnostics diagnostics)
@@ -200,6 +257,9 @@ namespace BTSMTL.Graphs
                 return;
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
+#if UNITY_EDITOR
+            m_ActiveWorkload?.EnterCompute(input.HasDiagnostics);
+#endif
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities;
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PrepareIdentities))
@@ -209,6 +269,9 @@ namespace BTSMTL.Graphs
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.BindCursor))
                 cursor = Host(in context, diagnostics).CreateCursor<TNumerics>(state,
                     m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
+#if UNITY_EDITOR
+            cursor.BindWorkloadObservation(m_ActiveWorkload);
+#endif
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             try
@@ -218,6 +281,9 @@ namespace BTSMTL.Graphs
                 {
                     if (m_RunStart && m_Bindings.Start.OperationIndex >= 0)
                     {
+#if UNITY_EDITOR
+                        m_ActiveWorkload?.EnterStart();
+#endif
                         cursor.Advance(m_Bindings.Start);
                         CollectOutputs();
                     }
@@ -278,6 +344,10 @@ namespace BTSMTL.Graphs
 
         public void Discard()
         {
+#if UNITY_EDITOR
+            FinishWorkloadInvocation(m_Status == EvaluationStatus.Failed
+                ? OrchestrationWorkloadCallStatus.Failed : OrchestrationWorkloadCallStatus.Discarded);
+#endif
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             ClearCandidateState();
@@ -366,6 +436,9 @@ namespace BTSMTL.Graphs
                 return;
             RequireIdle();
             m_Output.Invalidate();
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Stop();
+#endif
             if (m_RuntimePorts != null)
                 ResetRuntimeObservation();
             m_StateTexts.Reset();

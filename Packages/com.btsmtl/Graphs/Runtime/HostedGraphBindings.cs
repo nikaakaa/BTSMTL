@@ -152,15 +152,25 @@ namespace BTSMTL.Graphs
         }
 
         internal void PrepareInputs(IGraphHostContext host, Span<TValue> destination,
-            GraphTextStorage texts)
+            GraphTextStorage texts
+#if UNITY_EDITOR
+            , OrchestrationWorkloadObservation workload
+#endif
+        )
         {
             foreach (ref readonly InputBinding input in Inputs.AsSpan())
             {
+#if UNITY_EDITOR
+                workload?.Count(-1, OrchestrationWorkloadCounter.HostInputBindingReads);
+#endif
                 GraphHostValue value = host.ReadInput(input.HostSlot);
                 if (value.Kind != input.ValueKind ||
                     input.ValueKind == GraphHostValueKind.Enum && value.EnumType != input.ValueType)
                     throw new InvalidOperationException($"事件图输入 '{input.InputId}' 与宿主声明类型不同。");
                 destination[input.InputSlot] = ToState(in value, input.EnumTypeContentId, texts);
+#if UNITY_EDITOR
+                workload?.Count(-1, OrchestrationWorkloadCounter.HostInputBindingWrites);
+#endif
             }
         }
 

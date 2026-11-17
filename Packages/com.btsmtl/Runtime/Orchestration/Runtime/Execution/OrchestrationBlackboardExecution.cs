@@ -10,6 +10,9 @@ namespace BTSMTL.Orchestration
     {
         public void ReadBlackboard(int operationIndex, int valueSlot, ref TValue destination)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
+#endif
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, in slot, out _);
@@ -43,14 +46,23 @@ namespace BTSMTL.Orchestration
                 m_Blackboards.WriteValue(valueSlot, in value);
             else
             {
+#if UNITY_EDITOR
+                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
+#endif
                 TValue current = default;
                 if (overrideIndex >= 0)
                     current = m_Input.Overrides[overrideIndex].Value;
                 else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref current))
                     current = m_Program.DefaultValue(valueSlot);
+#if UNITY_EDITOR
+                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericAssignments);
+#endif
                 default(TNumerics).Assign(assignment, in current, in value, ref current);
                 m_Blackboards.WriteValue(valueSlot, in current);
             }
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
+#endif
             ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
             metadata.Revision = checked(metadata.Revision + 1);
             metadata.Owner = expected;
@@ -178,6 +190,9 @@ namespace BTSMTL.Orchestration
                     StateAncestors(operationIndex),
                     ReadExecutionFrame(operationIndex),
                     inputs, outputs, in m_TimelineInvocation);
+#if UNITY_EDITOR
+                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ReadOnlyExtensions);
+#endif
                 RequireSynchronousValueResult(operationIndex, bindingIndex,
                     m_Host.InvokeReadOnly(bindingIndex, in invocation));
                 return new OrchestrationBlackboardSourceContext

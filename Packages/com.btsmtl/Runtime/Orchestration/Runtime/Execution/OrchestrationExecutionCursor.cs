@@ -56,6 +56,12 @@ namespace BTSMTL.Orchestration
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
         ReadOnlySpan<OrchestrationStopContext> m_InvocationStopContext;
+#if UNITY_EDITOR
+        OrchestrationWorkloadObservation m_WorkloadObservation;
+
+        public void BindWorkloadObservation(OrchestrationWorkloadObservation observation) =>
+            m_WorkloadObservation = observation;
+#endif
 
         internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
             OrchestrationExecutionScratch<TValue> scratch,
@@ -121,6 +127,9 @@ namespace BTSMTL.Orchestration
             m_TimelineInvocation = default;
             m_TimelineTime = default;
             m_InvocationStopContext = default;
+#if UNITY_EDITOR
+            m_WorkloadObservation = null;
+#endif
             m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.Initialize, -1, frameSlot);
         }
 
@@ -161,6 +170,9 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationOperationResult Advance(OrchestrationExecutionEntry entry)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(entry.OperationIndex, OrchestrationWorkloadCounter.EntryAdvances);
+#endif
             OrchestrationExecutionContract previous = m_Contract;
             m_Contract = entry.Contract;
             int traceFrame = m_FrameSlot;
@@ -186,6 +198,9 @@ namespace BTSMTL.Orchestration
         public OrchestrationOperationResult ExecuteOutput(int operationIndex, int outputPortId,
             OrchestrationExecutionContract contract)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.OutputAdvances);
+#endif
             OrchestrationExecutionContract previous = m_Contract;
             m_Contract = contract;
             BeginInvocation();
@@ -255,6 +270,9 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ControlTicks);
+#endif
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (!operation.IsRunnable)
@@ -495,12 +513,18 @@ namespace BTSMTL.Orchestration
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs)
                 {
                     m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+#if UNITY_EDITOR
+                    m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
+#endif
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs)
                 {
                     m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+#if UNITY_EDITOR
+                    m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
+#endif
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -524,6 +548,9 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult Execute(int operationIndex, int inputPortId, in OrchestrationOperation operation)
         {
+#if UNITY_EDITOR
+            m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ControlExecutions);
+#endif
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Root:
