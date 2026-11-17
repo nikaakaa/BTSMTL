@@ -101,7 +101,7 @@ namespace BTSMTL.Graphs
             m_Contract = contract;
             m_Bindings = new HostedGraphBindings<TValue, TNumerics>(contract, content);
             OrchestrationProgram<TValue> program = m_Bindings.Program;
-            var programStorages = new[] { new OrchestrationPreparedProgramStorage<TValue>(
+            var programStorages = new[] { OrchestrationGraphPreparation<TValue, TNumerics>.PrepareProgramStorage(
                 m_Bindings.SourceIdentityId, program.Content) };
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, programStorages, new[] { new OrchestrationRootAdmission(

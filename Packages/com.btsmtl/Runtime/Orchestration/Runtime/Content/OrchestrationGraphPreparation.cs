@@ -53,11 +53,39 @@ namespace BTSMTL.Orchestration
                     PrepareStorage(content.Structure, mapping, actionSlots, actionKindCounts));
                 OrchestrationProgramContent program = graphs[programIndex].Program;
                 programs[programIndex] = new OrchestrationProgram<TValue>(program, graphs[programIndex].Parameters);
-                storages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
-                    programContentIds[programIndex], program);
+                storages[programIndex] = PrepareProgramStorage(programContentIds[programIndex], program);
             }
             return new OrchestrationGraphPreparation<TValue, TNumerics>(
                 graphs, programs, storages);
+        }
+
+        public static OrchestrationPreparedProgramStorage<TValue> PrepareProgramStorage(
+            int skillContentId, OrchestrationProgramContent program)
+        {
+            OrchestrationProgramStorageLayout storage = program.ExecutionStorage;
+            var stops = new int[storage.Owners.Length];
+            var machines = new int[storage.Owners.Length];
+            var timelines = new int[storage.Owners.Length];
+            var indices = new OrchestrationOperationStateIndices[program.Operations.Length];
+            for (int index = 0; index < indices.Length; index++)
+            {
+                ref readonly OrchestrationOperation operation = ref program.Operations.Span[index];
+                int owner = operation.ExecutionFrameOwnerOperationIndex;
+                OrchestrationOperationStateFields fields =
+                    OrchestrationOperationStateRequirements.For(operation.Code, operation.IsRunnable);
+                indices[index] = new OrchestrationOperationStateIndices(
+                    (fields & OrchestrationOperationStateFields.StopContext) != 0
+                        ? checked((ushort)stops[owner]++) : OrchestrationOperationStateIndices.NoIndex,
+                    (fields & OrchestrationOperationStateFields.StateMachine) != 0
+                        ? checked((ushort)machines[owner]++) : OrchestrationOperationStateIndices.NoIndex,
+                    (fields & OrchestrationOperationStateFields.Timeline) != 0
+                        ? checked((ushort)timelines[owner]++) : OrchestrationOperationStateIndices.NoIndex);
+            }
+            var owners = new OrchestrationOperationStateStorage[storage.Owners.Length];
+            for (int owner = 0; owner < owners.Length; owner++)
+                owners[owner] = new OrchestrationOperationStateStorage(stops[owner], machines[owner], timelines[owner]);
+            return new OrchestrationPreparedProgramStorage<TValue>(skillContentId, storage,
+                program.ValueSlotTypes, indices, owners);
         }
 
         static OrchestrationProgramStorageLayout PrepareStorage(OrchestrationGraphStructure graph,

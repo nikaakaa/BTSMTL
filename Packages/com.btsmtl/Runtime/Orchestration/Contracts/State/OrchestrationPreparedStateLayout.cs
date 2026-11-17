@@ -6,38 +6,7 @@ namespace BTSMTL.Orchestration
 {
     public sealed class OrchestrationPreparedProgramStorage<TValue> where TValue : unmanaged
     {
-        public OrchestrationPreparedProgramStorage(int skillContentId,
-            OrchestrationProgramContent program)
-        {
-            SkillContentId = skillContentId;
-            Storage = program.ExecutionStorage;
-            ValueTypes = program.ValueSlotTypes;
-            var stops = new int[Storage.Owners.Length];
-            var machines = new int[Storage.Owners.Length];
-            var timelines = new int[Storage.Owners.Length];
-            var indices = new OrchestrationOperationStateIndices[program.Operations.Length];
-            for (int index = 0; index < indices.Length; index++)
-            {
-                ref readonly OrchestrationOperation operation = ref program.Operations.Span[index];
-                int owner = operation.ExecutionFrameOwnerOperationIndex;
-                OrchestrationOperationStateFields fields =
-                    OrchestrationOperationStateRequirements.For(operation.Code, operation.IsRunnable);
-                indices[index] = new OrchestrationOperationStateIndices(
-                    (fields & OrchestrationOperationStateFields.StopContext) != 0
-                        ? checked((ushort)stops[owner]++) : OrchestrationOperationStateIndices.NoIndex,
-                    (fields & OrchestrationOperationStateFields.StateMachine) != 0
-                        ? checked((ushort)machines[owner]++) : OrchestrationOperationStateIndices.NoIndex,
-                    (fields & OrchestrationOperationStateFields.Timeline) != 0
-                        ? checked((ushort)timelines[owner]++) : OrchestrationOperationStateIndices.NoIndex);
-            }
-            var owners = new OrchestrationOperationStateStorage[Storage.Owners.Length];
-            for (int owner = 0; owner < owners.Length; owner++)
-                owners[owner] = new OrchestrationOperationStateStorage(stops[owner], machines[owner], timelines[owner]);
-            OperationStateIndices = indices;
-            OperationStateOwners = owners;
-        }
-
-        OrchestrationPreparedProgramStorage(int skillContentId, OrchestrationProgramStorageLayout storage,
+        public OrchestrationPreparedProgramStorage(int skillContentId, OrchestrationProgramStorageLayout storage,
             ReadOnlyMemory<OrchestrationValueSlotType> valueTypes,
             ReadOnlyMemory<OrchestrationOperationStateIndices> operationStateIndices,
             ReadOnlyMemory<OrchestrationOperationStateStorage> operationStateOwners)
