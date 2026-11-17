@@ -12,7 +12,7 @@ namespace BEPUphysics.CollisionShapes.ConvexShapes
 
         public abstract void GetLocalExtremePointWithoutMargin(ref FPVector3 direction, out FPVector3 extremePoint);
 
-        public void GetExtremePointWithoutMargin(FPVector3 direction, ref RigidTransform shapeTransform, out FPVector3 extremePoint)
+        public virtual void GetExtremePointWithoutMargin(FPVector3 direction, ref RigidTransform shapeTransform, out FPVector3 extremePoint)
         {
             direction = FPQuaternion.Conjugate(shapeTransform.Orientation) * direction;
             GetLocalExtremePointWithoutMargin(ref direction, out extremePoint);
