@@ -2,7 +2,7 @@
 
 来源为 [sam-vdp/bepuphysics1int 固定提交](https://github.com/sam-vdp/bepuphysics1int/tree/9237daa68c3014fd7c2e93c6a99326ba5248d60b)。现有 MPR、GJK 和项目连续旋转查询已迁为官方 `Photon.Deterministic.FP`、`FPVector3`、`FPQuaternion` 与 `FPMath`，没有 Fix64 或 Q32.32 往返。
 
-本目录只做球、胶囊、盒、凸包和准备后的凸部件求交，与 `ThirdPersonSimulation.AttackGeometry.FPSweepQueryBackend` 一同编入 `ThirdPersonSimulation.AttackGeometry`。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；算法源码只使用 `Quantum.Deterministic.dll`，所在几何程序集另引用 Shared 数值合同和 QuantumNumerics，不依赖 Unity 或完整 Gameplay。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`，迁移保留许可文件原字节。
+本目录只做球、胶囊、盒、凸包和准备后的凸部件求交，与 `ThirdPersonSimulation.AttackGeometry.FPSweepQueryBackend` 一同编入 `ThirdPersonSimulation.AttackGeometry`。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；算法数值只使用 `Quantum.Deterministic.dll`，所在几何程序集另引用 Shared 数值合同、QuantumNumerics及既有性能探针合同，源代码不依赖 Unity 或完整 Gameplay。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`，迁移保留许可文件原字节。
 
 ## 原算法与保留行为
 
@@ -10,6 +10,7 @@
 - `RigidSweepMotion` 保留相对四元数、最短恒角速度旋转弧和精确端点。官方四元数乘法的顺序为父旋转乘局部旋转；相对旋转为终点乘起点共轭。部件局部偏移随根旋转，角速度界继续包含该偏移和形状半径。
 - MPR 内／外迭代限制仍为 15／15，GJK 与保守推进仍各为 64，GJK 多迭代收敛门槛仍为 8。未收敛仍向正式查询返回 `NativeIterationLimit`，不把失败变成未命中。
 - 球和胶囊的 margin 仍等于作者半径，盒和凸包 margin 为零。盒保留完整作者半尺寸；凸包仍由上层准备重新定心，部件局部中心仍参与运动。
+- 胶囊接收查询方向和实际形状姿态，经同一 `GetExtremePointWithoutMargin` 交回世界支撑点。四元数X、Z恰为零时，`CapsuleShape`只计算局部Y对应的端点和世界平移；倾斜姿态仍执行原基类公式。两次 `* FP._1` 保留SDK旋转的原Raw舍入与截位，不能直接省略。输出仍先写局部端点、再读取姿态平移，保留out与Position字段别名时的原结果。margin扩张、GJK／MPR迭代及失败顺序不变。
 - 初始相交的 GJK 贡献点、margin 相交的加权见证位置和 MPR 的位置可用标记保留。适配器仍只在实际可用时发布 Point／Normal，MPR 法线仍取反为目标朝向查询体。
 - 删除查询不使用的质量、惯性、包围盒、矩阵、RayTest、旧向量／旋转、Fix64 与自研三角 LUT。原 GJK 缓存只在单次调用中创建，返回后从未读取；现改为同一初始单纯形直接求解，保留贡献点，不再回写无人读取的缓存。
 
