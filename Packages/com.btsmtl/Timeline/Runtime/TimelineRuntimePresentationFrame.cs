@@ -55,14 +55,23 @@ namespace BTSMTL.Timeline.Runtime
 
         public static Capacity CreateCapacity(TimelineRuntimePreparedContent prepared,
             OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-            TimelineRuntimePresentationGraphSource graphSource) =>
-            CreateCapacity(prepared,
-                executionContent.Mode == OrchestrationTimelinePlaybackMode.Loop
-                    ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1,
-                graphSource == TimelineRuntimePresentationGraphSource.Unexecuted
-                    ? checked(executionContent.TickCapacity.GraphInvocationsPerAdvance + 2 * executionContent.RequiredActiveTrees) : 0,
-                graphSource == TimelineRuntimePresentationGraphSource.Unexecuted ? executionContent.RequiredActiveTrees : 0,
-                graphSource == TimelineRuntimePresentationGraphSource.Unexecuted);
+            TimelineRuntimePresentationGraphSource graphSource)
+        {
+            int traversals = executionContent.Traversals;
+            bool unexecuted = graphSource == TimelineRuntimePresentationGraphSource.Unexecuted;
+            int treeCapacity = 0;
+            if (unexecuted)
+            {
+                int treeInvocations = checked(executionContent.TickCapacity.GraphInvocationsPerAdvance -
+                    executionContent.Markers.Length * traversals);
+                int decisionExits = checked(executionContent.RequiredTreeExitRequests *
+                    (executionContent.Mode == OrchestrationTimelinePlaybackMode.Loop ? 1 : 2));
+                treeCapacity = checked(treeInvocations + executionContent.RequiredActiveTrees +
+                    Math.Min(executionContent.RequiredActiveTrees, decisionExits));
+            }
+            return CreateCapacity(prepared, traversals, treeCapacity,
+                unexecuted ? executionContent.RequiredActiveTrees : 0, unexecuted);
+        }
 
         static Capacity CreateCapacity(TimelineRuntimePreparedContent prepared, int traversals,
             int treeCapacity, int activeTreeCapacity, bool includeMarkers)
