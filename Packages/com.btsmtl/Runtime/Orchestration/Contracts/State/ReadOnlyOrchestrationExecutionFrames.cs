@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -34,8 +35,8 @@ namespace BTSMTL.Orchestration
         public ref readonly OrchestrationOperationState Operation(int frameSlot, int operationIndex)
         {
             int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
-            return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
-                programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
+            return ref Element<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
+                Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]);
         }
         public ReadOnlySpan<TValue> SavedOutputs(int frameSlot) =>
             Payload<TValue>(frameSlot, OrchestrationStateSegmentRole.SavedOutputs,
@@ -62,6 +63,12 @@ namespace BTSMTL.Orchestration
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal unsafe ref readonly T Element<T>(int frameSlot, OrchestrationStateSegmentRole role,
+            int index) where T : unmanaged =>
+            ref SpanReinterpret.Cast<byte, T>(m_Memory.Slice(
+                Plan.PayloadOffset(frameSlot, role) + index * sizeof(T), sizeof(T)))[0];
+
         public int FindTimelineSource(int skillContentId, int ownerOperationIndex, int operationIndex,
             in OrchestrationTimelineStart<OrchestrationTime> start)
         {
@@ -74,8 +81,8 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[slot];
                 if (frame.SkillContentId == skillContentId && frame.OwnerOperationIndex == ownerOperationIndex &&
                     frame.ActionInstanceId == start.OwnerInstanceId &&
-                    Payload<ulong>(slot, OrchestrationStateSegmentRole.TimelineHandles,
-                        programIndex)[timeline] == start.PlaybackIdentity)
+                    Element<ulong>(slot, OrchestrationStateSegmentRole.TimelineHandles,
+                        timeline) == start.PlaybackIdentity)
                     return slot;
             }
             return -1;

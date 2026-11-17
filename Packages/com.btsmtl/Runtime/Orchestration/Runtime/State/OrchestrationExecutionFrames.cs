@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -52,15 +53,15 @@ namespace BTSMTL.Orchestration
 
         public ref OrchestrationOperationState Operation(int frameSlot, int operationIndex, int programIndex)
         {
-            return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
-                programIndex)[Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]];
+            return ref Element<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
+                Plan.ProgramStorage(programIndex).OperationIndices[operationIndex]);
         }
 
         public ref OrchestrationStateMachineState StateMachine(int frameSlot, int operationIndex)
         {
             int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
-            return ref Payload<OrchestrationStateMachineState>(frameSlot, OrchestrationStateSegmentRole.StateMachines,
-                programIndex)[Plan.OperationStateIndices(programIndex)[operationIndex].StateMachine];
+            return ref Element<OrchestrationStateMachineState>(frameSlot, OrchestrationStateSegmentRole.StateMachines,
+                Plan.OperationStateIndices(programIndex)[operationIndex].StateMachine);
         }
 
         public Span<TValue> SavedOutputs(int frameSlot) =>
@@ -88,6 +89,12 @@ namespace BTSMTL.Orchestration
                 m_Frames[frameSlot].OwnerOperationIndex, role);
             return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal unsafe ref T Element<T>(int frameSlot, OrchestrationStateSegmentRole role,
+            int index) where T : unmanaged =>
+            ref SpanReinterpret.Cast<byte, T>(m_Memory.Slice(
+                Plan.PayloadOffset(frameSlot, role) + index * sizeof(T), sizeof(T)))[0];
 
         public int FindAction(int programIndex, int ownerOperationIndex, ulong actionInstanceId)
         {

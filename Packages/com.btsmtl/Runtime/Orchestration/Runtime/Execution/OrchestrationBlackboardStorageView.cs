@@ -92,8 +92,9 @@ namespace BTSMTL.Orchestration
                 int frameSlot = ValueFrame(valueSlot);
                 OrchestrationValueAddress address = m_Reader.CandidateAddress(frameSlot, valueSlot);
                 default(TStorage).Write(m_Frames.Memory, in address, in value);
-                return ref m_Frames.BlackboardMetadata(frameSlot)[
-                    m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex];
+                return ref m_Frames.Element<OrchestrationBlackboardMetadata>(frameSlot,
+                    OrchestrationStateSegmentRole.PrivateMetadata,
+                    m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex);
             }
         }
 

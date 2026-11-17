@@ -218,14 +218,32 @@ namespace BTSMTL.Orchestration
         internal OrchestrationStateRegion<byte> PayloadRegion(int frame, int program, int owner,
             OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind = 0)
         {
+            OrchestrationFramePayloadSegment payload = ResolvePayload(frame, role, valueKind,
+                out int index, out int frameIndex);
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
-            int index = Index(in header, role, valueKind).FramePayload;
-            OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
-            ref readonly OrchestrationFramePayloadSegment payload =
-                ref Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[slot.Pool * header.FramePayloadCount + index];
             OrchestrationMemorySection sizes =
                 Section<OrchestrationStateProgramRecord>(header.Programs)[program].PayloadSizes;
-            return payload.AtFrame(slot.Index, PayloadSizes(sizes, owner, header.FramePayloadCount)[index]);
+            return payload.AtFrame(frameIndex, PayloadSizes(sizes, owner, header.FramePayloadCount)[index]);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int PayloadOffset(int frame, OrchestrationStateSegmentRole role,
+            OrchestrationValueKind valueKind = 0)
+        {
+            OrchestrationFramePayloadSegment payload = ResolvePayload(frame, role, valueKind,
+                out _, out int frameIndex);
+            return payload.AtFrame(frameIndex, 0).OffsetBytes;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        OrchestrationFramePayloadSegment ResolvePayload(int frame, OrchestrationStateSegmentRole role,
+            OrchestrationValueKind valueKind, out int index, out int frameIndex)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            index = Index(in header, role, valueKind).FramePayload;
+            OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
+            frameIndex = slot.Index;
+            return Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[slot.Pool * header.FramePayloadCount + index];
         }
     }
 }
