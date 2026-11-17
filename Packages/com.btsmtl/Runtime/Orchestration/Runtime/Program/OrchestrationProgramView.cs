@@ -173,6 +173,7 @@ namespace BTSMTL.Orchestration
 
         public int ScheduleValueSlotCount => Header.ScheduleValueSlotCount;
         public int ScheduleBooleanSlot => Header.ScheduleValueSlotCount + Header.ScheduleInputBindingCount;
+        public int ScheduleInvocationValueWords => Header.ScheduleInvocationValueWords;
 
         public OrchestrationValueScheduleView ValueSchedule
         {

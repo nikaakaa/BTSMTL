@@ -7,6 +7,7 @@ namespace BTSMTL.Orchestration
     {
         OrchestrationExecutionScratchLayout(int sizeBytes, int forceStopFirstFrame, OrchestrationMemorySection inputValues,
             OrchestrationMemorySection outputValues, OrchestrationMemorySection scheduledValues,
+            OrchestrationMemorySection invocationValueBits,
             OrchestrationMemorySection scheduledPredictions, OrchestrationMemorySection graphCalls,
             OrchestrationMemorySection states, OrchestrationMemorySection stateAncestors,
             OrchestrationMemorySection forceStopVisited, OrchestrationMemorySection forceStopNext,
@@ -17,6 +18,7 @@ namespace BTSMTL.Orchestration
             InputValues = inputValues;
             OutputValues = outputValues;
             ScheduledValues = scheduledValues;
+            InvocationValueBits = invocationValueBits;
             ScheduledPredictions = scheduledPredictions;
             GraphCalls = graphCalls;
             States = states;
@@ -32,6 +34,7 @@ namespace BTSMTL.Orchestration
         internal OrchestrationMemorySection InputValues { get; }
         internal OrchestrationMemorySection OutputValues { get; }
         internal OrchestrationMemorySection ScheduledValues { get; }
+        internal OrchestrationMemorySection InvocationValueBits { get; }
         internal OrchestrationMemorySection ScheduledPredictions { get; }
         internal OrchestrationMemorySection GraphCalls { get; }
         internal OrchestrationMemorySection States { get; }
@@ -67,6 +70,7 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection inputValues = builder.Add<TValue>(program.WorkspaceInputValueCount);
             OrchestrationMemorySection outputValues = builder.Add<TValue>(program.WorkspaceOutputValueCount);
             OrchestrationMemorySection scheduledValues = builder.Add<TValue>(program.ScheduleScratchSlotCount);
+            OrchestrationMemorySection invocationValueBits = builder.Add<ulong>(program.ScheduleInvocationValueWords);
             OrchestrationMemorySection scheduledPredictions = builder.Add<OrchestrationScheduledPrediction>(
                 program.SchedulePredictionDepth);
             OrchestrationMemorySection graphCalls = builder.Add<OrchestrationGraphCallContext>(
@@ -79,7 +83,7 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection outputRequests = builder.Add<OrchestrationOutputRequest>(outputs.RequestCount);
             OrchestrationMemorySection emittedValues = builder.Add<TValue>(outputs.ValueCount);
             return new OrchestrationExecutionScratchLayout(builder.SizeBytes, firstFrame, inputValues, outputValues, scheduledValues,
-                scheduledPredictions, graphCalls, states, stateAncestors, forceStopVisited, forceStopNext,
+                invocationValueBits, scheduledPredictions, graphCalls, states, stateAncestors, forceStopVisited, forceStopNext,
                 outputRequests, emittedValues);
         }
 

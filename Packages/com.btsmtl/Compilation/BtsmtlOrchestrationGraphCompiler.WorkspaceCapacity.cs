@@ -275,6 +275,7 @@ namespace BTSMTL.Compilation
                             case OrchestrationValueScheduleCode.BranchBoolean:
                             case OrchestrationValueScheduleCode.BranchExcludedTarget:
                             case OrchestrationValueScheduleCode.BranchCondition:
+                            case OrchestrationValueScheduleCode.BranchInvocationValue:
                             case OrchestrationValueScheduleCode.OverrideInput:
                             case OrchestrationValueScheduleCode.OverrideOutput:
                                 pending.Push((instruction.Alternative, predictions));
