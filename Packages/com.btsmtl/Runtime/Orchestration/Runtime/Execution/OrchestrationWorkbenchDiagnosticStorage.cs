@@ -25,7 +25,7 @@ namespace BTSMTL.Orchestration
         int[] m_TraceBorrowedFrameEntries = Array.Empty<int>();
         TraceEntryScope[] m_TraceEntryScopes;
         OrchestrationTraceLoopScope[] m_LoopScopes;
-        OrchestrationTraceContext m_ObservationContext;
+        OrchestrationTraceContext[] m_ObservationContexts;
         int m_LoopDepth;
         ulong m_ObservationSequence;
         int m_TraceCount;
@@ -79,6 +79,7 @@ namespace BTSMTL.Orchestration
             if (m_TraceBindings != null)
                 return;
             m_TraceBindings = new TraceBinding[m_Program.OperationCount];
+            m_ObservationContexts = new OrchestrationTraceContext[1];
             m_TraceFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceBorrowedFrameEntries = new int[m_ExecutionFrameCapacity];
             m_TraceEntryScopes = new TraceEntryScope[m_Program.Content.WorkspaceCapacity.EntryDepth];
@@ -260,9 +261,10 @@ namespace BTSMTL.Orchestration
                 int invocationIndex = ResolveTraceInvocation(ref cursor, operationIndex);
                 OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(ref cursor, operationIndex, slot,
                     input, invocationIndex);
-                WriteTraceContext(ref cursor, operationIndex, invocationIndex, out m_ObservationContext);
-                m_ObservationContext.ObservationSequence = checked(++m_ObservationSequence);
-                observations.Observe(in address, in value, in m_ObservationContext, m_LoopScopes.AsSpan(0, m_LoopDepth));
+                ref OrchestrationTraceContext context = ref m_ObservationContexts[0];
+                WriteTraceContext(ref cursor, operationIndex, invocationIndex, out context);
+                context.ObservationSequence = checked(++m_ObservationSequence);
+                observations.Observe(in address, in value, in context, m_LoopScopes.AsSpan(0, m_LoopDepth));
             }
         }
 
