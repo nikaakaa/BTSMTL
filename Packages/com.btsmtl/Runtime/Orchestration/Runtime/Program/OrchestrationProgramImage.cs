@@ -74,7 +74,6 @@ namespace BTSMTL.Orchestration
         public int ScheduleInputBindingCount;
         public int ScheduleScratchSlotCount;
         public int SchedulePredictionDepth;
-        public int ScheduleInvocationValueWords;
     }
 
     // 准备期把程序推进所需的全部表排进一块 16 字节对齐的连续内存，段表头位于偏移 0。
@@ -133,11 +132,6 @@ namespace BTSMTL.Orchestration
             header.ScheduleInputBindingCount = schedule.InputBindingCount;
             header.ScheduleScratchSlotCount = schedule.ScratchSlotCount;
             header.SchedulePredictionDepth = schedule.PredictionDepth;
-            int invocationValueSlots = 0;
-            foreach (ref readonly OrchestrationValueScheduleInstruction instruction in schedule.Instructions.Span)
-                if (instruction.Code == OrchestrationValueScheduleCode.MarkInvocationValue)
-                    invocationValueSlots = Math.Max(invocationValueSlots, instruction.Destination + 1);
-            header.ScheduleInvocationValueWords = (invocationValueSlots + 63) / 64;
             return writer.Finish(in header);
         }
 

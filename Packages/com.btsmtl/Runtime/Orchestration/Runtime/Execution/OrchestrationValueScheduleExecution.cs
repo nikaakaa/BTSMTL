@@ -56,14 +56,6 @@ namespace BTSMTL.Orchestration
                     case OrchestrationValueScheduleCode.ReturnInputs:
                         m_InputDepth--;
                         return new ScheduledSelection(instruction.Argument, (OrchestrationValueSelectionReason)instruction.Operand);
-                    case OrchestrationValueScheduleCode.BranchInvocationValue:
-                        m_CurrentOperationIndex = instruction.Operation;
-                        pc = (m_InvocationValueBits[instruction.Destination >> 6] & (1UL << (instruction.Destination & 63))) != 0
-                            ? instruction.Next : instruction.Alternative;
-                        continue;
-                    case OrchestrationValueScheduleCode.MarkInvocationValue:
-                        m_InvocationValueBits[instruction.Destination >> 6] |= 1UL << (instruction.Destination & 63);
-                        break;
                     case OrchestrationValueScheduleCode.ReadInputConstant:
 #if UNITY_EDITOR
                         m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputConstants);
@@ -186,6 +178,7 @@ namespace BTSMTL.Orchestration
                         ObserveOutput(instruction.Operation, instruction.Operand, in values[instruction.Destination]);
                         break;
                     case OrchestrationValueScheduleCode.BranchBoolean:
+                        m_CurrentOperationIndex = instruction.Operation;
                         pc = default(TNumerics).Boolean(in values[instruction.Destination]) ? instruction.Next : instruction.Alternative;
                         continue;
                     case OrchestrationValueScheduleCode.BranchExcludedTarget:

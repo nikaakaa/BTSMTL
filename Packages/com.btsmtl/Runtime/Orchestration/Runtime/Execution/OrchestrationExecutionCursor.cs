@@ -17,7 +17,6 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationRange> m_InputRows;
         readonly ReadOnlySpan<OrchestrationRange> m_OutputRows;
         readonly Span<TValue> m_ScheduledValues;
-        readonly Span<ulong> m_InvocationValueBits;
         readonly ReadOnlySpan<TValue> m_Constants;
         readonly Span<OrchestrationScheduledPrediction> m_ScheduledPredictions;
         readonly Span<OrchestrationGraphCallContext> m_GraphCalls;
@@ -83,8 +82,6 @@ namespace BTSMTL.Orchestration
             m_InputRows = program.WorkspaceInputRows;
             m_OutputRows = program.WorkspaceOutputRows;
             m_ScheduledValues = scratch.Section<TValue>(layout.ScheduledValues);
-            m_InvocationValueBits = scratch.Section<ulong>(layout.InvocationValueBits);
-            m_InvocationValueBits.Clear();
             m_Constants = program.Constants;
             m_ScheduledPredictions = scratch.Section<OrchestrationScheduledPrediction>(layout.ScheduledPredictions);
             m_GraphCalls = scratch.Section<OrchestrationGraphCallContext>(layout.GraphCalls);
@@ -93,6 +90,13 @@ namespace BTSMTL.Orchestration
             m_ForceStopVisits = new OrchestrationForceStopVisits(scratch.Section<ulong>(layout.ForceStopVisited),
                 scratch.Section<int>(layout.ForceStopNext), layout.ForceStopFirstFrame, program.OperationCount);
             OrchestrationValueScheduleView schedule = program.ValueSchedule;
+            Span<TValue> invocationValues = m_ScheduledValues.Slice(checked(
+                (schedule.ValueSlotCount + schedule.InputBindingCount + 1) * (schedule.PredictionDepth + 1)));
+            if (!invocationValues.IsEmpty)
+            {
+                invocationValues.Slice(0, invocationValues.Length - 1).Fill(default(TNumerics).FromBoolean(false));
+                invocationValues[invocationValues.Length - 1] = default(TNumerics).FromBoolean(true);
+            }
             m_ValueInstructions = schedule.Instructions;
             m_ValueArgumentSlots = schedule.ArgumentSlots;
             m_ValueArgumentLists = schedule.ArgumentLists;

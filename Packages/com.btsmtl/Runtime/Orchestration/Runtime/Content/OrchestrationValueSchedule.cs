@@ -22,9 +22,7 @@ namespace BTSMTL.Orchestration
         BranchCondition,
         EnterPrediction,
         LeavePrediction,
-        WritePrediction,
-        BranchInvocationValue,
-        MarkInvocationValue
+        WritePrediction
     }
 
     public enum OrchestrationValueSelectionReason : byte

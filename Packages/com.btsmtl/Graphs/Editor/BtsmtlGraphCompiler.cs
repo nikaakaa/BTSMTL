@@ -70,7 +70,7 @@ namespace BTSMTL.Graphs.Editor
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/10", sourceIdentity, loweringType, valueAccessType, contentContract, encodingIdentity, stateSchemaType,
+                "btsmtl-graph-compiler/11", sourceIdentity, loweringType, valueAccessType, contentContract, encodingIdentity, stateSchemaType,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
             parts.Add(actionInstanceBlackboard.HasValue.ToString());
