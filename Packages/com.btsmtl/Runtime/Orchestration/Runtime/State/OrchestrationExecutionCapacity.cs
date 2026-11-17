@@ -74,16 +74,19 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlyMemory<int>[] m_OwnerInstances;
         readonly int[] m_SourceDepths;
         readonly OwnerAdmission[] m_OwnerAdmissions;
+        readonly IReadOnlyDictionary<(int Program, int Owner), OwnerCount[]> m_RootElements;
 
         OrchestrationExecutionCapacity(in OrchestrationExecutionStateCapacity state,
             int playbackCount, ReadOnlyMemory<int>[] ownerInstances,
-            int[] sourceDepths, OwnerAdmission[] ownerAdmissions)
+            int[] sourceDepths, OwnerAdmission[] ownerAdmissions,
+            IReadOnlyDictionary<(int Program, int Owner), OwnerCount[]> rootElements)
         {
             State = state;
             PlaybackCount = playbackCount;
             m_OwnerInstances = ownerInstances;
             m_SourceDepths = sourceDepths;
             m_OwnerAdmissions = ownerAdmissions;
+            m_RootElements = rootElements;
         }
 
         public OrchestrationExecutionStateCapacity State { get; }
@@ -147,6 +150,20 @@ namespace BTSMTL.Orchestration
                 total = checked(total + checked(maximum * admission.Instances));
             }
             return total;
+        }
+
+        public IReadOnlyDictionary<(int Program, int Owner), int> PrepareRootElementCapacities(
+            ReadOnlySpan<ReadOnlyMemory<int>> elements)
+        {
+            var capacities = new Dictionary<(int Program, int Owner), int>(m_RootElements.Count);
+            foreach (var root in m_RootElements)
+            {
+                int count = 0;
+                foreach (OwnerCount owner in root.Value)
+                    count = checked(count + checked(owner.Count * elements[owner.Program].Span[owner.Owner]));
+                capacities.Add(root.Key, count);
+            }
+            return capacities;
         }
 
         internal static OrchestrationExecutionCapacity Prepare<TValue>(
@@ -295,8 +312,11 @@ namespace BTSMTL.Orchestration
             for (int index = 0; index < budgets.Length; index++)
                 budgets[index] = ownerAdmissions[index].Budget;
             var state = new OrchestrationExecutionStateCapacity(pools, ownerPools);
+            var rootElements = new Dictionary<(int Program, int Owner), OwnerCount[]>(roots.Count);
+            foreach (var root in roots)
+                rootElements.Add(root.Key, root.Value.Elements);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths,
-                budgets);
+                budgets, rootElements);
         }
 
         static void MergeFramePools(List<FramePoolBuilder> pools,
