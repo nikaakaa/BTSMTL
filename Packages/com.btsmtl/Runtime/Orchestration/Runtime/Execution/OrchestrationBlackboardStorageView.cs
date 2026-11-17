@@ -38,6 +38,8 @@ namespace BTSMTL.Orchestration
 
         internal OrchestrationExecutionSourceReader<TValue> Reader => m_Reader;
         internal int ProgramIndex => m_ProgramIndex;
+        internal ref readonly OrchestrationBlackboardSlot Blackboard(int valueSlot) =>
+            ref m_BlackboardSlots[valueSlot];
         internal int CharacterSlot(int valueSlot) =>
             m_CharacterSlots.IsEmpty ? valueSlot : m_CharacterSlots[valueSlot];
         internal int BorrowedStateOperationIndex => m_SourceBinding.HasSource && m_SourceBinding.SameProgram ?
