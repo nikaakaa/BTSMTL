@@ -246,8 +246,8 @@ namespace ThirdPersonSimulation
     {
         string PredictionSourceIdentity { get; }
 
-        bool TryPredict(
-            in CharacterFutureBodyTranslationRequest request,
-            CharacterFutureBodyTranslation output);
+        void PreparePrediction(in CharacterFutureBodyTranslationRequest request);
+
+        bool CompletePrediction(CharacterFutureBodyTranslation output);
     }
 }
