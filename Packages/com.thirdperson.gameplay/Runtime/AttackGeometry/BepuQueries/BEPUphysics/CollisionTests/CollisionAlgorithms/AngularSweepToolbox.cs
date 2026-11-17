@@ -2,6 +2,7 @@ using BEPUphysics.CollisionShapes.ConvexShapes;
 using BEPUphysics.CollisionTests.CollisionAlgorithms.GJK;
 using BEPUutilities;
 using Photon.Deterministic;
+using ThirdPersonPerformance.Instrumentation;
 
 namespace BEPUphysics.CollisionTests.CollisionAlgorithms
 {
@@ -78,6 +79,7 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
         public const int MaximumAdvancementIterations = 64;
         public static readonly FP ContactTolerance = FP.EN4;
 
+        [PerformanceProbe("simulation.attack.sweep.angular")]
         public static bool Sweep(
             ConvexShape source, ConvexShape target,
             in ConvexSweepMotion sourceMotion, in ConvexSweepMotion targetMotion,

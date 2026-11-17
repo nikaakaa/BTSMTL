@@ -1,6 +1,7 @@
 using BEPUphysics.CollisionShapes.ConvexShapes;
 using BEPUutilities;
 using Photon.Deterministic;
+using ThirdPersonPerformance.Instrumentation;
 
 namespace BEPUphysics.CollisionTests.CollisionAlgorithms.GJK
 {
@@ -9,6 +10,7 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms.GJK
         public const int MaximumGJKIterations = 64;
         public const int HighGJKIterations = 8;
 
+        [PerformanceProbe("simulation.attack.sweep.gjk")]
         public static bool GetClosestPoints(ConvexShape shapeA, ConvexShape shapeB, ref RigidTransform transformA, ref RigidTransform transformB,
                                             out FPVector3 closestPointA, out FPVector3 closestPointB, out bool iterationLimitReached)
         {

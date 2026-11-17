@@ -4,6 +4,7 @@ using BEPUphysics.CollisionTests.CollisionAlgorithms;
 using BEPUphysics.CollisionTests.CollisionAlgorithms.GJK;
 using BEPUutilities;
 using Photon.Deterministic;
+using ThirdPersonPerformance.Instrumentation;
 using ThirdPersonSimulation.QuantumNumerics;
 using ThirdPersonSimulation.Collision;
 
@@ -60,6 +61,7 @@ namespace ThirdPersonSimulation.AttackGeometry
 
         // 两根点都沿直线运动、部件绕根点旋转不改变到根点的距离，所以整段相对根点轨迹到原点的最近距离
         // 超过双方包络半径之和时，任何时刻表面都不会进入接触容差，精确扫掠必然无候选。
+        [PerformanceProbe("simulation.attack.sweep.separated")]
         static bool Separated(FPVector3 startOffset, FPVector3 endOffset, FP reach)
         {
             FPVector3 delta = endOffset - startOffset;
@@ -230,32 +232,9 @@ namespace ThirdPersonSimulation.AttackGeometry
                     if (Separated(sourceStart.Position - targetStartPosition, sourceEnd.Position - targetEndPosition,
                             m_Bounds[segment.Track.ShapeIndex] + m_Bounds[target.ShapeIndex] + SeparationMargin))
                         continue;
-                    RigidTransform targetStart;
-                    RigidTransform targetEnd;
-                    if (movingTarget)
-                    {
-                        RigidTransform before = ToGeometry(target.Start.Pose);
-                        RigidTransform after = ToGeometry(target.End.Pose);
-                        if ((startFraction == FP._0 || startFraction == FP._1) &&
-                            (endFraction == FP._0 || endFraction == FP._1))
-                        {
-                            targetStart = startFraction == FP._0 ? before : after;
-                            targetEnd = endFraction == FP._0 ? before : after;
-                        }
-                        else
-                        {
-                            var targetMotion = new RigidSweepMotion(in before, in after);
-                            targetStart = targetMotion.At(startFraction);
-                            targetEnd = targetMotion.At(endFraction);
-                        }
-                    }
-                    else
-                    {
-                        targetStart = ToGeometry(target.Start.Pose);
-                        targetEnd = targetStart;
-                    }
+                    PrepareTargetMotion(in target, movingTarget, startFraction, endFraction, angular,
+                        out RigidTransform targetStart, out RigidTransform targetEnd, out RigidSweepMotion targetRootMotion);
                     NativePart[] targetParts = m_Parts[target.ShapeIndex];
-                    var targetRootMotion = angular ? new RigidSweepMotion(in targetStart, in targetEnd) : default;
                     for (int sourcePartIndex = 0; sourcePartIndex < sourceParts.Length; sourcePartIndex++)
                     for (int targetPartIndex = 0; targetPartIndex < targetParts.Length; targetPartIndex++)
                     {
@@ -336,6 +315,35 @@ namespace ThirdPersonSimulation.AttackGeometry
                 }
             }
             return results.Complete();
+        }
+
+        [PerformanceProbe("simulation.attack.sweep.target-motion")]
+        static void PrepareTargetMotion(in SweepTarget target, bool movingTarget, FP startFraction, FP endFraction,
+            bool angular, out RigidTransform targetStart, out RigidTransform targetEnd, out RigidSweepMotion targetRootMotion)
+        {
+            if (movingTarget)
+            {
+                RigidTransform before = ToGeometry(target.Start.Pose);
+                RigidTransform after = ToGeometry(target.End.Pose);
+                if ((startFraction == FP._0 || startFraction == FP._1) &&
+                    (endFraction == FP._0 || endFraction == FP._1))
+                {
+                    targetStart = startFraction == FP._0 ? before : after;
+                    targetEnd = endFraction == FP._0 ? before : after;
+                }
+                else
+                {
+                    var targetMotion = new RigidSweepMotion(in before, in after);
+                    targetStart = targetMotion.At(startFraction);
+                    targetEnd = targetMotion.At(endFraction);
+                }
+            }
+            else
+            {
+                targetStart = ToGeometry(target.Start.Pose);
+                targetEnd = targetStart;
+            }
+            targetRootMotion = angular ? new RigidSweepMotion(in targetStart, in targetEnd) : default;
         }
 
         static RigidTransform Compose(RigidTransform local, RigidTransform parent)

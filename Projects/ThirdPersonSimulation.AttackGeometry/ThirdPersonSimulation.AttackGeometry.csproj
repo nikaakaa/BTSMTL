@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Include="$(GeometrySourceRoot)\**\*.cs" LinkBase="Source" />
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ThirdPerson.Performance.Instrumentation.Contracts\ThirdPerson.Performance.Instrumentation.Contracts.csproj" />
     <ProjectReference Include="..\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" />
     <Reference Include="Quantum.Deterministic">
       <HintPath>$(QuantumDeterministicPath)</HintPath>
