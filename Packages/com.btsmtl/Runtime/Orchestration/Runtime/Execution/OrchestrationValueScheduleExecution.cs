@@ -41,6 +41,10 @@ namespace BTSMTL.Orchestration
 
         ScheduledSelection RunValueSchedule(in OrchestrationValueScheduleEntry entry, int excludedTarget = -1)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.ValueSchedule);
+#endif
             int pc = m_Host.ScheduleEntry(in entry);
             Span<TValue> values = m_ScheduledValues;
             int depth = m_InputDepth++;
@@ -76,6 +80,7 @@ namespace BTSMTL.Orchestration
                     case OrchestrationValueScheduleCode.ConvertInput:
 #if UNITY_EDITOR
                         m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputConversions);
+                        using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
 #endif
                         default(TNumerics).Unary((OrchestrationValueOpcode)instruction.Operand,
                             in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
@@ -108,6 +113,7 @@ namespace BTSMTL.Orchestration
 #if UNITY_EDITOR
                                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.HostInputReads);
                                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
+                                using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
 #endif
                                 numerics.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
                                     in m_Identities, ref value);
@@ -143,6 +149,7 @@ namespace BTSMTL.Orchestration
                             default:
 #if UNITY_EDITOR
                                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
+                                using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
 #endif
                                 numerics.Compute(typed.Code, values, ScheduledArguments(instruction.Argument), in m_Identities, ref value);
                                 break;

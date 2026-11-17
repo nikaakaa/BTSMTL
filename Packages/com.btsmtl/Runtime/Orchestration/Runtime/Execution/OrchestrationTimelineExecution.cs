@@ -10,6 +10,10 @@ namespace BTSMTL.Orchestration
     {
         OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
             OperationStopContext(operationIndex) = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 operationIndex, m_FrameSlot);
@@ -19,15 +23,25 @@ namespace BTSMTL.Orchestration
                 InputRow(inputDepth).Slice(0, inputCount), m_Input.Tick);
         }
 
-        OrchestrationStopStatus StopTimeline(int operationIndex) =>
-            m_Host.Stop(ref this, m_TimelineState, operationIndex,
+        OrchestrationStopStatus StopTimeline(int operationIndex)
+        {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
+            return m_Host.Stop(ref this, m_TimelineState, operationIndex,
                 ref TimelineRuntimeHandle(operationIndex), StopContextStorage(operationIndex));
+        }
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
             ReadOnlySpan<OrchestrationStopContext> stopContext, bool captureContext,
             out OrchestrationTraceContext context)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Control);
+#endif
             context = default;
             OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
             TValue previousTime = m_TimelineTime;
@@ -67,8 +81,14 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
-            m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
+        OrchestrationOperationResult RequestTimelineClipExit(int operationIndex)
+        {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
+            return m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
+        }
 
         public void ReleaseExecutionFrame(int frameSlot, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
@@ -131,6 +151,9 @@ namespace BTSMTL.Orchestration
                     if (m_Frames.Header(child).SkillContentId == m_Frames.Header(m_FrameSlot).SkillContentId)
                         ReleaseFrame(child, stopContext);
                     else
+#if UNITY_EDITOR
+                        using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Host))
+#endif
                         m_Host.ReleaseExecutionFrame(child, stopContext);
                 }
         }

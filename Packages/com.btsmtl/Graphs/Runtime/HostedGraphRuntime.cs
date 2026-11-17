@@ -280,6 +280,10 @@ namespace BTSMTL.Graphs
                 using (new GraphRuntimePhaseScope(EvaluationPhase, input.HasDiagnostics
                            ? GraphRuntimePhase.ExecuteObserved : GraphRuntimePhase.ExecuteProduct))
                 {
+#if UNITY_EDITOR
+                    using var workloadCost = new OrchestrationWorkloadCostScope(m_ActiveWorkload,
+                        OrchestrationWorkloadCost.Control);
+#endif
                     if (m_RunStart && m_Bindings.Start.OperationIndex >= 0)
                     {
 #if UNITY_EDITOR

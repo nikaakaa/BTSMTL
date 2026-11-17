@@ -11,6 +11,8 @@ namespace BTSMTL.Orchestration
         public void ReadBlackboard(int operationIndex, int valueSlot, ref TValue destination)
         {
 #if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.BlackboardGet);
             m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
 #endif
             m_CurrentOperationIndex = operationIndex;
@@ -29,6 +31,10 @@ namespace BTSMTL.Orchestration
         public void WriteBlackboard(int operationIndex, int valueSlot, in TValue value,
             OrchestrationAssignmentOpcode assignment = OrchestrationAssignmentOpcode.Set)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.BlackboardSet);
+#endif
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Blackboards.Blackboard(valueSlot);
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, in slot,
@@ -57,6 +63,7 @@ namespace BTSMTL.Orchestration
                     current = m_Program.DefaultValue(valueSlot);
 #if UNITY_EDITOR
                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericAssignments);
+                using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
 #endif
                 default(TNumerics).Assign(assignment, in current, in value, ref current);
             }
@@ -97,6 +104,10 @@ namespace BTSMTL.Orchestration
         public bool TryMutateBlackboard(int operationIndex, int valueSlot,
             in OrchestrationValueOverrideAddress address, in TValue value, OrchestrationValueMutation mutation)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.BlackboardSet);
+#endif
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Blackboards.Blackboard(valueSlot);
             if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
@@ -177,6 +188,10 @@ namespace BTSMTL.Orchestration
 
         OrchestrationBlackboardSourceContext ReadBlackboardFacts(int operationIndex, ulong currentOwnerGeneration)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
             int bindingIndex = m_Program.Operation(operationIndex).BlackboardFactsBindingIndex;
             int depth = EnterInputRow(operationIndex);
             TNumerics values = default;

@@ -1,9 +1,39 @@
 using System;
 using System.Runtime.CompilerServices;
+#if UNITY_EDITOR
+using System.Diagnostics;
+#endif
 
 namespace BTSMTL.Orchestration
 {
 #if UNITY_EDITOR
+    public enum OrchestrationWorkloadCost : byte
+    {
+        Control,
+        ValueSchedule,
+        Numeric,
+        BlackboardGet,
+        BlackboardSet,
+        Host,
+        Count,
+        None = byte.MaxValue
+    }
+
+    public readonly struct OrchestrationWorkloadCostScope : IDisposable
+    {
+        readonly OrchestrationWorkloadObservation m_Observation;
+        readonly OrchestrationWorkloadCost m_Previous;
+
+        public OrchestrationWorkloadCostScope(OrchestrationWorkloadObservation observation,
+            OrchestrationWorkloadCost cost)
+        {
+            m_Observation = observation;
+            m_Previous = observation == null ? OrchestrationWorkloadCost.None : observation.EnterCost(cost);
+        }
+
+        public void Dispose() => m_Observation?.LeaveCost(m_Previous);
+    }
+
     public enum OrchestrationWorkloadCounter : byte
     {
         HostInputBindingReads,
@@ -59,14 +89,22 @@ namespace BTSMTL.Orchestration
         public bool HasDiagnostics { get; internal set; }
         public OrchestrationWorkloadCallStatus Status { get; internal set; }
         public int LastOperationIndex { get; internal set; }
+        public long ExecutionElapsedTicks { get; internal set; }
     }
 
     public sealed class OrchestrationWorkloadObservation
     {
         const int CounterCount = (int)OrchestrationWorkloadCounter.Count;
+        const int CostCount = (int)OrchestrationWorkloadCost.Count;
+        public const int ClockCalibrationPairs = 64;
         readonly OrchestrationWorkloadCall[] m_Calls;
         readonly int[] m_CallOperationCounters;
         readonly long[] m_OperationCounters;
+        readonly long[] m_CallCostTicks;
+        readonly int[] m_CallCostScopes;
+        OrchestrationWorkloadCost m_CurrentCost = OrchestrationWorkloadCost.None;
+        long m_CostSegmentStarted;
+        long m_ExecutionCostStarted;
         int m_CallCount;
 
         public OrchestrationWorkloadObservation(ThirdPersonSimulation.GraphExecutionIdentity content,
@@ -80,6 +118,22 @@ namespace BTSMTL.Orchestration
             m_Calls = new OrchestrationWorkloadCall[maximumCalls];
             m_OperationCounters = new long[checked((OperationCount + 1) * CounterCount)];
             m_CallOperationCounters = new int[checked(maximumCalls * m_OperationCounters.Length)];
+            m_CallCostTicks = new long[checked(maximumCalls * CostCount)];
+            m_CallCostScopes = new int[m_CallCostTicks.Length];
+            long minimum = long.MaxValue;
+            long maximum = 0;
+            long total = 0;
+            for (int i = 0; i < ClockCalibrationPairs; i++)
+            {
+                long started = Stopwatch.GetTimestamp();
+                long elapsed = Stopwatch.GetTimestamp() - started;
+                minimum = Math.Min(minimum, elapsed);
+                maximum = Math.Max(maximum, elapsed);
+                total += elapsed;
+            }
+            ClockPairMinimumTicks = minimum;
+            ClockPairMaximumTicks = maximum;
+            ClockPairMeanTicks = (double)total / ClockCalibrationPairs;
         }
 
         public ThirdPersonSimulation.GraphExecutionIdentity Content { get; }
@@ -91,6 +145,14 @@ namespace BTSMTL.Orchestration
         public bool IsEnabled => StopReason == OrchestrationWorkloadStopReason.None;
         public OrchestrationWorkloadStopReason StopReason { get; private set; }
         public ReadOnlySpan<OrchestrationWorkloadCall> Calls => m_Calls.AsSpan(0, m_CallCount);
+        public long ClockFrequency => Stopwatch.Frequency;
+        public bool ClockIsHighResolution => Stopwatch.IsHighResolution;
+        public long ClockPairMinimumTicks { get; }
+        public long ClockPairMaximumTicks { get; }
+        public double ClockPairMeanTicks { get; }
+        public long CostStorageBytes =>
+            (long)m_CallCostTicks.Length * sizeof(long) +
+            (long)m_CallCostScopes.Length * sizeof(int);
         public long CounterStorageBytes =>
             (long)m_OperationCounters.Length * sizeof(long) +
             (long)m_CallOperationCounters.Length * sizeof(int);
@@ -101,6 +163,49 @@ namespace BTSMTL.Orchestration
         public int CallOperationCounter(int callIndex, int operationIndex, OrchestrationWorkloadCounter counter) =>
             m_CallOperationCounters[callIndex * m_OperationCounters.Length +
                 (operationIndex + 1) * CounterCount + (int)counter];
+
+        public long CallCostTicks(int callIndex, OrchestrationWorkloadCost cost) =>
+            m_CallCostTicks[callIndex * CostCount + (int)cost];
+
+        public int CallCostScopes(int callIndex, OrchestrationWorkloadCost cost) =>
+            m_CallCostScopes[callIndex * CostCount + (int)cost];
+
+        public long CallAttributedCostTicks(int callIndex)
+        {
+            long total = 0;
+            int start = callIndex * CostCount;
+            for (int i = start; i < start + CostCount; i++)
+                total += m_CallCostTicks[i];
+            return total;
+        }
+
+        public long CallUnattributedCostTicks(int callIndex) =>
+            m_Calls[callIndex].ExecutionElapsedTicks - CallAttributedCostTicks(callIndex);
+
+        internal OrchestrationWorkloadCost EnterCost(OrchestrationWorkloadCost cost)
+        {
+            long boundary = Stopwatch.GetTimestamp();
+            OrchestrationWorkloadCost previous = m_CurrentCost;
+            int start = (m_CallCount - 1) * CostCount;
+            if (previous == OrchestrationWorkloadCost.None)
+                m_ExecutionCostStarted = boundary;
+            else
+                m_CallCostTicks[start + (int)previous] += boundary - m_CostSegmentStarted;
+            m_CallCostScopes[start + (int)cost]++;
+            m_CurrentCost = cost;
+            m_CostSegmentStarted = Stopwatch.GetTimestamp();
+            return previous;
+        }
+
+        internal void LeaveCost(OrchestrationWorkloadCost previous)
+        {
+            long boundary = Stopwatch.GetTimestamp();
+            m_CallCostTicks[(m_CallCount - 1) * CostCount + (int)m_CurrentCost] += boundary - m_CostSegmentStarted;
+            if (previous == OrchestrationWorkloadCost.None)
+                m_Calls[m_CallCount - 1].ExecutionElapsedTicks += boundary - m_ExecutionCostStarted;
+            m_CurrentCost = previous;
+            m_CostSegmentStarted = Stopwatch.GetTimestamp();
+        }
 
         public long CallCounter(int callIndex, OrchestrationWorkloadCounter counter)
         {

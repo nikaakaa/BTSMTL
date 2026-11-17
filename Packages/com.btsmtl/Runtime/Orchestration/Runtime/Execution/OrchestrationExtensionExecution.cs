@@ -15,6 +15,10 @@ namespace BTSMTL.Orchestration
             {
                 if (hook.Hook != phase)
                     continue;
+#if UNITY_EDITOR
+                using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                    OrchestrationWorkloadCost.Host);
+#endif
                 int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
                     : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
                         ? exitingStateOperationIndex : -1;
@@ -95,6 +99,10 @@ namespace BTSMTL.Orchestration
         OrchestrationStopStatus InvokeExtensionStop(int operationIndex,
             OrchestrationExtensionInvocationKind kind)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             Span<TValue> outputs;

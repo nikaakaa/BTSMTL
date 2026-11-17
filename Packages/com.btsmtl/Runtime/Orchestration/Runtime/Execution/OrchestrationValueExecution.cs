@@ -29,6 +29,10 @@ namespace BTSMTL.Orchestration
         void EvaluateExtensionValue(int operationIndex, int outputPortIndex, ReadOnlySpan<int> arguments,
             int depth, ref TValue value)
         {
+#if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.Host);
+#endif
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
             RequireRowDepth(operationIndex, depth + 1);
@@ -114,6 +118,10 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> inputs = ReadInputSlots(operationIndex, out _);
             try
             {
+#if UNITY_EDITOR
+                using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                    OrchestrationWorkloadCost.BlackboardSet);
+#endif
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs)
                 {
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
@@ -143,6 +151,8 @@ namespace BTSMTL.Orchestration
         void ReadGraphCallOutput(int operationIndex, int outputPortIndex, ref TValue destination)
         {
 #if UNITY_EDITOR
+            using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                OrchestrationWorkloadCost.BlackboardGet);
             m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.GraphCallOutputReads);
 #endif
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
@@ -220,6 +230,10 @@ namespace BTSMTL.Orchestration
                         return TickTimeline(operationIndex, depth, count);
                     case OrchestrationOperationCode.Extension:
                     {
+#if UNITY_EDITOR
+                        using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                            OrchestrationWorkloadCost.Host);
+#endif
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? SavedOutputs(in operation)
                             : BorrowOutputs(operationIndex, depth, operation.OutputCount);

@@ -535,6 +535,9 @@ namespace BTSMTL.Orchestration
             {
                 ref ulong handle = ref m_TimelineHandles[indices.Timeline];
                 if (handle != 0)
+#if UNITY_EDITOR
+                    using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Host))
+#endif
                     m_Host.ReleasePlayback(m_TimelineState, operationIndex, ref handle);
                 handle = 0;
             }
@@ -552,6 +555,10 @@ namespace BTSMTL.Orchestration
                         m_Program.DefaultValue(operation.OutputSlotOffset + i);
             if (operation.Code == OrchestrationOperationCode.SubGraph)
             {
+#if UNITY_EDITOR
+                using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
+                    OrchestrationWorkloadCost.BlackboardSet);
+#endif
                 OrchestrationGraphCallView call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs)
                 {
