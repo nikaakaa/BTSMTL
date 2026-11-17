@@ -23,11 +23,10 @@ namespace BEPUphysics.CollisionShapes.ConvexShapes
         {
             if (shapeTransform.Orientation.X == FP._0 && shapeTransform.Orientation.Z == FP._0)
             {
-                // 保留原旋转乘以1时的FP舍入与截位。
+                // 保留方向逆旋时的FP舍入与截位。
                 FP localY = direction.Y * FP._1;
                 extremePoint = new FPVector3(FP._0, FPMath.SignZero(localY) * m_HalfLength, FP._0);
-                FP worldY = extremePoint.Y * FP._1;
-                extremePoint = new FPVector3(FP._0, worldY, FP._0) + shapeTransform.Position;
+                extremePoint += shapeTransform.Position;
                 return;
             }
             base.GetExtremePointWithoutMargin(direction, ref shapeTransform, out extremePoint);
