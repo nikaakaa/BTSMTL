@@ -15,14 +15,14 @@ namespace BTSMTL.Orchestration
         readonly OrchestrationExecutionSourceBindingView m_SourceBinding;
         OrchestrationExecutionSourceReader<TValue> m_Reader;
 
-        internal OrchestrationBlackboardStorageView(OrchestrationProgramView<TValue> program,
+        internal OrchestrationBlackboardStorageView(int programIndex, OrchestrationProgramView<TValue> program,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot, ReadOnlySpan<int> characterSlots,
             OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source)
         {
             m_Program = program;
             m_BlackboardSlots = program.BlackboardSlots;
             m_Frames = frames;
-            m_ProgramIndex = frames.Plan.ProgramIndex(frames.Header(frameSlot).SkillContentId);
+            m_ProgramIndex = programIndex;
             m_FrameSlot = frameSlot;
             m_CharacterSlots = characterSlots;
             m_SourceBinding = sourceBinding;

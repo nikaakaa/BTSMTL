@@ -142,6 +142,8 @@ namespace BTSMTL.Orchestration
         public int ProgramIndex(int skillContentId) =>
             FindProgramIndex(Section<OrchestrationStateProgramRecord>(Header.Programs), skillContentId);
 
+        internal int SkillContentId(int programIndex) => Program(programIndex).SkillContentId;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static int FindProgramIndex(ReadOnlySpan<OrchestrationStateProgramRecord> programs, int skillContentId)
         {

@@ -179,21 +179,21 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExecutionCursor<TValue, TNumerics, ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>>
             CreateCursor<TNumerics>(OrchestrationCandidateState<TValue> state,
-                OrchestrationProgramView<TValue> program, OrchestrationExecutionScratch<TValue> scratch, int frameSlot,
+                int programIndex, OrchestrationProgramView<TValue> program, OrchestrationExecutionScratch<TValue> scratch, int frameSlot,
                 ReadOnlySpan<int> characterSlots, in OrchestrationFrameInput<TValue> input,
                 OrchestrationIdentityOrdinalView identities)
             where TNumerics : struct, IOrchestrationNumerics<TValue> =>
             state.CreateCursor<TNumerics, ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>>(
-                program, scratch, frameSlot, characterSlots, in input, identities, this);
+                programIndex, program, scratch, frameSlot, characterSlots, in input, identities, this);
 
         public OrchestrationExecutionCursor<TValue, TNumerics, ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>>
             CreateCursor<TNumerics>(OrchestrationCandidateState<TValue> state,
-                OrchestrationProgramView<TValue> program, OrchestrationExecutionSourceBindingView sourceBinding,
+                int programIndex, OrchestrationProgramView<TValue> program, OrchestrationExecutionSourceBindingView sourceBinding,
                 OrchestrationExecutionScratch<TValue> scratch, int frameSlot, OrchestrationExecutionSource<TValue> source,
                 ReadOnlySpan<int> characterSlots, in OrchestrationFrameInput<TValue> input,
                 OrchestrationIdentityOrdinalView identities)
             where TNumerics : struct, IOrchestrationNumerics<TValue> =>
             state.CreateCursor<TNumerics, ManagedOrchestrationHost<TValue, TContext, TStorage, TDiagnostics>>(
-                program, sourceBinding, scratch, frameSlot, source, characterSlots, in input, identities, this);
+                programIndex, program, sourceBinding, scratch, frameSlot, source, characterSlots, in input, identities, this);
     }
 }

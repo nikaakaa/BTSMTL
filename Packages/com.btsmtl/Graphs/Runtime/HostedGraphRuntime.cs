@@ -269,7 +269,7 @@ namespace BTSMTL.Graphs
                 ManagedOrchestrationHost<TValue, TContext, OrchestrationArrayValueStorage<TValue>, TDiagnostics>> cursor;
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.BindCursor))
                 cursor = Host(in context, diagnostics).CreateCursor<TNumerics>(state,
-                    m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
+                    0, m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
 #if UNITY_EDITOR
             cursor.BindWorkloadObservation(m_ActiveWorkload);
 #endif
@@ -537,7 +537,7 @@ namespace BTSMTL.Graphs
         void InitializeRootFrame(ref OrchestrationExecutionFrames<TValue> frames,
             ulong generation)
         {
-            frames.Insert<OrchestrationArrayValueStorage<TValue>>(new OrchestrationExecutionFrameState
+            frames.Insert<OrchestrationArrayValueStorage<TValue>>(0, new OrchestrationExecutionFrameState
             {
                 SkillContentId = SourceIdentityId,
                 EntryOperationIndex = m_Bindings.Program.RootOperationIndex,

@@ -246,22 +246,22 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionCursor<TValue, TNumerics, THost> CreateCursor<TNumerics, THost>(
-            OrchestrationProgramView<TValue> program, OrchestrationExecutionScratch<TValue> scratch, int frameSlot,
+            int programIndex, OrchestrationProgramView<TValue> program, OrchestrationExecutionScratch<TValue> scratch, int frameSlot,
             ReadOnlySpan<int> characterSlots, in OrchestrationFrameInput<TValue> input,
             OrchestrationIdentityOrdinalView identities, THost host)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue> =>
-            new OrchestrationExecutionCursor<TValue, TNumerics, THost>(program, scratch, Frames, frameSlot,
+            new OrchestrationExecutionCursor<TValue, TNumerics, THost>(programIndex, program, scratch, Frames, frameSlot,
                 characterSlots, Timeline, in input, identities, default, default, host);
 
         public OrchestrationExecutionCursor<TValue, TNumerics, THost> CreateCursor<TNumerics, THost>(
-            OrchestrationProgramView<TValue> program, OrchestrationExecutionSourceBindingView sourceBinding,
+            int programIndex, OrchestrationProgramView<TValue> program, OrchestrationExecutionSourceBindingView sourceBinding,
             OrchestrationExecutionScratch<TValue> scratch, int frameSlot, OrchestrationExecutionSource<TValue> source,
             ReadOnlySpan<int> characterSlots, in OrchestrationFrameInput<TValue> input,
             OrchestrationIdentityOrdinalView identities, THost host)
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue> =>
-            new OrchestrationExecutionCursor<TValue, TNumerics, THost>(program, scratch, Frames, frameSlot,
+            new OrchestrationExecutionCursor<TValue, TNumerics, THost>(programIndex, program, scratch, Frames, frameSlot,
                 characterSlots, Timeline, in input, identities, sourceBinding, source, host);
     }
 

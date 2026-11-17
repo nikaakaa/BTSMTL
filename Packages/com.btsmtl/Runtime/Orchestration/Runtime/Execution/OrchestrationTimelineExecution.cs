@@ -139,7 +139,7 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationValueOverride<TValue>.RetireExecutionFrame(m_Input.Overrides, in m_Frames.Header(frameSlot));
             m_Host.Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireFrame, -1, frameSlot);
-            m_Frames.RemoveAt(frameSlot);
+            m_Frames.RemoveAt(frameSlot, m_Blackboards.ProgramIndex);
             m_ForceStopVisits.ClearFrame(frameSlot);
         }
     }

@@ -266,10 +266,10 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationProgram<TValue> program = m_Graphs.Programs.Span[programIndex];
             OrchestrationExecutionFrames<TValue> frames = candidate.Frames;
             int skillContentId = m_Graphs.PreparedProgramStorages.Span[programIndex].SkillContentId;
-            int frameSlot = frames.FindTimeline(skillContentId, metadata.ExecutionFrameOwnerOperationIndex,
+            int frameSlot = frames.FindTimeline(programIndex, metadata.ExecutionFrameOwnerOperationIndex,
                 in invocation.Start, in token);
             if (frameSlot < 0)
-                frameSlot = frames.Insert<THost>(new OrchestrationExecutionFrameState
+                frameSlot = frames.Insert<THost>(programIndex, new OrchestrationExecutionFrameState
                 {
                     SkillContentId = skillContentId,
                     EntryOperationIndex = metadata.ExecutionFrameOwnerOperationIndex,
@@ -287,7 +287,7 @@ namespace BTSMTL.Timeline.Runtime
             TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, metadata);
             OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, invocation.Invocation.Tick, in header);
             THost host = m_Bindings.CreateHost(domain, programIndex, in context, m_Diagnostics[programIndex]);
-            var cursor = candidate.CreateCursor<TNumerics, THost>(program.View, m_Scratches[programIndex].View,
+            var cursor = candidate.CreateCursor<TNumerics, THost>(programIndex, program.View, m_Scratches[programIndex].View,
                 frameSlot, m_Bindings.CharacterValueSlots(programIndex), in input, m_Graphs.Graphs.Span[programIndex].Identities.Ordinals,
                 host);
             TimelineExecutionDomain previousDomain = m_CurrentDomain;
@@ -338,7 +338,7 @@ namespace BTSMTL.Timeline.Runtime
                 TContext context = m_Bindings.CreateContext(domain, programIndex, frameSlot, in header, null);
                 OrchestrationFrameInput<TValue> input = m_Bindings.ReadInput(domain, programIndex, tick, in header);
                 THost host = m_Bindings.CreateHost(domain, programIndex, in context, m_Diagnostics[programIndex]);
-                var cursor = candidate.CreateCursor<TNumerics, THost>(m_Graphs.Programs.Span[programIndex].View,
+                var cursor = candidate.CreateCursor<TNumerics, THost>(programIndex, m_Graphs.Programs.Span[programIndex].View,
                     m_Scratches[programIndex].View, frameSlot, m_Bindings.CharacterValueSlots(programIndex), in input,
                     m_Graphs.Graphs.Span[programIndex].Identities.Ordinals, host);
                 cursor.ReleaseExecutionFrame(frameSlot, stopContext);

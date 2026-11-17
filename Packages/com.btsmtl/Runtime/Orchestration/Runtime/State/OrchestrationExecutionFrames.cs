@@ -103,9 +103,10 @@ namespace BTSMTL.Orchestration
             return -1;
         }
 
-        public int FindPersistent(int skillContentId, int ownerOperationIndex)
+        public int FindPersistent(int programIndex, int ownerOperationIndex)
         {
-            OrchestrationFramePoolRange pool = Plan.FramePool(Plan.ProgramIndex(skillContentId), ownerOperationIndex);
+            int skillContentId = Plan.SkillContentId(programIndex);
+            OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, ownerOperationIndex);
             int end = pool.First + pool.Count;
             for (int slot = pool.First; slot < end; slot++)
                 if (m_Frames[slot].TimelineStart.PlaybackIdentity == 0 && m_Frames[slot].ActionInstanceId == 0 &&
@@ -114,11 +115,11 @@ namespace BTSMTL.Orchestration
             return -1;
         }
 
-        public int FindTimeline(int skillContentId, int ownerOperationIndex,
+        public int FindTimeline(int programIndex, int ownerOperationIndex,
             in OrchestrationTimelineStart<OrchestrationTime> start,
             in OrchestrationTimelineInvocationToken token)
         {
-            OrchestrationFramePoolRange pool = Plan.FramePool(Plan.ProgramIndex(skillContentId), ownerOperationIndex);
+            OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, ownerOperationIndex);
             int end = pool.First + pool.Count;
             for (int slot = pool.First; slot < end; slot++)
                 if (m_Frames[slot].SkillContentId != 0 &&
@@ -145,10 +146,9 @@ namespace BTSMTL.Orchestration
             return frameSlot;
         }
 
-        public int Insert<TStorage>(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
+        public int Insert<TStorage>(int programIndex, OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            int programIndex = Plan.ProgramIndex(frame.SkillContentId);
             OrchestrationFramePoolRange pool = Plan.FramePool(programIndex, frame.OwnerOperationIndex);
             int slot = pool.First;
             while (m_Frames[slot].SkillContentId != 0)
@@ -174,10 +174,10 @@ namespace BTSMTL.Orchestration
             return slot;
         }
 
-        public void RemoveAt(int frameSlot)
+        public void RemoveAt(int frameSlot, int programIndex)
         {
             ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[frameSlot];
-            ClearPayloads(frameSlot, Plan.PayloadSizesForSkill(frame.SkillContentId, frame.OwnerOperationIndex));
+            ClearPayloads(frameSlot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             m_Frames[frameSlot] = default;
             m_Roster[0].Count--;
         }

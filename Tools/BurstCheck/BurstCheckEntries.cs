@@ -35,6 +35,7 @@ namespace BTSMTL.BurstCheck
                         new OrchestrationStateLayoutView(new ReadOnlySpan<byte>(memory->StateLayout, memory->StateLayoutLength)),
                         new Span<byte>(memory->State, memory->StateLength));
                 return state.CreateCursor<TNumerics, BurstCheckHost>(
+                    state.Frames.Plan.ProgramIndex(state.Frames.Header(0).SkillContentId),
                     new OrchestrationProgramView<Float32OrchestrationValue>(
                         new ReadOnlySpan<byte>(memory->Program, memory->ProgramLength)),
                     new OrchestrationExecutionScratch<Float32OrchestrationValue>(

@@ -235,7 +235,7 @@ namespace BTSMTL.Graphs
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
             return Host(in context, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics)).CreateCursor<TNumerics>(
-                state, m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
+                state, 0, m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
         }
 
         static void RequireValue(GraphHostValue value, Type type)

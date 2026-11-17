@@ -67,7 +67,7 @@ namespace BTSMTL.Orchestration
             m_WorkloadObservation = observation;
 #endif
 
-        internal OrchestrationExecutionCursor(OrchestrationProgramView<TValue> program,
+        internal OrchestrationExecutionCursor(int programIndex, OrchestrationProgramView<TValue> program,
             OrchestrationExecutionScratch<TValue> scratch,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot,
             ReadOnlySpan<int> characterSlots,
@@ -117,7 +117,7 @@ namespace BTSMTL.Orchestration
             m_ValueStorage = storage.Values;
             m_Frames = frames;
             m_FrameSlot = frameSlot;
-            m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(program, frames, frameSlot,
+            m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(programIndex, program, frames, frameSlot,
                 characterSlots, sourceBinding, source);
             m_OperationStateIndices = frames.Plan.OperationStateIndices(m_Blackboards.ProgramIndex);
             m_Operations = frames.Payload<OrchestrationOperationState>(frameSlot,
