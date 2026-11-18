@@ -80,7 +80,7 @@ namespace BTSMTL.Orchestration
             m_Memory = image;
             ref readonly OrchestrationProgramImageHeader header =
                 ref OrchestrationMemoryImageWriter.Header<OrchestrationProgramImageHeader>(image);
-            m_Operations = OrchestrationMemoryImageWriter.Section<OrchestrationOperation>(image, in header.Operations);
+            m_Operations = OrchestrationMemoryImageWriter.Section<OrchestrationOperation>(image, header.Operations);
         }
 
         ref readonly OrchestrationProgramImageHeader Header
