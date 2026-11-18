@@ -73,8 +73,15 @@ namespace BTSMTL.Orchestration
     public readonly ref struct OrchestrationProgramView<TValue> where TValue : unmanaged
     {
         readonly ReadOnlySpan<byte> m_Memory;
+        readonly ReadOnlySpan<OrchestrationOperation> m_Operations;
 
-        public OrchestrationProgramView(ReadOnlySpan<byte> image) => m_Memory = image;
+        public OrchestrationProgramView(ReadOnlySpan<byte> image)
+        {
+            m_Memory = image;
+            ref readonly OrchestrationProgramImageHeader header =
+                ref OrchestrationMemoryImageWriter.Header<OrchestrationProgramImageHeader>(image);
+            m_Operations = OrchestrationMemoryImageWriter.Section<OrchestrationOperation>(image, in header.Operations);
+        }
 
         ref readonly OrchestrationProgramImageHeader Header
         {
@@ -91,7 +98,7 @@ namespace BTSMTL.Orchestration
         public int RootOperationIndex => Header.RootOperationIndex;
         public int MaximumOperationEvaluations => Header.MaximumOperationEvaluations;
         public OrchestrationCorePorts Ports => Header.Ports;
-        public int OperationCount => Header.Operations.Count;
+        public int OperationCount => m_Operations.Length;
         public int ValueSlotCount => Header.DefaultValues.Count;
         public int InputBindingCount => Header.ValueInputs.Count;
         public int BlackboardCount => Header.BlackboardSlots.Count;
@@ -99,7 +106,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<OrchestrationValueSlotType> ValueSlotTypes =>
             Section<OrchestrationValueSlotType>(in Header.ValueSlotTypes);
         public ReadOnlySpan<int> ValueKindSlotCounts => Section<int>(in Header.ValueKindSlotCounts);
-        public ReadOnlySpan<OrchestrationOperation> Operations => Section<OrchestrationOperation>(in Header.Operations);
+        public ReadOnlySpan<OrchestrationOperation> Operations => m_Operations;
         public ReadOnlySpan<OrchestrationFlowEdge> Edges => Section<OrchestrationFlowEdge>(in Header.Edges);
 
         public int ValueEvaluationSlotCount =>
@@ -120,7 +127,7 @@ namespace BTSMTL.Orchestration
             Section<int>(in Header.ValueEvaluationOffsets)[operationIndex] + outputPortIndex + 1;
 
         public ref readonly OrchestrationOperation Operation(int operationIndex) =>
-            ref Section<OrchestrationOperation>(in Header.Operations)[operationIndex];
+            ref m_Operations[operationIndex];
         public ref readonly OrchestrationOperationColdData ColdOperation(int operationIndex) =>
             ref Section<OrchestrationOperationColdData>(in Header.ColdOperations)[operationIndex];
         public T Payload<T>(int operationIndex) where T : unmanaged =>
