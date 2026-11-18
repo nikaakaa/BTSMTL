@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -107,7 +108,21 @@ namespace BTSMTL.Timeline.Runtime
     public sealed class OrchestrationTimelinePreparedContent<TTime>
         where TTime : unmanaged, IEquatable<TTime>
     {
-        readonly byte[] m_Image;
+        public sealed class ImagePreparation
+        {
+            readonly Dictionary<StableHash, byte[]> m_Images = new();
+
+            public void Share(OrchestrationTimelinePreparedContent<TTime> content)
+            {
+                StableHash identity = StableHash.Compute(content.m_Image);
+                if (m_Images.TryGetValue(identity, out byte[] image))
+                    content.m_Image = image;
+                else
+                    m_Images.Add(identity, content.m_Image);
+            }
+        }
+
+        byte[] m_Image;
 
         internal OrchestrationTimelinePreparedContent(int contentIdentityId, int contentRevisionId,
             TTime duration, int tickRate, OrchestrationTimelinePlaybackMode mode,
