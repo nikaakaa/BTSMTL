@@ -286,10 +286,9 @@ namespace BTSMTL.Timeline.Runtime
         readonly int m_Cycle;
         readonly TTime m_Time;
         readonly TTime m_PreviousTime;
-        readonly TTime m_WindowStartTime;
 
         internal OrchestrationTimelineStoredInvocation(OrchestrationTimelineHook hook,
-            int clipOrdinal, int cycle, bool marker, TTime time, TTime previousTime, TTime windowStartTime)
+            int clipOrdinal, int cycle, bool marker, TTime time, TTime previousTime)
         {
             m_Hook = hook;
             m_ClipOrdinal = clipOrdinal;
@@ -297,7 +296,6 @@ namespace BTSMTL.Timeline.Runtime
             m_Marker = marker;
             m_Time = time;
             m_PreviousTime = previousTime;
-            m_WindowStartTime = windowStartTime;
         }
 
         internal OrchestrationTimelineInvocation<TTime> Expand<TClock>(OrchestrationTimelineContentView<TTime> content,
@@ -308,6 +306,8 @@ namespace BTSMTL.Timeline.Runtime
                 ? content.MarkerEntries[m_ClipOrdinal]
                 : content.ClipEntries[m_ClipOrdinal].Entry(m_Hook);
             TClock clock = default;
+            TTime windowStartTime = work.Stop ? clock.Zero : m_Marker
+                ? content.Markers[m_ClipOrdinal].Time : content.Clips[m_ClipOrdinal].Start;
             TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
                 work.PreviousTime, work.RequestedAdvance, work.PreviousCycle,
                 content.Duration, m_PreviousTime, m_Cycle);
@@ -318,7 +318,7 @@ namespace BTSMTL.Timeline.Runtime
             return new(new OrchestrationTimelineInvocationToken(playbackSlot, work.Proposed.InvocationSequence,
                     work.Proposed.Start.PlaybackIdentity, m_ClipOrdinal, m_Cycle, m_Marker),
                 entry, m_Hook, work.Tick, work.SourceIdentityId,
-                m_Time, m_PreviousTime, m_WindowStartTime, startFraction, endFraction);
+                m_Time, m_PreviousTime, windowStartTime, startFraction, endFraction);
         }
     }
 

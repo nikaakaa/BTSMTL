@@ -406,7 +406,7 @@ namespace BTSMTL.Timeline.Runtime
             m_Workspace.Invocations[checked(slot * m_Workspace.InvocationCapacity + count++)] =
                 new OrchestrationTimelineStoredInvocation<TTime>(request.Hook,
                     request.Ordinal, request.Cycle, request.Marker,
-                    request.Time, request.PreviousTime, request.WindowStartTime);
+                    request.Time, request.PreviousTime);
         }
     }
 
