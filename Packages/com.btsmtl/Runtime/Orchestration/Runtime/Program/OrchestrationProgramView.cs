@@ -94,6 +94,8 @@ namespace BTSMTL.Orchestration
             OrchestrationMemoryImageWriter.Section<T>(m_Memory, section);
 
         public bool IsEmpty => m_Memory.IsEmpty;
+        internal ReadOnlySpan<OrchestrationBoundHostInput> BoundHostInputs =>
+            Section<OrchestrationBoundHostInput>(in Header.ScheduleBoundHostInputs);
         public ReadOnlySpan<byte> Image => m_Memory;
         public int RootOperationIndex => Header.RootOperationIndex;
         public int MaximumOperationEvaluations => Header.MaximumOperationEvaluations;

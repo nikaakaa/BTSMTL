@@ -1,9 +1,22 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
+    internal readonly struct OrchestrationBoundHostInput
+    {
+        internal OrchestrationBoundHostInput(int input, int slot)
+        {
+            Input = input;
+            Slot = slot;
+        }
+
+        internal readonly int Input;
+        internal readonly int Slot;
+    }
+
     public readonly struct OrchestrationGraphCallRecord
     {
         public OrchestrationGraphCallRecord(int ownerOperationIndex, int entryOperationIndex,
@@ -57,6 +70,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationMemorySection ScheduleBooleanEntries;
         public OrchestrationMemorySection ScheduleValueOperations;
         public OrchestrationMemorySection ScheduleStateContexts;
+        public OrchestrationMemorySection ScheduleBoundHostInputs;
         public OrchestrationMemorySection StorageOperationIndices;
         public OrchestrationMemorySection StorageValues;
         public OrchestrationMemorySection WorkspaceInputRows;
@@ -81,7 +95,11 @@ namespace BTSMTL.Orchestration
     public static class OrchestrationProgramImage
     {
         public static byte[] Build<TValue>(OrchestrationProgramContent content,
-            OrchestrationGraphParameters<TValue> parameters) where TValue : unmanaged
+            OrchestrationGraphParameters<TValue> parameters) where TValue : unmanaged =>
+            Build(content, parameters, bindHostInputs: false);
+
+        internal static byte[] Build<TValue>(OrchestrationProgramContent content,
+            OrchestrationGraphParameters<TValue> parameters, bool bindHostInputs) where TValue : unmanaged
         {
             var writer = new OrchestrationMemoryImageWriter(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationProgramImageHeader>());
@@ -111,15 +129,9 @@ namespace BTSMTL.Orchestration
             header.StateOnExitEdges = writer.Add(structure.StateOnExitEdges.Span);
             header.ValueEvaluationOffsets = writer.Add(structure.ValueEvaluationOffsets.Span);
             header.StateOperationIndexes = writer.Add(structure.StateOperationIndexes.Span);
-            header.ScheduleInstructions = writer.Add(schedule.Instructions.Span);
+            AddSchedule(writer, schedule, bindHostInputs, ref header);
             header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
             header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
-            header.ScheduleValueEntries = writer.Add(schedule.ValueEntries.Span);
-            header.ScheduleInputEntries = writer.Add(schedule.InputEntries.Span);
-            header.ScheduleTransitionEntries = writer.Add(schedule.TransitionEntries.Span);
-            header.ScheduleChildSelectionEntries = writer.Add(schedule.ChildSelectionEntries.Span);
-            header.ScheduleSelectorAbortEntries = writer.Add(schedule.SelectorAbortEntries.Span);
-            header.ScheduleBooleanEntries = writer.Add(schedule.BooleanEntries.Span);
             header.ScheduleValueOperations = writer.Add(schedule.ValueOperations.Span);
             header.ScheduleStateContexts = writer.Add(schedule.StateContexts.Span);
             header.StorageOperationIndices = writer.Add(storage.OperationIndices.Span);
@@ -133,6 +145,74 @@ namespace BTSMTL.Orchestration
             header.ScheduleScratchSlotCount = schedule.ScratchSlotCount;
             header.SchedulePredictionDepth = schedule.PredictionDepth;
             return writer.Finish(in header);
+        }
+
+        static void AddSchedule(OrchestrationMemoryImageWriter writer, OrchestrationValueSchedule schedule,
+            bool bindHostInputs, ref OrchestrationProgramImageHeader header)
+        {
+            ReadOnlySpan<OrchestrationValueScheduleInstruction> instructions = schedule.Instructions.Span;
+            int[] next = null;
+            if (bindHostInputs)
+            {
+                var slots = new Dictionary<int, int>();
+                next = new int[instructions.Length];
+                ReadOnlySpan<OrchestrationValueOperation> operations = schedule.ValueOperations.Span;
+                for (int i = 0; i < instructions.Length; i++)
+                {
+                    ref readonly OrchestrationValueScheduleInstruction instruction = ref instructions[i];
+                    next[i] = i;
+                    // Workbench observes or overrides each output. Only Product can borrow the invocation's values.
+                    if (instruction.Code != OrchestrationValueScheduleCode.Compute ||
+                        operations[instruction.Operand].Code != OrchestrationValueOpcode.HostInput ||
+                        instructions[instruction.Next].Code == OrchestrationValueScheduleCode.ObserveOutput)
+                        continue;
+                    slots[instruction.Destination] = operations[instruction.Operand].Argument;
+                    next[i] = instruction.Next;
+                }
+                var bindings = new OrchestrationBoundHostInput[slots.Count];
+                int index = 0;
+                foreach (var slot in slots)
+                    bindings[index++] = new OrchestrationBoundHostInput(slot.Value, slot.Key);
+                Array.Sort(bindings, (left, right) => left.Input.CompareTo(right.Input));
+                header.ScheduleBoundHostInputs = writer.Add<OrchestrationBoundHostInput>(bindings);
+                if (bindings.Length != 0)
+                {
+                    var lowered = new OrchestrationValueScheduleInstruction[instructions.Length];
+                    for (int i = 0; i < instructions.Length; i++)
+                    {
+                        ref readonly OrchestrationValueScheduleInstruction value = ref instructions[i];
+                        lowered[i] = new OrchestrationValueScheduleInstruction(value.Code, value.Operation,
+                            value.Operand, value.Destination, value.Argument, Resolve(value.Next), Resolve(value.Alternative));
+                    }
+                    instructions = lowered;
+                }
+                else
+                    next = null;
+            }
+            header.ScheduleInstructions = writer.Add(instructions);
+            header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
+            header.ScheduleInputEntries = AddEntries(schedule.InputEntries.Span);
+            header.ScheduleTransitionEntries = AddEntries(schedule.TransitionEntries.Span);
+            header.ScheduleChildSelectionEntries = AddEntries(schedule.ChildSelectionEntries.Span);
+            header.ScheduleSelectorAbortEntries = AddEntries(schedule.SelectorAbortEntries.Span);
+            header.ScheduleBooleanEntries = AddEntries(schedule.BooleanEntries.Span);
+
+            int Resolve(int index)
+            {
+                while (index >= 0 && next[index] != index)
+                    index = next[index];
+                return index;
+            }
+
+            OrchestrationMemorySection AddEntries(ReadOnlySpan<OrchestrationValueScheduleEntry> entries)
+            {
+                if (next == null)
+                    return writer.Add(entries);
+                var lowered = new OrchestrationValueScheduleEntry[entries.Length];
+                for (int i = 0; i < entries.Length; i++)
+                    lowered[i] = new OrchestrationValueScheduleEntry(Resolve(entries[i].Product), entries[i].Workbench);
+                return writer.Add<OrchestrationValueScheduleEntry>(lowered);
+            }
         }
 
         static void AddWorkspaceRows(OrchestrationMemoryImageWriter writer,

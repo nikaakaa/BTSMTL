@@ -62,7 +62,8 @@ namespace BTSMTL.Graphs
                     Array.Empty<string>());
                 var prepared = PreparedOrchestrationGraph<TValue, TNumerics>.Prepare(content, identities, 0,
                     ReadOnlySpan<OrchestrationDefaultValue<TValue>>.Empty, content.Structure.Program.ExecutionStorage);
-                return (prepared, new OrchestrationProgram<TValue>(prepared.Program, prepared.Parameters));
+                return (prepared, new OrchestrationProgram<TValue>(
+                    prepared.Program, prepared.Parameters, bindHostInputs: true));
             });
             Prepared = preparedProgram.Prepared;
             Program = preparedProgram.Program;

@@ -101,6 +101,20 @@ namespace BTSMTL.Orchestration
                 invocationValues.Slice(0, invocationValues.Length - 1).Fill(default(TNumerics).FromBoolean(false));
                 invocationValues[invocationValues.Length - 1] = default(TNumerics).FromBoolean(true);
             }
+            if (!input.HasDiagnostics && !input.HostInputs.IsEmpty)
+            {
+                int boundInput = -1;
+                TValue value = default;
+                foreach (ref readonly OrchestrationBoundHostInput binding in program.BoundHostInputs)
+                {
+                    if (boundInput != binding.Input)
+                    {
+                        boundInput = binding.Input;
+                        value = input.HostInputs[boundInput];
+                    }
+                    m_ScheduledValues[binding.Slot] = value;
+                }
+            }
             m_ValueInstructions = schedule.Instructions;
             m_ValueArgumentSlots = schedule.ArgumentSlots;
             m_ValueArgumentLists = schedule.ArgumentLists;

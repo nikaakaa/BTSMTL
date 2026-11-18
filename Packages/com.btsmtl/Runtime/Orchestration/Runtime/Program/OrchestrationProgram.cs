@@ -20,10 +20,16 @@ namespace BTSMTL.Orchestration
         readonly ulong[] m_SourceGraphMembers;
 
         public OrchestrationProgram(OrchestrationProgramContent content, OrchestrationGraphParameters<TValue> parameters)
+            : this(content, parameters, bindHostInputs: false)
+        {
+        }
+
+        public OrchestrationProgram(OrchestrationProgramContent content, OrchestrationGraphParameters<TValue> parameters,
+            bool bindHostInputs)
         {
             m_Content = content;
             m_Parameters = parameters;
-            m_Image = OrchestrationProgramImage.Build(content, parameters);
+            m_Image = OrchestrationProgramImage.Build(content, parameters, bindHostInputs);
             m_SourceGraphRows = new int[OperationCount];
             Array.Fill(m_SourceGraphRows, -1);
             int rows = 0;
