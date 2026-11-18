@@ -307,7 +307,7 @@ namespace BTSMTL.Timeline.Runtime
                 : content.ClipEntries[m_ClipOrdinal].Entry(m_Hook);
             TClock clock = default;
             TTime windowStartTime = work.Stop ? clock.Zero : m_Marker
-                ? content.Markers[m_ClipOrdinal].Time : content.Clips[m_ClipOrdinal].Start;
+                ? m_Time : content.Clips[m_ClipOrdinal].Start;
             TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
                 work.PreviousTime, work.RequestedAdvance, work.PreviousCycle,
                 content.Duration, m_PreviousTime, m_Cycle);
