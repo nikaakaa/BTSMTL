@@ -125,7 +125,7 @@ namespace BTSMTL.Orchestration
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs)
                 {
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
-                        output.ValueSlot, in m_Program.DefaultValue(output.ValueSlot));
+                        output.ValueSlot, in m_Program.DefaultValue(output.ValueSlot), ref m_Host);
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
@@ -135,7 +135,7 @@ namespace BTSMTL.Orchestration
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
-                        parameters[i].ValueSlot, in m_ScheduledValues[inputs[i]]);
+                        parameters[i].ValueSlot, in m_ScheduledValues[inputs[i]], ref m_Host);
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
@@ -165,7 +165,7 @@ namespace BTSMTL.Orchestration
             {
                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardReads);
 #endif
-                m_Blackboards.ReadValue(slot, ref destination);
+                m_Blackboards.ReadValue(slot, ref destination, ref m_Host);
 #if UNITY_EDITOR
             }
 #endif

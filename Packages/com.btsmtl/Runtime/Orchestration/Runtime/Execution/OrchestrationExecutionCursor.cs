@@ -167,7 +167,8 @@ namespace BTSMTL.Orchestration
         internal bool IsForceStopping => m_ForceStopDepth != 0;
         internal bool IsBorrowedOperation(int operationIndex) => m_Blackboards.IsBorrowedOperation(operationIndex);
         internal int ExecutionFrameOf(int operationIndex) => OperationFrame(operationIndex);
-        internal void ReadBlackboardValue(int valueSlot, ref TValue destination) => m_Blackboards.ReadValue(valueSlot, ref destination);
+        internal void ReadBlackboardValue(int valueSlot, ref TValue destination) =>
+            m_Blackboards.ReadValue(valueSlot, ref destination, ref m_Host);
         internal OrchestrationBlackboardMetadata ReadBlackboardMetadata(int valueSlot) => m_Blackboards.ReadMetadata(valueSlot);
         internal void SelectDiagnosticFrame(int frameSlot) => SelectExecutionFrame(frameSlot);
 
@@ -563,7 +564,7 @@ namespace BTSMTL.Orchestration
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs)
                 {
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
-                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot), ref m_Host);
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif
@@ -572,7 +573,7 @@ namespace BTSMTL.Orchestration
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs)
                 {
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(
-                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
+                        parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot), ref m_Host);
 #if UNITY_EDITOR
                     m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif

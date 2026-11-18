@@ -23,8 +23,8 @@ namespace BTSMTL.Orchestration
             if (overrideIndex >= 0)
                 destination = m_Input.Overrides[overrideIndex].Value;
             else if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex))
-                m_Blackboards.ReadValue(valueSlot, ref destination);
-            else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref destination))
+                m_Blackboards.ReadValue(valueSlot, ref destination, ref m_Host);
+            else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref destination, ref m_Host))
                 destination = m_Program.DefaultValue(valueSlot);
         }
 
@@ -59,7 +59,7 @@ namespace BTSMTL.Orchestration
 #endif
                 if (overrideIndex >= 0)
                     current = m_Input.Overrides[overrideIndex].Value;
-                else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref current))
+                else if (!m_Blackboards.TryReadValue(valueSlot, in expected, ref current, ref m_Host))
                     current = m_Program.DefaultValue(valueSlot);
 #if UNITY_EDITOR
                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericAssignments);
@@ -67,7 +67,7 @@ namespace BTSMTL.Orchestration
 #endif
                 default(TNumerics).Assign(assignment, in current, in value, ref current);
             }
-            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(valueSlot, in assignedValue);
+            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteValue(valueSlot, in assignedValue, ref m_Host);
 #if UNITY_EDITOR
             m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.BlackboardWrites);
 #endif

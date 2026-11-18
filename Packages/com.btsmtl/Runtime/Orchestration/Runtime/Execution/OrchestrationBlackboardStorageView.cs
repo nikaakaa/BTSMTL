@@ -53,21 +53,21 @@ namespace BTSMTL.Orchestration
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
             m_SourceBinding.HasSource && m_SourceBinding.ContainsSourceState(in m_Program, stateOperationIndex);
 
-        internal void ReadValue(int valueSlot, ref TValue destination)
+        internal void ReadValue(int valueSlot, ref TValue destination, ref TStorage storage)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             m_Reader.ReadValue<TStorage>(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
-                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination);
+                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, ref destination, ref storage);
         }
 
         internal bool TryReadValue(int valueSlot, in OrchestrationBlackboardOwnerToken expected,
-            ref TValue destination)
+            ref TValue destination, ref TStorage storage)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
             return m_Reader.TryReadValue<TStorage>(valueSlot, slot.ExecutionFrameOwnerOperationIndex,
                 m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot],
-                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, in expected, ref destination);
+                slot.ScopeKind == OrchestrationScopeKind.ActionInstance, in expected, ref destination, ref storage);
         }
 
         internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot)
@@ -78,23 +78,23 @@ namespace BTSMTL.Orchestration
                 slot.ScopeKind == OrchestrationScopeKind.ActionInstance);
         }
 
-        internal ref OrchestrationBlackboardMetadata WriteValue(int valueSlot, in TValue value)
+        internal ref OrchestrationBlackboardMetadata WriteValue(int valueSlot, in TValue value, ref TStorage storage)
         {
             int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
             if (characterSlot >= 0)
             {
                 OrchestrationValueAddress address = m_Frames.Plan.CharacterAddress(characterSlot);
-                default(TStorage).Write(m_Frames.Memory, in address, in value);
+                storage.Write(m_Frames.Memory, in address, in value);
                 return ref m_Frames.CharacterMetadata[characterSlot];
             }
             else
             {
                 int frameSlot = ValueFrame(valueSlot);
                 OrchestrationValueAddress address = m_Reader.CandidateAddress(frameSlot, valueSlot);
-                default(TStorage).Write(m_Frames.Memory, in address, in value);
+                storage.Write(m_Frames.Memory, in address, in value);
                 return ref m_Frames.Element<OrchestrationBlackboardMetadata>(frameSlot,
                     OrchestrationStateSegmentRole.PrivateMetadata,
-                    m_Frames.Plan.ProgramStorage(m_ProgramIndex).Values[valueSlot].ValueIndex);
+                    m_Reader.CandidateValueIndex(valueSlot));
             }
         }
 
