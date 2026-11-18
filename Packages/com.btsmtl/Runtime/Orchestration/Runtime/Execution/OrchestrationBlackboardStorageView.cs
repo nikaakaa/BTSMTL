@@ -90,11 +90,10 @@ namespace BTSMTL.Orchestration
             else
             {
                 int frameSlot = ValueFrame(valueSlot);
-                OrchestrationValueAddress address = m_Reader.CandidateAddress(frameSlot, valueSlot);
+                OrchestrationValueAddress address = m_Reader.CandidateBlackboardAddress(frameSlot, valueSlot,
+                    out int metadataOffset, out int valueIndex);
                 storage.Write(m_Frames.Memory, in address, in value);
-                return ref m_Frames.Element<OrchestrationBlackboardMetadata>(frameSlot,
-                    OrchestrationStateSegmentRole.PrivateMetadata,
-                    m_Reader.CandidateValueIndex(valueSlot));
+                return ref m_Frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset, valueIndex);
             }
         }
 

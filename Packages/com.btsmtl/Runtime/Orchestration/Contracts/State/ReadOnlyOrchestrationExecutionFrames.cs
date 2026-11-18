@@ -64,10 +64,14 @@ namespace BTSMTL.Orchestration
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe ref readonly T Element<T>(int frameSlot, OrchestrationStateSegmentRole role,
+        internal ref readonly T Element<T>(int frameSlot, OrchestrationStateSegmentRole role,
             int index) where T : unmanaged =>
+            ref ElementAt<T>(Plan.PayloadOffset(frameSlot, role), index);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal unsafe ref readonly T ElementAt<T>(int payloadOffset, int index) where T : unmanaged =>
             ref SpanReinterpret.Cast<byte, T>(m_Memory.Slice(
-                Plan.PayloadOffset(frameSlot, role) + index * sizeof(T), sizeof(T)))[0];
+                payloadOffset + index * sizeof(T), sizeof(T)))[0];
 
         public int FindTimelineSource(int skillContentId, int ownerOperationIndex, int operationIndex,
             in OrchestrationTimelineStart<OrchestrationTime> start)

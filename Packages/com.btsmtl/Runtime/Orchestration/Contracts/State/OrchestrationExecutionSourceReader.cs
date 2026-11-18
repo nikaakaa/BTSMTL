@@ -41,10 +41,13 @@ namespace BTSMTL.Orchestration
 
         internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
 
-        internal OrchestrationValueAddress CandidateAddress(int frameSlot, int valueSlot) =>
-            m_Frames.Plan.ResolveAddress(m_CandidatePrivateAddresses[valueSlot], frameSlot);
-
-        internal int CandidateValueIndex(int valueSlot) => m_CandidateStorage.Values[valueSlot].ValueIndex;
+        internal OrchestrationValueAddress CandidateBlackboardAddress(int frameSlot, int valueSlot,
+            out int metadataOffset, out int valueIndex)
+        {
+            valueIndex = m_CandidateStorage.Values[valueSlot].ValueIndex;
+            return m_Frames.Plan.ResolveBlackboardAddress(m_CandidatePrivateAddresses[valueSlot],
+                frameSlot, out metadataOffset);
+        }
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
             int characterSlot, bool actionInstance, ref TValue destination, ref TStorage storage)
@@ -75,17 +78,39 @@ namespace BTSMTL.Orchestration
             ref TValue destination, ref TStorage storage)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            if (characterSlot >= 0 || actionInstance)
+            if (characterSlot >= 0)
             {
-                if (!ReadMetadata(valueSlot, ownerOperationIndex, characterSlot, actionInstance).Owner.Equals(in expected))
+                ReadOnlyOrchestrationExecutionFrames<TValue> characterFrames = SharedFrames;
+                if (!characterFrames.CharacterMetadata[characterSlot].Owner.Equals(in expected))
                     return false;
-                ReadValue(valueSlot, ownerOperationIndex, characterSlot, actionInstance, ref destination, ref storage);
+                OrchestrationValueAddress characterAddress = characterFrames.Plan.CharacterAddress(characterSlot);
+                storage.Read(characterFrames.Memory, in characterAddress, ref destination);
                 return true;
             }
-            FrameAddress owner = Owner(ownerOperationIndex);
-            if (!ReadMetadata(valueSlot, owner).Owner.Equals(in expected))
+            ReadOnlyOrchestrationExecutionFrames<TValue> frames;
+            ReadOnlySpan<OrchestrationFrameValueAddress> addresses;
+            int frameSlot;
+            int valueIndex;
+            if (actionInstance)
+            {
+                frames = SharedFrames;
+                frameSlot = ActionFrameIndex;
+                addresses = frames.Plan.PrivateAddresses(m_CandidateProgramIndex);
+                valueIndex = m_CandidateStorage.Values[valueSlot].ValueIndex;
+            }
+            else
+            {
+                FrameAddress owner = Owner(ownerOperationIndex);
+                frames = Frames(owner);
+                frameSlot = owner.Index;
+                addresses = owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
+                valueIndex = Storage(owner).Values[valueSlot].ValueIndex;
+            }
+            OrchestrationValueAddress address = frames.Plan.ResolveBlackboardAddress(addresses[valueSlot],
+                frameSlot, out int metadataOffset);
+            if (!frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset, valueIndex).Owner.Equals(in expected))
                 return false;
-            ReadValue(valueSlot, owner, ref destination, ref storage);
+            storage.Read(frames.Memory, in address, ref destination);
             return true;
         }
 
@@ -93,9 +118,9 @@ namespace BTSMTL.Orchestration
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
-            OrchestrationValueAddress address = owner.Source
-                ? m_Source.Frames.Plan.ResolveAddress(m_SourcePrivateAddresses[valueSlot], owner.Index)
-                : CandidateAddress(owner.Index, valueSlot);
+            ReadOnlySpan<OrchestrationFrameValueAddress> addresses =
+                owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
+            OrchestrationValueAddress address = frames.Plan.ResolveAddress(addresses[valueSlot], owner.Index);
             storage.Read(frames.Memory, in address, ref destination);
         }
 

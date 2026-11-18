@@ -174,11 +174,30 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
-            OrchestrationFramePayloadSegment payload = Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[
-                slot.Pool * header.FramePayloadCount + value.PayloadIndex];
+            return ResolveAddress(in value, in Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[
+                slot.Pool * header.FramePayloadCount + value.PayloadIndex], slot.Index);
+        }
+
+        internal OrchestrationValueAddress ResolveBlackboardAddress(in OrchestrationFrameValueAddress value,
+            int frame, out int metadataOffset)
+        {
+            ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
+            OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
+            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads =
+                Section<OrchestrationFramePayloadSegment>(header.FramePayloads);
+            int first = slot.Pool * header.FramePayloadCount;
+            metadataOffset = payloads[first + Index(in header, OrchestrationStateSegmentRole.PrivateMetadata, 0)
+                .FramePayload].AtFrame(slot.Index, 0).OffsetBytes;
+            return ResolveAddress(in value, in payloads[first + value.PayloadIndex], slot.Index);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static OrchestrationValueAddress ResolveAddress(in OrchestrationFrameValueAddress value,
+            in OrchestrationFramePayloadSegment payload, int frameIndex)
+        {
             OrchestrationValueAddress address = value.Address;
             return new OrchestrationValueAddress(address.Kind,
-                payload.OffsetBytes + slot.Index * payload.StrideBytes + address.OffsetBytes,
+                payload.OffsetBytes + frameIndex * payload.StrideBytes + address.OffsetBytes,
                 address.SizeBytes, address.BitIndex);
         }
 
