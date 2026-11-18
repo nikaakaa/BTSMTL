@@ -78,37 +78,21 @@ namespace BTSMTL.Orchestration
             ref TValue destination, ref TStorage storage)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            if (characterSlot >= 0)
+            if (characterSlot >= 0 || actionInstance)
             {
-                ReadOnlyOrchestrationExecutionFrames<TValue> characterFrames = SharedFrames;
-                if (!characterFrames.CharacterMetadata[characterSlot].Owner.Equals(in expected))
+                if (!ReadMetadata(valueSlot, ownerOperationIndex, characterSlot, actionInstance).Owner.Equals(in expected))
                     return false;
-                OrchestrationValueAddress characterAddress = characterFrames.Plan.CharacterAddress(characterSlot);
-                storage.Read(characterFrames.Memory, in characterAddress, ref destination);
+                ReadValue(valueSlot, ownerOperationIndex, characterSlot, actionInstance, ref destination, ref storage);
                 return true;
             }
-            ReadOnlyOrchestrationExecutionFrames<TValue> frames;
-            ReadOnlySpan<OrchestrationFrameValueAddress> addresses;
-            int frameSlot;
-            int valueIndex;
-            if (actionInstance)
-            {
-                frames = SharedFrames;
-                frameSlot = ActionFrameIndex;
-                addresses = frames.Plan.PrivateAddresses(m_CandidateProgramIndex);
-                valueIndex = m_CandidateStorage.Values[valueSlot].ValueIndex;
-            }
-            else
-            {
-                FrameAddress owner = Owner(ownerOperationIndex);
-                frames = Frames(owner);
-                frameSlot = owner.Index;
-                addresses = owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
-                valueIndex = Storage(owner).Values[valueSlot].ValueIndex;
-            }
+            FrameAddress owner = Owner(ownerOperationIndex);
+            ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
+            ReadOnlySpan<OrchestrationFrameValueAddress> addresses =
+                owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
             OrchestrationValueAddress address = frames.Plan.ResolveBlackboardAddress(addresses[valueSlot],
-                frameSlot, out int metadataOffset);
-            if (!frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset, valueIndex).Owner.Equals(in expected))
+                owner.Index, out int metadataOffset);
+            if (!frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset,
+                    Storage(owner).Values[valueSlot].ValueIndex).Owner.Equals(in expected))
                 return false;
             storage.Read(frames.Memory, in address, ref destination);
             return true;
