@@ -195,9 +195,9 @@ namespace BTSMTL.Orchestration
             int bindingIndex = m_Program.Operation(operationIndex).BlackboardFactsBindingIndex;
             int depth = EnterInputRow(operationIndex);
             TNumerics values = default;
-            Span<TValue> inputs = BorrowInputs(operationIndex, depth, 1);
+            Span<TValue> inputs = BorrowInputs(operationIndex, depth, OrchestrationBlackboardSourceContext.InputValueCount);
             inputs[0] = values.FromUInt64(currentOwnerGeneration);
-            Span<TValue> outputs = BorrowOutputs(operationIndex, depth, 4);
+            Span<TValue> outputs = BorrowOutputs(operationIndex, depth, OrchestrationBlackboardSourceContext.OutputValueCount);
             try
             {
                 var invocation = new OrchestrationExtensionArguments<TValue>(

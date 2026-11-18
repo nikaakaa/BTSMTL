@@ -124,7 +124,7 @@ namespace BTSMTL.Orchestration
             header.ScheduleStateContexts = writer.Add(schedule.StateContexts.Span);
             header.StorageOperationIndices = writer.Add(storage.OperationIndices.Span);
             header.StorageValues = writer.Add(storage.Values.Span);
-            AddWorkspaceRows(writer, content.WorkspaceCapacity, ref header);
+            AddWorkspaceRows(writer, content, ref header);
             header.Ports = content.CorePorts;
             header.RootOperationIndex = content.RootOperationIndex;
             header.MaximumOperationEvaluations = content.MaximumOperationEvaluations;
@@ -136,8 +136,30 @@ namespace BTSMTL.Orchestration
         }
 
         static void AddWorkspaceRows(OrchestrationMemoryImageWriter writer,
-            OrchestrationWorkspaceCapacity workspace, ref OrchestrationProgramImageHeader header)
+            OrchestrationProgramContent content, ref OrchestrationProgramImageHeader header)
         {
+            OrchestrationWorkspaceCapacity workspace = content.WorkspaceCapacity;
+            int maximumInputCount = 0;
+            int maximumOutputCount = 0;
+            foreach (ref readonly OrchestrationOperation operation in content.Operations.Span)
+            {
+                switch (operation.Code)
+                {
+                    case OrchestrationOperationCode.Extension:
+                        maximumInputCount = Math.Max(maximumInputCount, operation.Inputs.Count);
+                        maximumOutputCount = Math.Max(maximumOutputCount, operation.OutputCount);
+                        break;
+                    case OrchestrationOperationCode.EmitOutput:
+                    case OrchestrationOperationCode.Timeline:
+                        maximumInputCount = Math.Max(maximumInputCount, operation.Inputs.Count);
+                        break;
+                }
+                if (operation.BlackboardFactsBindingIndex >= 0)
+                {
+                    maximumInputCount = Math.Max(maximumInputCount, OrchestrationBlackboardSourceContext.InputValueCount);
+                    maximumOutputCount = Math.Max(maximumOutputCount, OrchestrationBlackboardSourceContext.OutputValueCount);
+                }
+            }
             ReadOnlySpan<int> inputs = workspace.InputCounts.Span;
             ReadOnlySpan<int> outputs = workspace.OutputCounts.Span;
             var inputRows = new OrchestrationRange[inputs.Length];
@@ -146,10 +168,12 @@ namespace BTSMTL.Orchestration
             int outputOffset = 0;
             for (int i = 0; i < inputRows.Length; i++)
             {
-                inputRows[i] = new OrchestrationRange(inputOffset, inputs[i]);
-                inputOffset = checked(inputOffset + inputs[i]);
-                outputRows[i] = new OrchestrationRange(outputOffset, outputs[i]);
-                outputOffset = checked(outputOffset + outputs[i]);
+                int inputCount = Math.Min(inputs[i], maximumInputCount);
+                int outputCount = Math.Min(outputs[i], maximumOutputCount);
+                inputRows[i] = new OrchestrationRange(inputOffset, inputCount);
+                inputOffset = checked(inputOffset + inputCount);
+                outputRows[i] = new OrchestrationRange(outputOffset, outputCount);
+                outputOffset = checked(outputOffset + outputCount);
             }
             header.WorkspaceInputRows = writer.Add<OrchestrationRange>(inputRows);
             header.WorkspaceOutputRows = writer.Add<OrchestrationRange>(outputRows);
