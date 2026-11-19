@@ -8,14 +8,14 @@ namespace BTSMTL.Orchestration
         where TValue : unmanaged
         where TNumerics : struct, IOrchestrationNumerics<TValue>
     {
-        readonly ReadOnlyMemory<int>[] m_CharacterValueSlots;
+        readonly int[][] m_CharacterValueSlots;
         readonly ReadOnlyMemory<int> m_DependencyIdentityTableIndices;
 
         OrchestrationActorPreparation(FrozenOrchestrationIdentities identities,
             OrchestrationProgramSource<TValue>[] sources,
             ReadOnlyMemory<PreparedOrchestrationGraph<TValue, TNumerics>> graphs,
             ReadOnlyMemory<OrchestrationProgram<TValue>> programs,
-            ReadOnlyMemory<int>[] characterValueSlots,
+            int[][] characterValueSlots,
             int[] dependencyIdentityTableIndices,
             TValue[] characterValueDefaults,
             OrchestrationBlackboardSlot[] characterValueDescriptors,
@@ -47,7 +47,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationValueSlotType> CharacterValueTypes { get; }
         public ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> PreparedProgramStorages { get; }
 
-        public ReadOnlyMemory<int> CharacterValueSlots(int programIndex) =>
+        public ReadOnlySpan<int> CharacterValueSlots(int programIndex) =>
             m_CharacterValueSlots[programIndex];
 
         public ReadOnlyMemory<int> DependencyIdentityMapping(int dependencyIndex) =>
@@ -146,7 +146,7 @@ namespace BTSMTL.Orchestration
                 sharedSlot++;
             }
 
-            var characterMappings = new ReadOnlyMemory<int>[sources.Length];
+            var characterMappings = new int[sources.Length][];
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<TValue> content = sources[programIndex].Content;

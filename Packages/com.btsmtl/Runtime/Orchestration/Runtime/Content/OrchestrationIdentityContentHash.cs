@@ -13,7 +13,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationBlackboardSlot> descriptors,
             ReadOnlySpan<OrchestrationValueSlotType> characterSlotTypes,
             ReadOnlySpan<int> characterKindSlotCounts,
-            ReadOnlySpan<ReadOnlyMemory<int>> characterMappings)
+            ReadOnlySpan<int[]> characterMappings)
             where TValue : unmanaged
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -27,7 +27,7 @@ namespace BTSMTL.Orchestration
             {
                 StableHash.AppendLengthPrefixedText(hash, sources[programIndex].ContentIdentity.ToString());
                 StableHash.AppendInt32(hash, sources[programIndex].IdentityTableIndex);
-                ReadOnlySpan<int> mapping = characterMappings[programIndex].Span;
+                ReadOnlySpan<int> mapping = characterMappings[programIndex];
                 StableHash.AppendInt32(hash, mapping.Length);
                 for (int valueSlot = 0; valueSlot < mapping.Length; valueSlot++)
                     StableHash.AppendInt32(hash, mapping[valueSlot]);
