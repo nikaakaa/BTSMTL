@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace BTSMTL.Orchestration
 {
@@ -6,6 +7,7 @@ namespace BTSMTL.Orchestration
     {
         readonly ReadOnlyOrchestrationExecutionFrames<TValue> m_Frames;
         int m_FrameSlot;
+        OrchestrationStateLayoutView.BlackboardFrame m_CandidateBlackboard;
         readonly bool m_HasSource;
         readonly OrchestrationExecutionSource<TValue> m_Source;
         readonly int m_CandidateRootFrameSlot;
@@ -20,6 +22,7 @@ namespace BTSMTL.Orchestration
         {
             m_Frames = frames;
             m_FrameSlot = frameSlot;
+            m_CandidateBlackboard = frames.Plan.BindBlackboardFrame(frameSlot);
             m_HasSource = hasSource;
             m_Source = source;
             m_CandidateRootFrameSlot = frameSlot;
@@ -39,14 +42,27 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
+        internal void SelectFrame(int frameSlot)
+        {
+            m_FrameSlot = frameSlot;
+            m_CandidateBlackboard = m_Frames.Plan.BindBlackboardFrame(frameSlot);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        OrchestrationStateLayoutView.BlackboardFrame CandidateBlackboard(int frameSlot) =>
+            frameSlot == m_FrameSlot ? m_CandidateBlackboard : m_Frames.Plan.BindBlackboardFrame(frameSlot);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        OrchestrationStateLayoutView.BlackboardFrame Blackboard(FrameAddress owner) =>
+            owner.Source ? m_Source.Frames.Plan.BindBlackboardFrame(owner.Index) : CandidateBlackboard(owner.Index);
 
         internal OrchestrationValueAddress CandidateBlackboardAddress(int frameSlot, int valueSlot,
             out int metadataOffset, out int valueIndex)
         {
             valueIndex = m_CandidateStorage.Values[valueSlot].ValueIndex;
-            return m_Frames.Plan.ResolveBlackboardAddress(m_CandidatePrivateAddresses[valueSlot],
-                frameSlot, out metadataOffset);
+            var blackboard = CandidateBlackboard(frameSlot);
+            metadataOffset = blackboard.MetadataOffset;
+            return blackboard.Address(in m_CandidatePrivateAddresses[valueSlot]);
         }
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
@@ -87,13 +103,13 @@ namespace BTSMTL.Orchestration
             }
             FrameAddress owner = Owner(ownerOperationIndex);
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
-            ReadOnlySpan<OrchestrationFrameValueAddress> addresses =
-                owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
-            OrchestrationValueAddress address = frames.Plan.ResolveBlackboardAddress(addresses[valueSlot],
-                owner.Index, out int metadataOffset);
-            if (!frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset,
+            var blackboard = Blackboard(owner);
+            if (!frames.ElementAt<OrchestrationBlackboardMetadata>(blackboard.MetadataOffset,
                     Storage(owner).Values[valueSlot].ValueIndex).Owner.Equals(in expected))
                 return false;
+            ReadOnlySpan<OrchestrationFrameValueAddress> addresses =
+                owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
+            OrchestrationValueAddress address = blackboard.Address(in addresses[valueSlot]);
             storage.Read(frames.Memory, in address, ref destination);
             return true;
         }
@@ -104,7 +120,8 @@ namespace BTSMTL.Orchestration
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
             ReadOnlySpan<OrchestrationFrameValueAddress> addresses =
                 owner.Source ? m_SourcePrivateAddresses : m_CandidatePrivateAddresses;
-            OrchestrationValueAddress address = frames.Plan.ResolveAddress(addresses[valueSlot], owner.Index);
+            var blackboard = Blackboard(owner);
+            OrchestrationValueAddress address = blackboard.Address(in addresses[valueSlot]);
             storage.Read(frames.Memory, in address, ref destination);
         }
 
@@ -123,8 +140,9 @@ namespace BTSMTL.Orchestration
         ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot, FrameAddress owner)
         {
             ReadOnlyOrchestrationExecutionFrames<TValue> frames = Frames(owner);
-            return ref frames.Element<OrchestrationBlackboardMetadata>(owner.Index,
-                OrchestrationStateSegmentRole.PrivateMetadata, Storage(owner).Values[valueSlot].ValueIndex);
+            var blackboard = Blackboard(owner);
+            return ref frames.ElementAt<OrchestrationBlackboardMetadata>(blackboard.MetadataOffset,
+                Storage(owner).Values[valueSlot].ValueIndex);
         }
 
         ReadOnlyOrchestrationExecutionFrames<TValue> SharedFrames => m_HasSource ? m_Source.SharedFrames : m_Frames;

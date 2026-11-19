@@ -142,6 +142,26 @@ namespace BTSMTL.Orchestration
     // 推进只经此视图读取状态布局；视图只持有布局镜像字节。
     public readonly ref struct OrchestrationStateLayoutView
     {
+        internal readonly ref struct BlackboardFrame
+        {
+            readonly ReadOnlySpan<OrchestrationFramePayloadSegment> m_Payloads;
+            readonly int m_FrameIndex;
+
+            internal BlackboardFrame(ReadOnlySpan<OrchestrationFramePayloadSegment> payloads, int frameIndex,
+                int metadataPayloadIndex)
+            {
+                m_Payloads = payloads;
+                m_FrameIndex = frameIndex;
+                MetadataOffset = payloads[metadataPayloadIndex].AtFrame(frameIndex, 0).OffsetBytes;
+            }
+
+            internal int MetadataOffset { get; }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal OrchestrationValueAddress Address(in OrchestrationFrameValueAddress value) =>
+                ResolveAddress(in value, in m_Payloads[value.PayloadIndex], m_FrameIndex);
+        }
+
         internal const int KindCount = (int)OrchestrationValueKind.SpatialIdentity + 1;
         readonly ReadOnlySpan<byte> m_Memory;
 
@@ -211,17 +231,15 @@ namespace BTSMTL.Orchestration
                 slot.Pool * header.FramePayloadCount + value.PayloadIndex], slot.Index);
         }
 
-        internal OrchestrationValueAddress ResolveBlackboardAddress(in OrchestrationFrameValueAddress value,
-            int frame, out int metadataOffset)
+        internal BlackboardFrame BindBlackboardFrame(int frame)
         {
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
             ReadOnlySpan<OrchestrationFramePayloadSegment> payloads =
-                Section<OrchestrationFramePayloadSegment>(header.FramePayloads);
-            int first = slot.Pool * header.FramePayloadCount;
-            metadataOffset = payloads[first + Index(in header, OrchestrationStateSegmentRole.PrivateMetadata, 0)
-                .FramePayload].AtFrame(slot.Index, 0).OffsetBytes;
-            return ResolveAddress(in value, in payloads[first + value.PayloadIndex], slot.Index);
+                Section<OrchestrationFramePayloadSegment>(header.FramePayloads)
+                    .Slice(slot.Pool * header.FramePayloadCount, header.FramePayloadCount);
+            return new BlackboardFrame(payloads, slot.Index,
+                Index(in header, OrchestrationStateSegmentRole.PrivateMetadata, 0).FramePayload);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
