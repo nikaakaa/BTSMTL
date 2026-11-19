@@ -213,6 +213,15 @@ namespace BTSMTL.Orchestration
             m_Roster[0].Count--;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void ClearReplacedPayloads(int frameSlot, in OrchestrationExecutionFrameState previous,
+            int skillContentId, int ownerOperationIndex)
+        {
+            if (previous.SkillContentId != 0 && (previous.SkillContentId != skillContentId ||
+                previous.OwnerOperationIndex != ownerOperationIndex))
+                ClearPayloads(frameSlot, Plan.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
+        }
+
         internal void ClearPayloads(int frameSlot, ReadOnlySpan<int> sizes)
         {
             var ranges = Plan.PayloadRanges(frameSlot, sizes);

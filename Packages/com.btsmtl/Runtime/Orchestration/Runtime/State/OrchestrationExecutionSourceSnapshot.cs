@@ -21,16 +21,16 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationStateLayoutView plan = m_Plan.View;
             OrchestrationStateLayoutView sourcePlan = source.Frames.Plan;
-            OrchestrationStateBinding.ClearPayloads(m_Plan, memory);
-            OrchestrationStateSegment frameSegment = plan.Segment(OrchestrationStateSegmentRole.Frames);
-            memory.Slice(frameSegment.OffsetBytes, frameSegment.SizeBytes).Clear();
             var frames = new OrchestrationExecutionFrames<TValue>(plan, memory);
+            int previousCount = frames.Count;
             int count = 0;
             for (int sourceSlot = source.FrameSlot; sourceSlot >= 0; count++)
             {
                 ref readonly OrchestrationExecutionFrameState header = ref source.Frames.Header(sourceSlot);
-                frames.Header(count) = header;
-                frames.Header(count).ParentFrameIndex = header.ParentFrameIndex < 0 ? -1 : count + 1;
+                ref OrchestrationExecutionFrameState destination = ref frames.Header(count);
+                frames.ClearReplacedPayloads(count, in destination, header.SkillContentId, header.OwnerOperationIndex);
+                destination = header;
+                destination.ParentFrameIndex = header.ParentFrameIndex < 0 ? -1 : count + 1;
                 int sourceProgram = sourcePlan.ProgramIndex(header.SkillContentId);
                 int destinationProgram = plan.ProgramIndex(header.SkillContentId);
                 foreach (ref readonly OrchestrationStateSegment segment in plan.Segments)
@@ -45,6 +45,12 @@ namespace BTSMTL.Orchestration
                         .CopyTo(memory.Slice(destinationRegion.OffsetBytes, destinationRegion.SizeBytes));
                 }
                 sourceSlot = header.ParentFrameIndex;
+            }
+            for (int slot = count; slot < previousCount; slot++)
+            {
+                ref OrchestrationExecutionFrameState retired = ref frames.Header(slot);
+                frames.ClearReplacedPayloads(slot, in retired, 0, -1);
+                retired = default;
             }
             OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
             SpanReinterpret.Cast<byte, OrchestrationExecutionRosterState>(

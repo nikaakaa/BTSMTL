@@ -128,10 +128,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
             OrchestrationStateLayoutView layout = destinationFrames.Plan;
-            if (previous.SkillContentId != 0 && (previous.SkillContentId != next.SkillContentId ||
-                previous.OwnerOperationIndex != next.OwnerOperationIndex))
-                destinationFrames.ClearPayloads(slot,
-                    layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
+            destinationFrames.ClearReplacedPayloads(slot, in previous, next.SkillContentId, next.OwnerOperationIndex);
             if (next.SkillContentId != 0)
             {
                 previous = next;
