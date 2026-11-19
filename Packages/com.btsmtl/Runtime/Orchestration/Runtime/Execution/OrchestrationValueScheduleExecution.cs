@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -10,10 +11,10 @@ namespace BTSMTL.Orchestration
     {
         readonly struct ScheduledSelection
         {
-            internal ScheduledSelection(int value, OrchestrationValueSelectionReason reason)
+            internal ScheduledSelection(int target)
             {
-                Value = value;
-                Reason = reason;
+                Value = OrchestrationPreparedScheduleTarget.ReturnValue(target);
+                Reason = OrchestrationPreparedScheduleTarget.ReturnReason(target);
             }
 
             internal int Value { get; }
@@ -39,16 +40,23 @@ namespace BTSMTL.Orchestration
             return slots.Length;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         ScheduledSelection RunValueSchedule(in OrchestrationValueScheduleEntry entry, int excludedTarget = -1)
+        {
+            int target = m_Host.ScheduleEntry(in entry);
+            return OrchestrationPreparedScheduleTarget.IsReturn(target)
+                ? new ScheduledSelection(target) : ExecuteValueSchedule(target, excludedTarget);
+        }
+
+        ScheduledSelection ExecuteValueSchedule(int pc, int excludedTarget)
         {
 #if UNITY_EDITOR
             using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
                 OrchestrationWorkloadCost.ValueSchedule);
 #endif
-            int pc = m_Host.ScheduleEntry(in entry);
             Span<TValue> values = m_ScheduledValues;
             int depth = m_InputDepth++;
-            while (true)
+            do
             {
                 ref readonly OrchestrationValueScheduleInstruction instruction = ref m_ValueInstructions[pc];
 #if UNITY_EDITOR
@@ -56,10 +64,6 @@ namespace BTSMTL.Orchestration
 #endif
                 switch (instruction.Code)
                 {
-                    case OrchestrationValueScheduleCode.Return:
-                    case OrchestrationValueScheduleCode.ReturnInputs:
-                        m_InputDepth--;
-                        return new ScheduledSelection(instruction.Argument, (OrchestrationValueSelectionReason)instruction.Operand);
                     case OrchestrationValueScheduleCode.ReadInputConstant:
 #if UNITY_EDITOR
                         m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.InputConstants);
@@ -215,7 +219,9 @@ namespace BTSMTL.Orchestration
                         break;
                 }
                 pc = instruction.Next;
-            }
+            } while (!OrchestrationPreparedScheduleTarget.IsReturn(pc));
+            m_InputDepth--;
+            return new ScheduledSelection(pc);
         }
 
         void EnterScheduledPrediction(int state)

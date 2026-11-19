@@ -5,6 +5,21 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
+    internal static class OrchestrationPreparedScheduleTarget
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsReturn(int target) => target < -1;
+
+        // 装配后的负地址直接携带返回值和选择原因，保留 -1 表示没有目标。
+        internal static int EncodeReturn(in OrchestrationValueScheduleInstruction instruction) =>
+            int.MinValue | ((instruction.Argument + 1) << 1) | instruction.Operand;
+
+        internal static int ReturnValue(int target) => ((target & int.MaxValue) >> 1) - 1;
+
+        internal static OrchestrationValueSelectionReason ReturnReason(int target) =>
+            (OrchestrationValueSelectionReason)(target & 1);
+    }
+
     internal readonly struct OrchestrationBoundHostInput
     {
         internal OrchestrationBoundHostInput(int input, int slot)
@@ -150,17 +165,21 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<TValue> constants, bool bindHostInputs, ref OrchestrationProgramImageHeader header)
             where TValue : unmanaged
         {
+            OrchestrationValueScheduleInstruction[] instructions;
             int[] productEntries = null;
             if (bindHostInputs)
             {
-                productEntries = BindScheduleInputs(writer, schedule, constants, ref header);
+                productEntries = BindScheduleInputs(writer, schedule, constants, ref header, out instructions);
             }
             else
             {
-                header.ScheduleInstructions = writer.Add(schedule.Instructions.Span);
+                instructions = schedule.Instructions.ToArray();
                 header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
                 header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
             }
+            int[] targets = BindScheduleReturns(instructions, out int instructionCount);
+            header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(
+                instructions.AsSpan(0, instructionCount));
             header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
             header.ScheduleInputEntries = AddEntries(schedule.InputEntries.Span);
             header.ScheduleTransitionEntries = AddEntries(schedule.TransitionEntries.Span);
@@ -170,18 +189,47 @@ namespace BTSMTL.Orchestration
 
             OrchestrationMemorySection AddEntries(ReadOnlySpan<OrchestrationValueScheduleEntry> entries)
             {
-                if (productEntries == null)
-                    return writer.Add(entries);
                 var lowered = new OrchestrationValueScheduleEntry[entries.Length];
                 for (int i = 0; i < entries.Length; i++)
+                {
+                    int product = entries[i].Product;
+                    if (product >= 0 && productEntries != null)
+                        product = productEntries[product];
                     lowered[i] = new OrchestrationValueScheduleEntry(
-                        entries[i].Product < 0 ? -1 : productEntries[entries[i].Product], entries[i].Workbench);
+                        BindScheduleTarget(targets, product), BindScheduleTarget(targets, entries[i].Workbench));
+                }
                 return writer.Add<OrchestrationValueScheduleEntry>(lowered);
             }
         }
 
+        static int[] BindScheduleReturns(Span<OrchestrationValueScheduleInstruction> instructions, out int count)
+        {
+            var targets = new int[instructions.Length];
+            count = 0;
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                ref readonly OrchestrationValueScheduleInstruction instruction = ref instructions[i];
+                targets[i] = instruction.Code is OrchestrationValueScheduleCode.Return or OrchestrationValueScheduleCode.ReturnInputs
+                    ? OrchestrationPreparedScheduleTarget.EncodeReturn(in instruction) : count++;
+            }
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                int target = targets[i];
+                if (OrchestrationPreparedScheduleTarget.IsReturn(target))
+                    continue;
+                OrchestrationValueScheduleInstruction instruction = instructions[i];
+                instructions[target] = new OrchestrationValueScheduleInstruction(instruction.Code, instruction.Operation,
+                    instruction.Operand, instruction.Destination, instruction.Argument,
+                    BindScheduleTarget(targets, instruction.Next), BindScheduleTarget(targets, instruction.Alternative));
+            }
+            return targets;
+        }
+
+        static int BindScheduleTarget(int[] targets, int target) => target >= 0 ? targets[target] : target;
+
         static int[] BindScheduleInputs<TValue>(OrchestrationMemoryImageWriter writer,
-            OrchestrationValueSchedule schedule, ReadOnlySpan<TValue> constants, ref OrchestrationProgramImageHeader header)
+            OrchestrationValueSchedule schedule, ReadOnlySpan<TValue> constants, ref OrchestrationProgramImageHeader header,
+            out OrchestrationValueScheduleInstruction[] boundInstructions)
             where TValue : unmanaged
         {
             const byte Product = 1;
@@ -310,7 +358,7 @@ namespace BTSMTL.Orchestration
                     lowered.Add(replacement);
                 }
             }
-            header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(lowered.ToArray());
+            boundInstructions = lowered.ToArray();
             header.ScheduleArgumentSlots = writer.Add<int>(argumentSlots.ToArray());
             header.ScheduleArgumentLists = writer.Add<OrchestrationRange>(argumentLists.ToArray());
             return productEntries;
