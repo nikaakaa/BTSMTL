@@ -70,6 +70,39 @@ namespace BTSMTL.Orchestration
             new OrchestrationStateRegion<byte>(OffsetBytes + frame * StrideBytes, sizeBytes);
     }
 
+    internal ref struct OrchestrationFramePayloadRanges
+    {
+        readonly ReadOnlySpan<OrchestrationFramePayloadSegment> m_Segments;
+        readonly ReadOnlySpan<int> m_Sizes;
+        readonly int m_FrameIndex;
+        int m_NextSegment;
+
+        internal OrchestrationFramePayloadRanges(ReadOnlySpan<OrchestrationFramePayloadSegment> segments,
+            ReadOnlySpan<int> sizes, int frameIndex)
+        {
+            m_Segments = segments;
+            m_Sizes = sizes;
+            m_FrameIndex = frameIndex;
+            m_NextSegment = 0;
+        }
+
+        internal bool MoveNext(out OrchestrationStateRegion<byte> range)
+        {
+            while (m_NextSegment < m_Sizes.Length)
+            {
+                int segment = m_NextSegment++;
+                int size = m_Sizes[segment];
+                if (size > 0)
+                {
+                    range = m_Segments[segment].AtFrame(m_FrameIndex, size);
+                    return true;
+                }
+            }
+            range = default;
+            return false;
+        }
+    }
+
     internal readonly struct OrchestrationFrameValueAddress
     {
         internal OrchestrationFrameValueAddress(OrchestrationValueAddress address, int payloadIndex)
@@ -127,15 +160,15 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<byte> TimelineRegion => Header.TimelineRegion;
         public ReadOnlySpan<OrchestrationStateSegment> Segments =>
             Section<OrchestrationStateSegment>(Header.Segments);
-        internal ReadOnlySpan<OrchestrationFramePayloadSegment> FramePayloads(int frame)
+        internal OrchestrationFramePayloadRanges PayloadRanges(int frame, ReadOnlySpan<int> sizes)
         {
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
-            int pool = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame].Pool;
-            return Section<OrchestrationFramePayloadSegment>(header.FramePayloads)
-                .Slice(pool * header.FramePayloadCount, header.FramePayloadCount);
+            ref readonly OrchestrationFrameSlot slot = ref Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
+            ReadOnlySpan<OrchestrationFramePayloadSegment> segments = Section<OrchestrationFramePayloadSegment>(
+                header.FramePayloads).Slice(slot.Pool * header.FramePayloadCount, header.FramePayloadCount);
+            return new OrchestrationFramePayloadRanges(segments, sizes, slot.Index);
         }
 
-        internal int FrameIndexInPool(int frame) => Section<OrchestrationFrameSlot>(Header.FrameSlots)[frame].Index;
         internal OrchestrationFramePoolRange FramePool(int program, int owner) =>
             Section<OrchestrationFramePoolRange>(Header.FramePools)[Section<int>(Program(program).OwnerPools)[owner]];
 

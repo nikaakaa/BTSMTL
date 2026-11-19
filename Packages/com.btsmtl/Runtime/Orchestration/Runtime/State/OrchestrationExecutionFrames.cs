@@ -195,17 +195,9 @@ namespace BTSMTL.Orchestration
 
         internal void ClearPayloads(int frameSlot, ReadOnlySpan<int> sizes)
         {
-            ReadOnlySpan<OrchestrationFramePayloadSegment> payloads = Plan.FramePayloads(frameSlot);
-            int frame = Plan.FrameIndexInPool(frameSlot);
-            for (int i = 0; i < sizes.Length; i++)
-            {
-                int size = sizes[i];
-                if (size > 0)
-                {
-                    OrchestrationStateRegion<byte> region = payloads[i].AtFrame(frame, size);
-                    m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
-                }
-            }
+            var ranges = Plan.PayloadRanges(frameSlot, sizes);
+            while (ranges.MoveNext(out var region))
+                m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
         }
     }
 }
