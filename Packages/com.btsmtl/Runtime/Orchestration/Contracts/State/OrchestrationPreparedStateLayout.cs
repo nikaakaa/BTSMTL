@@ -9,13 +9,26 @@ namespace BTSMTL.Orchestration
         public OrchestrationPreparedProgramStorage(int skillContentId, OrchestrationProgramStorageLayout storage,
             ReadOnlyMemory<OrchestrationValueSlotType> valueTypes,
             ReadOnlyMemory<OrchestrationOperationStateIndices> operationStateIndices,
-            ReadOnlyMemory<OrchestrationOperationStateStorage> operationStateOwners)
+            ReadOnlyMemory<OrchestrationOperationStateStorage> operationStateOwners,
+            ReadOnlySpan<int> runnableOperationOwners)
+            : this(skillContentId, storage, valueTypes, operationStateIndices, operationStateOwners,
+                GroupSlotsByOwner(runnableOperationOwners, storage.Owners.Length), GroupDefaultValuesByOwner(storage))
+        {
+        }
+
+        OrchestrationPreparedProgramStorage(int skillContentId, OrchestrationProgramStorageLayout storage,
+            ReadOnlyMemory<OrchestrationValueSlotType> valueTypes,
+            ReadOnlyMemory<OrchestrationOperationStateIndices> operationStateIndices,
+            ReadOnlyMemory<OrchestrationOperationStateStorage> operationStateOwners,
+            (int[] Offsets, int[] Slots) runnableOperations, (int[] Offsets, int[] Slots) defaultValues)
         {
             SkillContentId = skillContentId;
             Storage = storage;
             ValueTypes = valueTypes;
             OperationStateIndices = operationStateIndices;
             OperationStateOwners = operationStateOwners;
+            RunnableOperations = runnableOperations;
+            DefaultValues = defaultValues;
         }
 
         public int SkillContentId { get; }
@@ -23,6 +36,37 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationValueSlotType> ValueTypes { get; }
         public ReadOnlyMemory<OrchestrationOperationStateIndices> OperationStateIndices { get; }
         public ReadOnlyMemory<OrchestrationOperationStateStorage> OperationStateOwners { get; }
+        internal (int[] Offsets, int[] Slots) RunnableOperations { get; }
+        internal (int[] Offsets, int[] Slots) DefaultValues { get; }
+
+        static (int[] Offsets, int[] Slots) GroupDefaultValuesByOwner(OrchestrationProgramStorageLayout storage)
+        {
+            ReadOnlySpan<OrchestrationValueStorageSlot> values = storage.Values.Span;
+            var owners = new int[values.Length];
+            for (int index = 0; index < owners.Length; index++)
+            {
+                ref readonly OrchestrationValueStorageSlot value = ref values[index];
+                owners[index] = value.ValueIndex >= 0 || value.SavedOutputIndex >= 0
+                    ? value.OwnerOperationIndex : -1;
+            }
+            return GroupSlotsByOwner(owners, storage.Owners.Length);
+        }
+
+        static (int[] Offsets, int[] Slots) GroupSlotsByOwner(ReadOnlySpan<int> owners, int ownerCount)
+        {
+            var offsets = new int[ownerCount + 1];
+            foreach (int owner in owners)
+                if (owner >= 0)
+                    offsets[owner + 1]++;
+            for (int owner = 1; owner < offsets.Length; owner++)
+                offsets[owner] += offsets[owner - 1];
+            var slots = new int[offsets[ownerCount]];
+            var next = (int[])offsets.Clone();
+            for (int index = 0; index < owners.Length; index++)
+                if (owners[index] >= 0)
+                    slots[next[owners[index]]++] = index;
+            return (offsets, slots);
+        }
 
         public OrchestrationPreparedProgramStorage<TValue> BorrowActionInstanceValues()
         {
@@ -52,7 +96,7 @@ namespace BTSMTL.Orchestration
                 }
             return new OrchestrationPreparedProgramStorage<TValue>(SkillContentId,
                 new OrchestrationProgramStorageLayout(Storage.OperationIndices, values, owners), ValueTypes,
-                OperationStateIndices, OperationStateOwners);
+                OperationStateIndices, OperationStateOwners, RunnableOperations, DefaultValues);
         }
     }
 
@@ -183,7 +227,9 @@ namespace BTSMTL.Orchestration
                     writer.Add(storage.Values.Span),
                     writer.Add<int>(payloadSizes),
                     writer.Add<OrchestrationFrameValueAddress>(addresses),
-                    writer.Add(capacity.OwnerPools.Span[program].Span));
+                    writer.Add(capacity.OwnerPools.Span[program].Span),
+                    writer.Add<int>(prepared.RunnableOperations.Offsets), writer.Add<int>(prepared.RunnableOperations.Slots),
+                    writer.Add<int>(prepared.DefaultValues.Offsets), writer.Add<int>(prepared.DefaultValues.Slots));
             }
             header.Programs = writer.Add<OrchestrationStateProgramRecord>(records);
             m_Image = writer.Finish(in header);

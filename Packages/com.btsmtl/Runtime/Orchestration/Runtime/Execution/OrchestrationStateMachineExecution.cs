@@ -326,14 +326,9 @@ namespace BTSMTL.Orchestration
             PushState(stateOperationIndex, in context);
             try
             {
-                for (int operation = 0; operation < m_Program.OperationCount; operation++)
+                foreach (int operation in m_Frames.Plan.RunnableOperations(m_Blackboards.ProgramIndex, owner))
                     if (m_Program.Operation(operation).ParentStateOperationIndex == stateOperationIndex &&
-                        m_Program.Operation(operation).ExecutionFrameOwnerOperationIndex == owner &&
-                        m_OperationIndices[operation] != OrchestrationProgramStorageLayout.NoOperationIndex &&
-                        (OperationState(operation).Status == OrchestrationOperationStatus.Running ||
-                         OperationState(operation).Status == OrchestrationOperationStatus.Stopping ||
-                          (m_Program.Operation(operation).Code == OrchestrationOperationCode.Timeline &&
-                              TimelineRuntimeHandle(operation) != 0)))
+                        IsFrameOperationActive(operation))
                         ForceStop(operation, in context);
             }
             finally

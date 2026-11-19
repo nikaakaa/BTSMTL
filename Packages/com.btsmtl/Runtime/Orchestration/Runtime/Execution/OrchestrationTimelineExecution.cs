@@ -139,14 +139,11 @@ namespace BTSMTL.Orchestration
         void CloseExecutionFrame(ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             int ownerOperationIndex = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
-            for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
-                if (m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex == ownerOperationIndex &&
-                    m_OperationIndices[operationIndex] != OrchestrationProgramStorageLayout.NoOperationIndex &&
-                    (OperationState(operationIndex).Status == OrchestrationOperationStatus.Running ||
-                     OperationState(operationIndex).Status == OrchestrationOperationStatus.Stopping ||
-                      (m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Timeline &&
-                          TimelineRuntimeHandle(operationIndex) != 0)))
+            foreach (int operationIndex in m_Frames.Plan.RunnableOperations(m_Blackboards.ProgramIndex, ownerOperationIndex))
+                if (IsFrameOperationActive(operationIndex))
                     ForceStop(operationIndex, in stopContext[0]);
+            if (m_Frames.Count == 1)
+                return;
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&
                     m_Frames.Header(child).ParentFrameIndex == m_FrameSlot)
@@ -159,6 +156,14 @@ namespace BTSMTL.Orchestration
 #endif
                         m_Host.ReleaseExecutionFrame(child, stopContext);
                 }
+        }
+
+        bool IsFrameOperationActive(int operationIndex)
+        {
+            OrchestrationOperationStatus status = OperationState(operationIndex).Status;
+            return status == OrchestrationOperationStatus.Running || status == OrchestrationOperationStatus.Stopping ||
+                m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.Timeline &&
+                TimelineRuntimeHandle(operationIndex) != 0;
         }
 
         void ClearExecutionFrame(int frameSlot)

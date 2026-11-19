@@ -67,10 +67,13 @@ namespace BTSMTL.Orchestration
             var machines = new int[storage.Owners.Length];
             var timelines = new int[storage.Owners.Length];
             var indices = new OrchestrationOperationStateIndices[program.Operations.Length];
+            var runnableOperationOwners = new int[indices.Length];
             for (int index = 0; index < indices.Length; index++)
             {
                 ref readonly OrchestrationOperation operation = ref program.Operations.Span[index];
                 int owner = operation.ExecutionFrameOwnerOperationIndex;
+                runnableOperationOwners[index] = storage.OperationIndices.Span[index] !=
+                    OrchestrationProgramStorageLayout.NoOperationIndex ? owner : -1;
                 OrchestrationOperationStateFields fields =
                     OrchestrationOperationStateRequirements.For(operation.Code, operation.IsRunnable);
                 indices[index] = new OrchestrationOperationStateIndices(
@@ -85,7 +88,7 @@ namespace BTSMTL.Orchestration
             for (int owner = 0; owner < owners.Length; owner++)
                 owners[owner] = new OrchestrationOperationStateStorage(stops[owner], machines[owner], timelines[owner]);
             return new OrchestrationPreparedProgramStorage<TValue>(skillContentId, storage,
-                program.ValueSlotTypes, indices, owners);
+                program.ValueSlotTypes, indices, owners, runnableOperationOwners);
         }
 
         static OrchestrationProgramStorageLayout PrepareStorage(OrchestrationGraphStructure graph,

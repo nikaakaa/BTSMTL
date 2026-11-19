@@ -186,11 +186,9 @@ namespace BTSMTL.Orchestration
             ClearPayloads(slot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             ReadOnlySpan<OrchestrationValueStorageSlot> values = Plan.ProgramStorage(programIndex).Values;
             Span<TValue> outputs = Payload<TValue>(slot, OrchestrationStateSegmentRole.SavedOutputs, programIndex);
-            for (int valueSlot = 0; valueSlot < values.Length; valueSlot++)
+            foreach (int valueSlot in Plan.DefaultValueSlots(programIndex, frame.OwnerOperationIndex))
             {
-                OrchestrationValueStorageSlot storage = values[valueSlot];
-                if (storage.OwnerOperationIndex != frame.OwnerOperationIndex)
-                    continue;
+                ref readonly OrchestrationValueStorageSlot storage = ref values[valueSlot];
                 if (storage.ValueIndex >= 0)
                 {
                     OrchestrationValueAddress address = Plan.PrivateAddress(programIndex, slot, valueSlot);

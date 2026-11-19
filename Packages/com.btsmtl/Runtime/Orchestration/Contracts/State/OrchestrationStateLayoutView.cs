@@ -34,7 +34,9 @@ namespace BTSMTL.Orchestration
         internal OrchestrationStateProgramRecord(int skillContentId, OrchestrationMemorySection operationIndices,
             OrchestrationMemorySection operationStateIndices,
             OrchestrationMemorySection values, OrchestrationMemorySection payloadSizes,
-            OrchestrationMemorySection privateAddresses, OrchestrationMemorySection ownerPools)
+            OrchestrationMemorySection privateAddresses, OrchestrationMemorySection ownerPools,
+            OrchestrationMemorySection runnableOperationOffsets, OrchestrationMemorySection runnableOperations,
+            OrchestrationMemorySection defaultValueOffsets, OrchestrationMemorySection defaultValues)
         {
             SkillContentId = skillContentId;
             OperationIndices = operationIndices;
@@ -43,6 +45,10 @@ namespace BTSMTL.Orchestration
             PayloadSizes = payloadSizes;
             PrivateAddresses = privateAddresses;
             OwnerPools = ownerPools;
+            RunnableOperationOffsets = runnableOperationOffsets;
+            RunnableOperations = runnableOperations;
+            DefaultValueOffsets = defaultValueOffsets;
+            DefaultValues = defaultValues;
         }
 
         internal int SkillContentId { get; }
@@ -52,6 +58,10 @@ namespace BTSMTL.Orchestration
         internal OrchestrationMemorySection PayloadSizes { get; }
         internal OrchestrationMemorySection PrivateAddresses { get; }
         internal OrchestrationMemorySection OwnerPools { get; }
+        internal OrchestrationMemorySection RunnableOperationOffsets { get; }
+        internal OrchestrationMemorySection RunnableOperations { get; }
+        internal OrchestrationMemorySection DefaultValueOffsets { get; }
+        internal OrchestrationMemorySection DefaultValues { get; }
     }
 
     internal readonly struct OrchestrationFramePayloadSegment
@@ -191,6 +201,26 @@ namespace BTSMTL.Orchestration
 
         internal OrchestrationFramePoolRange FramePool(int program, int owner) =>
             Section<OrchestrationFramePoolRange>(Header.FramePools)[Section<int>(Program(program).OwnerPools)[owner]];
+
+        internal ReadOnlySpan<int> RunnableOperations(int program, int owner)
+        {
+            ref readonly OrchestrationStateProgramRecord record = ref Program(program);
+            return OwnerSlots(owner, record.RunnableOperationOffsets, record.RunnableOperations);
+        }
+
+        internal ReadOnlySpan<int> DefaultValueSlots(int program, int owner)
+        {
+            ref readonly OrchestrationStateProgramRecord record = ref Program(program);
+            return OwnerSlots(owner, record.DefaultValueOffsets, record.DefaultValues);
+        }
+
+        ReadOnlySpan<int> OwnerSlots(int owner, OrchestrationMemorySection offsetsSection,
+            OrchestrationMemorySection slotsSection)
+        {
+            ReadOnlySpan<int> offsets = Section<int>(offsetsSection);
+            int start = offsets[owner];
+            return Section<int>(slotsSection).Slice(start, offsets[owner + 1] - start);
+        }
 
         public int ProgramIndex(int skillContentId) =>
             FindProgramIndex(Section<OrchestrationStateProgramRecord>(Header.Programs), skillContentId);
