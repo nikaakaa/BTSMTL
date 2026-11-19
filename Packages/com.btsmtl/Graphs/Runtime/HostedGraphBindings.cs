@@ -25,7 +25,8 @@ namespace BTSMTL.Graphs
         internal readonly string[] OperationNodes;
         internal readonly OrchestrationExecutionEntry Start;
         internal readonly OrchestrationExecutionEntry Update;
-        internal readonly InputBinding[] Inputs;
+        readonly InputBinding[] m_Inputs;
+        readonly (int Source, int Destination)[] m_InputCopies;
         internal readonly int InputCapacity;
         internal readonly int SourceIdentityId;
 
@@ -106,18 +107,31 @@ namespace BTSMTL.Graphs
                 PublishedSlots[i] = slots[variable.Reference.VariableId];
             }
 
-            Inputs = new InputBinding[Prepared.HostInputs.Length];
+            var inputs = new List<InputBinding>(Prepared.HostInputs.Length);
+            var copies = new List<(int Source, int Destination)>();
+            var inputSlotsByHost = new int[contract.Inputs.Count];
+            Array.Fill(inputSlotsByHost, -1);
             int inputCapacity = 0;
-            for (int i = 0; i < Inputs.Length; i++)
+            foreach (ref readonly OrchestrationGraphHostInput input in Prepared.HostInputs.Span)
             {
-                ref readonly OrchestrationGraphHostInput input = ref Prepared.HostInputs.Span[i];
                 string id = frozen.Table.Resolve(input.InputIdentityId);
                 int hostSlot = BindInput(id, frozen.Table.Resolve(input.ValueTypeIdentityId));
-                Type type = contract.Inputs[hostSlot].ValueType;
-                Inputs[i] = new InputBinding(hostSlot, input.InputSlot,
-                    type.IsEnum ? frozen.Table.Bind(type.AssemblyQualifiedName) : 0, contract.Inputs[hostSlot]);
+                GraphHostInputDescriptor descriptor = contract.Inputs[hostSlot];
+                int source = inputSlotsByHost[hostSlot];
+                if (source >= 0)
+                    copies.Add((source, input.InputSlot));
+                else
+                {
+                    Type type = descriptor.ValueType;
+                    inputs.Add(new InputBinding(hostSlot, input.InputSlot,
+                        type.IsEnum ? frozen.Table.Bind(type.AssemblyQualifiedName) : 0, descriptor));
+                    if (descriptor.ValueKind != GraphHostValueKind.Text)
+                        inputSlotsByHost[hostSlot] = input.InputSlot;
+                }
                 inputCapacity = Math.Max(inputCapacity, input.InputSlot + 1);
             }
+            m_Inputs = inputs.ToArray();
+            m_InputCopies = copies.ToArray();
             InputCapacity = inputCapacity;
             OperationNodes = new string[Program.OperationCount];
             foreach (OrchestrationGraphSource map in Prepared.Sources.Span)
@@ -159,7 +173,7 @@ namespace BTSMTL.Graphs
 #endif
         )
         {
-            foreach (ref readonly InputBinding input in Inputs.AsSpan())
+            foreach (ref readonly InputBinding input in m_Inputs.AsSpan())
             {
 #if UNITY_EDITOR
                 workload?.Count(-1, OrchestrationWorkloadCounter.HostInputBindingReads);
@@ -169,6 +183,13 @@ namespace BTSMTL.Graphs
                     input.ValueKind == GraphHostValueKind.Enum && value.EnumType != input.ValueType)
                     throw new InvalidOperationException($"事件图输入 '{input.InputId}' 与宿主声明类型不同。");
                 destination[input.InputSlot] = ToState(in value, input.EnumTypeContentId, texts);
+#if UNITY_EDITOR
+                workload?.Count(-1, OrchestrationWorkloadCounter.HostInputBindingWrites);
+#endif
+            }
+            foreach (ref readonly var copy in m_InputCopies.AsSpan())
+            {
+                destination[copy.Destination] = destination[copy.Source];
 #if UNITY_EDITOR
                 workload?.Count(-1, OrchestrationWorkloadCounter.HostInputBindingWrites);
 #endif

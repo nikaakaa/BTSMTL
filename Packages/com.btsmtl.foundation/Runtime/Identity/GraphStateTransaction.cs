@@ -45,7 +45,9 @@ namespace BTSMTL.Graphs
 
         public void Discard()
         {
-            CandidateTexts.Reset();
+            GraphTextStorage texts = CandidateTexts;
+            if (texts.HasRuntimeTexts || texts.ReferenceSlotCount != 0)
+                texts.Reset();
             HasCandidate = false;
         }
 

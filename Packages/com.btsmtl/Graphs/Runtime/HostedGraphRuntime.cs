@@ -45,6 +45,8 @@ namespace BTSMTL.Graphs
         Span<byte> MutableCommittedMemory => m_StateTransaction.CommittedBank == 0 ? m_FirstMemory : m_SecondMemory;
         GraphTextStorage m_StateTexts => m_StateTransaction.CommittedTexts;
         GraphTextStorage m_CandidateTexts => m_StateTransaction.CandidateTexts;
+        OrchestrationIdentityOrdinalView CandidateIdentityOrdinals => m_CandidateTexts.HasRuntimeTexts
+            ? m_CandidateTexts.Ordinals : m_Bindings.Prepared.Identities.Ordinals;
         GraphExecutionFailure m_LastFailure;
         GraphExecutionFailure m_CandidateFailure;
         GraphInvocationContext m_Invocation;
@@ -264,7 +266,7 @@ namespace BTSMTL.Graphs
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities;
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.PrepareIdentities))
-                identities = m_CandidateTexts.Ordinals;
+                identities = CandidateIdentityOrdinals;
             OrchestrationExecutionCursor<TValue, TNumerics,
                 ManagedOrchestrationHost<TValue, TContext, OrchestrationArrayValueStorage<TValue>, TDiagnostics>> cursor;
             using (new GraphRuntimePhaseScope(EvaluationPhase, GraphRuntimePhase.BindCursor))

@@ -232,7 +232,7 @@ namespace BTSMTL.Graphs
         {
             m_Diagnostics.PrepareInvocationBindings();
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
-            OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
+            OrchestrationIdentityOrdinalView identities = CandidateIdentityOrdinals;
             TContext context = default;
             return Host(in context, new OrchestrationWorkbenchDiagnostics<TValue>(m_Diagnostics)).CreateCursor<TNumerics>(
                 state, 0, m_Bindings.Program.View, m_Scratch.View, 0, ReadOnlySpan<int>.Empty, in input, identities);
