@@ -131,6 +131,7 @@ namespace BTSMTL.Orchestration
             m_ValueStorage = storage.Values;
             m_Frames = frames;
             m_FrameSlot = frameSlot;
+            frames.TrackFrameWrite(frameSlot);
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(programIndex, program, frames, frameSlot,
                 characterSlots, sourceBinding, source);
             m_OperationStateIndices = frames.Plan.OperationStateIndices(m_Blackboards.ProgramIndex);
@@ -301,6 +302,7 @@ namespace BTSMTL.Orchestration
 
         void SelectExecutionFrame(int frameSlot)
         {
+            m_Frames.TrackFrameWrite(frameSlot);
             m_FrameSlot = frameSlot;
             m_Operations = m_Frames.Payload<OrchestrationOperationState>(frameSlot,
                 OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
@@ -550,10 +552,13 @@ namespace BTSMTL.Orchestration
             {
                 ref ulong handle = ref m_TimelineHandles[indices.Timeline];
                 if (handle != 0)
+                {
+                    m_Frames.TrackSharedWrite(OrchestrationSharedStateChange.Timeline);
 #if UNITY_EDITOR
                     using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Host))
 #endif
                     m_Host.ReleasePlayback(m_TimelineState, operationIndex, ref handle);
+                }
                 handle = 0;
             }
             ulong generation = state.Generation;

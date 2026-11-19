@@ -83,6 +83,7 @@ namespace BTSMTL.Orchestration
             int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
             if (characterSlot >= 0)
             {
+                m_Frames.TrackSharedWrite(OrchestrationSharedStateChange.Character);
                 OrchestrationValueAddress address = m_Frames.Plan.CharacterAddress(characterSlot);
                 storage.Write(m_Frames.Memory, in address, in value);
                 return ref m_Frames.CharacterMetadata[characterSlot];
@@ -90,6 +91,7 @@ namespace BTSMTL.Orchestration
             else
             {
                 int frameSlot = ValueFrame(valueSlot);
+                m_Frames.TrackFrameWrite(frameSlot);
                 OrchestrationValueAddress address = m_Reader.CandidateBlackboardAddress(frameSlot, valueSlot,
                     out int metadataOffset, out int valueIndex);
                 storage.Write(m_Frames.Memory, in address, in value);

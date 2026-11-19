@@ -9,6 +9,7 @@ namespace BTSMTL.Orchestration
         readonly Span<OrchestrationExecutionFrameState> m_Frames;
         readonly Span<OrchestrationExecutionRosterState> m_Roster;
         readonly Span<byte> m_Memory;
+        readonly Span<int> m_FrameChanges;
 
         public static OrchestrationExecutionCapacity PrepareCapacity(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -18,10 +19,11 @@ namespace BTSMTL.Orchestration
             OrchestrationExecutionCapacity.Prepare(programs, storages, admissions, calls);
 
         internal OrchestrationExecutionFrames(OrchestrationStateLayoutView plan,
-            Span<byte> memory)
+            Span<byte> memory, Span<int> frameChanges = default)
         {
             Plan = plan;
             m_Memory = memory;
+            m_FrameChanges = frameChanges;
             OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
             m_Frames = SpanReinterpret.Cast<byte, OrchestrationExecutionFrameState>(
                 memory.Slice(frames.OffsetBytes, frames.SizeBytes));
@@ -34,6 +36,20 @@ namespace BTSMTL.Orchestration
         public Span<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void TrackFrameWrite(int frameSlot)
+        {
+            if (!m_FrameChanges.IsEmpty)
+                OrchestrationExecutionFrameChanges.Record(m_FrameChanges, frameSlot);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void TrackSharedWrite(OrchestrationSharedStateChange change)
+        {
+            if (!m_FrameChanges.IsEmpty)
+                OrchestrationExecutionFrameChanges.Record(m_FrameChanges, change);
+        }
 
         public ReadOnlyOrchestrationExecutionFrames<TValue> AsReadOnly() =>
             new ReadOnlyOrchestrationExecutionFrames<TValue>(Plan, m_Memory);
@@ -164,6 +180,8 @@ namespace BTSMTL.Orchestration
             int slot = pool.First;
             while (m_Frames[slot].SkillContentId != 0)
                 slot++;
+            TrackFrameWrite(slot);
+            TrackSharedWrite(OrchestrationSharedStateChange.Roster);
             m_Frames[slot] = frame;
             ClearPayloads(slot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             ReadOnlySpan<OrchestrationValueStorageSlot> values = Plan.ProgramStorage(programIndex).Values;
@@ -187,6 +205,8 @@ namespace BTSMTL.Orchestration
 
         public void RemoveAt(int frameSlot, int programIndex)
         {
+            TrackFrameWrite(frameSlot);
+            TrackSharedWrite(OrchestrationSharedStateChange.Roster);
             ref readonly OrchestrationExecutionFrameState frame = ref m_Frames[frameSlot];
             ClearPayloads(frameSlot, Plan.PayloadSizes(programIndex, frame.OwnerOperationIndex));
             m_Frames[frameSlot] = default;

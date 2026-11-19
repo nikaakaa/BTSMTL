@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -33,7 +34,16 @@ namespace BTSMTL.Orchestration
         // 纯数据宿主只持有布局镜像字节时使用的绑定入口。
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
             OrchestrationStateLayoutView plan, Span<byte> memory) where TValue : unmanaged =>
-            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory),
+            BindCandidate<TValue>(plan, memory, default);
+
+        public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
+            OrchestrationPreparedStateLayout<TValue> plan, Span<byte> memory,
+            OrchestrationExecutionFrameChanges changes) where TValue : unmanaged =>
+            BindCandidate<TValue>(plan.View, memory, changes.Storage);
+
+        static OrchestrationCandidateState<TValue> BindCandidate<TValue>(OrchestrationStateLayoutView plan,
+            Span<byte> memory, Span<int> frameChanges) where TValue : unmanaged =>
+            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory, frameChanges),
                 new OrchestrationStateView(memory.Slice(plan.TimelineRegion.OffsetBytes,
                     plan.TimelineRegion.SizeBytes)));
 
@@ -70,29 +80,82 @@ namespace BTSMTL.Orchestration
                 ref OrchestrationExecutionFrameState previous = ref destinationFrames.Header(slot);
                 ref readonly OrchestrationExecutionFrameState next = ref sourceFrames.Header(slot);
                 if (previous.SkillContentId != 0)
-                {
                     destinationRemaining--;
-                    if (previous.SkillContentId != next.SkillContentId ||
-                        previous.OwnerOperationIndex != next.OwnerOperationIndex)
-                        destinationFrames.ClearPayloads(slot,
-                            layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
-                }
                 if (next.SkillContentId != 0)
-                {
                     sourceRemaining--;
-                    previous = next;
-                    var payloads = layout.PayloadRanges(slot,
-                        layout.PayloadSizesForSkill(next.SkillContentId, next.OwnerOperationIndex));
-                    while (payloads.MoveNext(out var region))
-                        source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
-                }
-                else if (previous.SkillContentId != 0)
-                    previous = default;
+                CopyExecutionFrame(slot, in next, ref previous, in destinationFrames, source, destination);
             }
+            CopySharedMemory(layout, source, destination);
+        }
+
+        public static void SynchronizeChangedMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> accepted, Span<byte> candidate,
+            OrchestrationExecutionFrameChanges changes) where TValue : unmanaged
+        {
+            ReadOnlySpan<int> slots = changes.Slots;
+            OrchestrationSharedStateChange shared = changes.Shared;
+            if (slots.IsEmpty && shared == OrchestrationSharedStateChange.None)
+                return;
+            OrchestrationStateLayoutView layout = plan.View;
+            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(layout, accepted);
+            var destinationFrames = new OrchestrationExecutionFrames<TValue>(layout, candidate);
+            foreach (int slot in slots)
+                CopyExecutionFrame(slot, in sourceFrames.Header(slot), ref destinationFrames.Header(slot),
+                    in destinationFrames, accepted, candidate);
+            if (shared == OrchestrationSharedStateChange.All)
+                CopySharedMemory(layout, accepted, candidate);
+            else
+            {
+                if ((shared & OrchestrationSharedStateChange.Roster) != 0)
+                    CopyRegion(accepted, candidate, layout.Segment(OrchestrationStateSegmentRole.Roster));
+                if ((shared & OrchestrationSharedStateChange.Character) != 0)
+                    foreach (OrchestrationStateSegment segment in layout.Segments)
+                        if (segment.Role is OrchestrationStateSegmentRole.CharacterValues or
+                            OrchestrationStateSegmentRole.CharacterMetadata)
+                            CopyRegion(accepted, candidate, segment);
+                if ((shared & OrchestrationSharedStateChange.Timeline) != 0)
+                {
+                    OrchestrationStateRegion<byte> region = layout.TimelineRegion;
+                    accepted.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(candidate.Slice(region.OffsetBytes));
+                }
+            }
+            changes.Clear();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void CopyExecutionFrame<TValue>(int slot, in OrchestrationExecutionFrameState next,
+            ref OrchestrationExecutionFrameState previous, in OrchestrationExecutionFrames<TValue> destinationFrames,
+            ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
+        {
+            OrchestrationStateLayoutView layout = destinationFrames.Plan;
+            if (previous.SkillContentId != 0 && (previous.SkillContentId != next.SkillContentId ||
+                previous.OwnerOperationIndex != next.OwnerOperationIndex))
+                destinationFrames.ClearPayloads(slot,
+                    layout.PayloadSizesForSkill(previous.SkillContentId, previous.OwnerOperationIndex));
+            if (next.SkillContentId != 0)
+            {
+                previous = next;
+                var payloads = layout.PayloadRanges(slot,
+                    layout.PayloadSizesForSkill(next.SkillContentId, next.OwnerOperationIndex));
+                while (payloads.MoveNext(out var region))
+                    source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
+            }
+            else if (previous.SkillContentId != 0)
+                previous = default;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void CopySharedMemory(OrchestrationStateLayoutView layout, ReadOnlySpan<byte> source, Span<byte> destination)
+        {
             foreach (OrchestrationStateSegment segment in layout.Segments)
                 if (!segment.PerFrame && segment.Role != OrchestrationStateSegmentRole.Frames && segment.SizeBytes > 0)
-                    source.Slice(segment.OffsetBytes, segment.SizeBytes).CopyTo(destination.Slice(segment.OffsetBytes));
+                    CopyRegion(source, destination, segment);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void CopyRegion(ReadOnlySpan<byte> source, Span<byte> destination, OrchestrationStateSegment segment) =>
+            source.Slice(segment.OffsetBytes, segment.SizeBytes).CopyTo(destination.Slice(segment.OffsetBytes));
+
         public static int WriteBlitState<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> output, bool countOnly = false) where TValue : unmanaged
         {
@@ -139,6 +202,66 @@ namespace BTSMTL.Orchestration
                     throw new ArgumentException("BTSMTL 编排区段内存地址不满足已准备布局对齐。", nameof(memory));
         }
 
+    }
+
+    [Flags]
+    internal enum OrchestrationSharedStateChange : byte
+    {
+        None = 0,
+        Roster = 1,
+        Character = 2,
+        Timeline = 4,
+        All = Roster | Character | Timeline
+    }
+
+    public readonly struct OrchestrationExecutionFrameChanges
+    {
+        const int SlotCountIndex = 0;
+        const int SharedChangesIndex = 1;
+        const int FirstSlotIndex = 2;
+
+        readonly int[] m_Storage;
+
+        public OrchestrationExecutionFrameChanges(int frameCapacity) =>
+            m_Storage = new int[checked(2 * frameCapacity + FirstSlotIndex)];
+
+        internal Span<int> Storage => m_Storage;
+        internal ReadOnlySpan<int> Slots => m_Storage.AsSpan(FirstSlotIndex, m_Storage[SlotCountIndex]);
+        internal OrchestrationSharedStateChange Shared => (OrchestrationSharedStateChange)m_Storage[SharedChangesIndex];
+
+        public void Clear()
+        {
+            int firstMark = FirstMarkIndex(m_Storage.Length);
+            foreach (int slot in Slots)
+                m_Storage[firstMark + slot] = 0;
+            m_Storage[SlotCountIndex] = 0;
+            m_Storage[SharedChangesIndex] = 0;
+        }
+
+        public void RecordRestoredCandidate()
+        {
+            int frameCapacity = FirstMarkIndex(m_Storage.Length) - FirstSlotIndex;
+            for (int slot = 0; slot < frameCapacity; slot++)
+                Record(m_Storage, slot);
+            Record(m_Storage, OrchestrationSharedStateChange.All);
+        }
+
+        static int FirstMarkIndex(int length) => (length + FirstSlotIndex) / 2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void Record(Span<int> storage, int slot)
+        {
+            int mark = FirstMarkIndex(storage.Length) + slot;
+            if (storage[mark] != 0)
+                return;
+            storage[mark] = 1;
+            int count = storage[SlotCountIndex]++;
+            storage[FirstSlotIndex + count] = slot;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void Record(Span<int> storage, OrchestrationSharedStateChange change) =>
+            storage[SharedChangesIndex] |= (int)change;
     }
 
     public readonly ref struct OrchestrationStateValidRanges<TValue> where TValue : unmanaged

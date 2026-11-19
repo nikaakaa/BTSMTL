@@ -17,6 +17,7 @@ namespace BTSMTL.Orchestration
             OperationStopContext(operationIndex) = new OrchestrationStopContext(
                 (uint)OrchestrationStopCause.None, OrchestrationStopMode.Request, m_Input.Tick,
                 operationIndex, m_FrameSlot);
+            m_Frames.TrackSharedWrite(OrchestrationSharedStateChange.Timeline);
             return m_Host.Tick(ref this, m_TimelineState, operationIndex,
                 m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
                 ref TimelineRuntimeHandle(operationIndex),
@@ -29,6 +30,7 @@ namespace BTSMTL.Orchestration
             using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
                 OrchestrationWorkloadCost.Host);
 #endif
+            m_Frames.TrackSharedWrite(OrchestrationSharedStateChange.Timeline);
             return m_Host.Stop(ref this, m_TimelineState, operationIndex,
                 ref TimelineRuntimeHandle(operationIndex), StopContextStorage(operationIndex));
         }
@@ -87,6 +89,7 @@ namespace BTSMTL.Orchestration
             using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
                 OrchestrationWorkloadCost.Host);
 #endif
+            m_Frames.TrackSharedWrite(OrchestrationSharedStateChange.Timeline);
             return m_Host.RequestClipExit(m_TimelineState, operationIndex, m_Input.Tick);
         }
 
