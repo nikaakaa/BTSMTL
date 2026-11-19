@@ -71,6 +71,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationMemorySection ScheduleValueOperations;
         public OrchestrationMemorySection ScheduleStateContexts;
         public OrchestrationMemorySection ScheduleBoundHostInputs;
+        public OrchestrationMemorySection ScheduleLiterals;
         public OrchestrationMemorySection StorageOperationIndices;
         public OrchestrationMemorySection StorageValues;
         public OrchestrationMemorySection WorkspaceInputRows;
@@ -129,9 +130,7 @@ namespace BTSMTL.Orchestration
             header.StateOnExitEdges = writer.Add(structure.StateOnExitEdges.Span);
             header.ValueEvaluationOffsets = writer.Add(structure.ValueEvaluationOffsets.Span);
             header.StateOperationIndexes = writer.Add(structure.StateOperationIndexes.Span);
-            AddSchedule(writer, schedule, bindHostInputs, ref header);
-            header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
-            header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
+            AddSchedule(writer, schedule, parameters.Constants.Span, bindHostInputs, ref header);
             header.ScheduleValueOperations = writer.Add(schedule.ValueOperations.Span);
             header.ScheduleStateContexts = writer.Add(schedule.StateContexts.Span);
             header.StorageOperationIndices = writer.Add(storage.OperationIndices.Span);
@@ -147,49 +146,21 @@ namespace BTSMTL.Orchestration
             return writer.Finish(in header);
         }
 
-        static void AddSchedule(OrchestrationMemoryImageWriter writer, OrchestrationValueSchedule schedule,
-            bool bindHostInputs, ref OrchestrationProgramImageHeader header)
+        static void AddSchedule<TValue>(OrchestrationMemoryImageWriter writer, OrchestrationValueSchedule schedule,
+            ReadOnlySpan<TValue> constants, bool bindHostInputs, ref OrchestrationProgramImageHeader header)
+            where TValue : unmanaged
         {
-            ReadOnlySpan<OrchestrationValueScheduleInstruction> instructions = schedule.Instructions.Span;
-            int[] next = null;
+            int[] productEntries = null;
             if (bindHostInputs)
             {
-                var slots = new Dictionary<int, int>();
-                next = new int[instructions.Length];
-                ReadOnlySpan<OrchestrationValueOperation> operations = schedule.ValueOperations.Span;
-                for (int i = 0; i < instructions.Length; i++)
-                {
-                    ref readonly OrchestrationValueScheduleInstruction instruction = ref instructions[i];
-                    next[i] = i;
-                    // Workbench observes or overrides each output. Only Product can borrow the invocation's values.
-                    if (instruction.Code != OrchestrationValueScheduleCode.Compute ||
-                        operations[instruction.Operand].Code != OrchestrationValueOpcode.HostInput ||
-                        instructions[instruction.Next].Code == OrchestrationValueScheduleCode.ObserveOutput)
-                        continue;
-                    slots[instruction.Destination] = operations[instruction.Operand].Argument;
-                    next[i] = instruction.Next;
-                }
-                var bindings = new OrchestrationBoundHostInput[slots.Count];
-                int index = 0;
-                foreach (var slot in slots)
-                    bindings[index++] = new OrchestrationBoundHostInput(slot.Value, slot.Key);
-                Array.Sort(bindings, (left, right) => left.Input.CompareTo(right.Input));
-                header.ScheduleBoundHostInputs = writer.Add<OrchestrationBoundHostInput>(bindings);
-                if (bindings.Length != 0)
-                {
-                    var lowered = new OrchestrationValueScheduleInstruction[instructions.Length];
-                    for (int i = 0; i < instructions.Length; i++)
-                    {
-                        ref readonly OrchestrationValueScheduleInstruction value = ref instructions[i];
-                        lowered[i] = new OrchestrationValueScheduleInstruction(value.Code, value.Operation,
-                            value.Operand, value.Destination, value.Argument, Resolve(value.Next), Resolve(value.Alternative));
-                    }
-                    instructions = lowered;
-                }
-                else
-                    next = null;
+                productEntries = BindScheduleInputs(writer, schedule, constants, ref header);
             }
-            header.ScheduleInstructions = writer.Add(instructions);
+            else
+            {
+                header.ScheduleInstructions = writer.Add(schedule.Instructions.Span);
+                header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
+                header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
+            }
             header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
             header.ScheduleInputEntries = AddEntries(schedule.InputEntries.Span);
             header.ScheduleTransitionEntries = AddEntries(schedule.TransitionEntries.Span);
@@ -197,21 +168,184 @@ namespace BTSMTL.Orchestration
             header.ScheduleSelectorAbortEntries = AddEntries(schedule.SelectorAbortEntries.Span);
             header.ScheduleBooleanEntries = AddEntries(schedule.BooleanEntries.Span);
 
-            int Resolve(int index)
-            {
-                while (index >= 0 && next[index] != index)
-                    index = next[index];
-                return index;
-            }
-
             OrchestrationMemorySection AddEntries(ReadOnlySpan<OrchestrationValueScheduleEntry> entries)
             {
-                if (next == null)
+                if (productEntries == null)
                     return writer.Add(entries);
                 var lowered = new OrchestrationValueScheduleEntry[entries.Length];
                 for (int i = 0; i < entries.Length; i++)
-                    lowered[i] = new OrchestrationValueScheduleEntry(Resolve(entries[i].Product), entries[i].Workbench);
+                    lowered[i] = new OrchestrationValueScheduleEntry(
+                        entries[i].Product < 0 ? -1 : productEntries[entries[i].Product], entries[i].Workbench);
                 return writer.Add<OrchestrationValueScheduleEntry>(lowered);
+            }
+        }
+
+        static int[] BindScheduleInputs<TValue>(OrchestrationMemoryImageWriter writer,
+            OrchestrationValueSchedule schedule, ReadOnlySpan<TValue> constants, ref OrchestrationProgramImageHeader header)
+            where TValue : unmanaged
+        {
+            const byte Product = 1;
+            const byte Workbench = 2;
+            const int Unwritten = -1;
+            const int Variable = -2;
+            ReadOnlySpan<OrchestrationValueScheduleInstruction> instructions = schedule.Instructions.Span;
+            ReadOnlySpan<OrchestrationValueOperation> operations = schedule.ValueOperations.Span;
+            var modes = new byte[instructions.Length];
+            MarkEntries(schedule.ValueEntries.Span);
+            MarkEntries(schedule.InputEntries.Span);
+            MarkEntries(schedule.TransitionEntries.Span);
+            MarkEntries(schedule.ChildSelectionEntries.Span);
+            MarkEntries(schedule.SelectorAbortEntries.Span);
+            MarkEntries(schedule.BooleanEntries.Span);
+            var literalBySlot = new int[schedule.ScratchSlotCount];
+            Array.Fill(literalBySlot, Unwritten);
+            var hostBySlot = new Dictionary<int, int>();
+
+            // 发布指令表的目标始终在来源之后，先标记两种入口可达的指令，再从返回端重接 Product。
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                ref readonly OrchestrationValueScheduleInstruction instruction = ref instructions[i];
+                Mark(instruction.Next, modes[i]);
+                Mark(instruction.Alternative, modes[i]);
+                if ((modes[i] & Product) == 0)
+                    continue;
+                int slot = instruction.Destination;
+                switch (instruction.Code)
+                {
+                    case OrchestrationValueScheduleCode.ReadInputConstant:
+                        literalBySlot[slot] = literalBySlot[slot] == Unwritten || literalBySlot[slot] == instruction.Operand
+                            ? instruction.Operand : Variable;
+                        break;
+                    case OrchestrationValueScheduleCode.Compute:
+                        if (operations[instruction.Operand].Code == OrchestrationValueOpcode.HostInput)
+                            hostBySlot[slot] = operations[instruction.Operand].Argument;
+                        goto case OrchestrationValueScheduleCode.CopyInput;
+                    case OrchestrationValueScheduleCode.CopyInput:
+                    case OrchestrationValueScheduleCode.ConvertInput:
+                    case OrchestrationValueScheduleCode.ReadInputBlackboard:
+                    case OrchestrationValueScheduleCode.ReadActionOutput:
+                    case OrchestrationValueScheduleCode.OverrideInput:
+                    case OrchestrationValueScheduleCode.OverrideOutput:
+                    case OrchestrationValueScheduleCode.WritePrediction:
+                        literalBySlot[slot] = Variable;
+                        break;
+                }
+            }
+
+            var boundHostInputs = new OrchestrationBoundHostInput[hostBySlot.Count];
+            int hostIndex = 0;
+            foreach (var slot in hostBySlot)
+                boundHostInputs[hostIndex++] = new OrchestrationBoundHostInput(slot.Value, slot.Key);
+            Array.Sort(boundHostInputs, (left, right) => left.Input.CompareTo(right.Input));
+            header.ScheduleBoundHostInputs = writer.Add<OrchestrationBoundHostInput>(boundHostInputs);
+            var slots = new int[literalBySlot.Length];
+            var literalSlots = new Dictionary<int, int>();
+            var literals = new List<TValue>();
+            for (int i = 0; i < slots.Length; i++)
+            {
+                int literal = literalBySlot[i];
+                if (literal < 0)
+                {
+                    slots[i] = i;
+                    continue;
+                }
+                if (!literalSlots.TryGetValue(literal, out int slot))
+                {
+                    slot = checked(schedule.ScratchSlotCount + literals.Count);
+                    literalSlots.Add(literal, slot);
+                    literals.Add(constants[literal]);
+                }
+                slots[i] = slot;
+            }
+            header.ScheduleLiterals = writer.Add<TValue>(literals.ToArray());
+            var argumentSlots = new List<int>(schedule.ArgumentSlots.ToArray());
+            var argumentLists = new List<OrchestrationRange>(schedule.ArgumentLists.ToArray());
+            var productArguments = new int[argumentLists.Count];
+            Array.Fill(productArguments, -1);
+
+            var lowered = new List<OrchestrationValueScheduleInstruction>(schedule.Instructions.ToArray());
+            var productEntries = new int[instructions.Length];
+            for (int i = instructions.Length - 1; i >= 0; i--)
+            {
+                if ((modes[i] & Product) == 0)
+                    continue;
+                ref readonly OrchestrationValueScheduleInstruction instruction = ref instructions[i];
+                OrchestrationValueScheduleCode code = instruction.Code;
+                int next = instruction.Next < 0 ? -1 : productEntries[instruction.Next];
+                bool boundInput = code switch
+                {
+                    OrchestrationValueScheduleCode.ReadInputConstant => literalBySlot[instruction.Destination] >= 0,
+                    OrchestrationValueScheduleCode.Compute => operations[instruction.Operand].Code == OrchestrationValueOpcode.HostInput,
+                    _ => false
+                };
+                if (boundInput)
+                {
+                    productEntries[i] = next;
+                    continue;
+                }
+                int alternative = instruction.Alternative < 0 ? -1 : productEntries[instruction.Alternative];
+                int operand = code == OrchestrationValueScheduleCode.CopyInput ? slots[instruction.Operand] : instruction.Operand;
+                int destination = code is OrchestrationValueScheduleCode.BranchBoolean or OrchestrationValueScheduleCode.BranchCondition
+                    ? slots[instruction.Destination] : instruction.Destination;
+                int argument = code switch
+                {
+                    OrchestrationValueScheduleCode.ReturnInputs => BindArguments(instruction.Argument),
+                    OrchestrationValueScheduleCode.Compute when
+                        operations[instruction.Operand].Code != OrchestrationValueOpcode.GraphCallOutput =>
+                        BindArguments(instruction.Argument),
+                    OrchestrationValueScheduleCode.ConvertInput => slots[instruction.Argument],
+                    _ => instruction.Argument
+                };
+                productEntries[i] = i;
+                if (operand == instruction.Operand && destination == instruction.Destination && argument == instruction.Argument &&
+                    next == instruction.Next && alternative == instruction.Alternative)
+                    continue;
+                var replacement = new OrchestrationValueScheduleInstruction(code, instruction.Operation, operand,
+                    destination, argument, next, alternative);
+                if ((modes[i] & Workbench) == 0)
+                    lowered[i] = replacement;
+                else
+                {
+                    productEntries[i] = lowered.Count;
+                    lowered.Add(replacement);
+                }
+            }
+            header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(lowered.ToArray());
+            header.ScheduleArgumentSlots = writer.Add<int>(argumentSlots.ToArray());
+            header.ScheduleArgumentLists = writer.Add<OrchestrationRange>(argumentLists.ToArray());
+            return productEntries;
+
+            int BindArguments(int index)
+            {
+                if (productArguments[index] >= 0)
+                    return productArguments[index];
+                OrchestrationRange range = argumentLists[index];
+                for (int i = range.Offset; i < range.Offset + range.Count; i++)
+                {
+                    if (slots[argumentSlots[i]] == argumentSlots[i])
+                        continue;
+                    int productIndex = argumentLists.Count;
+                    argumentLists.Add(new OrchestrationRange(argumentSlots.Count, range.Count));
+                    for (int source = range.Offset; source < range.Offset + range.Count; source++)
+                        argumentSlots.Add(slots[argumentSlots[source]]);
+                    return productArguments[index] = productIndex;
+                }
+                return productArguments[index] = index;
+            }
+
+            void Mark(int index, byte mode)
+            {
+                if (index >= 0)
+                    modes[index] |= mode;
+            }
+
+            void MarkEntries(ReadOnlySpan<OrchestrationValueScheduleEntry> entries)
+            {
+                foreach (ref readonly OrchestrationValueScheduleEntry entry in entries)
+                {
+                    Mark(entry.Product, Product);
+                    Mark(entry.Workbench, Workbench);
+                }
             }
         }
 

@@ -94,8 +94,10 @@ namespace BTSMTL.Orchestration
             m_ForceStopVisits = new OrchestrationForceStopVisits(scratch.Section<ulong>(layout.ForceStopVisited),
                 scratch.Section<int>(layout.ForceStopNext), layout.ForceStopFirstFrame, program.OperationCount);
             OrchestrationValueScheduleView schedule = program.ValueSchedule;
-            Span<TValue> invocationValues = m_ScheduledValues.Slice(checked(
-                (schedule.ValueSlotCount + schedule.InputBindingCount + 1) * (schedule.PredictionDepth + 1)));
+            int invocationStart = checked(
+                (schedule.ValueSlotCount + schedule.InputBindingCount + 1) * (schedule.PredictionDepth + 1));
+            Span<TValue> invocationValues = m_ScheduledValues.Slice(invocationStart,
+                schedule.ScratchSlotCount - invocationStart);
             if (!invocationValues.IsEmpty)
             {
                 invocationValues.Slice(0, invocationValues.Length - 1).Fill(default(TNumerics).FromBoolean(false));

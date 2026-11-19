@@ -173,6 +173,14 @@ namespace BTSMTL.Orchestration
             layout.Initialize(m_Memory);
         }
 
+        public OrchestrationExecutionScratchMemory(in OrchestrationExecutionScratchLayout layout,
+            OrchestrationProgramView<TValue> program) : this(in layout)
+        {
+            ReadOnlySpan<TValue> literals = program.ScheduleLiterals;
+            literals.CopyTo(View.Section<TValue>(layout.ScheduledValues)
+                .Slice(layout.ScheduledValues.Count - literals.Length));
+        }
+
         public OrchestrationExecutionScratch<TValue> View => new OrchestrationExecutionScratch<TValue>(m_Memory);
         public ref readonly OrchestrationExecutionError Error => ref View.Error;
         public int OutputRequestCapacity => View.OutputRequestCapacity;

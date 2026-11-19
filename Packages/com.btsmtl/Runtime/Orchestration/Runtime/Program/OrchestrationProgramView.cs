@@ -96,6 +96,7 @@ namespace BTSMTL.Orchestration
         public bool IsEmpty => m_Memory.IsEmpty;
         internal ReadOnlySpan<OrchestrationBoundHostInput> BoundHostInputs =>
             Section<OrchestrationBoundHostInput>(in Header.ScheduleBoundHostInputs);
+        internal ReadOnlySpan<TValue> ScheduleLiterals => Section<TValue>(in Header.ScheduleLiterals);
         public ReadOnlySpan<byte> Image => m_Memory;
         public int RootOperationIndex => Header.RootOperationIndex;
         public int MaximumOperationEvaluations => Header.MaximumOperationEvaluations;
@@ -216,7 +217,7 @@ namespace BTSMTL.Orchestration
         public int WorkspaceEntryDepth => Header.WorkspaceEntryDepth;
         public int WorkspaceStateAncestorCount => Header.WorkspaceStateAncestorCount;
         public int SchedulePredictionDepth => Header.SchedulePredictionDepth;
-        public int ScheduleScratchSlotCount => Header.ScheduleScratchSlotCount;
+        public int ScheduleScratchSlotCount => checked(Header.ScheduleScratchSlotCount + Header.ScheduleLiterals.Count);
 
         public OrchestrationProgramStorageView ExecutionStorage =>
             new OrchestrationProgramStorageView(Section<ushort>(in Header.StorageOperationIndices),
