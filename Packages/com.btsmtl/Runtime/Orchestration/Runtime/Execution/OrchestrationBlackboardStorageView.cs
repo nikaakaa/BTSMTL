@@ -13,11 +13,15 @@ namespace BTSMTL.Orchestration
         int m_FrameSlot;
         readonly ReadOnlySpan<int> m_CharacterSlots;
         readonly OrchestrationExecutionSourceBindingView m_SourceBinding;
+        readonly Span<byte> m_ReuseFlags;
+        readonly ReadOnlySpan<OrchestrationRange> m_ReuseRanges;
+        readonly ReadOnlySpan<int> m_ReuseSlots;
         OrchestrationExecutionSourceReader<TValue> m_Reader;
 
         internal OrchestrationBlackboardStorageView(int programIndex, OrchestrationProgramView<TValue> program,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot, ReadOnlySpan<int> characterSlots,
-            OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source)
+            OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source,
+            Span<byte> reuseFlags)
         {
             m_Program = program;
             m_BlackboardSlots = program.BlackboardSlots;
@@ -26,14 +30,25 @@ namespace BTSMTL.Orchestration
             m_FrameSlot = frameSlot;
             m_CharacterSlots = characterSlots;
             m_SourceBinding = sourceBinding;
+            m_ReuseFlags = reuseFlags;
+            m_ReuseRanges = program.ScheduleBlackboardReuses;
+            m_ReuseSlots = program.ScheduleBlackboardReuseSlots;
             m_Reader = new OrchestrationExecutionSourceReader<TValue>(frames.AsReadOnly(), frameSlot,
                 m_ProgramIndex, sourceBinding.HasSource, source);
         }
 
         internal void SelectFrame(int frameSlot)
         {
+            if (frameSlot != m_FrameSlot)
+                ResetValueReuse();
             m_FrameSlot = frameSlot;
             m_Reader.SelectFrame(frameSlot);
+        }
+
+        internal void ResetValueReuse()
+        {
+            if (!m_ReuseRanges.IsEmpty)
+                m_ReuseFlags.Clear();
         }
 
         internal OrchestrationExecutionSourceReader<TValue> Reader => m_Reader;
@@ -80,6 +95,12 @@ namespace BTSMTL.Orchestration
 
         internal ref OrchestrationBlackboardMetadata WriteValue(int valueSlot, in TValue value, ref TStorage storage)
         {
+            if (!m_ReuseRanges.IsEmpty)
+            {
+                OrchestrationRange range = m_ReuseRanges[valueSlot];
+                foreach (int flag in m_ReuseSlots.Slice(range.Offset, range.Count))
+                    m_ReuseFlags[flag] = 0;
+            }
             int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
             if (characterSlot >= 0)
             {

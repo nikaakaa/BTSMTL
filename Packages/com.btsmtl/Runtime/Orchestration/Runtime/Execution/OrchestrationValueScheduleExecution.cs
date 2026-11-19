@@ -192,6 +192,26 @@ namespace BTSMTL.Orchestration
                         m_CurrentOperationIndex = instruction.Operation;
                         pc = default(TNumerics).Boolean(in values[instruction.Destination]) ? instruction.Next : instruction.Alternative;
                         continue;
+                    case OrchestrationPreparedScheduleTarget.ReadReusableBlackboard:
+                        m_CurrentOperationIndex = instruction.Operation;
+                        ref byte valid = ref m_ReuseFlags[instruction.Argument];
+                        if (valid == 0)
+                        {
+#if UNITY_EDITOR
+                            m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.ValueComputes);
+#endif
+                            ReadBlackboard(instruction.Operation, instruction.Operand, ref values[instruction.Destination]);
+                            valid = 1;
+                        }
+                        break;
+                    case OrchestrationPreparedScheduleTarget.GuardReusableValue:
+                        m_CurrentOperationIndex = instruction.Operation;
+                        pc = m_ReuseFlags[instruction.Destination] != 0 ? instruction.Next : instruction.Alternative;
+                        continue;
+                    case OrchestrationPreparedScheduleTarget.MarkReusableValue:
+                        m_CurrentOperationIndex = instruction.Operation;
+                        m_ReuseFlags[instruction.Destination] = 1;
+                        break;
                     case OrchestrationValueScheduleCode.BranchExcludedTarget:
                         pc = instruction.Operand == excludedTarget ? instruction.Next : instruction.Alternative;
                         continue;

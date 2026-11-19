@@ -7,6 +7,10 @@ namespace BTSMTL.Orchestration
 {
     internal static class OrchestrationPreparedScheduleTarget
     {
+        internal const OrchestrationValueScheduleCode ReadReusableBlackboard = (OrchestrationValueScheduleCode)253;
+        internal const OrchestrationValueScheduleCode GuardReusableValue = (OrchestrationValueScheduleCode)254;
+        internal const OrchestrationValueScheduleCode MarkReusableValue = (OrchestrationValueScheduleCode)255;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsReturn(int target) => target < -1;
 
@@ -87,6 +91,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationMemorySection ScheduleStateContexts;
         public OrchestrationMemorySection ScheduleBoundHostInputs;
         public OrchestrationMemorySection ScheduleLiterals;
+        public OrchestrationMemorySection ScheduleBlackboardReuses;
+        public OrchestrationMemorySection ScheduleBlackboardReuseSlots;
         public OrchestrationMemorySection StorageOperationIndices;
         public OrchestrationMemorySection StorageValues;
         public OrchestrationMemorySection WorkspaceInputRows;
@@ -104,6 +110,7 @@ namespace BTSMTL.Orchestration
         public int ScheduleInputBindingCount;
         public int ScheduleScratchSlotCount;
         public int SchedulePredictionDepth;
+        public int ScheduleReuseOffset;
     }
 
     // 准备期把程序推进所需的全部表排进一块 16 字节对齐的连续内存，段表头位于偏移 0。
@@ -145,7 +152,8 @@ namespace BTSMTL.Orchestration
             header.StateOnExitEdges = writer.Add(structure.StateOnExitEdges.Span);
             header.ValueEvaluationOffsets = writer.Add(structure.ValueEvaluationOffsets.Span);
             header.StateOperationIndexes = writer.Add(structure.StateOperationIndexes.Span);
-            AddSchedule(writer, schedule, parameters.Constants.Span, bindHostInputs, ref header);
+            AddSchedule(writer, schedule, parameters.Constants.Span, content.BlackboardSlots.Length,
+                bindHostInputs, ref header);
             header.ScheduleValueOperations = writer.Add(schedule.ValueOperations.Span);
             header.ScheduleStateContexts = writer.Add(schedule.StateContexts.Span);
             header.StorageOperationIndices = writer.Add(storage.OperationIndices.Span);
@@ -162,9 +170,13 @@ namespace BTSMTL.Orchestration
         }
 
         static void AddSchedule<TValue>(OrchestrationMemoryImageWriter writer, OrchestrationValueSchedule schedule,
-            ReadOnlySpan<TValue> constants, bool bindHostInputs, ref OrchestrationProgramImageHeader header)
-            where TValue : unmanaged
+            ReadOnlySpan<TValue> constants, int blackboardCount, bool bindHostInputs,
+            ref OrchestrationProgramImageHeader header) where TValue : unmanaged
         {
+            int reuseOffset = checked((schedule.ValueSlotCount + schedule.InputBindingCount + 1) *
+                (schedule.PredictionDepth + 1));
+            header.ScheduleReuseOffset = reuseOffset;
+            AddBlackboardReuses(writer, schedule, blackboardCount, reuseOffset, ref header);
             OrchestrationValueScheduleInstruction[] instructions;
             int[] productEntries = null;
             if (bindHostInputs)
@@ -177,7 +189,9 @@ namespace BTSMTL.Orchestration
                 header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
                 header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
             }
-            int[] targets = BindScheduleReturns(instructions, out int instructionCount);
+            FuseReusableBlackboardReads(instructions, schedule.ValueOperations.Span, reuseOffset);
+            int[] targets = BindScheduleTargets(instructions, reuseOffset, schedule.ScratchSlotCount - 1,
+                out int instructionCount);
             header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(
                 instructions.AsSpan(0, instructionCount));
             header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
@@ -202,7 +216,61 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        static int[] BindScheduleReturns(Span<OrchestrationValueScheduleInstruction> instructions, out int count)
+        static void AddBlackboardReuses(OrchestrationMemoryImageWriter writer, OrchestrationValueSchedule schedule,
+            int blackboardCount, int reuseOffset, ref OrchestrationProgramImageHeader header)
+        {
+            SortedSet<int>[] reuses = null;
+            foreach (ref readonly var instruction in schedule.Instructions.Span)
+            {
+                if (instruction.Code != OrchestrationValueScheduleCode.BranchBoolean ||
+                    instruction.Destination < reuseOffset || instruction.Operand < 0)
+                    continue;
+                reuses ??= new SortedSet<int>[blackboardCount];
+                OrchestrationRange dependencies = schedule.ArgumentLists.Span[instruction.Operand];
+                foreach (int slot in schedule.ArgumentSlots.Span.Slice(dependencies.Offset, dependencies.Count))
+                    (reuses[slot] ??= new SortedSet<int>()).Add(instruction.Destination - reuseOffset);
+            }
+            if (reuses == null)
+                return;
+
+            var ranges = new OrchestrationRange[blackboardCount];
+            var indices = new List<int>();
+            for (int slot = 0; slot < reuses.Length; slot++)
+            {
+                if (reuses[slot] is not { } flags)
+                    continue;
+                ranges[slot] = new OrchestrationRange(indices.Count, flags.Count);
+                indices.AddRange(flags);
+            }
+            header.ScheduleBlackboardReuses = writer.Add<OrchestrationRange>(ranges);
+            header.ScheduleBlackboardReuseSlots = writer.Add<int>(indices.ToArray());
+        }
+
+        static void FuseReusableBlackboardReads(Span<OrchestrationValueScheduleInstruction> instructions,
+            ReadOnlySpan<OrchestrationValueOperation> operations, int reuseOffset)
+        {
+            for (int pc = 0; pc < instructions.Length; pc++)
+            {
+                ref OrchestrationValueScheduleInstruction guard = ref instructions[pc];
+                if (guard.Code != OrchestrationValueScheduleCode.BranchBoolean ||
+                    guard.Destination < reuseOffset || guard.Operand < 0)
+                    continue;
+                ref readonly var read = ref instructions[guard.Alternative];
+                if (read.Code != OrchestrationValueScheduleCode.Compute ||
+                    operations[read.Operand].Code != OrchestrationValueOpcode.BlackboardGet)
+                    continue;
+                ref readonly var mark = ref instructions[read.Next];
+                if (mark.Code != OrchestrationValueScheduleCode.CopyInput || mark.Destination != guard.Destination ||
+                    mark.Operand != mark.Destination || mark.Next != guard.Next)
+                    continue;
+                guard = new OrchestrationValueScheduleInstruction(OrchestrationPreparedScheduleTarget.ReadReusableBlackboard,
+                    read.Operation, operations[read.Operand].Argument, read.Destination,
+                    mark.Destination - reuseOffset, mark.Next, -1);
+            }
+        }
+
+        static int[] BindScheduleTargets(Span<OrchestrationValueScheduleInstruction> instructions,
+            int reuseOffset, int trueSlot, out int count)
         {
             var targets = new int[instructions.Length];
             count = 0;
@@ -218,8 +286,21 @@ namespace BTSMTL.Orchestration
                 if (OrchestrationPreparedScheduleTarget.IsReturn(target))
                     continue;
                 OrchestrationValueScheduleInstruction instruction = instructions[i];
-                instructions[target] = new OrchestrationValueScheduleInstruction(instruction.Code, instruction.Operation,
-                    instruction.Operand, instruction.Destination, instruction.Argument,
+                OrchestrationValueScheduleCode code = instruction.Code;
+                int destination = instruction.Destination;
+                if (destination >= reuseOffset)
+                {
+                    if (code == OrchestrationValueScheduleCode.BranchBoolean)
+                        code = OrchestrationPreparedScheduleTarget.GuardReusableValue;
+                    else if (code == OrchestrationValueScheduleCode.CopyInput &&
+                        (instruction.Operand == trueSlot || instruction.Operand == destination))
+                        code = OrchestrationPreparedScheduleTarget.MarkReusableValue;
+                    if (code is OrchestrationPreparedScheduleTarget.GuardReusableValue or
+                        OrchestrationPreparedScheduleTarget.MarkReusableValue)
+                        destination -= reuseOffset;
+                }
+                instructions[target] = new OrchestrationValueScheduleInstruction(code, instruction.Operation,
+                    instruction.Operand, destination, instruction.Argument,
                     BindScheduleTarget(targets, instruction.Next), BindScheduleTarget(targets, instruction.Alternative));
             }
             return targets;

@@ -17,6 +17,7 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationRange> m_InputRows;
         readonly ReadOnlySpan<OrchestrationRange> m_OutputRows;
         readonly Span<TValue> m_ScheduledValues;
+        readonly Span<byte> m_ReuseFlags;
         readonly ReadOnlySpan<TValue> m_Constants;
         readonly Span<OrchestrationScheduledPrediction> m_ScheduledPredictions;
         readonly Span<OrchestrationGraphCallContext> m_GraphCalls;
@@ -94,15 +95,10 @@ namespace BTSMTL.Orchestration
             m_ForceStopVisits = new OrchestrationForceStopVisits(scratch.Section<ulong>(layout.ForceStopVisited),
                 scratch.Section<int>(layout.ForceStopNext), layout.ForceStopFirstFrame, program.OperationCount);
             OrchestrationValueScheduleView schedule = program.ValueSchedule;
-            int invocationStart = checked(
-                (schedule.ValueSlotCount + schedule.InputBindingCount + 1) * (schedule.PredictionDepth + 1));
-            Span<TValue> invocationValues = m_ScheduledValues.Slice(invocationStart,
-                schedule.ScratchSlotCount - invocationStart);
-            if (!invocationValues.IsEmpty)
-            {
-                invocationValues.Slice(0, invocationValues.Length - 1).Fill(default(TNumerics).FromBoolean(false));
-                invocationValues[invocationValues.Length - 1] = default(TNumerics).FromBoolean(true);
-            }
+            int reuseOffset = program.ScheduleReuseOffset;
+            int reuseCount = schedule.ScratchSlotCount - reuseOffset;
+            m_ReuseFlags = MemoryMarshal.AsBytes(m_ScheduledValues.Slice(reuseOffset, reuseCount)).Slice(0, reuseCount);
+            m_ReuseFlags.Clear();
             if (!input.HasDiagnostics && !input.HostInputs.IsEmpty)
             {
                 int boundInput = -1;
@@ -135,7 +131,7 @@ namespace BTSMTL.Orchestration
             m_FrameSlot = frameSlot;
             frames.TrackFrameWrite(frameSlot);
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(programIndex, program, frames, frameSlot,
-                characterSlots, sourceBinding, source);
+                characterSlots, sourceBinding, source, m_ReuseFlags);
             m_OperationStateIndices = frames.Plan.OperationStateIndices(m_Blackboards.ProgramIndex);
             m_Operations = frames.Payload<OrchestrationOperationState>(frameSlot,
                 OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
@@ -196,6 +192,7 @@ namespace BTSMTL.Orchestration
         {
             if (m_EntryDepth == 0)
             {
+                m_Blackboards.ResetValueReuse();
                 ref OrchestrationExecutionScratchHeader header = ref m_Scratch.Header;
                 header.OutputRequestCount = 0;
                 header.OutputValueCount = 0;

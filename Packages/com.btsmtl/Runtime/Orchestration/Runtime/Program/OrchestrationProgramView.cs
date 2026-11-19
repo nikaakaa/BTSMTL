@@ -97,6 +97,11 @@ namespace BTSMTL.Orchestration
         internal ReadOnlySpan<OrchestrationBoundHostInput> BoundHostInputs =>
             Section<OrchestrationBoundHostInput>(in Header.ScheduleBoundHostInputs);
         internal ReadOnlySpan<TValue> ScheduleLiterals => Section<TValue>(in Header.ScheduleLiterals);
+        internal int ScheduleReuseOffset => Header.ScheduleReuseOffset;
+        internal ReadOnlySpan<OrchestrationRange> ScheduleBlackboardReuses =>
+            Section<OrchestrationRange>(in Header.ScheduleBlackboardReuses);
+        internal ReadOnlySpan<int> ScheduleBlackboardReuseSlots =>
+            Section<int>(in Header.ScheduleBlackboardReuseSlots);
         public ReadOnlySpan<byte> Image => m_Memory;
         public int RootOperationIndex => Header.RootOperationIndex;
         public int MaximumOperationEvaluations => Header.MaximumOperationEvaluations;

@@ -52,7 +52,8 @@ namespace BTSMTL.Compilation
                 var instructions = new List<OrchestrationValueScheduleInstruction>();
                 var argumentSlots = new List<int>();
                 var argumentLists = new List<OrchestrationRange>();
-                int[] invocationValueOffsets = InvocationValueOffsets(operations, edges);
+                var (invocationValueOffsets, invocationDependencies) = InvocationValues(
+                    operations, edges, argumentSlots, argumentLists);
                 bool predicts = false;
                 foreach (OrchestrationValueInputBinding input in m_Inputs)
                     predicts |= input.Source == OrchestrationValueInputSource.StateCompletionTransition;
@@ -135,10 +136,10 @@ namespace BTSMTL.Compilation
                 for (int context = 0; context < states.Count; context++)
                 {
                     var product = new ValueScheduleBuilder(this, operations, edges, structure, states[context], false,
-                        productInputSlots, invocationValueOffsets, invocationValueStart, invocationTrueSlot,
+                        productInputSlots, invocationValueOffsets, invocationDependencies, invocationValueStart, invocationTrueSlot,
                         instructions, argumentSlots, argumentLists);
                     var workbench = new ValueScheduleBuilder(this, operations, edges, structure, states[context], true,
-                        productInputSlots, invocationValueOffsets, invocationValueStart, invocationTrueSlot,
+                        productInputSlots, invocationValueOffsets, invocationDependencies, invocationValueStart, invocationTrueSlot,
                         instructions, argumentSlots, argumentLists);
                     for (int operation = 0; operation < operations.Length; operation++)
                     {
@@ -244,9 +245,26 @@ namespace BTSMTL.Compilation
                 OrchestrationOperationCode.Compare or OrchestrationOperationCode.Calculate or
                 OrchestrationOperationCode.SelectValue;
 
-            int[] InvocationValueOffsets(OperationDraft[] operations, OrchestrationFlowEdge[] edges)
+            (int[] Offsets, int[] Dependencies) InvocationValues(OperationDraft[] operations,
+                OrchestrationFlowEdge[] edges, List<int> argumentSlots, List<OrchestrationRange> argumentLists)
             {
+                bool usesOwnedBlackboardWrites = m_LifecycleHooks.Count == 0;
+                foreach (ref readonly OperationDraft operation in operations.AsSpan())
+                    usesOwnedBlackboardWrites &= operation.Code is not
+                        (OrchestrationOperationCode.Extension or OrchestrationOperationCode.Timeline or
+                         OrchestrationOperationCode.TimelineClipExitRequest) &&
+                        operation.BlackboardFactsBindingIndex < 0;
+
+                bool TracksBlackboard(int slotIndex)
+                {
+                    OrchestrationBlackboardSlot slot = m_Blackboards[slotIndex];
+                    return usesOwnedBlackboardWrites && slot.ScopeKind == OrchestrationScopeKind.Graph &&
+                        slot.OwnerOperationIndex < 0 && slot.Lifetime is
+                            OrchestrationBlackboardLifetime.GraphInstance or OrchestrationBlackboardLifetime.Config;
+                }
+
                 var purity = new byte[operations.Length];
+                var dependencies = new HashSet<int>[operations.Length];
                 var pending = new Stack<(int Operation, bool Complete)>();
                 for (int operation = 0; operation < operations.Length; operation++)
                 {
@@ -261,6 +279,12 @@ namespace BTSMTL.Compilation
                             OrchestrationOperationCode.InputBoolean or OrchestrationOperationCode.InputScalar or
                             OrchestrationOperationCode.InputVector2 or OrchestrationOperationCode.InputVector2Magnitude)
                         {
+                            purity[current.Operation] = 2;
+                            continue;
+                        }
+                        if (op.Code == OrchestrationOperationCode.BlackboardGet && TracksBlackboard(op.ValueSlot))
+                        {
+                            dependencies[current.Operation] = new HashSet<int> { op.ValueSlot };
                             purity[current.Operation] = 2;
                             continue;
                         }
@@ -281,16 +305,30 @@ namespace BTSMTL.Compilation
                             continue;
                         }
                         bool pure = true;
+                        HashSet<int> reads = null;
                         for (int i = op.Inputs.Offset; i < op.Inputs.Offset + op.Inputs.Count; i++)
                         {
                             OrchestrationValueInputBinding input = m_Inputs[i];
-                            if (input.Source != OrchestrationValueInputSource.Constant &&
-                                (input.Source != OrchestrationValueInputSource.Operation || purity[input.SourceIndex] != 2))
+                            switch (input.Source)
                             {
-                                pure = false;
-                                break;
+                                case OrchestrationValueInputSource.Constant:
+                                    break;
+                                case OrchestrationValueInputSource.Blackboard when TracksBlackboard(input.SourceIndex):
+                                    (reads ??= new HashSet<int>()).Add(input.SourceIndex);
+                                    break;
+                                case OrchestrationValueInputSource.Operation when purity[input.SourceIndex] == 2:
+                                    if (dependencies[input.SourceIndex] is { } source)
+                                        (reads ??= new HashSet<int>()).UnionWith(source);
+                                    break;
+                                default:
+                                    pure = false;
+                                    break;
                             }
+                            if (!pure)
+                                break;
                         }
+                        if (pure)
+                            dependencies[current.Operation] = reads;
                         purity[current.Operation] = pure ? (byte)2 : (byte)1;
                     }
                 }
@@ -316,18 +354,29 @@ namespace BTSMTL.Compilation
                 foreach (var context in m_ControlContexts)
                     uses[context.Operation]++;
                 var offsets = new int[operations.Length + 1];
+                var dependencyLists = new int[operations.Length];
+                Array.Fill(dependencyLists, -1);
                 int count = 0;
                 for (int i = 0; i < operations.Length; i++)
                 {
                     bool shared = purity[i] == 2 && uses[i] > 1 &&
-                        (InvocationValueExpression(operations[i].Code) ||
-                         operations[i].Code == OrchestrationOperationCode.InputVector2Magnitude);
+                        (InvocationValueExpression(operations[i].Code) || operations[i].Code is
+                            OrchestrationOperationCode.InputVector2Magnitude or OrchestrationOperationCode.BlackboardGet);
                     offsets[i] = shared ? count : -1;
-                    if (shared)
-                        count = checked(count + operations[i].OutputCount + 1);
+                    if (!shared)
+                        continue;
+                    count = checked(count + operations[i].OutputCount + 1);
+                    if (dependencies[i] is { } reads)
+                    {
+                        dependencyLists[i] = argumentLists.Count;
+                        argumentLists.Add(new OrchestrationRange(argumentSlots.Count, reads.Count));
+                        int first = argumentSlots.Count;
+                        argumentSlots.AddRange(reads);
+                        argumentSlots.Sort(first, reads.Count, Comparer<int>.Default);
+                    }
                 }
                 offsets[operations.Length] = count;
-                return offsets;
+                return (offsets, dependencyLists);
             }
 
             sealed class ValueScheduleBuilder
@@ -367,6 +416,7 @@ namespace BTSMTL.Compilation
                 readonly int m_BankSize;
                 readonly int[] m_ProductInputSlots;
                 readonly int[] m_InvocationValueOffsets;
+                readonly int[] m_InvocationDependencies;
                 readonly int m_InvocationValueStart;
                 readonly int m_InvocationTrueSlot;
                 readonly List<OrchestrationValueScheduleInstruction> m_Instructions;
@@ -381,7 +431,7 @@ namespace BTSMTL.Compilation
                     Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> compiler,
                     OperationDraft[] operations, OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure,
                     int state, bool diagnostics, int[] productInputSlots, int[] invocationValueOffsets,
-                    int invocationValueStart, int invocationTrueSlot,
+                    int[] invocationDependencies, int invocationValueStart, int invocationTrueSlot,
                     List<OrchestrationValueScheduleInstruction> instructions,
                     List<int> argumentSlots, List<OrchestrationRange> argumentLists)
                 {
@@ -395,6 +445,7 @@ namespace BTSMTL.Compilation
                     m_BankSize = m_ValueCount + compiler.m_Inputs.Count + 1;
                     m_ProductInputSlots = productInputSlots;
                     m_InvocationValueOffsets = invocationValueOffsets;
+                    m_InvocationDependencies = invocationDependencies;
                     m_InvocationValueStart = invocationValueStart;
                     m_InvocationTrueSlot = invocationTrueSlot;
                     m_Instructions = instructions;
@@ -727,7 +778,7 @@ namespace BTSMTL.Compilation
                             }
                             if (!m_Diagnostics && m_InvocationValueOffsets[op] >= 0)
                                 return EmitStep(new OrchestrationValueScheduleInstruction(
-                                        OrchestrationValueScheduleCode.BranchBoolean, op, -1,
+                                        OrchestrationValueScheduleCode.BranchBoolean, op, m_InvocationDependencies[op],
                                         InvocationValueSlot(op, d.Operand, d.Argument), 0, d.Next, compute),
                                     available | (BigInteger.One << slot), available);
                             return Alias(m_Diagnostics
@@ -802,8 +853,12 @@ namespace BTSMTL.Compilation
                                         ? m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1 : d.Operand,
                                     d.Destination, next: next);
                             else if (work.Kind == WorkKind.CompleteValue && m_InvocationValueOffsets[op] >= 0)
-                                next = Emit(OrchestrationValueScheduleCode.CopyInput, op, m_InvocationTrueSlot,
-                                    InvocationValueSlot(op, d.Operand, d.Argument), next: next);
+                            {
+                                int flag = InvocationValueSlot(op, d.Operand, d.Argument);
+                                // 可变依赖在装配时登记。发布日程直接执行时保留未完成位。
+                                int source = m_InvocationDependencies[op] < 0 ? m_InvocationTrueSlot : flag;
+                                next = Emit(OrchestrationValueScheduleCode.CopyInput, op, source, flag, next: next);
+                            }
                             return Alias(next, available | (BigInteger.One << d.Destination));
                         }
                         case WorkKind.Select:
