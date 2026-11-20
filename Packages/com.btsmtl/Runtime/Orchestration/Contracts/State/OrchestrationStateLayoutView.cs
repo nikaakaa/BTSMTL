@@ -111,6 +111,20 @@ namespace BTSMTL.Orchestration
             range = default;
             return false;
         }
+
+        internal readonly void CopyTo(in OrchestrationFramePayloadRanges destination,
+            ReadOnlySpan<byte> sourceMemory, Span<byte> destinationMemory)
+        {
+            for (int segment = 0; segment < m_Sizes.Length; segment++)
+            {
+                int size = m_Sizes[segment];
+                if (size == 0)
+                    continue;
+                int sourceOffset = m_Segments[segment].AtFrame(m_FrameIndex, size).OffsetBytes;
+                int destinationOffset = destination.m_Segments[segment].AtFrame(destination.m_FrameIndex, size).OffsetBytes;
+                sourceMemory.Slice(sourceOffset, size).CopyTo(destinationMemory.Slice(destinationOffset));
+            }
+        }
     }
 
     internal readonly struct OrchestrationFrameValueAddress
