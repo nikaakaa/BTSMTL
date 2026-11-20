@@ -89,29 +89,42 @@ namespace BTSMTL.Orchestration
                         default(TNumerics).Unary((OrchestrationValueOpcode)instruction.Operand,
                             in values[instruction.Argument], in m_Identities, ref values[instruction.Destination]);
                         break;
-                    case OrchestrationValueScheduleCode.Compute:
+                    case OrchestrationPreparedScheduleTarget.ComputeNumber:
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.ValueComputes);
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.NumericComputes);
+                        using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
+#endif
+                        {
+                            m_CurrentOperationIndex = instruction.Operation;
+                            default(TNumerics).Compute((OrchestrationValueOpcode)instruction.Operand, values,
+                                m_ValueArgumentSlots.Slice(instruction.Argument, instruction.Alternative),
+                                in m_Identities, ref values[instruction.Destination]);
+                        }
+                        break;
+                    case OrchestrationPreparedScheduleTarget.ReadValue:
                     {
                         int operationIndex = instruction.Operation;
 #if UNITY_EDITOR
                         m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.ValueComputes);
 #endif
                         m_CurrentOperationIndex = operationIndex;
-                        ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[instruction.Operand];
+                        int argument = instruction.Argument;
                         ref TValue value = ref values[instruction.Destination];
                         TNumerics numerics = default;
-                        switch (typed.Code)
+                        switch ((OrchestrationValueOpcode)instruction.Operand)
                         {
                             case OrchestrationValueOpcode.Copy:
-                                value = values[m_ValueArgumentSlots[m_ValueArgumentLists[instruction.Argument].Offset + typed.Argument]];
+                                value = values[argument];
                                 break;
                             case OrchestrationValueOpcode.Constant:
-                                value = m_Constants[typed.Argument];
+                                value = m_Constants[argument];
                                 break;
                             case OrchestrationValueOpcode.HostInput:
 #if UNITY_EDITOR
                                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.HostInputReads);
 #endif
-                                value = m_Input.HostInputs[typed.Argument];
+                                value = m_Input.HostInputs[argument];
                                 break;
                             case OrchestrationValueOpcode.InputVector2Magnitude:
 #if UNITY_EDITOR
@@ -119,23 +132,23 @@ namespace BTSMTL.Orchestration
                                 m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
                                 using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
 #endif
-                                numerics.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[typed.Argument],
+                                numerics.Unary(OrchestrationValueOpcode.Vector2Magnitude, in m_Input.HostInputs[argument],
                                     in m_Identities, ref value);
                                 break;
                             case OrchestrationValueOpcode.InputRequest:
                                 value = numerics.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
                                 break;
                             case OrchestrationValueOpcode.BlackboardGet:
-                                ReadBlackboard(operationIndex, typed.Argument, ref value);
+                                ReadBlackboard(operationIndex, argument, ref value);
                                 break;
                             case OrchestrationValueOpcode.GraphCallOutput:
-                                ReadGraphCallOutput(operationIndex, typed.Argument, ref value);
+                                ReadGraphCallOutput(operationIndex, argument, ref value);
                                 break;
                             case OrchestrationValueOpcode.StateRootCompleted:
                                 value = numerics.FromBoolean(CurrentStateRootCompleted());
                                 break;
                             case OrchestrationValueOpcode.StateExitCause:
-                                value = numerics.FromBoolean(unchecked((uint)typed.Argument) == CurrentStateExitCause());
+                                value = numerics.FromBoolean(unchecked((uint)argument) == CurrentStateExitCause());
                                 break;
                             case OrchestrationValueOpcode.Cycle:
                             {
@@ -147,15 +160,8 @@ namespace BTSMTL.Orchestration
                                 value = m_TimelineTime;
                                 break;
                             case OrchestrationValueOpcode.Extension:
-                                EvaluateExtensionValue(operationIndex, typed.Argument,
-                                    ScheduledArguments(instruction.Argument), depth, ref value);
-                                break;
-                            default:
-#if UNITY_EDITOR
-                                m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.NumericComputes);
-                                using (new OrchestrationWorkloadCostScope(m_WorkloadObservation, OrchestrationWorkloadCost.Numeric))
-#endif
-                                numerics.Compute(typed.Code, values, ScheduledArguments(instruction.Argument), in m_Identities, ref value);
+                                EvaluateExtensionValue(operationIndex, argument,
+                                    ScheduledArguments(instruction.Alternative), depth, ref value);
                                 break;
                         }
                         break;

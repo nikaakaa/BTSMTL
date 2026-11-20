@@ -7,6 +7,8 @@ namespace BTSMTL.Orchestration
 {
     internal static class OrchestrationPreparedScheduleTarget
     {
+        internal const OrchestrationValueScheduleCode ReadValue = (OrchestrationValueScheduleCode)251;
+        internal const OrchestrationValueScheduleCode ComputeNumber = (OrchestrationValueScheduleCode)252;
         internal const OrchestrationValueScheduleCode ReadReusableBlackboard = (OrchestrationValueScheduleCode)253;
         internal const OrchestrationValueScheduleCode GuardReusableValue = (OrchestrationValueScheduleCode)254;
         internal const OrchestrationValueScheduleCode MarkReusableValue = (OrchestrationValueScheduleCode)255;
@@ -178,22 +180,28 @@ namespace BTSMTL.Orchestration
             header.ScheduleReuseOffset = reuseOffset;
             AddBlackboardReuses(writer, schedule, blackboardCount, reuseOffset, ref header);
             OrchestrationValueScheduleInstruction[] instructions;
+            ReadOnlySpan<int> argumentSlots = schedule.ArgumentSlots.Span;
+            ReadOnlySpan<OrchestrationRange> argumentLists = schedule.ArgumentLists.Span;
             int[] productEntries = null;
             if (bindHostInputs)
             {
-                productEntries = BindScheduleInputs(writer, schedule, constants, ref header, out instructions);
+                productEntries = BindScheduleInputs(writer, schedule, constants, ref header, out instructions,
+                    out int[] boundSlots, out OrchestrationRange[] boundLists);
+                argumentSlots = boundSlots;
+                argumentLists = boundLists;
             }
             else
-            {
                 instructions = schedule.Instructions.ToArray();
-                header.ScheduleArgumentSlots = writer.Add(schedule.ArgumentSlots.Span);
-                header.ScheduleArgumentLists = writer.Add(schedule.ArgumentLists.Span);
-            }
+
+            header.ScheduleArgumentSlots = writer.Add(argumentSlots);
+            header.ScheduleArgumentLists = writer.Add(argumentLists);
             FuseReusableBlackboardReads(instructions, schedule.ValueOperations.Span, reuseOffset);
             int[] targets = BindScheduleTargets(instructions, reuseOffset, schedule.ScratchSlotCount - 1,
                 out int instructionCount);
-            header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(
-                instructions.AsSpan(0, instructionCount));
+            Span<OrchestrationValueScheduleInstruction> prepared = instructions.AsSpan(0, instructionCount);
+            // 跳转重定址完成后，求值指令的备用跳转字段可保存参数范围。
+            BindValueComputations(prepared, schedule.ValueOperations.Span, argumentSlots, argumentLists);
+            header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(prepared);
             header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
             header.ScheduleInputEntries = AddEntries(schedule.InputEntries.Span);
             header.ScheduleTransitionEntries = AddEntries(schedule.TransitionEntries.Span);
@@ -269,6 +277,51 @@ namespace BTSMTL.Orchestration
             }
         }
 
+        static void BindValueComputations(Span<OrchestrationValueScheduleInstruction> instructions,
+            ReadOnlySpan<OrchestrationValueOperation> operations, ReadOnlySpan<int> argumentSlots,
+            ReadOnlySpan<OrchestrationRange> argumentLists)
+        {
+            foreach (ref var instruction in instructions)
+            {
+                if (instruction.Code != OrchestrationValueScheduleCode.Compute)
+                    continue;
+
+                ref readonly OrchestrationValueOperation operation = ref operations[instruction.Operand];
+                OrchestrationValueScheduleCode code = OrchestrationPreparedScheduleTarget.ReadValue;
+                int argument = operation.Argument;
+                int additional = -1;
+                switch (operation.Code)
+                {
+                    case OrchestrationValueOpcode.Copy:
+                        argument = argumentSlots[argumentLists[instruction.Argument].Offset + operation.Argument];
+                        break;
+                    case OrchestrationValueOpcode.Extension:
+                        additional = instruction.Argument;
+                        break;
+                    case OrchestrationValueOpcode.Constant:
+                    case OrchestrationValueOpcode.HostInput:
+                    case OrchestrationValueOpcode.InputVector2Magnitude:
+                    case OrchestrationValueOpcode.InputRequest:
+                    case OrchestrationValueOpcode.BlackboardGet:
+                    case OrchestrationValueOpcode.GraphCallOutput:
+                    case OrchestrationValueOpcode.StateRootCompleted:
+                    case OrchestrationValueOpcode.StateExitCause:
+                    case OrchestrationValueOpcode.Cycle:
+                    case OrchestrationValueOpcode.TimelineTime:
+                        break;
+                    default:
+                        code = OrchestrationPreparedScheduleTarget.ComputeNumber;
+                        OrchestrationRange range = argumentLists[instruction.Argument];
+                        argument = range.Offset;
+                        additional = range.Count;
+                        break;
+                }
+
+                instruction = new OrchestrationValueScheduleInstruction(code, instruction.Operation,
+                    (int)operation.Code, instruction.Destination, argument, instruction.Next, additional);
+            }
+        }
+
         static int[] BindScheduleTargets(Span<OrchestrationValueScheduleInstruction> instructions,
             int reuseOffset, int trueSlot, out int count)
         {
@@ -310,7 +363,8 @@ namespace BTSMTL.Orchestration
 
         static int[] BindScheduleInputs<TValue>(OrchestrationMemoryImageWriter writer,
             OrchestrationValueSchedule schedule, ReadOnlySpan<TValue> constants, ref OrchestrationProgramImageHeader header,
-            out OrchestrationValueScheduleInstruction[] boundInstructions)
+            out OrchestrationValueScheduleInstruction[] boundInstructions, out int[] boundSlots,
+            out OrchestrationRange[] boundLists)
             where TValue : unmanaged
         {
             const byte Product = 1;
@@ -440,8 +494,8 @@ namespace BTSMTL.Orchestration
                 }
             }
             boundInstructions = lowered.ToArray();
-            header.ScheduleArgumentSlots = writer.Add<int>(argumentSlots.ToArray());
-            header.ScheduleArgumentLists = writer.Add<OrchestrationRange>(argumentLists.ToArray());
+            boundSlots = argumentSlots.ToArray();
+            boundLists = argumentLists.ToArray();
             return productEntries;
 
             int BindArguments(int index)

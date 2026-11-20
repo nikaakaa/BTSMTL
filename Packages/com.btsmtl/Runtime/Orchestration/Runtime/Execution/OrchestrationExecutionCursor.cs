@@ -32,7 +32,6 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_ChildSelectionEntries;
         readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_SelectorAbortEntries;
         readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_BooleanEntries;
-        readonly ReadOnlySpan<OrchestrationValueOperation> m_ValueOperations;
         readonly ReadOnlySpan<int> m_StateContexts;
         readonly ReadOnlySpan<ushort> m_OperationIndices;
         readonly ReadOnlySpan<OrchestrationOperationStateIndices> m_OperationStateIndices;
@@ -122,7 +121,6 @@ namespace BTSMTL.Orchestration
             m_ChildSelectionEntries = schedule.ChildSelectionEntries;
             m_SelectorAbortEntries = schedule.SelectorAbortEntries;
             m_BooleanEntries = schedule.BooleanEntries;
-            m_ValueOperations = schedule.ValueOperations;
             m_StateContexts = schedule.StateContexts;
             OrchestrationProgramStorageView storage = program.ExecutionStorage;
             m_OperationIndices = storage.OperationIndices;
