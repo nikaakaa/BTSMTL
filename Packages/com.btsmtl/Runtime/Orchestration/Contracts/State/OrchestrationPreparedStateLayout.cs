@@ -188,6 +188,8 @@ namespace BTSMTL.Orchestration
             header.FramePools = writer.Add<OrchestrationFramePoolRange>(framePools);
             header.FrameSlots = writer.Add<OrchestrationFrameSlot>(frameSlots);
             header.CharacterAddresses = writer.Add<OrchestrationValueAddress>(characterAddresses);
+            bool singleFrame = frameSlots.Length == 1;
+            int singleFramePayloadStart = singleFrame ? frameSlots[0].Pool * payloadSegments.Count : 0;
             var records = new OrchestrationStateProgramRecord[programs.Length];
             for (int program = 0; program < programs.Length; program++)
             {
@@ -218,9 +220,15 @@ namespace BTSMTL.Orchestration
                     OrchestrationStateSegment segment = Segment(indices, OrchestrationStateSegmentRole.PrivateValues, kind);
                     OrchestrationValueAddress address = Address(in segment, kind,
                         segment.ValueKind == 0 ? value.ValueIndex : value.TypeIndex);
+                    int payload = indices[(int)OrchestrationStateSegmentRole.PrivateValues * KindCount + (int)kind].FramePayload;
+                    int offset = address.OffsetBytes - segment.OffsetBytes;
+                    if (singleFrame)
+                    {
+                        offset += framePayloads[singleFramePayloadStart + payload].OffsetBytes;
+                        payload = OrchestrationFrameValueAddress.FixedFrame;
+                    }
                     addresses[slot] = new OrchestrationFrameValueAddress(new OrchestrationValueAddress(
-                        address.Kind, address.OffsetBytes - segment.OffsetBytes, address.SizeBytes, address.BitIndex),
-                        indices[(int)OrchestrationStateSegmentRole.PrivateValues * KindCount + (int)kind].FramePayload);
+                        address.Kind, offset, address.SizeBytes, address.BitIndex), payload);
                 }
                 records[program] = new OrchestrationStateProgramRecord(prepared.SkillContentId,
                     writer.Add(storage.OperationIndices.Span), writer.Add(prepared.OperationStateIndices.Span),

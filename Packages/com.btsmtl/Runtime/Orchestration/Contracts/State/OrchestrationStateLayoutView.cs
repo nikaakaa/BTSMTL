@@ -129,6 +129,8 @@ namespace BTSMTL.Orchestration
 
     internal readonly struct OrchestrationFrameValueAddress
     {
+        internal const int FixedFrame = -1;
+
         internal OrchestrationFrameValueAddress(OrchestrationValueAddress address, int payloadIndex)
         {
             Address = address;
@@ -183,7 +185,8 @@ namespace BTSMTL.Orchestration
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal OrchestrationValueAddress Address(in OrchestrationFrameValueAddress value) =>
-                ResolveAddress(in value, in m_Payloads[value.PayloadIndex], m_FrameIndex);
+                value.PayloadIndex == OrchestrationFrameValueAddress.FixedFrame ? value.Address :
+                    ResolveAddress(in value, in m_Payloads[value.PayloadIndex], m_FrameIndex);
         }
 
         internal const int KindCount = (int)OrchestrationValueKind.SpatialIdentity + 1;
@@ -269,6 +272,8 @@ namespace BTSMTL.Orchestration
 
         internal OrchestrationValueAddress ResolveAddress(in OrchestrationFrameValueAddress value, int frame)
         {
+            if (value.PayloadIndex == OrchestrationFrameValueAddress.FixedFrame)
+                return value.Address;
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
             return ResolveAddress(in value, in Section<OrchestrationFramePayloadSegment>(header.FramePayloads)[

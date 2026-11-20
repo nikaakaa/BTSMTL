@@ -9,6 +9,7 @@ namespace BTSMTL.Orchestration
         int m_FrameSlot;
         OrchestrationStateLayoutView.BlackboardFrame m_CandidateBlackboard;
         readonly bool m_HasSource;
+        readonly bool m_HasSingleLocalFrame;
         readonly OrchestrationExecutionSource<TValue> m_Source;
         readonly int m_CandidateRootFrameSlot;
         readonly int m_CandidateProgramIndex;
@@ -24,6 +25,7 @@ namespace BTSMTL.Orchestration
             m_FrameSlot = frameSlot;
             m_CandidateBlackboard = frames.Plan.BindBlackboardFrame(frameSlot);
             m_HasSource = hasSource;
+            m_HasSingleLocalFrame = !hasSource && frames.Capacity == 1;
             m_Source = source;
             m_CandidateRootFrameSlot = frameSlot;
             m_CandidateProgramIndex = programIndex;
@@ -64,6 +66,10 @@ namespace BTSMTL.Orchestration
             metadataOffset = blackboard.MetadataOffset;
             return blackboard.Address(in m_CandidatePrivateAddresses[valueSlot]);
         }
+
+        internal int CandidateValueFrame(int ownerOperationIndex, bool actionInstance) =>
+            m_HasSingleLocalFrame ? m_FrameSlot : actionInstance
+                ? m_Frames.ActionFrame(m_FrameSlot) : m_Frames.OwnerFrame(m_FrameSlot, ownerOperationIndex);
 
         public void ReadValue<TStorage>(int valueSlot, int ownerOperationIndex,
             int characterSlot, bool actionInstance, ref TValue destination, ref TStorage storage)
@@ -201,7 +207,7 @@ namespace BTSMTL.Orchestration
         FrameAddress Owner(int ownerOperationIndex)
         {
             if (!m_HasSource)
-                return new FrameAddress(false, m_Frames.OwnerFrame(m_FrameSlot, ownerOperationIndex));
+                return new FrameAddress(false, CandidateValueFrame(ownerOperationIndex, false));
             int frame = m_FrameSlot;
             while (m_Frames.Header(frame).OwnerOperationIndex != ownerOperationIndex && frame != m_CandidateRootFrameSlot)
                 frame = m_Frames.Header(frame).ParentFrameIndex;

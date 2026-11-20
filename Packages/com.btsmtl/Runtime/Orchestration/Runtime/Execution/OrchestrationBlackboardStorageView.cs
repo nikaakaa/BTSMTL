@@ -111,21 +111,15 @@ namespace BTSMTL.Orchestration
             }
             else
             {
-                int frameSlot = ValueFrame(valueSlot);
+                ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
+                int frameSlot = m_Reader.CandidateValueFrame(slot.ExecutionFrameOwnerOperationIndex,
+                    slot.ScopeKind == OrchestrationScopeKind.ActionInstance);
                 m_Frames.TrackFrameWrite(frameSlot);
                 OrchestrationValueAddress address = m_Reader.CandidateBlackboardAddress(frameSlot, valueSlot,
                     out int metadataOffset, out int valueIndex);
                 storage.Write(m_Frames.Memory, in address, in value);
                 return ref m_Frames.ElementAt<OrchestrationBlackboardMetadata>(metadataOffset, valueIndex);
             }
-        }
-
-        int ValueFrame(int valueSlot)
-        {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_BlackboardSlots[valueSlot];
-            return slot.ScopeKind == OrchestrationScopeKind.ActionInstance
-                ? m_Frames.ActionFrame(m_FrameSlot)
-                : m_Frames.OwnerFrame(m_FrameSlot, slot.ExecutionFrameOwnerOperationIndex);
         }
 
         internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadBlackboardFrame(int valueSlot)
