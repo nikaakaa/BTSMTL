@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -48,19 +50,30 @@ namespace BTSMTL.Orchestration
 
         public static int SizeOf<T>() where T : unmanaged => sizeof(T);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlySpan<T> Section<T>(ReadOnlySpan<byte> image,
-            OrchestrationMemorySection section) where T : unmanaged =>
-            SpanReinterpret.Cast<byte, T>(image.Slice(section.OffsetBytes, section.Count * sizeof(T)));
+            OrchestrationMemorySection section) where T : unmanaged
+        {
+            ReadOnlySpan<byte> bytes = image.Slice(section.OffsetBytes, checked(section.Count * sizeof(T)));
+            return MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<byte, T>(ref Unsafe.AsRef(in MemoryMarshal.GetReference(bytes))), section.Count);
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Span<T> Section<T>(Span<byte> memory,
-            OrchestrationMemorySection section) where T : unmanaged =>
-            SpanReinterpret.Cast<byte, T>(memory.Slice(section.OffsetBytes, section.Count * sizeof(T)));
+            OrchestrationMemorySection section) where T : unmanaged
+        {
+            Span<byte> bytes = memory.Slice(section.OffsetBytes, checked(section.Count * sizeof(T)));
+            return MemoryMarshal.CreateSpan(ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(bytes)), section.Count);
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly THeader Header<THeader>(ReadOnlySpan<byte> image) where THeader : unmanaged =>
-            ref SpanReinterpret.Cast<byte, THeader>(image.Slice(0, sizeof(THeader)))[0];
+            ref Unsafe.As<byte, THeader>(ref Unsafe.AsRef(in MemoryMarshal.GetReference(image.Slice(0, sizeof(THeader)))));
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref THeader Header<THeader>(Span<byte> memory) where THeader : unmanaged =>
-            ref SpanReinterpret.Cast<byte, THeader>(memory.Slice(0, sizeof(THeader)))[0];
+            ref Unsafe.As<byte, THeader>(ref MemoryMarshal.GetReference(memory.Slice(0, sizeof(THeader))));
 
         internal static int Align(int value) => checked(value + Alignment - 1) & ~(Alignment - 1);
 

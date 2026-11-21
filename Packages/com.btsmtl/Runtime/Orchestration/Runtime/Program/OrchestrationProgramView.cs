@@ -69,24 +69,36 @@ namespace BTSMTL.Orchestration
         public int BooleanSlot => ValueSlotCount + InputBindingCount;
     }
 
-    // 推进只经此视图读取程序；视图只持有镜像字节，访问时按段表头切片。
     public readonly ref struct OrchestrationProgramView<TValue> where TValue : unmanaged
     {
         readonly ReadOnlySpan<byte> m_Memory;
+        readonly ReadOnlySpan<OrchestrationProgramImageHeader> m_Header;
         readonly ReadOnlySpan<OrchestrationOperation> m_Operations;
+        readonly ReadOnlySpan<OrchestrationFlowEdge> m_Edges;
+        readonly ReadOnlySpan<int> m_OutgoingOffsets;
+        readonly ReadOnlySpan<int> m_OutgoingEdgeIndexes;
+        readonly ReadOnlySpan<byte> m_Payloads;
+        readonly ReadOnlySpan<OrchestrationBlackboardOutputBinding> m_BlackboardOutputs;
 
         public OrchestrationProgramView(ReadOnlySpan<byte> image)
         {
             m_Memory = image;
-            ref readonly OrchestrationProgramImageHeader header =
-                ref OrchestrationMemoryImageWriter.Header<OrchestrationProgramImageHeader>(image);
+            m_Header = OrchestrationMemoryImageWriter.Section<OrchestrationProgramImageHeader>(image,
+                new OrchestrationMemorySection(0, 1));
+            ref readonly OrchestrationProgramImageHeader header = ref m_Header[0];
             m_Operations = OrchestrationMemoryImageWriter.Section<OrchestrationOperation>(image, header.Operations);
+            m_Edges = OrchestrationMemoryImageWriter.Section<OrchestrationFlowEdge>(image, header.Edges);
+            m_OutgoingOffsets = OrchestrationMemoryImageWriter.Section<int>(image, header.OutgoingOffsets);
+            m_OutgoingEdgeIndexes = OrchestrationMemoryImageWriter.Section<int>(image, header.OutgoingEdgeIndexes);
+            m_Payloads = OrchestrationMemoryImageWriter.Section<byte>(image, header.Payloads);
+            m_BlackboardOutputs = OrchestrationMemoryImageWriter.Section<OrchestrationBlackboardOutputBinding>(image,
+                header.BlackboardOutputs);
         }
 
         ref readonly OrchestrationProgramImageHeader Header
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref OrchestrationMemoryImageWriter.Header<OrchestrationProgramImageHeader>(m_Memory);
+            get => ref m_Header[0];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,7 +127,7 @@ namespace BTSMTL.Orchestration
             Section<OrchestrationValueSlotType>(in Header.ValueSlotTypes);
         public ReadOnlySpan<int> ValueKindSlotCounts => Section<int>(in Header.ValueKindSlotCounts);
         public ReadOnlySpan<OrchestrationOperation> Operations => m_Operations;
-        public ReadOnlySpan<OrchestrationFlowEdge> Edges => Section<OrchestrationFlowEdge>(in Header.Edges);
+        public ReadOnlySpan<OrchestrationFlowEdge> Edges => m_Edges;
 
         public int ValueEvaluationSlotCount =>
             Section<int>(in Header.ValueEvaluationOffsets)[Header.Operations.Count];
@@ -141,12 +153,12 @@ namespace BTSMTL.Orchestration
         public T Payload<T>(int operationIndex) where T : unmanaged =>
             Payload<T>(in Operation(operationIndex));
         internal T Payload<T>(in OrchestrationOperation operation) where T : unmanaged =>
-            SpanReinterpret.Read<T>(Section<byte>(in Header.Payloads).Slice(operation.ParameterOffset));
+            SpanReinterpret.Read<T>(m_Payloads.Slice(operation.ParameterOffset));
         public ref readonly OrchestrationValueOperation ValueOperation(int operationIndex, int outputPortIndex = -1) =>
             ref Section<OrchestrationValueOperation>(in Header.ScheduleValueOperations)[
                 ValueEvaluationSlot(operationIndex, outputPortIndex)];
         public ref readonly OrchestrationFlowEdge Edge(int edgeIndex) =>
-            ref Section<OrchestrationFlowEdge>(in Header.Edges)[edgeIndex];
+            ref m_Edges[edgeIndex];
         internal ReadOnlySpan<TValue> Constants => Section<TValue>(in Header.Constants);
         public ref readonly TValue Constant(int constantIndex) =>
             ref Constants[constantIndex];
@@ -164,8 +176,7 @@ namespace BTSMTL.Orchestration
                 Section<OrchestrationGraphParameter>(in Header.GraphParameters));
 
         public ReadOnlySpan<int> Outgoing(int operationIndex, OrchestrationFlowKind kind) =>
-            OrchestrationProgramStructure.Outgoing(Section<int>(in Header.OutgoingOffsets),
-                Section<int>(in Header.OutgoingEdgeIndexes), operationIndex, kind);
+            OrchestrationProgramStructure.Outgoing(m_OutgoingOffsets, m_OutgoingEdgeIndexes, operationIndex, kind);
 
         public ReadOnlySpan<OrchestrationValueInputBinding> Inputs(int operationIndex)
         {
@@ -179,12 +190,11 @@ namespace BTSMTL.Orchestration
             return Section<OrchestrationHookBinding>(in Header.Hooks).Slice(range.Offset, range.Count);
         }
 
-        public ReadOnlySpan<OrchestrationBlackboardOutputBinding> OutputAssignments(int operationIndex)
-        {
-            OrchestrationIndexRange range = Payload<OrchestrationExtensionPayload>(operationIndex).OutputAssignments;
-            return Section<OrchestrationBlackboardOutputBinding>(in Header.BlackboardOutputs)
-                .Slice(range.Offset, range.Count);
-        }
+        public ReadOnlySpan<OrchestrationBlackboardOutputBinding> OutputAssignments(int operationIndex) =>
+            OutputAssignments(Payload<OrchestrationExtensionPayload>(operationIndex).OutputAssignments);
+
+        internal ReadOnlySpan<OrchestrationBlackboardOutputBinding> OutputAssignments(OrchestrationIndexRange range) =>
+            m_BlackboardOutputs.Slice(range.Offset, range.Count);
 
         public int ScheduleValueSlotCount => Header.ScheduleValueSlotCount;
         public int ScheduleBooleanSlot => Header.ScheduleValueSlotCount + Header.ScheduleInputBindingCount;

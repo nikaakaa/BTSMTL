@@ -175,7 +175,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult ExecuteCoreLeaf(int operationIndex, in OrchestrationOperation operation)
         {
-            ushort extensionBinding = 0;
+            OrchestrationExtensionPayload extension = default;
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.StateRootCompleted:
@@ -199,8 +199,8 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.TimelineTime:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
-                    extensionBinding = m_Program.Payload<OrchestrationExtensionPayload>(in operation).BindingIndex;
-                    if (m_Host.ExecutionContract(extensionBinding).Kind != OrchestrationExtensionKind.Action)
+                    extension = m_Program.Payload<OrchestrationExtensionPayload>(in operation);
+                    if (m_Host.ExecutionContract(extension.BindingIndex).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
                     break;
             }
@@ -246,8 +246,8 @@ namespace BTSMTL.Orchestration
                         m_WorkloadObservation?.Count(operationIndex, OrchestrationWorkloadCounter.CandidateExtensions);
 #endif
                         OrchestrationOperationResult result = (OrchestrationOperationResult)InvokeCandidate(ref m_Host, ref m_Scratch.Header.Error,
-                            extensionBinding, in invocation);
-                        foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
+                            extension.BindingIndex, in invocation);
+                        foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(extension.OutputAssignments))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,
                                 in outputs[assignment.SourceOutputPortIndex]);
                         return result;
