@@ -745,10 +745,14 @@ export const authoringApi = {
       .then(draft => ({ ...draft, variables: array(readVariablesValue)(draft.variables, 'ScenarioDraft.variables') })),
   deleteSkill: (documentPath: string, request: { expectedRevision: string; editingView: AuthoringEditingView }) =>
     postJson<DocumentDeleteResult>(documentQueryPath(documentPath, 'delete'), request, undefined, [409]),
-  document: (documentPath: string, editingView: AuthoringEditingView, signal?: AbortSignal, graphId?: string) =>
+  document: (target: AuthoringTarget, editingView: AuthoringEditingView, signal?: AbortSignal, graphId?: string) =>
     postJson<Omit<AuthoringDocumentProjection, 'sources' | 'elements'> & { sources: unknown[]; elements: unknown }>(
-      documentQueryPath(documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
-      .then(document => ({ ...document, sources: document.sources.map(source => readAuthoringSnapshot(source)),
+      documentQueryPath(target.documentPath, 'document'), { offset: 0, limit: 128, editingView, graphId }, signal)
+      .then(document => ({ ...document,
+        graphs: target.kind === 'graph' ? document.graphs.map(graph =>
+          graph.id === document.programId && graph.contentDomain !== 'macro'
+            ? { ...graph, programRevision: document.sourceRevision } : graph) : document.graphs,
+        sources: document.sources.map(source => readAuthoringSnapshot(source)),
         elements: readWorkspaceDocumentElements(document.elements) })),
   save: async (target: AuthoringTarget, request: DocumentSaveRequest): Promise<DocumentSaveResult> => {
     const result = await postJson<unknown>(documentQueryPath(target.documentPath, 'apply'), request);

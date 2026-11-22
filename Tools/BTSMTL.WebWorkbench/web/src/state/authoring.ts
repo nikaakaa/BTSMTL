@@ -556,7 +556,7 @@ export function captureEditingView() {
 async function readDocument(target: AuthoringTarget, signal: AbortSignal) {
   const { editingView, isCurrentRequest } = captureEditingView();
   try {
-    const document = await authoringApi.document(target.documentPath, editingView, signal);
+    const document = await authoringApi.document(target, editingView, signal);
     signal.throwIfAborted();
     if (!isCurrentRequest()) return;
     const documents = { ...useAuthoring.getState().documents };
