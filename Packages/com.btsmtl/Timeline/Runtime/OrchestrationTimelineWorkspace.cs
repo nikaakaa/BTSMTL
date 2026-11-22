@@ -295,9 +295,12 @@ namespace BTSMTL.Timeline.Runtime
 
     internal readonly struct OrchestrationTimelineStoredInvocation<TTime> where TTime : unmanaged, IEquatable<TTime>
     {
-        readonly OrchestrationTimelineHook m_Hook;
-        readonly bool m_Marker;
-        readonly int m_ClipOrdinal;
+        const int ClipOrdinalShift = 3;
+        const uint MarkerFlag = 1u << 2;
+        const uint HookMask = MarkerFlag - 1;
+
+        // 每项片段或标记都有一条入口记录，int 字节长度的内容镜像已将序号限制在 29 位内。
+        readonly uint m_ClipAndFlags;
         readonly int m_Cycle;
         readonly TTime m_Time;
         readonly TTime m_PreviousTime;
@@ -305,10 +308,8 @@ namespace BTSMTL.Timeline.Runtime
         internal OrchestrationTimelineStoredInvocation(OrchestrationTimelineHook hook,
             int clipOrdinal, int cycle, bool marker, TTime time, TTime previousTime)
         {
-            m_Hook = hook;
-            m_ClipOrdinal = clipOrdinal;
+            m_ClipAndFlags = ((uint)clipOrdinal << ClipOrdinalShift) | (marker ? MarkerFlag : 0u) | (uint)hook;
             m_Cycle = cycle;
-            m_Marker = marker;
             m_Time = time;
             m_PreviousTime = previousTime;
         }
@@ -317,22 +318,25 @@ namespace BTSMTL.Timeline.Runtime
             int playbackSlot, in OrchestrationTimelineOperationWork<TTime> work)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
-            OrchestrationExecutionEntry entry = m_Marker
-                ? content.MarkerEntries[m_ClipOrdinal]
-                : content.ClipEntries[m_ClipOrdinal].Entry(m_Hook);
+            int clipOrdinal = (int)(m_ClipAndFlags >> ClipOrdinalShift);
+            bool marker = (m_ClipAndFlags & MarkerFlag) != 0;
+            var hook = (OrchestrationTimelineHook)(m_ClipAndFlags & HookMask);
+            OrchestrationExecutionEntry entry = marker
+                ? content.MarkerEntries[clipOrdinal]
+                : content.ClipEntries[clipOrdinal].Entry(hook);
             TClock clock = default;
-            TTime windowStartTime = work.Stop ? clock.Zero : m_Marker
-                ? m_Time : content.Clips[m_ClipOrdinal].Start;
+            TTime windowStartTime = work.Stop ? clock.Zero : marker
+                ? m_Time : content.Clips[clipOrdinal].Start;
             TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
                 work.PreviousTime, work.RequestedAdvance, work.PreviousCycle,
                 content.Duration, m_PreviousTime, m_Cycle);
             TTime endFraction = work.Stop ? clock.Zero :
-                clock.IsZero(work.RequestedAdvance) && m_Hook == OrchestrationTimelineHook.Root
+                clock.IsZero(work.RequestedAdvance) && hook == OrchestrationTimelineHook.Root
                     ? clock.One : TimelineRuntimeScheduling<TTime, TClock>.Fraction(work.PreviousTime,
                         work.RequestedAdvance, work.PreviousCycle, content.Duration, m_Time, m_Cycle);
             return new(new OrchestrationTimelineInvocationToken(playbackSlot, work.Proposed.InvocationSequence,
-                    work.Proposed.Start.PlaybackIdentity, m_ClipOrdinal, m_Cycle, m_Marker),
-                entry, m_Hook, work.Tick, work.SourceIdentityId,
+                    work.Proposed.Start.PlaybackIdentity, clipOrdinal, m_Cycle, marker),
+                entry, hook, work.Tick, work.SourceIdentityId,
                 m_Time, m_PreviousTime, windowStartTime, startFraction, endFraction);
         }
     }
