@@ -56,7 +56,7 @@ namespace BTSMTL.Orchestration
         {
             ReadOnlySpan<byte> bytes = image.Slice(section.OffsetBytes, checked(section.Count * sizeof(T)));
             return MemoryMarshal.CreateReadOnlySpan(
-                ref Unsafe.As<byte, T>(ref Unsafe.AsRef(in MemoryMarshal.GetReference(bytes))), section.Count);
+                ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(bytes)), section.Count);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -69,7 +69,7 @@ namespace BTSMTL.Orchestration
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly THeader Header<THeader>(ReadOnlySpan<byte> image) where THeader : unmanaged =>
-            ref Unsafe.As<byte, THeader>(ref Unsafe.AsRef(in MemoryMarshal.GetReference(image.Slice(0, sizeof(THeader)))));
+            ref Unsafe.As<byte, THeader>(ref MemoryMarshal.GetReference(image.Slice(0, sizeof(THeader))));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref THeader Header<THeader>(Span<byte> memory) where THeader : unmanaged =>
