@@ -7,7 +7,7 @@ import {
 } from '../api/playerRecords';
 import { archive } from './archive';
 import {
-  connectionActions, consoleActions, contentActions, getState, isCurrent, runActions, selectedScene, useWorkbench,
+  connectionActions, consoleActions, contentActions, getState, isCurrent, runActions, selectedPreviewScene, selectedScene, useWorkbench,
 } from './store';
 import { transport } from './transport';
 
@@ -48,7 +48,7 @@ function selectedStart(modeId = getState().previewMode) {
   if (!state.playerViewport) return { kind: 'unavailable', reason: '打开画面面板以确定本次画面尺寸' } as const;
   if (state.contentSelection?.kind === 'timeline')
     return { kind: 'unavailable', reason: '独立 Timeline 请通过画面面板载入预览' } as const;
-  const scene = selectedScene(state);
+  const scene = selectedPreviewScene(state);
   if (!scene) return { kind: 'unavailable', reason: '先选择内容' } as const;
   const selectedInput = state.inputSource;
   if (selectedInput === null) return { kind: 'unavailable', reason: '先选择输入来源' } as const;

@@ -3,7 +3,7 @@ import { openViewer, playerApi, sendViewerCommand } from '../api/player';
 import { samePreviewLoad, type PlayerPreviewContent, type PreviewSampleSource } from '../api/playerRecords';
 import type { CameraCommand, HostLiveCommand, InputCommand, LiveCommand, LiveCommandResult, PlayerAck, PlayerPick, StartLivePlayerRequest, VideoFrame, ViewerLive, ViewerMessage } from '../api/types';
 import { releaseSurface, shareSurface, sharedSurfaceAvailable } from '../shell/sharedSurface';
-import { consoleActions, getState, initialPlayerTarget, selectedScene, useWorkbench } from './store';
+import { consoleActions, getState, initialPlayerTarget, selectedPreviewScene, useWorkbench } from './store';
 import { transport } from './transport';
 
 // 播放器服务（D12）：画面 WebSocket、命令与回执由这里持有，随“载入／停止播放器”开关；
@@ -422,7 +422,7 @@ export function sceneLoadContent(scene: { path: string; revision: string }): Pla
 let autoPlay: string | null = null;
 
 function loadDefault(state: ReturnType<typeof getState>) {
-  const live = state.live, scene = selectedScene(state);
+  const live = state.live, scene = selectedPreviewScene(state);
   if (state.runId !== null || state.previewMode !== 'real' || !state.viewerOpen || live === null || scene === undefined ||
     live.hello === null || live.identity.liveProtocol !== 'btsmtl.preview-live/1' || requestedLoad !== null) return;
   const source = live.player?.source;
@@ -443,8 +443,10 @@ function loadDefault(state: ReturnType<typeof getState>) {
 }
 
 useWorkbench.subscribe((state, previous) => {
+  if (state.scenePreview !== previous.scenePreview) autoLoaded.clear();
   if (state.live !== previous.live || state.viewerOpen !== previous.viewerOpen || state.contentSelection !== previous.contentSelection ||
-    state.sources !== previous.sources || state.runId !== previous.runId || state.previewMode !== previous.previewMode) loadDefault(state);
+    state.sources !== previous.sources || state.runId !== previous.runId || state.previewMode !== previous.previewMode ||
+    state.scenePreview !== previous.scenePreview) loadDefault(state);
 });
 
 useWorkbench.subscribe((state, previous) => {

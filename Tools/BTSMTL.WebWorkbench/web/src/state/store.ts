@@ -3,7 +3,7 @@ import { ApiError, isAbort } from '../api/http';
 import type {
   ArchiveLogicRecord, ArchivePresentationRecord, AuthorTimeline, Availability, ExecutionCall, Frame, FrozenInputTimeline, HostDescription, ImageSourceAvailability,
   InputCatalog, InputTimeline, LiveCommandResult, LivePlayer, PlayerBuild, PlayerInputChoice, RouteFrame,
-  Sources, ViewerLive,
+  SourceFile, Sources, ViewerLive,
 } from '../api/types';
 import type { AuthoringGraph } from '../api/authoring';
 import type { RouteLanes } from '../api/previewQuickRecords';
@@ -30,6 +30,7 @@ export interface ContentSlice {
   sources: Sources | null;
   previewMode: PlayerPreviewMode | null;
   contentSelection: ContentSelection | null;
+  scenePreview: { baseScene: SourceFile; scene: SourceFile } | null;
   inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
   // 本地输入方案的录制上限，字段名与含义由宿主 inputLimit 声明。
   localInputLimit: number | null;
@@ -65,6 +66,10 @@ export type PreviewContentChoice = ReturnType<typeof previewContentChoices>[numb
 export function selectedScene(state: Pick<ContentSlice, 'sources' | 'contentSelection'>) {
   const selection = state.contentSelection;
   return selection?.kind === 'scene' ? state.sources?.scenes.find(scene => scene.path === selection.path) : undefined;
+}
+
+export function selectedPreviewScene(state: Pick<ContentSlice, 'sources' | 'contentSelection' | 'scenePreview'>) {
+  return state.scenePreview?.scene ?? selectedScene(state);
 }
 
 // ── run ──
@@ -245,7 +250,8 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, previewMode: null, contentSelection: null, inputSource: { kind: 'local' }, localInputLimit: null, inputCatalog: null,
+  sources: null, previewMode: null, contentSelection: null, scenePreview: null,
+  inputSource: { kind: 'local' }, localInputLimit: null, inputCatalog: null,
   inputCatalogReading: false, inputCatalogFailure: null, inputChoices: [],
   quickPreview: { target: null, description: { kind: 'idle' }, scheme: null, job: { kind: 'idle' }, accepted: null, route: null, seconds: 0, playback: null,
     picture: { frame: null, request: { kind: 'idle' } }, outputDirectory: '', documents: [] },
@@ -319,11 +325,19 @@ export const contentActions = {
     const contentSelection = state.contentSelection ?? (sources.scenes.length ? { kind: 'scene', path: sources.scenes[0].path } as const : null);
     const before = selectedScene(state)?.revision;
     const after = selectedScene({ sources, contentSelection })?.revision;
-    set({ sources, contentSelection, ...(before === after ? {} : { inputCatalog: null, inputCatalogFailure: null, inputChoices: [] }) });
+    set({ sources, contentSelection, ...(before === after ? {} : {
+      scenePreview: null, inputCatalog: null, inputCatalogFailure: null, inputChoices: [],
+    }) });
   },
   selectContent(contentSelection: ContentSelection | null) {
     if (contentSelectionKey(getState().contentSelection) === contentSelectionKey(contentSelection)) return;
-    set({ contentSelection, inputCatalog: null, inputCatalogFailure: null, inputChoices: [] });
+    set({ contentSelection, scenePreview: null, inputCatalog: null, inputCatalogFailure: null, inputChoices: [] });
+  },
+  applyScenePreview(scenePreview: ContentSlice['scenePreview']) {
+    const base = selectedScene(getState());
+    if (scenePreview !== null && (base?.path !== scenePreview.baseScene.path || base.revision !== scenePreview.baseScene.revision))
+      throw new Error('场景选择或发布修订已变化，请重新应用。');
+    set({ scenePreview });
   },
   selectInputSource(inputSource: ContentSlice['inputSource']) {
     set({ inputSource });

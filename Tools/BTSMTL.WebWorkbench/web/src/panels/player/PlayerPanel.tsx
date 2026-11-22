@@ -13,7 +13,7 @@ import { authoringDocument, useAuthoring, useDocumentObservationNotice } from '.
 import { session } from '../../state/session';
 import { quickJobCancellable, quickJobFailure, quickJobProgress, quickPictureCurrent, quickPreview, quickSurface, type QuickPreviewState } from '../../state/quickPreview';
 import { openPanel } from '../../shell/layout';
-import { consoleActions, getState, selectedScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
+import { consoleActions, getState, selectedPreviewScene, selectionActions, useWorkbench, type ArchiveFrame, type ArchiveImage } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, type MenuEntry } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
@@ -162,7 +162,8 @@ function PlayerView() {
   const documentNotice = useDocumentObservationNotice();
   const state = useWorkbench(useShallow(current => ({
     builds: current.playerBuilds, lives: current.lives, liveId: current.liveId, live: current.live, viewerOpen: current.viewerOpen,
-    runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection, sources: current.sources, selection: current.selection,
+    runId: current.runId, archiveImage: current.archiveImage, contentSelection: current.contentSelection,
+    scenePreview: current.scenePreview, sources: current.sources, selection: current.selection,
   })));
   const startBlocked = useWorkbench(() => session.canStartNewRun());
   const reviewingArchive = state.runId !== null;
@@ -192,7 +193,7 @@ function PlayerView() {
     return playerService.watch();
   }, [visible, reviewingArchive]);
 
-  const scene = selectedScene(state);
+  const scene = selectedPreviewScene(state);
   const contentSelection = state.contentSelection;
   const timeline = contentSelection?.kind === 'timeline'
     ? state.sources?.timelines.find(item => item.content.package === contentSelection.package) : undefined;

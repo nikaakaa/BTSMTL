@@ -8,7 +8,8 @@ export {
 } from './api/playerRecords';
 export type { HostLiveCommand, PlayerAck, ViewerPlayer } from './api/types';
 export { playerService } from './state/player';
-export { consoleActions, getState, useWorkbench } from './state/store';
+export { consoleActions, contentActions, getState, selectedScene, selectionActions, useWorkbench } from './state/store';
+export { session } from './state/session';
 export { Empty, Facts, Fold, PanelBar } from './ui/blocks';
 export { Button, Checkbox, FieldLabel, Select, TextInput, Tip } from './ui/controls';
 export { ErrorLine } from './ui/ErrorLine';
