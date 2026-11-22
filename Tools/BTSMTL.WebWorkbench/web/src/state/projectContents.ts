@@ -128,8 +128,6 @@ export function projectContents(documents: AuthoringState['documents']) {
     }
   }
   for (const [key, item] of items) {
-    const independentGraph = documents[item.owner].kind === 'graph';
-    if (!independentGraph && (uses.get(key)?.length ?? 0) > 1) item.ownership = 'Shared';
     if (item.kind === 'graph' && 'role' in item && !hostNamed.has(key)) {
       const references = uses.get(key) ?? [];
       const names = [...new Set(references.map(reference => reference.label.split(' / ').slice(1, -1).join(' / ')).filter(Boolean))];
@@ -145,7 +143,10 @@ export function projectContents(documents: AuthoringState['documents']) {
     if (path.has(key)) return node;
     assigned.add(key);
     const next = new Set([...path, key]);
-    const childItems = (sourceKey: string) => (children.get(sourceKey) ?? []).filter(key => items.get(key)!.ownership !== 'Shared').map(key => build(key, next));
+    const childItems = (sourceKey: string) => (children.get(sourceKey) ?? []).filter(key => {
+      const child = items.get(key)!;
+      return child.owner === item.owner && child.ownership !== 'Shared' && uses.get(key)?.length === 1;
+    }).map(key => build(key, next));
     node.children.push(...childItems(key));
     if (item.kind === 'graph') {
       const data = values.get(key)!;

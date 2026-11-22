@@ -3,7 +3,6 @@ import { executionScopeDomain } from '../api/resourceRegistration';
 import type { DocumentType, WorkspaceDocumentInfo } from '../api/workspaceDocuments';
 import type { ContentNode } from './projectContents';
 
-// Project 树：平时只有作者内容一个根；为引用字段挑选候选时再列出引擎资源与角色映射。文件夹没有 entry，叶子与可展开的对象带 entry。
 export type ProjectEntry =
   | { kind: 'document'; document: WorkspaceDocumentInfo }
   | { kind: 'content'; node: ContentNode }
@@ -24,6 +23,9 @@ const colors = {
   folder: 'var(--text-disabled)', timeline: 'var(--track-anim)', graph: 'var(--node-flow)',
   curve: 'var(--track-motion)', profile: 'var(--node-cmp)', resource: 'var(--node-anim)', mapping: 'var(--node-cam)',
 };
+
+export const projectGraphKey = 'authoring:graphs';
+export const projectResourceKey = 'authoring:resources';
 
 export const catalogEntryKey = (item: Pick<AdapterCatalogItem, 'value' | 'context'>) => JSON.stringify([item.value, item.context]);
 const isFilePath = (value: string) => /^(Assets|Packages)\//.test(value);
@@ -50,21 +52,31 @@ function byDomain(documents: WorkspaceDocumentInfo[], location: string, color: s
       items.map(document => documentNode(document, opened.get(document.documentPath), `${location}/${domain}`, color)), `${items.length}`));
 }
 
-// 平时只列编排文档；Profile 只在为引用字段挑选候选时列出。
-export function authoringRoot(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[], types: readonly DocumentType[], picking: boolean): ProjectNode {
+export function authoringRoots(directory: readonly WorkspaceDocumentInfo[], contents: readonly ContentNode[], types: readonly DocumentType[]): ProjectNode[] {
   const opened = new Map(contents.flatMap(root => root.target?.kind === 'item' ? [[root.target.item.owner, root] as const] : []));
-  const sorted = (kind: WorkspaceDocumentInfo['kind']) => directory.filter(document => document.kind === kind)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const group = (kind: WorkspaceDocumentInfo['kind'], label: string, color: string, split: boolean) => {
-    const documents = sorted(kind);
-    const location = `作者内容/${label}`;
-    return folder(location, label, '作者内容', split ? byDomain(documents, location, color, opened)
-      : documents.map(document => documentNode(document, opened.get(document.documentPath), location, color)), `${documents.length}`);
-  };
-  return folder('作者内容', '作者内容', '', types.filter(type => type.id !== 'variables' && type.id !== 'scenario' && (picking || type.id !== 'profile'))
-    .map(type => group(type.id, type.displayName, type.id === 'timeline' ? colors.timeline
-      : type.id === 'curve' ? colors.curve : type.id === 'profile' ? colors.profile : colors.graph,
-      type.id === 'curve' || type.id === 'profile')));
+  const byKind = new Map<WorkspaceDocumentInfo['kind'], WorkspaceDocumentInfo[]>();
+  for (const document of directory) {
+    const group = byKind.get(document.kind);
+    if (group === undefined) byKind.set(document.kind, [document]);
+    else group.push(document);
+  }
+  const sorted = (kind: WorkspaceDocumentInfo['kind']) => (byKind.get(kind) ?? []).sort((a, b) => a.name.localeCompare(b.name));
+  const graphs = sorted('graph').map(document => documentNode(document, opened.get(document.documentPath), '图', colors.graph));
+  const resources: ProjectNode[] = [];
+  for (const { id, displayName } of types) {
+    if (id === 'graph' || id === 'variables' || id === 'scenario') continue;
+    const documents = sorted(id);
+    if (documents.length === 0) continue;
+    const location = `资源/${displayName}`;
+    const color = id === 'timeline' ? colors.timeline : id === 'curve' ? colors.curve : id === 'profile' ? colors.profile : colors.resource;
+    const children = id === 'curve' || id === 'profile' ? byDomain(documents, location, color, opened)
+      : documents.map(document => documentNode(document, opened.get(document.documentPath), location, color));
+    resources.push(folder(`${projectResourceKey}/${id}`, displayName, '资源', children, `${documents.length}`));
+  }
+  return [
+    folder(projectGraphKey, '图', '', graphs),
+    folder(projectResourceKey, '资源', '', resources),
+  ];
 }
 
 // 同名资源（如多个 ActorDefinition）补上能区分它们的最短上级目录。

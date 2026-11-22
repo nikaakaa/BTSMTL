@@ -7,7 +7,7 @@ import { adapterCatalogCache, useAdapterCatalog } from '../../state/adapterCatal
 import { authoringActions, useAuthoring, useAuthoringElements } from '../../state/authoring';
 import { projectActions } from '../../state/project';
 import { projectContents } from '../../state/projectContents';
-import { authoringRoot, catalogEntryKey, catalogRoots, flatten, type ProjectNode } from '../../state/projectTree';
+import { authoringRoots, catalogEntryKey, catalogRoots, flatten, projectGraphKey, projectResourceKey, type ProjectNode } from '../../state/projectTree';
 import { documentElementChoice, referenceChoiceKey, referenceValueKey, resourceReferenceChoice, useReferenceSelection, writeReferenceDrag, type ReferenceDragChoice } from '../../state/referenceSelection';
 import { consoleActions, selectionActions } from '../../state/store';
 import { usePanelApi } from '../../shell/panel';
@@ -50,8 +50,8 @@ export function ProjectPanel() {
   const picking = browsing && field !== null && field.domain !== null ? field : null;
 
   const contents = useMemo(() => projectContents(documents).tree, [documents]);
-  const author_ = useMemo(() => authoringRoot(directory ?? [], contents, documentTypes, picking !== null),
-    [directory, contents, documentTypes, picking !== null]);
+  const authoring = useMemo(() => authoringRoots(directory ?? [], contents, documentTypes),
+    [directory, contents, documentTypes]);
   const documentReferences = useMemo(() => {
     const references = new Map<string, { kind: string; choice: ReferenceDragChoice }>();
     for (const element of elementCatalog.items) {
@@ -82,8 +82,8 @@ export function ProjectPanel() {
   };
   const engine = useMemo(() => catalog.kind === 'ready' ? catalogRoots(catalog.snapshot.domains) : null, [catalog]);
   const roots = useMemo(() => {
-    if (picking === null) return [author_];
-    const all = [author_, ...engine ? [engine.files, engine.mappings] : []];
+    if (picking === null) return authoring;
+    const all = [...authoring, ...engine ? [engine.files, engine.mappings] : []];
     const keep = (node: ProjectNode): ProjectNode | null => {
       const reference = referenceOf(node, picking.domain);
       if (reference?.kind === picking.domain) return { ...node, children: [] };
@@ -91,7 +91,7 @@ export function ProjectPanel() {
       return children.length ? { ...node, entry: null, children } : null;
     };
     return all.map(keep).filter((node): node is ProjectNode => node !== null);
-  }, [author_, engine, picking?.domain, documentReferences]);
+  }, [authoring, engine, picking?.domain, documentReferences]);
   const nodes = useMemo(() => flatten(roots), [roots]);
   const parents = useMemo(() => {
     const map = new Map<string, string>();
@@ -100,9 +100,9 @@ export function ProjectPanel() {
     return map;
   }, [roots]);
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['作者内容']));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([projectGraphKey, projectResourceKey]));
   const [selected, setSelected] = useState<string | null>(null);
-  const [current, setCurrent] = useState('作者内容');
+  const [current, setCurrent] = useState(projectGraphKey);
   const [search, setSearch] = useState('');
   const [files, setFiles] = useState(false);
   const [resourceLocation, setResourceLocation] = useState<ProjectResourceLocation | null>(null);
@@ -239,9 +239,9 @@ export function ProjectPanel() {
 
   return <div ref={root} className={styles.root}>
     <PanelBar>
-      <TextInput aria-label="搜索 Project" placeholder="搜索文档、图、Timeline、资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
+      <TextInput aria-label="搜索 Project" placeholder="搜索图和资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
       <MenuButton label="新建" caret entries={[
-        { label: '作者文档', onSelect: () => create('document') },
+        { label: '图或资源', onSelect: () => create('document') },
         { kind: 'separator' },
         { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
         { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
