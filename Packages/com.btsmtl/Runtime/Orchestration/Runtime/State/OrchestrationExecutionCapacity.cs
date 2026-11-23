@@ -170,6 +170,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
             ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> storages,
             ReadOnlySpan<OrchestrationRootAdmission> admissions,
+            ReadOnlySpan<OrchestrationRootAdmission> frameAdmissions,
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) where TValue : unmanaged
         {
             var callMap = new Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity>();
@@ -183,7 +184,7 @@ namespace BTSMTL.Orchestration
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
             var sourceDepths = new int[programs.Length];
             var framePools = new List<FramePoolBuilder>();
-            var ownerAdmissions = new List<PreparedOwnerAdmission>();
+            var ownerAdmissions = new List<OwnerAdmission>();
             var ownerPools = new ReadOnlyMemory<int>[programs.Length];
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
@@ -226,24 +227,18 @@ namespace BTSMTL.Orchestration
                 }
                 ownerPools[programIndex] = poolIndices;
             }
-            var poolMap = new int[framePools.Count];
-            for (int pool = 0; pool < poolMap.Length; pool++)
-                poolMap[pool] = pool;
             int playbackCount = 0;
             foreach (ref readonly OrchestrationRootAdmission admission in admissions)
             {
                 if (admission.MaximumInstances == 0)
                     continue;
                 int playbacks = 0;
-                var admissionPools = new List<FramePoolBuilder>();
                 var admissionOwners = new Dictionary<(int Program, int Owner), int>();
                 var admissionRoots = new OwnerCount[admission.Alternatives.Length][];
-                var admissionFrames = new FrameUsage[admission.Alternatives.Length];
                 int rootIndex = 0;
                 foreach (ref readonly OrchestrationRootAlternative alternative in admission.Alternatives.Span)
                 {
                     int alternativePlaybacks = 0;
-                    var alternativeFrames = new List<FrameUsage>();
                     var alternativeOwners = new Dictionary<(int Program, int Owner), int>();
                     foreach (ref readonly OrchestrationOccurrenceCapacity root in alternative.Occurrences.Span)
                     {
@@ -268,8 +263,6 @@ namespace BTSMTL.Orchestration
                         }
                         alternativePlaybacks = checked(alternativePlaybacks +
                             checked(capacity.Playbacks * root.MaximumInstances));
-                        alternativeFrames.Add(new FrameGroup(new[] { capacity.Frames },
-                            FrameComposition.Together, root.MaximumInstances));
                         foreach (OwnerCount element in capacity.Elements)
                         {
                             sourceDepths[element.Program] = Math.Max(sourceDepths[element.Program], capacity.Depth);
@@ -286,41 +279,70 @@ namespace BTSMTL.Orchestration
                         admissionOwners.TryGetValue(item.Key, out int previous);
                         admissionOwners[item.Key] = Math.Max(previous, item.Value);
                     }
-                    var liveFrames = new FrameGroup(alternativeFrames.ToArray(), FrameComposition.Together, 1);
-                    admissionRoots[rootIndex] = alternativeElements;
-                    admissionFrames[rootIndex++] = liveFrames;
+                    admissionRoots[rootIndex++] = alternativeElements;
                     playbacks = Math.Max(playbacks, alternativePlaybacks);
-                    for (int pool = 0; pool < framePools.Count; pool++)
-                        Pool(admissionPools, pool).MergeMaximum(framePools[pool],
-                            liveFrames.Count(ownerPools, poolMap, pool, pool));
                 }
                 foreach (var item in admissionOwners)
                     ownerInstanceBuffers[item.Key.Program][item.Key.Owner] = checked(
                         ownerInstanceBuffers[item.Key.Program][item.Key.Owner] +
                         checked(admission.MaximumInstances * item.Value));
-                for (int depth = 0; depth < admissionPools.Count; depth++)
-                    Pool(framePools, depth).AddAdmission(admissionPools[depth], admission.MaximumInstances);
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
-                ownerAdmissions.Add(new PreparedOwnerAdmission(
-                    new OwnerAdmission(admissionRoots, admission.MaximumInstances), admissionFrames));
+                ownerAdmissions.Add(new OwnerAdmission(admissionRoots, admission.MaximumInstances));
             }
-            MergeFramePools(framePools, ownerPools, poolMap, ownerAdmissions);
-            var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
-            for (int depth = 0; depth < pools.Length; depth++)
-                pools[depth] = framePools[depth].Build();
-            var budgets = new OwnerAdmission[ownerAdmissions.Count];
-            for (int index = 0; index < budgets.Length; index++)
-                budgets[index] = ownerAdmissions[index].Budget;
-            var state = new OrchestrationExecutionStateCapacity(pools, ownerPools);
+            OrchestrationExecutionStateCapacity state = PrepareFrameState(framePools, ownerPools, frameAdmissions, roots);
             var rootElements = new Dictionary<(int Program, int Owner), OwnerCount[]>(roots.Count);
             foreach (var root in roots)
                 rootElements.Add(root.Key, root.Value.Elements);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths,
-                budgets, rootElements);
+                ownerAdmissions.ToArray(), rootElements);
+        }
+
+        static OrchestrationExecutionStateCapacity PrepareFrameState(List<FramePoolBuilder> framePools,
+            ReadOnlyMemory<int>[] ownerPools, ReadOnlySpan<OrchestrationRootAdmission> admissions,
+            IReadOnlyDictionary<(int Program, int Owner),
+                (int Playbacks, int Depth, FrameUsage Frames, OwnerCount[] Elements)> roots)
+        {
+            var poolMap = new int[framePools.Count];
+            for (int pool = 0; pool < poolMap.Length; pool++)
+                poolMap[pool] = pool;
+            var frameAdmissions = new List<FrameAdmission>();
+            foreach (ref readonly OrchestrationRootAdmission admission in admissions)
+            {
+                if (admission.MaximumInstances == 0)
+                    continue;
+                var admissionPools = new List<FramePoolBuilder>();
+                var admissionFrames = new FrameUsage[admission.Alternatives.Length];
+                int alternativeIndex = 0;
+                foreach (ref readonly OrchestrationRootAlternative alternative in admission.Alternatives.Span)
+                {
+                    var alternativeFrames = new List<FrameUsage>();
+                    foreach (ref readonly OrchestrationOccurrenceCapacity root in alternative.Occurrences.Span)
+                    {
+                        if (root.MaximumInstances == 0)
+                            continue;
+                        FrameUsage frames = roots[(root.ProgramIndex, root.OwnerOperationIndex)].Frames;
+                        alternativeFrames.Add(new FrameGroup(new[] { frames },
+                            FrameComposition.Together, root.MaximumInstances));
+                    }
+                    var liveFrames = new FrameGroup(alternativeFrames.ToArray(), FrameComposition.Together, 1);
+                    admissionFrames[alternativeIndex++] = liveFrames;
+                    for (int pool = 0; pool < framePools.Count; pool++)
+                        Pool(admissionPools, pool).MergeMaximum(framePools[pool],
+                            liveFrames.Count(ownerPools, poolMap, pool, pool));
+                }
+                for (int pool = 0; pool < admissionPools.Count; pool++)
+                    framePools[pool].AddAdmission(admissionPools[pool], admission.MaximumInstances);
+                frameAdmissions.Add(new FrameAdmission(admissionFrames, admission.MaximumInstances));
+            }
+            MergeFramePools(framePools, ownerPools, poolMap, frameAdmissions);
+            var pools = new OrchestrationExecutionFramePoolCapacity[framePools.Count];
+            for (int pool = 0; pool < pools.Length; pool++)
+                pools[pool] = framePools[pool].Build();
+            return new OrchestrationExecutionStateCapacity(pools, ownerPools);
         }
 
         static void MergeFramePools(List<FramePoolBuilder> pools,
-            ReadOnlyMemory<int>[] ownerPools, int[] poolMap, List<PreparedOwnerAdmission> admissions)
+            ReadOnlyMemory<int>[] ownerPools, int[] poolMap, List<FrameAdmission> admissions)
         {
             bool merged;
             do
@@ -330,12 +352,12 @@ namespace BTSMTL.Orchestration
                     for (int second = first + 1; second < pools.Count; second++)
                     {
                         int frameCount = 0;
-                        foreach (PreparedOwnerAdmission admission in admissions)
+                        foreach (FrameAdmission admission in admissions)
                         {
                             int maximum = 0;
                             foreach (FrameUsage root in admission.LiveFrames)
                                 maximum = Math.Max(maximum, root.Count(ownerPools, poolMap, first, second));
-                            frameCount = checked(frameCount + checked(maximum * admission.Budget.Instances));
+                            frameCount = checked(frameCount + checked(maximum * admission.Instances));
                         }
                         if (!pools[first].CanMerge(pools[second], frameCount))
                             continue;
@@ -451,16 +473,16 @@ namespace BTSMTL.Orchestration
             return new FrameGroup(children.ToArray(), FrameComposition.Together, 1);
         }
 
-        readonly struct PreparedOwnerAdmission
+        readonly struct FrameAdmission
         {
-            internal PreparedOwnerAdmission(OwnerAdmission budget, FrameUsage[] liveFrames)
+            internal FrameAdmission(FrameUsage[] liveFrames, int instances)
             {
-                Budget = budget;
                 LiveFrames = liveFrames;
+                Instances = instances;
             }
 
-            internal readonly OwnerAdmission Budget;
             internal readonly FrameUsage[] LiveFrames;
+            internal readonly int Instances;
         }
 
         enum FrameComposition { Together, Exclusive }
