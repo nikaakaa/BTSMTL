@@ -7,7 +7,7 @@ namespace BTSMTL.Orchestration
     {
         readonly ReadOnlyOrchestrationExecutionFrames<TValue> m_Frames;
         int m_FrameSlot;
-        OrchestrationStateLayoutView.BlackboardFrame m_CandidateBlackboard;
+        OrchestrationStateLayoutView.FramePayload m_CandidateBlackboard;
         readonly bool m_HasSource;
         readonly bool m_HasSingleLocalFrame;
         readonly OrchestrationExecutionSource<TValue> m_Source;
@@ -19,11 +19,12 @@ namespace BTSMTL.Orchestration
         readonly ReadOnlySpan<OrchestrationFrameValueAddress> m_SourcePrivateAddresses;
 
         internal OrchestrationExecutionSourceReader(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
-            int frameSlot, int programIndex, bool hasSource, OrchestrationExecutionSource<TValue> source)
+            int frameSlot, int programIndex, OrchestrationStateLayoutView.FramePayload payload,
+            bool hasSource, OrchestrationExecutionSource<TValue> source)
         {
             m_Frames = frames;
             m_FrameSlot = frameSlot;
-            m_CandidateBlackboard = frames.Plan.BindBlackboardFrame(frameSlot);
+            m_CandidateBlackboard = payload;
             m_HasSource = hasSource;
             m_HasSingleLocalFrame = !hasSource && frames.Capacity == 1;
             m_Source = source;
@@ -44,19 +45,19 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        internal void SelectFrame(int frameSlot)
+        internal void SelectFrame(int frameSlot, OrchestrationStateLayoutView.FramePayload payload)
         {
             m_FrameSlot = frameSlot;
-            m_CandidateBlackboard = m_Frames.Plan.BindBlackboardFrame(frameSlot);
+            m_CandidateBlackboard = payload;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        OrchestrationStateLayoutView.BlackboardFrame CandidateBlackboard(int frameSlot) =>
-            frameSlot == m_FrameSlot ? m_CandidateBlackboard : m_Frames.Plan.BindBlackboardFrame(frameSlot);
+        OrchestrationStateLayoutView.FramePayload CandidateBlackboard(int frameSlot) =>
+            frameSlot == m_FrameSlot ? m_CandidateBlackboard : m_Frames.Plan.BindFramePayload(frameSlot);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        OrchestrationStateLayoutView.BlackboardFrame Blackboard(FrameAddress owner) =>
-            owner.Source ? m_Source.Frames.Plan.BindBlackboardFrame(owner.Index) : CandidateBlackboard(owner.Index);
+        OrchestrationStateLayoutView.FramePayload Blackboard(FrameAddress owner) =>
+            owner.Source ? m_Source.Frames.Plan.BindFramePayload(owner.Index) : CandidateBlackboard(owner.Index);
 
         internal OrchestrationValueAddress CandidateBlackboardAddress(int frameSlot, int valueSlot,
             out int metadataOffset, out int valueIndex)

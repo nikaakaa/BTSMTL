@@ -19,7 +19,8 @@ namespace BTSMTL.Orchestration
         OrchestrationExecutionSourceReader<TValue> m_Reader;
 
         internal OrchestrationBlackboardStorageView(int programIndex, OrchestrationProgramView<TValue> program,
-            OrchestrationExecutionFrames<TValue> frames, int frameSlot, ReadOnlySpan<int> characterSlots,
+            OrchestrationExecutionFrames<TValue> frames, int frameSlot, OrchestrationStateLayoutView.FramePayload payload,
+            ReadOnlySpan<int> characterSlots,
             OrchestrationExecutionSourceBindingView sourceBinding, OrchestrationExecutionSource<TValue> source,
             Span<byte> reuseFlags)
         {
@@ -34,15 +35,15 @@ namespace BTSMTL.Orchestration
             m_ReuseRanges = program.ScheduleBlackboardReuses;
             m_ReuseSlots = program.ScheduleBlackboardReuseSlots;
             m_Reader = new OrchestrationExecutionSourceReader<TValue>(frames.AsReadOnly(), frameSlot,
-                m_ProgramIndex, sourceBinding.HasSource, source);
+                m_ProgramIndex, payload, sourceBinding.HasSource, source);
         }
 
-        internal void SelectFrame(int frameSlot)
+        internal void SelectFrame(int frameSlot, OrchestrationStateLayoutView.FramePayload payload)
         {
             if (frameSlot != m_FrameSlot)
                 ResetValueReuse();
             m_FrameSlot = frameSlot;
-            m_Reader.SelectFrame(frameSlot);
+            m_Reader.SelectFrame(frameSlot, payload);
         }
 
         internal void ResetValueReuse()

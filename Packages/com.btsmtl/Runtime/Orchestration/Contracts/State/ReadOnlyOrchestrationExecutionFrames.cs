@@ -23,6 +23,15 @@ namespace BTSMTL.Orchestration
                 memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
+        internal ReadOnlyOrchestrationExecutionFrames(OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory,
+            ReadOnlySpan<OrchestrationExecutionFrameState> frames, ReadOnlySpan<OrchestrationExecutionRosterState> roster)
+        {
+            Plan = plan;
+            m_Memory = memory;
+            m_Frames = frames;
+            m_Roster = roster;
+        }
+
         public OrchestrationStateLayoutView Plan { get; }
         public ReadOnlySpan<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;

@@ -60,7 +60,7 @@ namespace BTSMTL.Orchestration
         }
 
         public ReadOnlyOrchestrationExecutionFrames<TValue> AsReadOnly() =>
-            new ReadOnlyOrchestrationExecutionFrames<TValue>(Plan, m_Memory);
+            new ReadOnlyOrchestrationExecutionFrames<TValue>(Plan, m_Memory, m_Frames, m_Roster);
 
         public ref OrchestrationExecutionFrameState Header(int frameSlot) =>
             ref m_Frames[frameSlot];
@@ -111,8 +111,24 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationStateRegion<byte> region = Plan.PayloadRegion(frameSlot, programIndex,
                 m_Frames[frameSlot].OwnerOperationIndex, role);
-            return SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
+            return SlicePayload<T>(region);
         }
+
+        internal void BindPayloads(int frameSlot, int programIndex, OrchestrationStateLayoutView.FramePayload payload,
+            out Span<OrchestrationOperationState> operations, out Span<OrchestrationStopContext> stops,
+            out Span<OrchestrationStateMachineState> machines, out Span<ulong> timelines, out Span<TValue> outputs)
+        {
+            ReadOnlySpan<int> sizes = Plan.PayloadSizes(programIndex, m_Frames[frameSlot].OwnerOperationIndex);
+            operations = SlicePayload<OrchestrationOperationState>(payload.Region(OrchestrationStateSegmentRole.Operations, sizes));
+            stops = SlicePayload<OrchestrationStopContext>(payload.Region(OrchestrationStateSegmentRole.OperationStops, sizes));
+            machines = SlicePayload<OrchestrationStateMachineState>(payload.Region(OrchestrationStateSegmentRole.StateMachines, sizes));
+            timelines = SlicePayload<ulong>(payload.Region(OrchestrationStateSegmentRole.TimelineHandles, sizes));
+            outputs = SlicePayload<TValue>(payload.Region(OrchestrationStateSegmentRole.SavedOutputs, sizes));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        Span<T> SlicePayload<T>(OrchestrationStateRegion<byte> region) where T : unmanaged =>
+            SpanReinterpret.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ref T Element<T>(int frameSlot, OrchestrationStateSegmentRole role,

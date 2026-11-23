@@ -168,20 +168,30 @@ namespace BTSMTL.Orchestration
     // 推进只经此视图读取状态布局；视图只持有布局镜像字节。
     public readonly ref struct OrchestrationStateLayoutView
     {
-        internal readonly ref struct BlackboardFrame
+        internal readonly ref struct FramePayload
         {
             readonly ReadOnlySpan<OrchestrationFramePayloadSegment> m_Payloads;
+            readonly ReadOnlySpan<OrchestrationStateSegmentIndex> m_Indices;
             readonly int m_FrameIndex;
 
-            internal BlackboardFrame(ReadOnlySpan<OrchestrationFramePayloadSegment> payloads, int frameIndex,
-                int metadataPayloadIndex)
+            internal FramePayload(ReadOnlySpan<OrchestrationFramePayloadSegment> payloads,
+                ReadOnlySpan<OrchestrationStateSegmentIndex> indices, int frameIndex)
             {
                 m_Payloads = payloads;
+                m_Indices = indices;
                 m_FrameIndex = frameIndex;
-                MetadataOffset = payloads[metadataPayloadIndex].AtFrame(frameIndex, 0).OffsetBytes;
+                int metadata = Index(indices, OrchestrationStateSegmentRole.PrivateMetadata, 0).FramePayload;
+                MetadataOffset = payloads[metadata].AtFrame(frameIndex, 0).OffsetBytes;
             }
 
             internal int MetadataOffset { get; }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal OrchestrationStateRegion<byte> Region(OrchestrationStateSegmentRole role, ReadOnlySpan<int> sizes)
+            {
+                int index = Index(m_Indices, role, 0).FramePayload;
+                return m_Payloads[index].AtFrame(m_FrameIndex, sizes[index]);
+            }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal OrchestrationValueAddress Address(in OrchestrationFrameValueAddress value) =>
@@ -262,7 +272,12 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStateSegmentIndex Index(in OrchestrationStateLayoutImageHeader header,
             OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
-            Section<OrchestrationStateSegmentIndex>(header.Indices)[(int)role * KindCount + (int)valueKind];
+            Index(Section<OrchestrationStateSegmentIndex>(header.Indices), role, valueKind);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static OrchestrationStateSegmentIndex Index(ReadOnlySpan<OrchestrationStateSegmentIndex> indices,
+            OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
+            indices[(int)role * KindCount + (int)valueKind];
 
         public OrchestrationValueAddress CharacterAddress(int slot) =>
             Section<OrchestrationValueAddress>(Header.CharacterAddresses)[slot];
@@ -280,15 +295,14 @@ namespace BTSMTL.Orchestration
                 slot.Pool * header.FramePayloadCount + value.PayloadIndex], slot.Index);
         }
 
-        internal BlackboardFrame BindBlackboardFrame(int frame)
+        internal FramePayload BindFramePayload(int frame)
         {
             ref readonly OrchestrationStateLayoutImageHeader header = ref Header;
             OrchestrationFrameSlot slot = Section<OrchestrationFrameSlot>(header.FrameSlots)[frame];
             ReadOnlySpan<OrchestrationFramePayloadSegment> payloads =
                 Section<OrchestrationFramePayloadSegment>(header.FramePayloads)
                     .Slice(slot.Pool * header.FramePayloadCount, header.FramePayloadCount);
-            return new BlackboardFrame(payloads, slot.Index,
-                Index(in header, OrchestrationStateSegmentRole.PrivateMetadata, 0).FramePayload);
+            return new FramePayload(payloads, Section<OrchestrationStateSegmentIndex>(header.Indices), slot.Index);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

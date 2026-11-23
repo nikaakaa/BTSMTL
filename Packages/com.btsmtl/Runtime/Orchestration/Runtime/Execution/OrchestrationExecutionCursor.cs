@@ -128,19 +128,12 @@ namespace BTSMTL.Orchestration
             m_Frames = frames;
             m_FrameSlot = frameSlot;
             frames.TrackFrameWrite(frameSlot);
+            OrchestrationStateLayoutView.FramePayload payload = frames.Plan.BindFramePayload(frameSlot);
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(programIndex, program, frames, frameSlot,
-                characterSlots, sourceBinding, source, m_ReuseFlags);
-            m_OperationStateIndices = frames.Plan.OperationStateIndices(m_Blackboards.ProgramIndex);
-            m_Operations = frames.Payload<OrchestrationOperationState>(frameSlot,
-                OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
-            m_OperationStops = frames.Payload<OrchestrationStopContext>(frameSlot,
-                OrchestrationStateSegmentRole.OperationStops, m_Blackboards.ProgramIndex);
-            m_StateMachines = frames.Payload<OrchestrationStateMachineState>(frameSlot,
-                OrchestrationStateSegmentRole.StateMachines, m_Blackboards.ProgramIndex);
-            m_TimelineHandles = frames.Payload<ulong>(frameSlot,
-                OrchestrationStateSegmentRole.TimelineHandles, m_Blackboards.ProgramIndex);
-            m_SavedOutputs = frames.Payload<TValue>(frameSlot,
-                OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
+                payload, characterSlots, sourceBinding, source, m_ReuseFlags);
+            m_OperationStateIndices = frames.Plan.OperationStateIndices(programIndex);
+            frames.BindPayloads(frameSlot, programIndex, payload,
+                out m_Operations, out m_OperationStops, out m_StateMachines, out m_TimelineHandles, out m_SavedOutputs);
             m_Input = input;
             m_Identities = identities;
             m_Host = host;
@@ -301,17 +294,10 @@ namespace BTSMTL.Orchestration
         {
             m_Frames.TrackFrameWrite(frameSlot);
             m_FrameSlot = frameSlot;
-            m_Operations = m_Frames.Payload<OrchestrationOperationState>(frameSlot,
-                OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
-            m_OperationStops = m_Frames.Payload<OrchestrationStopContext>(frameSlot,
-                OrchestrationStateSegmentRole.OperationStops, m_Blackboards.ProgramIndex);
-            m_StateMachines = m_Frames.Payload<OrchestrationStateMachineState>(frameSlot,
-                OrchestrationStateSegmentRole.StateMachines, m_Blackboards.ProgramIndex);
-            m_TimelineHandles = m_Frames.Payload<ulong>(frameSlot,
-                OrchestrationStateSegmentRole.TimelineHandles, m_Blackboards.ProgramIndex);
-            m_SavedOutputs = m_Frames.Payload<TValue>(frameSlot,
-                OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
-            m_Blackboards.SelectFrame(frameSlot);
+            OrchestrationStateLayoutView.FramePayload payload = m_Frames.Plan.BindFramePayload(frameSlot);
+            m_Frames.BindPayloads(frameSlot, m_Blackboards.ProgramIndex, payload,
+                out m_Operations, out m_OperationStops, out m_StateMachines, out m_TimelineHandles, out m_SavedOutputs);
+            m_Blackboards.SelectFrame(frameSlot, payload);
             m_Host.SelectExecutionFrame(frameSlot);
         }
 
