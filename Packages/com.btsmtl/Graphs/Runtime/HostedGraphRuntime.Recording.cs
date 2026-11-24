@@ -511,14 +511,13 @@ namespace BTSMTL.Graphs
         public GraphVariableFrame PublishRecordedFrame()
         {
             RequireIdle();
-            m_Output.BeginWrite();
+            Span<GraphHostValue> output = m_Output.BeginWrite();
             ReadOnlySpan<TValue> values = StateValues;
             for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
             {
                 int slot = m_Bindings.PublishedSlots[i];
                 TValue value = ReadState(slot, values);
-                GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts);
-                m_Output.Write(i, in published);
+                output[i] = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts);
             }
             return new GraphVariableFrame(VariableContract, m_Output.Publish(m_LastInvocation, m_ResetGeneration));
         }

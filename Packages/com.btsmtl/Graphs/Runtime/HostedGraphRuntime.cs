@@ -375,7 +375,7 @@ namespace BTSMTL.Graphs
                     ? default : ActiveOverrides(m_CandidateOverrides);
                 try
                 {
-                    m_Output.BeginWrite();
+                    Span<GraphHostValue> output = m_Output.BeginWrite();
                     Span<TValue> values = CandidateValues;
                     var storage = m_Bindings.Program.ExecutionStorage.Values.Span;
                     for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
@@ -384,10 +384,9 @@ namespace BTSMTL.Graphs
                         int valueIndex = storage[slot].ValueIndex;
                         int supplied = overrides.IsEmpty ? -1 :
                             FindOverride(overrides, OrchestrationValueOverrideKind.Blackboard, slot);
-                        TValue value = supplied >= 0
-                            ? overrides[supplied].Value : values[valueIndex];
-                        GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
-                        m_Output.Write(i, in published);
+                        ref readonly TValue value = ref supplied >= 0
+                            ? ref overrides[supplied].Value : ref values[valueIndex];
+                        output[i] = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
                     }
                 }
                 catch (Exception exception)

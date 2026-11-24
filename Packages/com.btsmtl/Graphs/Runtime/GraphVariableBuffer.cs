@@ -26,20 +26,14 @@ namespace BTSMTL.Graphs
                 m_References = 1;
             }
             internal void Retain() => m_References = checked(m_References + 1);
-            internal void Write(int index, in GraphHostValue value)
-            {
-                m_Values[index] = value;
-            }
+            internal Span<GraphHostValue> Values => m_Values;
             internal GraphHostValue Read(int index) => m_Values[index];
             internal void Release()
             {
                 m_References--;
                 if (m_References != 0)
                     return;
-                for (int i = 0; i < m_Values.Length; i++)
-                {
-                    m_Values[i] = default;
-                }
+                Array.Clear(m_Values, 0, m_Values.Length);
             }
         }
 
@@ -52,7 +46,7 @@ namespace BTSMTL.Graphs
             m_Pages = new[] { new Page(count, identities), new Page(count, identities) };
         }
 
-        internal void BeginWrite()
+        internal Span<GraphHostValue> BeginWrite()
         {
             for (int i = 0; i < m_Pages.Length; i++)
             {
@@ -60,12 +54,11 @@ namespace BTSMTL.Graphs
                     continue;
                 m_Writing = m_Pages[i];
                 m_Writing.Acquire();
-                return;
+                return m_Writing.Values;
             }
             throw new InvalidOperationException("Event graph frame ownership exceeds the prepared old/new publication boundary.");
         }
 
-        internal void Write(int index, in GraphHostValue value) => m_Writing.Write(index, in value);
         internal void Invalidate()
         {
             m_Writing?.Release();
