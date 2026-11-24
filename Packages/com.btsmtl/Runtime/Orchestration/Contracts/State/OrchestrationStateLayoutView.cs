@@ -279,8 +279,10 @@ namespace BTSMTL.Orchestration
             OrchestrationStateSegmentRole role, OrchestrationValueKind valueKind) =>
             indices[(int)role * KindCount + (int)valueKind];
 
-        public OrchestrationValueAddress CharacterAddress(int slot) =>
-            Section<OrchestrationValueAddress>(Header.CharacterAddresses)[slot];
+        internal ReadOnlySpan<OrchestrationValueAddress> CharacterAddresses =>
+            Section<OrchestrationValueAddress>(Header.CharacterAddresses);
+
+        public OrchestrationValueAddress CharacterAddress(int slot) => CharacterAddresses[slot];
 
         public OrchestrationValueAddress PrivateAddress(int program, int frame, int valueSlot) =>
             ResolveAddress(Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses)[valueSlot], frame);
@@ -315,15 +317,18 @@ namespace BTSMTL.Orchestration
                 address.SizeBytes, address.BitIndex);
         }
 
-        internal ReadOnlySpan<OrchestrationFrameValueAddress> PrivateAddresses(int program) =>
-            Section<OrchestrationFrameValueAddress>(Program(program).PrivateAddresses);
+        public OrchestrationProgramStorageView ProgramStorage(int program) => ProgramStorage(in Program(program));
 
-        public OrchestrationProgramStorageView ProgramStorage(int program)
+        internal OrchestrationProgramStorageView ProgramStorage(int program,
+            out ReadOnlySpan<OrchestrationFrameValueAddress> privateAddresses)
         {
             ref readonly OrchestrationStateProgramRecord record = ref Program(program);
-            return new OrchestrationProgramStorageView(Section<ushort>(record.OperationIndices),
-                Section<OrchestrationValueStorageSlot>(record.Values));
+            privateAddresses = Section<OrchestrationFrameValueAddress>(record.PrivateAddresses);
+            return ProgramStorage(in record);
         }
+
+        OrchestrationProgramStorageView ProgramStorage(in OrchestrationStateProgramRecord record) =>
+            new(Section<ushort>(record.OperationIndices), Section<OrchestrationValueStorageSlot>(record.Values));
 
         public ReadOnlySpan<OrchestrationOperationStateIndices> OperationStateIndices(int program) =>
             Section<OrchestrationOperationStateIndices>(Program(program).OperationStateIndices);

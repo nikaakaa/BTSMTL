@@ -35,7 +35,7 @@ namespace BTSMTL.Orchestration
             m_ReuseRanges = program.ScheduleBlackboardReuses;
             m_ReuseSlots = program.ScheduleBlackboardReuseSlots;
             m_Reader = new OrchestrationExecutionSourceReader<TValue>(frames.AsReadOnly(), frameSlot,
-                m_ProgramIndex, payload, sourceBinding.HasSource, source);
+                m_ProgramIndex, payload, sourceBinding.HasSource, source, !characterSlots.IsEmpty);
         }
 
         internal void SelectFrame(int frameSlot, OrchestrationStateLayoutView.FramePayload payload)

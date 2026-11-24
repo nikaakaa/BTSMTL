@@ -11,6 +11,9 @@ namespace BTSMTL.Orchestration
         readonly bool m_HasSource;
         readonly bool m_HasSingleLocalFrame;
         readonly OrchestrationExecutionSource<TValue> m_Source;
+        readonly ReadOnlySpan<byte> m_CharacterMemory;
+        readonly ReadOnlySpan<OrchestrationBlackboardMetadata> m_CharacterMetadata;
+        readonly ReadOnlySpan<OrchestrationValueAddress> m_CharacterAddresses;
         readonly int m_CandidateRootFrameSlot;
         readonly int m_CandidateProgramIndex;
         readonly OrchestrationProgramStorageView m_CandidateStorage;
@@ -20,7 +23,7 @@ namespace BTSMTL.Orchestration
 
         internal OrchestrationExecutionSourceReader(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
             int frameSlot, int programIndex, OrchestrationStateLayoutView.FramePayload payload,
-            bool hasSource, OrchestrationExecutionSource<TValue> source)
+            bool hasSource, OrchestrationExecutionSource<TValue> source, bool hasCharacterSlots)
         {
             m_Frames = frames;
             m_FrameSlot = frameSlot;
@@ -28,15 +31,26 @@ namespace BTSMTL.Orchestration
             m_HasSource = hasSource;
             m_HasSingleLocalFrame = !hasSource && frames.Capacity == 1;
             m_Source = source;
+            if (hasCharacterSlots)
+            {
+                var shared = hasSource ? source.SharedFrames : frames;
+                m_CharacterMemory = shared.Memory;
+                m_CharacterMetadata = shared.CharacterMetadata;
+                m_CharacterAddresses = shared.Plan.CharacterAddresses;
+            }
+            else
+            {
+                m_CharacterMemory = default;
+                m_CharacterMetadata = default;
+                m_CharacterAddresses = default;
+            }
             m_CandidateRootFrameSlot = frameSlot;
             m_CandidateProgramIndex = programIndex;
-            m_CandidateStorage = frames.Plan.ProgramStorage(programIndex);
-            m_CandidatePrivateAddresses = frames.Plan.PrivateAddresses(programIndex);
+            m_CandidateStorage = frames.Plan.ProgramStorage(programIndex, out m_CandidatePrivateAddresses);
             if (hasSource)
             {
                 int sourceProgramIndex = source.Frames.Plan.ProgramIndex(source.Header.SkillContentId);
-                m_SourceStorage = source.Frames.Plan.ProgramStorage(sourceProgramIndex);
-                m_SourcePrivateAddresses = source.Frames.Plan.PrivateAddresses(sourceProgramIndex);
+                m_SourceStorage = source.Frames.Plan.ProgramStorage(sourceProgramIndex, out m_SourcePrivateAddresses);
             }
             else
             {
@@ -77,11 +91,7 @@ namespace BTSMTL.Orchestration
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             if (characterSlot >= 0)
-            {
-                ReadOnlyOrchestrationExecutionFrames<TValue> frames = m_HasSource ? m_Source.SharedFrames : m_Frames;
-                OrchestrationValueAddress address = frames.Plan.CharacterAddress(characterSlot);
-                storage.Read(frames.Memory, in address, ref destination);
-            }
+                ReadCharacterValue(characterSlot, ref destination, ref storage);
             else if (actionInstance)
             {
                 ReadOnlyOrchestrationExecutionFrames<TValue> frames = SharedFrames;
@@ -101,7 +111,14 @@ namespace BTSMTL.Orchestration
             ref TValue destination, ref TStorage storage)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
-            if (characterSlot >= 0 || actionInstance)
+            if (characterSlot >= 0)
+            {
+                if (!m_CharacterMetadata[characterSlot].Owner.Equals(in expected))
+                    return false;
+                ReadCharacterValue(characterSlot, ref destination, ref storage);
+                return true;
+            }
+            if (actionInstance)
             {
                 if (!ReadMetadata(valueSlot, ownerOperationIndex, characterSlot, actionInstance).Owner.Equals(in expected))
                     return false;
@@ -121,6 +138,11 @@ namespace BTSMTL.Orchestration
             return true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void ReadCharacterValue<TStorage>(int characterSlot, ref TValue destination, ref TStorage storage)
+            where TStorage : struct, IOrchestrationValueStorage<TValue> =>
+            storage.Read(m_CharacterMemory, in m_CharacterAddresses[characterSlot], ref destination);
+
         void ReadValue<TStorage>(int valueSlot, FrameAddress owner, ref TValue destination, ref TStorage storage)
             where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
@@ -136,7 +158,7 @@ namespace BTSMTL.Orchestration
             int ownerOperationIndex, int characterSlot, bool actionInstance)
         {
             if (characterSlot >= 0)
-                return ref SharedFrames.CharacterMetadata[characterSlot];
+                return ref m_CharacterMetadata[characterSlot];
             if (actionInstance)
                 return ref SharedFrames.Element<OrchestrationBlackboardMetadata>(ActionFrameIndex,
                     OrchestrationStateSegmentRole.PrivateMetadata, m_CandidateStorage.Values[valueSlot].ValueIndex);
