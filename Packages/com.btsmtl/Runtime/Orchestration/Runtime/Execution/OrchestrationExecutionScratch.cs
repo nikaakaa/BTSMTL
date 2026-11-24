@@ -10,7 +10,8 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection scheduledPredictions, OrchestrationMemorySection graphCalls,
             OrchestrationMemorySection states, OrchestrationMemorySection stateAncestors,
             OrchestrationMemorySection forceStopVisited, OrchestrationMemorySection forceStopNext,
-            OrchestrationMemorySection outputRequests, OrchestrationMemorySection emittedValues)
+            OrchestrationMemorySection outputRequests, OrchestrationMemorySection emittedValues,
+            OrchestrationMemorySection invocationStops)
         {
             SizeBytes = sizeBytes;
             ForceStopFirstFrame = forceStopFirstFrame;
@@ -25,6 +26,7 @@ namespace BTSMTL.Orchestration
             ForceStopNext = forceStopNext;
             OutputRequests = outputRequests;
             EmittedValues = emittedValues;
+            InvocationStops = invocationStops;
         }
 
         public int SizeBytes { get; }
@@ -40,10 +42,27 @@ namespace BTSMTL.Orchestration
         internal OrchestrationMemorySection ForceStopNext { get; }
         internal OrchestrationMemorySection OutputRequests { get; }
         internal OrchestrationMemorySection EmittedValues { get; }
+        internal OrchestrationMemorySection InvocationStops { get; }
+
+        public static OrchestrationPreparedProgramStorage<TValue> PrepareInvocationStopContexts<TValue>(
+            OrchestrationPreparedProgramStorage<TValue> storage, in OrchestrationProgramView<TValue> program,
+            ReadOnlySpan<OrchestrationExtensionReference> extensions, out int maximumContexts) where TValue : unmanaged
+        {
+            maximumContexts = 0;
+            // 容器只在子节点尚未停止时保留请求，状态、Timeline 和可挂起扩展能跨次继续。
+            foreach (ref readonly OrchestrationOperation operation in program.Operations)
+                if (operation.Code is OrchestrationOperationCode.Timeline or OrchestrationOperationCode.State or
+                    OrchestrationOperationCode.StateMachine)
+                    return storage;
+            foreach (ref readonly OrchestrationExtensionReference extension in extensions)
+                if (extension.Completion != OrchestrationExtensionCompletion.Immediate)
+                    return storage;
+            return storage.MoveStopContextsToScratch(out maximumContexts);
+        }
 
         public static OrchestrationExecutionScratchLayout Prepare<TValue>(in OrchestrationProgramView<TValue> program,
             in OrchestrationExecutionStateCapacity capacity, int programIndex,
-            in OrchestrationProgramOutputCapacity outputs) where TValue : unmanaged
+            in OrchestrationProgramOutputCapacity outputs, int invocationStopContexts = 0) where TValue : unmanaged
         {
             ReadOnlySpan<OrchestrationExecutionFramePoolCapacity> pools = capacity.FramePools.Span;
             int firstPool = pools.Length;
@@ -78,9 +97,10 @@ namespace BTSMTL.Orchestration
             OrchestrationMemorySection forceStopNext = builder.Add<int>(forceStopWords);
             OrchestrationMemorySection outputRequests = builder.Add<OrchestrationOutputRequest>(outputs.RequestCount);
             OrchestrationMemorySection emittedValues = builder.Add<TValue>(outputs.ValueCount);
+            OrchestrationMemorySection invocationStops = builder.Add<OrchestrationStopContext>(invocationStopContexts);
             return new OrchestrationExecutionScratchLayout(builder.SizeBytes, firstFrame, inputValues, outputValues, scheduledValues,
                 scheduledPredictions, graphCalls, states, stateAncestors, forceStopVisited, forceStopNext,
-                outputRequests, emittedValues);
+                outputRequests, emittedValues, invocationStops);
         }
 
         // 强制停止位图与链表要求初值为零，其余区段先写后读。

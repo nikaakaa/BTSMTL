@@ -39,6 +39,7 @@ namespace BTSMTL.Orchestration
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         Span<OrchestrationOperationState> m_Operations;
         Span<OrchestrationStopContext> m_OperationStops;
+        readonly Span<OrchestrationStopContext> m_InvocationStops;
         Span<OrchestrationStateMachineState> m_StateMachines;
         Span<ulong> m_TimelineHandles;
         Span<TValue> m_SavedOutputs;
@@ -81,6 +82,8 @@ namespace BTSMTL.Orchestration
             ref OrchestrationExecutionScratchHeader header = ref scratch.Header;
             header.Error = default;
             OrchestrationExecutionScratchLayout layout = header.Layout;
+            m_InvocationStops = scratch.Section<OrchestrationStopContext>(layout.InvocationStops);
+            m_InvocationStops.Clear();
             m_InputValues = scratch.Section<TValue>(layout.InputValues);
             m_OutputValues = scratch.Section<TValue>(layout.OutputValues);
             m_InputRows = program.WorkspaceInputRows;
@@ -132,7 +135,7 @@ namespace BTSMTL.Orchestration
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, THost>(programIndex, program, frames, frameSlot,
                 payload, characterSlots, sourceBinding, source, m_ReuseFlags);
             m_OperationStateIndices = frames.Plan.OperationStateIndices(programIndex);
-            frames.BindPayloads(frameSlot, programIndex, payload,
+            frames.BindPayloads(frameSlot, programIndex, payload, m_InvocationStops,
                 out m_Operations, out m_OperationStops, out m_StateMachines, out m_TimelineHandles, out m_SavedOutputs);
             m_Input = input;
             m_Identities = identities;
@@ -295,7 +298,7 @@ namespace BTSMTL.Orchestration
             m_Frames.TrackFrameWrite(frameSlot);
             m_FrameSlot = frameSlot;
             OrchestrationStateLayoutView.FramePayload payload = m_Frames.Plan.BindFramePayload(frameSlot);
-            m_Frames.BindPayloads(frameSlot, m_Blackboards.ProgramIndex, payload,
+            m_Frames.BindPayloads(frameSlot, m_Blackboards.ProgramIndex, payload, m_InvocationStops,
                 out m_Operations, out m_OperationStops, out m_StateMachines, out m_TimelineHandles, out m_SavedOutputs);
             m_Blackboards.SelectFrame(frameSlot, payload);
             m_Host.SelectExecutionFrame(frameSlot);

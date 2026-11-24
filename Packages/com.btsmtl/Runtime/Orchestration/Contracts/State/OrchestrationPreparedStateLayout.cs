@@ -68,6 +68,20 @@ namespace BTSMTL.Orchestration
             return (offsets, slots);
         }
 
+        internal OrchestrationPreparedProgramStorage<TValue> MoveStopContextsToScratch(out int maximumContexts)
+        {
+            var owners = OperationStateOwners.ToArray();
+            maximumContexts = 0;
+            for (int owner = 0; owner < owners.Length; owner++)
+            {
+                OrchestrationOperationStateStorage state = owners[owner];
+                maximumContexts = Math.Max(maximumContexts, state.StopContexts);
+                owners[owner] = new OrchestrationOperationStateStorage(0, state.StateMachines, state.Timelines);
+            }
+            return new OrchestrationPreparedProgramStorage<TValue>(SkillContentId, Storage, ValueTypes,
+                OperationStateIndices, owners, RunnableOperations, DefaultValues);
+        }
+
         public OrchestrationPreparedProgramStorage<TValue> BorrowActionInstanceValues()
         {
             var values = Storage.Values.ToArray();

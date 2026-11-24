@@ -115,12 +115,15 @@ namespace BTSMTL.Orchestration
         }
 
         internal void BindPayloads(int frameSlot, int programIndex, OrchestrationStateLayoutView.FramePayload payload,
+            Span<OrchestrationStopContext> invocationStops,
             out Span<OrchestrationOperationState> operations, out Span<OrchestrationStopContext> stops,
             out Span<OrchestrationStateMachineState> machines, out Span<ulong> timelines, out Span<TValue> outputs)
         {
             ReadOnlySpan<int> sizes = Plan.PayloadSizes(programIndex, m_Frames[frameSlot].OwnerOperationIndex);
             operations = SlicePayload<OrchestrationOperationState>(payload.Region(OrchestrationStateSegmentRole.Operations, sizes));
-            stops = SlicePayload<OrchestrationStopContext>(payload.Region(OrchestrationStateSegmentRole.OperationStops, sizes));
+            stops = invocationStops.IsEmpty
+                ? SlicePayload<OrchestrationStopContext>(payload.Region(OrchestrationStateSegmentRole.OperationStops, sizes))
+                : invocationStops;
             machines = SlicePayload<OrchestrationStateMachineState>(payload.Region(OrchestrationStateSegmentRole.StateMachines, sizes));
             timelines = SlicePayload<ulong>(payload.Region(OrchestrationStateSegmentRole.TimelineHandles, sizes));
             outputs = SlicePayload<TValue>(payload.Region(OrchestrationStateSegmentRole.SavedOutputs, sizes));
