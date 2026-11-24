@@ -167,6 +167,7 @@ namespace BTSMTL.Timeline.Runtime
             int slot, in OrchestrationTimelineStep<OrchestrationTime> step, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var runtime = Runtime;
+            using var batchScope = runtime.Workspace.OpenBatch();
             OrchestrationTimelineStart<OrchestrationTime> start = runtime.Playback(candidate.Timeline, slot).Start;
             OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginAdvance(candidate.Timeline, slot, step);
             OrchestrationOperationResult result = Dispatch(candidate, in start, batch, stopContext);
@@ -186,6 +187,7 @@ namespace BTSMTL.Timeline.Runtime
             int slot, ReadOnlySpan<OrchestrationStopContext> stopContext)
         {
             var runtime = Runtime;
+            using var batchScope = runtime.Workspace.OpenBatch();
             OrchestrationTimelineStart<OrchestrationTime> start = runtime.Playback(candidate.Timeline, slot).Start;
             OrchestrationTimelineBatch<OrchestrationTime> batch = runtime.BeginStop(candidate.Timeline, slot, in stopContext[0], 0);
             OrchestrationOperationResult result = Dispatch(candidate, in start, batch, stopContext);

@@ -7,11 +7,12 @@ namespace BTSMTL.Timeline.Runtime
 {
     public readonly struct OrchestrationTimelinePreparedCapacity
     {
-        public OrchestrationTimelinePreparedCapacity(int playbackCount,
+        internal OrchestrationTimelinePreparedCapacity(int playbackCount, int pendingBatches,
             int activeTreesPerPlayback, int treeExitRequestsPerPlayback,
             int treeExitWindowsPerPlayback, int treeExitWordsPerPlayback)
         {
             PlaybackCount = playbackCount;
+            PendingBatches = pendingBatches;
             ActiveTreesPerPlayback = activeTreesPerPlayback;
             TreeExitRequestsPerPlayback = treeExitRequestsPerPlayback;
             TreeExitWindowsPerPlayback = treeExitWindowsPerPlayback;
@@ -19,6 +20,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public int PlaybackCount { get; }
+        internal int PendingBatches { get; }
         public int ActiveTreesPerPlayback { get; }
         public int TreeExitRequestsPerPlayback { get; }
         public int TreeExitWindowsPerPlayback { get; }
@@ -40,8 +42,9 @@ namespace BTSMTL.Timeline.Runtime
                 windows = Math.Max(windows, content.RequiredTreeExitWindows);
                 words = Math.Max(words, content.RequiredTreeExitWords);
             }
-            return new OrchestrationTimelinePreparedCapacity(checked(executionCapacity.PlaybackCount + rootPlaybackCount),
-                activeTrees, exitRequests, windows, words);
+            int playbacks = checked(executionCapacity.PlaybackCount + rootPlaybackCount);
+            int pendingBatches = Math.Min(playbacks, checked(executionCapacity.MaximumSourceDepth + rootPlaybackCount));
+            return new OrchestrationTimelinePreparedCapacity(playbacks, pendingBatches, activeTrees, exitRequests, windows, words);
         }
 
         public OrchestrationTimelineStateLayout<TPlayback> CreateLayout<TPlayback>(
@@ -286,6 +289,7 @@ namespace BTSMTL.Timeline.Runtime
         internal bool Stop;
         internal bool Paused;
         internal int InvocationCount;
+        internal int BufferIndex;
         internal int InjectedExitCount;
         internal int ProducedExitCount;
         internal TTime PreviousTime;
@@ -346,6 +350,7 @@ namespace BTSMTL.Timeline.Runtime
         internal OrchestrationTimelinePreparedCapacity Capacity;
         internal int ClipCapacity;
         internal int InvocationCapacity;
+        internal int BatchDepth;
         internal int InvocationDepth;
         internal int SelectedTreeCount;
         internal ulong BatchSequence;
@@ -389,6 +394,7 @@ namespace BTSMTL.Timeline.Runtime
                 invocations = Math.Max(invocations, content.TickCapacity.GraphInvocationsPerAdvance);
             }
             int playbacks = capacity.PlaybackCount;
+            int pendingBatches = capacity.PendingBatches;
             int preparationCopies = Math.Min(playbacks, 1);
             var builder = new OrchestrationMemoryLayoutBuilder(
                 OrchestrationMemoryImageWriter.SizeOf<OrchestrationTimelineWorkspaceHeader>());
@@ -398,14 +404,14 @@ namespace BTSMTL.Timeline.Runtime
                 ClipCapacity = clips,
                 InvocationCapacity = invocations,
                 Operations = builder.Add<OrchestrationTimelineOperationWork<TTime>>(playbacks),
-                Invocations = builder.Add<OrchestrationTimelineStoredInvocation<TTime>>(checked(playbacks * invocations)),
+                Invocations = builder.Add<OrchestrationTimelineStoredInvocation<TTime>>(checked(pendingBatches * invocations)),
                 Scheduled = builder.Add<TimelineScheduledInvocation<TTime>>(checked(preparationCopies * invocations)),
                 Boundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * boundaries)),
                 SyntheticBoundaries = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * syntheticBoundaries)),
                 ActiveTrees = builder.Add<TimelineSchedulingBoundary<TTime>>(checked(preparationCopies * capacity.ActiveTreesPerPlayback)),
-                EvaluationFirstCycles = builder.Add<long>(checked(playbacks * capacity.TreeExitWindowsPerPlayback)),
-                EvaluationExitBits = builder.Add<ulong>(checked(playbacks * capacity.TreeExitWordsPerPlayback)),
-                ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(playbacks * capacity.TreeExitRequestsPerPlayback)),
+                EvaluationFirstCycles = builder.Add<long>(checked(pendingBatches * capacity.TreeExitWindowsPerPlayback)),
+                EvaluationExitBits = builder.Add<ulong>(checked(pendingBatches * capacity.TreeExitWordsPerPlayback)),
+                ProducedExits = builder.Add<OrchestrationTimelineClipOccurrence>(checked(pendingBatches * capacity.TreeExitRequestsPerPlayback)),
                 SelectedTrees = builder.Add<bool>(checked(preparationCopies * clips)),
                 SelectedTreeOrdinals = builder.Add<int>(checked(preparationCopies * clips)),
                 InvocationFrames = builder.Add<OrchestrationTimelineInvocation<TTime>>(checked(playbacks + 1))
@@ -458,6 +464,23 @@ namespace BTSMTL.Timeline.Runtime
 
         internal ulong NextBatchSequence() => checked(++Header.BatchSequence);
 
+        // 终态释放可在退出片段调用后递归关闭子播放，父批次仍要等 Complete。
+        internal int CurrentBatchIndex => Header.BatchDepth - 1;
+        internal BatchScope OpenBatch() => new(this);
+
+        internal readonly ref struct BatchScope
+        {
+            readonly OrchestrationTimelineWorkspaceView<TTime> m_Workspace;
+
+            internal BatchScope(OrchestrationTimelineWorkspaceView<TTime> workspace)
+            {
+                m_Workspace = workspace;
+                m_Workspace.Header.BatchDepth++;
+            }
+
+            public void Dispose() => m_Workspace.Header.BatchDepth--;
+        }
+
         public bool HasCurrentInvocation => Header.InvocationDepth > 0;
 
         public int InvocationDepth => Header.InvocationDepth;
@@ -479,10 +502,11 @@ namespace BTSMTL.Timeline.Runtime
             int playbackSlot, int invocationIndex) where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             ref OrchestrationTimelineWorkspaceHeader header = ref Header;
+            ref readonly OrchestrationTimelineOperationWork<TTime> work = ref Operations[playbackSlot];
             ref readonly OrchestrationTimelineStoredInvocation<TTime> stored =
-                ref Invocations[checked(playbackSlot * header.InvocationCapacity + invocationIndex)];
+                ref Invocations[checked(work.BufferIndex * header.InvocationCapacity + invocationIndex)];
             Section<OrchestrationTimelineInvocation<TTime>>(header.InvocationFrames)[header.InvocationDepth++] =
-                stored.Expand<TClock>(content, playbackSlot, in Operations[playbackSlot]);
+                stored.Expand<TClock>(content, playbackSlot, in work);
         }
 
         internal void LeaveInvocation() => Header.InvocationDepth--;

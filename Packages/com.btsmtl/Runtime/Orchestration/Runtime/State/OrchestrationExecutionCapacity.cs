@@ -87,10 +87,13 @@ namespace BTSMTL.Orchestration
             m_SourceDepths = sourceDepths;
             m_OwnerAdmissions = ownerAdmissions;
             m_RootElements = rootElements;
+            foreach (int depth in sourceDepths)
+                MaximumSourceDepth = Math.Max(MaximumSourceDepth, depth);
         }
 
         public OrchestrationExecutionStateCapacity State { get; }
         public int PlaybackCount { get; }
+        public int MaximumSourceDepth { get; }
         public int ProgramCount => m_OwnerInstances.Length;
         public ReadOnlyMemory<int> OwnerInstances(int programIndex) => m_OwnerInstances[programIndex];
         public int SourceDepth(int programIndex) => m_SourceDepths[programIndex];

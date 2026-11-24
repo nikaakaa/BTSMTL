@@ -84,7 +84,7 @@ namespace BTSMTL.Timeline.Runtime
             TreeExits(candidate, slot).Clear();
         }
 
-        public OrchestrationTimelineBatch<TTime> BeginAdvance(OrchestrationStateView candidate,
+        internal OrchestrationTimelineBatch<TTime> BeginAdvance(OrchestrationStateView candidate,
             int slot, OrchestrationTimelineStep<TTime> step)
         {
             TClock clock = default;
@@ -93,7 +93,9 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
             RequireContent(in playback.Start);
             ref OrchestrationTimelineOperationWork<TTime> work = ref workspace.Operations[slot];
+            int bufferIndex = workspace.CurrentBatchIndex;
             work = default;
+            work.BufferIndex = bufferIndex;
             work.Proposed = playback;
             work.Proposed.LastConsumedTick = step.Tick;
             work.Proposed.LastConsumedClockTime = step.ClockTime;
@@ -168,8 +170,8 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimeBoundaryIndexView<TTime> boundaries = content.Boundaries;
             TimelineTreeExitView exits = TreeExits(candidate, slot).View;
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> pending = TreeExitRequests(candidate, slot).Slice(0, playback.TreeExitRequestCount);
-            CopyExitState(candidate, slot);
-            TimelineTreeExitState evaluationExits = EvaluationExits(slot);
+            CopyExitState(candidate, slot, bufferIndex);
+            TimelineTreeExitState evaluationExits = EvaluationExits(bufferIndex);
             if (cycle > 0 && previousCycle == 0 &&
                 playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Skipped)
                 foreach (int ordinal in boundaries.Decisions)
@@ -213,14 +215,14 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> treeRequests = scheduled.Slice(
                 markerCount, scheduledTreeCount);
             for (int i = 0; i < markerCount; i++)
-                AppendInvocation(slot, in scheduled[i], ref work.InvocationCount);
+                AppendInvocation(bufferIndex, in scheduled[i], ref work.InvocationCount);
             for (int i = 0; i < treeRequests.Length; i++)
             {
                 ref readonly TimelineScheduledInvocation<TTime> request = ref treeRequests[i];
                 if (request.Hook != OrchestrationTimelineHook.Root ||
                     TimelineRuntimeScheduling<TTime, TClock>.IsActive(request.Ordinal, request.Cycle,
                         request.Time, request.Hook, treeRequests, active.Slice(0, activeCount)))
-                    AppendInvocation(slot, in request, ref work.InvocationCount);
+                    AppendInvocation(bufferIndex, in request, ref work.InvocationCount);
             }
             if (!work.Paused && content.Mode == OrchestrationTimelinePlaybackMode.Once &&
                 clock.LessThanOrEqual(content.Duration, time))
@@ -244,7 +246,7 @@ namespace BTSMTL.Timeline.Runtime
             return Batch(slot);
         }
 
-        public OrchestrationTimelineBatch<TTime> BeginStop(OrchestrationStateView candidate,
+        internal OrchestrationTimelineBatch<TTime> BeginStop(OrchestrationStateView candidate,
             int slot, in OrchestrationStopContext context, int startedInvocations)
         {
             TClock clock = default;
@@ -258,7 +260,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int index = 0; index < startedInvocations; index++)
             {
                 OrchestrationTimelineInvocation<TTime> invocation = m_Workspace.Invocations[
-                    checked(slot * m_Workspace.InvocationCapacity + index)].Expand<TClock>(m_Content, slot, in work);
+                    checked(work.BufferIndex * m_Workspace.InvocationCapacity + index)].Expand<TClock>(m_Content, slot, in work);
                 if (invocation.Token.Marker)
                     continue;
                 if (invocation.Hook == OrchestrationTimelineHook.Enable)
@@ -274,7 +276,9 @@ namespace BTSMTL.Timeline.Runtime
                     activeCount--;
                 }
             }
+            int bufferIndex = m_Workspace.CurrentBatchIndex;
             work = default;
+            work.BufferIndex = bufferIndex;
             work.Proposed = playback;
             work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
             work.BatchSequence = m_Workspace.NextBatchSequence();
@@ -292,7 +296,7 @@ namespace BTSMTL.Timeline.Runtime
             };
             work.Proposed.Progress.HasStopContext = true;
             work.Proposed.Progress.State = OrchestrationTimelinePlaybackStatus.Stopped;
-            CopyExitState(candidate, slot);
+            CopyExitState(candidate, slot, bufferIndex);
             if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
             {
                 for (int i = 0; i < activeCount; i++)
@@ -302,7 +306,7 @@ namespace BTSMTL.Timeline.Runtime
                         clips[branch.ClipOrdinal].SortOrdinal, false,
                         OrchestrationTimelineHook.Destroy, clock.Zero, clock.Zero, clock.Zero,
                         branch.Cycle);
-                    AppendInvocation(slot, in request, ref work.InvocationCount);
+                    AppendInvocation(bufferIndex, in request, ref work.InvocationCount);
                 }
             }
             return Batch(slot);
@@ -323,10 +327,10 @@ namespace BTSMTL.Timeline.Runtime
             if (!clips[token.ClipOrdinal].TreeDecision)
                 return false;
             var exit = new OrchestrationTimelineClipOccurrence { ClipOrdinal = token.ClipOrdinal, Cycle = token.Cycle };
-            TimelineTreeExitState exits = EvaluationExits(token.PlaybackSlot);
             ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[token.PlaybackSlot];
+            TimelineTreeExitState exits = EvaluationExits(work.BufferIndex);
             Span<OrchestrationTimelineClipOccurrence> produced = m_Workspace.ProducedExits.Slice(
-                checked(token.PlaybackSlot * m_Capacity.TreeExitRequestsPerPlayback), m_Capacity.TreeExitRequestsPerPlayback);
+                checked(work.BufferIndex * m_Capacity.TreeExitRequestsPerPlayback), m_Capacity.TreeExitRequestsPerPlayback);
             if (exits.View.Requested(exit.ClipOrdinal, exit.Cycle))
                 return false;
             exits.SetPending(exit.ClipOrdinal, exit.Cycle);
@@ -335,7 +339,7 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        public void Complete(OrchestrationStateView candidate, int slot, in OrchestrationTimelineBatch<TTime> batch)
+        internal void Complete(OrchestrationStateView candidate, int slot, in OrchestrationTimelineBatch<TTime> batch)
         {
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
             ref OrchestrationTimelineOperationWork<TTime> work = ref m_Workspace.Operations[slot];
@@ -348,15 +352,15 @@ namespace BTSMTL.Timeline.Runtime
                 work.Proposed.TreeExitRequestCount -= work.InjectedExitCount;
             }
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> produced = m_Workspace.ProducedExits.Slice(
-                checked(slot * m_Capacity.TreeExitRequestsPerPlayback), work.ProducedExitCount);
+                checked(work.BufferIndex * m_Capacity.TreeExitRequestsPerPlayback), work.ProducedExitCount);
             RequireContent(in playback.Start);
             ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = m_Content.Clips;
             foreach (ref readonly OrchestrationTimelineClipOccurrence occurrence in produced)
                 TimelineRuntimeScheduling<TTime, TClock>.InsertOccurrence(clips,
                     pending, ref work.Proposed.TreeExitRequestCount, in occurrence);
-            m_Workspace.EvaluationFirstCycles.Slice(checked(slot * m_Capacity.TreeExitWindowsPerPlayback),
+            m_Workspace.EvaluationFirstCycles.Slice(checked(work.BufferIndex * m_Capacity.TreeExitWindowsPerPlayback),
                 m_Capacity.TreeExitWindowsPerPlayback).CopyTo(TreeExitFirstCycles(candidate, slot));
-            m_Workspace.EvaluationExitBits.Slice(checked(slot * m_Capacity.TreeExitWordsPerPlayback),
+            m_Workspace.EvaluationExitBits.Slice(checked(work.BufferIndex * m_Capacity.TreeExitWordsPerPlayback),
                 m_Capacity.TreeExitWordsPerPlayback).CopyTo(TreeExitBits(candidate, slot));
             playback = work.Proposed;
         }
@@ -375,17 +379,17 @@ namespace BTSMTL.Timeline.Runtime
         TimelineTreeExitState TreeExits(OrchestrationStateView candidate, int slot) =>
             new(m_Content.TreeCycleWindows, TreeExitFirstCycles(candidate, slot), TreeExitBits(candidate, slot));
 
-        TimelineTreeExitState EvaluationExits(int slot) =>
+        TimelineTreeExitState EvaluationExits(int bufferIndex) =>
             new(m_Content.TreeCycleWindows,
-                m_Workspace.EvaluationFirstCycles.Slice(checked(slot * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback),
-                m_Workspace.EvaluationExitBits.Slice(checked(slot * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
+                m_Workspace.EvaluationFirstCycles.Slice(checked(bufferIndex * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback),
+                m_Workspace.EvaluationExitBits.Slice(checked(bufferIndex * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
 
-        void CopyExitState(OrchestrationStateView candidate, int slot)
+        void CopyExitState(OrchestrationStateView candidate, int slot, int bufferIndex)
         {
             TreeExitFirstCycles(candidate, slot).CopyTo(m_Workspace.EvaluationFirstCycles.Slice(
-                checked(slot * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback));
+                checked(bufferIndex * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback));
             TreeExitBits(candidate, slot).CopyTo(m_Workspace.EvaluationExitBits.Slice(
-                checked(slot * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
+                checked(bufferIndex * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
         }
 
         void RequireContent(in OrchestrationTimelineStart<TTime> start)
@@ -401,9 +405,9 @@ namespace BTSMTL.Timeline.Runtime
                 work.InvocationCount);
         }
 
-        void AppendInvocation(int slot, in TimelineScheduledInvocation<TTime> request, ref int count)
+        void AppendInvocation(int bufferIndex, in TimelineScheduledInvocation<TTime> request, ref int count)
         {
-            m_Workspace.Invocations[checked(slot * m_Workspace.InvocationCapacity + count++)] =
+            m_Workspace.Invocations[checked(bufferIndex * m_Workspace.InvocationCapacity + count++)] =
                 new OrchestrationTimelineStoredInvocation<TTime>(request.Hook,
                     request.Ordinal, request.Cycle, request.Marker,
                     request.Time, request.PreviousTime);

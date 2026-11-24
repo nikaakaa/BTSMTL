@@ -49,6 +49,7 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref runtime.Playback(candidate, slot);
             OrchestrationTimelineStep<TTime> step = bindings.Step(operationIndex,
                 in playback.Start, tick, inputs, ref context);
+            using var batchScope = runtime.Workspace.OpenBatch();
             OrchestrationTimelineBatch<TTime> batch = runtime.BeginAdvance(candidate, slot, step);
             ReadOnlySpan<OrchestrationStopContext> stopContext = cursor.StopContextStorage(operationIndex);
             OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
@@ -97,8 +98,11 @@ namespace BTSMTL.Timeline.Runtime
             where TNumerics : struct, IOrchestrationNumerics<TValue>
             where THost : struct, IOrchestrationHost<TValue>
             where TBindings : struct, IOrchestrationTimelineBindings<TTime, TValue, TContext>
-            => ClosePlayback(runtime, ref bindings, candidate, operationIndex, slot, ref playbackIdentity,
+        {
+            using var batchScope = runtime.Workspace.OpenBatch();
+            return ClosePlayback(runtime, ref bindings, candidate, operationIndex, slot, ref playbackIdentity,
                 stopContext, ref context, 0);
+        }
 
         static OrchestrationStopStatus ClosePlayback<TBindings>(
             OrchestrationTimelineRuntime<TTime, TClock> runtime, ref TBindings bindings,
