@@ -160,11 +160,38 @@ namespace BTSMTL.Orchestration
                                 value = m_TimelineTime;
                                 break;
                             case OrchestrationValueOpcode.Extension:
-                                EvaluateExtensionValue(operationIndex, argument,
-                                    ScheduledArguments(instruction.Alternative), depth, ref value);
+                                value = EvaluateExtensionOutputs(operationIndex,
+                                    ScheduledArguments(instruction.Alternative), depth)[argument];
                                 break;
                         }
                         break;
+                    }
+                    case OrchestrationPreparedScheduleTarget.ReadExtensionOutputs:
+                    {
+#if UNITY_EDITOR
+                        m_WorkloadObservation?.Count(instruction.Operation, OrchestrationWorkloadCounter.ValueComputes);
+#endif
+                        m_CurrentOperationIndex = instruction.Operation;
+                        ReadOnlySpan<TValue> outputs = EvaluateExtensionOutputs(instruction.Operation,
+                            ScheduledArguments(instruction.Alternative), depth);
+                        values[instruction.Destination] = outputs[instruction.Argument];
+                        pc = instruction.Next;
+                        for (int remaining = instruction.Operand - 1; remaining != 0; remaining--)
+                        {
+                            ref readonly var step = ref m_ValueInstructions[pc];
+                            m_CurrentOperationIndex = step.Operation;
+                            if (step.Code == OrchestrationValueScheduleCode.CopyInput)
+                            {
+#if UNITY_EDITOR
+                                m_WorkloadObservation?.Count(step.Operation, OrchestrationWorkloadCounter.InputCopies);
+#endif
+                                values[step.Destination] = values[step.Operand];
+                            }
+                            else
+                                values[step.Destination] = outputs[step.Argument];
+                            pc = step.Next;
+                        }
+                        continue;
                     }
                     case OrchestrationValueScheduleCode.ReadActionOutput:
                     {

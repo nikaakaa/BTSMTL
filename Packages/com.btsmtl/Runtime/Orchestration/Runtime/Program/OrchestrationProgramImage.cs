@@ -7,6 +7,7 @@ namespace BTSMTL.Orchestration
 {
     internal static class OrchestrationPreparedScheduleTarget
     {
+        internal const OrchestrationValueScheduleCode ReadExtensionOutputs = (OrchestrationValueScheduleCode)250;
         internal const OrchestrationValueScheduleCode ReadValue = (OrchestrationValueScheduleCode)251;
         internal const OrchestrationValueScheduleCode ComputeNumber = (OrchestrationValueScheduleCode)252;
         internal const OrchestrationValueScheduleCode ReadReusableBlackboard = (OrchestrationValueScheduleCode)253;
@@ -201,6 +202,7 @@ namespace BTSMTL.Orchestration
             Span<OrchestrationValueScheduleInstruction> prepared = instructions.AsSpan(0, instructionCount);
             // 跳转重定址完成后，求值指令的备用跳转字段可保存参数范围。
             BindValueComputations(prepared, schedule.ValueOperations.Span, argumentSlots, argumentLists);
+            FuseExtensionOutputReads(prepared, argumentSlots, argumentLists);
             header.ScheduleInstructions = writer.Add<OrchestrationValueScheduleInstruction>(prepared);
             header.ScheduleValueEntries = AddEntries(schedule.ValueEntries.Span);
             header.ScheduleInputEntries = AddEntries(schedule.InputEntries.Span);
@@ -274,6 +276,46 @@ namespace BTSMTL.Orchestration
                 guard = new OrchestrationValueScheduleInstruction(OrchestrationPreparedScheduleTarget.ReadReusableBlackboard,
                     read.Operation, operations[read.Operand].Argument, read.Destination,
                     mark.Destination - reuseOffset, mark.Next, -1);
+            }
+        }
+
+        static bool ReadsExtensionOutput(in OrchestrationValueScheduleInstruction instruction) =>
+            instruction.Code == OrchestrationPreparedScheduleTarget.ReadExtensionOutputs ||
+            instruction.Code == OrchestrationPreparedScheduleTarget.ReadValue &&
+                instruction.Operand == (int)OrchestrationValueOpcode.Extension;
+
+        static void FuseExtensionOutputReads(Span<OrchestrationValueScheduleInstruction> instructions,
+            ReadOnlySpan<int> argumentSlots, ReadOnlySpan<OrchestrationRange> argumentLists)
+        {
+            foreach (ref var first in instructions)
+            {
+                if (!ReadsExtensionOutput(in first))
+                    continue;
+
+                OrchestrationRange range = argumentLists[first.Alternative];
+                ReadOnlySpan<int> inputs = argumentSlots.Slice(range.Offset, range.Count);
+                if (inputs.IndexOf(first.Destination) >= 0)
+                    continue;
+
+                int steps = 1;
+                int endOfReads = 1;
+                for (int pc = first.Next; pc >= 0; pc = instructions[pc].Next)
+                {
+                    ref readonly var next = ref instructions[pc];
+                    bool readsOutput = ReadsExtensionOutput(in next) &&
+                        next.Operation == first.Operation && next.Alternative == first.Alternative;
+                    if (!readsOutput && next.Code != OrchestrationValueScheduleCode.CopyInput)
+                        break;
+                    steps++;
+                    if (readsOutput)
+                        endOfReads = steps;
+                    if (inputs.IndexOf(next.Destination) >= 0)
+                        break;
+                }
+
+                if (endOfReads > 1)
+                    first = new OrchestrationValueScheduleInstruction(OrchestrationPreparedScheduleTarget.ReadExtensionOutputs,
+                        first.Operation, endOfReads, first.Destination, first.Argument, first.Next, first.Alternative);
             }
         }
 

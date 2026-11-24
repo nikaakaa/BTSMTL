@@ -26,8 +26,7 @@ namespace BTSMTL.Orchestration
             return default(TNumerics).Boolean(in m_ScheduledValues[m_Program.ScheduleBooleanSlot]);
         }
 
-        void EvaluateExtensionValue(int operationIndex, int outputPortIndex, ReadOnlySpan<int> arguments,
-            int depth, ref TValue value)
+        ReadOnlySpan<TValue> EvaluateExtensionOutputs(int operationIndex, ReadOnlySpan<int> arguments, int depth)
         {
 #if UNITY_EDITOR
             using var workloadCost = new OrchestrationWorkloadCostScope(m_WorkloadObservation,
@@ -48,7 +47,7 @@ namespace BTSMTL.Orchestration
 #endif
             RequireSynchronousValueResult(operationIndex, binding,
                 m_Host.InvokeReadOnly(binding, in invocation));
-            value = outputs[outputPortIndex];
+            return outputs;
         }
 
         ReadOnlySpan<int> ReadInputSlots(int operationIndex, out int depth)
