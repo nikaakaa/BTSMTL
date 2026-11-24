@@ -22,5 +22,14 @@ namespace BTSMTL.Orchestration
         public int SizeBytes => checked(sizeof(T) * Length);
         public static int ElementSizeBytes => sizeof(T);
         public static int ElementAlignment => sizeof(AlignmentProbe) - sizeof(T);
+
+        public static OrchestrationStateRegion<T> Reserve(ref int storageBytes, int length)
+        {
+            int alignment = ElementAlignment;
+            int offset = checked((storageBytes + alignment - 1) / alignment * alignment);
+            var region = new OrchestrationStateRegion<T>(offset, length);
+            storageBytes = checked(offset + region.SizeBytes);
+            return region;
+        }
     }
 }
