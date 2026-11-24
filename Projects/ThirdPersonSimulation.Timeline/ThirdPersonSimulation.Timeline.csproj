@@ -4,6 +4,7 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>BTSMTL.Timeline.Runtime</AssemblyName>
     <TimelineSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Timeline\Runtime</TimelineSourceRoot>

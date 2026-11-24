@@ -1,6 +1,7 @@
 using System;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
@@ -30,8 +31,8 @@ namespace BTSMTL.Timeline.Runtime
             Samples = Array.Empty<TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>>();
             SamplingClips = new List<int>();
             Events = new(0);
-            TreeClips = new(0);
-            ActiveTreeClips = new(0);
+            TreeClips = new();
+            ActiveTreeClips = new();
         }
 
         public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared,
@@ -145,9 +146,15 @@ namespace BTSMTL.Timeline.Runtime
             TreeClips.Clear();
             ActiveTreeClips.Clear();
         }
+
+        public void ReleaseTreeClipStorage()
+        {
+            TreeClips.ReleaseStorage();
+            ActiveTreeClips.ReleaseStorage();
+        }
     }
 
-    sealed class TimelineRuntimeTreeClipBuffer
+    sealed unsafe class TimelineRuntimeTreeClipBuffer
     {
         readonly struct StoredRequest
         {
@@ -184,19 +191,15 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         internal OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
-        StoredRequest[] m_Values;
+        StoredRequest* m_Values;
+        int m_Capacity;
         int m_Count;
         int m_PlaybackSlot;
         ulong m_Sequence;
         ulong m_PlaybackIdentity;
 
-        public TimelineRuntimeTreeClipBuffer(int capacity)
-        {
-            m_Values = capacity == 0 ? Array.Empty<StoredRequest>() : new StoredRequest[capacity];
-        }
-
         public int Count => m_Count;
-        public int Capacity => m_Values.Length;
+        public int Capacity => m_Capacity;
         public ulong Version { get; private set; }
         public TimelineRuntimeTreeClipView View => new(this);
 
@@ -212,8 +215,11 @@ namespace BTSMTL.Timeline.Runtime
 
         internal void PrepareCapacity(int capacity)
         {
-            if (capacity > m_Values.Length)
-                Array.Resize(ref m_Values, capacity);
+            if (capacity <= m_Capacity)
+                return;
+            if (m_Values != null)
+                AllocateStorage(capacity);
+            m_Capacity = capacity;
         }
 
         public void Add(in TimelineRuntimeTreeClipRequest value)
@@ -221,7 +227,7 @@ namespace BTSMTL.Timeline.Runtime
             if (m_Count == Capacity)
                 throw new InvalidOperationException("Timeline sample count exceeds the prepared content capacity.");
             if (m_Count == 0)
-                SetPlayback(value.Token);
+                BeginWrite(value.Token);
             m_Values[m_Count++] = new StoredRequest(in value);
         }
 
@@ -230,7 +236,8 @@ namespace BTSMTL.Timeline.Runtime
             if ((uint)index >= (uint)m_Count)
                 throw new ArgumentOutOfRangeException(nameof(index));
             m_Count--;
-            Array.Copy(m_Values, index + 1, m_Values, index, m_Count - index);
+            var values = new Span<StoredRequest>(m_Values + index, m_Count - index + 1);
+            values.Slice(1).CopyTo(values);
         }
 
         public void Clear()
@@ -244,15 +251,37 @@ namespace BTSMTL.Timeline.Runtime
             if (values.Length > Capacity)
                 throw new InvalidOperationException("Recorded Timeline samples exceed the prepared content capacity.");
             if (values.Length != 0)
-                SetPlayback(values[0].Token);
+                BeginWrite(values[0].Token);
             for (int index = 0; index < values.Length; index++)
                 m_Values[index] = new StoredRequest(in values[index]);
             m_Count = values.Length;
             Version = version;
         }
 
-        void SetPlayback(OrchestrationTimelineInvocationToken token)
+        internal void ReleaseStorage()
         {
+            if (m_Values != null)
+            {
+                Marshal.FreeHGlobal((IntPtr)m_Values);
+                m_Values = null;
+            }
+        }
+
+        void AllocateStorage(int capacity)
+        {
+            int bytes = checked(capacity * sizeof(StoredRequest));
+            IntPtr storage = m_Values == null
+                ? Marshal.AllocHGlobal(bytes)
+                : Marshal.ReAllocHGlobal((IntPtr)m_Values, (IntPtr)bytes);
+            if (storage == IntPtr.Zero)
+                throw new OutOfMemoryException();
+            m_Values = (StoredRequest*)storage;
+        }
+
+        void BeginWrite(OrchestrationTimelineInvocationToken token)
+        {
+            if (m_Values == null)
+                AllocateStorage(m_Capacity);
             m_PlaybackSlot = token.PlaybackSlot;
             m_Sequence = token.Sequence;
             m_PlaybackIdentity = token.PlaybackIdentity;

@@ -268,12 +268,16 @@ namespace BTSMTL.Timeline.Runtime
                     retained = true;
                     break;
                 }
-            if (!retained && m_RecordedPlaybackCapacity <= m_PlaybackCapacity)
+            if (!retained)
             {
-                if (graphSource == TimelineRuntimePresentationGraphSource.Executed)
-                    m_ExecutedBuffers = null;
-                else
-                    m_SourceBuffers.Remove(sourceIdentityId);
+                pool.Buffers.ReleaseTreeClipStorage();
+                if (m_RecordedPlaybackCapacity <= m_PlaybackCapacity)
+                {
+                    if (graphSource == TimelineRuntimePresentationGraphSource.Executed)
+                        m_ExecutedBuffers = null;
+                    else
+                        m_SourceBuffers.Remove(sourceIdentityId);
+                }
             }
             UpdateRecordedCapacity();
         }
@@ -575,6 +579,17 @@ namespace BTSMTL.Timeline.Runtime
             foreach (PresentationPlaybackState state in m_Playbacks.Values)
                 state.Recycle();
             m_Playbacks.Clear();
+            if (m_RecordedPlaybackCapacity <= m_PlaybackCapacity)
+            {
+                m_ExecutedBuffers?.ReleaseTreeClipStorage();
+                foreach (PresentationBufferPool buffers in m_SourceBuffers.Values)
+                    buffers.ReleaseTreeClipStorage();
+            }
+            else
+            {
+                foreach (PresentationContent content in m_RecycledPlaybacks.Values)
+                    content.Buffers.ReleaseTreeClipStorage();
+            }
             m_RecycledPlaybacks.Clear();
             m_SourceBuffers.Clear();
             m_ExecutedBuffers = null;
@@ -1093,6 +1108,15 @@ namespace BTSMTL.Timeline.Runtime
                     buffers.Accepted.PrepareCapacity(in capacity);
                     if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
                         buffers.Graphs.PrepareCapacity(content, executionContent);
+                }
+            }
+
+            public void ReleaseTreeClipStorage()
+            {
+                foreach (PresentationPlaybackState state in Storage)
+                {
+                    state.Candidate.ReleaseTreeClipStorage();
+                    state.Accepted.ReleaseTreeClipStorage();
                 }
             }
         }
