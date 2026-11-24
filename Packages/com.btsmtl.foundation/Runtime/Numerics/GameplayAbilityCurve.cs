@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace ThirdPersonSimulation
 {
@@ -34,24 +35,28 @@ namespace ThirdPersonSimulation
     public sealed partial class GameplayAbilityCurve<TScalar>
         where TScalar : struct, IComparable<TScalar>, IEquatable<TScalar>
     {
-        readonly ReadOnlyCollection<GameplayAbilityCurveKey<TScalar>> m_Keys;
+        ReadOnlyCollection<GameplayAbilityCurveKey<TScalar>> m_Keys;
+        [ValueStorageIgnore] GameplayAbilityCurveKey<TScalar>[] m_KeyArray;
 
         public GameplayAbilityCurve(int preWrapMode, int postWrapMode, IEnumerable<GameplayAbilityCurveKey<TScalar>> keys)
         {
             PreWrapMode = preWrapMode;
             PostWrapMode = postWrapMode;
-            var copied = keys == null ? new List<GameplayAbilityCurveKey<TScalar>>() : new List<GameplayAbilityCurveKey<TScalar>>(keys);
-            copied.Sort((left, right) => left.Time.CompareTo(right.Time));
-            m_Keys = copied.AsReadOnly();
-            RequireKeyOrder();
+            var sortedKeys = keys?.ToArray() ?? Array.Empty<GameplayAbilityCurveKey<TScalar>>();
+            Array.Sort(sortedKeys, (left, right) => left.Time.CompareTo(right.Time));
+            PrepareKeys(sortedKeys);
         }
 
         [ValueValidation]
-        void RequireKeyOrder()
+        void PrepareStoredKeys() => PrepareKeys(m_Keys.ToArray());
+
+        void PrepareKeys(GameplayAbilityCurveKey<TScalar>[] keys)
         {
-            for (int i = 1; i < m_Keys.Count; i++)
-                if (m_Keys[i - 1].Time.CompareTo(m_Keys[i].Time) >= 0)
-                    throw new ArgumentException($"Gameplay Ability Curve key times must increase at '{m_Keys[i].Time}'.");
+            for (int i = 1; i < keys.Length; i++)
+                if (keys[i - 1].Time.CompareTo(keys[i].Time) >= 0)
+                    throw new ArgumentException($"Gameplay Ability Curve key times must increase at '{keys[i].Time}'.");
+            m_KeyArray = keys;
+            m_Keys = Array.AsReadOnly(keys);
         }
 
         public int PreWrapMode { get; }
@@ -59,7 +64,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<GameplayAbilityCurveKey<TScalar>> Keys => m_Keys;
 
         public TScalar Evaluate<TMath>(TScalar time, TScalar emptyValue)
-            where TMath : struct, IScalarMath<TScalar> => Calculation<TMath>.Evaluate(m_Keys, time, emptyValue);
+            where TMath : struct, IScalarMath<TScalar> => Calculation<TMath>.Evaluate(m_KeyArray, time, emptyValue);
 
         static class Calculation<TMath> where TMath : struct, IScalarMath<TScalar>
         {
@@ -67,17 +72,18 @@ namespace ThirdPersonSimulation
             static readonly TScalar Three = default(TMath).Add(Two, default(TMath).One);
             static readonly TScalar DefaultWeight = default(TMath).Divide(default(TMath).One, Three);
 
-            public static TScalar Evaluate(IReadOnlyList<GameplayAbilityCurveKey<TScalar>> keys, TScalar time, TScalar emptyValue)
+            public static TScalar Evaluate(GameplayAbilityCurveKey<TScalar>[] keys, TScalar time, TScalar emptyValue)
             {
-                if (keys.Count == 0)
+                int last = keys.Length - 1;
+                if (last < 0)
                     return emptyValue;
                 TMath math = default;
-                if (keys.Count == 1 || !math.GreaterThan(time, keys[0].Time))
+                if (last == 0 || !math.GreaterThan(time, keys[0].Time))
                     return keys[0].Value;
-                if (!math.GreaterThan(keys[keys.Count - 1].Time, time))
-                    return keys[keys.Count - 1].Value;
+                if (!math.GreaterThan(keys[last].Time, time))
+                    return keys[last].Value;
                 int low = 0;
-                int high = keys.Count - 1;
+                int high = last;
                 while (high - low > 1)
                 {
                     int middle = low + (high - low) / 2;
@@ -86,10 +92,10 @@ namespace ThirdPersonSimulation
                     else
                         high = middle;
                 }
-                GameplayAbilityCurveKey<TScalar> from = keys[low];
+                ref readonly GameplayAbilityCurveKey<TScalar> from = ref keys[low];
                 if (from.Stepped)
                     return from.Value;
-                GameplayAbilityCurveKey<TScalar> to = keys[high];
+                ref readonly GameplayAbilityCurveKey<TScalar> to = ref keys[high];
                 TScalar duration = math.Subtract(to.Time, from.Time);
                 TScalar t = math.Divide(math.Subtract(time, from.Time), duration);
                 if ((from.WeightedMode & 2) != 0 || (to.WeightedMode & 1) != 0)
