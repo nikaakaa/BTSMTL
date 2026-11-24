@@ -141,8 +141,7 @@ namespace BTSMTL.Timeline.Runtime
     {
         readonly TimelineContentUnit m_Content;
         readonly TimelineRuntimeLogicSampleClip<TScalar>[] m_Clips;
-        readonly GameplayAbilityCurveKey<TScalar>[] m_CurveKeys;
-        readonly TValue[] m_Inputs;
+        readonly int m_InputCapacity;
         readonly TimelineRuntimeClipSampling<TScalar, TMath, TLowering, TProjection> m_Sampling;
         readonly OrchestrationExtensionBindings<TValue, TContext> m_Bindings;
 
@@ -170,7 +169,6 @@ namespace BTSMTL.Timeline.Runtime
                     clip.TimeRange, clip.Sampling, m_Sampling.CurvesAt(clipIndex)));
             }
             m_Clips = clips.ToArray();
-            m_CurveKeys = m_Sampling.CurveKeys.ToArray();
             var required = new int[references.Count];
             for (int index = 0; index < required.Length; index++)
                 required[index] = index;
@@ -183,21 +181,24 @@ namespace BTSMTL.Timeline.Runtime
                         throw new InvalidOperationException($"Timeline 片段 '{clip.AuthoringId}' ({clip.ContractKind}) 的扩展未提供采样参数准备接口。");
                     return preparation.PrepareSample(in clip, clipIndex, m_Sampling);
                 });
-            m_Inputs = new TValue[TimelineRuntimeLogicSampling<TValue, TScalar, TMath, TValues, TProjection>
-                .InputValueCapacity(m_Clips.Length, mode)];
+            m_InputCapacity = TimelineRuntimeLogicSampling<TValue, TScalar, TMath, TValues, TProjection>
+                .InputValueCapacity(m_Clips.Length, mode);
         }
 
         public ReadOnlySpan<TimelineRuntimeLogicSampleClip<TScalar>> Clips => m_Clips;
-        public ReadOnlySpan<GameplayAbilityCurveKey<TScalar>> CurveKeys => m_CurveKeys;
+        public ReadOnlySpan<GameplayAbilityCurveKey<TScalar>> CurveKeys => m_Sampling.CurveKeys;
 
         public void Invoke(int operationIndex, ulong operationGeneration, ulong tick, int playbackSlot, ulong playbackIdentity,
             OrchestrationTime previousTime, int previousCycle, OrchestrationTime time, int cycle,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
             ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame, ref TContext context)
         {
+            if (m_InputCapacity == 0)
+                return;
+            Span<TValue> inputs = stackalloc TValue[m_InputCapacity];
             var invoker = new Invoker(m_Bindings);
             int failed = TimelineRuntimeLogicSampling<TValue, TScalar, TMath, TValues, TProjection>.Invoke(
-                m_Clips, m_CurveKeys, m_Content.Duration, m_Inputs, ref invoker, operationIndex, operationGeneration,
+                m_Clips, m_Sampling.CurveKeys, m_Content.Duration, inputs, ref invoker, operationIndex, operationGeneration,
                 tick, playbackSlot, playbackIdentity, previousTime, previousCycle, time, cycle, stateAncestors,
                 executionFrame, ref context, out OrchestrationExtensionResult result);
             if (failed >= 0)
