@@ -51,12 +51,12 @@ sealed class QuickPreviewInputs
         m_Selections = rootPlans.Length <= 1 ? [rootDefault, .. selections] : selections;
         DefaultInput = defaultPlan == null ? null : (PreviewQuickDocumentInput)selections
             .Single(selection => selection.Plan == defaultPlan && selection.Index == index).Scheme.Source;
-        CurrentInputScheme = rootPlans.Length <= 1 ? defaultInput : null;
+        CurrentInputScheme = rootPlans.Length <= 1 ? (PreviewQuickInputSource?)DefaultInput ?? defaultInput : null;
     }
 
     public PreviewQuickScheme[] Schemes() => m_Selections.Select(selection => selection.Scheme).ToArray();
 
-    public QuickPreviewInputSchedule Resolve(PreviewQuickInput request, double? rangeEnd)
+    public QuickPreviewInputSchedule Resolve(PreviewQuickInput request, double? rangeEnd, QuickPreviewCompilation compiled)
     {
         // 跟随当前内容（Revision 为 null）时按文档、输入与方案身份取本次捕获的方案，保存修订以本次捕获为准。
         Selection selected = m_Selections.SingleOrDefault(selection => request.Revision == null
@@ -87,7 +87,9 @@ sealed class QuickPreviewInputs
         {
             var authored = QuickPreviewInputTimeline.Read(selected.Plan, selected.Index, m_Actor.Keys);
             points = m_Actor.Keys.ConvertKeys(authored.Keys);
-            conditions = authored.Conditions;
+            conditions = compiled.Standalone is { } timeline && (string?)selected.Plan.Value["Timeline"] != timeline.AuthoringId
+                ? authored.Conditions.Where(point => compiled.Publication.RuntimeConditions.ContainsKey(point.Key)).ToArray()
+                : authored.Conditions;
         }
         else
         {

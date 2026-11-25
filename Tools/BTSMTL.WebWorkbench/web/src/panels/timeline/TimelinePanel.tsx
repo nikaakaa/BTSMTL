@@ -69,7 +69,7 @@ import styles from './timeline.module.css';
 export function TimelinePanel() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
   const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
-  return <div className={styles.window}>{projectTools && (quick ? <QuickBar /> : <RunBar />)}<DocumentTimeline /></div>;
+  return <div className={styles.window}>{quick ? <QuickBar /> : projectTools && <RunBar />}<DocumentTimeline /></div>;
 }
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。

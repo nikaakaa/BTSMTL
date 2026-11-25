@@ -1,6 +1,6 @@
 # BTSMTL 网页工作台
 
-独立工作台在浏览器中读写本机的 BTSMTL 图、Timeline 和变量声明。项目宿主可以复用同一套网页与文档服务，提供项目节点、FSM、资源、发布和运行预览。前后端接入方式见[接口说明](API.md)。
+独立工作台在浏览器中读写本机的 BTSMTL 图、Timeline 和变量声明，并在 Timeline 上显示作者路线。项目宿主可在同一工作台接入项目节点、FSM、资源、发布与 Player。前后端接入方式见[接口说明](API.md)。
 
 ## 环境
 
@@ -21,10 +21,10 @@
 默认工作区是 [Examples](Examples)。保存会写回这里的 JSON。需要保留原样时，把 `Examples` 复制到自己的目录，再用 `-Workspace <路径>` 打开副本。工作区文档由 `Graphs/<目录>/graph.json`、`Timelines/<目录>/timeline.json` 和 `Variables/<目录>/variables.json` 发现。
 
 1. 在 Project 中双击「条件分支示例」，点选「比较数值」，在检查器里改 `a`。也可以右击节点图空白处，选择「添加节点…」并加入 `FloatMultiply`。点「保存」后重新打开文档，查看已保存的节点和输入。
-2. 在 Project 中双击「片段时间示例」，选中时间轴片段，在检查器的「时间」中调整起点或终点，再保存。
+2. 双击「片段时间示例」，选中时间轴片段，在检查器的「更换节点图」选「片段备用图」，再把终点改为 `2` 秒。保存并重开，双击片段可打开所选的图。选择「快速预览」，查看同一修订计算出的播放时长和路线。可以播放路线或拖动游标定位。
 3. 打开「条件分支示例」，点节点图工具栏的「黑板」，选 `float` 并添加变量，再点「保存」。变量保存在 `Variables/example-graph-variables/variables.json`。
 
-独立模式提供核心流程和数值节点、树轨及已有片段时间、变量声明的编辑。新建整份文档、项目资源引用、编译发布、运行输入和 Player 预览由项目宿主提供。
+独立模式支持核心流程和数值节点、树轨、片段与标记图引用、变量声明及 Timeline 路线预览。片段和标记的目标图存于所属 Timeline 文档的 `graphs/`。路线使用当前编辑内容，详情显示采用的作者修订。项目宿主负责整份业务文档创建、项目资源引用、编译发布、运行输入和角色画面。
 
 组合项目宿主时，`MapAuthoringApi(documents, resources)` 挂载文档、目录、变量、引用替换和资源查询，另以 `MapAuthoringApi(contracts)`、`MapPublicationApi(publication)` 与 `MapPreviewInputApi(inputs)` 挂载合同、发布和输入操作。`MapPlayerApi(adapter, options)` 创建唯一的播放器队列、常驻池、Live、内容刷新和代码更新服务，返回 `Jobs/Live/Refreshes` 供组合；配方、启动参数、输入与原生位置解释来自项目适配。公共服务保存规范 JSON，不解释项目参数。适配接口位于不依赖 ASP.NET 的 `Authoring/`，公共请求位于 `Contracts/`，执行位于 Host 库的 `Player/`。`MapPreviewQuickApi(adapter, players?)` 另装配公共快速路线服务：输入日程、静态查询、推导、投影、定位、改时、条件发布与快档播放器调度位于 `Quick/`。`IPreviewQuickAdapter` 只提供语义编译结果、领域状态与输入换算、项目运行包。`IPreviewHost` 只提供宿主能力、来源及输入声明，`MapPreviewApi(host, players?)` 回报播放器能力。没有播放器适配或包体时，纯路线正常完成，画面、真实运行与代码更新入口隐藏；网页不向缺失的播放器路由轮询。
 

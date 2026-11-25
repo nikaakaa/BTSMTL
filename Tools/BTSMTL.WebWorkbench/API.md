@@ -64,6 +64,8 @@
 
 ## 快速路线与快档画面
 
+宿主声明 `description.quickAuthoring` 时，快速预览的来源是作者 Timeline。此类请求使用 `scenePath: null` 并省略 `scenePublication`。回执中的 `source.revision` 标识本次采用的作者修订，`source.sceneRevision` 为 `null`。路线由同一快预览服务生成并由 Timeline 显示。
+
 快速路线由 BTSMTL `QuickPreviewService` 执行，当前协议为 `btsmtl.native-timeline-preview/4`。项目适配捕获选定作者入口，并提供同一内容的语义 IR、声明默认值、子图、Timeline 内容与状态键。BTSMTL 建立静态查询、读取输入日程、推导路线并发布通用条件操作；项目适配把结果写成其正式运行包。存在播放器时，公共服务随后复用或启动隐藏的快档 Player、载入该包并定位，不经 Editor Native 预览作业。未注册播放器或目录缺包时，作业仍以 ready 交付计划，player/frame/adoptedMode 保持 null，notes 说明画面不可用；不会为纯路线写画面包。
 
 | 方法与路径 | 输入与输出 |

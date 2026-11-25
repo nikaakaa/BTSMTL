@@ -1,0 +1,22 @@
+{
+  "AuthoringId": "example-timeline-alternate",
+  "ContentRevision": "1",
+  "name": "片段备用图",
+  "Role": "TimelineBody",
+  "m_ContentDomain": "graph",
+  "Domains": [],
+  "EntryDeclarations": [
+    { "m_EntryId": "Root", "m_NodeId": "entry", "m_Contract": 1 }
+  ],
+  "VariableOwnerId": "example-graph-variables",
+  "allNodes": [
+    {
+      "UID": "entry",
+      "type": "BtsmtlEntryFlowNode",
+      "_name": "备用图入口",
+      "_inputPortValues": {},
+      "outConnections": []
+    }
+  ],
+  "layout": {}
+}

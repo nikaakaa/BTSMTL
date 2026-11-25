@@ -6,6 +6,8 @@ var authoring = new StandaloneAuthoring(Path.GetFullPath(workspace));
 app.MapAuthoringApi(authoring.Documents, projectTools: false);
 app.MapAuthoringEditorApi(authoring.Document, authoring.Types, authoring.Type, authoring.Fields, authoring.Ports,
     authoring.Configuration, authoring.Elements);
-app.MapPreviewApi();
+var preview = new StandalonePreview(authoring.Documents);
+app.MapPreviewApi(preview);
+app.MapPreviewQuickApi(preview);
 app.MapPreviewImageApi(null);
 app.Run();

@@ -25,7 +25,7 @@ import { clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimeline
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { Empty, Fold, IdentityFold } from '../../ui/blocks';
-import { Button, FieldLabel, NumberInput, ObjectField, Tip } from '../../ui/controls';
+import { Button, FieldLabel, NumberInput, ObjectField, Select, Tip } from '../../ui/controls';
 import { ErrorLine } from '../../ui/ErrorLine';
 import { TrackIcon } from '../timeline/icons';
 import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SlottedGraphs, StepFields, TrackFields, TransitionFields } from './FieldEditors';
@@ -484,7 +484,9 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
   const notice = runId === null ? null : documentObservationNotice(route, binding, observedCall)
     ?? timelineObservationNotice(timelineBinding, frameSource, timeline.documentId, observedCall)
     ?? (observation.kind === 'unavailable' ? observation.reason : null);
-  const graphRow = input || !clip.graphId ? null : <TimelineGraphReference label="节点图" id={clip.graphId} graph={graph}
+  const graphRow = input || !clip.graphId && clip.contract !== 'tree.clip' ? null : <TimelineGraphReference label="节点图"
+    id={clip.graphId} graph={graph} role="TimelineBody" onChange={editable ? graphId =>
+      authoringActions.setClipValues(timeline.documentId, clip.id, [{ keys: ['m_AssetTree'], value: graphId }]) : undefined}
     caller={route === null || observedCall === null || runId === null ? null : { runId, call: observedCall }} />;
   return (
     <>
@@ -532,13 +534,26 @@ function ClipInspector({ id, call, missing }: { id: string; call: Selection['cal
 }
 
 // 标记：时刻与触发图；作者模式可改时刻。输入标记与输入片段一样直接读触发图文件，编辑写入的按键与值。
-function TimelineGraphReference({ label, id, graph, caller = null }: {
-  label: string; id: string; graph: GraphDefinition | null; caller?: NonNullable<SelectionSlice['graphRequest']>['caller'];
+function TimelineGraphReference({ label, id, graph, role, onChange, caller = null }: {
+  label: string; id: string | null; graph: GraphDefinition | null; role: 'TimelineBody' | 'TimelineTrigger';
+  onChange?: (graphId: string) => void; caller?: NonNullable<SelectionSlice['graphRequest']>['caller'];
 }) {
-  const { document } = useCurrentDocument(graphPath(graph?.id ?? id));
-  if (graph === null && document === null) return <Value label={label} mono={false} value="当前文档没有这张图" />;
-  const name = graph === null ? (document as JsonObject).name as string : graphName(graph);
-  return <Link label={label} text={name} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph?.id ?? id, caller)} />;
+  const { document } = useCurrentDocument(id === null ? null : graphPath(id));
+  const options = useAuthoring(useShallow(state => {
+    const current = authoringDocument(state);
+    return (current.documentGraphs ?? []).filter(item => item.owner === state.target?.documentPath && item.role === role);
+  }));
+  return <>
+    {id !== null && (graph !== null || document !== null)
+      ? <Link label={label} text={graph === null ? (document as JsonObject).name as string : graphName(graph)}
+        kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(id, caller)} />
+      : <Value label={label} mono={false} value={id === null ? '未设置' : '当前文档没有这张图'} />}
+    {onChange && options.length > 0 && <div className={styles.field}>
+      <label>更换{label}</label><Select label={`更换${label}`} placeholder="选择当前文档的图"
+        value={options.some(item => item.id === id) ? id : null}
+        options={options.map(item => ({ value: item.id, label: graphName(item) }))} onChange={onChange} />
+    </div>}
+  </>;
 }
 
 function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<typeof findTimelineMarker>>; editable: boolean }) {
@@ -551,7 +566,8 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
     <>
       <Head icon={<TrackIcon kind={input ? 'in' : trackKind(track)} />} name={`${track.displayName} 标记`} sub={timeline.displayName} />
       <Fold title="标记" defaultOpen>
-        {!input && marker.graphId && <TimelineGraphReference label="触发图" id={marker.graphId} graph={graph} />}
+        {!input && <TimelineGraphReference label="触发图" id={marker.graphId || null} graph={graph} role="TimelineTrigger"
+          onChange={editable ? graphId => authoringActions.setMarkerValue(timeline.documentId, marker.id, 'm_Graph', graphId) : undefined} />}
         {editable ? (
           <div className={styles.field}>
             <label>时刻（秒）</label>

@@ -16,7 +16,7 @@
 
 ## 网页工作台
 
-独立网页工作台可以打开、编辑并保存 BTSMTL 图、Timeline 和变量声明。仓库自带可编辑的示例，使用 .NET 和 Node.js 即可启动。项目可以接入自己的节点、发布和运行预览。启动步骤与示例操作见[工作台说明](Tools/BTSMTL.WebWorkbench/README.md)。
+独立网页工作台可以编辑并保存 BTSMTL 图、Timeline 和变量声明，也可以更换片段图引用并预览 Timeline 路线。仓库自带可编辑的示例，使用 .NET 和 Node.js 即可启动。项目可以接入自己的节点、发布和 Player。启动步骤与示例操作见[工作台说明](Tools/BTSMTL.WebWorkbench/README.md)。
 
 ## Unity 接入
 

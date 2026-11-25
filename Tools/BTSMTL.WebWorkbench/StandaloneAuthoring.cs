@@ -1,8 +1,10 @@
 using System.Text.Json;
+using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Authoring.Workspace;
 using BTSMTL.Compilation;
 using BTSMTL.Graphs;
+using BTSMTL.Orchestration;
 using BTSMTL.Timeline;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -13,7 +15,8 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
 {
     static readonly Type[] s_FlowNodes = [typeof(BtsmtlEntryFlowNode), typeof(BtsmtlBranchFlowNode)];
     static readonly Type[] s_TimelineTypes = [typeof(TimelineData), typeof(TreeTrack), typeof(TreeClip), typeof(TimelineMarker)];
-    static readonly JObject s_TimelineElements = TimelineElements();
+    internal const string TimelineBody = "TimelineBody";
+    internal const string TimelineTrigger = "TimelineTrigger";
     static readonly (AuthoringDocumentKind Kind, string Label, Type Type)[] s_DocumentTypes =
     [
         (AuthoringDocumentKind.Graph, "图文档", typeof(BtsmtlGraphDocument)),
@@ -45,15 +48,19 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
     public AuthoringDocumentWrite[] PrepareSave(string workspace, AuthoringDocumentWrite[] writes,
         IReadOnlyList<AuthoringDocumentSnapshot> documents, AuthoringDocumentEditingView request) => writes.Select(write =>
     {
-        if (write.Kind != AuthoringDocumentKind.Graph || write.IsDeletion) return write;
-        JObject edited = AuthoringJsonText.Parse(write.Files[write.Kind.RootFile]);
+        if (write.IsDeletion || write.Kind != AuthoringDocumentKind.Graph && write.Kind != AuthoringDocumentKind.Timeline)
+            return write;
         AuthoringDocumentSnapshot? saved = documents.FirstOrDefault(document => document.DirectoryPath == write.DirectoryPath);
-        BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(saved?.Root ?? edited);
-        if (saved is not null) graph.Replace(edited);
-        var files = new Dictionary<string, string>(write.Files, StringComparer.Ordinal)
+        var files = new Dictionary<string, string>(write.Files, StringComparer.Ordinal);
+        foreach (string file in GraphFiles(write.Kind, write.Files.Keys))
         {
-            [write.Kind.RootFile] = AuthoringJsonText.Text(BtsmtlGraphDocumentJson.Write(graph))
-        };
+            string? text = saved?.Files.GetValueOrDefault(file);
+            if (text == write.Files[file]) continue;
+            JObject edited = AuthoringJsonText.Parse(write.Files[file]);
+            BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(text is null ? edited : AuthoringJsonText.Parse(text));
+            if (text is not null) graph.Replace(edited);
+            files[file] = AuthoringJsonText.Text(BtsmtlGraphDocumentJson.Write(graph));
+        }
         return new AuthoringDocumentWrite(write.Kind, write.DirectoryPath, write.ExpectedRevision, files);
     }).ToArray();
 
@@ -63,7 +70,9 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
     {
         IReadOnlyList<AuthoringDocumentSnapshot> captured = await Documents.Capture(input.EditingView);
         AuthoringDocumentSnapshot document = FindDocument(captured, path);
-        AuthoringGraphProjection[] graphs = document.Kind == AuthoringDocumentKind.Graph ? [ProjectGraph(document)] : [];
+        JObject? layout = document.Files.ContainsKey("layout.json") ? document.Read("layout.json") : null;
+        AuthoringGraphProjection[] graphs = GraphFiles(document.Kind, document.Files.Keys)
+            .Select(file => ProjectGraph(document, file, layout)).ToArray();
         SkillAuthoringFile[] files = document.Files.OrderBy(file => file.Key, StringComparer.Ordinal)
             .Select(file => new SkillAuthoringFile(file.Key, file.Value)).ToArray();
         var source = new SkillAuthoringSnapshot(document.DocumentPath, document.Revision, files, files,
@@ -71,7 +80,7 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
         return new(new
         {
             skill = document.DocumentPath, programId = DefaultEntry(document),
-            sourceRevision = document.Revision, inputRevision = document.Revision, tickRate = 60,
+            sourceRevision = document.Revision, inputRevision = document.Revision, tickRate = StandalonePreview.TickRate,
             graphs, relations = Array.Empty<object>(), sources = new[] { source },
             elements = JsonSerializer.Deserialize<JsonElement>(AuthoringJsonText.Compact(Documents.Elements(captured, null)))
         });
@@ -102,7 +111,7 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
         Task.FromResult(new AuthoringQueryResult(DescribeType(input.Type, input.Configuration, string.Empty, input.Offset, input.Limit)));
 
     public Task<AuthoringQueryResult> Elements(string path, AuthoringElementsQuery input) =>
-        Task.FromResult(new AuthoringQueryResult(s_TimelineElements));
+        Task.FromResult(new AuthoringQueryResult(TimelineElements()));
 
     static JObject TimelineElements()
     {
@@ -126,7 +135,8 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
         return new JObject
         {
             ["availability"] = new JObject { ["available"] = true, ["reason"] = null },
-            ["graphs"] = new JArray(), ["anchors"] = new JObject(), ["flowOutputs"] = new JArray(),
+            ["graphs"] = new JArray(GraphTemplate(TimelineBody, "Root"), GraphTemplate(TimelineTrigger, "OnEnable")),
+            ["anchors"] = new JObject(), ["flowOutputs"] = new JArray(),
             ["state"] = null, ["transition"] = null, ["blackboard"] = null,
             ["referenceNodes"] = new JArray(),
             ["timeline"] = new JObject { ["kind"] = null, ["clrType"] = typeof(TimelineData).FullName,
@@ -135,6 +145,37 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
             ["clips"] = new JArray(AuthoringTimelineTemplates.Clip(typedClip, clip, TreeTimelineDefinition.Clip, null)),
             ["marker"] = Element(marker, null),
             ["previewInput"] = null
+        };
+    }
+
+    static JObject GraphTemplate(string role, string entry)
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string nodeId = Guid.NewGuid().ToString("N");
+        return new JObject
+        {
+            ["role"] = role, ["seed"] = "Anchors", ["ownership"] = null,
+            ["variables"] = BtsmtlGraphVariableDeclarationsJson.Write(new BtsmtlGraphVariableDeclarations(id, Guid.NewGuid().ToString("N"), [])),
+            ["requiredContext"] = new JArray(),
+            ["layout"] = new JObject { ["allNodes"] = new JObject
+            {
+                [nodeId] = new JObject { ["position"] = new JObject { ["x"] = 0, ["y"] = 0 } }
+            } },
+            ["value"] = new JObject
+            {
+                ["AuthoringId"] = id, ["ContentRevision"] = Guid.NewGuid().ToString("N"), ["name"] = role,
+                ["m_ContentDomain"] = "graph", ["Role"] = role, ["Domains"] = new JArray(), ["VariableOwnerId"] = id,
+                ["EntryDeclarations"] = new JArray(new JObject
+                {
+                    ["m_EntryId"] = entry, ["m_NodeId"] = nodeId, ["m_Contract"] = (int)OrchestrationExecutionContract.Complete
+                }),
+                ["layout"] = new JObject(),
+                ["allNodes"] = new JArray(new JObject
+                {
+                    ["UID"] = nodeId, ["type"] = nameof(BtsmtlEntryFlowNode),
+                    ["_inputPortValues"] = new JObject(), ["outConnections"] = new JArray()
+                })
+            }
         };
     }
 
@@ -157,7 +198,8 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
     async Task<JObject> ReadNode(string path, SkillAuthoringNodeQuery input)
     {
         AuthoringDocumentSnapshot document = FindDocument(await Documents.Capture(input.EditingView), path);
-        BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(document.Root);
+        string pathToGraph = document.Kind == AuthoringDocumentKind.Graph ? document.Kind.RootFile : $"graphs/{input.GraphId}.json";
+        BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(document.Read(pathToGraph));
         if (graph.AuthoringId != input.GraphId)
             throw new ArgumentException($"图 {input.GraphId} 不属于文档 {path}。");
         return graph.Node(input.NodeId).Json();
@@ -167,23 +209,28 @@ sealed class StandaloneAuthoring : IAuthoringDocumentAdapter
         documents.FirstOrDefault(document => document.DocumentPath == path)
         ?? throw new FileNotFoundException($"找不到作者文档 {path}。");
 
-    static AuthoringGraphProjection ProjectGraph(AuthoringDocumentSnapshot document)
+    static IEnumerable<string> GraphFiles(AuthoringDocumentKind kind, IEnumerable<string> files) =>
+        kind == AuthoringDocumentKind.Graph ? [kind.RootFile] : kind == AuthoringDocumentKind.Timeline
+            ? files.Where(file => file.StartsWith("graphs/", StringComparison.Ordinal) && file.EndsWith(".json", StringComparison.Ordinal)) : [];
+
+    static AuthoringGraphProjection ProjectGraph(AuthoringDocumentSnapshot document, string file, JObject? layout)
     {
-        BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(document.Root);
+        JObject stored = document.Read(file);
+        BtsmtlGraphDocument graph = BtsmtlGraphDocumentJson.Read(stored);
         string route = "graph:" + graph.AuthoringId;
         var projection = new AuthoringGraphProjection(AuthoringGraphProjection.DocumentActor, graph.AuthoringId,
-            graph.ContentRevision, graph.AuthoringId, graph.Name, null, [], [], [], [])
+            graph.ContentRevision, graph.AuthoringId, graph.Name, (string?)stored["Role"], [], [], [], [])
         {
-            Owner = document.DocumentPath, OwnerName = graph.Name, File = document.Kind.RootFile,
+            Owner = document.DocumentPath, OwnerName = (string)(document.Root[document.Kind == AuthoringDocumentKind.Timeline ? "m_Name" : "name"])!, File = file,
             AuthoringPath = route, ContentDomain = graph.ContentDomain, Domains = graph.Domains.ToArray(),
             VariableOwnerId = graph.VariableOwnerId
         };
-        JToken? layout = document.Root["layout"]!["allNodes"];
-        projection.AddFlow((JArray)document.Root["allNodes"]!, node =>
+        JToken? positions = (file == document.Kind.RootFile ? stored["layout"] : layout?[graph.AuthoringId])?["allNodes"];
+        projection.AddFlow((JArray)stored["allNodes"]!, node =>
         {
             string id = (string)node["UID"]!;
             string type = (string)node["type"]!;
-            JToken? position = layout?[id]?["position"];
+            JToken? position = positions?[id]?["position"];
             return new(id, (string?)node["_name"] ?? type, type, route,
                 position is null ? null : new((double)position["x"]!, (double)position["y"]!), node.Path);
         }, node => NodePorts((string)node["type"]!).Select(port => new AuthoringGraphPort((string)node["UID"]!,

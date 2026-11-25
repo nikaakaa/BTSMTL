@@ -1375,10 +1375,14 @@ export const authoringActions = {
       consoleActions.log('warn', '作者', `同一轨道在 ${seconds.toFixed(3)} s 已有标记，标记不能重叠`);
       return;
     }
+    authoringActions.setMarkerValue(documentId, markerId, 'm_TimeFPRawValue', fpRaw(seconds));
+  },
+
+  setMarkerValue(documentId: string, markerId: string, field: 'm_TimeFPRawValue' | 'm_Graph', value: JsonValue) {
     authoringActions.edit(timelinePath(documentId), document => {
       const marker = tracksOf(document).flatMap(track => (track.m_Markers as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === markerId);
       if (!marker) throw new Error(`Timeline ${documentId} 中没有标记 ${markerId}`);
-      marker.m_TimeFPRawValue = fpRaw(seconds);
+      marker[field] = value;
     });
   },
 

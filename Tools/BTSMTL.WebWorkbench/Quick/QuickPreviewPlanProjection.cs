@@ -32,9 +32,10 @@ static class QuickPreviewPlanProjection
                 });
             }).Where(value => value.Root || value.Start < input.RangeEnd).Select(value => value.Segment)).ToArray();
         string root = placed[0].Instance.Root;
-        return new(root, "staticInference", new("seconds", 0, "Player", actor.TickRate),
+        return new(root, "staticInference", new("seconds", 0, actor.ScenePath is null ? "Timeline" : "Player", actor.TickRate),
             input.Scheme.Source, input.Scheme.Revision, input.Revision, input.Conditions,
-            ["按作者文档和本次输入轨计算会播哪些 Timeline。", "位移未经玩法碰撞求解，运行条件按快预览输入取值。",
+            ["按作者文档和本次输入轨计算会播哪些 Timeline。",
+                .. actor.ScenePath is null ? Array.Empty<string>() : ["位移未经玩法碰撞求解，运行条件按快预览输入取值。"],
                 .. placed.Count > 1 ? ["被生成对象按自己的根图从生成时刻推演，运行条件取默认值。"] : Array.Empty<string>()],
             Seconds(route.End), route.Chain?.StopReason.ToString(), route.Chain?.Reason, "已生成",
             placed.Select(item => item.Instance).ToArray(), segments,

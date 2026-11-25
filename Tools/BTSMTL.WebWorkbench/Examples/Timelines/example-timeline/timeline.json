@@ -1,18 +1,18 @@
 {
-  "m_AuthoringId": "example-timeline",
+  "m_AuthoringId": "ec3160cf-41bb-4558-98dd-10acd3d5b613",
   "m_Name": "片段时间示例",
   "m_Tracks": [
     {
       "ContractKind": "tree.track",
-      "m_AuthoringId": "example-track",
+      "m_AuthoringId": "29f72a66-851f-4519-b748-0badfe6990b4",
       "Name": "执行",
       "m_ExecutionDomain": "Presentation",
       "m_PersistentMuted": false,
       "m_Clips": [
         {
           "ContractKind": "tree.clip",
-          "m_AuthoringId": "example-clip",
-          "m_AssetTree": "example-graph",
+          "m_AuthoringId": "809307bd-c423-42f3-a1b7-5fc109b8c6a8",
+          "m_AssetTree": "example-timeline-body",
           "m_StartTimeFPRawValue": 32768,
           "m_EndTimeFPRawValue": 98304,
           "m_ExecutionPhase": "Commit",

@@ -178,6 +178,7 @@ function defaultRoot(catalog: PreviewQuickDescription): PreviewQuickAuthoringTar
 }
 
 function selectedSource(workbench = getState()) {
+  if (workbench.host?.quickAuthoring === true) return { kind: 'authoring' } as const;
   const sources = workbench.sources;
   const selection = workbench.contentSelection;
   if (sources === null || selection === null) return { kind: 'unavailable', reason: '先在顶部选择正式场景或 Timeline' } as const;
@@ -522,8 +523,9 @@ function preparation(supersede = false) {
     state.job.kind === 'cancelling' || ((state.job.kind === 'failed' || state.job.kind === 'cancel-failed') && quickJobCancellable(state.job))))
     return { kind: 'unavailable', reason: state.job.kind === 'cancelling' || state.job.kind === 'starting-cancelled'
       ? '正在取消原作业，等待清理结束' : '原作业尚未结束，请先完成或取消' } as const;
-  const directory = state.outputDirectory || workbench.sources?.runDirectory;
-  if (!directory || !/^D:[\\/]/i.test(directory)) return { kind: 'unavailable', reason: '快预览输出目录须明确位于 D 盘' } as const;
+  const directory = state.outputDirectory || workbench.sources?.runDirectory || '';
+  if (workbench.host?.player.available && !/^D:[\\/]/i.test(directory))
+    return { kind: 'unavailable', reason: '快预览输出目录须明确位于 D 盘' } as const;
   return { kind: 'ready', target: { ...target, root: target.root }, source: data.source, scheme, directory } as const;
 }
 
@@ -565,7 +567,7 @@ export const quickPreview = {
     let chosen = authoring ?? previousRoot?.authoring ?? null;
     let target: PreviewQuickTarget = source.kind === 'scene'
       ? { scenePath: source.scene.scenePath, scenePublication: source.scene.publication, root: null }
-      : { scenePath: source.timeline.scene.path, root: null };
+      : { scenePath: source.kind === 'timeline' ? source.timeline.scene.path : null, root: null };
     set({ description: { kind: 'loading' } });
     invalidateJob();
     try {

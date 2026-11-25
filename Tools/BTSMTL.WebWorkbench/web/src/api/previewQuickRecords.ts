@@ -13,7 +13,7 @@ const entry = (value: unknown, path = 'PreviewQuick.entry') => {
 };
 const authoring = object({ documentPath: text, savedRevision: text, entry });
 const document = object({ kind: text, documentPath: text, identity: text, revision: text, savedRevision: text, hasUnsavedChanges: boolean });
-const source = object({ kind: text, authoring, revision: text, sceneRevision: text, documents: array(document) });
+const source = object({ kind: text, authoring, revision: text, sceneRevision: nullable(text), documents: array(document) });
 const documentInput = object({ kind: choice('documentInput'), documentPath: text, savedRevision: text, inputId: text, schemeId: text });
 const inputSource = (value: unknown, path = 'PreviewQuick.input.source') => {
   const { kind } = object({ kind: choice('documentInput', 'rootDefaults') })(value, path);
@@ -42,7 +42,7 @@ export const readRouteLanes = object({
 export type RouteLanes = ReturnType<typeof readRouteLanes>;
 const scheme = object({ source: inputSource, name: text, revision: text, timelineId: nullable(text) });
 const description = object({
-  scenePath: text, carrierPath: text, carrierIdentity: text, actorId: text, actorScope: text, tickRate: number,
+  scenePath: nullable(text), carrierPath: text, carrierIdentity: text, actorId: text, actorScope: text, tickRate: number,
   documents: array(object({ kind: text, documentPath: text, identity: text, displayName: text, savedRevision: text,
     entries: array(object({ entry, displayName: text, isDefault: boolean })) })),
   inputs: array(inputDeclaration), actionRequests: array(object({ inputId: text, bufferSeconds: number })),
@@ -109,7 +109,7 @@ export type PreviewQuickRoot = { kind: 'nativeDocument'; authoring: PreviewQuick
   | { kind: 'webEditingView'; authoring: PreviewQuickAuthoringTarget; editingView: WorkspaceEditingView }
   | { kind: 'authoringDocument'; authoring: PreviewQuickAuthoringTarget };
 export interface PreviewQuickTarget {
-  scenePath: string;
+  scenePath: string | null;
   scenePublication?: SourceFile;
   root: PreviewQuickRoot | null;
 }

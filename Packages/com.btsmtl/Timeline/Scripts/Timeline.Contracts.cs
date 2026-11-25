@@ -267,18 +267,23 @@ namespace BTSMTL.Timeline
     {
         readonly List<TimelineContentContractValidator> m_ContentValidators;
 
-        public TimelineContractCatalog(IEnumerable<ITimelineContractProvider> providers) : this(Compose(providers))
+        public TimelineContractCatalog(IEnumerable<ITimelineContractProvider> providers) : this(Compose(providers), true)
         {
         }
 
+        public static TimelineContractCatalog ForAuthoring(IEnumerable<ITimelineContractProvider> providers) =>
+            new TimelineContractCatalog(Compose(providers), false);
+
         TimelineContractCatalog((List<TimelineTrackContract> Tracks, List<TimelineClipContract> Clips,
-            List<ITimelineContentParameterCodec> Codecs, List<TimelineContentContractValidator> Validators) composition)
+            List<ITimelineContentParameterCodec> Codecs, List<TimelineContentContractValidator> Validators) composition,
+            bool requireCodecs)
             : base(composition.Tracks, composition.Clips)
         {
             ParameterCodecs = new TimelineContentParameterCodecs(composition.Codecs);
             m_ContentValidators = composition.Validators;
-            foreach (TimelineClipContract clip in Clips)
-                ParameterCodecs.Require(clip.Kind);
+            if (requireCodecs)
+                foreach (TimelineClipContract clip in Clips)
+                    ParameterCodecs.Require(clip.Kind);
         }
 
         public TimelineContentParameterCodecs ParameterCodecs { get; }

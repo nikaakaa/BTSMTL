@@ -139,6 +139,7 @@ export function QuickBar() {
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const playerAvailable = useWorkbench(current => current.host?.player.available === true);
+  const authoringOnly = useWorkbench(current => current.host?.quickAuthoring === true);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const input = description?.root?.inputSchemes.find(scheme => quickInputSourceKey(scheme.source) === quickInputSourceKey(state.scheme))?.source;
   const editableInput = input?.kind === 'documentInput' ? input : input?.kind === 'rootDefaults' ? description?.root?.defaultInput : null;
@@ -200,7 +201,7 @@ export function QuickBar() {
             const machine = description.root?.machines.find(item => quickAuthoringKey(item.authoring) === value);
             if (machine !== undefined) void quickPreview.readSource(machine.authoring);
           }} />}
-      {description?.root && <Select variant="ghost" label="输入方案" placeholder="选择输入方案"
+      {!authoringOnly && description?.root && <Select variant="ghost" label="输入方案" placeholder="选择输入方案"
         value={state.scheme === null ? null : quickInputSourceKey(state.scheme)}
         options={description.root.inputSchemes.map(scheme => ({ value: quickInputSourceKey(scheme.source), label: schemeLabel(scheme) }))}
         onChange={value => {
@@ -240,6 +241,7 @@ const stopLabels: Record<string, string> = {
 
 function QuickDetails() {
   const { state, directory } = useWorkbench(useShallow(current => ({ state: current.quickPreview, directory: current.sources?.runDirectory })));
+  const playerAvailable = useWorkbench(current => current.host?.player.available === true);
   const description = state.description.kind === 'ready' ? state.description.reply.data : null;
   const job = state.job;
   const receipt = 'reply' in job ? job.reply : null;
@@ -258,7 +260,8 @@ function QuickDetails() {
   ], [route, plan, status?.jobId]);
   return <div className={styles.details}>
     {state.description.kind === 'failed' && <p className={styles.notice} role="alert">{state.description.reason}</p>}
-    {description && <Facts fields={[{ displayName: '场景', value: description.scenePath },
+    {description && <Facts fields={[
+      ...(description.scenePath === null ? [] : [{ displayName: '场景', value: description.scenePath }]),
       { displayName: '内容来源', value: description.source === null ? '尚未选入口' : description.source.kind === 'webEditingView' ? '当前网页编辑内容'
         : description.source.documents.some(document => document.hasUnsavedChanges) ? '包含未保存修改' : '已保存作者内容' },
       { displayName: '输入方案修订', value: scheme?.revision ?? '未选择' }]} />}
@@ -286,20 +289,21 @@ function QuickDetails() {
       </div>)}
     </Fold>}
     {status && status.notes.length > 0 && <Fold title="计算说明">{status.notes.map((note, index) => <p key={index}>{note}</p>)}</Fold>}
-    <Fold title="来源与输出">
-      <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
-        onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>
+    <Fold title={playerAvailable ? '来源与输出' : '来源'}>
+      {playerAvailable && <label className={styles.output}>输出目录<TextInput aria-label="快预览输出目录" value={state.outputDirectory || directory || ''}
+        onChange={event => quickPreview.outputDirectory(event.currentTarget.value)} /></label>}
       {description?.source && <Facts fields={[
         { displayName: '来源类型', value: description.source.kind }, { displayName: '来源路径', value: description.source.authoring.documentPath },
-        { displayName: '来源修订', value: description.source.revision }, { displayName: '场景修订', value: description.source.sceneRevision },
+        { displayName: '来源修订', value: description.source.revision },
+        ...(description.source.sceneRevision === null ? [] : [{ displayName: '场景修订', value: description.source.sceneRevision }]),
         { displayName: '方案身份', value: scheme?.source.kind === 'documentInput' ? `${scheme.source.documentPath} / ${scheme.source.inputId} / ${scheme.source.schemeId}`
           : scheme === undefined ? '未选择' : '当前根默认输入' },
         ...description.source.documents.map(document => ({ displayName: document.documentPath,
           value: `${document.revision} · ${document.hasUnsavedChanges ? '未保存' : '已保存'} · ${document.savedRevision === '' ? '新文档' : document.savedRevision}` })),
       ]} />}
       {status && <Facts fields={[{ displayName: '作业', value: status.jobId }, { displayName: '阶段', value: status.stage },
-        { displayName: '执行模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? '未记录' },
-        { displayName: '输出目录', value: status.outputDirectory ?? '尚未提供' }, { displayName: '摘要', value: status.summaryPath ?? '尚未提供' }]} />}
+        ...(playerAvailable ? [{ displayName: '执行模式', value: status.nativeMode }, { displayName: '实际采用', value: status.adoptedMode ?? '未记录' },
+          { displayName: '输出目录', value: status.outputDirectory ?? '尚未提供' }, { displayName: '摘要', value: status.summaryPath ?? '尚未提供' }] : [])]} />}
     </Fold>
     {identity.length > 0 && <IdentityFold fields={identity} />}
   </div>;

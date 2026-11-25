@@ -100,6 +100,7 @@ public sealed record PreviewPlayerAvailability(bool Available, string? Reason);
 public sealed record PreviewHostDescription(string DisplayName, string FrameDisplayName,
     PreviewQueryField[] Filters, PreviewNumberInput InputLimit)
 {
+    public bool QuickAuthoring { get; init; }
     public PreviewModeAvailability[] Modes { get; init; } = [];
     public PreviewPlayerAvailability Player { get; init; } = new(false, "未注册项目播放器适配。");
 }

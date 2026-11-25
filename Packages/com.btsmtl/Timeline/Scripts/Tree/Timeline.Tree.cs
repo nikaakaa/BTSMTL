@@ -176,10 +176,14 @@ namespace BTSMTL.Timeline
     public static class TreeTimelineContracts
     {
         public static ITimelineContractProvider CreateProvider(
-            TimelineContentParameterCodec<TimelineContentTree> parameterCodec) => new TimelineContractProvider(
+            TimelineContentParameterCodec<TimelineContentTree> parameterCodec) => CreateProvider(new ITimelineContentParameterCodec[] { parameterCodec });
+
+        public static ITimelineContractProvider CreateAuthoringProvider() => CreateProvider(Array.Empty<ITimelineContentParameterCodec>());
+
+        static ITimelineContractProvider CreateProvider(ITimelineContentParameterCodec[] parameterCodecs) => new TimelineContractProvider(
             new[] { TreeTimelineDefinition.Track },
             new[] { new TimelineClipContract(TreeTimelineDefinition.Clip, ValidateClip) },
-            new ITimelineContentParameterCodec[] { parameterCodec });
+            parameterCodecs);
 
         static void ValidateClip(Clip clip, List<string> errors)
         {

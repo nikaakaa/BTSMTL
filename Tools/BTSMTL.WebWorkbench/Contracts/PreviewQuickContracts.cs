@@ -28,7 +28,7 @@ public sealed record PreviewQuickWebRoot(PreviewQuickAuthoringTarget Authoring,
     [property: JsonRequired] AuthoringDocumentEditingView EditingView) : PreviewQuickRoot(Authoring);
 public sealed record PreviewQuickDocumentRoot(PreviewQuickAuthoringTarget Authoring) : PreviewQuickRoot(Authoring);
 
-public sealed record PreviewQuickTarget([property: JsonRequired] string ScenePath, PreviewQuickRoot? Root = null,
+public sealed record PreviewQuickTarget([property: JsonRequired] string? ScenePath, PreviewQuickRoot? Root = null,
     PreviewSourceFile? ScenePublication = null);
 public sealed record PreviewQuickInputPoint(string InputId, double Time, JsonElement Value);
 public sealed record PreviewQuickConditionPoint(string Key, double Time, bool Satisfied, bool RestoreDefault, string? Element = null);
@@ -66,7 +66,7 @@ public sealed record PreviewQuickReply<T>(bool Success, bool Pending, string? Co
 public sealed record PreviewQuickDocument(string Kind, string DocumentPath, string Identity, string Revision,
     string SavedRevision, bool HasUnsavedChanges);
 public sealed record PreviewQuickSource(string Kind, PreviewQuickAuthoringTarget Authoring, string Revision,
-    string SceneRevision, PreviewQuickDocument[] Documents);
+    string? SceneRevision, PreviewQuickDocument[] Documents);
 public sealed record PreviewQuickEntryChoice(PreviewQuickEntry Entry, string DisplayName, bool IsDefault);
 public sealed record PreviewQuickDocumentChoice(string Kind, string DocumentPath, string Identity,
     string DisplayName, string SavedRevision, PreviewQuickEntryChoice[] Entries);
@@ -79,7 +79,7 @@ public sealed record PreviewQuickInputRequest(string InputId, double BufferSecon
 public sealed record PreviewQuickRootDescription(PreviewQuickAuthoringTarget Authoring, string Label,
     PreviewQuickMachine[] Machines, PreviewQuickScheme[] InputSchemes, PreviewQuickInputSource? CurrentInputScheme,
     PreviewQuickInputSource? DefaultInput, string? SceneApplyUnavailableReason, PreviewQuickCondition[] Conditions);
-public sealed record PreviewQuickDescription(string ScenePath, string CarrierPath, string CarrierIdentity,
+public sealed record PreviewQuickDescription(string? ScenePath, string CarrierPath, string CarrierIdentity,
     string ActorId, string ActorScope, int TickRate, PreviewQuickDocumentChoice[] Documents, PreviewQuickInputDeclaration[] Inputs,
     PreviewQuickInputRequest[] ActionRequests, PreviewQuickRootDescription? Root, PreviewQuickSource? Source, string Note);
 

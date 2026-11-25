@@ -15,7 +15,7 @@ public interface IPreviewQuickAdapter
 
 public interface IPreviewQuickEnvironment
 {
-    string ScenePath { get; }
+    string? ScenePath { get; }
     string CarrierPath { get; }
     string CarrierIdentity { get; }
     string ActorId { get; }

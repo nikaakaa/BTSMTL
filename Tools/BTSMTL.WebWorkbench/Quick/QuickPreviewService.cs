@@ -76,7 +76,8 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
         PreviewQuickRootDescription? root, PreviewQuickSource? identity) =>
         new(actor.ScenePath, actor.CarrierPath, actor.CarrierIdentity, actor.ActorId, actor.ActorScope, actor.TickRate,
             documents, Declarations(actor), actor.Requests.Select(request => new PreviewQuickInputRequest(request.InputId, request.DurationSeconds)).ToArray(),
-            root, identity, "从选定场景的正式角色和作者文档准备独立播放器快预览。");
+            root, identity, actor.ScenePath is null ? "按当前作者 Timeline 与片段图绑定计算路线。"
+                : "从选定场景的正式角色和作者文档准备独立播放器快预览。");
 
     public async Task<PreviewQuickReply<PreviewQuickStatus>> PlanQuick(PreviewQuickRequest request, int localPort,
         CancellationToken cancellation)
@@ -290,10 +291,10 @@ public sealed class QuickPreviewService(IPreviewQuickAdapter adapter, PlayerServ
             if (request.SourceRevision != null && capture.Identity.Revision != request.SourceRevision)
                 throw new InvalidOperationException("作者文档或场景已变化，请重新读取快预览来源。");
             var inputs = new QuickPreviewInputs(capture, actor);
-            var input = inputs.Resolve(request.Input, request.RangeEndSeconds);
-            Mark("读取输入方案");
             var compiled = await CompileQuick(capture, Mark).WaitAsync(deadline.Token);
             Mark("编译");
+            var input = inputs.Resolve(request.Input, request.RangeEndSeconds, compiled);
+            Mark("读取输入方案");
             var route = compiled.Route(input);
             job.TimeRangeRaw = (route.RootStart.RawValue, route.End.RawValue);
             var instances = new QuickPreviewInstances(actor);
