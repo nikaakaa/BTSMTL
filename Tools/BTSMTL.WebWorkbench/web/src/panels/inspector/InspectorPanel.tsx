@@ -31,7 +31,7 @@ import { TrackIcon } from '../timeline/icons';
 import { BlackboardFields, ClipFields, DocumentFields, InputClipFields, InputPlanFields, NodeFields, OwnedGraphRow, SlottedGraphs, StepFields, TrackFields, TransitionFields } from './FieldEditors';
 import { NodeObservation } from './NodeObservation';
 import { DocumentDetails } from '../project/DocumentDetails';
-import { DecisionBindingFold } from './DecisionBinding';
+import { workbenchExtensions } from '../../extensions';
 import styles from './inspector.module.css';
 
 // 检查器（D7，照 Unity Inspector）：对象头写所选对象的名字与所在位置，右上角是锁；
@@ -129,7 +129,8 @@ function ContentInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <Head name={item.name} sub={`${item.kind === 'graph' ? graphItemDescription(item) : item.kind === 'timeline' ? 'Timeline' : item.kind === 'curve' ? '曲线文档' : item.kind === 'profile' ? 'Profile 文档' : item.kind === 'variables' ? '变量文档' : '输入方案'} · ${item.ownerName} · ${item.ownership === 'Shared' ? '共享' : '私有'}`} />
     {item.kind === 'variables' && <Fold title="变量" defaultOpen><BlackboardFields ownerId={item.identity} editable={editable} /></Fold>}
     {(item.kind === 'curve' || item.kind === 'profile') && <DocumentFields editable={editable} location={{ kind: 'root' }} />}
-    {item.kind === 'graph' && 'resumable' in item && item.resumable && <DecisionBindingFold graphId={item.identity} />}
+    {item.kind === 'graph' && workbenchExtensions.map(({ id: extensionId, graphInspector: GraphInspector }) =>
+      GraphInspector && <GraphInspector key={extensionId} item={item} />)}
     <DocumentDetails item={item} items={items} stamp={stamp} onChanged={() => {}} />
     <IdentityFold fields={[{ displayName: '作者文件', value: item.file }, { displayName: '作者身份', value: item.identity }]} />
   </>;
@@ -420,7 +421,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   return (
     <>
       <Head name={name} sub={graphName(graph)} />
-      {transition && editable && elements ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
+      {transition && editable && elements?.transition?.shape ? <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape}>{conditionRows}</TransitionFields>
         : step ? <StepFields graphId={graph.id} step={step}>{conditionRows}</StepFields>
           : <Fold title={transition ? '转移' : '连线'} defaultOpen>
             {conditionRows ?? <div className={styles.note}>{edge.kind === 'Value' ? '数据连线：把左边端口的值传给右边端口，没有可编辑的设置' : '执行连线：左边节点走到这里后执行右边节点，没有可编辑的设置'}</div>}

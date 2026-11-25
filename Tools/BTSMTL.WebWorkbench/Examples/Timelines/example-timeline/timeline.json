@@ -1,0 +1,26 @@
+{
+  "m_AuthoringId": "example-timeline",
+  "m_Name": "片段时间示例",
+  "m_Tracks": [
+    {
+      "ContractKind": "tree.track",
+      "m_AuthoringId": "example-track",
+      "Name": "执行",
+      "m_ExecutionDomain": "Presentation",
+      "m_PersistentMuted": false,
+      "m_Clips": [
+        {
+          "ContractKind": "tree.clip",
+          "m_AuthoringId": "example-clip",
+          "m_AssetTree": "example-graph",
+          "m_StartTimeFPRawValue": 32768,
+          "m_EndTimeFPRawValue": 98304,
+          "m_ExecutionPhase": "Commit",
+          "m_ExitSource": 0,
+          "m_HasDeclaredEndTime": false
+        }
+      ],
+      "m_Markers": []
+    }
+  ]
+}

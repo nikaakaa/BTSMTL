@@ -1,0 +1,45 @@
+{
+  "AuthoringId": "example-graph",
+  "ContentRevision": "1",
+  "name": "条件分支示例",
+  "m_ContentDomain": "graph",
+  "Domains": [],
+  "EntryDeclarations": [
+    { "m_EntryId": "start", "m_NodeId": "entry", "m_Contract": 1 }
+  ],
+  "VariableOwnerId": "example-graph-variables",
+  "allNodes": [
+    {
+      "UID": "entry",
+      "type": "BtsmtlEntryFlowNode",
+      "_name": "入口",
+      "_inputPortValues": {},
+      "outConnections": [
+        { "UID": "entry-to-branch", "sourcePortID": "Output", "targetNode": "branch", "targetPortID": "In" }
+      ]
+    },
+    {
+      "UID": "compare",
+      "type": "FloatGreaterThan",
+      "_name": "比较数值",
+      "_inputPortValues": { "a": 2.0, "b": 1.0 },
+      "outConnections": [
+        { "UID": "compare-to-branch", "sourcePortID": "Value", "targetNode": "branch", "targetPortID": "Condition" }
+      ]
+    },
+    {
+      "UID": "branch",
+      "type": "BtsmtlBranchFlowNode",
+      "_name": "按结果分支",
+      "_inputPortValues": { "Condition": false },
+      "outConnections": []
+    }
+  ],
+  "layout": {
+    "allNodes": {
+      "entry": { "position": { "x": 0, "y": 0 } },
+      "compare": { "position": { "x": 0, "y": 150 } },
+      "branch": { "position": { "x": 280, "y": 10 } }
+    }
+  }
+}

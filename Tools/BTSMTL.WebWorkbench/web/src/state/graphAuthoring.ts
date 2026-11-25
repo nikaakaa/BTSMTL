@@ -38,8 +38,9 @@ export function edgeStep(document: JsonValue | null, elements: AuthoringElements
 // 状态上的专属图（状态内容）：按宿主状态模板的形状读状态对象。
 export function stateGraphSlots(document: JsonValue | null, elements: AuthoringElements, graphId: string, stateId: string): GraphSlot[] {
   const node = findNode(document, stateId);
-  return node && nodeType(node) === elements.state.type
-    ? memberSlots(graphId, { kind: 'node', nodeId: stateId }, [], elements.state.shape, node) : [];
+  const state = elements.state;
+  return node && state && nodeType(node) === state.type
+    ? memberSlots(graphId, { kind: 'node', nodeId: stateId }, [], state.shape, node) : [];
 }
 
 // 专属图槽位：节点或连线上按合同路径存放的图身份。keys 相对节点对象或连线对象；
@@ -70,7 +71,7 @@ export function edgeGraphSlots(document: JsonValue | null, elements: AuthoringEl
   const found = findConnection(document, edgeId);
   if (!found) return [];
   const payload = transitionPayload(found.connection);
-  if (payload) return memberSlots(graphId, { kind: 'connection', connectionId: edgeId }, [payloadKey], elements.transition.shape, payload);
+  if (payload) return memberSlots(graphId, { kind: 'connection', connectionId: edgeId }, [payloadKey], elements.transition?.shape, payload);
   const step = edgeStep(document, elements, edgeId);
   return step ? memberSlots(graphId, { kind: 'node', nodeId: step.nodeId }, [step.member, step.index], step.shape, step.step) : [];
 }
@@ -189,6 +190,7 @@ export const graphAuthoring = {
     const elements = await skillElements();
     const uid = nodeUid();
     const { state } = elements;
+    if (state === null) throw new Error('当前宿主未提供状态机模板');
     const slots = memberSlots(graphId, { kind: 'node', nodeId: uid }, [], state.shape, state.value)
       .filter(slot => !slot.optional && slot.targets.length === 1);
     const configuration = { ...state.value };
@@ -201,12 +203,12 @@ export const graphAuthoring = {
     return uid;
   },
 
-  connectStates(graphId: string, elements: AuthoringElements, orderMember: string, sourceId: string, targetId: string) {
+  connectStates(graphId: string, transition: JsonObject, orderMember: string, sourceId: string, targetId: string) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = findNode(document, sourceId);
       if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);
       const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf(transitionPayload(connection)![orderMember]))) + 1;
-      connectionsOf(node).push(createTransition(connectionUid(), { ...elements.transition.value, [orderMember]: order }, targetId));
+      connectionsOf(node).push(createTransition(connectionUid(), { ...transition, [orderMember]: order }, targetId));
     });
   },
 

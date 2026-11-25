@@ -1,4 +1,5 @@
 import type { FunctionComponent } from 'react';
+import type { ProjectItem } from './api/authoring';
 import hostExtensions from 'virtual:btsmtl-workbench-extensions';
 
 // 宿主扩展：宿主构建时经 BTSMTL_WORKBENCH_EXTENSIONS 给出入口模块，各入口默认导出一个 WorkbenchExtension。
@@ -18,10 +19,13 @@ export interface WorkbenchPlayerToolContribution {
   component: FunctionComponent;
 }
 
+export type WorkbenchGraphInspectorProps = { item: Extract<ProjectItem, { kind: 'graph' }> };
+
 export interface WorkbenchExtension {
   id: string;
   panels?: readonly WorkbenchPanelContribution[];
   playerTools?: readonly WorkbenchPlayerToolContribution[];
+  graphInspector?: FunctionComponent<WorkbenchGraphInspectorProps>;
 }
 
 export const workbenchExtensions: readonly WorkbenchExtension[] = hostExtensions;

@@ -106,13 +106,18 @@ public static partial class AuthoringApi
     static readonly JsonSerializerOptions s_Json = new(JsonSerializerDefaults.Web) { IncludeFields = true };
 
     public static void MapAuthoringApi(this WebApplication app, AuthoringDocumentService documents,
-        IAuthoringResourceAdapter resources)
+        IAuthoringResourceAdapter? resources = null, bool projectTools = true)
     {
         string workspace = documents.Workspace;
-        AuthoringResourceApi.Map(app, workspace, resources);
         AuthoringCommits commits = AuthoringCommits.For(workspace);
+        bool animationLibrary = app.Configuration["AnimationLibrary"] is not null;
         app.MapGet("/api/authoring/documents/types", (HttpContext context) =>
-            AuthoringQueryResults.Read(context, null, documents.Types));
+            AuthoringQueryResults.Read(context, null, () =>
+            {
+                JObject catalog = documents.Types();
+                catalog["features"] = new JObject { ["projectTools"] = projectTools, ["animationLibrary"] = animationLibrary };
+                return catalog;
+            }));
         app.MapGet("/api/authoring/documents", (string? kind, HttpContext context) =>
             AuthoringQueryResults.ReadAsync(context, new { kind }, () => documents.List(kind)));
         app.MapGet("/api/authoring/documents/content", (string documentPath, string? revision, int? wait, HttpContext context) =>
@@ -142,6 +147,8 @@ public static partial class AuthoringApi
         app.MapGet("/api/authoring/catalog", (string? adapter, string? revision, HttpContext context) => commits.Read(() =>
             Task.FromResult(AuthoringQueryResults.Read(context, new { adapter, revision },
                 () => new AuthoringCatalog(workspace).Read(adapter).ToJson(revision)))));
+        if (resources is null) return;
+        AuthoringResourceApi.Map(app, workspace, resources);
         app.MapPost("/api/authoring/references/replace", (AuthoringReferenceReplacementInput input, HttpContext context) =>
             commits.Write(() => Task.FromResult(AuthoringQueryResults.Read(context,
                 new { input.Action, input.Domain, input.OldValue, input.NewValue, input.Context }, () =>

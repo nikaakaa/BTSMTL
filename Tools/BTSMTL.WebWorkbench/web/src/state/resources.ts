@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBlob } from '../api/http';
 import { resourceApi } from '../api/resources';
 import type { AnimationClip, AnimationLibrary } from '../api/types';
+import { useAuthoring } from './authoring';
 import { readReferenceDrop, type ReferenceCatalog } from './referenceSelection';
 
 // 动画资源数据缓存（D12）：资源清单与同版 glb 只下载一次；面板卸载后再次打开直接取用。
@@ -31,6 +32,7 @@ export type AnimationLibraryState =
   | { kind: 'unavailable'; reason: string };
 
 const loadingLibrary = { kind: 'loading' } satisfies AnimationLibraryState;
+const unconfiguredLibrary = { kind: 'unavailable', reason: '当前工作台没有配置动画库' } satisfies AnimationLibraryState;
 export const animationReferenceKind = 'animation-clip';
 type ReferencedAnimationClip = AnimationClip & { value: string };
 const hasAnimationValue = (clip: AnimationClip): clip is ReferencedAnimationClip => clip.value !== null;
@@ -47,15 +49,16 @@ export function readAnimationDrop(transfer: DataTransfer, state: AnimationLibrar
 }
 
 export function useAnimationLibrary(enabled: boolean): AnimationLibraryState {
+  const available = useAuthoring(state => state.workspaceFeatures?.animationLibrary);
   const [value, setValue] = useState<AnimationLibraryState>(loadingLibrary);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !available) return;
     let alive = true;
     resourceCache.library().then(library => { if (alive) setValue({ kind: 'ready', library }); },
       (error: unknown) => { if (alive) setValue({ kind: 'unavailable', reason: error instanceof Error ? error.message : String(error) }); });
     return () => { alive = false; };
-  }, [enabled]);
-  return enabled ? value : loadingLibrary;
+  }, [available, enabled]);
+  return enabled ? available === false ? unconfiguredLibrary : value : loadingLibrary;
 }
 
 // 动画资源作者值到素材帧率；资源清单未读到时为 null。

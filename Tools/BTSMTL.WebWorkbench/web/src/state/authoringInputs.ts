@@ -1,5 +1,5 @@
 // 预览输入（inputs/<方案>.json）：文档固定的一份，带一条输入 Timeline。
-import { authoringApi, describedPortsAvailable, type AuthoringElements } from '../api/authoring';
+import { authoringApi, describedPortsAvailable, type AuthoringElements, type PreviewInputTemplate } from '../api/authoring';
 import {
   authoringActions, currentDocument, get, graphPath, setDocument, skillElements, timelinePath, tracksOf,
   type JsonKey, type JsonMutation,
@@ -12,9 +12,11 @@ import { inputTimelineName, trackSelectId } from './timelineModel';
 
 
 function planFrom(elements: AuthoringElements, name: string) {
-  if (!elements.previewInput.availability.available)
-    throw new Error(elements.previewInput.availability.reason!);
-  const plan = cloneJson(elements.previewInput.plan!.value);
+  const input = elements.previewInput;
+  if (input === null) throw new Error('当前宿主未提供预览输入合同');
+  if (!input.availability.available)
+    throw new Error(input.availability.reason!);
+  const plan = cloneJson(input.plan!.value);
   for (const scheme of plan.Schemes as JsonObject[]) scheme.AuthoringId = crypto.randomUUID();
   const scheme = (plan.Schemes as JsonObject[])[numberOf(plan.Selected)];
   const timeline = authoringActions.createTimeline(elements.timeline, inputTimelineName);
@@ -38,7 +40,7 @@ export const inputAuthoring = {
     selectionActions.select({ kind: 'track', id: trackSelectId(timeline, id) });
   },
 
-  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: AuthoringElements['previewInput']) {
+  setNodeValues(graphId: string, nodeId: string, changes: readonly JsonMutation[], contract: PreviewInputTemplate) {
     authoringActions.edit(graphPath(graphId), document => {
       const node = findNode(document, nodeId)!;
       const at = (item: JsonObject) => contract.keyPath.reduce<JsonValue>((current, key) => (current as JsonObject)[key], item);
@@ -91,7 +93,7 @@ export const inputAuthoring = {
     const anchor = graph.nodes.find(node => flowOut(node.id) !== undefined && !nodesOf(stored)
       .some(item => connectionsOf(item).some(connection => connectionTarget(connection) === node.id)));
     if (anchor === undefined) throw new Error('标记图没有回调入口');
-    const contract = elements.previewInput.condition;
+    const contract = elements.previewInput!.condition;
     const type = contract.nodeType;
     // 链上已有的预览条件按含义记下，同一含义后写的生效。
     const written = new Map<string, string>();

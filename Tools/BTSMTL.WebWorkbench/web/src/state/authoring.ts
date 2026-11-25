@@ -5,10 +5,10 @@ import {
   authoringApi, authoringOwner, authoringRootFiles, authoringTarget, authoringTargetKey, readDocumentSaveConflict, readDocumentSaveRejection, type AuthoringTarget, type ReferenceReplacementCompleted, type ReferenceReplacementPrepared, type ReferenceReplacementResult, type ElementTemplate,
   type GraphTemplate, type InputPlanContext, type InputRevision, type InputSaveResult, type PlayerContentRefreshReceipt, type PlayerContentRefreshTarget,
   type ScenarioDraftRequest, type DocumentCreationRequest, type AuthoringGraph, type AuthoringGraphRelation, type AuthoringEditingView, type AuthoringElements,
-  type DocumentDeleteResult, type AuthoringFormatError, type DocumentSaveResult, type AuthoringSnapshot, type DecisionBinding,
+  type DocumentDeleteResult, type AuthoringFormatError, type DocumentSaveResult, type AuthoringSnapshot,
 } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
-import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite } from '../api/workspaceDocuments';
+import { workspaceDocumentsApi, type DocumentType, type StorageRoles, type WorkspaceDocumentElement, type WorkspaceDocumentInfo, type WorkspaceDocumentSnapshot, type WorkspaceDocumentWrite, type WorkspaceFeatures } from '../api/workspaceDocuments';
 import type { VariablesQuery, VariablesValue } from '../api/variables';
 import { playerApi } from '../api/player';
 import { resourceRegistrationApi, scopeQueryKey, type AuthoringScope, type ScopeQuery } from '../api/resourceRegistration';
@@ -42,6 +42,7 @@ export interface AuthoringState {
   documents: Record<string, AuthoringDocument>;
   directory: WorkspaceDocumentInfo[] | null;
   documentTypes: DocumentType[];
+  workspaceFeatures: WorkspaceFeatures | null;
   elementCatalog: { kind: 'loading' | 'ready'; items: WorkspaceDocumentElement[] }
     | { kind: 'unavailable'; items: WorkspaceDocumentElement[]; reason: string };
   carrierRevision: string | null;
@@ -109,7 +110,7 @@ interface SaveOutcomeMessage {
 export type SaveOutcome = SaveOutcomeMessage & (
   | (SavedCompilation & { preview: PlayerContentRefreshReceipt | null })
   | Pick<InputSaveResult, 'saved' | 'compilationState' | 'preview' | 'previewError' | 'jobError'>
-  | { saved: true; compilationState: 'not-requested'; runtimeState: 'pending'; preview: null }
+  | { saved: true; compilationState: 'not-requested'; runtimeState: 'pending' | 'unavailable'; preview: null }
   | { saved: boolean; compilationState: 'not-started'; preview: null }
   | { saved: true; compilationState: 'failed'; preview: null }
   | (SavedCompilation & { publicationState: 'failed'; preview: null })
@@ -145,7 +146,7 @@ export const variablesDrafts = (values: readonly VariablesValue[]): Record<strin
 const closedDocument = newDocument();
 
 export const useAuthoring = create<AuthoringState>()(() => ({
-  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null, documentTypes: [],
+  available: null, unavailableReason: null, author: false, target: null, documents: {}, directory: null, documentTypes: [], workspaceFeatures: null,
   elementCatalog: { kind: 'loading', items: [] }, carrierRevision: null,
   resourceTarget: null, scopes: {},
 }));
@@ -244,7 +245,7 @@ type PreviewSelection = { kind: 'selected'; target: PlayerContentRefreshTarget; 
   | { kind: 'unavailable'; reason: string };
 type SavedCompilation = Pick<Extract<DocumentSaveResult, { compilationState: 'succeeded' }>, 'saved' | 'compilationState' | 'compilation'>;
 
-export async function selectedPreview(inputSource?: RunSource, decision?: DecisionBinding): Promise<PreviewSelection> {
+export async function selectedPreview(inputSource?: RunSource, parameters?: Readonly<Record<string, unknown>>): Promise<PreviewSelection> {
   const state = useWorkbench.getState();
   const mode = state.host?.modes.find(item => item.id === state.previewMode);
   if (!mode) return { kind: 'unavailable', reason: '未选择预览档位，运行未应用' };
@@ -261,8 +262,8 @@ export async function selectedPreview(inputSource?: RunSource, decision?: Decisi
     if (channels === null)
       return { kind: 'unavailable', reason: '所选 Player 上次载入未声明录制通道，重新载入内容后才能刷新预览' };
     return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId: targetLiveId,
-      projectParameters: { scene: content.scene, sceneRevision: content.revision, source: inputSource ?? content.source,
-        ...(decision === undefined ? {} : { decision }) }, channels }, scene: { path: content.scene, revision: content.revision } };
+      projectParameters: { ...parameters, scene: content.scene, sceneRevision: content.revision, source: inputSource ?? content.source },
+      channels }, scene: { path: content.scene, revision: content.revision } };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
@@ -524,7 +525,8 @@ async function readDocuments({ editingView, isCurrentRequest }: ReturnType<typeo
       elementCatalog = { kind: 'unavailable', items: useAuthoring.getState().elementCatalog.items, reason };
       consoleActions.error('作者元素目录', error);
     }
-    set({ directory: directory.value, documentTypes: types.value, available: true, unavailableReason: null,
+    set({ directory: directory.value, documentTypes: types.value.types, workspaceFeatures: types.value.features,
+      available: true, unavailableReason: null,
       ...(isCurrentRequest() ? { elementCatalog } : {}),
     });
   } catch (error) {
@@ -965,8 +967,8 @@ export const authoringActions = {
     };
   },
 
-  // decision：应用独立决策图时把它绑定到所选角色；不给时沿用场景包里已有的绑定。
-  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource, decision?: DecisionBinding) {
+  async save(operation: 'save' | 'compile' | 'apply' | 'inputs' = 'save', inputSource?: RunSource,
+             parameters?: Readonly<Record<string, unknown>>) {
     const state = get();
     const active = state.target;
     const dirtyPath = active === null && operation === 'save'
@@ -1056,15 +1058,16 @@ export const authoringActions = {
     try {
       if (operation === 'save') {
         const result = await workspaceDocumentsApi.save(editingView);
-        const message = '作者内容已保存；未请求编译与发布，运行未应用。';
+        const projectTools = current.workspaceFeatures?.projectTools === true;
+        const message = projectTools ? '作者内容已保存；未请求编译与发布，运行未应用。' : '作者内容已保存。';
         accept(result.documents, null,
-          { saved: true, compilationState: 'not-requested', runtimeState: 'pending', preview: null, ok: true, message, errors: [] });
+          { saved: true, compilationState: 'not-requested', runtimeState: projectTools ? 'pending' : 'unavailable', preview: null, ok: true, message, errors: [] });
         consoleActions.log('info', '作者', `${target.documentPath}：${message}`, JSON.stringify(result));
         return;
       }
       const jobBlocked = apply ? session.canStart() : null;
       const [selection, job] = apply ? await Promise.all([
-        selectedPreview(inputSource, decision),
+        selectedPreview(inputSource, parameters),
         jobBlocked === null ? session.prepareRun({ kind: 'selection' }) : Promise.resolve(undefined),
       ]) : [null, undefined] as const;
       const result = await authoringApi.save(target, {

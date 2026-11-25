@@ -14,6 +14,9 @@ const documentFields = {
 };
 const readDocumentType = object({ id: choice(...workspaceDocumentKinds), displayName: text, rootType: nullable(text), directory: text, rootFile: nullable(text) });
 export type DocumentType = ReturnType<typeof readDocumentType>;
+const readWorkspaceFeatures = object({ projectTools: boolean, animationLibrary: boolean });
+export type WorkspaceFeatures = ReturnType<typeof readWorkspaceFeatures>;
+const readDocumentTypes = object({ types: array(readDocumentType), features: readWorkspaceFeatures });
 export const readWorkspaceDocumentInfo = object(documentFields);
 const readDocument = readWorkspaceDocumentInfo;
 export type WorkspaceDocumentInfo = ReturnType<typeof readDocument>;
@@ -57,7 +60,7 @@ export function readWorkspaceEditingView(value: unknown): WorkspaceEditingView {
 
 export const workspaceDocumentsApi = {
   types: (signal?: AbortSignal) => getJson<unknown>('/api/authoring/documents/types', signal)
-    .then(value => object({ types: array(readDocumentType) })(value).types),
+    .then(value => readDocumentTypes(value)),
   list: (kind?: WorkspaceDocumentInfo['kind'], signal?: AbortSignal) =>
     getJson<unknown>(`/api/authoring/documents${query({ kind })}`, signal).then(value => readList(value).documents),
   open: (documentPath: string, signal?: AbortSignal) =>

@@ -605,19 +605,21 @@ export function InputClipFields({ documentId, graphId }: { documentId: string; g
   const { document } = useCurrentDocument(graphPath(graphId));
   if (!elements || !document) return <div className={styles.note}>正在读取输入字段</div>;
   if (context.kind === 'unavailable') return <div className={styles.note}>{context.reason}</div>;
+  const input = elements.previewInput;
+  if (input === null) return null;
   const anchor = elements.anchors[(document as JsonObject).Role as string]?.find(item => item.kind === '@timelineEnable');
   const entry = anchor ? findNode(document, anchor.uid) : null;
   const writers = (entry ? connectionsOf(entry) : [])
     .map(edge => findNode(document, connectionTarget(edge))!)
-    .filter(node => nodeType(node) === elements.previewInput.nodeType);
+    .filter(node => nodeType(node) === input.nodeType);
   return <>
     {writers.map(node => <InputWriterFields key={nodeId(node)} graphId={graphId} node={node}
-      contract={elements.previewInput} keys={context.actor.keys} />)}
+      contract={input} keys={context.actor.keys} />)}
   </>;
 }
 
 function InputWriterFields({ graphId, node, contract, keys }: {
-  graphId: string; node: JsonObject; contract: import('../../api/authoring').AuthoringElements['previewInput'];
+  graphId: string; node: JsonObject; contract: import('../../api/authoring').PreviewInputTemplate;
   keys: import('../../api/types').InputCatalog['players'][number]['keys'];
 }) {
   const target = useAuthoring(state => state.target);
@@ -808,7 +810,7 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
   return (
     <>
       {scheme && <Fold title="预览环境（假设目标、起点）" defaultOpen={false}>
-        {elements?.previewInput.scheme.shape.members?.filter(member => member.member !== 'InputTimeline' && member.authoring?.authoringVisible).map(member =>
+        {elements?.previewInput?.scheme.shape?.members?.filter(member => member.member !== 'InputTimeline' && member.authoring?.authoringVisible).map(member =>
           editable && !member.authoring!.readOnly
             ? <ValueEditor key={member.member} label={member.authoring!.displayName ?? memberLabel(member.member)} value={scheme[member.member]} shape={member}
                 keys={['Schemes', selected, member.member]} onSet={set} />

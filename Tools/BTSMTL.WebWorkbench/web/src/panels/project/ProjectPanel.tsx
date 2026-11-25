@@ -43,6 +43,7 @@ export function ProjectPanel() {
 
   const { documents, directory, documentTypes, target, author, elementCatalog } = useAuthoring(useShallow(state => ({
     documents: state.documents, directory: state.directory, documentTypes: state.documentTypes, target: state.target, author: state.author, elementCatalog: state.elementCatalog })));
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   useEffect(() => { if (directory === null) void authoringActions.listDocuments(); }, [directory]);
   const catalog = useAdapterCatalog();
   useEffect(() => { void adapterCatalogCache.ensure(authoringApi.catalog); }, []);
@@ -120,7 +121,8 @@ export function ProjectPanel() {
   const [creating, setCreating] = useState<DocumentContentKind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const composition = target !== null && documents[target.documentPath].documentGraphs !== null &&
-    (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'graph' || target.kind === 'timeline');  const elements = useAuthoringElements(author && composition);
+    (documents[target.documentPath].roles.entryGraph !== undefined || target.kind === 'graph' || target.kind === 'timeline');
+  const elements = useAuthoringElements(projectTools && author && composition);
   const byKey = useMemo(() => new Map(nodes.map(node => [node.key, node])), [nodes]);
 
   // 浏览引用字段时展开到当前值并选中它。
@@ -240,15 +242,15 @@ export function ProjectPanel() {
   return <div ref={root} className={styles.root}>
     <PanelBar>
       <TextInput aria-label="搜索 Project" placeholder="搜索图和资源…" value={search} onChange={event => setSearch(event.currentTarget.value)} />
-      <MenuButton label="新建" caret entries={[
+      {projectTools && <MenuButton label="新建" caret entries={[
         { label: '图或资源', onSelect: () => create('document') },
         { kind: 'separator' },
         { label: '在当前文档中新建 Timeline', disabled: !composition, onSelect: () => create('timeline') },
         { label: '在当前文档中新建共享子图', disabled: !composition, onSelect: () => create('macro') },
-      ]}>新建</MenuButton>
+      ]}>新建</MenuButton>}
       <MenuButton label="Project 更多操作" variant="ghost" iconOnly entries={[
         { label: '刷新资源目录', onSelect: () => void adapterCatalogCache.refresh(authoringApi.catalog) },
-        { label: files ? '返回 Project' : '查看工作区文件（排查）', onSelect: () => setFiles(!files) },
+        ...(projectTools ? [{ label: files ? '返回 Project' : '查看工作区文件（排查）', onSelect: () => setFiles(!files) }] : []),
       ]}>⋮</MenuButton>
     </PanelBar>
     {picking !== null && <div className={styles.picking}>

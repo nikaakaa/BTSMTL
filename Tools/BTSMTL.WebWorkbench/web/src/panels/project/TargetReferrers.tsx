@@ -11,12 +11,14 @@ import { VirtualList } from '../../ui/VirtualList';
 import styles from './project.module.css';
 
 export function TargetReferrersFold({ target }: { target: ReferenceChoiceTarget }) {
-  const { document, stamp } = useAuthoring(useShallow(state => ({
+  const { document, stamp, projectTools } = useAuthoring(useShallow(state => ({
     document: state.target,
+    projectTools: state.workspaceFeatures?.projectTools === true,
     stamp: JSON.stringify([state.carrierRevision, Object.entries(state.documents).map(([key, document]) =>
       [key, document.revision, document.version, document.execution])]),
   })));
   const scene = useWorkbench(state => selectedScene(state));
+  if (!projectTools) return null;
   const key = JSON.stringify([document, target, stamp, scene]);
   return <Fold key={key} title="引用者">
     {document === null ? <Empty text="打开作者文档后查看此目标的引用者" />

@@ -15,6 +15,7 @@ export const keyOf = (item: ProjectItem) => JSON.stringify([item.owner, item.kin
 export function DocumentDetails({ item, items, stamp, onChanged }: { item: ProjectItem; items: ProjectItem[]; stamp: string; onChanged(): void }) {
   const documentTypes = useAuthoring(state => state.documentTypes);
   const documents = useAuthoring(state => state.documents);
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   // 文档类型目录与文档列表随作者仓库异步读回；读回前（如打开时恢复了上次选中的文档）先不显示类型名。
   const kindName = (value: ProjectItem) => value.kind === 'input-plan' ? '输入方案'
     : documentTypes.find(type => type.id === (value.kind === 'document' ? documents[value.owner]?.kind : value.kind))?.displayName ?? '';
@@ -31,6 +32,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
   const documentRoot = useAuthoring(state => state.documents[item.owner]?.rootFile === item.file);
   const canRename = item.kind !== 'variables' && !(item.kind === 'timeline' && item.input);
   useEffect(() => {
+    if (!projectTools) return;
     const controller = new AbortController();
     setReferrers(null);
     setDeletion(null);
@@ -39,7 +41,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
       if (!isAbort(error)) setFailure({ text: '引用者读取失败', entryId: consoleActions.error('Project', error) });
     });
     return () => controller.abort();
-  }, [item.owner, item.identity, stamp]);
+  }, [item.owner, item.identity, stamp, projectTools]);
   const perform = async (action: () => Promise<void>, refresh = true) => {
     setBusy(true);
     setFailure(null);
@@ -51,7 +53,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
     <PanelBar>
       <Button variant="ghost" disabled={busy} onClick={() => void perform(() => projectActions.open(item))}>打开</Button>
       {canRename && <Button variant="ghost" disabled={busy} onClick={() => setRenaming(!renaming)}>重命名</Button>}
-      {item.kind === 'document' ? <Button variant="ghost" disabled={busy || pendingDocument}
+      {projectTools && (item.kind === 'document' ? <Button variant="ghost" disabled={busy || pendingDocument}
         tip={pendingDocument ? `等待此${typeName}的读取或保存完成` : '删除整个文档目录；宿主会检查磁盘修订、外部引用、运行授予和共享内容'}
         onClick={() => void perform(async () => {
           setDeletion(null);
@@ -66,7 +68,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
           }
         }, false)}>删除{typeName}目录</Button> : item.kind !== 'variables' && <Button variant="ghost" disabled={busy || pendingDocument || referrers === null || !referrers.complete || referrers.items.length !== 0}
         tip={referrers !== null && !referrers.complete ? '查询尚未完整，先处理未能确认的引用' : referrers?.items.length ? '仍有引用，先在引用者中解除引用' : '删除加入工作区的未保存修改，可撤销'}
-        onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>{documentRoot ? '删除文档' : '删除'}</Button>}
+        onClick={() => void perform(async () => { setReferrers(await projectActions.remove(item)); })}>{documentRoot ? '删除文档' : '删除'}</Button>)}
     </PanelBar>
     {failure && <ErrorLine {...failure} />}
     {renaming && canRename && <RenameItem item={item} busy={busy} onRename={(name, scheme) => void perform(async () => {
@@ -96,7 +98,7 @@ export function DocumentDetails({ item, items, stamp, onChanged }: { item: Proje
       </div>)}
     </>}
     {/* 引用者默认收起只显示数量，展开再看明细，不把检查器下方的配置挤走。 */}
-    {!deletion && <Fold title="引用者" name="引用者" summary={referrers === null ? '读取中'
+    {projectTools && !deletion && <Fold title="引用者" name="引用者" summary={referrers === null ? '读取中'
       : `${referrers.items.length} 项${referrers.complete ? '' : ' · 查询未完整'}`}>
     {referrers?.complete && referrers.items.length === 0 && <div className={styles.note}>没有引用者</div>}
     {referrers?.unresolved.map((issue, index) => <div key={index} className={styles.facts}>

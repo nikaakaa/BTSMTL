@@ -1,6 +1,7 @@
 ﻿param(
     [string]$AnimationLibrary,
-    [int]$Port = 5367
+    [int]$Port = 5367,
+    [string]$Workspace = (Join-Path $PSScriptRoot 'Examples')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +36,8 @@ try {
     if ($buildExit -ne 0) {
         throw '网页工作台编译失败，服务未启动。'
     }
-    $serviceArguments = @('--urls', "http://127.0.0.1:$Port", '--contentRoot', $PSScriptRoot)
+    $serviceArguments = @('--urls', "http://127.0.0.1:$Port", '--contentRoot', $PSScriptRoot,
+        '--Workspace', [IO.Path]::GetFullPath($Workspace))
     if ($AnimationLibrary) { $serviceArguments += @('--AnimationLibrary', [IO.Path]::GetFullPath($AnimationLibrary)) }
     dotnet (Join-Path $buildArtifacts 'bin/BTSMTL.WebWorkbench/release/BTSMTL.WebWorkbench.dll') @serviceArguments
     if ($LASTEXITCODE -ne 0) {

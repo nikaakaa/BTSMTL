@@ -68,7 +68,8 @@ import styles from './timeline.module.css';
 // 轨道头宽度，约占窗口三分之一，面板窄时收窄让出时间区；CSS 经 --sidebar 读取。
 export function TimelinePanel() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
-  return <div className={styles.window}>{quick ? <QuickBar /> : <RunBar />}<DocumentTimeline /></div>;
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
+  return <div className={styles.window}>{projectTools && (quick ? <QuickBar /> : <RunBar />)}<DocumentTimeline /></div>;
 }
 
 // 快档所选输入方案的输入 Timeline；路线、输入轨与按全局时间排开的各次播放都画在它的视图里。
@@ -553,6 +554,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const [dropIssue, setDropIssue] = useState<string | null>(null);
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   const binding = useDocumentObservationBinding();
   const timelineBinding = useTimelineObservationBinding(binding.dirty);
   const quickMode = useWorkbench(state => state.previewMode === 'quick');
@@ -1049,7 +1051,7 @@ function TimelineBody({ elements, params, setParams, focusId, routeView, bounds,
         quickPlayback={quickPlayback}
         navigationOrigin={params.origin}
         observations={choices} selectCall={selectCall} pin={quickMode || pin === null ? null : pin.observation} togglePin={togglePin} parents={parents} openParent={openParent}
-        observationNotice={quickMode || realArchive && inputScheme ? null : pinNotice ?? callerNotice
+        observationNotice={!projectTools || quickMode || realArchive && inputScheme ? null : pinNotice ?? callerNotice
           ?? (realArchive ? playbackNotice ?? timelineNotice : (inputScheme ? null : timelineNotice) ?? playbackNotice)} />
       {dropIssue !== null && <div className={styles.dropIssue} role="alert">
         <span>{dropIssue}</span>
@@ -1487,9 +1489,10 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
     const id = authoringActions.splitClip(documentId, splitTarget.id, at);
     if (id) select(id);
   };
+  const canCreateGraph = (role: string) => elements.graphs.some(template => template.role === role && template.seed === 'Anchors' && template.ownership === null);
   return [
     { kind: 'label', label: '在此处添加' },
-    ...templates.map((template): MenuEntry => ({
+    ...templates.filter(template => !('m_AssetTree' in template.value) || canCreateGraph('TimelineBody')).map((template): MenuEntry => ({
       label: `${template.kind ?? template.clrType} 片段`,
       onSelect: () => {
         const start = local();
@@ -1497,10 +1500,10 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
           .then(select, error => consoleActions.error('Timeline', error));
       },
     })),
-    { label: '标记', onSelect: () => {
+    ...(canCreateGraph('TimelineTrigger') ? [{ label: '标记', onSelect: () => {
       void authoringActions.addMarkerAt(documentId, row.track.id, local())
         .then(id => { if (id) select(id); }, error => consoleActions.error('Timeline', error));
-    } },
+    } }] : []),
     {
       label: '粘贴片段', disabled: pasteIssue !== null, tip: pasteIssue ?? '粘贴复制的片段，起点在此处',
       onSelect: () => { const id = pasteTimelineClip(elements!, documentId, row.track.id, local()); if (id) select(id); },

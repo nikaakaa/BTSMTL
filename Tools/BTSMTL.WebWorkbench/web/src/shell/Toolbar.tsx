@@ -10,7 +10,7 @@ import { transport } from '../state/transport';
 import { quickBounds, quickPlan, quickPreview } from '../state/quickPreview';
 import { Button, MenuButton, Select, TextInput, Tip, type MenuEntry } from '../ui/controls';
 import { CrumbArrow, RedoIcon, UndoIcon } from '../ui/icons';
-import { panelMenu } from './GroupActions';
+import { usePanelMenu } from './GroupActions';
 import { openPanel } from './layout';
 import { QuickCursor } from '../panels/timeline/QuickPreview';
 import { SaveResult } from './SaveResult';
@@ -21,6 +21,8 @@ import styles from './toolbar.module.css';
 export function Toolbar() {
   const quick = useWorkbench(state => state.previewMode === 'quick');
   const playerAvailable = useWorkbench(state => state.host?.player.available === true);
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
+  const menu = usePanelMenu();
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
@@ -33,9 +35,9 @@ export function Toolbar() {
         {(quick || playerAvailable) && <Transport />}{quick ? <QuickCursor /> : playerAvailable && <FrameField />}
       </div>
       <div className={styles.right}>
-        <Button variant="ghost" onClick={() => openPanel('export')}>导出</Button>
+        {projectTools && <Button variant="ghost" onClick={() => openPanel('export')}>导出</Button>}
         <PreviewModeChoice />
-        <MenuButton label="布局" variant="ghost" entries={panelMenu(playerAvailable)} caret>布局</MenuButton>
+        <MenuButton label="布局" variant="ghost" entries={menu} caret>布局</MenuButton>
         <Connection />
       </div>
     </header>
@@ -44,8 +46,9 @@ export function Toolbar() {
 
 // 当前场景：菜单列各 Unity 场景唯一的一份发布；完整信息在 Project 场景页与检查器。
 function ContentChoice() {
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   const { sources, selection } = useWorkbench(useShallow(state => ({ sources: state.sources, selection: state.contentSelection })));
-  if (!sources) return null;
+  if (!projectTools || !sources) return null;
   const options = previewContentChoices(sources);
   const key = contentSelectionKey(selection);
   const current = options.find(option => option.value === key);
@@ -95,6 +98,7 @@ function ScopeAuthoringStatus() {
 
 function DocumentAuthoringStatus() {
   const canApply = useWorkbench(state => state.host?.modes.find(mode => mode.id === state.previewMode)?.createsRun === true);
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   const state = useAuthoring(useShallow(current => {
     const document = authoringDocument(current);
     const documents = Object.values(current.documents);
@@ -147,8 +151,8 @@ function DocumentAuthoringStatus() {
       <Button disabled={state.saving} tip="保存当前作者修改（Ctrl+S）" onClick={() => void authoringActions.save()}>
         {state.saving ? '保存中' : '保存'}
       </Button>
-      <Button disabled={state.saving || state.deleting} tip={state.deleting ? '当前文档待删除，请使用保存' : '保存编辑文档并执行离线编译'}
-        onClick={() => void authoringActions.save('compile')}>保存并编译</Button>
+      {projectTools && <Button disabled={state.saving || state.deleting} tip={state.deleting ? '当前文档待删除，请使用保存' : '保存编辑文档并执行离线编译'}
+        onClick={() => void authoringActions.save('compile')}>保存并编译</Button>}
       {canApply && <Button disabled={state.saving || state.deleting} tip="保存后按当前选择编译、发布并请求 Player 应用"
         onClick={() => void authoringActions.save('apply')}>保存并应用</Button>}
       {lastSave && (dirty === 0 || !lastSave.ok) && <SaveResult outcome={lastSave} />}

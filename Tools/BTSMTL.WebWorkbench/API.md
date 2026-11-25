@@ -8,7 +8,7 @@
 
 - HTTP 使用相对路径 `/api/...`，JSON 请求使用 `Content-Type: application/json`，文本使用 UTF-8。HTTP 外层属性名为 camelCase，作者原文及节点成员保持正式存储命名（如 `AuthoringId`、`ID`、`m_...`）。本文路径参数用 `{name}` 表示，实际拼入时编码。
 - WebSocket 使用同源的 `ws://` 或 `wss://`。Vite 当前把 `/api`（含 WebSocket）代理到 `http://127.0.0.1:5367`；联调其它端口时，UI 开发配置应指向该实际 Host。
-- 独立启动通用网页服务只装配静态页面、动画资源及不可用的 `/api/preview/host`；完整编辑与运行由项目 Host 注册适配，不再使用 `SkillAuthoring` 开关。
+- 独立服务用 `StandaloneAuthoring` 将核心图、Timeline 和变量声明接到公共文档服务，并用 `MapAuthoringEditorApi` 提供源图投影、类型、端口、字段与元素查询。用户从 `--Workspace` 传入作者目录。项目发布、运行与资源语义由项目宿主提供。
 - 作者文件的 `content` 是完整 JSON 原文字符串。读取、编辑和写出沿用 [skillJson.ts](web/src/state/skillJson.ts)，保留大整数及 `1.0` 等正式浮点写法；不能经过普通 `JSON.parse`／`JSON.stringify` 整体往返。
 - 公共帧键、64 位身份、序号、FP Raw 和修订保持字符串。定位请求只提交 `position:{hostFrame:"目标键"}`，由原 Host 按实际采用内容解释；网页不转换为 SDK 帧或 Timeline tick。
 - 查询分页有两种原合同：作者查询用 `hasMore`，档案分页用 `nextOffset`（终点为 `null`）。按各自回执翻页，不把二者混用。
@@ -99,7 +99,7 @@
 
 | 方法与路径 | 参数或请求 | 响应 |
 | --- | --- | --- |
-| `GET /api/authoring/documents/types` | 无 | 文档类型身份、显示名、根类型、发现目录与根文件；语义角色随单份文档返回 |
+| `GET /api/authoring/documents/types` | 无 | `types` 为文档类型目录，`features` 声明 `projectTools` 与 `animationLibrary`。语义角色随单份文档返回 |
 | `GET /api/authoring/documents` | `kind?` | 文档目录及适配提供的元数据 |
 | `GET /api/authoring/documents/content` | `documentPath`，可选 `revision` | 文档原文与修订；带上已读 `revision` 且未变化时只回 `{success, changed:false, revision}`，不含正文 |
 | `GET /api/authoring/documents/elements` | `kind?` | 文档种类的正式模板 |

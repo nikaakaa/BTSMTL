@@ -353,7 +353,7 @@ export interface ElementTemplate {
   kind: string | null;
   clrType: string;
   value: JsonObject;
-  shape: StorageShape;
+  shape: StorageShape | null;
 }
 
 // 轨道重叠策略（TimelineTrackOverlapPolicy）：禁止重叠、并行、重叠处混合。
@@ -400,8 +400,8 @@ export interface AuthoringElements {
   graphs: GraphTemplate[];
   anchors: Record<string, GraphAnchor[]>;
   // 状态机里新建的普通状态：节点类型、默认名称与默认配置；必填图引用成员随状态一并新建。
-  state: ElementTemplate & { type: string; name: string };
-  transition: ElementTemplate;
+  state: (ElementTemplate & { type: string; name: string }) | null;
+  transition: ElementTemplate | null;
   // 带执行出口列表的节点：列表成员与元素形状；元素的图引用成员是从该出口连线编辑的专属图。
   flowOutputs: { type: string; member: string; element: StorageShape }[];
   timeline: ElementTemplate;
@@ -409,12 +409,19 @@ export interface AuthoringElements {
   clips: ClipTemplate[];
   marker: ElementTemplate;
   referenceNodes: ReferenceNodeTemplate[];
-  previewInput: { plan: ElementTemplate | null; availability: { available: boolean; reason: string | null };
-    scheme: ElementTemplate; nodeType: string; keyPath: string[];
-    valueFields: Record<'Button' | 'Scalar' | 'Vector2', string>;
-    condition: { nodeType: string; conditionPath: string[]; labelPath: string[]; satisfiedPath: string[] } };
+  previewInput: PreviewInputTemplate | null;
   // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
-  blackboard: StorageShape;
+  blackboard: StorageShape | null;
+}
+
+export interface PreviewInputTemplate {
+  plan: ElementTemplate | null;
+  availability: { available: boolean; reason: string | null };
+  scheme: ElementTemplate;
+  nodeType: string;
+  keyPath: string[];
+  valueFields: Record<'Button' | 'Scalar' | 'Vector2', string>;
+  condition: { nodeType: string; conditionPath: string[]; labelPath: string[]; satisfiedPath: string[] };
 }
 
 export interface GraphTemplate {
@@ -708,22 +715,7 @@ function readCreationOptions(sourceText: string): DocumentCreationCatalog {
 const readDocumentCreationDraft = object({ stage: choice('draft'), rootFile: text, documentPath: text, identity: text, name: text,
   files: array(readAuthoringFile), variables: readCreatedVariables, availability: readAuthoringAvailability });
 
-const readActorStart = object({ x: number, y: number, z: number, yaw: number });
-const readDecisionActors = object({ actors: array(object({ actorId: text, localPlayer: boolean, hasInput: boolean,
-  decision: nullable(object({ graphId: text, intervalTicks: number, phaseTicks: number })), start: nullable(readActorStart) })) });
-export type DecisionActor = ReturnType<typeof readDecisionActors>['actors'][number];
-// 开局位姿：世界坐标（米）与偏航角（度）；场景包没写时角色按原型位姿出生。
-export type ActorStart = ReturnType<typeof readActorStart>;
-// 决策图绑定到场景里的非玩家角色，按间隔与相位推进；随独立图刷新写进场景包。
-// newActor 给出时先照模板把 actorId 加进场景包、写开局位姿，再绑定。
-export interface DecisionBinding {
-  actorId: string; intervalTicks: number; phaseTicks: number;
-  newActor?: { templateActorId: string; start: ActorStart };
-}
-
 export const authoringApi = {
-  decisionActors: async (scene: string, revision: string, signal?: AbortSignal) =>
-    readDecisionActors(await getJson<unknown>(`/api/authoring/decision-actors${query({ scene, revision })}`, signal), 'DecisionActors').actors,
   catalog: async (revision: string | null, signal?: AbortSignal) =>
     readAdapterCatalog(await getJson<unknown>(`/api/authoring/catalog${revision === null ? '' : query({ revision })}`, signal)),
   prepareReferenceReplacement: async (input: ReferenceReplacementInput, signal?: AbortSignal) =>
