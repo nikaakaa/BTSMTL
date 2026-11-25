@@ -174,6 +174,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
   graphs: AuthoringGraph[]; defaultGraph: AuthoringGraph; params: Params; setParams(patch: Partial<Params>): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const projectTools = useAuthoring(state => state.workspaceFeatures?.projectTools === true);
   const documentNotice = useAuthoring(state => authoringDocument(state).documentError);
   const panelId = usePanelId();
   const runId = useWorkbench(state => state.runId);
@@ -301,7 +302,7 @@ function GraphView({ graphs, defaultGraph, params, setParams }: {
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar wrap>
-          {callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
+          {projectTools && callNotice && <span role="status" className={styles.notice}>{callNotice}</span>}
           {documentNotice !== null && <span role="alert" className={styles.notice}>{documentNotice}；保留上次完整作者结构</span>}
           {!quickMode && caller !== null && <Tip content={callLabel(caller.call)}><span role="status" className={styles.notice}>按来源调用观察</span></Tip>}
           {!quickMode && availabilityNotice && <Tip content={availabilityNotice}><span role="status" className={styles.notice}>运行记录有缺项</span></Tip>}

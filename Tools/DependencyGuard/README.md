@@ -21,21 +21,23 @@
 
 `POSE_RUNTIME_NO_FLOWCANVAS` 禁止 `ThirdPersonCharacter.Animation` 的源码使用及直接程序集引用 FlowCanvas、NodeCanvas。规则使用 `forbiddenDirectAssemblies`，BTSMTL 作者合同带来的间接依赖仍按其自身边界检查；已有 `forbiddenAssemblies` 继续检查完整传递依赖。
 
-默认构建只检查 SDK 自身，不要求同级 3C，也不表示 Quantum 宿主检查已通过：
+独立工作台可用 .NET 8 SDK 启动。依赖守护使用 .NET 10 SDK，默认扫描 SDK 自身。只运行守护时执行以下命令。
 
 ```powershell
 try {
-    dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false
+    dotnet msbuild BTSMTL.sln /t:DependencyGuard /nr:false /p:UseSharedCompilation=false
 } finally {
     dotnet build-server shutdown
 }
 ```
 
+完整解决方案还编译诊断和序列化模块。运行 `dotnet build BTSMTL.sln` 时用 `/p:MemoryPackCorePath=<绝对路径>` 传入项目宿主使用的 `MemoryPack.Core.dll`。3C 从 Unity 已解析的 Fantasy 包提供此程序集，生成器使用其中的 `TBufferWriter` 类型约束。独立工作台和上面的守护命令只需各自的 SDK 与网页依赖。
+
 完整工作区明确提供实际 Unity Client 根目录，另外检查该 Client 的 Quantum.Simulation、真实 GUID 归属与角色／技能作者身份。当前版本 8 沿用版本 7 的 Client 要求，必须提供该 Client 的本批正式编译证据，默认位置为 `Library/DependencyGuard/unity-boundary.json`。工具读取完整实际 rsp、源码、生成回执与当前程序集元数据，不启动 Unity，不删减实际编译输入；只有扫描完成且报告 `QuantumChecked=true`，才表示本次确实执行了 Quantum 规则：
 
 ```powershell
 try {
-    dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false /p:DependencyGuardClientRoot="D:/Unity_Project_1/3C/3cDemo/Client/3C_Client"
+    dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false /p:MemoryPackCorePath="D:/deps/MemoryPack.Core.dll" /p:DependencyGuardClientRoot="D:/Unity_Project_1/3C/3cDemo/Client/3C_Client"
 } finally {
     dotnet build-server shutdown
 }

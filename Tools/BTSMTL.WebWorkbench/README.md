@@ -20,9 +20,9 @@
 
 默认工作区是 [Examples](Examples)。保存会写回这里的 JSON。需要保留原样时，把 `Examples` 复制到自己的目录，再用 `-Workspace <路径>` 打开副本。工作区文档由 `Graphs/<目录>/graph.json`、`Timelines/<目录>/timeline.json` 和 `Variables/<目录>/variables.json` 发现。
 
-1. 在 Project 中双击「条件分支示例」，点选「比较数值」，在检查器里改 `a`，点工具栏「保存」。重新打开后，检查器会从保存后的图读取输入。
+1. 在 Project 中双击「条件分支示例」，点选「比较数值」，在检查器里改 `a`。也可以右击节点图空白处，选择「添加节点…」并加入 `FloatMultiply`。点「保存」后重新打开文档，查看已保存的节点和输入。
 2. 在 Project 中双击「片段时间示例」，选中时间轴片段，在检查器的「时间」中调整起点或终点，再保存。
-3. 在 Project 中打开变量声明 `example-graph-variables`，从检查器添加变量。变量操作通过同一文档服务写入该声明，图按变量拥有者身份引用它。
+3. 打开「条件分支示例」，点节点图工具栏的「黑板」，选 `float` 并添加变量，再点「保存」。变量保存在 `Variables/example-graph-variables/variables.json`。
 
 独立模式提供核心流程和数值节点、树轨及已有片段时间、变量声明的编辑。新建整份文档、项目资源引用、编译发布、运行输入和 Player 预览由项目宿主提供。
 
